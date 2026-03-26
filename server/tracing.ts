@@ -16,18 +16,35 @@
  * Must be called BEFORE any other imports in server/index.ts.
  */
 
-import { NodeTracerProvider } from "@opentelemetry/sdk-trace-base";
-import { Resource } from "@opentelemetry/resources";
-import { registerInstrumentations } from "@opentelemetry/instrumentation";
-import { HttpInstrumentation } from "@opentelemetry/instrumentation-http";
-import { ExpressInstrumentation } from "@opentelemetry/instrumentation-express";
-import {
-  SimpleSpanProcessor,
-  BatchSpanProcessor,
-  ConsoleSpanExporter,
-  type SpanExporter,
-} from "@opentelemetry/sdk-trace-base";
-import { context, trace, type Tracer } from "@opentelemetry/api";
+let NodeTracerProvider: any;
+let Resource: any;
+let registerInstrumentations: any;
+let HttpInstrumentation: any;
+let ExpressInstrumentation: any;
+let SimpleSpanProcessor: any;
+let BatchSpanProcessor: any;
+let ConsoleSpanExporter: any;
+let context: any;
+let trace: any;
+type SpanExporter = any;
+type Tracer = any;
+
+try {
+  const sdkTrace = require("@opentelemetry/sdk-trace-base");
+  NodeTracerProvider = sdkTrace.NodeTracerProvider;
+  SimpleSpanProcessor = sdkTrace.SimpleSpanProcessor;
+  BatchSpanProcessor = sdkTrace.BatchSpanProcessor;
+  ConsoleSpanExporter = sdkTrace.ConsoleSpanExporter;
+  Resource = require("@opentelemetry/resources").Resource;
+  registerInstrumentations = require("@opentelemetry/instrumentation").registerInstrumentations;
+  HttpInstrumentation = require("@opentelemetry/instrumentation-http").HttpInstrumentation;
+  ExpressInstrumentation = require("@opentelemetry/instrumentation-express").ExpressInstrumentation;
+  const api = require("@opentelemetry/api");
+  context = api.context;
+  trace = api.trace;
+} catch {
+  // OpenTelemetry packages not available — tracing will be no-op
+}
 
 const SERVICE_NAME = "acreos-server";
 const SERVICE_VERSION = process.env.npm_package_version || "0.0.0";
@@ -123,7 +140,25 @@ export async function initTracing(): Promise<void> {
  * Get the application tracer. Returns a no-op tracer if tracing is not initialized.
  */
 export function getTracer(): Tracer {
-  return _tracer ?? trace.getTracer(SERVICE_NAME);
+  if (_tracer) return _tracer;
+  if (trace?.getTracer) return trace.getTracer(SERVICE_NAME);
+  // Return a no-op tracer when OpenTelemetry is not available
+  return {
+    startSpan: (name: string) => ({
+      end: () => {},
+      setAttribute: () => {},
+      setStatus: () => {},
+      recordException: () => {},
+      isRecording: () => false,
+    }),
+    startActiveSpan: (_name: string, fn: any) => fn({
+      end: () => {},
+      setAttribute: () => {},
+      setStatus: () => {},
+      recordException: () => {},
+      isRecording: () => false,
+    }),
+  } as any;
 }
 
 /**

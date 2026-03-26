@@ -87,6 +87,14 @@ export const ALL_NAV_ITEMS: MasterNavItem[] = [
   { id: "marketplace-analytics",label: "Marketplace Analytics", icon: BarChart2, href: "/marketplace-analytics",description: "Marketplace performance and metrics" },
   // voice-analytics removed — AI Voice feature deprecated
   { id: "va-dashboard",         label: "VA Dashboard",        icon: Users,       href: "/va-dashboard",         description: "Virtual assistant task management" },
+  // Sovereign Protocol — Phase A Visibility
+  { id: "sovereign",            label: "Sovereign",           icon: Shield,      href: "/sovereign",            description: "Autonomous organization oversight" },
+  { id: "board-of-directors",   label: "Board of Directors",  icon: Shield,      href: "/board-of-directors",   description: "Agent negotiations and delegation" },
+  { id: "agent-performance",    label: "Agent Performance",   icon: TrendingUp,  href: "/agent-performance",    description: "Trust scores and revenue attribution" },
+  { id: "memory-browser",       label: "Memory Browser",      icon: Brain,       href: "/memory-browser",       description: "Browse agent cognitive memories" },
+  { id: "event-log",            label: "Event Log",           icon: Zap,         href: "/event-log",            description: "Real-time event mesh stream" },
+  { id: "job-health",           label: "Job Health",          icon: Activity,    href: "/job-health",           description: "Background job monitoring" },
+  { id: "agent-collaboration",  label: "Collaboration",       icon: Users,       href: "/agent-collaboration",  description: "Agent messaging, delegation, and consensus" },
 ];
 
 export const NAV_ITEM_MAP = new Map<string, MasterNavItem>(

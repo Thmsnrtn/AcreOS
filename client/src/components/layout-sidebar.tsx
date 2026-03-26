@@ -393,6 +393,22 @@ const NAV_MODULES: NavModule[] = [
     ],
   },
   {
+    id: "sovereign",
+    label: "Sovereign",
+    icon: Crown,
+    href: "/sovereign",
+    description: "Autonomous organization oversight",
+    children: [
+      { label: "Dashboard", icon: Activity, href: "/sovereign", description: "Sovereign org health overview" },
+      { label: "Board of Directors", icon: Shield, href: "/board-of-directors", description: "Agent negotiations and delegation" },
+      { label: "Agent Performance", icon: TrendingUp, href: "/agent-performance", description: "Trust scores and revenue attribution" },
+      { label: "Memory Browser", icon: Brain, href: "/memory-browser", description: "Browse agent cognitive memories" },
+      { label: "Event Log", icon: Zap, href: "/event-log", description: "Real-time event mesh stream" },
+      { label: "Job Health", icon: Activity, href: "/job-health", description: "Background job monitoring" },
+      { label: "Collaboration", icon: Users, href: "/agent-collaboration", description: "Agent messaging, delegation, and consensus" },
+    ],
+  },
+  {
     id: "settings",
     label: "Settings",
     icon: Settings,

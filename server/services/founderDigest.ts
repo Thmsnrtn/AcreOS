@@ -7,10 +7,9 @@ import {
 import { eq, and, desc, gte, count, sql, lt } from "drizzle-orm";
 import OpenAI from "openai";
 import { emailService } from "./emailService";
+import { getFounderEmails } from "./founder";
 
 const openai = new OpenAI();
-
-const PRIMARY_FOUNDER_EMAIL = "thmsnrtn@gmail.com";
 
 interface DigestData {
   mrrCents: number;
@@ -130,7 +129,7 @@ async function generateDigestBullets(data: DigestData): Promise<{
     response_format: { type: "json_object" },
     messages: [{
       role: "system",
-      content: "You are an AI analyst writing an executive daily briefing for a solo SaaS founder. Write exactly 5 bullets, each ≤25 words. Be direct and actionable. Return JSON.",
+      content: "You are an AI analyst writing an executive daily briefing for a solo land investment tech founder. Write exactly 5 bullets, each ≤25 words. Be direct and actionable. Return JSON.",
     }, {
       role: "user",
       content: JSON.stringify({
@@ -204,12 +203,24 @@ export const founderDigestService = {
       atRiskOrgs: data.topAtRiskOrgName ? 1 : 0,
     }).returning();
 
+    const founderEmails = getFounderEmails();
+    const primaryEmail = founderEmails[0];
+    if (!primaryEmail) {
+      console.warn("[founderDigest] No founder email configured (set FOUNDER_EMAIL or FOUNDER_EMAILS env var)");
+      return { digestId: digestRecord.id, emailSent: false };
+    }
+
     const emailResult = await emailService.sendEmail({
-      to: PRIMARY_FOUNDER_EMAIL,
+      to: primaryEmail,
       subject,
       html,
       organizationId: undefined, // platform-level credentials
     });
+
+    // Send to additional founders
+    for (const email of founderEmails.slice(1)) {
+      await emailService.sendEmail({ to: email, subject, html, organizationId: undefined }).catch(() => {});
+    }
 
     await db.update(founderDigestHistory)
       .set({

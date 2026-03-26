@@ -22,12 +22,24 @@ import {
   supportTickets, subscriptionEvents, systemAlerts, activityLog,
   notes, campaigns, apiUsageLogs,
   decisionsInboxItems, jobHealthLogs, churnRiskScores, revenueProtectionInterventions,
-  founderDigestHistory,
+  founderDigestHistory, companyAgents, agentMessages, companyBriefingCache,
+  agentConversations, agentActionLog, agentGoals, trustEvolutionLog,
+  agentActionUndoLog,
 } from "@shared/schema";
-import { sql, desc, eq, and, gte, lte, lt, count, sum, avg, ne } from "drizzle-orm";
+import { sql, desc, eq, and, gte, lte, lt, count, sum, avg, ne, isNull } from "drizzle-orm";
 import { isFounderEmail } from "./services/founder";
 import { decisionsInboxService } from "./services/decisionsInbox";
 import { founderDigestService } from "./services/founderDigest";
+import { companyAgentService } from "./services/companyAgents";
+import { agentCommsService } from "./services/agentComms";
+import { routeAITask, TaskComplexity } from "./services/aiRouter";
+import { resolveAgentData } from "./services/agentDataResolvers";
+import { executeUndo } from "./services/undoRegistry";
+import { getWeeklyTrends, getMonthlyTrends } from "./services/trendAnalyzer";
+import { getActivePriorities, createPriority, deactivatePriority } from "./services/strategicCompass";
+import { getQuietHoursConfig, setQuietHours } from "./services/quietHours";
+import { learnFromOverride } from "./services/overrideLearner";
+import { generateBriefingUpdates, generateHeadlineInsight } from "./services/aiBriefingWriter";
 
 const router = Router();
 
@@ -40,6 +52,167 @@ function requireFounder(req: any, res: any, next: any) {
   }
   next();
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/founder/intelligence/morning-briefing — v3 Conversational Briefing
+//
+// The CEO's one-screen morning summary. Each agent "speaks" their update
+// in character. Consolidates the 3 competing digest systems into one voice.
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.get("/morning-briefing", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const now = new Date();
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const hour = now.getHours();
+
+    // Greeting based on time of day
+    const timeGreeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+
+    // ── Gather data from all agent resolvers in parallel ──────────────
+    const [
+      forgeData,
+      sentinelData,
+      sophieData,
+      oracleData,
+      ledgerData,
+    ] = await Promise.all([
+      resolveAgentData("forge_revenue").catch(() => ({})),
+      resolveAgentData("sentinel_devops").catch(() => ({})),
+      resolveAgentData("sophie_csm").catch(() => ({})),
+      resolveAgentData("oracle_analytics").catch(() => ({})),
+      resolveAgentData("ledger_finance").catch(() => ({})),
+    ]);
+
+    // ── Count pending decisions ────────────────────────────────────────
+    const pendingResult = await db.select({ c: count() })
+      .from(decisionsInboxItems)
+      .where(eq(decisionsInboxItems.status, "pending"));
+    const pendingDecisions = Number(pendingResult[0]?.c || 0);
+
+    // ── Get recent agent actions (last 24h) ───────────────────────────
+    const recentActions = await db.select({
+      agentCodename: agentActionLog.agentCodename,
+      total: count(),
+      succeeded: sql<number>`count(*) filter (where outcome = 'success')`,
+    })
+      .from(agentActionLog)
+      .where(gte(agentActionLog.createdAt, yesterday))
+      .groupBy(agentActionLog.agentCodename);
+
+    const actionsByAgent = Object.fromEntries(
+      recentActions.map(a => [a.agentCodename, { total: Number(a.total), succeeded: Number(a.succeeded) }])
+    );
+
+    // ── Get trust changes ─────────────────────────────────────────────
+    const trustChanges = await db.select()
+      .from(trustEvolutionLog)
+      .where(and(
+        gte(trustEvolutionLog.createdAt, yesterday),
+        sql`${trustEvolutionLog.promotionSuggested} = true`,
+      ))
+      .orderBy(desc(trustEvolutionLog.createdAt))
+      .limit(3);
+
+    // ── Build agent-voiced updates (v5: AI-generated with template fallback) ──
+    const agents = await companyAgentService.getAllIncludingPaused();
+    let agentUpdates: any[];
+
+    try {
+      // v5: Use AI to generate agent briefings in their authentic voice
+      const briefingInputs = agents
+        .filter(a => ["forge_revenue", "sentinel_devops", "sophie_csm", "oracle_analytics", "ledger_finance"].includes(a.codename))
+        .map(a => ({
+          codename: a.codename,
+          title: a.title,
+          role: a.title,
+          personalityPrompt: a.personalityPrompt || "",
+          metrics: {
+            forge_revenue: forgeData,
+            sentinel_devops: sentinelData,
+            sophie_csm: sophieData,
+            oracle_analytics: oracleData,
+            ledger_finance: ledgerData,
+          }[a.codename] || {},
+          recentActions: actionsByAgent[a.codename] || { total: 0, succeeded: 0 },
+          trustScore: a.trustScore,
+        }));
+      agentUpdates = await generateBriefingUpdates(briefingInputs);
+    } catch {
+      // Fallback: template strings (v3 style)
+      agentUpdates = [];
+      const mrrDollars = ((forgeData as any).mrrCents || 0) / 100;
+      const mrrGrowth = (forgeData as any).mrrGrowthPct;
+      const atRisk = (forgeData as any).criticalChurnOrgs || 0;
+      const forgeActions = actionsByAgent["forge_revenue"];
+      let forgeMsg = mrrDollars > 0 ? `MRR is $${mrrDollars.toLocaleString()}` : "Revenue data loading";
+      if (mrrGrowth) { forgeMsg += `, ${mrrGrowth > 0 ? "up" : "down"} ${Math.abs(mrrGrowth).toFixed(1)}%`; }
+      forgeMsg += ". ";
+      if (atRisk > 0) { forgeMsg += `${atRisk} account${atRisk > 1 ? "s" : ""} at churn risk.`; }
+      else { forgeMsg += "No accounts at risk."; }
+      agentUpdates.push({ agent: "forge_revenue", role: "Revenue Lead", message: forgeMsg, hasActivity: !!forgeActions?.total });
+
+      const jobsHealthy = (sentinelData as any).healthyJobs || 0;
+      const jobsFailed = (sentinelData as any).failedJobs || 0;
+      agentUpdates.push({ agent: "sentinel_devops", role: "Infrastructure", message: jobsFailed === 0 ? `All ${jobsHealthy} jobs healthy.` : `${jobsFailed} job issues detected.`, hasActivity: !!actionsByAgent["sentinel_devops"]?.total });
+
+      const ticketsOpen = (sophieData as any).openTickets || 0;
+      agentUpdates.push({ agent: "sophie_csm", role: "Customer Success", message: ticketsOpen > 0 ? `${ticketsOpen} open tickets.` : "Support inbox clear.", hasActivity: !!actionsByAgent["sophie_csm"]?.total });
+
+      agentUpdates.push({ agent: "oracle_analytics", role: "Analytics", message: "Metrics trending normally.", hasActivity: false });
+      agentUpdates.push({ agent: "ledger_finance", role: "Finance", message: "Financials on track.", hasActivity: false });
+    }
+
+    // ── Build trust change messages ───────────────────────────────────
+    const agentNames = Object.fromEntries(agents.map(a => [a.codename, a.title]));
+
+    const trustUpdates = trustChanges.map(tc => {
+      const name = agentNames[tc.agentCodename] || tc.agentCodename;
+      if (tc.promotionAction?.includes("Level 0")) {
+        return { agent: tc.agentCodename, message: `${name} has been flawless. Ready to let them handle everything independently?` };
+      }
+      return { agent: tc.agentCodename, message: `${name} is ready for more responsibility. Promote them?` };
+    });
+
+    // ── Determine headline (v5: AI-generated with fallback) ─────────
+    const mrrDollars = ((forgeData as any).mrrCents || 0) / 100;
+    const atRisk = (forgeData as any).criticalChurnOrgs || 0;
+    const totalActions = Object.values(actionsByAgent).reduce((sum: number, a: any) => sum + (a.total || 0), 0);
+    let headline: string;
+    try {
+      headline = await generateHeadlineInsight({ mrrDollars, pendingDecisions, totalAgentActions: totalActions, atRiskAccounts: atRisk });
+    } catch {
+      // Fallback
+      const allClear = pendingDecisions === 0;
+      headline = allClear ? "Your company is running smoothly." : `${pendingDecisions} decision${pendingDecisions > 1 ? "s" : ""} need your attention.`;
+    }
+    const jobsFailed = (sentinelData as any).failedJobs || 0;
+    const allClear = pendingDecisions === 0 && jobsFailed === 0 && atRisk === 0;
+
+    // ── Compute company health score (0-100) ──────────────────────────
+    const ticketsOpen = (sophieData as any).openTickets || 0;
+    let healthScore = 100;
+    if (jobsFailed > 0) healthScore -= 10 * Math.min(jobsFailed, 3);
+    if (atRisk > 0) healthScore -= 5 * Math.min(atRisk, 4);
+    if (pendingDecisions > 3) healthScore -= 10;
+    if (ticketsOpen > 5) healthScore -= 5;
+    healthScore = Math.max(0, healthScore);
+
+    res.json({
+      greeting: `${timeGreeting}, Thomas.`,
+      headline,
+      healthScore,
+      allClear,
+      agentUpdates,
+      pendingDecisions,
+      trustUpdates,
+      generatedAt: now.toISOString(),
+    });
+  } catch (err: any) {
+    console.error("[MorningBriefing] Error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/founder/intelligence/pulse
@@ -904,8 +1077,8 @@ router.get("/decisions-inbox", requireFounder, async (req: Request, res: Respons
 router.post("/decisions-inbox/:id/approve", requireFounder, async (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id);
-    await decisionsInboxService.approve(id);
-    res.json({ success: true });
+    const result = await decisionsInboxService.approve(id);
+    res.json({ success: true, ...result });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -915,7 +1088,29 @@ router.post("/decisions-inbox/:id/reject", requireFounder, async (req: Request, 
   try {
     const id = parseInt(req.params.id);
     const { reason } = req.body;
+
+    // Fetch the decision item before rejecting so we can learn from it
+    const item = await decisionsInboxService.getById?.(id) ??
+      (await db.select().from(decisionsInboxItems).where(eq(decisionsInboxItems.id, id)).limit(1))[0];
+
     await decisionsInboxService.reject(id, reason);
+
+    // v4: Learn from the override so agents improve over time
+    if (item) {
+      try {
+        await learnFromOverride({
+          agentCodename: item.ownerAgentCodename || "unknown",
+          actionName: item.itemType || "decision",
+          originalRecommendation: item.recommendedActionLabel || item.sophieAnalysis || "",
+          ceoOverrideAction: "reject",
+          ceoOverrideNotes: reason,
+          decisionId: id,
+        });
+      } catch (learnErr: any) {
+        console.error("[decisions-inbox] Override learning failed (non-blocking):", learnErr.message);
+      }
+    }
+
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -938,7 +1133,29 @@ router.post("/decisions-inbox/:id/override", requireFounder, async (req: Request
     const id = parseInt(req.params.id);
     const { customAction } = req.body;
     if (!customAction) return res.status(400).json({ error: "customAction required" });
+
+    // Fetch the decision item before overriding so we can learn from it
+    const item = await decisionsInboxService.getById?.(id) ??
+      (await db.select().from(decisionsInboxItems).where(eq(decisionsInboxItems.id, id)).limit(1))[0];
+
     await decisionsInboxService.override(id, customAction);
+
+    // v4: Learn from the override so agents improve over time
+    if (item) {
+      try {
+        await learnFromOverride({
+          agentCodename: item.ownerAgentCodename || "unknown",
+          actionName: item.itemType || "decision",
+          originalRecommendation: item.recommendedActionLabel || item.sophieAnalysis || "",
+          ceoOverrideAction: customAction,
+          ceoOverrideNotes: customAction,
+          decisionId: id,
+        });
+      } catch (learnErr: any) {
+        console.error("[decisions-inbox] Override learning failed (non-blocking):", learnErr.message);
+      }
+    }
+
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -1179,6 +1396,1050 @@ router.get("/business-intelligence", requireFounder, async (req: Request, res: R
       // LTV:CAC requires founder-entered CAC — return placeholder
       ltvCac: { ltv: null, cac: null, ratio: null, note: "Enter CAC in org settings to enable LTV:CAC" },
     });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/founder/intelligence/company-briefing
+// The Sovereign Company Protocol — CEO Briefing
+// Aggregates all agent reports into a single synthesized company status
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.post("/company-briefing", requireFounder, async (req: Request, res: Response) => {
+  try {
+    // Check for cached briefing (generated within last 2 hours)
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    const cached = await db.select()
+      .from(companyBriefingCache)
+      .where(gte(companyBriefingCache.generatedAt, twoHoursAgo))
+      .orderBy(desc(companyBriefingCache.generatedAt))
+      .limit(1);
+
+    if (cached.length > 0 && !req.body?.forceRefresh) {
+      return res.json(cached[0].briefingData);
+    }
+
+    const now = new Date();
+    const yesterday = new Date(now.getTime() - 86400000);
+
+    // 1. Fetch all agents
+    const agents = await companyAgentService.getAllIncludingPaused();
+
+    // 2. Gather platform-wide context data in parallel
+    const [
+      orgStats,
+      openTickets,
+      criticalAlerts,
+      pendingDecisions,
+      recentJobHealth,
+      recentMessages,
+    ] = await Promise.allSettled([
+      db.select({
+        total: count(),
+        active: sql<number>`count(*) filter (where subscription_status = 'active')`,
+        paying: sql<number>`count(*) filter (where subscription_tier not in ('free') and subscription_status = 'active')`,
+      }).from(organizations),
+
+      db.select({ count: count() })
+        .from(supportTickets)
+        .where(eq(supportTickets.status, "open")),
+
+      db.select({ count: count() })
+        .from(systemAlerts)
+        .where(and(
+          eq(systemAlerts.severity, "critical"),
+          gte(systemAlerts.createdAt, yesterday),
+        )),
+
+      db.select()
+        .from(decisionsInboxItems)
+        .where(eq(decisionsInboxItems.status, "pending"))
+        .orderBy(desc(decisionsInboxItems.urgencyScore))
+        .limit(10),
+
+      db.select()
+        .from(jobHealthLogs)
+        .where(gte(jobHealthLogs.runStartedAt, yesterday))
+        .orderBy(desc(jobHealthLogs.runStartedAt))
+        .limit(50),
+
+      agentCommsService.getRecentMessages(yesterday, 50),
+    ]);
+
+    const orgData = orgStats.status === "fulfilled" ? orgStats.value[0] : { total: 0, active: 0, paying: 0 };
+    const ticketCount = openTickets.status === "fulfilled" ? openTickets.value[0]?.count || 0 : 0;
+    const alertCount = criticalAlerts.status === "fulfilled" ? criticalAlerts.value[0]?.count || 0 : 0;
+    const decisions = pendingDecisions.status === "fulfilled" ? pendingDecisions.value : [];
+    const jobLogs = recentJobHealth.status === "fulfilled" ? recentJobHealth.value : [];
+    const commsMessages = recentMessages.status === "fulfilled" ? recentMessages.value : [];
+
+    // Count job health
+    const jobsHealthy = jobLogs.filter((j: any) => j.status === "success").length;
+    const jobsFailed = jobLogs.filter((j: any) => j.status === "failed").length;
+
+    // 3. Generate reports for each agent with relevant context
+    const contextByAgent: Record<string, Record<string, any>> = {
+      atlas_cto: { jobsHealthy, jobsFailed, totalJobs: jobLogs.length },
+      sophie_csm: { openTickets: ticketCount, totalOrgs: orgData.total },
+      forge_revenue: { payingOrgs: orgData.paying, activeOrgs: orgData.active, totalOrgs: orgData.total },
+      beacon_marketing: { totalOrgs: orgData.total, activeOrgs: orgData.active },
+      sentinel_devops: { jobsHealthy, jobsFailed, criticalAlerts: alertCount },
+      ledger_finance: { payingOrgs: orgData.paying },
+      shield_legal: {},
+      oracle_analytics: { totalOrgs: orgData.total, payingOrgs: orgData.paying, activeOrgs: orgData.active },
+      compass_pm: {},
+      crucible_qa: { jobsHealthy, jobsFailed },
+    };
+
+    const agentReports = await Promise.allSettled(
+      agents
+        .filter(a => a.status === "active")
+        .map(agent =>
+          companyAgentService.generateReport(
+            agent.codename,
+            contextByAgent[agent.codename] || {}
+          )
+        )
+    );
+
+    const reports = agentReports
+      .filter((r): r is PromiseFulfilledResult<any> => r.status === "fulfilled")
+      .map(r => r.value);
+
+    // 4. Build overnight activity from agent messages
+    const overnightActivity = agents
+      .filter(a => a.status === "active")
+      .map(agent => ({
+        agent: agent.title,
+        codename: agent.codename,
+        actions: commsMessages
+          .filter((m: any) => m.fromAgent === agent.codename)
+          .map((m: any) => ({
+            description: m.subject,
+            autonomous: true,
+            timestamp: m.createdAt?.toISOString() || new Date().toISOString(),
+          })),
+      }))
+      .filter(a => a.actions.length > 0);
+
+    // 5. Format pending decisions with agent attribution
+    const decisionsNeeded = decisions.map((d: any) => ({
+      id: d.id,
+      fromAgent: d.ownerAgentCodename || companyAgentService.getOwnerForDecisionType(d.itemType) || "unknown",
+      title: d.recommendedActionLabel,
+      context: d.sophieAnalysis,
+      recommendation: d.recommendedAction,
+      options: [
+        { label: "Approve", action: "approve", tradeoff: "Execute recommended action" },
+        { label: "Reject", action: "reject", tradeoff: "Dismiss this recommendation" },
+        { label: "Discuss", action: "defer", tradeoff: "Defer for further analysis" },
+      ],
+      urgency: d.riskLevel === "critical" ? "critical" : d.riskLevel === "high" ? "high" : d.urgencyScore > 70 ? "medium" : "low",
+      deadline: d.deferredUntil?.toISOString(),
+    }));
+
+    // 6. Compute composite health score
+    const agentHealthScores = reports.map(r => r.healthScore);
+    const healthScore = agentHealthScores.length > 0
+      ? Math.round(agentHealthScores.reduce((a: number, b: number) => a + b, 0) / agentHealthScores.length)
+      : 80;
+
+    const mood = healthScore >= 80 ? "green" : healthScore >= 60 ? "yellow" : "red";
+
+    // 7. Extract wins and upcoming items
+    const wins = reports
+      .flatMap(r => (r.alerts || []).filter((a: any) => a.level === "info"))
+      .map((a: any) => a.message)
+      .slice(0, 5);
+
+    // 8. Build the full briefing
+    const briefing = {
+      generatedAt: now.toISOString(),
+      healthScore,
+      mood,
+      overnightActivity,
+      agentReports: reports,
+      decisionsNeeded,
+      wins,
+      upcoming: [],
+      agentTeam: agents.map(a => ({
+        codename: a.codename,
+        title: a.title,
+        wing: a.wing,
+        trustScore: a.trustScore,
+        status: a.status,
+        lastActivityAt: a.lastActivityAt?.toISOString(),
+        metrics: a.metrics,
+      })),
+    };
+
+    // 9. Cache the briefing
+    await db.insert(companyBriefingCache).values({
+      briefingData: briefing,
+      healthScore,
+      mood,
+    });
+
+    res.json(briefing);
+  } catch (err: any) {
+    console.error("[company-briefing] Error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/founder/intelligence/company-agents
+// List all company agents with their current state
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.get("/company-agents", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const agents = await companyAgentService.getAllIncludingPaused();
+    res.json(agents);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH /api/founder/intelligence/company-agents/:codename/status
+// Pause/resume an agent — CEO override
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.patch("/company-agents/:codename/status", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const { codename } = req.params;
+    const { status } = req.body;
+
+    if (!["active", "paused", "disabled"].includes(status)) {
+      return res.status(400).json({ error: "Status must be active, paused, or disabled" });
+    }
+
+    await companyAgentService.setStatus(codename, status);
+
+    // Broadcast the status change
+    await agentCommsService.broadcast({
+      from: "ceo",
+      channel: "incidents",
+      priority: "high",
+      subject: `Agent ${codename} ${status === "paused" ? "paused" : status === "active" ? "resumed" : "disabled"} by CEO`,
+      body: `The CEO has set ${codename} to ${status}.`,
+    });
+
+    res.json({ success: true, codename, status });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/founder/intelligence/agent-chat
+// Talk to your company — direct agent chat
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.post("/agent-chat", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const { message, targetAgent, conversationId: clientConvId } = req.body;
+
+    if (!message) {
+      return res.status(400).json({ error: "Message is required" });
+    }
+
+    // v6: Route CEO commands through the command bridge FIRST
+    // Commands like "pause marketing", "show forecast", "how is Acme" get executed immediately
+    // Only falls through to agent chat if it's not a recognized command
+    try {
+      const { processCEOCommand } = await import("./services/ceoCommandBridge");
+      const commandResult = await processCEOCommand(message);
+
+      if (commandResult.understood) {
+        // Save command + result to conversation history
+        const conversationId = clientConvId || `cmd_${Date.now()}`;
+        try {
+          await db.insert(agentConversations).values([
+            { conversationId, agentCodename: "system", role: "user", content: message },
+            { conversationId, agentCodename: "system", role: "assistant", content: commandResult.result },
+          ] as any);
+        } catch {}
+
+        return res.json({
+          response: commandResult.result,
+          agent: "system",
+          agentTitle: "Command",
+          conversationId,
+          isCommand: true,
+          commandAction: commandResult.action,
+          commandData: commandResult.data,
+        });
+      }
+    } catch (cmdErr) {
+      // Command bridge failed — fall through to normal agent chat
+      console.warn("[agent-chat] Command bridge error, falling through:", (cmdErr as any).message);
+    }
+
+    // Agent lookup table
+    const AGENT_NAMES: Record<string, string> = {
+      atlas: "atlas_cto", sophie: "sophie_csm", forge: "forge_revenue",
+      beacon: "beacon_marketing", sentinel: "sentinel_devops", ledger: "ledger_finance",
+      shield: "shield_legal", oracle: "oracle_analytics", compass: "compass_pm", crucible: "crucible_qa",
+    };
+
+    let agentCodename = targetAgent;
+    if (!agentCodename) {
+      // v4: AI-based agent routing — classify intent with DeepSeek instead of regex matching
+      try {
+        const classificationResult = await routeAITask({
+          taskType: "agent_routing",
+          complexity: TaskComplexity.SIMPLE,
+          preferredModel: "deepseek",
+          messages: [
+            {
+              role: "system" as const,
+              content: `You are a message router for an AI executive team. Given a CEO's message, determine which agent should handle it based on the message's INTENT, not just keywords.
+
+Available agents and their domains:
+- atlas_cto: Engineering, architecture, technical decisions, code, deployments, infrastructure strategy
+- sophie_csm: Customer support, tickets, user issues, onboarding, customer satisfaction
+- forge_revenue: Revenue, sales, deals, pricing, MRR, pipeline, conversion
+- beacon_marketing: Marketing, campaigns, email, SMS, brand, content, growth marketing
+- sentinel_devops: DevOps, monitoring, uptime, jobs, alerts, server health, CI/CD
+- ledger_finance: Finance, costs, billing, AI spend, budgets, accounting, invoices
+- shield_legal: Legal, compliance, terms of service, privacy, contracts
+- oracle_analytics: Analytics, metrics, reports, data trends, dashboards, KPIs
+- compass_pm: Product management, roadmap, features, prioritization, user stories
+- crucible_qa: Quality assurance, testing, bugs, regression, test coverage
+
+Respond with ONLY the agent codename (e.g. "forge_revenue") or "team" if the message is general and doesn't map to a specific agent. Nothing else.`,
+            },
+            { role: "user" as const, content: message },
+          ],
+        });
+
+        const routedAgent = classificationResult.content?.trim().toLowerCase();
+        if (routedAgent && routedAgent !== "team" && Object.values(AGENT_NAMES).includes(routedAgent)) {
+          agentCodename = routedAgent;
+        }
+      } catch (routingErr: any) {
+        // Fallback to simple name-prefix matching if AI routing fails
+        console.error("[agent-chat] AI routing failed, falling back to prefix match:", routingErr.message);
+        const lowerMsg = message.toLowerCase();
+        for (const [name, code] of Object.entries(AGENT_NAMES)) {
+          if (lowerMsg.startsWith(name + ",") || lowerMsg.startsWith(name + " ")) {
+            agentCodename = code;
+            break;
+          }
+        }
+      }
+    }
+
+    // CEO override commands
+    const lowerMsg = message.toLowerCase().trim();
+    for (const cmd of ["pause", "resume"] as const) {
+      if (lowerMsg.startsWith(cmd + " ")) {
+        const name = lowerMsg.replace(cmd + " ", "").trim();
+        const code = AGENT_NAMES[name];
+        if (code) {
+          await companyAgentService.setStatus(code, cmd === "pause" ? "paused" : "active");
+          return res.json({
+            response: `${name.charAt(0).toUpperCase() + name.slice(1)} has been ${cmd === "pause" ? "paused" : "resumed"}.`,
+            agent: code, action: cmd === "pause" ? "paused" : "resumed",
+          });
+        }
+      }
+    }
+
+    // v2: Resolve LIVE data for grounded conversations
+    let liveDataStr = "";
+    let systemPrompt = "You are a member of the AcreOS AI executive team. Answer the CEO's question helpfully and in character.";
+    let agentTitle = "AI Team";
+
+    if (agentCodename) {
+      const agent = await companyAgentService.getByCodename(agentCodename);
+      if (agent) {
+        systemPrompt = agent.personalityPrompt || systemPrompt;
+        agentTitle = agent.title;
+        await companyAgentService.recordActivity(agentCodename);
+
+        // Resolve live data from agent's owned services
+        try {
+          const { resolveAgentData } = await import("./agentDataResolvers");
+          const liveData = await resolveAgentData(agentCodename);
+          liveDataStr = Object.entries(liveData)
+            .map(([k, v]) => `${k}: ${v}`)
+            .join("\n");
+        } catch {}
+      }
+    }
+
+    // v2: Load conversation history for persistence
+    const conversationId = clientConvId || `chat_${Date.now()}`;
+    let historyMessages: Array<{ role: string; content: string }> = [];
+    if (clientConvId) {
+      try {
+        const history = await db.select()
+          .from(agentConversations)
+          .where(eq(agentConversations.conversationId, clientConvId))
+          .orderBy(agentConversations.createdAt)
+          .limit(20);
+        historyMessages = history.map((h: any) => ({ role: h.role, content: h.content }));
+      } catch {}
+    }
+
+    // Build the full prompt with live data context
+    const dataSection = liveDataStr ? `\n\nYOUR LIVE METRICS (real-time from your services):\n${liveDataStr}\n` : "";
+
+    const messages = [
+      { role: "system" as const, content: systemPrompt + dataSection },
+      ...historyMessages,
+      {
+        role: "user" as const,
+        content: `The CEO is asking you directly. Respond in character as ${agentTitle}. Use your live metrics to answer with real numbers. Be concise but thorough.\n\nCEO: ${message}`,
+      },
+    ];
+
+    const aiResponse = await routeAITask({
+      taskType: "agent_chat",
+      complexity: TaskComplexity.MODERATE,
+      messages,
+    });
+
+    // v2: Save conversation for persistence
+    try {
+      await db.insert(agentConversations).values([
+        { conversationId, agentCodename, role: "user", content: message },
+        { conversationId, agentCodename, role: "assistant", content: aiResponse.content },
+      ] as any);
+    } catch {}
+
+    res.json({
+      response: aiResponse.content,
+      agent: agentCodename || "team",
+      agentTitle,
+      conversationId,
+      dataUsed: !!liveDataStr,
+    });
+  } catch (err: any) {
+    console.error("[agent-chat] Error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/founder/intelligence/agent-messages
+// View inter-agent communication feed
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AGENT GOALS — CEO task delegation
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.post("/agent-goals", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const { assignedAgent, goal, successCriteria, priority, deadline } = req.body;
+    if (!assignedAgent || !goal) return res.status(400).json({ error: "assignedAgent and goal required" });
+
+    const { createGoal } = await import("./services/agentGoalManager");
+    const goalId = await createGoal({
+      assignedAgent,
+      assignedBy: "ceo",
+      goal,
+      successCriteria,
+      priority,
+      deadline: deadline ? new Date(deadline) : undefined,
+    });
+    res.json({ success: true, goalId });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/agent-goals", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const { agent, status } = req.query;
+    const { getGoals } = await import("./services/agentGoalManager");
+    const goals = await getGoals({
+      agentCodename: agent as string,
+      status: status as string,
+    });
+    res.json(goals);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.patch("/agent-goals/:id", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { action, priority, reason } = req.body;
+
+    if (action === "cancel") {
+      const { cancelGoal } = await import("./services/agentGoalManager");
+      await cancelGoal(id, reason);
+    } else if (action === "reprioritize" && priority) {
+      const { reprioritizeGoal } = await import("./services/agentGoalManager");
+      await reprioritizeGoal(id, priority);
+    } else {
+      return res.status(400).json({ error: "Valid action required: cancel or reprioritize" });
+    }
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AGENT ACTION LOG — audit trail
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.get("/agent-actions/:codename", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const { codename } = req.params;
+    const limit = parseInt(req.query.limit as string) || 50;
+    const actions = await db.select()
+      .from(agentActionLog)
+      .where(eq(agentActionLog.agentCodename, codename))
+      .orderBy(desc(agentActionLog.createdAt))
+      .limit(limit);
+    res.json(actions);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AGENT TRUST HISTORY — for charts
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.get("/agent-trust-history/:codename", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const { codename } = req.params;
+    const history = await db.select()
+      .from(trustEvolutionLog)
+      .where(eq(trustEvolutionLog.agentCodename, codename))
+      .orderBy(desc(trustEvolutionLog.createdAt))
+      .limit(52); // 1 year of weekly data
+    res.json(history);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AGENT DETAIL — full agent profile data
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.get("/company-agents/:codename/detail", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const { codename } = req.params;
+    const agent = await companyAgentService.getByCodename(codename);
+    if (!agent) return res.status(404).json({ error: "Agent not found" });
+
+    // Resolve live data
+    const { resolveAgentData } = await import("./services/agentDataResolvers");
+    const liveData = await resolveAgentData(codename);
+
+    // Get recent actions
+    const recentActions = await db.select()
+      .from(agentActionLog)
+      .where(eq(agentActionLog.agentCodename, codename))
+      .orderBy(desc(agentActionLog.createdAt))
+      .limit(20);
+
+    // Get active goals
+    const { getGoals } = await import("./services/agentGoalManager");
+    const goals = await getGoals({ agentCodename: codename, limit: 10 });
+
+    // Get trust history
+    const trustHistory = await db.select()
+      .from(trustEvolutionLog)
+      .where(eq(trustEvolutionLog.agentCodename, codename))
+      .orderBy(desc(trustEvolutionLog.createdAt))
+      .limit(20);
+
+    // Get attributed decisions
+    const decisions = await db.select()
+      .from(decisionsInboxItems)
+      .where(eq(decisionsInboxItems.ownerAgentCodename, codename))
+      .orderBy(desc(decisionsInboxItems.createdAt))
+      .limit(20);
+
+    res.json({
+      agent,
+      liveData,
+      recentActions,
+      goals,
+      trustHistory,
+      decisions,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/founder/intelligence/agent-messages
+// View inter-agent communication feed
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.get("/agent-messages", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const hoursBack = parseInt(req.query.hours as string) || 24;
+    const channel = req.query.channel as string;
+
+    const since = new Date(Date.now() - hoursBack * 60 * 60 * 1000);
+
+    let messages;
+    if (channel) {
+      messages = await agentCommsService.getMessages(channel as any, since);
+    } else {
+      messages = await agentCommsService.getRecentMessages(since);
+    }
+
+    const channelActivity = await agentCommsService.getChannelActivity(hoursBack);
+
+    res.json({ messages, channelActivity });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// v4 API ROUTES
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/founder/intelligence/activity-timeline
+// Full activity timeline across all agents with undo availability
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.get("/activity-timeline", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+    const agentFilter = req.query.agent as string;
+    const cursor = req.query.cursor ? parseInt(req.query.cursor as string) : null;
+
+    // Build query conditions
+    const conditions = [];
+    if (agentFilter) {
+      conditions.push(eq(agentActionLog.agentCodename, agentFilter));
+    }
+    if (cursor) {
+      conditions.push(lt(agentActionLog.id, cursor));
+    }
+
+    // Query agent actions with left join to undo log
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const entries = await db
+      .select({
+        id: agentActionLog.id,
+        agentCodename: agentActionLog.agentCodename,
+        actionName: agentActionLog.actionName,
+        actionType: agentActionLog.actionType,
+        description: agentActionLog.description,
+        outcome: agentActionLog.outcome,
+        metadata: agentActionLog.metadata,
+        createdAt: agentActionLog.createdAt,
+        undoAvailable: agentActionUndoLog.undoAvailable,
+        undoExpiry: agentActionUndoLog.undoExpiry,
+        undoExecutedAt: agentActionUndoLog.undoExecutedAt,
+      })
+      .from(agentActionLog)
+      .leftJoin(agentActionUndoLog, eq(agentActionUndoLog.actionLogId, agentActionLog.id))
+      .where(whereClause)
+      .orderBy(desc(agentActionLog.createdAt))
+      .limit(limit + 1);
+
+    const hasMore = entries.length > limit;
+    const results = entries.slice(0, limit);
+
+    // Get agent display names
+    const agents = await companyAgentService.getAllIncludingPaused();
+    const agentNames = Object.fromEntries(agents.map(a => [a.codename, a.title]));
+
+    // Group entries by time blocks (today, yesterday, this week, older)
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterdayStart = new Date(todayStart.getTime() - 86400000);
+    const weekStart = new Date(todayStart.getTime() - 7 * 86400000);
+
+    const grouped: Record<string, any[]> = { today: [], yesterday: [], thisWeek: [], older: [] };
+
+    for (const entry of results) {
+      const entryDate = new Date(entry.createdAt);
+      const canUndo = entry.undoAvailable && !entry.undoExecutedAt &&
+        (!entry.undoExpiry || new Date(entry.undoExpiry) > now);
+
+      const formatted = {
+        id: entry.id,
+        agentCodename: entry.agentCodename,
+        agentName: agentNames[entry.agentCodename] || entry.agentCodename,
+        actionName: entry.actionName,
+        actionType: entry.actionType,
+        description: entry.description,
+        outcome: entry.outcome,
+        metadata: entry.metadata,
+        createdAt: entry.createdAt,
+        canUndo,
+        undoExpiry: entry.undoExpiry,
+      };
+
+      if (entryDate >= todayStart) grouped.today.push(formatted);
+      else if (entryDate >= yesterdayStart) grouped.yesterday.push(formatted);
+      else if (entryDate >= weekStart) grouped.thisWeek.push(formatted);
+      else grouped.older.push(formatted);
+    }
+
+    const nextCursor = hasMore ? results[results.length - 1]?.id : null;
+
+    res.json({
+      entries: results.map(entry => {
+        const entryDate = new Date(entry.createdAt);
+        const canUndo = entry.undoAvailable && !entry.undoExecutedAt &&
+          (!entry.undoExpiry || new Date(entry.undoExpiry) > now);
+        return {
+          id: entry.id,
+          agentCodename: entry.agentCodename,
+          agentName: agentNames[entry.agentCodename] || entry.agentCodename,
+          actionName: entry.actionName,
+          actionType: entry.actionType,
+          description: entry.description,
+          outcome: entry.outcome,
+          metadata: entry.metadata,
+          createdAt: entry.createdAt,
+          canUndo,
+          undoExpiry: entry.undoExpiry,
+        };
+      }),
+      grouped,
+      nextCursor,
+      hasMore,
+    });
+  } catch (err: any) {
+    console.error("[activity-timeline] Error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/founder/intelligence/undo/:actionLogId
+// Undo a specific agent action
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.post("/undo/:actionLogId", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const actionLogId = parseInt(req.params.actionLogId);
+    if (isNaN(actionLogId)) {
+      return res.status(400).json({ error: "Invalid actionLogId" });
+    }
+    const result = await executeUndo(actionLogId);
+    res.json(result);
+  } catch (err: any) {
+    console.error("[undo] Error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/founder/intelligence/trends
+// Weekly or monthly trend analysis
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.get("/trends", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const period = (req.query.period as string) || "week";
+    const trends = period === "month"
+      ? await getMonthlyTrends()
+      : await getWeeklyTrends();
+    res.json({ period, trends });
+  } catch (err: any) {
+    console.error("[trends] Error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STRATEGIC PRIORITIES — CRUD
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.get("/priorities", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const priorities = await getActivePriorities();
+    res.json(priorities);
+  } catch (err: any) {
+    console.error("[priorities] Error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/priorities", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const { priority, description, weight } = req.body;
+    if (!priority) {
+      return res.status(400).json({ error: "priority is required" });
+    }
+    const result = await createPriority({ priority, description, weight });
+    res.json({ success: true, ...result });
+  } catch (err: any) {
+    console.error("[priorities] Error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete("/priorities/:id", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) {
+      return res.status(400).json({ error: "Invalid priority id" });
+    }
+    await deactivatePriority(id);
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error("[priorities] Error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// QUIET HOURS — configuration
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.get("/quiet-hours", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const config = await getQuietHoursConfig();
+    res.json(config);
+  } catch (err: any) {
+    console.error("[quiet-hours] Error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put("/quiet-hours", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const { startHour, endHour, timezone, isActive } = req.body;
+    if (startHour === undefined || endHour === undefined) {
+      return res.status(400).json({ error: "startHour and endHour are required" });
+    }
+    await setQuietHours({ startHour, endHour, timezone, isActive });
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error("[quiet-hours] Error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/founder/intelligence/chat-history
+// Retrieve agent conversation history
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.get("/chat-history", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+    const conversationId = req.query.conversationId as string;
+
+    // Get agent display names for metadata
+    const agents = await companyAgentService.getAllIncludingPaused();
+    const agentNames = Object.fromEntries(agents.map(a => [a.codename, { title: a.title, wing: a.wing }]));
+
+    if (conversationId) {
+      // Return messages for a specific conversation
+      const messages = await db.select()
+        .from(agentConversations)
+        .where(eq(agentConversations.conversationId, conversationId))
+        .orderBy(agentConversations.createdAt)
+        .limit(limit);
+
+      res.json({
+        conversationId,
+        messages: messages.map((m: any) => ({
+          ...m,
+          agentMeta: m.agentCodename ? agentNames[m.agentCodename] || null : null,
+        })),
+      });
+    } else {
+      // Return recent conversations grouped by conversationId
+      const recentMessages = await db.select()
+        .from(agentConversations)
+        .orderBy(desc(agentConversations.createdAt))
+        .limit(limit);
+
+      // Group by conversationId and pick latest message per conversation
+      const conversationMap = new Map<string, any>();
+      for (const msg of recentMessages) {
+        const convId = (msg as any).conversationId;
+        if (!conversationMap.has(convId)) {
+          conversationMap.set(convId, {
+            conversationId: convId,
+            agentCodename: (msg as any).agentCodename,
+            agentMeta: (msg as any).agentCodename ? agentNames[(msg as any).agentCodename] || null : null,
+            lastMessage: msg,
+            createdAt: (msg as any).createdAt,
+          });
+        }
+      }
+
+      res.json({
+        conversations: Array.from(conversationMap.values()),
+        total: conversationMap.size,
+      });
+    }
+  } catch (err: any) {
+    console.error("[chat-history] Error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/founder/intelligence/command — v5 CEO Natural Language Commands
+// CEO says "pause all marketing" and it actually happens.
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.post("/command", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const { input } = req.body;
+    if (!input || typeof input !== "string") {
+      return res.status(400).json({ error: "Missing 'input' string in request body" });
+    }
+
+    const { processCEOCommand } = await import("./services/ceoCommandBridge");
+    const result = await processCEOCommand(input);
+
+    res.json(result);
+  } catch (err: any) {
+    console.error("[command] Error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/founder/intelligence/forecast — v5 MRR Projections & Runway
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.get("/forecast", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const { projectMRR, calculateRunway, calculateUnitEconomics } = await import("./services/financialForecaster");
+
+    const [mrrProjection, runway, unitEconomics] = await Promise.all([
+      projectMRR(),
+      calculateRunway(),
+      calculateUnitEconomics(),
+    ]);
+
+    res.json({
+      mrr: mrrProjection,
+      runway,
+      unitEconomics,
+    });
+  } catch (err: any) {
+    console.error("[forecast] Error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/founder/intelligence/customer-health — v5 Customer Health Scores
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.get("/customer-health", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const { getAllCustomerHealth, getHealthSummary } = await import("./services/customerHealthScoring");
+    const limit = parseInt(req.query.limit as string) || 20;
+
+    const [customers, summary] = await Promise.all([
+      getAllCustomerHealth(limit),
+      getHealthSummary(),
+    ]);
+
+    res.json({ customers, summary });
+  } catch (err: any) {
+    console.error("[customer-health] Error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/founder/intelligence/customer-health/:orgId — Single customer health
+router.get("/customer-health/:orgId", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const orgId = parseInt(req.params.orgId);
+    if (isNaN(orgId)) return res.status(400).json({ error: "Invalid org ID" });
+
+    const { getCustomerHealth } = await import("./services/customerHealthScoring");
+    const health = await getCustomerHealth(orgId);
+
+    if (!health) return res.status(404).json({ error: "Customer not found" });
+    res.json(health);
+  } catch (err: any) {
+    console.error("[customer-health] Error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/founder/intelligence/delegations — v5 Active Delegations
+// POST /api/founder/intelligence/delegations — Grant temporary authority
+// DELETE /api/founder/intelligence/delegations/:id — Revoke delegation
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.get("/delegations", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const { getActiveDelegations } = await import("./services/temporaryDelegation");
+    res.json({ delegations: getActiveDelegations() });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/delegations", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const { agentCodename, actions, toLevel, durationHours, reason } = req.body;
+    if (!agentCodename || !durationHours) {
+      return res.status(400).json({ error: "agentCodename and durationHours required" });
+    }
+
+    const { grantTemporaryAuthority } = await import("./services/temporaryDelegation");
+    const delegation = grantTemporaryAuthority({
+      agentCodename,
+      actions,
+      toLevel,
+      durationHours,
+      reason: reason || "CEO delegation",
+    });
+
+    res.json({ delegation });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete("/delegations/:id", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const { revokeDelegation } = await import("./services/temporaryDelegation");
+    const success = revokeDelegation(req.params.id);
+    res.json({ success, message: success ? "Delegation revoked" : "Delegation not found" });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// v6: CEO Reminders
+router.get("/reminders", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const { getPendingReminders, getDueReminders } = await import("./services/ceoReminders");
+    const [pending, due] = await Promise.all([getPendingReminders(), getDueReminders()]);
+    res.json({ pending, due });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete("/reminders/:id", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const { dismissReminder } = await import("./services/ceoReminders");
+    const success = await dismissReminder(req.params.id);
+    res.json({ success });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

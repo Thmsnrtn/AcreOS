@@ -10,10 +10,10 @@
  *  4. Observes the result and decides whether the goal is met or needs more steps
  *  5. Iterates up to MAX_ITERATIONS before synthesizing a final answer
  *
- * Why this matters for the user's passivity:
+ * Why this matters for the founder's passivity:
  *  - A single "close this deal" goal can automatically trigger research → valuation
  *    → offer generation → communications, with the director deciding the chain.
- *  - The user never has to specify sub-steps.  The director figures them out.
+ *  - The founder never has to specify sub-steps.  The director figures them out.
  *
  * Model routing:
  *  - Reasoning steps use DeepSeek-R1 (cheap, chain-of-thought at $0.55/$2.19/M)
@@ -172,7 +172,7 @@ export class DirectorAgent {
     const finalSynthesis = await this.synthesize(input.goal, steps);
     totalCostEstimate += 0.01;
 
-    const goalAchieved = steps.some(s => s.goalMet) || steps.length >= maxIter;
+    const goalAchieved = steps.some(s => s.goalMet);
 
     return {
       success: true,

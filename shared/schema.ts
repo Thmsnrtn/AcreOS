@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, numeric, varchar, jsonb, index, date } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, numeric, varchar, jsonb, index, date, real } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -10705,6 +10705,7 @@ export const decisionsInboxItems = pgTable("decisions_inbox_items", {
   resolvedBy: text("resolved_by"),
   founderOverrideAction: text("founder_override_action"),
   contextBundle: jsonb("context_bundle").$type<Record<string, any>>(),
+  ownerAgentCodename: text("owner_agent_codename"), // company agent that owns this decision
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
@@ -11489,3 +11490,3131 @@ export const countyReviews = pgTable("county_reviews", {
   verifiedDeals: integer("verified_deals"),
   createdAt: timestamp("created_at").defaultNow(),
 });
+export const insertNoteReceivableSchema = createInsertSchema(notesReceivable).omit({ id: true, createdAt: true, updatedAt: true });
+export type NoteReceivable = typeof notesReceivable.$inferSelect;
+export type InsertNoteReceivable = z.infer<typeof insertNoteReceivableSchema>;
+
+// ============================================
+// SOVEREIGN COMPANY PROTOCOL — AI TEAM
+// ============================================
+
+// Company Agents — named AI personas that coordinate existing services
+export const companyAgents = pgTable("company_agents", {
+  id: serial("id").primaryKey(),
+  codename: text("codename").notNull().unique(),     // "atlas_cto", "sentinel_devops", etc.
+  title: text("title").notNull(),                     // "Chief Technology Officer"
+  wing: text("wing").notNull(),                       // "product", "growth", "ops"
+  personalityPrompt: text("personality_prompt"),       // How this agent communicates
+  ownedServices: jsonb("owned_services").$type<string[]>(),   // service file names this agent owns
+  ownedJobs: jsonb("owned_jobs").$type<string[]>(),           // background jobs this agent monitors
+  ownedRoutes: jsonb("owned_routes").$type<string[]>(),       // API route prefixes
+  authorityConfig: jsonb("authority_config").$type<{
+    level0Actions: string[];  // full autonomy — execute without notification
+    level1Actions: string[];  // autonomous + notify — execute and inform CEO
+    level2Actions: string[];  // recommend + wait — propose and await approval
+    level3Actions: string[];  // escalate immediately — alert CEO, do not act
+  }>(),
+  trustScore: integer("trust_score").notNull().default(50),  // 0-100, evolves over time
+  status: text("status").notNull().default("active"),        // active | paused | disabled
+  lastActivityAt: timestamp("last_activity_at"),
+  metrics: jsonb("metrics").$type<{
+    decisionsTotal: number;
+    decisionsCorrect: number;
+    escalationsCount: number;
+    avgConfidence: number;
+    lastWeekActions: number;
+  }>(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("company_agents_codename_idx").on(table.codename),
+  index("company_agents_wing_idx").on(table.wing),
+  index("company_agents_status_idx").on(table.status),
+]);
+
+export const insertCompanyAgentSchema = createInsertSchema(companyAgents).omit({ id: true, createdAt: true, updatedAt: true });
+export type CompanyAgent = typeof companyAgents.$inferSelect;
+export type InsertCompanyAgent = z.infer<typeof insertCompanyAgentSchema>;
+
+// Agent Messages — inter-agent communication on typed channels
+export const agentMessages = pgTable("agent_messages", {
+  id: serial("id").primaryKey(),
+  fromAgent: text("from_agent").notNull(),           // agent codename
+  toChannel: text("to_channel").notNull(),           // releases | incidents | customer_signals | metrics_alerts | revenue_events | content_pipeline | compliance_flags
+  priority: text("priority").notNull().default("medium"), // low | medium | high | critical
+  subject: text("subject").notNull(),
+  body: text("body").notNull(),
+  data: jsonb("data").$type<Record<string, any>>(),
+  requiresResponse: boolean("requires_response").default(false),
+  respondBy: timestamp("respond_by"),
+  readByAgents: jsonb("read_by_agents").$type<string[]>().default([]),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("agent_messages_channel_idx").on(table.toChannel),
+  index("agent_messages_from_idx").on(table.fromAgent),
+  index("agent_messages_priority_idx").on(table.priority),
+  index("agent_messages_created_idx").on(table.createdAt),
+]);
+
+export const insertAgentMessageSchema = createInsertSchema(agentMessages).omit({ id: true, createdAt: true });
+export type AgentMessage = typeof agentMessages.$inferSelect;
+export type InsertAgentMessage = z.infer<typeof insertAgentMessageSchema>;
+
+// Company Briefing Cache — pre-generated CEO briefings
+export const companyBriefingCache = pgTable("company_briefing_cache", {
+  id: serial("id").primaryKey(),
+  briefingData: jsonb("briefing_data").notNull(),
+  healthScore: integer("health_score").notNull(),
+  mood: text("mood").notNull(),  // green | yellow | red
+  generatedAt: timestamp("generated_at").defaultNow(),
+});
+
+// Trust Evolution Log — tracks trust score changes over time
+export const trustEvolutionLog = pgTable("trust_evolution_log", {
+  id: serial("id").primaryKey(),
+  agentCodename: text("agent_codename").notNull(),
+  previousScore: integer("previous_score").notNull(),
+  newScore: integer("new_score").notNull(),
+  delta: integer("delta").notNull(),
+  reason: text("reason").notNull(),
+  periodStart: timestamp("period_start").notNull(),
+  periodEnd: timestamp("period_end").notNull(),
+  decisionsInPeriod: integer("decisions_in_period").notNull().default(0),
+  accuracyRate: numeric("accuracy_rate"),
+  promotionSuggested: boolean("promotion_suggested").default(false),
+  promotionAction: text("promotion_action"),  // e.g. "Level 2 → Level 1 for infrastructure scaling"
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("trust_evolution_agent_idx").on(table.agentCodename),
+  index("trust_evolution_created_idx").on(table.createdAt),
+]);
+
+// Agent Action Log — full audit trail of every agent action
+export const agentActionLog = pgTable("agent_action_log", {
+  id: serial("id").primaryKey(),
+  agentCodename: text("agent_codename").notNull(),
+  actionType: text("action_type").notNull(), // skill | goal | reaction | report | chat | decision | proactive
+  actionName: text("action_name").notNull(),
+  input: jsonb("input").$type<Record<string, any>>(),
+  output: jsonb("output").$type<Record<string, any>>(),
+  reasoning: text("reasoning"),
+  confidence: integer("confidence"),
+  costCents: integer("cost_cents").default(0),
+  authorityLevel: integer("authority_level"), // 0-3
+  trustScoreAtTime: integer("trust_score_at_time"),
+  outcome: text("outcome").notNull(), // success | failure | escalated | pending
+  durationMs: integer("duration_ms"),
+  relatedGoalId: integer("related_goal_id"),
+  relatedDecisionId: integer("related_decision_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("agent_action_log_agent_idx").on(table.agentCodename),
+  index("agent_action_log_type_idx").on(table.actionType),
+  index("agent_action_log_outcome_idx").on(table.outcome),
+  index("agent_action_log_created_idx").on(table.createdAt),
+]);
+
+// Agent Goals — CEO-delegated and agent-to-agent task assignments
+export const agentGoals = pgTable("agent_goals", {
+  id: serial("id").primaryKey(),
+  assignedAgent: text("assigned_agent").notNull(), // agent codename
+  assignedBy: text("assigned_by").notNull(), // 'ceo' or agent codename
+  goal: text("goal").notNull(),
+  successCriteria: text("success_criteria"),
+  priority: text("priority").notNull().default("medium"), // low | medium | high | critical
+  deadline: timestamp("deadline"),
+  status: text("status").notNull().default("pending"), // pending | in_progress | completed | failed | cancelled
+  directorTaskId: integer("director_task_id"),
+  progressLog: jsonb("progress_log").$type<Array<{ timestamp: string; update: string; metrics?: Record<string, any> }>>().default([]),
+  result: jsonb("result").$type<Record<string, any>>(),
+  createdAt: timestamp("created_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+}, (table) => [
+  index("agent_goals_agent_idx").on(table.assignedAgent),
+  index("agent_goals_status_idx").on(table.status),
+  index("agent_goals_created_idx").on(table.createdAt),
+]);
+
+// Agent Conversations — persistent chat history with memory
+export const agentConversations = pgTable("agent_conversations", {
+  id: serial("id").primaryKey(),
+  conversationId: text("conversation_id").notNull(), // UUID, groups messages
+  agentCodename: text("agent_codename"),
+  role: text("role").notNull(), // user | assistant
+  content: text("content").notNull(),
+  toolCalls: jsonb("tool_calls").$type<Record<string, any>[]>(),
+  metadata: jsonb("metadata").$type<Record<string, any>>(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("agent_conv_id_idx").on(table.conversationId),
+  index("agent_conv_agent_idx").on(table.agentCodename),
+  index("agent_conv_created_idx").on(table.createdAt),
+]);
+
+// ============================================
+// SOVEREIGN COMPANY PROTOCOL v4
+// ============================================
+
+// Outcome Verification Queue — persistent verification of agent action results
+// Replaces the broken setTimeout-based outcome checks with a proper job queue
+export const outcomeVerificationQueue = pgTable("outcome_verification_queue", {
+  id: serial("id").primaryKey(),
+  actionLogId: integer("action_log_id").references(() => agentActionLog.id),
+  agentCodename: text("agent_codename").notNull(),
+  actionName: text("action_name").notNull(),
+  input: jsonb("input").$type<Record<string, any>>(),
+  scheduledFor: timestamp("scheduled_for").notNull(),
+  status: text("status").notNull().default("pending"), // pending | checked | verified | failed
+  verifiedAt: timestamp("verified_at"),
+  verificationResult: jsonb("verification_result").$type<{
+    success: boolean;
+    detail: string;
+    metrics?: Record<string, any>;
+  }>(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("ovq_status_scheduled_idx").on(table.status, table.scheduledFor),
+  index("ovq_agent_idx").on(table.agentCodename),
+  index("ovq_action_log_idx").on(table.actionLogId),
+]);
+export type OutcomeVerification = typeof outcomeVerificationQueue.$inferSelect;
+
+// Company Priorities — CEO-set strategic priorities all agents follow
+export const companyPriorities = pgTable("company_priorities", {
+  id: serial("id").primaryKey(),
+  priority: text("priority").notNull(),           // "Focus on keeping customers"
+  description: text("description"),               // Longer explanation
+  weight: integer("weight").notNull().default(5), // 1-10, how important
+  setBy: text("set_by").notNull().default("ceo"), // "ceo" or agent codename
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("company_priorities_active_idx").on(table.isActive),
+]);
+export type CompanyPriority = typeof companyPriorities.$inferSelect;
+
+// Quiet Hours Config — when agents should NOT send notifications
+export const quietHoursConfig = pgTable("quiet_hours_config", {
+  id: serial("id").primaryKey(),
+  startHour: integer("start_hour").notNull().default(22), // 10 PM
+  endHour: integer("end_hour").notNull().default(7),       // 7 AM
+  timezone: text("timezone").notNull().default("America/Chicago"),
+  daysOfWeek: jsonb("days_of_week").$type<number[]>().default([0, 1, 2, 3, 4, 5, 6]), // all days
+  emergencyOverride: boolean("emergency_override").notNull().default(true),
+  isActive: boolean("is_active").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+export type QuietHoursConfig = typeof quietHoursConfig.$inferSelect;
+
+// Agent Override Learnings — what agents learned from CEO rejections
+export const agentOverrideLearnings = pgTable("agent_override_learnings", {
+  id: serial("id").primaryKey(),
+  agentCodename: text("agent_codename").notNull(),
+  decisionId: integer("decision_id"),
+  actionName: text("action_name").notNull(),
+  originalRecommendation: text("original_recommendation"),
+  ceoOverrideAction: text("ceo_override_action"),
+  ceoOverrideNotes: text("ceo_override_notes"),
+  learnedPattern: text("learned_pattern").notNull(),    // AI-extracted lesson
+  patternCategory: text("pattern_category").notNull(),   // timing | scope | judgment | risk
+  occurrenceCount: integer("occurrence_count").notNull().default(1),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("aol_agent_idx").on(table.agentCodename),
+  index("aol_action_idx").on(table.actionName),
+]);
+export type AgentOverrideLearning = typeof agentOverrideLearnings.$inferSelect;
+
+// Undo Registry — tracks which agent actions can be reversed
+export const agentActionUndoLog = pgTable("agent_action_undo_log", {
+  id: serial("id").primaryKey(),
+  actionLogId: integer("action_log_id").references(() => agentActionLog.id),
+  agentCodename: text("agent_codename").notNull(),
+  actionName: text("action_name").notNull(),
+  undoAvailable: boolean("undo_available").notNull().default(false),
+  undoExpiry: timestamp("undo_expiry"),               // After this, can't undo
+  undoExecutedAt: timestamp("undo_executed_at"),       // When undo was performed
+  undoResult: jsonb("undo_result").$type<{ success: boolean; detail: string }>(),
+  originalInput: jsonb("original_input").$type<Record<string, any>>(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("aaul_action_log_idx").on(table.actionLogId),
+  index("aaul_undo_avail_idx").on(table.undoAvailable, table.undoExpiry),
+]);
+
+// ============================================
+// SOVEREIGN COMPANY PROTOCOL v6 — THE SELF-RUNNING COMPANY
+// ============================================
+
+// --- Agent Workflows (Multi-Agent Pipelines) ---
+// Coordinated multi-step processes: Lead -> Score -> Price -> Outreach -> Nurture
+
+export const agentWorkflows = pgTable("agent_workflows", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  triggerType: text("trigger_type").notNull(), // "manual" | "event" | "schedule" | "threshold"
+  triggerConfig: jsonb("trigger_config").$type<{
+    event?: string;
+    schedule?: string;
+    threshold?: { metric: string; operator: "gt" | "lt" | "eq"; value: number };
+  }>(),
+  steps: jsonb("steps").$type<Array<{
+    order: number;
+    agentCodename: string;
+    action: string;
+    description: string;
+    inputMapping: Record<string, string>;
+    failureStrategy: "abort" | "skip" | "retry" | "fallback";
+    fallbackAgent?: string;
+    timeoutMs?: number;
+    condition?: string;
+  }>>().notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  createdBy: text("created_by").notNull().default("system"),
+  totalRuns: integer("total_runs").notNull().default(0),
+  successRate: numeric("success_rate"),
+  avgDurationMs: integer("avg_duration_ms"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("aw_trigger_type_idx").on(table.triggerType),
+  index("aw_active_idx").on(table.isActive),
+]);
+export type AgentWorkflow = typeof agentWorkflows.$inferSelect;
+
+export const agentWorkflowRuns = pgTable("agent_workflow_runs", {
+  id: serial("id").primaryKey(),
+  workflowId: integer("workflow_id").references(() => agentWorkflows.id).notNull(),
+  status: text("status").notNull().default("running"),
+  triggeredBy: text("triggered_by").notNull(),
+  triggerData: jsonb("trigger_data").$type<Record<string, any>>(),
+  currentStep: integer("current_step").notNull().default(0),
+  stepResults: jsonb("step_results").$type<Array<{
+    step: number;
+    agentCodename: string;
+    action: string;
+    status: "pending" | "running" | "completed" | "failed" | "skipped";
+    output?: any;
+    error?: string;
+    startedAt?: string;
+    completedAt?: string;
+    durationMs?: number;
+  }>>().notNull().default([]),
+  startedAt: timestamp("started_at").notNull().defaultNow(),
+  completedAt: timestamp("completed_at"),
+  durationMs: integer("duration_ms"),
+}, (table) => [
+  index("awr_workflow_idx").on(table.workflowId),
+  index("awr_status_idx").on(table.status),
+  index("awr_started_idx").on(table.startedAt),
+]);
+export type AgentWorkflowRun = typeof agentWorkflowRuns.$inferSelect;
+
+// --- War Rooms (Auto-Convened Collaboration) ---
+
+export const warRooms = pgTable("war_rooms", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  severity: text("severity").notNull(),
+  triggerEvent: text("trigger_event").notNull(),
+  triggerData: jsonb("trigger_data").$type<Record<string, any>>(),
+  participants: jsonb("participants").$type<string[]>().notNull(),
+  leadAgent: text("lead_agent").notNull(),
+  status: text("status").notNull().default("active"),
+  resolution: text("resolution"),
+  resolvedBy: text("resolved_by"),
+  ceoJoined: boolean("ceo_joined").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  resolvedAt: timestamp("resolved_at"),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("wr_status_idx").on(table.status),
+  index("wr_severity_idx").on(table.severity),
+  index("wr_created_idx").on(table.createdAt),
+]);
+export type WarRoom = typeof warRooms.$inferSelect;
+
+export const warRoomMessages = pgTable("war_room_messages", {
+  id: serial("id").primaryKey(),
+  warRoomId: integer("war_room_id").references(() => warRooms.id).notNull(),
+  fromAgent: text("from_agent").notNull(),
+  messageType: text("message_type").notNull(),
+  content: text("content").notNull(),
+  data: jsonb("data").$type<Record<string, any>>(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("wrm_room_idx").on(table.warRoomId),
+  index("wrm_from_idx").on(table.fromAgent),
+]);
+export type WarRoomMessage = typeof warRoomMessages.$inferSelect;
+
+// --- Agent Initiative Proposals ---
+
+export const agentInitiatives = pgTable("agent_initiatives", {
+  id: serial("id").primaryKey(),
+  proposedBy: text("proposed_by").notNull(),
+  title: text("title").notNull(),
+  thesis: text("thesis").notNull(),
+  evidence: jsonb("evidence").$type<Array<{
+    type: "metric" | "pattern" | "customer_signal" | "market_data" | "competitor";
+    description: string;
+    value?: string | number;
+  }>>().notNull(),
+  projectedImpact: jsonb("projected_impact").$type<{
+    metric: string;
+    currentValue: number;
+    projectedValue: number;
+    timeframeWeeks: number;
+    confidence: "low" | "medium" | "high";
+  }>(),
+  requiredAgents: jsonb("required_agents").$type<string[]>(),
+  estimatedEffort: text("estimated_effort"),
+  status: text("status").notNull().default("proposed"),
+  ceoNotes: text("ceo_notes"),
+  votedAt: timestamp("voted_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("ai_init_proposed_by_idx").on(table.proposedBy),
+  index("ai_init_status_idx").on(table.status),
+  index("ai_init_created_idx").on(table.createdAt),
+]);
+export type AgentInitiative = typeof agentInitiatives.$inferSelect;
+
+// --- Agent Performance Reviews ---
+
+export const agentPerformanceReviews = pgTable("agent_performance_reviews", {
+  id: serial("id").primaryKey(),
+  agentCodename: text("agent_codename").notNull(),
+  periodStart: timestamp("period_start").notNull(),
+  periodEnd: timestamp("period_end").notNull(),
+  metrics: jsonb("metrics").$type<{
+    totalActions: number;
+    successRate: number;
+    escalationRate: number;
+    avgConfidence: number;
+    avgResponseTimeMs: number;
+    trustScoreStart: number;
+    trustScoreEnd: number;
+    trustDelta: number;
+    overridesReceived: number;
+    goalsCompleted: number;
+    goalsAssigned: number;
+  }>().notNull(),
+  strengths: jsonb("strengths").$type<string[]>().notNull(),
+  improvements: jsonb("improvements").$type<string[]>().notNull(),
+  learnings: jsonb("learnings").$type<string[]>().notNull(),
+  peerFeedback: jsonb("peer_feedback").$type<Array<{
+    fromAgent: string;
+    feedback: string;
+  }>>(),
+  overallGrade: text("overall_grade").notNull(),
+  summary: text("summary").notNull(),
+  ceoComments: text("ceo_comments"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("apr_agent_idx").on(table.agentCodename),
+  index("apr_period_idx").on(table.periodStart, table.periodEnd),
+]);
+export type AgentPerformanceReview = typeof agentPerformanceReviews.$inferSelect;
+
+// --- Agent Playbooks (Codified SOPs) ---
+
+export const agentPlaybooks = pgTable("agent_playbooks", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  ownerAgent: text("owner_agent").notNull(),
+  triggerCondition: text("trigger_condition").notNull(),
+  triggerConfig: jsonb("trigger_config").$type<{
+    event?: string;
+    metric?: string;
+    operator?: "gt" | "lt" | "eq" | "contains";
+    value?: number | string;
+  }>(),
+  steps: jsonb("steps").$type<Array<{
+    order: number;
+    agentCodename: string;
+    action: string;
+    description: string;
+    delayMs?: number;
+    condition?: string;
+    params?: Record<string, any>;
+  }>>().notNull(),
+  isApproved: boolean("is_approved").notNull().default(false),
+  approvedAt: timestamp("approved_at"),
+  isActive: boolean("is_active").notNull().default(false),
+  totalExecutions: integer("total_executions").notNull().default(0),
+  successRate: numeric("success_rate"),
+  lastExecutedAt: timestamp("last_executed_at"),
+  // v9: Playbook evolution fields
+  generation: integer("generation").notNull().default(1),            // mutation generation counter
+  parentPlaybookId: integer("parent_playbook_id"),                   // what it evolved from
+  createdBy: text("created_by").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("ap_owner_idx").on(table.ownerAgent),
+  index("ap_active_idx").on(table.isActive, table.isApproved),
+]);
+export type AgentPlaybook = typeof agentPlaybooks.$inferSelect;
+
+// --- CEO Absence Mode ---
+
+export const ceoAbsenceMode = pgTable("ceo_absence_mode", {
+  id: serial("id").primaryKey(),
+  isActive: boolean("is_active").notNull().default(false),
+  startedAt: timestamp("started_at"),
+  endsAt: timestamp("ends_at"),
+  trustBoost: integer("trust_boost").notNull().default(15),
+  batchedItems: jsonb("batched_items").$type<Array<{
+    type: string;
+    summary: string;
+    agentCodename: string;
+    priority: string;
+    timestamp: string;
+    data?: any;
+  }>>().notNull().default([]),
+  emergencyBreaks: jsonb("emergency_breaks").$type<Array<{
+    agentCodename: string;
+    reason: string;
+    timestamp: string;
+    actionTaken: string;
+  }>>().notNull().default([]),
+  returnBriefing: text("return_briefing"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("cam_active_idx").on(table.isActive),
+]);
+
+// ============================================
+// SOVEREIGN COMPANY PROTOCOL v7 — THE LEARNING COMPANY
+// ============================================
+
+// --- Decision Autopilot: Learn the founder's judgment patterns ---
+
+export const decisionPatterns = pgTable("decision_patterns", {
+  id: serial("id").primaryKey(),
+  patternKey: text("pattern_key").notNull(),              // "forge:pricing_under_5k" | "sophie:churn_response"
+  agentCodename: text("agent_codename").notNull(),
+  decisionCategory: text("decision_category").notNull(),   // "pricing" | "retention" | "hiring" | "spend" | "feature"
+  description: text("description").notNull(),              // human-readable: "Forge pricing suggestions under $5k"
+  totalDecisions: integer("total_decisions").notNull().default(0),
+  approvedCount: integer("approved_count").notNull().default(0),
+  rejectedCount: integer("rejected_count").notNull().default(0),
+  overriddenCount: integer("overridden_count").notNull().default(0),
+  autoApproveRate: numeric("auto_approve_rate"),           // calculated: approved / total
+  predictedAction: text("predicted_action"),               // "approve" | "reject" | "modify" — what the system thinks CEO would do
+  predictionConfidence: numeric("prediction_confidence"),   // 0.0–1.0
+  isAutopilotEligible: boolean("is_autopilot_eligible").notNull().default(false), // confidence > 0.95 and 20+ decisions
+  isAutopilotActive: boolean("is_autopilot_active").notNull().default(false),     // CEO has opted in
+  recentDecisions: jsonb("recent_decisions").$type<Array<{
+    decisionId: number;
+    action: "approved" | "rejected" | "modified" | "shelved";
+    context: Record<string, any>;
+    timestamp: string;
+    wouldHaveAutoed?: string;             // what autopilot would have done
+    autopilotCorrect?: boolean;           // was the prediction right?
+  }>>().notNull().default([]),
+  conditionRules: jsonb("condition_rules").$type<{
+    maxAmount?: number;
+    agentTrustMin?: number;
+    timeOfDay?: string;
+    excludeCategories?: string[];
+  }>(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("dp_pattern_key_idx").on(table.patternKey),
+  index("dp_agent_idx").on(table.agentCodename),
+  index("dp_autopilot_idx").on(table.isAutopilotActive),
+  index("dp_eligible_idx").on(table.isAutopilotEligible),
+]);
+export type DecisionPattern = typeof decisionPatterns.$inferSelect;
+
+// --- Scenario Engine: "What if?" simulations ---
+
+export const scenarioSimulations = pgTable("scenario_simulations", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  hypothesis: text("hypothesis").notNull(),                // "What if we raise prices 20%?"
+  status: text("status").notNull().default("running"),     // "running" | "completed" | "failed"
+  agentAnalyses: jsonb("agent_analyses").$type<Array<{
+    agentCodename: string;
+    perspective: string;                  // "revenue_impact" | "churn_risk" | "operational_load"
+    analysis: string;
+    metrics: Record<string, any>;
+    confidence: "low" | "medium" | "high";
+  }>>().notNull().default([]),
+  scenarios: jsonb("scenarios").$type<{
+    best: { description: string; probability: number; metrics: Record<string, number> };
+    median: { description: string; probability: number; metrics: Record<string, number> };
+    worst: { description: string; probability: number; metrics: Record<string, number> };
+  }>(),
+  recommendation: text("recommendation"),
+  requestedBy: text("requested_by").notNull().default("ceo"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  completedAt: timestamp("completed_at"),
+}, (table) => [
+  index("ss_status_idx").on(table.status),
+  index("ss_created_idx").on(table.createdAt),
+]);
+export type ScenarioSimulation = typeof scenarioSimulations.$inferSelect;
+
+// --- Agent Self-Improvement Plans ---
+
+export const agentImprovementPlans = pgTable("agent_improvement_plans", {
+  id: serial("id").primaryKey(),
+  agentCodename: text("agent_codename").notNull(),
+  reviewId: integer("review_id").references(() => agentPerformanceReviews.id),
+  status: text("status").notNull().default("active"),      // "active" | "completed" | "superseded"
+  goals: jsonb("goals").$type<Array<{
+    description: string;
+    metric: string;
+    baselineValue: number;
+    targetValue: number;
+    currentValue?: number;
+    status: "in_progress" | "achieved" | "missed";
+  }>>().notNull(),
+  skillRequests: jsonb("skill_requests").$type<Array<{
+    skill: string;
+    reason: string;
+    status: "requested" | "approved" | "denied";
+    approvedAt?: string;
+  }>>().notNull().default([]),
+  weeklyProgress: jsonb("weekly_progress").$type<Array<{
+    week: string;
+    notes: string;
+    metricsSnapshot: Record<string, number>;
+  }>>().notNull().default([]),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("aip_agent_idx").on(table.agentCodename),
+  index("aip_status_idx").on(table.status),
+  index("aip_review_idx").on(table.reviewId),
+]);
+export type AgentImprovementPlan = typeof agentImprovementPlans.$inferSelect;
+
+// --- Founder Digital Twin: voice, patterns, preferences ---
+
+export const founderTwinContext = pgTable("founder_twin_context", {
+  id: serial("id").primaryKey(),
+  contextType: text("context_type").notNull(),             // "communication_style" | "decision_pattern" | "priority_signal" | "vocabulary"
+  key: text("key").notNull(),
+  value: jsonb("value").$type<Record<string, any>>().notNull(),
+  confidence: numeric("confidence").notNull().default("0.5"),
+  sourceCount: integer("source_count").notNull().default(1),  // how many observations support this
+  examples: jsonb("examples").$type<string[]>().notNull().default([]),  // actual excerpts
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("ftc_type_idx").on(table.contextType),
+  index("ftc_key_idx").on(table.key),
+]);
+export type FounderTwinContext = typeof founderTwinContext.$inferSelect;
+
+export const founderDrafts = pgTable("founder_drafts", {
+  id: serial("id").primaryKey(),
+  draftType: text("draft_type").notNull(),                 // "investor_update" | "board_report" | "customer_response" | "team_announcement"
+  title: text("title").notNull(),
+  content: text("content").notNull(),
+  dataSources: jsonb("data_sources").$type<string[]>().notNull().default([]),  // which agents contributed
+  status: text("status").notNull().default("draft"),       // "draft" | "approved" | "sent" | "discarded"
+  ceoEdits: text("ceo_edits"),                             // tracked for twin learning
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("fd_type_idx").on(table.draftType),
+  index("fd_status_idx").on(table.status),
+]);
+export type FounderDraft = typeof founderDrafts.$inferSelect;
+
+// --- Attention Optimizer: where the founder's time matters ---
+
+export const attentionInsights = pgTable("attention_insights", {
+  id: serial("id").primaryKey(),
+  periodStart: timestamp("period_start").notNull(),
+  periodEnd: timestamp("period_end").notNull(),
+  timeSpent: jsonb("time_spent").$type<Record<string, number>>().notNull(),  // area → minutes: { "war_rooms": 40, "initiatives": 5 }
+  interventionImpact: jsonb("intervention_impact").$type<Array<{
+    area: string;
+    ceoIntervened: boolean;
+    outcomeWithout: string;              // what would have happened
+    outcomeWith: string;                 // what actually happened
+    impactDelta: number;                 // -1 to +1, how much CEO changed outcome
+  }>>().notNull().default([]),
+  recommendations: jsonb("recommendations").$type<Array<{
+    action: "focus_more" | "delegate" | "skip" | "automate";
+    area: string;
+    reason: string;
+    projectedTimeSaved: number;          // minutes per week
+  }>>().notNull().default([]),
+  focusCard: text("focus_card"),         // "Here's where you matter today" — single-sentence
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("ai_ins_period_idx").on(table.periodStart),
+]);
+export type AttentionInsight = typeof attentionInsights.$inferSelect;
+
+// --- Institutional Memory: compound pattern library ---
+
+export const institutionalPatterns = pgTable("institutional_patterns", {
+  id: serial("id").primaryKey(),
+  patternName: text("pattern_name").notNull(),
+  description: text("description").notNull(),
+  triggerSignals: jsonb("trigger_signals").$type<Array<{
+    agentCodename: string;
+    signal: string;
+    threshold?: number;
+  }>>().notNull(),
+  effectiveResponse: text("effective_response").notNull(),  // what worked
+  ineffectiveResponse: text("ineffective_response"),         // what didn't work
+  contextConditions: jsonb("context_conditions").$type<{
+    customerAge?: string;                // "0-3m" | "3-12m" | "12m+"
+    dealSize?: string;                   // "small" | "medium" | "large"
+    season?: string;                     // "q1" | "q2" | "q3" | "q4"
+    churnRisk?: string;                  // "low" | "medium" | "high"
+  }>(),
+  successRate: numeric("success_rate").notNull(),
+  sampleSize: integer("sample_size").notNull().default(0),
+  lastTriggered: timestamp("last_triggered"),
+  contributingAgents: jsonb("contributing_agents").$type<string[]>().notNull().default([]),
+  linkedPlaybookId: integer("linked_playbook_id").references(() => agentPlaybooks.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("ip_name_idx").on(table.patternName),
+  index("ip_success_idx").on(table.successRate),
+]);
+export type InstitutionalPattern = typeof institutionalPatterns.$inferSelect;
+
+// Cross-agent signal correlation — when A + B happen together, C follows
+export const signalCorrelations = pgTable("signal_correlations", {
+  id: serial("id").primaryKey(),
+  signalA: text("signal_a").notNull(),                     // "oracle:revenue_dip"
+  signalB: text("signal_b").notNull(),                     // "sophie:support_spike"
+  predictedOutcome: text("predicted_outcome").notNull(),    // "churn_wave_14d"
+  correlation: numeric("correlation").notNull(),            // 0.0–1.0
+  observationCount: integer("observation_count").notNull().default(0),
+  lastObserved: timestamp("last_observed"),
+  autoTriggerPlaybookId: integer("auto_trigger_playbook_id").references(() => agentPlaybooks.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("sc_signals_idx").on(table.signalA, table.signalB),
+  index("sc_correlation_idx").on(table.correlation),
+]);
+export type SignalCorrelation = typeof signalCorrelations.$inferSelect;
+
+// ============================================
+// SOVEREIGN COMPANY PROTOCOL v8 — THE LIVING ORGANIZATION
+// ============================================
+
+// --- Strategic Compass: living strategy that every agent reads ---
+
+export const strategicCompass = pgTable("strategic_compass", {
+  id: serial("id").primaryKey(),
+  isActive: boolean("is_active").notNull().default(true),
+  mode: text("mode").notNull().default("growth"),         // "growth" | "efficiency" | "crisis" | "exploration" | "balanced"
+  northStar: text("north_star").notNull(),                 // single sentence: "Revenue over efficiency. Ship fast."
+  priorities: jsonb("priorities").$type<Array<{
+    rank: number;
+    priority: string;
+    weight: number;                                        // 1-10
+  }>>().notNull(),
+  agentDirectives: jsonb("agent_directives").$type<Record<string, {
+    riskTolerance: "low" | "medium" | "high";
+    spendAuthority: "tight" | "normal" | "aggressive";
+    approvalThreshold: "strict" | "normal" | "loose";
+    focusAreas: string[];
+    avoidAreas: string[];
+  }>>().notNull().default({}),
+  metrics: jsonb("metrics").$type<{
+    targetMRR?: number;
+    acceptableChurn?: number;
+    marketingBudgetCeiling?: number;
+    hiringStatus?: "freeze" | "selective" | "aggressive";
+  }>(),
+  lastUpdatedBy: text("last_updated_by").notNull().default("ceo"),
+  changelog: jsonb("changelog").$type<Array<{
+    timestamp: string;
+    changedBy: string;
+    description: string;
+    previousMode?: string;
+    newMode?: string;
+  }>>().notNull().default([]),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("sc_compass_active_idx").on(table.isActive),
+]);
+export type StrategicCompass = typeof strategicCompass.$inferSelect;
+
+// --- Agent Debates: structured disagreement before big decisions ---
+
+export const agentDebates = pgTable("agent_debates", {
+  id: serial("id").primaryKey(),
+  proposition: text("proposition").notNull(),               // "Should we build a mobile app?"
+  status: text("status").notNull().default("in_progress"), // "in_progress" | "awaiting_decision" | "decided" | "cancelled"
+  category: text("category").notNull(),                    // "investment" | "pricing" | "product" | "hiring" | "strategy" | "risk"
+  initiatedBy: text("initiated_by").notNull(),             // "ceo" | agent codename
+  forAgents: jsonb("for_agents").$type<string[]>().notNull().default([]),
+  againstAgents: jsonb("against_agents").$type<string[]>().notNull().default([]),
+  arguments: jsonb("arguments").$type<Array<{
+    agentCodename: string;
+    position: "for" | "against";
+    round: number;                                         // 1 = opening, 2 = rebuttal
+    argument: string;
+    evidence: string[];
+    confidence: number;                                    // 0-100
+  }>>().notNull().default([]),
+  votes: jsonb("votes").$type<Array<{
+    agentCodename: string;
+    vote: "for" | "against" | "abstain";
+    confidence: number;
+    reasoning: string;
+  }>>().notNull().default([]),
+  ceoDecision: text("ceo_decision"),                       // "approved" | "rejected" | "modified" | "deferred"
+  ceoReasoning: text("ceo_reasoning"),
+  outcome: text("outcome"),                                // tracked later: was the decision right?
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  decidedAt: timestamp("decided_at"),
+}, (table) => [
+  index("ad_status_idx").on(table.status),
+  index("ad_category_idx").on(table.category),
+  index("ad_created_idx").on(table.createdAt),
+]);
+export type AgentDebate = typeof agentDebates.$inferSelect;
+
+// --- Founder Wellbeing Monitor ---
+
+export const founderWellbeing = pgTable("founder_wellbeing", {
+  id: serial("id").primaryKey(),
+  date: timestamp("date").notNull(),
+  metrics: jsonb("metrics").$type<{
+    overrideCount: number;
+    overrideAvgWeekly: number;
+    decisionsToday: number;
+    avgDecisionTimeMs: number;
+    timeOnPlatformMinutes: number;
+    daysSinceLastBreak: number;
+    warRoomInterventions: number;
+    agentSuccessRateWithoutCEO: number;
+    winCount: number;
+    stressSignals: string[];
+  }>().notNull(),
+  insights: jsonb("insights").$type<Array<{
+    type: "warning" | "celebration" | "nudge" | "milestone";
+    message: string;
+    severity?: "low" | "medium" | "high";
+  }>>().notNull().default([]),
+  energyScore: integer("energy_score"),                    // 0-100, AI-estimated
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("fw_date_idx").on(table.date),
+]);
+export type FounderWellbeing = typeof founderWellbeing.$inferSelect;
+
+// --- Company Seasons ---
+
+export const companySeasons = pgTable("company_seasons", {
+  id: serial("id").primaryKey(),
+  season: text("season").notNull(),                        // "growth" | "efficiency" | "crisis" | "exploration"
+  isActive: boolean("is_active").notNull().default(false),
+  activatedAt: timestamp("activated_at"),
+  deactivatedAt: timestamp("deactivated_at"),
+  activatedBy: text("activated_by").notNull().default("ceo"),
+  reason: text("reason"),                                  // why this season was activated
+  config: jsonb("config").$type<{
+    trustBoostAll: number;                                 // temporary trust modifier
+    approvalThreshold: "strict" | "normal" | "loose";
+    briefingFrequency: "daily" | "twice_daily" | "hourly";
+    spendMultiplier: number;                               // 0.5 = half budget, 2.0 = double
+    riskTolerance: "low" | "medium" | "high";
+    initiativeEncouragement: "discouraged" | "normal" | "encouraged";
+    failureTolerance: "zero" | "low" | "medium" | "high";
+    autoEscalateThreshold: "low" | "normal" | "high";
+  }>().notNull(),
+  results: jsonb("results").$type<{
+    startMetrics: Record<string, number>;
+    endMetrics?: Record<string, number>;
+    summary?: string;
+  }>(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("cs_active_idx").on(table.isActive),
+  index("cs_season_idx").on(table.season),
+]);
+export type CompanySeason = typeof companySeasons.$inferSelect;
+
+// --- Agent Synergy Map ---
+
+export const agentSynergyMap = pgTable("agent_synergy_map", {
+  id: serial("id").primaryKey(),
+  agentA: text("agent_a").notNull(),
+  agentB: text("agent_b").notNull(),
+  totalCollaborations: integer("total_collaborations").notNull().default(0),
+  successCount: integer("success_count").notNull().default(0),
+  failureCount: integer("failure_count").notNull().default(0),
+  synergyScore: numeric("synergy_score"),                  // 0.0-1.0
+  conflictRate: numeric("conflict_rate"),                   // how often they disagree
+  bestAt: jsonb("best_at").$type<string[]>().notNull().default([]),        // task types they excel at together
+  worstAt: jsonb("worst_at").$type<string[]>().notNull().default([]),      // task types where they struggle
+  recentOutcomes: jsonb("recent_outcomes").$type<Array<{
+    taskType: string;
+    success: boolean;
+    timestamp: string;
+  }>>().notNull().default([]),
+  recommendation: text("recommendation"),                  // AI-generated routing advice
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("asm_pair_idx").on(table.agentA, table.agentB),
+  index("asm_synergy_idx").on(table.synergyScore),
+]);
+export type AgentSynergy = typeof agentSynergyMap.$inferSelect;
+
+// --- Company Chronicle ---
+
+export const companyChronicle = pgTable("company_chronicle", {
+  id: serial("id").primaryKey(),
+  periodType: text("period_type").notNull(),               // "week" | "month" | "quarter" | "milestone"
+  periodLabel: text("period_label").notNull(),             // "March 2026" | "Q1 2026" | "Week of Mar 17"
+  periodStart: timestamp("period_start").notNull(),
+  periodEnd: timestamp("period_end").notNull(),
+  narrative: text("narrative").notNull(),                   // AI-generated story
+  highlights: jsonb("highlights").$type<Array<{
+    type: "win" | "challenge" | "learning" | "milestone" | "decision";
+    description: string;
+    impact?: string;
+    agents?: string[];
+  }>>().notNull(),
+  metrics: jsonb("metrics").$type<{
+    mrrStart?: number;
+    mrrEnd?: number;
+    mrrDelta?: number;
+    deals?: number;
+    warRooms?: number;
+    ceoDecisions?: number;
+    agentActions?: number;
+    topAgent?: string;
+    topAgentGrade?: string;
+  }>(),
+  keyLearnings: jsonb("key_learnings").$type<string[]>().notNull().default([]),
+  searchableText: text("searchable_text"),                 // for full-text search
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("cc_period_type_idx").on(table.periodType),
+  index("cc_period_start_idx").on(table.periodStart),
+]);
+export type CompanyChronicleEntry = typeof companyChronicle.$inferSelect;
+
+// ============================================
+// SOVEREIGN COMPANY PROTOCOL v9 — THE SELF-RUNNING COMPANY
+// ============================================
+
+// --- Agent Initiatives: (defined above in v8 section) ---
+
+// --- CEO Briefings: unified daily digest ---
+
+export const ceoBriefings = pgTable("ceo_briefings", {
+  id: serial("id").primaryKey(),
+  date: timestamp("date").notNull(),
+  overallStatus: text("overall_status").notNull(),         // "all_clear" | "watch" | "needs_ceo"
+  narrative: text("narrative").notNull(),                   // AI-generated executive summary
+  allClearAgents: jsonb("all_clear_agents").$type<string[]>().notNull().default([]),
+  watchItems: jsonb("watch_items").$type<Array<{
+    agentCodename: string;
+    title: string;
+    summary: string;
+    evidence: string[];
+    proposedAction?: string;
+    confidence: number;
+  }>>().notNull().default([]),
+  needsCeoItems: jsonb("needs_ceo_items").$type<Array<{
+    agentCodename: string;
+    title: string;
+    summary: string;
+    evidence: string[];
+    proposedAction?: string;
+    actionApprovalNeeded: boolean;
+    confidence: number;
+  }>>().notNull().default([]),
+  actionsTaken: jsonb("actions_taken").$type<Array<{
+    action: string;
+    decision: string;
+    timestamp: string;
+  }>>().notNull().default([]),
+  totalAgents: integer("total_agents").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("cb_date_idx").on(table.date),
+  index("cb_status_idx").on(table.overallStatus),
+]);
+export type CEOBriefing = typeof ceoBriefings.$inferSelect;
+
+// --- Playbook Evolutions: mutation tracking and A/B testing ---
+
+export const playbookEvolutions = pgTable("playbook_evolutions", {
+  id: serial("id").primaryKey(),
+  championPlaybookId: integer("champion_playbook_id").notNull().references(() => agentPlaybooks.id),
+  championGeneration: integer("champion_generation").notNull().default(1),
+  mutationType: text("mutation_type").notNull(),           // "step_swap" | "timing_change" | "agent_swap" | "condition_add" | "step_remove" | "step_add"
+  mutationDescription: text("mutation_description").notNull(),
+  analysis: text("analysis"),                              // why the playbook is degrading
+  hypothesis: text("hypothesis"),                          // why this mutation should help
+  mutatedSteps: jsonb("mutated_steps").$type<Array<{
+    order: number;
+    agentCodename: string;
+    action: string;
+    description: string;
+    delayMs?: number;
+  }>>().notNull(),
+  status: text("status").notNull().default("proposed"),    // "proposed" | "testing" | "champion_wins" | "challenger_wins"
+  championSuccessRate: numeric("champion_success_rate"),
+  challengerSuccessRate: numeric("challenger_success_rate"),
+  challengerExecutions: integer("challenger_executions").notNull().default(0),
+  challengerSuccessCount: integer("challenger_success_count").notNull().default(0),
+  requiredTestRuns: integer("required_test_runs").notNull().default(5),
+  testStartedAt: timestamp("test_started_at"),
+  resolvedAt: timestamp("resolved_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("pe_playbook_idx").on(table.championPlaybookId),
+  index("pe_status_idx").on(table.status),
+]);
+export type PlaybookEvolution = typeof playbookEvolutions.$inferSelect;
+
+// --- Compass Recommendations: auto-suggested mode changes ---
+
+export const compassRecommendations = pgTable("compass_recommendations", {
+  id: serial("id").primaryKey(),
+  currentMode: text("current_mode").notNull(),
+  recommendedMode: text("recommended_mode").notNull(),
+  urgency: text("urgency").notNull(),                      // "immediate" | "daily_briefing" | "weekly_review"
+  rationale: text("rationale").notNull(),
+  matchedConditions: jsonb("matched_conditions").$type<Array<{
+    metric: string;
+    description: string;
+    source: string;
+  }>>().notNull().default([]),
+  failedConditions: jsonb("failed_conditions").$type<Array<{
+    metric: string;
+    description: string;
+    source: string;
+  }>>().notNull().default([]),
+  confidence: integer("confidence").notNull().default(50),
+  status: text("status").notNull().default("pending"),     // "pending" | "accepted" | "dismissed"
+  ceoResponse: text("ceo_response"),
+  resolvedAt: timestamp("resolved_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("cr_status_idx").on(table.status),
+  index("cr_urgency_idx").on(table.urgency),
+]);
+export type CompassRecommendation = typeof compassRecommendations.$inferSelect;
+
+// --- Spend Watchers: service cost monitoring ---
+
+export const spendWatchers = pgTable("spend_watchers", {
+  id: serial("id").primaryKey(),
+  serviceName: text("service_name").notNull(),
+  category: text("category").notNull(),                    // "compute" | "ai" | "email" | "sms" | "storage" | "payments" | "other"
+  costAmount: numeric("cost_amount").notNull(),
+  metrics: jsonb("metrics").$type<Record<string, any>>(),
+  trend: text("trend"),                                    // "up" | "down" | "flat"
+  trendPercent: integer("trend_percent"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("sw_service_idx").on(table.serviceName),
+  index("sw_category_idx").on(table.category),
+]);
+export type SpendWatcher = typeof spendWatchers.$inferSelect;
+
+// --- Spend Optimizations: proposed and tracked savings ---
+
+export const spendOptimizations = pgTable("spend_optimizations", {
+  id: serial("id").primaryKey(),
+  serviceName: text("service_name").notNull(),
+  description: text("description").notNull(),
+  estimatedSavings: numeric("estimated_savings").notNull(),
+  actualSavings: numeric("actual_savings"),
+  effort: text("effort").notNull(),                        // "low" | "medium" | "high"
+  autoExecutable: boolean("auto_executable").notNull().default(false),
+  status: text("status").notNull().default("proposed"),    // "proposed" | "approved" | "skipped" | "executed"
+  approvedAt: timestamp("approved_at"),
+  executedAt: timestamp("executed_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("so_status_idx").on(table.status),
+  index("so_service_idx").on(table.serviceName),
+]);
+export type SpendOptimization = typeof spendOptimizations.$inferSelect;
+
+// --- Causal Investigations: root cause analysis ---
+
+export const causalInvestigations = pgTable("causal_investigations", {
+  id: serial("id").primaryKey(),
+  anomalyType: text("anomaly_type").notNull(),             // "metric_drop" | "metric_spike" | "pattern_break"
+  metric: text("metric").notNull(),
+  currentValue: numeric("current_value").notNull(),
+  expectedValue: numeric("expected_value").notNull(),
+  deviationPercent: integer("deviation_percent").notNull(),
+  detectedBy: text("detected_by").notNull(),               // agent codename
+  timeline: jsonb("timeline").$type<Array<{
+    timestamp: string;
+    source: string;
+    eventType: string;
+    description: string;
+  }>>().notNull().default([]),
+  hypotheses: jsonb("hypotheses").$type<Array<{
+    rank: number;
+    cause: string;
+    probability: string;
+    evidence: string[];
+    affectedSegment: string;
+    testProposal: string;
+  }>>().notNull().default([]),
+  primaryCause: text("primary_cause"),
+  primaryCauseProbability: text("primary_cause_probability"),
+  testProposal: text("test_proposal"),
+  affectedSegments: jsonb("affected_segments").$type<string[]>().notNull().default([]),
+  confirmedCause: text("confirmed_cause"),
+  actionTaken: text("action_taken"),
+  status: text("status").notNull().default("open"),        // "open" | "resolved" | "dismissed"
+  resolvedAt: timestamp("resolved_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("ci_status_idx").on(table.status),
+  index("ci_metric_idx").on(table.metric),
+  index("ci_detected_by_idx").on(table.detectedBy),
+]);
+export type CausalInvestigation = typeof causalInvestigations.$inferSelect;
+
+// --- Delegated Goals: agent-to-agent goal cascading ---
+
+export const delegatedGoals = pgTable("delegated_goals", {
+  id: serial("id").primaryKey(),
+  goal: text("goal").notNull(),
+  ownerAgent: text("owner_agent").notNull(),
+  delegatedBy: text("delegated_by").notNull(),             // "ceo" or agent codename
+  parentGoalId: integer("parent_goal_id"),                 // null = top-level CEO goal
+  depth: integer("depth").notNull().default(0),            // 0 = CEO goal, 1 = sub-goal, 2 = sub-sub-goal
+  targetMetric: text("target_metric"),
+  targetValue: numeric("target_value"),
+  deadline: timestamp("deadline"),
+  priority: integer("priority").notNull().default(3),      // 1 = highest
+  status: text("status").notNull().default("active"),      // "active" | "completed" | "blocked" | "cancelled"
+  progress: integer("progress").notNull().default(0),      // 0-100
+  progressLog: jsonb("progress_log").$type<Array<{
+    timestamp: string;
+    progress: number;
+    update: string;
+  }>>().notNull().default([]),
+  breakdown: text("breakdown"),                            // coordinator's analysis
+  subGoalCount: integer("sub_goal_count"),
+  rationale: text("rationale"),                            // why this agent was chosen
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("dg_owner_idx").on(table.ownerAgent),
+  index("dg_parent_idx").on(table.parentGoalId),
+  index("dg_status_idx").on(table.status),
+  index("dg_delegated_by_idx").on(table.delegatedBy),
+]);
+export type DelegatedGoal = typeof delegatedGoals.$inferSelect;
+
+// --- External Intelligence: outside-the-product awareness ---
+
+export const externalIntelligence = pgTable("external_intelligence", {
+  id: serial("id").primaryKey(),
+  sourceName: text("source_name").notNull(),
+  feedType: text("feed_type").notNull(),                   // "competitor" | "platform_risk" | "market_signal"
+  ownerAgent: text("owner_agent").notNull(),
+  severity: text("severity").notNull(),                    // "info" | "watch" | "action_needed"
+  title: text("title").notNull(),
+  summary: text("summary").notNull(),
+  impacts: jsonb("impacts").$type<string[]>().notNull().default([]),
+  recommendedActions: jsonb("recommended_actions").$type<string[]>().notNull().default([]),
+  confidence: integer("confidence").notNull().default(50),
+  status: text("status").notNull().default("noted"),       // "noted" | "pending_review" | "acknowledged" | "acted_upon"
+  actionTaken: text("action_taken"),
+  acknowledgedAt: timestamp("acknowledged_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("ei_feed_type_idx").on(table.feedType),
+  index("ei_severity_idx").on(table.severity),
+  index("ei_status_idx").on(table.status),
+  index("ei_source_idx").on(table.sourceName),
+]);
+export type ExternalIntelligenceEntry = typeof externalIntelligence.$inferSelect;
+
+// ============================================
+// SOVEREIGN COMPANY PROTOCOL v10 — THE CONSCIOUS ORGANIZATION
+// ============================================
+
+// --- Scenario Simulations: (defined above in v9 section) ---
+
+// --- Scenario Outcome Comparisons: predicted vs actual ---
+
+export const scenarioOutcomeComparisons = pgTable("scenario_outcome_comparisons", {
+  id: serial("id").primaryKey(),
+  scenarioId: integer("scenario_id").notNull().references(() => scenarioSimulations.id),
+  comparisonDate: timestamp("comparison_date").notNull().defaultNow(),
+  predictedOutcome: jsonb("predicted_outcome").$type<Record<string, any>>().notNull(),
+  actualOutcome: jsonb("actual_outcome").$type<Record<string, any>>().notNull(),
+  accuracyScore: integer("accuracy_score").notNull().default(50),
+  lessonsLearned: text("lessons_learned"),
+  agentAccuracy: jsonb("agent_accuracy").$type<Array<{ agentCodename: string; accuracy: number }>>().notNull().default([]),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("soc_scenario_idx").on(table.scenarioId),
+]);
+export type ScenarioOutcomeComparison = typeof scenarioOutcomeComparisons.$inferSelect;
+
+// --- Learning Propagations: cross-agent knowledge transfer ---
+
+export const learningPropagations = pgTable("learning_propagations", {
+  id: serial("id").primaryKey(),
+  sourceAgent: text("source_agent").notNull(),
+  targetAgents: jsonb("target_agents").$type<string[]>().notNull().default([]),
+  learningType: text("learning_type").notNull(),
+  learning: text("learning").notNull(),
+  evidence: jsonb("evidence").$type<string[]>().notNull().default([]),
+  outcomeWindowDays: integer("outcome_window_days").notNull().default(7),
+  originalOutcomeId: text("original_outcome_id"),
+  propagationStatus: text("propagation_status").notNull().default("pending"),
+  acceptanceRate: integer("acceptance_rate"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  propagatedAt: timestamp("propagated_at"),
+}, (table) => [
+  index("lp_source_idx").on(table.sourceAgent),
+  index("lp_status_idx").on(table.propagationStatus),
+  index("lp_type_idx").on(table.learningType),
+]);
+export type LearningPropagation = typeof learningPropagations.$inferSelect;
+
+// --- Outcome Calibrations: prediction accuracy per agent ---
+
+export const outcomeCalibrations = pgTable("outcome_calibrations", {
+  id: serial("id").primaryKey(),
+  agentCodename: text("agent_codename").notNull(),
+  actionType: text("action_type").notNull(),
+  predictedOutcome: text("predicted_outcome").notNull(),
+  predictedConfidence: integer("predicted_confidence").notNull(),
+  actualOutcome: text("actual_outcome"),
+  actualSuccess: boolean("actual_success"),
+  accuracyDelta: integer("accuracy_delta"),
+  outcomeWindowDays: integer("outcome_window_days").notNull().default(7),
+  outcomeMeasuredAt: timestamp("outcome_measured_at"),
+  status: text("status").notNull().default("awaiting_outcome"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("oc_agent_idx").on(table.agentCodename),
+  index("oc_status_idx").on(table.status),
+]);
+export type OutcomeCalibration = typeof outcomeCalibrations.$inferSelect;
+
+// --- Org Heartbeat Snapshots: system vital signs ---
+
+export const orgHeartbeatSnapshots = pgTable("org_heartbeat_snapshots", {
+  id: serial("id").primaryKey(),
+  snapshotType: text("snapshot_type").notNull().default("hourly"),
+  agentLatencies: jsonb("agent_latencies").$type<Record<string, number>>().notNull().default({}),
+  decisionQueueDepth: integer("decision_queue_depth").notNull().default(0),
+  learningVelocity: integer("learning_velocity").notNull().default(0),
+  trustTrajectory: jsonb("trust_trajectory").$type<Record<string, number>>().notNull().default({}),
+  escalationRatio: numeric("escalation_ratio").notNull().default("0"),
+  feedbackClosureRate: numeric("feedback_closure_rate").notNull().default("0"),
+  coherenceScore: integer("coherence_score").notNull().default(100),
+  anomalies: jsonb("anomalies").$type<Array<{
+    type: string;
+    description: string;
+    severity: string;
+    affectedAgent?: string;
+  }>>().notNull().default([]),
+  healthGrade: text("health_grade").notNull().default("A"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("ohs_type_idx").on(table.snapshotType),
+  index("ohs_grade_idx").on(table.healthGrade),
+  index("ohs_created_idx").on(table.createdAt),
+]);
+export type OrgHeartbeatSnapshot = typeof orgHeartbeatSnapshots.$inferSelect;
+
+// --- Agent Calibration History: self-calibration events ---
+
+export const agentCalibrationHistory = pgTable("agent_calibration_history", {
+  id: serial("id").primaryKey(),
+  agentCodename: text("agent_codename").notNull(),
+  calibrationType: text("calibration_type").notNull(),
+  parameterName: text("parameter_name").notNull(),
+  oldValue: text("old_value").notNull(),
+  newValue: text("new_value").notNull(),
+  triggerReason: text("trigger_reason").notNull(),
+  performanceBefore: jsonb("performance_before").$type<Record<string, any>>(),
+  performanceAfter: jsonb("performance_after").$type<Record<string, any>>(),
+  status: text("status").notNull().default("applied"),
+  ceoAction: text("ceo_action"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  measuredAt: timestamp("measured_at"),
+}, (table) => [
+  index("ach_agent_idx").on(table.agentCodename),
+  index("ach_type_idx").on(table.calibrationType),
+  index("ach_status_idx").on(table.status),
+]);
+export type AgentCalibrationHistoryEntry = typeof agentCalibrationHistory.$inferSelect;
+
+// --- CEO Decision Replays: hindsight analysis and bias detection ---
+
+export const ceoDecisionReplays = pgTable("ceo_decision_replays", {
+  id: serial("id").primaryKey(),
+  originalDecisionId: text("original_decision_id").notNull(),
+  decisionType: text("decision_type").notNull(),
+  decisionSummary: text("decision_summary").notNull(),
+  originalContext: jsonb("original_context").$type<Record<string, any>>().notNull().default({}),
+  agentRecommendations: jsonb("agent_recommendations").$type<Array<{
+    agentCodename: string;
+    recommendation: string;
+    confidence: number;
+  }>>().notNull().default([]),
+  ceoChoice: text("ceo_choice").notNull(),
+  outcomeData: jsonb("outcome_data").$type<Record<string, any>>(),
+  hindsightAssessment: text("hindsight_assessment"),
+  wasOptimal: boolean("was_optimal"),
+  qualityScore: integer("quality_score"),
+  biasFlags: jsonb("bias_flags").$type<Array<{
+    biasType: string;
+    description: string;
+    frequency: number;
+    severity: string;
+  }>>().notNull().default([]),
+  replayDate: timestamp("replay_date").notNull().defaultNow(),
+  originalDate: timestamp("original_date").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("cdr_type_idx").on(table.decisionType),
+  index("cdr_quality_idx").on(table.qualityScore),
+  index("cdr_replay_date_idx").on(table.replayDate),
+]);
+export type CEODecisionReplay = typeof ceoDecisionReplays.$inferSelect;
+
+// --- Resilience Tests: chaos testing and SPOF detection ---
+
+export const resilienceTests = pgTable("resilience_tests", {
+  id: serial("id").primaryKey(),
+  testType: text("test_type").notNull(),
+  testDescription: text("test_description").notNull(),
+  simulatedConditions: jsonb("simulated_conditions").$type<Record<string, any>>().notNull().default({}),
+  results: jsonb("results").$type<{
+    impact: string;
+    degradation: string;
+    recoveryTime: string;
+    affectedFunctions: string[];
+  }>().notNull().default({ impact: "", degradation: "", recoveryTime: "", affectedFunctions: [] }),
+  singlePointsOfFailure: jsonb("single_points_of_failure").$type<Array<{
+    component: string;
+    function: string;
+    risk: string;
+    mitigation: string;
+  }>>().notNull().default([]),
+  recommendations: jsonb("recommendations").$type<string[]>().notNull().default([]),
+  resilienceScore: integer("resilience_score").notNull().default(50),
+  status: text("status").notNull().default("completed"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("rt_type_idx").on(table.testType),
+  index("rt_score_idx").on(table.resilienceScore),
+]);
+export type ResilienceTest = typeof resilienceTests.$inferSelect;
+
+// --- Realtime Event Log: nervous system audit trail ---
+
+export const realtimeEventLog = pgTable("realtime_event_log", {
+  id: serial("id").primaryKey(),
+  eventType: text("event_type").notNull(),
+  agentCodename: text("agent_codename"),
+  channel: text("channel").notNull(),
+  payload: jsonb("payload").$type<Record<string, any>>().notNull().default({}),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("rel_event_type_idx").on(table.eventType),
+  index("rel_agent_idx").on(table.agentCodename),
+  index("rel_created_idx").on(table.createdAt),
+]);
+export type RealtimeEvent = typeof realtimeEventLog.$inferSelect;
+
+// --- Dashboard Context States: adaptive CEO surface ---
+
+export const dashboardContextStates = pgTable("dashboard_context_states", {
+  id: serial("id").primaryKey(),
+  contextMode: text("context_mode").notNull(),
+  activeLayers: jsonb("active_layers").$type<string[]>().notNull().default([]),
+  suppressedLayers: jsonb("suppressed_layers").$type<string[]>().notNull().default([]),
+  triggerReason: text("trigger_reason").notNull(),
+  triggerData: jsonb("trigger_data").$type<Record<string, any>>().notNull().default({}),
+  activeFrom: timestamp("active_from").notNull().defaultNow(),
+  activeUntil: timestamp("active_until"),
+  isCurrent: boolean("is_current").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("dcs_mode_idx").on(table.contextMode),
+  index("dcs_current_idx").on(table.isCurrent),
+]);
+export type DashboardContextState = typeof dashboardContextStates.$inferSelect;
+
+// ============================================
+// SOVEREIGN COMPANY PROTOCOL v11 — THE ANTICIPATORY ENTERPRISE
+// ============================================
+
+// --- Agent Negotiations: structured conflict resolution ---
+
+export const agentNegotiations = pgTable("agent_negotiations", {
+  id: serial("id").primaryKey(),
+  initiatorAgent: text("initiator_agent").notNull(),
+  respondentAgent: text("respondent_agent").notNull(),
+  conflictType: text("conflict_type").notNull(),
+  subject: text("subject").notNull(),
+  initiatorPosition: text("initiator_position").notNull(),
+  initiatorEvidence: jsonb("initiator_evidence").$type<string[]>().notNull().default([]),
+  respondentPosition: text("respondent_position"),
+  respondentEvidence: jsonb("respondent_evidence").$type<string[]>().notNull().default([]),
+  negotiationRounds: jsonb("negotiation_rounds").$type<Array<{
+    round: number;
+    agentCodename: string;
+    proposal: string;
+    concessions: string[];
+    reasoning: string;
+  }>>().notNull().default([]),
+  resolution: text("resolution"),
+  resolutionType: text("resolution_type"),
+  compromiseDetails: jsonb("compromise_details").$type<Record<string, any>>(),
+  ceoOverride: text("ceo_override"),
+  status: text("status").notNull().default("open"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  resolvedAt: timestamp("resolved_at"),
+}, (table) => [
+  index("an_status_idx").on(table.status),
+  index("an_initiator_idx").on(table.initiatorAgent),
+  index("an_respondent_idx").on(table.respondentAgent),
+]);
+export type AgentNegotiation = typeof agentNegotiations.$inferSelect;
+
+// --- Revenue Attribution Nodes: causal chain to revenue ---
+
+export const revenueAttributionNodes = pgTable("revenue_attribution_nodes", {
+  id: serial("id").primaryKey(),
+  correlationId: text("correlation_id").notNull(),
+  agentCodename: text("agent_codename").notNull(),
+  actionType: text("action_type").notNull(),
+  actionDescription: text("action_description").notNull(),
+  revenueImpactCents: integer("revenue_impact_cents"),
+  attributionWeight: numeric("attribution_weight").notNull().default("0"),
+  upstreamNodeId: integer("upstream_node_id"),
+  downstreamNodeIds: jsonb("downstream_node_ids").$type<number[]>().notNull().default([]),
+  metadata: jsonb("metadata").$type<Record<string, any>>().notNull().default({}),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("ran_correlation_idx").on(table.correlationId),
+  index("ran_agent_idx").on(table.agentCodename),
+  index("ran_action_idx").on(table.actionType),
+]);
+export type RevenueAttributionNode = typeof revenueAttributionNodes.$inferSelect;
+
+// --- Revenue Attribution Reports: periodic ROI summaries ---
+
+export const revenueAttributionReports = pgTable("revenue_attribution_reports", {
+  id: serial("id").primaryKey(),
+  reportPeriod: text("report_period").notNull(),
+  periodStart: timestamp("period_start").notNull(),
+  periodEnd: timestamp("period_end").notNull(),
+  agentContributions: jsonb("agent_contributions").$type<Array<{
+    agentCodename: string;
+    totalRevenue: number;
+    actionCount: number;
+    avgAttribution: number;
+    roi: number;
+  }>>().notNull().default([]),
+  topChains: jsonb("top_chains").$type<Array<{
+    correlationId: string;
+    totalRevenue: number;
+    chainLength: number;
+    agents: string[];
+  }>>().notNull().default([]),
+  totalAttributedRevenue: integer("total_attributed_revenue").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("rar_period_idx").on(table.reportPeriod),
+]);
+export type RevenueAttributionReport = typeof revenueAttributionReports.$inferSelect;
+
+// --- CEO Cognitive Model: learned decision-making model ---
+
+export const ceoCognitiveModel = pgTable("ceo_cognitive_model", {
+  id: serial("id").primaryKey(),
+  modelVersion: integer("model_version").notNull().default(1),
+  decisionCategory: text("decision_category").notNull(),
+  learnedPreferences: jsonb("learned_preferences").$type<{
+    riskTolerance: number;
+    timeHorizon: string;
+    agentWeighting: Record<string, number>;
+    domainExpertise: Record<string, number>;
+  }>().notNull().default({ riskTolerance: 50, timeHorizon: "medium", agentWeighting: {}, domainExpertise: {} }),
+  decisionPatterns: jsonb("decision_patterns").$type<Array<{
+    pattern: string;
+    frequency: number;
+    confidence: number;
+  }>>().notNull().default([]),
+  shadowAccuracy: numeric("shadow_accuracy").notNull().default("0"),
+  shadowPredictions: integer("shadow_predictions").notNull().default(0),
+  shadowCorrect: integer("shadow_correct").notNull().default(0),
+  autopilotEligible: boolean("autopilot_eligible").notNull().default(false),
+  autopilotEnabled: boolean("autopilot_enabled").notNull().default(false),
+  lastTrainedAt: timestamp("last_trained_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("ccm_category_idx").on(table.decisionCategory),
+  index("ccm_autopilot_idx").on(table.autopilotEligible),
+]);
+export type CEOCognitiveModelEntry = typeof ceoCognitiveModel.$inferSelect;
+
+// --- CEO Shadow Predictions: model vs CEO actual ---
+
+export const ceoShadowPredictions = pgTable("ceo_shadow_predictions", {
+  id: serial("id").primaryKey(),
+  decisionCategory: text("decision_category").notNull(),
+  decisionContext: jsonb("decision_context").$type<Record<string, any>>().notNull().default({}),
+  modelPrediction: text("model_prediction").notNull(),
+  modelReasoning: text("model_reasoning").notNull(),
+  modelConfidence: integer("model_confidence").notNull().default(50),
+  ceoActualDecision: text("ceo_actual_decision"),
+  wasCorrect: boolean("was_correct"),
+  divergenceReason: text("divergence_reason"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  resolvedAt: timestamp("resolved_at"),
+}, (table) => [
+  index("csp_category_idx").on(table.decisionCategory),
+  index("csp_correct_idx").on(table.wasCorrect),
+]);
+export type CEOShadowPrediction = typeof ceoShadowPredictions.$inferSelect;
+
+// --- Knowledge Freshness: temporal decay for patterns ---
+
+export const knowledgeFreshness = pgTable("knowledge_freshness", {
+  id: serial("id").primaryKey(),
+  patternId: text("pattern_id").notNull(),
+  patternName: text("pattern_name").notNull(),
+  sourceAgent: text("source_agent").notNull(),
+  freshnessScore: numeric("freshness_score").notNull().default("100"),
+  halfLifeDays: integer("half_life_days").notNull().default(90),
+  lastValidatedAt: timestamp("last_validated_at").notNull().defaultNow(),
+  lastUsedAt: timestamp("last_used_at"),
+  usageCount: integer("usage_count").notNull().default(0),
+  seasonalTags: jsonb("seasonal_tags").$type<string[]>().notNull().default([]),
+  isZombie: boolean("is_zombie").notNull().default(false),
+  lineageParentId: text("lineage_parent_id"),
+  status: text("status").notNull().default("active"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("kf_pattern_idx").on(table.patternId),
+  index("kf_status_idx").on(table.status),
+  index("kf_zombie_idx").on(table.isZombie),
+  index("kf_agent_idx").on(table.sourceAgent),
+]);
+export type KnowledgeFreshnessEntry = typeof knowledgeFreshness.$inferSelect;
+
+// --- Agent Resource Quotas: per-agent limits ---
+
+export const agentResourceQuotas = pgTable("agent_resource_quotas", {
+  id: serial("id").primaryKey(),
+  agentCodename: text("agent_codename").notNull().unique(),
+  dailyActionLimit: integer("daily_action_limit").notNull().default(200),
+  dailyActionsUsed: integer("daily_actions_used").notNull().default(0),
+  dailyCostLimitCents: integer("daily_cost_limit_cents").notNull().default(50000),
+  dailyCostUsedCents: integer("daily_cost_used_cents").notNull().default(0),
+  hourlyRateLimit: integer("hourly_rate_limit").notNull().default(50),
+  hourlyActionsUsed: integer("hourly_actions_used").notNull().default(0),
+  circuitBreakerThreshold: numeric("circuit_breaker_threshold").notNull().default("30"),
+  circuitBreakerTripped: boolean("circuit_breaker_tripped").notNull().default(false),
+  circuitBreakerCooldownUntil: timestamp("circuit_breaker_cooldown_until"),
+  burstDetected: boolean("burst_detected").notNull().default(false),
+  burstThrottledUntil: timestamp("burst_throttled_until"),
+  lastResetAt: timestamp("last_reset_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("arq_agent_idx").on(table.agentCodename),
+  index("arq_circuit_idx").on(table.circuitBreakerTripped),
+]);
+export type AgentResourceQuota = typeof agentResourceQuotas.$inferSelect;
+
+// --- Resource Quota Events: enforcement log ---
+
+export const resourceQuotaEvents = pgTable("resource_quota_events", {
+  id: serial("id").primaryKey(),
+  agentCodename: text("agent_codename").notNull(),
+  eventType: text("event_type").notNull(),
+  details: jsonb("details").$type<Record<string, any>>().notNull().default({}),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("rqe_agent_idx").on(table.agentCodename),
+  index("rqe_type_idx").on(table.eventType),
+]);
+export type ResourceQuotaEvent = typeof resourceQuotaEvents.$inferSelect;
+
+// --- Decision Causality Nodes: DAG of decision dependencies ---
+
+export const decisionCausalityNodes = pgTable("decision_causality_nodes", {
+  id: serial("id").primaryKey(),
+  decisionId: text("decision_id").notNull().unique(),
+  agentCodename: text("agent_codename").notNull(),
+  decisionType: text("decision_type").notNull(),
+  decisionSummary: text("decision_summary").notNull(),
+  parentDecisionIds: jsonb("parent_decision_ids").$type<string[]>().notNull().default([]),
+  childDecisionIds: jsonb("child_decision_ids").$type<string[]>().notNull().default([]),
+  depth: integer("depth").notNull().default(0),
+  blastRadius: integer("blast_radius").notNull().default(0),
+  outcome: text("outcome"),
+  rollbackEligible: boolean("rollback_eligible").notNull().default(false),
+  rolledBackAt: timestamp("rolled_back_at"),
+  rollbackReason: text("rollback_reason"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("dcn_decision_idx").on(table.decisionId),
+  index("dcn_agent_idx").on(table.agentCodename),
+  index("dcn_outcome_idx").on(table.outcome),
+  index("dcn_depth_idx").on(table.depth),
+]);
+export type DecisionCausalityNode = typeof decisionCausalityNodes.$inferSelect;
+
+// --- Delegation Tokens: time-bounded authority grants ---
+
+export const delegationTokens = pgTable("delegation_tokens", {
+  id: serial("id").primaryKey(),
+  agentCodename: text("agent_codename").notNull(),
+  scope: text("scope").notNull(),
+  authorityLevel: integer("authority_level").notNull().default(1),
+  spendingLimitCents: integer("spending_limit_cents"),
+  conditions: jsonb("conditions").$type<Record<string, any>>().notNull().default({}),
+  grantedBy: text("granted_by").notNull().default("ceo"),
+  reason: text("reason").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  isStanding: boolean("is_standing").notNull().default(false),
+  autoRenewDays: integer("auto_renew_days"),
+  actionsTaken: integer("actions_taken").notNull().default(0),
+  actionsSucceeded: integer("actions_succeeded").notNull().default(0),
+  actionsFailed: integer("actions_failed").notNull().default(0),
+  revoked: boolean("revoked").notNull().default(false),
+  revokedAt: timestamp("revoked_at"),
+  revocationReason: text("revocation_reason"),
+  status: text("status").notNull().default("active"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("dt_agent_idx").on(table.agentCodename),
+  index("dt_status_idx").on(table.status),
+  index("dt_scope_idx").on(table.scope),
+  index("dt_expires_idx").on(table.expiresAt),
+]);
+export type DelegationToken = typeof delegationTokens.$inferSelect;
+
+// --- Predictive Staged Actions: anticipatory execution ---
+
+export const predictiveStagedActions = pgTable("predictive_staged_actions", {
+  id: serial("id").primaryKey(),
+  predictionSource: text("prediction_source").notNull(),
+  triggerPattern: text("trigger_pattern").notNull(),
+  triggerConfidence: integer("trigger_confidence").notNull().default(50),
+  stagedAgent: text("staged_agent").notNull(),
+  stagedAction: text("staged_action").notNull(),
+  stagedActionDetails: jsonb("staged_action_details").$type<Record<string, any>>().notNull().default({}),
+  predictedTriggerWindow: jsonb("predicted_trigger_window").$type<{ from: string; to: string }>().notNull().default({ from: "", to: "" }),
+  status: text("status").notNull().default("staged"),
+  triggerDetectedAt: timestamp("trigger_detected_at"),
+  executedAt: timestamp("executed_at"),
+  executionResult: jsonb("execution_result").$type<Record<string, any>>(),
+  cancelledReason: text("cancelled_reason"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  expiresAt: timestamp("expires_at").notNull(),
+}, (table) => [
+  index("psa_status_idx").on(table.status),
+  index("psa_agent_idx").on(table.stagedAgent),
+  index("psa_expires_idx").on(table.expiresAt),
+]);
+export type PredictiveStagedAction = typeof predictiveStagedActions.$inferSelect;
+
+// --- Temporal Prediction Patterns: learned cause-effect ---
+
+export const temporalPredictionPatterns = pgTable("temporal_prediction_patterns", {
+  id: serial("id").primaryKey(),
+  causeSignal: text("cause_signal").notNull(),
+  causeAgent: text("cause_agent").notNull(),
+  effectSignal: text("effect_signal").notNull(),
+  effectAgent: text("effect_agent").notNull(),
+  avgDelayHours: numeric("avg_delay_hours").notNull().default("48"),
+  correlationStrength: numeric("correlation_strength").notNull().default("0.5"),
+  sampleCount: integer("sample_count").notNull().default(0),
+  lastTriggeredAt: timestamp("last_triggered_at"),
+  lastCorrect: boolean("last_correct"),
+  accuracyRate: numeric("accuracy_rate").notNull().default("0"),
+  autoStageEnabled: boolean("auto_stage_enabled").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("tpp_cause_idx").on(table.causeSignal),
+  index("tpp_effect_idx").on(table.effectSignal),
+  index("tpp_auto_idx").on(table.autoStageEnabled),
+]);
+export type TemporalPredictionPattern = typeof temporalPredictionPatterns.$inferSelect;
+
+// ============================================
+// SOVEREIGN COMPANY PROTOCOL v12 — THE REAL RUNTIME
+// ============================================
+
+// --- Agent Runtime State: persistent lifecycle ---
+
+export const agentRuntimeState = pgTable("agent_runtime_state", {
+  id: serial("id").primaryKey(),
+  agentCodename: text("agent_codename").notNull().unique(),
+  lifecycleState: text("lifecycle_state").notNull().default("initializing"),
+  currentTask: text("current_task"),
+  currentTaskStartedAt: timestamp("current_task_started_at"),
+  waitingFor: text("waiting_for"),
+  waitingSince: timestamp("waiting_since"),
+  persistentContext: jsonb("persistent_context").$type<Record<string, any>>().notNull().default({}),
+  memoryBudgetBytes: integer("memory_budget_bytes").notNull().default(1048576),
+  memoryUsedBytes: integer("memory_used_bytes").notNull().default(0),
+  executionTimeLimitMs: integer("execution_time_limit_ms").notNull().default(30000),
+  lastHeartbeatAt: timestamp("last_heartbeat_at").notNull().defaultNow(),
+  heartbeatIntervalMs: integer("heartbeat_interval_ms").notNull().default(30000),
+  consecutiveFailures: integer("consecutive_failures").notNull().default(0),
+  maxConsecutiveFailures: integer("max_consecutive_failures").notNull().default(5),
+  supervisorAgent: text("supervisor_agent"),
+  restartPolicy: text("restart_policy").notNull().default("restart"),
+  restartCount: integer("restart_count").notNull().default(0),
+  lastRestartAt: timestamp("last_restart_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("ars_state_idx").on(table.lifecycleState),
+  index("ars_heartbeat_idx").on(table.lastHeartbeatAt),
+]);
+export type AgentRuntimeStateEntry = typeof agentRuntimeState.$inferSelect;
+
+// --- Event Mesh Events: real pub/sub ---
+
+export const eventMeshEvents = pgTable("event_mesh_events", {
+  id: serial("id").primaryKey(),
+  eventId: text("event_id").notNull().unique(),
+  channel: text("channel").notNull(),
+  eventType: text("event_type").notNull(),
+  priority: integer("priority").notNull().default(5),
+  payload: jsonb("payload").$type<Record<string, any>>().notNull().default({}),
+  publisher: text("publisher").notNull(),
+  orgId: integer("org_id"),
+  requiresAck: boolean("requires_ack").notNull().default(false),
+  ackedBy: jsonb("acked_by").$type<string[]>().notNull().default([]),
+  deadLettered: boolean("dead_lettered").notNull().default(false),
+  deadLetterReason: text("dead_letter_reason"),
+  retryCount: integer("retry_count").notNull().default(0),
+  maxRetries: integer("max_retries").notNull().default(3),
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("eme_channel_idx").on(table.channel),
+  index("eme_type_idx").on(table.eventType),
+  index("eme_priority_idx").on(table.priority),
+  index("eme_org_idx").on(table.orgId),
+  index("eme_dead_idx").on(table.deadLettered),
+  index("eme_created_idx").on(table.createdAt),
+]);
+export type EventMeshEvent = typeof eventMeshEvents.$inferSelect;
+
+// --- Event Mesh Subscriptions ---
+
+export const eventMeshSubscriptions = pgTable("event_mesh_subscriptions", {
+  id: serial("id").primaryKey(),
+  subscriber: text("subscriber").notNull(),
+  channelPattern: text("channel_pattern").notNull(),
+  filterConditions: jsonb("filter_conditions").$type<Record<string, any>>().notNull().default({}),
+  callbackType: text("callback_type").notNull().default("internal"),
+  isActive: boolean("is_active").notNull().default(true),
+  lastEventAt: timestamp("last_event_at"),
+  eventsProcessed: integer("events_processed").notNull().default(0),
+  eventsFailed: integer("events_failed").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("ems_subscriber_idx").on(table.subscriber),
+  index("ems_channel_idx").on(table.channelPattern),
+]);
+export type EventMeshSubscription = typeof eventMeshSubscriptions.$inferSelect;
+
+// --- Outcome Verification Contracts ---
+
+export const outcomeVerificationContracts = pgTable("outcome_verification_contracts", {
+  id: serial("id").primaryKey(),
+  actionId: text("action_id").notNull(),
+  agentCodename: text("agent_codename").notNull(),
+  actionType: text("action_type").notNull(),
+  actionDescription: text("action_description").notNull(),
+  claimedOutcome: text("claimed_outcome").notNull(),
+  claimedSuccess: boolean("claimed_success").notNull().default(true),
+  verificationMethod: text("verification_method").notNull(),
+  verificationConfig: jsonb("verification_config").$type<Record<string, any>>().notNull().default({}),
+  verifyAfterMinutes: integer("verify_after_minutes").notNull().default(60),
+  verifyStages: jsonb("verify_stages").$type<Array<{ stage: string; minutes: number }>>().notNull().default([]),
+  currentStage: text("current_stage").notNull().default("pending"),
+  verifiedOutcome: text("verified_outcome"),
+  verifiedSuccess: boolean("verified_success"),
+  discrepancyDetected: boolean("discrepancy_detected").notNull().default(false),
+  discrepancyDetails: text("discrepancy_details"),
+  orgId: integer("org_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  nextVerificationAt: timestamp("next_verification_at"),
+  completedAt: timestamp("completed_at"),
+}, (table) => [
+  index("ovc_agent_idx").on(table.agentCodename),
+  index("ovc_stage_idx").on(table.currentStage),
+  index("ovc_next_idx").on(table.nextVerificationAt),
+  index("ovc_discrepancy_idx").on(table.discrepancyDetected),
+]);
+export type OutcomeVerificationContract = typeof outcomeVerificationContracts.$inferSelect;
+
+// --- Saga Instances: distributed transactions ---
+
+export const sagaInstances = pgTable("saga_instances", {
+  id: serial("id").primaryKey(),
+  sagaId: text("saga_id").notNull().unique(),
+  sagaName: text("saga_name").notNull(),
+  initiatorAgent: text("initiator_agent").notNull(),
+  status: text("status").notNull().default("running"),
+  steps: jsonb("steps").$type<Array<{
+    order: number;
+    agent: string;
+    action: string;
+    compensatingAction: string;
+    status: string;
+    result?: Record<string, any>;
+    compensationResult?: Record<string, any>;
+  }>>().notNull().default([]),
+  currentStep: integer("current_step").notNull().default(0),
+  totalSteps: integer("total_steps").notNull().default(0),
+  idempotencyKey: text("idempotency_key").notNull(),
+  timeoutMs: integer("timeout_ms").notNull().default(300000),
+  parentSagaId: text("parent_saga_id"),
+  orgId: integer("org_id"),
+  startedAt: timestamp("started_at").notNull().defaultNow(),
+  completedAt: timestamp("completed_at"),
+  compensatedAt: timestamp("compensated_at"),
+  error: text("error"),
+}, (table) => [
+  index("si_status_idx").on(table.status),
+  index("si_initiator_idx").on(table.initiatorAgent),
+  index("si_idempotency_idx").on(table.idempotencyKey),
+  index("si_parent_idx").on(table.parentSagaId),
+]);
+export type SagaInstance = typeof sagaInstances.$inferSelect;
+
+// --- Agent Versions: personality versioning ---
+
+export const agentVersions = pgTable("agent_versions", {
+  id: serial("id").primaryKey(),
+  agentCodename: text("agent_codename").notNull(),
+  versionNumber: integer("version_number").notNull(),
+  personalityPrompt: text("personality_prompt").notNull(),
+  ownedServices: jsonb("owned_services").$type<string[]>().notNull().default([]),
+  behaviorConfig: jsonb("behavior_config").$type<Record<string, any>>().notNull().default({}),
+  changeDescription: text("change_description").notNull(),
+  isActive: boolean("is_active").notNull().default(false),
+  canaryWeight: integer("canary_weight").notNull().default(0),
+  performanceMetrics: jsonb("performance_metrics").$type<Record<string, any>>().notNull().default({}),
+  regressionTestPassed: boolean("regression_test_passed"),
+  regressionTestResults: jsonb("regression_test_results").$type<Record<string, any>>(),
+  deployedAt: timestamp("deployed_at"),
+  rolledBackAt: timestamp("rolled_back_at"),
+  createdBy: text("created_by").notNull().default("system"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("av_agent_idx").on(table.agentCodename),
+  index("av_active_idx").on(table.isActive),
+]);
+export type AgentVersion = typeof agentVersions.$inferSelect;
+
+// --- Trust Enforcement Log ---
+
+export const trustEnforcementLog = pgTable("trust_enforcement_log", {
+  id: serial("id").primaryKey(),
+  agentCodename: text("agent_codename").notNull(),
+  actionType: text("action_type").notNull(),
+  requiredTrust: integer("required_trust").notNull(),
+  actualTrust: integer("actual_trust").notNull(),
+  decision: text("decision").notNull(),
+  approvalRequestedAt: timestamp("approval_requested_at"),
+  approvalResolvedAt: timestamp("approval_resolved_at"),
+  approvedBy: text("approved_by"),
+  actionOutcome: text("action_outcome"),
+  trustDelta: integer("trust_delta"),
+  orgId: integer("org_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("tel_agent_idx").on(table.agentCodename),
+  index("tel_decision_idx").on(table.decision),
+  index("tel_org_idx").on(table.orgId),
+]);
+export type TrustEnforcementLogEntry = typeof trustEnforcementLog.$inferSelect;
+
+// --- Integration Credentials: secure vault ---
+
+export const integrationCredentials = pgTable("integration_credentials", {
+  id: serial("id").primaryKey(),
+  serviceName: text("service_name").notNull(),
+  credentialType: text("credential_type").notNull(),
+  encryptedValue: text("encrypted_value").notNull(),
+  allowedAgents: jsonb("allowed_agents").$type<string[]>().notNull().default([]),
+  rateLimitPerMinute: integer("rate_limit_per_minute").notNull().default(60),
+  rateLimitUsed: integer("rate_limit_used").notNull().default(0),
+  rateLimitResetAt: timestamp("rate_limit_reset_at").notNull().defaultNow(),
+  circuitBreakerFailures: integer("circuit_breaker_failures").notNull().default(0),
+  circuitBreakerThreshold: integer("circuit_breaker_threshold").notNull().default(5),
+  circuitBreakerOpen: boolean("circuit_breaker_open").notNull().default(false),
+  circuitBreakerResetAt: timestamp("circuit_breaker_reset_at"),
+  lastUsedAt: timestamp("last_used_at"),
+  orgId: integer("org_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("ic_service_idx").on(table.serviceName),
+  index("ic_circuit_idx").on(table.circuitBreakerOpen),
+]);
+export type IntegrationCredential = typeof integrationCredentials.$inferSelect;
+
+// --- Integration Execution Log ---
+
+export const integrationExecutionLog = pgTable("integration_execution_log", {
+  id: serial("id").primaryKey(),
+  agentCodename: text("agent_codename").notNull(),
+  serviceName: text("service_name").notNull(),
+  method: text("method").notNull(),
+  endpoint: text("endpoint").notNull(),
+  requestSummary: text("request_summary"),
+  responseStatus: integer("response_status"),
+  responseSummary: text("response_summary"),
+  costCents: integer("cost_cents").notNull().default(0),
+  latencyMs: integer("latency_ms"),
+  success: boolean("success"),
+  error: text("error"),
+  retryCount: integer("retry_count").notNull().default(0),
+  rollbackAction: text("rollback_action"),
+  rollbackExecuted: boolean("rollback_executed").notNull().default(false),
+  orgId: integer("org_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("iel_agent_idx").on(table.agentCodename),
+  index("iel_service_idx").on(table.serviceName),
+  index("iel_success_idx").on(table.success),
+]);
+export type IntegrationExecutionLogEntry = typeof integrationExecutionLog.$inferSelect;
+
+// --- Tenant Agent Config: per-org agent customization ---
+
+export const tenantAgentConfig = pgTable("tenant_agent_config", {
+  id: serial("id").primaryKey(),
+  orgId: integer("org_id").notNull(),
+  agentCodename: text("agent_codename").notNull(),
+  trustScore: integer("trust_score").notNull().default(50),
+  trustFloor: integer("trust_floor").notNull().default(20),
+  trustCeiling: integer("trust_ceiling").notNull().default(100),
+  enabled: boolean("enabled").notNull().default(true),
+  customPersonalityOverride: text("custom_personality_override"),
+  customQuotas: jsonb("custom_quotas").$type<Record<string, any>>().notNull().default({}),
+  customPermissions: jsonb("custom_permissions").$type<string[]>().notNull().default([]),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("tac_org_idx").on(table.orgId),
+  index("tac_agent_idx").on(table.agentCodename),
+]);
+export type TenantAgentConfigEntry = typeof tenantAgentConfig.$inferSelect;
+
+// ============================================
+// SOVEREIGN COMPANY PROTOCOL V13 — THE SENTIENT ENTERPRISE
+// ============================================
+
+// --- Pillar 1: Cognitive Memory Layer ---
+
+export const agentEpisodicMemory = pgTable("agent_episodic_memory", {
+  id: serial("id").primaryKey(),
+  agentCodename: text("agent_codename").notNull(),
+  episodeId: text("episode_id").notNull().unique(),
+  context: jsonb("context").$type<Record<string, any>>().notNull().default({}),
+  action: text("action").notNull(),
+  outcome: text("outcome").notNull(),
+  outcomeSuccess: boolean("outcome_success").notNull().default(true),
+  emotionalValence: integer("emotional_valence").notNull().default(0), // -100 to 100
+  relatedEntities: jsonb("related_entities").$type<Array<{ type: string; id: string; name?: string }>>().notNull().default([]),
+  tags: jsonb("tags").$type<string[]>().notNull().default([]),
+  relevanceScore: integer("relevance_score").notNull().default(100), // decays over time
+  accessCount: integer("access_count").notNull().default(0),
+  lastAccessedAt: timestamp("last_accessed_at"),
+  orgId: integer("org_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("aem_agent_idx").on(table.agentCodename),
+  index("aem_relevance_idx").on(table.relevanceScore),
+  index("aem_tags_idx").on(table.tags),
+  index("aem_org_idx").on(table.orgId),
+  index("aem_created_idx").on(table.createdAt),
+]);
+export type AgentEpisodicMemoryEntry = typeof agentEpisodicMemory.$inferSelect;
+
+export const agentSemanticMemory = pgTable("agent_semantic_memory", {
+  id: serial("id").primaryKey(),
+  agentCodename: text("agent_codename").notNull(),
+  factId: text("fact_id").notNull().unique(),
+  fact: text("fact").notNull(),
+  category: text("category").notNull(), // market, lead_behavior, pricing, compliance, etc
+  confidence: integer("confidence").notNull().default(50), // 0-100
+  sourceEpisodes: jsonb("source_episodes").$type<string[]>().notNull().default([]),
+  reinforcementCount: integer("reinforcement_count").notNull().default(1),
+  contradictionCount: integer("contradiction_count").notNull().default(0),
+  decayScore: integer("decay_score").notNull().default(100),
+  isShared: boolean("is_shared").notNull().default(false),
+  sharedWithAgents: jsonb("shared_with_agents").$type<string[]>().notNull().default([]),
+  orgId: integer("org_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("asm_agent_idx").on(table.agentCodename),
+  index("asm_category_idx").on(table.category),
+  index("asm_confidence_idx").on(table.confidence),
+  index("asm_shared_idx").on(table.isShared),
+  index("asm_org_idx").on(table.orgId),
+]);
+export type AgentSemanticMemoryEntry = typeof agentSemanticMemory.$inferSelect;
+
+export const agentWorkingMemoryV13 = pgTable("agent_working_memory_v13", {
+  id: serial("id").primaryKey(),
+  sagaId: text("saga_id"),
+  agentCodename: text("agent_codename").notNull(),
+  key: text("key").notNull(),
+  value: jsonb("value").$type<any>().notNull(),
+  ttlSeconds: integer("ttl_seconds").notNull().default(3600),
+  expiresAt: timestamp("expires_at").notNull(),
+  orgId: integer("org_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("awm_agent_idx").on(table.agentCodename),
+  index("awm_saga_idx").on(table.sagaId),
+  index("awm_expires_idx").on(table.expiresAt),
+]);
+export type AgentWorkingMemoryEntry = typeof agentWorkingMemoryV13.$inferSelect;
+
+export const memoryAccessLog = pgTable("memory_access_log", {
+  id: serial("id").primaryKey(),
+  agentCodename: text("agent_codename").notNull(),
+  memoryType: text("memory_type").notNull(), // episodic, semantic, working
+  memoryId: text("memory_id").notNull(),
+  query: text("query"),
+  relevanceReturned: integer("relevance_returned"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("mal_agent_idx").on(table.agentCodename),
+  index("mal_type_idx").on(table.memoryType),
+]);
+export type MemoryAccessLogEntry = typeof memoryAccessLog.$inferSelect;
+
+// --- Pillar 2: Adaptive Strategy Engine ---
+
+export const agentStrategies = pgTable("agent_strategies", {
+  id: serial("id").primaryKey(),
+  strategyId: text("strategy_id").notNull().unique(),
+  agentCodename: text("agent_codename").notNull(),
+  name: text("name").notNull(),
+  description: text("description").notNull(),
+  config: jsonb("config").$type<Record<string, any>>().notNull().default({}),
+  contextWeights: jsonb("context_weights").$type<Record<string, number>>().notNull().default({}),
+  trialCount: integer("trial_count").notNull().default(0),
+  successCount: integer("success_count").notNull().default(0),
+  successRate: numeric("success_rate").notNull().default("0"),
+  avgOutcomeValue: numeric("avg_outcome_value").notNull().default("0"),
+  thompsonAlpha: integer("thompson_alpha").notNull().default(1), // successes + 1
+  thompsonBeta: integer("thompson_beta").notNull().default(1), // failures + 1
+  minTrialsBeforeCompare: integer("min_trials_before_compare").notNull().default(10),
+  isActive: boolean("is_active").notNull().default(true),
+  parentStrategyId: text("parent_strategy_id"),
+  mutationDescription: text("mutation_description"),
+  orgId: integer("org_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("as_agent_idx").on(table.agentCodename),
+  index("as_active_idx").on(table.isActive),
+  index("as_parent_idx").on(table.parentStrategyId),
+  index("as_org_idx").on(table.orgId),
+]);
+export type AgentStrategyEntry = typeof agentStrategies.$inferSelect;
+
+export const strategyAssignments = pgTable("strategy_assignments", {
+  id: serial("id").primaryKey(),
+  strategyId: text("strategy_id").notNull(),
+  agentCodename: text("agent_codename").notNull(),
+  entityType: text("entity_type").notNull(), // lead, deal, property
+  entityId: text("entity_id").notNull(),
+  contextSnapshot: jsonb("context_snapshot").$type<Record<string, any>>().notNull().default({}),
+  outcome: text("outcome"),
+  outcomeValue: numeric("outcome_value"),
+  outcomeRecordedAt: timestamp("outcome_recorded_at"),
+  orgId: integer("org_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("sa_strategy_idx").on(table.strategyId),
+  index("sa_entity_idx").on(table.entityType, table.entityId),
+  index("sa_agent_idx").on(table.agentCodename),
+  index("sa_org_idx").on(table.orgId),
+]);
+export type StrategyAssignmentEntry = typeof strategyAssignments.$inferSelect;
+
+export const strategyProposals = pgTable("strategy_proposals", {
+  id: serial("id").primaryKey(),
+  proposalId: text("proposal_id").notNull().unique(),
+  agentCodename: text("agent_codename").notNull(),
+  proposedName: text("proposed_name").notNull(),
+  proposedConfig: jsonb("proposed_config").$type<Record<string, any>>().notNull().default({}),
+  rationale: text("rationale").notNull(),
+  evidenceEpisodes: jsonb("evidence_episodes").$type<string[]>().notNull().default([]),
+  parentStrategyId: text("parent_strategy_id"),
+  status: text("status").notNull().default("pending"), // pending, approved, rejected, testing
+  reviewedBy: text("reviewed_by"),
+  reviewNotes: text("review_notes"),
+  orgId: integer("org_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  reviewedAt: timestamp("reviewed_at"),
+}, (table) => [
+  index("sp_agent_idx").on(table.agentCodename),
+  index("sp_status_idx").on(table.status),
+  index("sp_org_idx").on(table.orgId),
+]);
+export type StrategyProposalEntry = typeof strategyProposals.$inferSelect;
+
+// --- Pillar 3: Agent Collaboration Protocol ---
+
+export const agentDialogues = pgTable("agent_dialogues", {
+  id: serial("id").primaryKey(),
+  dialogueId: text("dialogue_id").notNull().unique(),
+  topic: text("topic").notNull(),
+  participants: jsonb("participants").$type<string[]>().notNull().default([]),
+  consensusMechanism: text("consensus_mechanism").notNull().default("majority"), // majority, weighted, unanimous, ceo_tiebreak
+  status: text("status").notNull().default("open"), // open, consensus_reached, escalated, closed
+  resolution: text("resolution"),
+  relatedEntityType: text("related_entity_type"),
+  relatedEntityId: text("related_entity_id"),
+  orgId: integer("org_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  resolvedAt: timestamp("resolved_at"),
+}, (table) => [
+  index("ad_status_v2_idx").on(table.status),
+  index("ad_org_idx").on(table.orgId),
+]);
+export type AgentDialogueEntry = typeof agentDialogues.$inferSelect;
+
+export const dialogueMessages = pgTable("dialogue_messages", {
+  id: serial("id").primaryKey(),
+  dialogueId: text("dialogue_id").notNull(),
+  fromAgent: text("from_agent").notNull(),
+  messageType: text("message_type").notNull(), // proposal, counter_proposal, objection, endorsement, withdrawal, evidence, vote
+  content: text("content").notNull(),
+  evidence: jsonb("evidence").$type<Record<string, any>>(),
+  vote: text("vote"), // approve, reject, abstain
+  confidence: integer("confidence"), // 0-100
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("dm_dialogue_idx").on(table.dialogueId),
+  index("dm_agent_idx").on(table.fromAgent),
+  index("dm_type_idx").on(table.messageType),
+]);
+export type DialogueMessageEntry = typeof dialogueMessages.$inferSelect;
+
+export const agentDelegations = pgTable("agent_delegations", {
+  id: serial("id").primaryKey(),
+  delegationId: text("delegation_id").notNull().unique(),
+  fromAgent: text("from_agent").notNull(),
+  toAgent: text("to_agent").notNull(),
+  task: text("task").notNull(),
+  taskContext: jsonb("task_context").$type<Record<string, any>>().notNull().default({}),
+  slaDeadline: timestamp("sla_deadline"),
+  slaQualityThreshold: integer("sla_quality_threshold"), // 0-100
+  status: text("status").notNull().default("pending"), // pending, accepted, in_progress, completed, failed, rejected
+  result: jsonb("result").$type<Record<string, any>>(),
+  qualityScore: integer("quality_score"),
+  orgId: integer("org_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  completedAt: timestamp("completed_at"),
+}, (table) => [
+  index("adl_from_idx").on(table.fromAgent),
+  index("adl_to_idx").on(table.toAgent),
+  index("adl_status_idx").on(table.status),
+  index("adl_org_idx").on(table.orgId),
+]);
+export type AgentDelegationEntry = typeof agentDelegations.$inferSelect;
+
+export const agentReputationVotes = pgTable("agent_reputation_votes", {
+  id: serial("id").primaryKey(),
+  voterAgent: text("voter_agent").notNull(),
+  subjectAgent: text("subject_agent").notNull(),
+  dimension: text("dimension").notNull(), // accuracy, reliability, speed, creativity, collaboration
+  score: integer("score").notNull(), // 1-10
+  evidence: text("evidence"),
+  dialogueId: text("dialogue_id"),
+  delegationId: text("delegation_id"),
+  orgId: integer("org_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("arv_voter_idx").on(table.voterAgent),
+  index("arv_subject_idx").on(table.subjectAgent),
+  index("arv_dimension_idx").on(table.dimension),
+  index("arv_org_idx").on(table.orgId),
+]);
+export type AgentReputationVoteEntry = typeof agentReputationVotes.$inferSelect;
+
+export const agentSkillRegistry = pgTable("agent_skill_registry", {
+  id: serial("id").primaryKey(),
+  agentCodename: text("agent_codename").notNull(),
+  skillName: text("skill_name").notNull(),
+  skillDescription: text("skill_description").notNull(),
+  proficiency: integer("proficiency").notNull().default(50), // 0-100
+  avgLatencyMs: integer("avg_latency_ms"),
+  successRate: numeric("success_rate").notNull().default("0"),
+  totalInvocations: integer("total_invocations").notNull().default(0),
+  isAdvertised: boolean("is_advertised").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("asr_agent_idx").on(table.agentCodename),
+  index("asr_skill_idx").on(table.skillName),
+  index("asr_proficiency_idx").on(table.proficiency),
+]);
+export type AgentSkillRegistryEntry = typeof agentSkillRegistry.$inferSelect;
+
+// --- Pillar 4: Self-Healing Mesh ---
+
+export const agentHealthBaselines = pgTable("agent_health_baselines", {
+  id: serial("id").primaryKey(),
+  agentCodename: text("agent_codename").notNull(),
+  metric: text("metric").notNull(), // response_time, error_rate, memory_usage, throughput
+  p50: numeric("p50").notNull().default("0"),
+  p95: numeric("p95").notNull().default("0"),
+  p99: numeric("p99").notNull().default("0"),
+  sampleCount: integer("sample_count").notNull().default(0),
+  sampleWindow: text("sample_window").notNull().default("24h"),
+  lastCalculatedAt: timestamp("last_calculated_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("ahb_agent_idx").on(table.agentCodename),
+  index("ahb_metric_idx").on(table.metric),
+]);
+export type AgentHealthBaselineEntry = typeof agentHealthBaselines.$inferSelect;
+
+export const anomalyDetections = pgTable("anomaly_detections", {
+  id: serial("id").primaryKey(),
+  anomalyId: text("anomaly_id").notNull().unique(),
+  agentCodename: text("agent_codename").notNull(),
+  metric: text("metric").notNull(),
+  expectedValue: numeric("expected_value").notNull(),
+  actualValue: numeric("actual_value").notNull(),
+  deviationPercent: numeric("deviation_percent").notNull(),
+  severity: text("severity").notNull(), // info, warning, critical
+  correlatedEvents: jsonb("correlated_events").$type<string[]>().notNull().default([]),
+  rootCauseAnalysis: text("root_cause_analysis"),
+  autoResolved: boolean("auto_resolved").notNull().default(false),
+  resolvedAt: timestamp("resolved_at"),
+  orgId: integer("org_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("adet_agent_idx").on(table.agentCodename),
+  index("adet_severity_idx").on(table.severity),
+  index("adet_resolved_idx").on(table.autoResolved),
+  index("adet_org_idx").on(table.orgId),
+]);
+export type AnomalyDetectionEntry = typeof anomalyDetections.$inferSelect;
+
+export const degradationModes = pgTable("degradation_modes", {
+  id: serial("id").primaryKey(),
+  agentCodename: text("agent_codename").notNull(),
+  modeName: text("mode_name").notNull(),
+  capabilitiesAvailable: jsonb("capabilities_available").$type<string[]>().notNull().default([]),
+  capabilitiesDisabled: jsonb("capabilities_disabled").$type<string[]>().notNull().default([]),
+  triggerConditions: jsonb("trigger_conditions").$type<Record<string, any>>().notNull().default({}),
+  isCurrentMode: boolean("is_current_mode").notNull().default(false),
+  activatedAt: timestamp("activated_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("dgm_agent_idx").on(table.agentCodename),
+  index("dgm_current_idx").on(table.isCurrentMode),
+]);
+export type DegradationModeEntry = typeof degradationModes.$inferSelect;
+
+export const incidentPlaybooks = pgTable("incident_playbooks", {
+  id: serial("id").primaryKey(),
+  playbookId: text("playbook_id").notNull().unique(),
+  name: text("name").notNull(),
+  triggerPattern: jsonb("trigger_pattern").$type<Record<string, any>>().notNull(),
+  actions: jsonb("actions").$type<Array<{ type: string; target: string; params: Record<string, any> }>>().notNull().default([]),
+  cooldownMinutes: integer("cooldown_minutes").notNull().default(30),
+  lastTriggeredAt: timestamp("last_triggered_at"),
+  triggerCount: integer("trigger_count").notNull().default(0),
+  isEnabled: boolean("is_enabled").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("ip_enabled_idx").on(table.isEnabled),
+]);
+export type IncidentPlaybookEntry = typeof incidentPlaybooks.$inferSelect;
+
+export const chaosExperiments = pgTable("chaos_experiments", {
+  id: serial("id").primaryKey(),
+  experimentId: text("experiment_id").notNull().unique(),
+  name: text("name").notNull(),
+  experimentType: text("experiment_type").notNull(), // kill_agent, slow_integration, corrupt_event, network_partition
+  targetAgent: text("target_agent"),
+  targetService: text("target_service"),
+  config: jsonb("config").$type<Record<string, any>>().notNull().default({}),
+  durationMs: integer("duration_ms").notNull().default(60000),
+  status: text("status").notNull().default("pending"), // pending, running, completed, aborted
+  impactObserved: jsonb("impact_observed").$type<Record<string, any>>(),
+  recoveryTimeMs: integer("recovery_time_ms"),
+  lessonsLearned: text("lessons_learned"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+}, (table) => [
+  index("ce_status_idx").on(table.status),
+  index("ce_type_idx").on(table.experimentType),
+]);
+export type ChaosExperimentEntry = typeof chaosExperiments.$inferSelect;
+
+// --- Pillar 5: Governance & Compliance Brain ---
+
+export const governancePolicies = pgTable("governance_policies", {
+  id: serial("id").primaryKey(),
+  policyId: text("policy_id").notNull().unique(),
+  name: text("name").notNull(),
+  category: text("category").notNull(), // fair_housing, tcpa, dodd_frank, state_specific, internal
+  jurisdiction: text("jurisdiction"), // US, TX, CA, etc
+  ruleDsl: text("rule_dsl").notNull(), // WHEN ... THEN ... REQUIRE ...
+  ruleConfig: jsonb("rule_config").$type<Record<string, any>>().notNull().default({}),
+  severity: text("severity").notNull().default("warning"), // info, warning, block
+  effectiveDate: timestamp("effective_date").notNull().defaultNow(),
+  sunsetDate: timestamp("sunset_date"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("gp_category_idx").on(table.category),
+  index("gp_jurisdiction_idx").on(table.jurisdiction),
+  index("gp_active_idx").on(table.isActive),
+]);
+export type GovernancePolicyEntry = typeof governancePolicies.$inferSelect;
+
+export const policyEvaluations = pgTable("policy_evaluations", {
+  id: serial("id").primaryKey(),
+  evaluationId: text("evaluation_id").notNull().unique(),
+  actionId: text("action_id").notNull(),
+  agentCodename: text("agent_codename").notNull(),
+  policiesChecked: jsonb("policies_checked").$type<Array<{ policyId: string; result: string; details?: string }>>().notNull().default([]),
+  overallResult: text("overall_result").notNull(), // pass, warning, blocked
+  explanation: text("explanation").notNull(),
+  orgId: integer("org_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("pe_action_idx").on(table.actionId),
+  index("pe_agent_idx").on(table.agentCodename),
+  index("pe_result_idx").on(table.overallResult),
+  index("pe_org_idx").on(table.orgId),
+]);
+export type PolicyEvaluationEntry = typeof policyEvaluations.$inferSelect;
+
+export const auditExplanations = pgTable("audit_explanations", {
+  id: serial("id").primaryKey(),
+  actionId: text("action_id").notNull(),
+  agentCodename: text("agent_codename").notNull(),
+  actionType: text("action_type").notNull(),
+  humanReadable: text("human_readable").notNull(),
+  machineReadable: jsonb("machine_readable").$type<Record<string, any>>().notNull().default({}),
+  evidenceChain: jsonb("evidence_chain").$type<Array<{ source: string; fact: string; weight: number }>>().notNull().default([]),
+  modelVersion: text("model_version"),
+  orgId: integer("org_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("ae_action_idx").on(table.actionId),
+  index("ae_agent_idx").on(table.agentCodename),
+  index("ae_org_idx").on(table.orgId),
+]);
+export type AuditExplanationEntry = typeof auditExplanations.$inferSelect;
+
+export const complianceSnapshots = pgTable("compliance_snapshots", {
+  id: serial("id").primaryKey(),
+  orgId: integer("org_id").notNull(),
+  period: text("period").notNull(), // 2026-03, 2026-Q1, etc
+  metricsByCategory: jsonb("metrics_by_category").$type<Record<string, { total: number; passed: number; violations: number }>>().notNull().default({}),
+  violations: jsonb("violations").$type<Array<{ policyId: string; actionId: string; severity: string; date: string }>>().notNull().default([]),
+  overallScore: integer("overall_score").notNull().default(100), // 0-100
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("cs_org_idx").on(table.orgId),
+  index("cs_period_idx").on(table.period),
+  index("cs_score_idx").on(table.overallScore),
+]);
+export type ComplianceSnapshotEntry = typeof complianceSnapshots.$inferSelect;
+
+export const regulatorySandboxRuns = pgTable("regulatory_sandbox_runs", {
+  id: serial("id").primaryKey(),
+  sandboxId: text("sandbox_id").notNull().unique(),
+  strategyId: text("strategy_id"),
+  agentCodename: text("agent_codename"),
+  simulatedActions: jsonb("simulated_actions").$type<Array<{ action: string; context: Record<string, any> }>>().notNull().default([]),
+  policyViolationsFound: jsonb("policy_violations_found").$type<Array<{ policyId: string; action: string; details: string }>>().notNull().default([]),
+  totalSimulated: integer("total_simulated").notNull().default(0),
+  totalViolations: integer("total_violations").notNull().default(0),
+  recommendation: text("recommendation"),
+  orgId: integer("org_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("rsr_agent_idx").on(table.agentCodename),
+  index("rsr_strategy_idx").on(table.strategyId),
+  index("rsr_org_idx").on(table.orgId),
+]);
+export type RegulatorySandboxRunEntry = typeof regulatorySandboxRuns.$inferSelect;
+
+// --- Pillar 6: Founder Intelligence Layer ---
+
+export const founderBriefings = pgTable("founder_briefings", {
+  id: serial("id").primaryKey(),
+  orgId: integer("org_id").notNull(),
+  briefingDate: text("briefing_date").notNull(), // YYYY-MM-DD
+  summary: text("summary").notNull(),
+  insights: jsonb("insights").$type<Array<{ category: string; insight: string; importance: number }>>().notNull().default([]),
+  recommendations: jsonb("recommendations").$type<Array<{ action: string; rationale: string; impactEstimate: string; priority: number }>>().notNull().default([]),
+  agentHighlights: jsonb("agent_highlights").$type<Record<string, { actions: number; successRate: number; trustDelta: number; noteworthy: string }>>().notNull().default({}),
+  metricsSnapshot: jsonb("metrics_snapshot").$type<Record<string, any>>().notNull().default({}),
+  isRead: boolean("is_read").notNull().default(false),
+  readAt: timestamp("read_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("fb_org_idx").on(table.orgId),
+  index("fb_date_idx").on(table.briefingDate),
+  index("fb_read_idx").on(table.isRead),
+]);
+export type FounderBriefingEntry = typeof founderBriefings.$inferSelect;
+
+export const simulationRuns = pgTable("simulation_runs", {
+  id: serial("id").primaryKey(),
+  simulationId: text("simulation_id").notNull().unique(),
+  orgId: integer("org_id").notNull(),
+  scenarioName: text("scenario_name").notNull(),
+  scenarioConfig: jsonb("scenario_config").$type<Record<string, any>>().notNull().default({}),
+  outcomes: jsonb("outcomes").$type<Array<{ metric: string; current: number; simulated: number; delta: number }>>().notNull().default([]),
+  confidenceInterval: numeric("confidence_interval").notNull().default("0.95"),
+  riskFactors: jsonb("risk_factors").$type<Array<{ factor: string; probability: number; impact: string }>>().notNull().default([]),
+  recommendation: text("recommendation"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("sr_org_idx").on(table.orgId),
+  index("sr_scenario_idx").on(table.scenarioName),
+]);
+export type SimulationRunEntry = typeof simulationRuns.$inferSelect;
+
+export const strategicRecommendations = pgTable("strategic_recommendations", {
+  id: serial("id").primaryKey(),
+  orgId: integer("org_id").notNull(),
+  category: text("category").notNull(), // growth, efficiency, risk, compliance, cost
+  recommendation: text("recommendation").notNull(),
+  evidence: jsonb("evidence").$type<Array<{ source: string; dataPoint: string; significance: string }>>().notNull().default([]),
+  impactEstimate: text("impact_estimate").notNull(),
+  priority: integer("priority").notNull().default(5), // 1-10
+  status: text("status").notNull().default("new"), // new, acknowledged, implementing, dismissed
+  acknowledgedAt: timestamp("acknowledged_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("strec_org_idx").on(table.orgId),
+  index("strec_category_idx").on(table.category),
+  index("strec_priority_idx").on(table.priority),
+  index("strec_status_idx").on(table.status),
+]);
+export type StrategicRecommendationEntry = typeof strategicRecommendations.$inferSelect;
+
+export const founderInteractions = pgTable("founder_interactions", {
+  id: serial("id").primaryKey(),
+  orgId: integer("org_id").notNull(),
+  featureUsed: text("feature_used").notNull(),
+  section: text("section"), // memory, strategy, collaboration, healing, governance, intelligence
+  engagementDepth: text("engagement_depth").notNull().default("glance"), // glance, read, interact, configure
+  sessionDurationMs: integer("session_duration_ms"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("fi_org_idx").on(table.orgId),
+  index("fi_feature_idx").on(table.featureUsed),
+  index("fi_section_idx").on(table.section),
+]);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Sovereign Company Protocol v14 — The Self-Running Company
+//
+// V14 is the integration & reflexes layer. V13 built the brain (memory, strategy,
+// collaboration, self-healing, governance, intelligence). V14 wires them together
+// into closed-loop autonomous workflows that run end-to-end without the founder.
+//
+// Five pillars:
+//   1. Reactive Orchestration — Events trigger agent chains automatically
+//   2. Feedback Loop — Founder overrides teach the system
+//   3. Confidence Cascade — Exhaust all system resources before bothering founder
+//   4. Founder Intent — Natural language goals decompose into system configuration
+//   5. Autonomy Score — Track and minimize founder dependency
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── 1. Reactive Orchestration ──────────────────────────────────────────────
+
+/** Defines a reusable event→agent chain template */
+export const reactionChains = pgTable("reaction_chains", {
+  id: serial("id").primaryKey(),
+  chainId: text("chain_id").notNull().unique(),
+  orgId: integer("org_id").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  triggerEventType: text("trigger_event_type").notNull(),
+  triggerConditions: jsonb("trigger_conditions").default({}),
+  steps: jsonb("steps").notNull().default([]),
+  enabled: boolean("enabled").notNull().default(true),
+  priority: integer("priority").notNull().default(50),
+  maxConcurrentRuns: integer("max_concurrent_runs").notNull().default(5),
+  cooldownMs: integer("cooldown_ms").default(0),
+  totalRuns: integer("total_runs").notNull().default(0),
+  successfulRuns: integer("successful_runs").notNull().default(0),
+  avgDurationMs: integer("avg_duration_ms"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("rc_org_idx").on(table.orgId),
+  index("rc_trigger_idx").on(table.triggerEventType),
+  index("rc_enabled_idx").on(table.enabled),
+]);
+
+/** Tracks each execution of a reaction chain */
+export const reactionChainRuns = pgTable("reaction_chain_runs", {
+  id: serial("id").primaryKey(),
+  runId: text("run_id").notNull().unique(),
+  chainId: text("chain_id").notNull(),
+  orgId: integer("org_id").notNull(),
+  triggerEvent: jsonb("trigger_event").notNull(),
+  status: text("status").notNull().default("running"),
+  currentStepIndex: integer("current_step_index").notNull().default(0),
+  stepResults: jsonb("step_results").default([]),
+  haltReason: text("halt_reason"),
+  resumedBy: text("resumed_by"),
+  totalDurationMs: integer("total_duration_ms"),
+  startedAt: timestamp("started_at").notNull().defaultNow(),
+  completedAt: timestamp("completed_at"),
+}, (table) => [
+  index("rr_chain_idx").on(table.chainId),
+  index("rr_org_idx").on(table.orgId),
+  index("rr_status_idx").on(table.status),
+]);
+
+/** Cross-chain dependency definitions */
+export const reactionChainLinks = pgTable("reaction_chain_links", {
+  id: serial("id").primaryKey(),
+  fromChainId: text("from_chain_id").notNull(),
+  toChainId: text("to_chain_id").notNull(),
+  linkType: text("link_type").notNull().default("on_complete"),
+  conditionFilter: jsonb("condition_filter").default({}),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("rcl_from_idx").on(table.fromChainId),
+  index("rcl_to_idx").on(table.toChainId),
+]);
+
+// ─── 2. Feedback Loop ───────────────────────────────────────────────────────
+
+/** Every founder override captured as a learning signal */
+export const founderOverrides = pgTable("founder_overrides", {
+  id: serial("id").primaryKey(),
+  overrideId: text("override_id").notNull().unique(),
+  orgId: integer("org_id").notNull(),
+  originalDecisionId: text("original_decision_id"),
+  originalAction: text("original_action").notNull(),
+  founderAction: text("founder_action").notNull(),
+  founderReason: text("founder_reason"),
+  context: jsonb("context").notNull().default({}),
+  agentCodename: text("agent_codename"),
+  category: text("category").notNull(),
+  learningExtracted: boolean("learning_extracted").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("fo_org_idx").on(table.orgId),
+  index("fo_agent_idx").on(table.agentCodename),
+  index("fo_category_idx").on(table.category),
+  index("fo_learning_idx").on(table.learningExtracted),
+]);
+
+/** Extracted learning rules from override patterns */
+export const feedbackLearnings = pgTable("feedback_learnings", {
+  id: serial("id").primaryKey(),
+  learningId: text("learning_id").notNull().unique(),
+  orgId: integer("org_id").notNull(),
+  rule: text("rule").notNull(),
+  ruleConfig: jsonb("rule_config").notNull().default({}),
+  sourceOverrideIds: jsonb("source_override_ids").notNull().default([]),
+  confidence: real("confidence").notNull().default(0.5),
+  reinforcementCount: integer("reinforcement_count").notNull().default(1),
+  appliedToStrategies: jsonb("applied_to_strategies").default([]),
+  appliedToPolicies: jsonb("applied_to_policies").default([]),
+  appliedToMemory: jsonb("applied_to_memory").default([]),
+  status: text("status").notNull().default("active"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("fl_org_idx").on(table.orgId),
+  index("fl_status_idx").on(table.status),
+  index("fl_confidence_idx").on(table.confidence),
+]);
+
+// ─── 3. Confidence Cascade ──────────────────────────────────────────────────
+
+/** Tracks each resolution attempt through cascade layers */
+export const cascadeResolutions = pgTable("cascade_resolutions", {
+  id: serial("id").primaryKey(),
+  resolutionId: text("resolution_id").notNull().unique(),
+  orgId: integer("org_id").notNull(),
+  triggerType: text("trigger_type").notNull(),
+  triggerContext: jsonb("trigger_context").notNull().default({}),
+  originAgent: text("origin_agent").notNull(),
+  layersAttempted: jsonb("layers_attempted").notNull().default([]),
+  resolvedAtLayer: text("resolved_at_layer"),
+  finalDecision: text("final_decision"),
+  finalConfidence: real("final_confidence"),
+  founderEscalated: boolean("founder_escalated").notNull().default(false),
+  founderResolution: text("founder_resolution"),
+  totalDurationMs: integer("total_duration_ms"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  resolvedAt: timestamp("resolved_at"),
+}, (table) => [
+  index("cr_org_idx").on(table.orgId),
+  index("cr_origin_idx").on(table.originAgent),
+  index("cr_resolved_layer_idx").on(table.resolvedAtLayer),
+  index("cr_escalated_idx").on(table.founderEscalated),
+]);
+
+// ─── 4. Founder Intent ──────────────────────────────────────────────────────
+
+/** High-level goals expressed by founder in natural language */
+export const founderIntents = pgTable("founder_intents", {
+  id: serial("id").primaryKey(),
+  intentId: text("intent_id").notNull().unique(),
+  orgId: integer("org_id").notNull(),
+  rawInput: text("raw_input").notNull(),
+  parsedGoals: jsonb("parsed_goals").notNull().default([]),
+  generatedStrategies: jsonb("generated_strategies").default([]),
+  generatedPolicies: jsonb("generated_policies").default([]),
+  generatedChains: jsonb("generated_chains").default([]),
+  simulationResult: jsonb("simulation_result"),
+  status: text("status").notNull().default("draft"),
+  progressSnapshot: jsonb("progress_snapshot").default({}),
+  founderApproved: boolean("founder_approved").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  completesAt: timestamp("completes_at"),
+}, (table) => [
+  index("fi14_org_idx").on(table.orgId),
+  index("fi14_status_idx").on(table.status),
+]);
+
+/** Progress checkpoints for active intents */
+export const intentProgressLogs = pgTable("intent_progress_logs", {
+  id: serial("id").primaryKey(),
+  intentId: text("intent_id").notNull(),
+  orgId: integer("org_id").notNull(),
+  snapshot: jsonb("snapshot").notNull().default({}),
+  adjustmentsMade: jsonb("adjustments_made").default([]),
+  blockers: jsonb("blockers").default([]),
+  projectedCompletion: timestamp("projected_completion"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("ipl_intent_idx").on(table.intentId),
+  index("ipl_org_idx").on(table.orgId),
+]);
+
+// ─── 5. Autonomy Score ──────────────────────────────────────────────────────
+
+/** Daily autonomy metrics snapshot */
+export const autonomyScoreSnapshots = pgTable("autonomy_score_snapshots", {
+  id: serial("id").primaryKey(),
+  orgId: integer("org_id").notNull(),
+  date: text("date").notNull(),
+  totalDecisions: integer("total_decisions").notNull().default(0),
+  autonomousDecisions: integer("autonomous_decisions").notNull().default(0),
+  cascadeResolved: integer("cascade_resolved").notNull().default(0),
+  founderEscalations: integer("founder_escalations").notNull().default(0),
+  founderOverrideCount: integer("founder_override_count").notNull().default(0),
+  founderTimeSpentMs: integer("founder_time_spent_ms").notNull().default(0),
+  avgDecisionLatencyMs: integer("avg_decision_latency_ms").notNull().default(0),
+  autonomyScore: real("autonomy_score").notNull().default(0),
+  trustScore: real("trust_score").notNull().default(0),
+  founderConfidenceScore: real("founder_confidence_score").notNull().default(0),
+  breakdownByCategory: jsonb("breakdown_by_category").default({}),
+  breakdownByAgent: jsonb("breakdown_by_agent").default({}),
+  weekOverWeekDelta: real("week_over_week_delta"),
+  recommendations: jsonb("recommendations").default([]),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("as_org_date_idx").on(table.orgId, table.date),
+]);
+
+/** Individual founder dependency events */
+export const founderDependencyEvents = pgTable("founder_dependency_events", {
+  id: serial("id").primaryKey(),
+  eventId: text("event_id").notNull().unique(),
+  orgId: integer("org_id").notNull(),
+  eventType: text("event_type").notNull(),
+  agentCodename: text("agent_codename"),
+  category: text("category").notNull(),
+  description: text("description").notNull(),
+  blockedDurationMs: integer("blocked_duration_ms"),
+  wasPreventable: boolean("was_preventable"),
+  preventionSuggestion: text("prevention_suggestion"),
+  resolvedAt: timestamp("resolved_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("fde_org_idx").on(table.orgId),
+  index("fde_type_idx").on(table.eventType),
+  index("fde_agent_idx").on(table.agentCodename),
+]);
+
+// ─── V14 Inferred Types ────────────────────────────────────────────────────
+
+export type ReactionChainEntry = typeof reactionChains.$inferSelect;
+export type ReactionChainRunEntry = typeof reactionChainRuns.$inferSelect;
+export type ReactionChainLinkEntry = typeof reactionChainLinks.$inferSelect;
+export type FounderOverrideEntry = typeof founderOverrides.$inferSelect;
+export type FeedbackLearningEntry = typeof feedbackLearnings.$inferSelect;
+export type CascadeResolutionEntry = typeof cascadeResolutions.$inferSelect;
+export type FounderIntentEntry = typeof founderIntents.$inferSelect;
+export type IntentProgressLogEntry = typeof intentProgressLogs.$inferSelect;
+export type AutonomyScoreSnapshotEntry = typeof autonomyScoreSnapshots.$inferSelect;
+export type FounderDependencyEventEntry = typeof founderDependencyEvents.$inferSelect;
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Phases 6-20: Sovereign Company Protocol — Full Autonomy Tables
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── Phase 11: Graduated Financial Authority ─────────────────────────────────
+
+export const financialApprovals = pgTable("financial_approvals", {
+  id: serial("id").primaryKey(),
+  requestId: text("request_id").notNull().unique(),
+  requestedBy: text("requested_by").notNull(),
+  amount: integer("amount_cents").notNull(),
+  tier: integer("tier").notNull(),
+  purpose: text("purpose").notNull(),
+  category: text("category").notNull(),
+  approvers: jsonb("approvers").$type<string[]>().default([]),
+  approvalStatus: jsonb("approval_status").$type<Record<string, { approved: boolean; timestamp: string; reasoning: string }>>().default({}),
+  requiredApprovers: integer("required_approvers").notNull(),
+  coolingPeriodEnds: timestamp("cooling_period_ends"),
+  status: text("status").notNull().default("pending"),
+  executedAt: timestamp("executed_at"),
+  reasoning: text("reasoning"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("fa_status_idx").on(table.status),
+  index("fa_requested_by_idx").on(table.requestedBy),
+  index("fa_tier_idx").on(table.tier),
+]);
+
+export const agentBudgetEnvelopes = pgTable("agent_budget_envelopes", {
+  id: serial("id").primaryKey(),
+  agentCodename: text("agent_codename").notNull(),
+  monthKey: text("month_key").notNull(),
+  budgetCents: integer("budget_cents").notNull(),
+  spentCents: integer("spent_cents").notNull().default(0),
+  category: text("category").notNull().default("general"),
+  autoApproveUnderCents: integer("auto_approve_under_cents").default(50000),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("abe_agent_month_idx").on(table.agentCodename, table.monthKey),
+]);
+
+export const spendAnomalies = pgTable("spend_anomalies", {
+  id: serial("id").primaryKey(),
+  agentCodename: text("agent_codename").notNull(),
+  amountCents: integer("amount_cents").notNull(),
+  expectedCents: integer("expected_cents").notNull(),
+  deviationSigma: real("deviation_sigma").notNull(),
+  peerReviewStatus: text("peer_review_status").default("pending"),
+  reviewingAgents: jsonb("reviewing_agents").$type<string[]>().default([]),
+  resolution: text("resolution"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("sa_agent_v2_idx").on(table.agentCodename),
+]);
+
+// ─── Phase 12: Legal Autonomy Engine ─────────────────────────────────────────
+
+export const legalActions = pgTable("legal_actions", {
+  id: serial("id").primaryKey(),
+  actionId: text("action_id").notNull().unique(),
+  actionType: text("action_type").notNull(),
+  category: text("category").notNull(),
+  tier: text("tier").notNull(),
+  riskScore: integer("risk_score").notNull(),
+  templateId: text("template_id"),
+  requestedBy: text("requested_by").notNull(),
+  counterparty: text("counterparty"),
+  valueAtStakeCents: integer("value_at_stake_cents"),
+  status: text("status").notNull().default("pending"),
+  executedAt: timestamp("executed_at"),
+  reviewedBy: jsonb("reviewed_by").$type<string[]>().default([]),
+  outcome: text("outcome"),
+  reasoning: text("reasoning"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("la_status_idx").on(table.status),
+  index("la_tier_idx").on(table.tier),
+]);
+
+export const contractTemplates = pgTable("contract_templates", {
+  id: serial("id").primaryKey(),
+  templateId: text("template_id").notNull().unique(),
+  name: text("name").notNull(),
+  category: text("category").notNull(),
+  content: text("content").notNull(),
+  variables: jsonb("variables").$type<string[]>().default([]),
+  maxValueCents: integer("max_value_cents"),
+  requiresReview: boolean("requires_review").default(false),
+  approvedBy: text("approved_by"),
+  version: integer("version").notNull().default(1),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const regulatoryFilingCalendar = pgTable("regulatory_filing_calendar", {
+  id: serial("id").primaryKey(),
+  filingType: text("filing_type").notNull(),
+  jurisdiction: text("jurisdiction").notNull(),
+  dueDate: timestamp("due_date").notNull(),
+  recurrence: text("recurrence").notNull().default("annual"),
+  templateId: text("template_id"),
+  status: text("status").notNull().default("upcoming"),
+  filedAt: timestamp("filed_at"),
+  filedBy: text("filed_by"),
+  confirmationRef: text("confirmation_ref"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("rfc_due_date_idx").on(table.dueDate),
+  index("rfc_status_idx").on(table.status),
+]);
+
+// ─── Phase 14: AI Board of Directors ─────────────────────────────────────────
+
+export const boardMeetings = pgTable("board_meetings", {
+  id: serial("id").primaryKey(),
+  meetingId: text("meeting_id").notNull().unique(),
+  meetingType: text("meeting_type").notNull().default("weekly"),
+  status: text("status").notNull().default("scheduled"),
+  scheduledAt: timestamp("scheduled_at").notNull(),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  agendaItems: jsonb("agenda_items").$type<Array<{ topic: string; presenter: string; priority: number }>>().default([]),
+  attendees: jsonb("attendees").$type<string[]>().default([]),
+  kpiSnapshot: jsonb("kpi_snapshot").$type<Record<string, any>>().default({}),
+  summary: text("summary"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("bm_status_idx").on(table.status),
+  index("bm_scheduled_idx").on(table.scheduledAt),
+]);
+
+export const boardVotes = pgTable("board_votes", {
+  id: serial("id").primaryKey(),
+  meetingId: text("meeting_id").notNull(),
+  proposalId: text("proposal_id").notNull(),
+  proposal: text("proposal").notNull(),
+  proposalType: text("proposal_type").notNull(),
+  votingAgents: jsonb("voting_agents").$type<string[]>().default([]),
+  votes: jsonb("votes").$type<Array<{ agentCodename: string; vote: "for" | "against" | "abstain"; reasoning: string; weight: number }>>().default([]),
+  requiredMajority: real("required_majority").notNull().default(0.7),
+  result: text("result"),
+  executedAt: timestamp("executed_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("bv_meeting_idx").on(table.meetingId),
+  index("bv_proposal_idx").on(table.proposalId),
+]);
+
+export const boardDecisions = pgTable("board_decisions", {
+  id: serial("id").primaryKey(),
+  decisionId: text("decision_id").notNull().unique(),
+  meetingId: text("meeting_id"),
+  category: text("category").notNull(),
+  description: text("description").notNull(),
+  voteSummary: jsonb("vote_summary").$type<{ for: number; against: number; abstain: number }>().default({ for: 0, against: 0, abstain: 0 }),
+  passed: boolean("passed").notNull(),
+  executionPlan: text("execution_plan"),
+  executedAt: timestamp("executed_at"),
+  executionResult: text("execution_result"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("bd_category_idx").on(table.category),
+]);
+
+export const constitutionalPrinciples = pgTable("constitutional_principles", {
+  id: serial("id").primaryKey(),
+  principleId: text("principle_id").notNull().unique(),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  category: text("category").notNull(),
+  isImmutable: boolean("is_immutable").notNull().default(true),
+  enforcementLevel: text("enforcement_level").notNull().default("block"),
+  violationCount: integer("violation_count").notNull().default(0),
+  lastViolationAt: timestamp("last_violation_at"),
+  amendmentRequires: real("amendment_requires").notNull().default(0.9),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const strategicPlans = pgTable("strategic_plans", {
+  id: serial("id").primaryKey(),
+  planId: text("plan_id").notNull().unique(),
+  title: text("title").notNull(),
+  quarter: text("quarter").notNull(),
+  objectives: jsonb("objectives").$type<Array<{ objective: string; keyResults: string[]; owner: string; status: string }>>().default([]),
+  approvedByBoard: boolean("approved_by_board").default(false),
+  boardMeetingId: text("board_meeting_id"),
+  status: text("status").notNull().default("draft"),
+  progressPercent: integer("progress_percent").default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// ─── Phase 16: Product Evolution Engine ──────────────────────────────────────
+
+export const productSpecifications = pgTable("product_specifications", {
+  id: serial("id").primaryKey(),
+  specId: text("spec_id").notNull().unique(),
+  title: text("title").notNull(),
+  userStories: jsonb("user_stories").$type<Array<{ story: string; acceptanceCriteria: string[] }>>().default([]),
+  technicalRequirements: jsonb("technical_requirements").$type<string[]>().default([]),
+  complianceRequirements: jsonb("compliance_requirements").$type<string[]>().default([]),
+  revenueImpactEstimate: text("revenue_impact_estimate"),
+  effortEstimate: text("effort_estimate"),
+  demandScore: integer("demand_score").default(0),
+  sourceFeatureRequestIds: jsonb("source_feature_request_ids").$type<number[]>().default([]),
+  status: text("status").notNull().default("draft"),
+  approvedByBoard: boolean("approved_by_board").default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const buildBuyDecisions = pgTable("build_buy_decisions", {
+  id: serial("id").primaryKey(),
+  capabilityGap: text("capability_gap").notNull(),
+  buildEstimate: jsonb("build_estimate").$type<{ effortWeeks: number; costCents: number; risk: string }>(),
+  buyOptions: jsonb("buy_options").$type<Array<{ vendor: string; costCents: number; pros: string[]; cons: string[] }>>().default([]),
+  partnerOptions: jsonb("partner_options").$type<Array<{ partner: string; terms: string; pros: string[]; cons: string[] }>>().default([]),
+  recommendation: text("recommendation"),
+  decision: text("decision"),
+  decidedBy: text("decided_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const featureImpactScores = pgTable("feature_impact_scores", {
+  id: serial("id").primaryKey(),
+  featureName: text("feature_name").notNull(),
+  deployedAt: timestamp("deployed_at").notNull(),
+  adoptionRate: real("adoption_rate"),
+  retentionImpact: real("retention_impact"),
+  revenueImpactCents: integer("revenue_impact_cents"),
+  supportImpact: real("support_impact"),
+  overallScore: real("overall_score"),
+  measuredAt: timestamp("measured_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// ─── Phase 18: Agent Evolution & Meta-Learning ───────────────────────────────
+
+export const agentPromptEvolutions = pgTable("agent_prompt_evolutions", {
+  id: serial("id").primaryKey(),
+  agentCodename: text("agent_codename").notNull(),
+  currentPromptHash: text("current_prompt_hash").notNull(),
+  proposedPrompt: text("proposed_prompt").notNull(),
+  proposalReason: text("proposal_reason").notNull(),
+  performanceDataBefore: jsonb("performance_data_before").$type<Record<string, number>>().default({}),
+  performanceDataAfter: jsonb("performance_data_after").$type<Record<string, number>>(),
+  abTestId: text("ab_test_id"),
+  status: text("status").notNull().default("proposed"),
+  approvedByBoard: boolean("approved_by_board").default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const agentSpawnProposals = pgTable("agent_spawn_proposals", {
+  id: serial("id").primaryKey(),
+  proposalId: text("proposal_id").notNull().unique(),
+  proposedBy: text("proposed_by").notNull(),
+  codename: text("codename").notNull(),
+  title: text("title").notNull(),
+  wing: text("wing").notNull(),
+  personalityPrompt: text("personality_prompt").notNull(),
+  ownedServices: jsonb("owned_services").$type<string[]>().default([]),
+  capabilityGap: text("capability_gap").notNull(),
+  justification: text("justification").notNull(),
+  boardVoteId: text("board_vote_id"),
+  status: text("status").notNull().default("proposed"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const metaLearningInsights = pgTable("meta_learning_insights", {
+  id: serial("id").primaryKey(),
+  insightId: text("insight_id").notNull().unique(),
+  pattern: text("pattern").notNull(),
+  correlatedOutcome: text("correlated_outcome").notNull(),
+  confidence: real("confidence").notNull(),
+  sampleSize: integer("sample_size").notNull(),
+  affectedAgents: jsonb("affected_agents").$type<string[]>().default([]),
+  recommendation: text("recommendation"),
+  appliedAt: timestamp("applied_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// ─── Phase 19: Crisis Leadership & Antifragility ─────────────────────────────
+
+export const preAuthorizedTradeoffs = pgTable("pre_authorized_tradeoffs", {
+  id: serial("id").primaryKey(),
+  tradeoffId: text("tradeoff_id").notNull().unique(),
+  condition: text("condition").notNull(),
+  action: text("action").notNull(),
+  severity: text("severity").notNull(),
+  autoExecute: boolean("auto_execute").notNull().default(true),
+  executionCount: integer("execution_count").notNull().default(0),
+  lastExecutedAt: timestamp("last_executed_at"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const crisisPlaybooks = pgTable("crisis_playbooks", {
+  id: serial("id").primaryKey(),
+  playbookId: text("playbook_id").notNull().unique(),
+  crisisType: text("crisis_type").notNull(),
+  steps: jsonb("steps").$type<Array<{ action: string; owner: string; timeframe: string; priority: number }>>().default([]),
+  communicationPlan: jsonb("communication_plan").$type<Array<{ channel: string; audience: string; template: string }>>().default([]),
+  financialProtocol: jsonb("financial_protocol").$type<{ freezeDiscretionary: boolean; activateRetention: boolean; maxEmergencySpendCents: number }>(),
+  lastUsedAt: timestamp("last_used_at"),
+  usageCount: integer("usage_count").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// ─── Phase 20: Permanent Sovereignty ─────────────────────────────────────────
+
+export const missionStatements = pgTable("mission_statements", {
+  id: serial("id").primaryKey(),
+  statement: text("statement").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  adoptedAt: timestamp("adopted_at").notNull().defaultNow(),
+  adoptedByBoard: boolean("adopted_by_board").default(false),
+  boardMeetingId: text("board_meeting_id"),
+  previousStatementId: integer("previous_statement_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const regulatoryFeeds = pgTable("regulatory_feeds", {
+  id: serial("id").primaryKey(),
+  feedId: text("feed_id").notNull().unique(),
+  source: text("source").notNull(),
+  title: text("title").notNull(),
+  summary: text("summary").notNull(),
+  impactAssessment: text("impact_assessment"),
+  urgency: text("urgency").notNull().default("low"),
+  affectedAreas: jsonb("affected_areas").$type<string[]>().default([]),
+  actionRequired: text("action_required"),
+  actionTaken: text("action_taken"),
+  status: text("status").notNull().default("new"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("rf_status_idx").on(table.status),
+  index("rf_urgency_idx").on(table.urgency),
+]);
+
+export const marketAdaptations = pgTable("market_adaptations", {
+  id: serial("id").primaryKey(),
+  adaptationId: text("adaptation_id").notNull().unique(),
+  signalType: text("signal_type").notNull(),
+  signal: text("signal").notNull(),
+  analysis: text("analysis").notNull(),
+  proposedAction: text("proposed_action"),
+  boardDecisionId: text("board_decision_id"),
+  status: text("status").notNull().default("detected"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const selfAuditReports = pgTable("self_audit_reports", {
+  id: serial("id").primaryKey(),
+  reportId: text("report_id").notNull().unique(),
+  auditType: text("audit_type").notNull(),
+  period: text("period").notNull(),
+  findings: jsonb("findings").$type<Array<{ area: string; status: string; details: string; severity: string }>>().default([]),
+  overallScore: integer("overall_score").notNull(),
+  recommendations: jsonb("recommendations").$type<string[]>().default([]),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const perpetualOpsChecks = pgTable("perpetual_ops_checks", {
+  id: serial("id").primaryKey(),
+  checkType: text("check_type").notNull(),
+  status: text("status").notNull(),
+  details: jsonb("details").$type<Record<string, any>>().default({}),
+  nextCheckAt: timestamp("next_check_at"),
+  lastPassedAt: timestamp("last_passed_at"),
+  failureCount: integer("failure_count").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// ─── Phase 6-20 Inferred Types ───────────────────────────────────────────────
+
+export type FinancialApproval = typeof financialApprovals.$inferSelect;
+export type InsertFinancialApproval = typeof financialApprovals.$inferInsert;
+export type AgentBudgetEnvelope = typeof agentBudgetEnvelopes.$inferSelect;
+export type SpendAnomaly = typeof spendAnomalies.$inferSelect;
+export type LegalAction = typeof legalActions.$inferSelect;
+export type ContractTemplate = typeof contractTemplates.$inferSelect;
+export type RegulatoryFilingEntry = typeof regulatoryFilingCalendar.$inferSelect;
+export type BoardMeeting = typeof boardMeetings.$inferSelect;
+export type BoardVote = typeof boardVotes.$inferSelect;
+export type BoardDecision = typeof boardDecisions.$inferSelect;
+export type ConstitutionalPrinciple = typeof constitutionalPrinciples.$inferSelect;
+export type StrategicPlan = typeof strategicPlans.$inferSelect;
+export type ProductSpecification = typeof productSpecifications.$inferSelect;
+export type BuildBuyDecision = typeof buildBuyDecisions.$inferSelect;
+export type FeatureImpactScore = typeof featureImpactScores.$inferSelect;
+export type AgentPromptEvolution = typeof agentPromptEvolutions.$inferSelect;
+export type AgentSpawnProposal = typeof agentSpawnProposals.$inferSelect;
+export type MetaLearningInsight = typeof metaLearningInsights.$inferSelect;
+export type PreAuthorizedTradeoff = typeof preAuthorizedTradeoffs.$inferSelect;
+export type CrisisPlaybook = typeof crisisPlaybooks.$inferSelect;
+export type MissionStatement = typeof missionStatements.$inferSelect;
+export type RegulatoryFeed = typeof regulatoryFeeds.$inferSelect;
+export type MarketAdaptation = typeof marketAdaptations.$inferSelect;
+export type SelfAuditReport = typeof selfAuditReports.$inferSelect;
+export type PerpetualOpsCheck = typeof perpetualOpsChecks.$inferSelect;

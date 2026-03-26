@@ -34,6 +34,7 @@ import {
   BarChart3,
   Zap,
   Moon,
+  Bot,
 } from "lucide-react";
 import { format, isToday, isBefore, startOfDay, subDays } from "date-fns";
 
@@ -251,6 +252,26 @@ export default function TodayPage() {
     },
   });
 
+  // ── Agent Activity for Today page ─────────────────────────────────────
+  const { data: agentActivity = [] } = useQuery<any[]>({
+    queryKey: ["/api/founder/v12/lifecycle/agents"],
+    staleTime: 30_000,
+  });
+  const { data: pendingApprovals = [] } = useQuery<any[]>({
+    queryKey: ["/api/autonomous/tasks/pending-approval"],
+    staleTime: 15_000,
+  });
+  const { data: autonomyData } = useQuery<any>({
+    queryKey: ["/api/founder/v14/autonomy/score"],
+    staleTime: 60_000,
+  });
+
+  const activeAgentCount = Array.isArray(agentActivity)
+    ? agentActivity.filter((a: any) => a.status === "running" || a.status === "active").length
+    : 0;
+  const pendingApprovalCount = Array.isArray(pendingApprovals) ? pendingApprovals.length : 0;
+  const autonomyScore = autonomyData?.score ?? autonomyData?.overallScore ?? 0;
+
   const greeting = () => {
     const hour = new Date().getHours();
     if (hour < 12) return "Good morning";
@@ -389,6 +410,46 @@ export default function TodayPage() {
           </Link>
         )}
       </div>
+
+      {/* Agent Activity — sovereign system status */}
+      {(activeAgentCount > 0 || pendingApprovalCount > 0) && (
+        <div className="rounded-xl border bg-gradient-to-br from-primary/5 to-transparent p-4">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <Bot className="w-4 h-4 text-primary" />
+              <span className="font-semibold text-sm">Agent Activity</span>
+              {autonomyScore > 0 && (
+                <Badge variant="outline" className="text-xs">
+                  {Math.round(autonomyScore)}% Autonomy
+                </Badge>
+              )}
+            </div>
+            <Link href="/sovereign">
+              <Badge variant="secondary" className="text-xs cursor-pointer hover:bg-primary/10">
+                Sovereign Dashboard →
+              </Badge>
+            </Link>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="text-center">
+              <p className="text-lg font-bold">{activeAgentCount}</p>
+              <p className="text-xs text-muted-foreground">Active Agents</p>
+            </div>
+            <div className="text-center">
+              <Link href="/agent-command-center">
+                <p className={`text-lg font-bold ${pendingApprovalCount > 0 ? "text-amber-600" : ""}`}>
+                  {pendingApprovalCount}
+                </p>
+                <p className="text-xs text-muted-foreground">Pending Approvals</p>
+              </Link>
+            </div>
+            <div className="text-center">
+              <p className="text-lg font-bold">{Math.round(autonomyScore)}%</p>
+              <p className="text-xs text-muted-foreground">Autonomy Score</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Business Pulse — live business momentum snapshot */}
       <div data-testid="section-business-pulse">
