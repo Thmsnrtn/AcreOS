@@ -2,8 +2,11 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Check, X, Sparkles } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
+
+export type TierKey = "free" | "starter" | "pro";
 
 interface TierFeature {
   name: string;
@@ -169,5 +172,24 @@ export function TierUpgradePanel({ onSelectTier, currentTier }: TierUpgradePanel
         Need more? <span className="font-medium">Scale and Enterprise plans</span> coming soon for high-volume operators.
       </p>
     </div>
+  );
+}
+
+interface PlanComparisonModalProps {
+  open: boolean;
+  onClose: () => void;
+  currentTier: TierKey;
+}
+
+export function PlanComparisonModal({ open, onClose, currentTier }: PlanComparisonModalProps) {
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Compare Plans</DialogTitle>
+        </DialogHeader>
+        <TierUpgradePanel currentTier={currentTier} />
+      </DialogContent>
+    </Dialog>
   );
 }
