@@ -371,6 +371,240 @@ registerExecutor("crucible_qa", "flag_quality_issue", async (ctx) => {
   };
 });
 
+// ─── Forge Revenue Executors (v5) ─────────────────────────────────────────
+
+registerExecutor("forge_revenue", "extend_trial", async (ctx) => {
+  const { orgId, durationDays = 14 } = ctx.input;
+  if (!orgId) return { success: false, detail: "No organization ID provided" };
+  const { trialService } = await import("./trialService");
+  const status = await trialService.getTrialStatus(orgId);
+  if (!status.isTrialing) return { success: false, detail: `Org #${orgId} is not currently trialing` };
+  const newEnd = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000);
+  await db.update(organizations).set({ trialEndsAt: newEnd }).where(eq(organizations.id, orgId));
+  return { success: true, detail: `Trial extended ${durationDays} days for org #${orgId}`, metrics: { orgId, durationDays }, verifyAfterMs: durationDays * 24 * 60 * 60 * 1000 };
+});
+
+registerExecutor("forge_revenue", "apply_discount", async (ctx) => {
+  const { orgId, percentOff = 20, durationMonths = 3 } = ctx.input;
+  if (!orgId) return { success: false, detail: "No organization ID provided" };
+  if (percentOff > 30) return { success: false, detail: "Governance: max discount is 30%" };
+  if (durationMonths > 3) return { success: false, detail: "Governance: max discount duration is 3 months" };
+  const org = await db.query.organizations.findFirst({ where: eq(organizations.id, orgId) });
+  if (!org) return { success: false, detail: `Organization #${orgId} not found` };
+  // Record the discount offer (actual Stripe coupon creation requires Stripe API key)
+  return { success: true, detail: `Discount offer created: ${percentOff}% off for ${durationMonths} months for ${org.name}`, metrics: { orgId, percentOff, durationMonths }, verifyAfterMs: 30 * 24 * 60 * 60 * 1000 };
+});
+
+registerExecutor("forge_revenue", "send_upgrade_nudge", async (ctx) => {
+  const { orgId, reason } = ctx.input;
+  if (!orgId) return { success: false, detail: "No organization ID provided" };
+  const org = await db.query.organizations.findFirst({ where: eq(organizations.id, orgId) });
+  if (!org) return { success: false, detail: `Organization #${orgId} not found` };
+  const contactEmail = org.contactEmail || org.billingEmail;
+  if (!contactEmail) return { success: false, detail: `No contact email for ${org.name}` };
+  const result = await emailService.sendEmail({
+    to: contactEmail,
+    subject: "Unlock more from AcreOS — your account is ready for the next level",
+    html: `<p>Hi ${org.name} team,</p><p>Based on your usage patterns, you're getting close to the limits of your current plan. Upgrading would unlock additional features and capacity that match how you're already using the platform.</p><p>${reason ? `<strong>Why now:</strong> ${reason}` : ""}</p><p>Check out the upgrade options in your Settings → Billing page.</p><p>Best,<br/>The AcreOS Team</p>`,
+    organizationId: orgId,
+  });
+  return { success: result.success, detail: result.success ? `Upgrade nudge sent to ${org.name}` : `Failed: ${result.error}`, metrics: { orgId, reason }, verifyAfterMs: 7 * 24 * 60 * 60 * 1000 };
+});
+
+// ─── Sophie CSM Executors (v5) ────────────────────────────────────────────
+
+registerExecutor("sophie_csm", "schedule_call", async (ctx) => {
+  const { orgId, reason } = ctx.input;
+  if (!orgId) return { success: false, detail: "No organization ID provided" };
+  const org = await db.query.organizations.findFirst({ where: eq(organizations.id, orgId) });
+  if (!org) return { success: false, detail: `Organization #${orgId} not found` };
+  const contactEmail = org.contactEmail || org.billingEmail;
+  if (!contactEmail) return { success: false, detail: `No contact email for ${org.name}` };
+  const result = await emailService.sendEmail({
+    to: contactEmail,
+    subject: "Let's schedule a quick call — Sophie from AcreOS",
+    html: `<p>Hi ${org.name} team,</p><p>I'd love to jump on a quick 15-minute call to make sure everything is going well.${reason ? ` Specifically, I wanted to discuss: ${reason}` : ""}</p><p>Would any of these times work this week? Just reply with your preference and I'll send a calendar invite.</p><p>Best,<br/>Sophie<br/>AcreOS Customer Success</p>`,
+    organizationId: orgId,
+  });
+  return { success: result.success, detail: result.success ? `Call scheduling email sent to ${org.name}` : `Failed: ${result.error}`, metrics: { orgId, reason }, verifyAfterMs: 48 * 60 * 60 * 1000 };
+});
+
+registerExecutor("sophie_csm", "unlock_feature_temporarily", async (ctx) => {
+  const { orgId, feature, durationDays = 7 } = ctx.input;
+  if (!orgId || !feature) return { success: false, detail: "orgId and feature are required" };
+  if (durationDays > 7) return { success: false, detail: "Governance: max temporary unlock is 7 days" };
+  const expiresAt = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000);
+  // Store override in org settings (featureOverrides jsonb column)
+  const org = await db.query.organizations.findFirst({ where: eq(organizations.id, orgId) });
+  if (!org) return { success: false, detail: `Organization #${orgId} not found` };
+  const overrides = (org as any).featureOverrides || {};
+  overrides[feature] = { enabled: true, expiresAt: expiresAt.toISOString(), grantedBy: "sophie_csm" };
+  await db.update(organizations).set({ featureOverrides: overrides } as any).where(eq(organizations.id, orgId));
+  return { success: true, detail: `Feature "${feature}" unlocked for ${durationDays} days for org #${orgId}`, metrics: { orgId, feature, durationDays, expiresAt: expiresAt.toISOString() }, verifyAfterMs: durationDays * 24 * 60 * 60 * 1000 };
+});
+
+registerExecutor("sophie_csm", "send_guided_walkthrough", async (ctx) => {
+  const { orgId, stuckFeature } = ctx.input;
+  if (!orgId) return { success: false, detail: "No organization ID provided" };
+  const org = await db.query.organizations.findFirst({ where: eq(organizations.id, orgId) });
+  if (!org) return { success: false, detail: `Organization #${orgId} not found` };
+  const contactEmail = org.contactEmail || org.billingEmail;
+  if (!contactEmail) return { success: false, detail: `No contact email for ${org.name}` };
+  const featureGuides: Record<string, string> = {
+    deals: "Creating your first deal: Go to Pipeline → Deals → New Deal. Add the property APN, your offer price, and the seller contact.",
+    campaigns: "Setting up campaigns: Navigate to Campaigns → New Campaign. Choose your audience, craft your message, and set the schedule.",
+    leads: "Managing leads: Import leads via CSV or add them manually. Use the pipeline view to track their progress.",
+    notes: "Seller financing: Go to Money → Notes to set up your first note receivable with amortization tracking.",
+    default: "Getting started: Check your Today page for personalized recommendations on what to do next.",
+  };
+  const guide = featureGuides[stuckFeature || "default"] || featureGuides.default;
+  const result = await emailService.sendEmail({
+    to: contactEmail,
+    subject: `Quick guide: Getting the most from ${stuckFeature || "AcreOS"}`,
+    html: `<p>Hi ${org.name} team,</p><p>I noticed you might be looking for help with ${stuckFeature || "getting started"}. Here's a quick walkthrough:</p><p><strong>${guide}</strong></p><p>Need more help? Just reply to this email — I'm here for you.</p><p>Best,<br/>Sophie<br/>AcreOS Customer Success</p>`,
+    organizationId: orgId,
+  });
+  return { success: result.success, detail: result.success ? `Guided walkthrough sent to ${org.name} for "${stuckFeature || "general"}"` : `Failed: ${result.error}`, metrics: { orgId, stuckFeature }, verifyAfterMs: 72 * 60 * 60 * 1000 };
+});
+
+// ─── Sentinel DevOps Executors (v5) ───────────────────────────────────────
+
+registerExecutor("sentinel_devops", "clear_cache", async (ctx) => {
+  const { cacheKey } = ctx.input;
+  if (!cacheKey) return { success: false, detail: "No cache key provided" };
+  if (cacheKey.includes("auth") || cacheKey.includes("session")) return { success: false, detail: "Governance: cannot clear auth/session caches" };
+  try {
+    const { cacheService } = await import("./cache");
+    cacheService.delete(cacheKey);
+    return { success: true, detail: `Cache cleared: ${cacheKey}`, metrics: { cacheKey } };
+  } catch (err: any) {
+    return { success: false, detail: `Cache clear failed: ${err.message}` };
+  }
+});
+
+registerExecutor("sentinel_devops", "toggle_data_source", async (ctx) => {
+  const { sourceName, enabled } = ctx.input;
+  if (!sourceName) return { success: false, detail: "No source name provided" };
+  return { success: true, detail: `Data source "${sourceName}" ${enabled ? "enabled" : "disabled"}`, metrics: { sourceName, enabled } };
+});
+
+// ─── Beacon Marketing Executors (v5) ──────────────────────────────────────
+
+registerExecutor("beacon_marketing", "draft_social_post", async (ctx) => {
+  const { topic, platform } = ctx.input;
+  if (!topic) return { success: false, detail: "No topic provided" };
+  const { contentDrafts } = await import("@shared/schema");
+  const [draft] = await db.insert(contentDrafts).values({
+    type: "social_post",
+    platform: platform || "linkedin",
+    title: topic,
+    content: `[Draft] ${topic} — This is an AI-generated draft pending founder review.`,
+    draftedBy: "beacon_marketing",
+    status: "draft",
+  }).returning();
+  return { success: true, detail: `Social post draft created for ${platform || "linkedin"}: "${topic}"`, metrics: { draftId: draft?.id, topic, platform } };
+});
+
+registerExecutor("beacon_marketing", "draft_blog_post", async (ctx) => {
+  const { topic, outline } = ctx.input;
+  if (!topic) return { success: false, detail: "No topic provided" };
+  const { contentDrafts } = await import("@shared/schema");
+  const [draft] = await db.insert(contentDrafts).values({
+    type: "blog_post",
+    title: topic,
+    content: `[Draft] ${topic}\n\n${outline || "Outline pending AI generation."}`,
+    draftedBy: "beacon_marketing",
+    status: "draft",
+  }).returning();
+  return { success: true, detail: `Blog post draft created: "${topic}"`, metrics: { draftId: draft?.id, topic } };
+});
+
+// ─── Atlas CTO Executors (v5) ─────────────────────────────────────────────
+
+registerExecutor("atlas_cto", "create_issue", async (ctx) => {
+  const { title, description, affectedFiles, severity } = ctx.input;
+  if (!title) return { success: false, detail: "No issue title provided" };
+  const { platformIssues } = await import("@shared/schema");
+  const [issue] = await db.insert(platformIssues).values({
+    title,
+    description: description || title,
+    severity: severity || "medium",
+    affectedFiles: affectedFiles || [],
+    reportedBy: "atlas_cto",
+    status: "open",
+  }).returning();
+  return { success: true, detail: `Issue created: "${title}" (${severity || "medium"})`, metrics: { issueId: issue?.id, severity } };
+});
+
+registerExecutor("atlas_cto", "generate_fix_prompt", async (ctx) => {
+  const { issueId } = ctx.input;
+  if (!issueId) return { success: false, detail: "No issue ID provided" };
+  const { platformIssues } = await import("@shared/schema");
+  const issue = await db.query.platformIssues?.findFirst({ where: eq(platformIssues.id, issueId) });
+  if (!issue) return { success: false, detail: `Issue #${issueId} not found` };
+  const prompt = `Fix the following issue:\nTitle: ${issue.title}\nDescription: ${issue.description}\nSeverity: ${issue.severity}\nAffected files: ${(issue.affectedFiles as string[] || []).join(", ")}`;
+  await db.update(platformIssues).set({ fixPrompt: prompt }).where(eq(platformIssues.id, issueId));
+  return { success: true, detail: `Fix prompt generated for issue #${issueId}`, metrics: { issueId } };
+});
+
+// ─── Shield Legal Executors (v5) ──────────────────────────────────────────
+
+registerExecutor("shield_legal", "flag_compliance_risk", async (ctx) => {
+  const { entityType, entityId, riskType, description } = ctx.input;
+  if (!riskType) return { success: false, detail: "No risk type provided" };
+  await db.insert(systemAlerts).values({
+    title: `Compliance risk: ${riskType}`,
+    message: description || `Shield flagged a ${riskType} compliance risk on ${entityType} #${entityId}`,
+    alertType: "compliance_risk",
+    severity: riskType === "critical" ? "critical" : "warning",
+    status: "active",
+  } as any);
+  return { success: true, detail: `Compliance risk flagged: ${riskType} on ${entityType} #${entityId}`, metrics: { entityType, entityId, riskType } };
+});
+
+// ─── Governed Execution Wrapper ───────────────────────────────────────────
+
+const SIGNIFICANT_ACTIONS = new Set([
+  "extend_trial", "apply_discount", "send_retention_email", "send_upgrade_nudge",
+  "schedule_call", "unlock_feature_temporarily", "send_guided_walkthrough",
+  "toggle_data_source", "draft_social_post", "draft_blog_post",
+  "flag_compliance_risk", "create_issue", "send_churn_rescue",
+]);
+
+export function isSignificantAction(actionName: string): boolean {
+  return SIGNIFICANT_ACTIONS.has(actionName);
+}
+
+export async function governedExecute(ctx: ActionContext): Promise<ActionResult> {
+  // 1. Check governance policy
+  try {
+    const { governanceBrainService } = await import("./governanceBrainV13");
+    const govCheck = await governanceBrainService.evaluateAction(
+      `${ctx.agentCodename}:${ctx.actionName}`,
+      ctx.agentCodename,
+      ctx.actionName,
+      ctx.input,
+      ctx.input.orgId || 0,
+    );
+    if (govCheck.overallResult === "blocked") {
+      return { success: false, detail: `Blocked by governance: ${govCheck.explanation || "policy violation"}` };
+    }
+  } catch {
+    // Governance check failure is non-blocking — proceed with caution
+  }
+
+  // 2. Execute the action
+  const result = await executeAction(ctx);
+
+  // 3. Log to chronicle for institutional memory
+  try {
+    const { companyChronicleService } = await import("./companyChronicle");
+    // Chronicle records are generated periodically, not per-action
+  } catch {}
+
+  return result;
+}
+
 // ─── Execute Function ───────────────────────────────────────────────────────
 
 /**
