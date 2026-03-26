@@ -124,6 +124,7 @@ import { WorkflowMonitor } from "@/components/founder/WorkflowMonitor";
 import { WarRoom } from "@/components/founder/WarRoom";
 import { InitiativeBoard } from "@/components/founder/InitiativeBoard";
 import { PerformanceReviews } from "@/components/founder/PerformanceReviews";
+import { DecisionQuality } from "@/components/founder/DecisionQuality";
 import { PlaybookManager } from "@/components/founder/PlaybookManager";
 import { AbsenceMode } from "@/components/founder/AbsenceMode";
 // v7: The Learning Company
@@ -1095,6 +1096,7 @@ export default function FounderDashboard() {
   const [goalDialogOpen, setGoalDialogOpen] = useState(false);
   const [goalInputValue, setGoalInputValue] = useState("");
   const [setupWizardOpen, setSetupWizardOpen] = useState(false);
+  const briefingRef = useRef<HTMLDivElement>(null);
 
   const handleRefreshAll = useCallback(() => {
     queryClient.invalidateQueries();
@@ -1926,6 +1928,22 @@ export default function FounderDashboard() {
             </div>
           )}
 
+          {/* Quick Actions Bar */}
+          <div className="flex items-center gap-2 mb-6 flex-wrap">
+            <Button size="sm" variant={focusMode ? "default" : "outline"} onClick={() => setFocusMode(!focusMode)} aria-label="Toggle focus mode">
+              {focusMode ? "Exit Focus" : "Focus Mode (F)"}
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => briefingRef?.current?.scrollIntoView({ behavior: "smooth" })} aria-label="View briefing">
+              Run Briefing
+            </Button>
+            <Button size="sm" variant="outline" asChild>
+              <a href="#decisions">View Decisions</a>
+            </Button>
+            <Button size="sm" variant="outline" asChild>
+              <a href="#agents">Check Agents</a>
+            </Button>
+          </div>
+
           {/* ── MRR Goal Progress (when goal is set) ─────────────────── */}
           {goalCents > 0 && dashboardData && (
             <div className="rounded-lg border bg-card px-4 py-3">
@@ -1966,7 +1984,9 @@ export default function FounderDashboard() {
           {/* ── ZONE 1: v3 Conversational CEO Experience ─────────── */}
           <div className="space-y-6">
             {/* Morning Briefing — one-screen summary, Apple Health style */}
-            <MorningBriefing />
+            <div ref={briefingRef}>
+              <MorningBriefing />
+            </div>
 
             {/* v4: Trend Cards — CEO trend context before decisions */}
             <TrendCards />
@@ -2063,6 +2083,9 @@ export default function FounderDashboard() {
 
             {/* Performance Reviews — weekly agent evaluations */}
             <PerformanceReviews />
+
+            {/* Decision Quality — track decision-making effectiveness */}
+            <DecisionQuality />
 
             {/* ─── v7: The Learning Company ──────────────────────────────── */}
 
