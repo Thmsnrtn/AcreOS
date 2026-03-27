@@ -26,11 +26,11 @@ import { useToast } from "@/hooks/use-toast";
 import { 
   Plus, DollarSign, Eye, MessageSquare, Trash2, Loader2, 
   Globe, Share2, Edit, Building, MapPin, ImageIcon,
-  Facebook, Calculator
+  Calculator
 } from "lucide-react";
 
 const SYNDICATION_TARGETS = [
-  { id: "facebook_marketplace", name: "Facebook Marketplace", icon: Facebook },
+  { id: "facebook_marketplace", name: "Facebook Marketplace", icon: Globe },
   { id: "craigslist", name: "Craigslist", icon: Globe },
   { id: "landwatch", name: "LandWatch", icon: Globe },
   { id: "landflip", name: "LandFlip", icon: Globe },
