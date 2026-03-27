@@ -19,7 +19,10 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   });
 }
 
-const publishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+// Runtime env injected by server into window.__ENV__ (for production builds
+// where VITE_* vars aren't available at Docker build time)
+const runtimeEnv = (window as any).__ENV__ || {};
+const publishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || runtimeEnv.VITE_CLERK_PUBLISHABLE_KEY;
 if (!publishableKey) {
   throw new Error("VITE_CLERK_PUBLISHABLE_KEY is not set");
 }
