@@ -5,7 +5,7 @@ import * as Sentry from "@sentry/react";
  * No-op when VITE_SENTRY_DSN is not set (local dev).
  */
 export function initClientSentry(): void {
-  const dsn = import.meta.env.VITE_SENTRY_DSN as string | undefined;
+  const dsn = (import.meta.env.VITE_SENTRY_DSN || (window as any).__ENV__?.VITE_SENTRY_DSN) as string | undefined;
   if (!dsn) return;
 
   Sentry.init({
