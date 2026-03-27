@@ -241,7 +241,10 @@ export async function registerRoutes(
   app.use(correlationIdMiddleware);
 
   // Apply Clerk middleware globally — parses JWT tokens, makes req.auth available
-  app.use(clerkMiddleware());
+  // Pass publishableKey explicitly — Fly.io stores it as VITE_CLERK_PUBLISHABLE_KEY
+  // but @clerk/express expects CLERK_PUBLISHABLE_KEY by default.
+  const clerkPK = process.env.CLERK_PUBLISHABLE_KEY || process.env.VITE_CLERK_PUBLISHABLE_KEY;
+  app.use(clerkMiddleware({ publishableKey: clerkPK }));
 
   // Register auth routes (/api/auth/user, /api/auth/attribution)
   registerAuthRoutes(app);
