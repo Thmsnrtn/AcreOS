@@ -1278,7 +1278,7 @@ export async function registerRoutes(
   // ─── T7: API Versioning — /api/v1/ passthrough alias ─────────────────────
   // Allows clients to pin to /api/v1/* without breaking existing /api/* routes.
   // When a breaking v2 is needed, add a separate versioned router here.
-  app.use("/api/v1/*", (req, res) => {
+  app.use("/api/v1/{*splat}", (req, res) => {
     const newPath = req.originalUrl.replace("/api/v1/", "/api/");
     res.redirect(307, newPath);
   });

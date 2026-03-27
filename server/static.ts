@@ -44,7 +44,7 @@ export function serveStatic(app: Express) {
   // fall through to index.html — inject runtime env + CSP nonce into the HTML shell
   // Skip API routes — they should have already sent a response
   const indexPath = path.resolve(distPath, "index.html");
-  app.use("*", (req: Request, res: Response) => {
+  app.use("{*splat}", (req: Request, res: Response) => {
     if (res.headersSent) return;
     // Don't serve index.html for API routes — if we got here, the API route didn't match
     if (req.originalUrl.startsWith("/api/")) {
