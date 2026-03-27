@@ -29,6 +29,7 @@ export function serveStatic(app: Express) {
   // get 1-year max-age with immutable flag. The HTML shell is served with no-cache
   // so browsers always fetch the latest entry point (which references hashed assets).
   app.use(express.static(distPath, {
+    index: false, // Don't serve index.html directly — fall through to catch-all for env injection
     maxAge: process.env.NODE_ENV === "production" ? "1y" : 0,
     immutable: process.env.NODE_ENV === "production",
     setHeaders: (res, filePath) => {
