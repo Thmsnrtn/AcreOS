@@ -24,7 +24,7 @@ RUN rm -f package-lock.json && npm install --include=dev --legacy-peer-deps
 
 COPY . .
 RUN npm run build
-RUN npm prune --omit=dev
+RUN npm prune --omit=dev --legacy-peer-deps
 
 # --- Production stage ---
 FROM base
