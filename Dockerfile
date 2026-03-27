@@ -18,8 +18,12 @@ FROM base AS build
 RUN apt-get update -qq && \
     apt-get install --no-install-recommends -y build-essential node-gyp pkg-config python-is-python3
 
-COPY package-lock.json package.json ./
-RUN npm ci --include=dev --legacy-peer-deps
+COPY package.json ./
+# npm ci with lock file can miss platform-specific optional deps (rollup-linux-x64-gnu).
+# Fall back to fresh install if ci fails.
+COPY package-lock.json* ./
+RUN npm ci --include=dev --legacy-peer-deps 2>/dev/null || \
+    (rm -rf node_modules package-lock.json && npm install --include=dev --legacy-peer-deps)
 
 COPY . .
 RUN npm run build
