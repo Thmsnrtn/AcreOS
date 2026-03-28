@@ -24,6 +24,7 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
     `'nonce-${nonce}'`,
     "https://js.stripe.com",
     "https://api.mapbox.com",
+    "https://*.clerk.accounts.dev",
   ];
 
   // unsafe-eval is only needed in development (Vite HMR / source maps)
