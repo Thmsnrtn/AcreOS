@@ -28,7 +28,13 @@ if (!publishableKey) {
 }
 
 createRoot(document.getElementById("root")!).render(
-  <ClerkProvider publishableKey={publishableKey}>
+  <ClerkProvider
+    publishableKey={publishableKey}
+    signInUrl="/auth"
+    signUpUrl="/auth?mode=register"
+    afterSignInUrl="/"
+    afterSignUpUrl="/"
+  >
     <App />
   </ClerkProvider>
 );
