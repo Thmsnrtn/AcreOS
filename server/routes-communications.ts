@@ -725,8 +725,8 @@ export function registerCommunicationRoutes(app: Express): void {
         Errors.internal(res, new Error(result.error || "Email send failed"));
       }
     } catch (error: any) {
-      console.error("Send email error:", error);
-      res.status(500).json({ message: error.message || "Failed to send email" });
+      logger.error("Send email error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to send email"));
     }
   });
 
@@ -745,8 +745,8 @@ export function registerCommunicationRoutes(app: Express): void {
       const activities = await storage.getActivityFeed(org.id, { entityType, limit, offset });
       res.json(activities);
     } catch (error: any) {
-      console.error("Get activity feed error:", error);
-      res.status(500).json({ message: error.message || "Failed to fetch activity feed" });
+      logger.error("Get activity feed error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to fetch activity feed"));
     }
   });
 
@@ -759,7 +759,7 @@ export function registerCommunicationRoutes(app: Express): void {
       const { entityType, entityId, content, eventType = "note_added" } = req.body;
 
       if (!entityType || !entityId || !content) {
-        return res.status(400).json({ message: "entityType, entityId, and content are required" });
+        return Errors.badRequest(res, "entityType, entityId, and content are required");
       }
 
       const event = await storage.createActivityEvent({
@@ -785,15 +785,15 @@ export function registerCommunicationRoutes(app: Express): void {
               notePreview: content,
             });
           } catch (err) {
-            console.error("[Mention] processMentions failed:", err);
+            logger.error("processMentions failed", err instanceof Error ? err : undefined);
           }
         });
       }
 
       res.status(201).json(event);
     } catch (error: any) {
-      console.error("Create activity event error:", error);
-      res.status(500).json({ message: error.message || "Failed to create activity event" });
+      logger.error("Create activity event error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to create activity event"));
     }
   });
 
@@ -820,8 +820,8 @@ export function registerCommunicationRoutes(app: Express): void {
       res.setHeader('Content-Disposition', `attachment; filename="leads-${new Date().toISOString().split('T')[0]}.csv"`);
       res.send(csv);
     } catch (error: any) {
-      console.error("Export leads error:", error);
-      res.status(500).json({ message: error.message || "Failed to export leads" });
+      logger.error("Export leads error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to export leads"));
     }
   });
 
@@ -844,8 +844,8 @@ export function registerCommunicationRoutes(app: Express): void {
       res.setHeader('Content-Disposition', `attachment; filename="properties-${new Date().toISOString().split('T')[0]}.csv"`);
       res.send(csv);
     } catch (error: any) {
-      console.error("Export properties error:", error);
-      res.status(500).json({ message: error.message || "Failed to export properties" });
+      logger.error("Export properties error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to export properties"));
     }
   });
 
@@ -868,8 +868,8 @@ export function registerCommunicationRoutes(app: Express): void {
       res.setHeader('Content-Disposition', `attachment; filename="deals-${new Date().toISOString().split('T')[0]}.csv"`);
       res.send(csv);
     } catch (error: any) {
-      console.error("Export deals error:", error);
-      res.status(500).json({ message: error.message || "Failed to export deals" });
+      logger.error("Export deals error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to export deals"));
     }
   });
 

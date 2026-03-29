@@ -174,26 +174,26 @@ export function registerDocSystemRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid template ID" });
+        return Errors.badRequest(res, "Invalid template ID");
       }
-      
+
       const existing = await storage.getDocumentTemplate(id);
       if (!existing) {
-        return res.status(404).json({ message: "Template not found" });
+        return Errors.notFound(res, "Template");
       }
-      
+
       // Only allow editing org-specific templates, not system templates
       if (existing.isSystemTemplate) {
-        return res.status(403).json({ message: "Cannot edit system templates" });
+        return Errors.forbidden(res, "Cannot edit system templates");
       }
-      
+
       // Verify template belongs to this org
       if (existing.organizationId !== org.id) {
-        return res.status(403).json({ message: "Not authorized to edit this template" });
+        return Errors.forbidden(res, "Not authorized to edit this template");
       }
-      
+
       const { name, type, category, content, variables, isActive } = req.body;
-      
+
       const updated = await storage.updateDocumentTemplate(id, {
         ...(name && { name }),
         ...(type && { type }),
@@ -202,11 +202,11 @@ export function registerDocSystemRoutes(app: Express): void {
         ...(variables && { variables }),
         ...(isActive !== undefined && { isActive }),
       });
-      
+
       res.json(updated);
     } catch (error: any) {
-      console.error("Update document template error:", error);
-      res.status(500).json({ message: error.message || "Failed to update template" });
+      logger.error("Update document template error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
 
@@ -215,28 +215,28 @@ export function registerDocSystemRoutes(app: Express): void {
     try {
       const org = req.organization;
       const id = parseInt(req.params.id);
-      
+
       if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid template ID" });
+        return Errors.badRequest(res, "Invalid template ID");
       }
-      
+
       const existing = await storage.getDocumentTemplate(id);
       if (!existing) {
-        return res.status(404).json({ message: "Template not found" });
+        return Errors.notFound(res, "Template");
       }
-      
+
       // Only allow editing org-specific templates, not system templates
       if (existing.isSystemTemplate) {
-        return res.status(403).json({ message: "Cannot edit system templates" });
+        return Errors.forbidden(res, "Cannot edit system templates");
       }
-      
+
       // Verify template belongs to this org
       if (existing.organizationId !== org.id) {
-        return res.status(403).json({ message: "Not authorized to edit this template" });
+        return Errors.forbidden(res, "Not authorized to edit this template");
       }
-      
+
       const { name, type, category, content, variables, isActive } = req.body;
-      
+
       const updated = await storage.updateDocumentTemplate(id, {
         ...(name && { name }),
         ...(type && { type }),
@@ -245,11 +245,11 @@ export function registerDocSystemRoutes(app: Express): void {
         ...(variables && { variables }),
         ...(isActive !== undefined && { isActive }),
       });
-      
+
       res.json(updated);
     } catch (error: any) {
-      console.error("Update document template error:", error);
-      res.status(500).json({ message: error.message || "Failed to update template" });
+      logger.error("Update document template error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
 
@@ -260,29 +260,29 @@ export function registerDocSystemRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid template ID" });
+        return Errors.badRequest(res, "Invalid template ID");
       }
-      
+
       const existing = await storage.getDocumentTemplate(id);
       if (!existing) {
-        return res.status(404).json({ message: "Template not found" });
+        return Errors.notFound(res, "Template");
       }
-      
+
       // Cannot delete system templates
       if (existing.isSystemTemplate) {
-        return res.status(403).json({ message: "Cannot delete system templates" });
+        return Errors.forbidden(res, "Cannot delete system templates");
       }
-      
+
       // Verify template belongs to this org
       if (existing.organizationId !== org.id) {
-        return res.status(403).json({ message: "Not authorized to delete this template" });
+        return Errors.forbidden(res, "Not authorized to delete this template");
       }
-      
+
       await storage.deleteDocumentTemplate(id);
       res.json({ success: true });
     } catch (error: any) {
-      console.error("Delete document template error:", error);
-      res.status(500).json({ message: error.message || "Failed to delete template" });
+      logger.error("Delete document template error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
 
