@@ -892,8 +892,8 @@ export function registerCommunicationRoutes(app: Express): void {
       res.setHeader('Content-Disposition', `attachment; filename="notes-${new Date().toISOString().split('T')[0]}.csv"`);
       res.send(csv);
     } catch (error: any) {
-      console.error("Export notes error:", error);
-      res.status(500).json({ message: error.message || "Failed to export notes" });
+      logger.error("Export notes error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to export notes"));
     }
   });
 
@@ -911,11 +911,11 @@ export function registerCommunicationRoutes(app: Express): void {
           reportType,
         });
       } else {
-        res.status(400).json({ message: "Unsupported format" });
+        Errors.badRequest(res, "Unsupported format");
       }
     } catch (error: any) {
-      console.error("Export report error:", error);
-      res.status(500).json({ message: error.message || "Failed to export report" });
+      logger.error("Export report error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to export report"));
     }
   });
 
@@ -930,8 +930,8 @@ export function registerCommunicationRoutes(app: Express): void {
       const workflows = await storage.getWorkflows(org.id);
       res.json(workflows);
     } catch (error: any) {
-      console.error("Get workflows error:", error);
-      res.status(500).json({ message: error.message || "Failed to fetch workflows" });
+      logger.error("Get workflows error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to fetch workflows"));
     }
   });
 
@@ -950,12 +950,12 @@ export function registerCommunicationRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       const workflow = await storage.getWorkflow(org.id, id);
       if (!workflow) {
-        return res.status(404).json({ message: "Workflow not found" });
+        return Errors.notFound(res, "Workflow");
       }
       res.json(workflow);
     } catch (error: any) {
-      console.error("Get workflow error:", error);
-      res.status(500).json({ message: error.message || "Failed to fetch workflow" });
+      logger.error("Get workflow error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to fetch workflow"));
     }
   });
 
@@ -986,8 +986,8 @@ export function registerCommunicationRoutes(app: Express): void {
 
       res.status(201).json(workflow);
     } catch (error: any) {
-      console.error("Create workflow error:", error);
-      res.status(400).json({ message: error.message || "Failed to create workflow" });
+      logger.error("Create workflow error", error instanceof Error ? error : undefined);
+      Errors.badRequest(res, error.message || "Failed to create workflow");
     }
   });
 
@@ -998,7 +998,7 @@ export function registerCommunicationRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       const existing = await storage.getWorkflow(org.id, id);
       if (!existing) {
-        return res.status(404).json({ message: "Workflow not found" });
+        return Errors.notFound(res, "Workflow");
       }
       const workflow = await storage.updateWorkflow(id, req.body);
 
@@ -1019,8 +1019,8 @@ export function registerCommunicationRoutes(app: Express): void {
 
       res.json(workflow);
     } catch (error: any) {
-      console.error("Update workflow error:", error);
-      res.status(400).json({ message: error.message || "Failed to update workflow" });
+      logger.error("Update workflow error", error instanceof Error ? error : undefined);
+      Errors.badRequest(res, error.message || "Failed to update workflow");
     }
   });
 
@@ -1031,7 +1031,7 @@ export function registerCommunicationRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       const existing = await storage.getWorkflow(org.id, id);
       if (!existing) {
-        return res.status(404).json({ message: "Workflow not found" });
+        return Errors.notFound(res, "Workflow");
       }
       await storage.deleteWorkflow(id);
 
@@ -1064,7 +1064,7 @@ export function registerCommunicationRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       const existing = await storage.getWorkflow(org.id, id);
       if (!existing) {
-        return res.status(404).json({ message: "Workflow not found" });
+        return Errors.notFound(res, "Workflow");
       }
       const isActive = req.body.isActive !== undefined ? req.body.isActive : !existing.isActive;
       const workflow = await storage.toggleWorkflow(org.id, id, isActive);
@@ -1098,7 +1098,7 @@ export function registerCommunicationRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       const existing = await storage.getWorkflow(org.id, id);
       if (!existing) {
-        return res.status(404).json({ message: "Workflow not found" });
+        return Errors.notFound(res, "Workflow");
       }
       const limit = Math.min(100, req.query.limit ? parseInt(req.query.limit as string) : 50);
       const runs = await storage.getWorkflowRuns(id, limit);
@@ -1116,7 +1116,7 @@ export function registerCommunicationRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       const workflow = await storage.getWorkflow(org.id, id);
       if (!workflow) {
-        return res.status(404).json({ message: "Workflow not found" });
+        return Errors.notFound(res, "Workflow");
       }
       const testData = req.body.testData || {};
       const run = await workflowEngine.testWorkflow(workflow, testData);

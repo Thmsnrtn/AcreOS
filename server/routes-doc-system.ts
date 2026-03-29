@@ -293,17 +293,17 @@ export function registerDocSystemRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid template ID" });
+        return Errors.badRequest(res, "Invalid template ID");
       }
-      
+
       const template = await storage.getDocumentTemplate(id);
       if (!template) {
-        return res.status(404).json({ message: "Template not found" });
+        return Errors.notFound(res, "Template");
       }
-      
+
       // Verify access - either system template or belongs to this org
       if (!template.isSystemTemplate && template.organizationId !== org.id) {
-        return res.status(403).json({ message: "Not authorized to preview this template" });
+        return Errors.forbidden(res, "Not authorized to preview this template");
       }
       
       // Get sample data from request body or use defaults
@@ -381,8 +381,8 @@ export function registerDocSystemRoutes(app: Express): void {
         usedData: mergedData,
       });
     } catch (error: any) {
-      console.error("Preview document template error:", error);
-      res.status(500).json({ message: error.message || "Failed to preview template" });
+      logger.error("Preview document template error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
 
@@ -397,14 +397,14 @@ export function registerDocSystemRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid template ID" });
+        return Errors.badRequest(res, "Invalid template ID");
       }
-      
+
       const versions = await storage.getDocumentVersions(org.id, id, "template");
       res.json(versions);
     } catch (error: any) {
-      console.error("Get template versions error:", error);
-      res.status(500).json({ message: error.message || "Failed to fetch version history" });
+      logger.error("Get template versions error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
 
@@ -416,16 +416,16 @@ export function registerDocSystemRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid template ID" });
+        return Errors.badRequest(res, "Invalid template ID");
       }
-      
+
       const template = await storage.getDocumentTemplate(id);
       if (!template) {
-        return res.status(404).json({ message: "Template not found" });
+        return Errors.notFound(res, "Template");
       }
-      
+
       if (!template.isSystemTemplate && template.organizationId !== org.id) {
-        return res.status(403).json({ message: "Not authorized to version this template" });
+        return Errors.forbidden(res, "Not authorized to version this template");
       }
       
       const versions = await storage.getDocumentVersions(org.id, id, "template");
@@ -444,8 +444,8 @@ export function registerDocSystemRoutes(app: Express): void {
       
       res.status(201).json(version);
     } catch (error: any) {
-      console.error("Create template version error:", error);
-      res.status(500).json({ message: error.message || "Failed to create version" });
+      logger.error("Create template version error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
 
