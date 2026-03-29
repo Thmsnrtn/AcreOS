@@ -9,6 +9,8 @@ import {
   transactionTraining,
   marketplaceTransactions,
 } from "@shared/schema";
+import { Errors } from "./utils/errors";
+import { logger } from "./utils/logger";
 
 const router = Router();
 
@@ -21,7 +23,7 @@ async function requireApiKey(req: Request, res: Response, next: any) {
   if (org?.isFounder) return next();
 
   if (!apiKey) {
-    return res.status(401).json({ error: "API key required. Pass X-Api-Key header." });
+    return Errors.unauthorized(res);
   }
 
   try {
@@ -33,14 +35,15 @@ async function requireApiKey(req: Request, res: Response, next: any) {
       .limit(1);
 
     if (!key) {
-      return res.status(401).json({ error: "Invalid or revoked API key." });
+      return Errors.unauthorized(res);
     }
 
     (req as any).apiKeyId = key.id;
     (req as any).apiKeyProvider = key.provider;
     next();
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    logger.error("API key validation error", err);
+    Errors.internal(res, err);
   }
 }
 
@@ -81,7 +84,8 @@ router.get("/benchmarks/:state/:propertyType", requireApiKey, async (req: Reques
       },
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    logger.error("Benchmarks error", err);
+    Errors.internal(res, err);
   }
 });
 
@@ -110,7 +114,8 @@ router.get("/price-trends/:county", requireApiKey, async (req: Request, res: Res
 
     res.json({ county, state: state || "all", trends });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    logger.error("Price trends error", err);
+    Errors.internal(res, err);
   }
 });
 
@@ -132,14 +137,15 @@ router.get("/demand/:state", requireApiKey, async (req: Request, res: Response) 
 
     res.json({ state: state.toUpperCase(), demand });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    logger.error("Demand data error", err);
+    Errors.internal(res, err);
   }
 });
 
 // ── API Key Management (Admin only) ────────────────────────────────────────────
 router.get("/keys", async (req: Request, res: Response) => {
   const org = req.organization;
-  if (!org?.isFounder) return res.status(403).json({ error: "Admin access required" });
+  if (!org?.isFounder) return Errors.forbidden(res, "Admin access required");
   try {
     const keys = await db.select({
       id: systemApiKeys.id,
@@ -152,16 +158,17 @@ router.get("/keys", async (req: Request, res: Response) => {
 
     res.json({ keys });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    logger.error("List API keys error", err);
+    Errors.internal(res, err);
   }
 });
 
 router.post("/keys", async (req: Request, res: Response) => {
   const org = req.organization;
-  if (!org?.isFounder) return res.status(403).json({ error: "Admin access required" });
+  if (!org?.isFounder) return Errors.forbidden(res, "Admin access required");
   try {
     const { name, provider } = req.body;
-    if (!name) return res.status(400).json({ error: "Name is required" });
+    if (!name) return Errors.badRequest(res, "Name is required");
 
     const apiKeyValue = `ak_${Buffer.from(Math.random().toString()).toString("base64").substring(0, 32)}`;
     const [key] = await db.insert(systemApiKeys).values({
@@ -174,32 +181,34 @@ router.post("/keys", async (req: Request, res: Response) => {
 
     res.json({ key: { ...key, apiKey: apiKeyValue }, message: "Save this key — it won't be shown again." });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    logger.error("Create API key error", err);
+    Errors.internal(res, err);
   }
 });
 
 router.delete("/keys/:id", async (req: Request, res: Response) => {
   const org = req.organization;
-  if (!org?.isFounder) return res.status(403).json({ error: "Admin access required" });
+  if (!org?.isFounder) return Errors.forbidden(res, "Admin access required");
   try {
     await db.update(systemApiKeys)
       .set({ isActive: false, updatedAt: new Date() })
       .where(eq(systemApiKeys.id, parseInt(req.params.id)));
     res.json({ success: true, message: "API key revoked" });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    logger.error("Delete API key error", err);
+    Errors.internal(res, err);
   }
 });
 
 // ── API Key Usage Stats ───────────────────────────────────────────────────────
 router.get("/usage/:keyId", async (req: Request, res: Response) => {
   const org = req.organization;
-  if (!org?.isFounder) return res.status(403).json({ error: "Admin access required" });
+  if (!org?.isFounder) return Errors.forbidden(res, "Admin access required");
   try {
     const keyId = parseInt(req.params.keyId);
     const [key] = await db.select().from(systemApiKeys).where(eq(systemApiKeys.id, keyId)).limit(1);
 
-    if (!key) return res.status(404).json({ error: "API key not found" });
+    if (!key) return Errors.notFound(res, "API key");
 
     // Synthetic usage stats (in production, track per-request in an api_usage table)
     const usageStats = {
@@ -222,7 +231,8 @@ router.get("/usage/:keyId", async (req: Request, res: Response) => {
 
     res.json({ usage: usageStats });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    logger.error("API key usage stats error", err);
+    Errors.internal(res, err);
   }
 });
 
@@ -244,7 +254,8 @@ router.get("/stats", async (req: Request, res: Response) => {
       },
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    logger.error("Data API stats error", err);
+    Errors.internal(res, err);
   }
 });
 
@@ -270,7 +281,8 @@ router.get("/coverage", async (req: Request, res: Response) => {
 
     res.json({ states });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    logger.error("Coverage report error", err);
+    Errors.internal(res, err);
   }
 });
 

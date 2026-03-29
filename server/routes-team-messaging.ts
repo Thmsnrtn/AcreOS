@@ -10,6 +10,8 @@ import {
 } from "@shared/schema";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
+import { Errors } from "./utils/errors";
+import { logger } from "./utils/logger";
 import type { NextFunction } from "express";
 import { inArray } from "drizzle-orm";
 import { wsServer } from "./websocket";
@@ -24,18 +26,14 @@ export function registerTeamMessagingRoutes(app: Express): void {
   const requireMessagingTier = async (req: Request, res: Response, next: NextFunction) => {
     const org = req.organization;
     if (!org) {
-      return res.status(401).json({ message: "Unauthorized" });
+      return Errors.unauthorized(res);
     }
-    
+
     const { checkTeamMessagingAccess } = await import("./services/usageLimits");
     const hasAccess = await checkTeamMessagingAccess(org.id);
-    
+
     if (!hasAccess) {
-      return res.status(403).json({ 
-        message: "Team messaging requires a plan with 2 or more seats. Upgrade to Starter or higher to access this feature.",
-        tier_gating: true,
-        minSeats: 2
-      });
+      return Errors.forbidden(res, "Team messaging requires a plan with 2 or more seats. Upgrade to Starter or higher to access this feature.");
     }
     next();
   };
@@ -60,8 +58,8 @@ export function registerTeamMessagingRoutes(app: Express): void {
       
       res.json(userConversations);
     } catch (error: any) {
-      console.error("Get team conversations error:", error);
-      res.status(500).json({ message: error.message || "Failed to fetch conversations" });
+      logger.error("Get team conversations error", error);
+      Errors.internal(res, error);
     }
   });
 
@@ -80,7 +78,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
       
       const parsed = createSchema.safeParse(req.body);
       if (!parsed.success) {
-        return res.status(400).json({ message: "Invalid request body", errors: parsed.error.errors });
+        return Errors.badRequest(res, "Invalid request body", parsed.error.errors);
       }
       
       const { name, isDirect, participantIds } = parsed.data;
@@ -124,8 +122,8 @@ export function registerTeamMessagingRoutes(app: Express): void {
       
       res.status(201).json(conversation);
     } catch (error: any) {
-      console.error("Create team conversation error:", error);
-      res.status(500).json({ message: error.message || "Failed to create conversation" });
+      logger.error("Create team conversation error", error);
+      Errors.internal(res, error);
     }
   });
 
@@ -138,7 +136,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
       const conversationId = parseInt(req.params.id, 10);
       
       if (isNaN(conversationId)) {
-        return res.status(400).json({ message: "Invalid conversation ID" });
+        return Errors.badRequest(res, "Invalid conversation ID");
       }
       
       // Verify conversation exists and user is a participant
@@ -151,11 +149,11 @@ export function registerTeamMessagingRoutes(app: Express): void {
         ));
       
       if (!conversation) {
-        return res.status(404).json({ message: "Conversation not found" });
+        return Errors.notFound(res, "Conversation");
       }
       
       if (!conversation.participantIds?.includes(userId)) {
-        return res.status(403).json({ message: "Not a participant of this conversation" });
+        return Errors.forbidden(res, "Not a participant of this conversation");
       }
       
       // Parse pagination params
@@ -197,8 +195,8 @@ export function registerTeamMessagingRoutes(app: Express): void {
         hasMore,
       });
     } catch (error: any) {
-      console.error("Get team messages error:", error);
-      res.status(500).json({ message: error.message || "Failed to fetch messages" });
+      logger.error("Get team messages error", error);
+      Errors.internal(res, error);
     }
   });
 
@@ -211,7 +209,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
       const conversationId = parseInt(req.params.id, 10);
       
       if (isNaN(conversationId)) {
-        return res.status(400).json({ message: "Invalid conversation ID" });
+        return Errors.badRequest(res, "Invalid conversation ID");
       }
       
       // Verify conversation exists and user is a participant
@@ -224,11 +222,11 @@ export function registerTeamMessagingRoutes(app: Express): void {
         ));
       
       if (!conversation) {
-        return res.status(404).json({ message: "Conversation not found" });
+        return Errors.notFound(res, "Conversation");
       }
       
       if (!conversation.participantIds?.includes(userId)) {
-        return res.status(403).json({ message: "Not a participant of this conversation" });
+        return Errors.forbidden(res, "Not a participant of this conversation");
       }
       
       const messageSchema = z.object({
@@ -243,7 +241,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
       
       const parsed = messageSchema.safeParse(req.body);
       if (!parsed.success) {
-        return res.status(400).json({ message: "Invalid request body", errors: parsed.error.errors });
+        return Errors.badRequest(res, "Invalid request body", parsed.error.errors);
       }
       
       const { body, attachments } = parsed.data;
@@ -311,8 +309,8 @@ export function registerTeamMessagingRoutes(app: Express): void {
 
       res.status(201).json(message);
     } catch (error: any) {
-      console.error("Send team message error:", error);
-      res.status(500).json({ message: error.message || "Failed to send message" });
+      logger.error("Send team message error", error);
+      Errors.internal(res, error);
     }
   });
 
@@ -325,7 +323,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
       const conversationId = parseInt(req.params.id, 10);
       
       if (isNaN(conversationId)) {
-        return res.status(400).json({ message: "Invalid conversation ID" });
+        return Errors.badRequest(res, "Invalid conversation ID");
       }
       
       // Verify conversation exists and user is a participant
@@ -338,11 +336,11 @@ export function registerTeamMessagingRoutes(app: Express): void {
         ));
       
       if (!conversation) {
-        return res.status(404).json({ message: "Conversation not found" });
+        return Errors.notFound(res, "Conversation");
       }
       
       if (!conversation.participantIds?.includes(userId)) {
-        return res.status(403).json({ message: "Not a participant of this conversation" });
+        return Errors.forbidden(res, "Not a participant of this conversation");
       }
       
       const readSchema = z.object({
@@ -352,7 +350,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
       
       const parsed = readSchema.safeParse(req.body);
       if (!parsed.success) {
-        return res.status(400).json({ message: "Invalid request body", errors: parsed.error.errors });
+        return Errors.badRequest(res, "Invalid request body", parsed.error.errors);
       }
       
       const { messageIds, upToMessageId } = parsed.data;
@@ -403,8 +401,8 @@ export function registerTeamMessagingRoutes(app: Express): void {
       
       res.json({ success: true, updatedCount });
     } catch (error: any) {
-      console.error("Mark messages read error:", error);
-      res.status(500).json({ message: error.message || "Failed to mark messages as read" });
+      logger.error("Mark messages read error", error);
+      Errors.internal(res, error);
     }
   });
 
@@ -420,8 +418,8 @@ export function registerTeamMessagingRoutes(app: Express): void {
       
       res.json(presenceStatuses);
     } catch (error: any) {
-      console.error("Get presence error:", error);
-      res.status(500).json({ message: error.message || "Failed to fetch presence statuses" });
+      logger.error("Get presence error", error);
+      Errors.internal(res, error);
     }
   });
 
@@ -439,7 +437,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
       
       const parsed = presenceSchema.safeParse(req.body);
       if (!parsed.success) {
-        return res.status(400).json({ message: "Invalid request body", errors: parsed.error.errors });
+        return Errors.badRequest(res, "Invalid request body", parsed.error.errors);
       }
       
       const { status, deviceInfo } = parsed.data;
@@ -515,7 +513,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
       const parsed = insertOfferLetterSchema.omit({ organizationId: true }).safeParse(req.body);
       
       if (!parsed.success) {
-        return res.status(400).json({ message: "Invalid offer letter data", errors: parsed.error.errors });
+        return Errors.badRequest(res, "Invalid offer letter data", parsed.error.errors);
       }
       
       const letter = await storage.createOfferLetter({
@@ -545,7 +543,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
       
       const parsed = batchSchema.safeParse(req.body);
       if (!parsed.success) {
-        return res.status(400).json({ message: "Invalid batch data", errors: parsed.error.errors });
+        return Errors.badRequest(res, "Invalid batch data", parsed.error.errors);
       }
       
       const { leadIds, offerPercent, expirationDays, templateId, deliveryMethod } = parsed.data;
@@ -555,7 +553,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
       const selectedLeads = allLeads.filter(lead => leadIds.includes(lead.id));
       
       if (selectedLeads.length === 0) {
-        return res.status(400).json({ message: "No valid leads found for batch" });
+        return Errors.badRequest(res, "No valid leads found for batch");
       }
       
       // Get properties for the leads
@@ -609,17 +607,17 @@ export function registerTeamMessagingRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid offer letter ID" });
+        return Errors.badRequest(res, "Invalid offer letter ID");
       }
       
       const existing = await storage.getOfferLetter(org.id, id);
       if (!existing) {
-        return res.status(404).json({ message: "Offer letter not found" });
+        return Errors.notFound(res, "Offer letter");
       }
       
       const parsed = insertOfferLetterSchema.partial().safeParse(req.body);
       if (!parsed.success) {
-        return res.status(400).json({ message: "Invalid update data", errors: parsed.error.errors });
+        return Errors.badRequest(res, "Invalid update data", parsed.error.errors);
       }
       
       const updated = await storage.updateOfferLetter(id, parsed.data);
@@ -637,12 +635,12 @@ export function registerTeamMessagingRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid offer letter ID" });
+        return Errors.badRequest(res, "Invalid offer letter ID");
       }
       
       const existing = await storage.getOfferLetter(org.id, id);
       if (!existing) {
-        return res.status(404).json({ message: "Offer letter not found" });
+        return Errors.notFound(res, "Offer letter");
       }
       
       await storage.deleteOfferLetter(id);
@@ -660,16 +658,16 @@ export function registerTeamMessagingRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid offer letter ID" });
+        return Errors.badRequest(res, "Invalid offer letter ID");
       }
       
       const letter = await storage.getOfferLetter(org.id, id);
       if (!letter) {
-        return res.status(404).json({ message: "Offer letter not found" });
+        return Errors.notFound(res, "Offer letter");
       }
       
       if (letter.status !== "draft") {
-        return res.status(400).json({ message: "Only draft offers can be queued for sending" });
+        return Errors.badRequest(res, "Only draft offers can be queued for sending");
       }
       
       // Queue for sending (in real implementation, this would integrate with Lob)
@@ -703,7 +701,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
       const parsed = insertOfferTemplateSchema.omit({ organizationId: true }).safeParse(req.body);
       
       if (!parsed.success) {
-        return res.status(400).json({ message: "Invalid template data", errors: parsed.error.errors });
+        return Errors.badRequest(res, "Invalid template data", parsed.error.errors);
       }
       
       const template = await storage.createOfferTemplate({
@@ -725,17 +723,17 @@ export function registerTeamMessagingRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid template ID" });
+        return Errors.badRequest(res, "Invalid template ID");
       }
       
       const existing = await storage.getOfferTemplate(org.id, id);
       if (!existing) {
-        return res.status(404).json({ message: "Template not found" });
+        return Errors.notFound(res, "Template");
       }
       
       const parsed = insertOfferTemplateSchema.partial().safeParse(req.body);
       if (!parsed.success) {
-        return res.status(400).json({ message: "Invalid update data", errors: parsed.error.errors });
+        return Errors.badRequest(res, "Invalid update data", parsed.error.errors);
       }
       
       const updated = await storage.updateOfferTemplate(id, parsed.data);
@@ -753,12 +751,12 @@ export function registerTeamMessagingRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid template ID" });
+        return Errors.badRequest(res, "Invalid template ID");
       }
       
       const existing = await storage.getOfferTemplate(org.id, id);
       if (!existing) {
-        return res.status(404).json({ message: "Template not found" });
+        return Errors.notFound(res, "Template");
       }
       
       await storage.deleteOfferTemplate(id);
@@ -793,12 +791,12 @@ export function registerTeamMessagingRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid listing ID" });
+        return Errors.badRequest(res, "Invalid listing ID");
       }
       
       const listing = await storage.getPropertyListing(org.id, id);
       if (!listing) {
-        return res.status(404).json({ message: "Listing not found" });
+        return Errors.notFound(res, "Listing");
       }
       
       res.json(listing);
@@ -815,19 +813,19 @@ export function registerTeamMessagingRoutes(app: Express): void {
       const parsed = insertPropertyListingSchema.omit({ organizationId: true }).safeParse(req.body);
       
       if (!parsed.success) {
-        return res.status(400).json({ message: "Invalid listing data", errors: parsed.error.errors });
+        return Errors.badRequest(res, "Invalid listing data", parsed.error.errors);
       }
       
       // Verify property belongs to this org
       const property = await storage.getProperty(org.id, parsed.data.propertyId);
       if (!property) {
-        return res.status(400).json({ message: "Property not found or doesn't belong to your organization" });
+        return Errors.badRequest(res, "Property not found or doesn't belong to your organization");
       }
       
       // Check if listing already exists for this property
       const existing = await storage.getPropertyListingByPropertyId(org.id, parsed.data.propertyId);
       if (existing) {
-        return res.status(400).json({ message: "A listing already exists for this property" });
+        return Errors.badRequest(res, "A listing already exists for this property");
       }
       
       const listing = await storage.createPropertyListing({
@@ -849,17 +847,17 @@ export function registerTeamMessagingRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid listing ID" });
+        return Errors.badRequest(res, "Invalid listing ID");
       }
       
       const existing = await storage.getPropertyListing(org.id, id);
       if (!existing) {
-        return res.status(404).json({ message: "Listing not found" });
+        return Errors.notFound(res, "Listing");
       }
       
       const parsed = insertPropertyListingSchema.partial().safeParse(req.body);
       if (!parsed.success) {
-        return res.status(400).json({ message: "Invalid update data", errors: parsed.error.errors });
+        return Errors.badRequest(res, "Invalid update data", parsed.error.errors);
       }
       
       const updated = await storage.updatePropertyListing(id, parsed.data);
@@ -877,12 +875,12 @@ export function registerTeamMessagingRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid listing ID" });
+        return Errors.badRequest(res, "Invalid listing ID");
       }
       
       const existing = await storage.getPropertyListing(org.id, id);
       if (!existing) {
-        return res.status(404).json({ message: "Listing not found" });
+        return Errors.notFound(res, "Listing");
       }
       
       await storage.deletePropertyListing(id);
@@ -900,17 +898,17 @@ export function registerTeamMessagingRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid listing ID" });
+        return Errors.badRequest(res, "Invalid listing ID");
       }
       
       const listing = await storage.getPropertyListing(org.id, id);
       if (!listing) {
-        return res.status(404).json({ message: "Listing not found" });
+        return Errors.notFound(res, "Listing");
       }
       
       const { targets } = req.body; // Array of target platforms
       if (!targets || !Array.isArray(targets) || targets.length === 0) {
-        return res.status(400).json({ message: "Please specify syndication targets" });
+        return Errors.badRequest(res, "Please specify syndication targets");
       }
       
       // Create syndication targets with pending status
@@ -940,12 +938,12 @@ export function registerTeamMessagingRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid listing ID" });
+        return Errors.badRequest(res, "Invalid listing ID");
       }
       
       const listing = await storage.getPropertyListing(org.id, id);
       if (!listing) {
-        return res.status(404).json({ message: "Listing not found" });
+        return Errors.notFound(res, "Listing");
       }
       
       // Mark all syndication targets as removed
@@ -1032,7 +1030,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
       });
       const parsed = schema.safeParse(req.body);
       if (!parsed.success) {
-        return res.status(400).json({ message: "Name is required", errors: parsed.error.errors });
+        return Errors.badRequest(res, "Name is required", parsed.error.errors);
       }
 
       const { name } = parsed.data;
@@ -1086,7 +1084,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
           eq(teamConversations.organizationId, org.id),
           eq(teamConversations.isDirect, false),
         ));
-      if (!channel) return res.status(404).json({ message: "Channel not found" });
+      if (!channel) return Errors.notFound(res, "Channel");
 
       const participants: string[] = Array.from(new Set([...(channel.participantIds ?? []), userId]));
       const [updated] = await db

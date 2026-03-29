@@ -4,6 +4,8 @@ import { z } from "zod";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { usageMeteringService, creditService } from "./services/credits";
+import { Errors } from "./utils/errors";
+import { logger } from "./utils/logger";
 
 export function registerCoreAIRoutes(app: Express): void {
   const api = app;
@@ -22,8 +24,8 @@ export function registerCoreAIRoutes(app: Express): void {
       const { getAllAgentsInfo } = await import('./services/core-agents');
       res.json(getAllAgentsInfo());
     } catch (err: any) {
-      console.error("Get agents error:", err);
-      res.status(500).json({ message: err.message });
+      logger.error("Get agents error", err);
+      Errors.internal(res, err);
     }
   });
 
@@ -32,8 +34,8 @@ export function registerCoreAIRoutes(app: Express): void {
       const { getAllSkills } = await import('./services/core-agents');
       res.json(getAllSkills());
     } catch (err: any) {
-      console.error("Get all skills error:", err);
-      res.status(500).json({ message: err.message });
+      logger.error("Get all skills error", err);
+      Errors.internal(res, err);
     }
   });
 
@@ -44,13 +46,13 @@ export function registerCoreAIRoutes(app: Express): void {
       const skills = getAgentSkills(agentType);
       
       if (!skills) {
-        return res.status(404).json({ message: "Agent type not found" });
+        return Errors.notFound(res, "Agent type");
       }
-      
+
       res.json(skills);
     } catch (err: any) {
-      console.error("Get agent skills error:", err);
-      res.status(500).json({ message: err.message });
+      logger.error("Get agent skills error", err);
+      Errors.internal(res, err);
     }
   });
 
@@ -77,8 +79,8 @@ export function registerCoreAIRoutes(app: Express): void {
 
       res.json(result);
     } catch (err: any) {
-      console.error("Execute skill error:", err);
-      res.status(500).json({ message: err.message });
+      logger.error("Execute skill error", err);
+      Errors.internal(res, err);
     }
   });
 
@@ -89,13 +91,13 @@ export function registerCoreAIRoutes(app: Express): void {
       const info = getAgentInfo(agentType);
       
       if (!info) {
-        return res.status(404).json({ message: "Agent type not found" });
+        return Errors.notFound(res, "Agent type");
       }
-      
+
       res.json(info);
     } catch (err: any) {
-      console.error("Get agent error:", err);
-      res.status(500).json({ message: err.message });
+      logger.error("Get agent error", err);
+      Errors.internal(res, err);
     }
   });
 
@@ -106,7 +108,7 @@ export function registerCoreAIRoutes(app: Express): void {
       
       const parseResult = agentTaskSchema.safeParse(req.body);
       if (!parseResult.success) {
-        return res.status(400).json({ message: "Invalid request", errors: parseResult.error.errors });
+        return Errors.badRequest(res, "Invalid request", parseResult.error.errors);
       }
 
       const { agentType, action, parameters } = parseResult.data;
@@ -126,8 +128,8 @@ export function registerCoreAIRoutes(app: Express): void {
 
       res.json(result);
     } catch (err: any) {
-      console.error("Agent execute error:", err);
-      res.status(500).json({ message: err.message });
+      logger.error("Agent execute error", err);
+      Errors.internal(res, err);
     }
   });
 
@@ -137,7 +139,7 @@ export function registerCoreAIRoutes(app: Express): void {
       const { propertyId } = req.body;
 
       if (!propertyId) {
-        return res.status(400).json({ message: "propertyId is required" });
+        return Errors.badRequest(res, "propertyId is required");
       }
 
       const { executeAgentTask } = await import('./services/core-agents');
@@ -149,8 +151,8 @@ export function registerCoreAIRoutes(app: Express): void {
 
       res.json(result);
     } catch (err: any) {
-      console.error("Due diligence error:", err);
-      res.status(500).json({ message: err.message });
+      logger.error("Due diligence error", err);
+      Errors.internal(res, err);
     }
   });
 
@@ -168,8 +170,8 @@ export function registerCoreAIRoutes(app: Express): void {
 
       res.json(result);
     } catch (err: any) {
-      console.error("Generate offer error:", err);
-      res.status(500).json({ message: err.message });
+      logger.error("Generate offer error", err);
+      Errors.internal(res, err);
     }
   });
 
@@ -189,8 +191,8 @@ export function registerCoreAIRoutes(app: Express): void {
 
       res.json(result);
     } catch (err: any) {
-      console.error("Compose message error:", err);
-      res.status(500).json({ message: err.message });
+      logger.error("Compose message error", err);
+      Errors.internal(res, err);
     }
   });
 
@@ -202,16 +204,16 @@ export function registerCoreAIRoutes(app: Express): void {
       const { agentTaskId, rating, helpful, feedback: feedbackText } = req.body;
 
       if (!agentTaskId || rating === undefined || helpful === undefined) {
-        return res.status(400).json({ message: "agentTaskId, rating, and helpful are required" });
+        return Errors.badRequest(res, "agentTaskId, rating, and helpful are required");
       }
 
       if (rating < 1 || rating > 5) {
-        return res.status(400).json({ message: "Rating must be between 1 and 5" });
+        return Errors.badRequest(res, "Rating must be between 1 and 5");
       }
 
       const agentTask = await storage.getAgentTask(org.id, agentTaskId);
       if (!agentTask) {
-        return res.status(404).json({ message: "Agent task not found" });
+        return Errors.notFound(res, "Agent task");
       }
 
       const existingFeedback = await storage.getAgentFeedbackByTask(agentTaskId);
@@ -230,8 +232,8 @@ export function registerCoreAIRoutes(app: Express): void {
 
       res.json({ success: true, feedback: feedbackData });
     } catch (err: any) {
-      console.error("Submit feedback error:", err);
-      res.status(500).json({ message: err.message });
+      logger.error("Submit feedback error", err);
+      Errors.internal(res, err);
     }
   });
 
@@ -243,14 +245,14 @@ export function registerCoreAIRoutes(app: Express): void {
 
       const validTypes = ["research", "deals", "communications", "operations"];
       if (!validTypes.includes(agentType)) {
-        return res.status(400).json({ message: "Invalid agent type" });
+        return Errors.badRequest(res, "Invalid agent type");
       }
 
       const memories = await storage.getAgentMemories(org.id, agentType, limit);
       res.json({ memories, count: memories.length });
     } catch (err: any) {
-      console.error("Get agent memory error:", err);
-      res.status(500).json({ message: err.message });
+      logger.error("Get agent memory error", err);
+      Errors.internal(res, err);
     }
   });
 
@@ -262,8 +264,8 @@ export function registerCoreAIRoutes(app: Express): void {
       const stats = await storage.getAgentFeedbackStats(org.id, agentType);
       res.json(stats);
     } catch (err: any) {
-      console.error("Get feedback stats error:", err);
-      res.status(500).json({ message: err.message });
+      logger.error("Get feedback stats error", err);
+      Errors.internal(res, err);
     }
   });
 
@@ -271,14 +273,14 @@ export function registerCoreAIRoutes(app: Express): void {
     try {
       const memoryId = parseInt(req.params.id);
       if (isNaN(memoryId)) {
-        return res.status(400).json({ message: "Invalid memory ID" });
+        return Errors.badRequest(res, "Invalid memory ID");
       }
 
       await storage.deleteAgentMemory(memoryId);
       res.json({ success: true });
     } catch (err: any) {
-      console.error("Delete agent memory error:", err);
-      res.status(500).json({ message: err.message });
+      logger.error("Delete agent memory error", err);
+      Errors.internal(res, err);
     }
   });
 
@@ -310,8 +312,8 @@ export function registerCoreAIRoutes(app: Express): void {
       const observations = await paxObserver.getActiveObservations(org.id, limit);
       res.json({ observations });
     } catch (err: any) {
-      console.error("Pax observations error:", err);
-      res.status(500).json({ message: err.message });
+      logger.error("Pax observations error", err);
+      Errors.internal(res, err);
     }
   });
 
@@ -323,14 +325,14 @@ export function registerCoreAIRoutes(app: Express): void {
     try {
       const observationId = parseInt(req.params.id);
       if (isNaN(observationId)) {
-        return res.status(400).json({ message: "Invalid observation ID" });
+        return Errors.badRequest(res, "Invalid observation ID");
       }
       const { paxObserver } = await import('./services/paxObserver');
       const ok = await paxObserver.acknowledgeObservation(observationId);
       res.json({ success: ok });
     } catch (err: any) {
-      console.error("Acknowledge observation error:", err);
-      res.status(500).json({ message: err.message });
+      logger.error("Acknowledge observation error", err);
+      Errors.internal(res, err);
     }
   });
 
@@ -342,14 +344,14 @@ export function registerCoreAIRoutes(app: Express): void {
     try {
       const observationId = parseInt(req.params.id);
       if (isNaN(observationId)) {
-        return res.status(400).json({ message: "Invalid observation ID" });
+        return Errors.badRequest(res, "Invalid observation ID");
       }
       const { paxObserver } = await import('./services/paxObserver');
       const ok = await paxObserver.dismissObservation(observationId);
       res.json({ success: ok });
     } catch (err: any) {
-      console.error("Dismiss observation error:", err);
-      res.status(500).json({ message: err.message });
+      logger.error("Dismiss observation error", err);
+      Errors.internal(res, err);
     }
   });
 
@@ -359,8 +361,8 @@ export function registerCoreAIRoutes(app: Express): void {
       const status = communicationsService.getChannelStatus();
       res.json(status);
     } catch (err: any) {
-      console.error("Integration status error:", err);
-      res.status(500).json({ message: err.message });
+      logger.error("Integration status error", err);
+      Errors.internal(res, err);
     }
   });
 
@@ -370,12 +372,12 @@ export function registerCoreAIRoutes(app: Express): void {
       const { type, leadId, subject, content, template, variables } = req.body;
       
       if (!leadId || !type || !content) {
-        return res.status(400).json({ message: "leadId, type, and content are required" });
+        return Errors.badRequest(res, "leadId, type, and content are required");
       }
-      
+
       const lead = await storage.getLead(org.id, leadId);
       if (!lead) {
-        return res.status(404).json({ message: "Lead not found" });
+        return Errors.notFound(res, "Lead");
       }
       
       const { communicationsService } = await import('./services/communications');
@@ -389,8 +391,8 @@ export function registerCoreAIRoutes(app: Express): void {
       
       res.json(result);
     } catch (err: any) {
-      console.error("Communications send error:", err);
-      res.status(500).json({ message: err.message });
+      logger.error("Communications send error", err);
+      Errors.internal(res, err);
     }
   });
 
@@ -403,7 +405,7 @@ export function registerCoreAIRoutes(app: Express): void {
     try {
       const { propertyId, askingPrice, offeredPrice, timeOnMarket, competingOffers } = req.query;
       if (!propertyId || !askingPrice) {
-        return res.status(400).json({ message: "propertyId and askingPrice are required" });
+        return Errors.badRequest(res, "propertyId and askingPrice are required");
       }
 
       const { negotiationOrchestrator } = await import("./services/negotiationOrchestrator");
@@ -433,7 +435,8 @@ export function registerCoreAIRoutes(app: Express): void {
 
       res.json(recommendation);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      logger.error("Counter offer error", err);
+      Errors.internal(res, err);
     }
   });
 
@@ -442,7 +445,7 @@ export function registerCoreAIRoutes(app: Express): void {
     try {
       const { messages, propertyId } = req.body;
       if (!messages || !Array.isArray(messages)) {
-        return res.status(400).json({ message: "messages array is required" });
+        return Errors.badRequest(res, "messages array is required");
       }
 
       const { negotiationOrchestrator } = await import("./services/negotiationOrchestrator");
@@ -455,7 +458,8 @@ export function registerCoreAIRoutes(app: Express): void {
 
       res.json(profile);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      logger.error("Analyze seller error", err);
+      Errors.internal(res, err);
     }
   });
 
@@ -464,7 +468,7 @@ export function registerCoreAIRoutes(app: Express): void {
     try {
       const { sellerMessages, askingPrice, offerAmount, sellerMotivation } = req.body;
       if (!askingPrice || !offerAmount) {
-        return res.status(400).json({ message: "askingPrice and offerAmount are required" });
+        return Errors.badRequest(res, "askingPrice and offerAmount are required");
       }
 
       const { negotiationOrchestrator } = await import("./services/negotiationOrchestrator");
@@ -507,7 +511,8 @@ export function registerCoreAIRoutes(app: Express): void {
 
       res.json({ script, counterOffer, sellerProfile });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      logger.error("Negotiation script error", err);
+      Errors.internal(res, err);
     }
   });
 

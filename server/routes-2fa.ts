@@ -17,6 +17,8 @@ import { users } from "@shared/models/auth";
 import { eq } from "drizzle-orm";
 import { twoFactorAuth } from "./services/twoFactorAuth";
 import { z } from "zod";
+import { Errors } from "./utils/errors";
+import { logger } from "./utils/logger";
 
 export function register2FARoutes(app: Express): void {
   // ── GET /api/auth/2fa/status ──────────────────────────────────────────────
@@ -30,7 +32,7 @@ export function register2FARoutes(app: Express): void {
         backupCodesRemaining: ((dbUser as any)?.twoFactorBackupCodes ?? []).length,
       });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err instanceof Error ? err : new Error(err.message));
     }
   });
 
@@ -55,7 +57,7 @@ export function register2FARoutes(app: Express): void {
         backupCodes: setup.backupCodes,
       });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err instanceof Error ? err : new Error(err.message));
     }
   });
 
@@ -71,11 +73,11 @@ export function register2FARoutes(app: Express): void {
       const rawCodes: string[] = (req as any).session.pendingBackupCodes || [];
 
       if (!secret) {
-        return res.status(400).json({ message: "No pending 2FA setup. Start setup first." });
+        return Errors.badRequest(res, "No pending 2FA setup. Start setup first.");
       }
 
       if (!twoFactorAuth.verifyCode(secret, code)) {
-        return res.status(400).json({ message: "Invalid verification code. Try again." });
+        return Errors.badRequest(res, "Invalid verification code. Try again.");
       }
 
       // Hash backup codes for storage
@@ -98,9 +100,9 @@ export function register2FARoutes(app: Express): void {
       res.json({ success: true, message: "Two-factor authentication enabled." });
     } catch (err: any) {
       if (err.name === "ZodError") {
-        return res.status(400).json({ message: "Invalid request body" });
+        return Errors.badRequest(res, "Invalid request body");
       }
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err instanceof Error ? err : new Error(err.message));
     }
   });
 
@@ -116,7 +118,7 @@ export function register2FARoutes(app: Express): void {
       const secret = (dbUser as any)?.twoFactorSecret;
 
       if (!secret || !(dbUser as any)?.twoFactorEnabled) {
-        return res.status(400).json({ message: "2FA not enabled for this account." });
+        return Errors.badRequest(res, "2FA not enabled for this account.");
       }
 
       // Try TOTP first
@@ -138,10 +140,10 @@ export function register2FARoutes(app: Express): void {
         return res.json({ success: true, backupCodeUsed: true, codesRemaining: updatedCodes.length });
       }
 
-      res.status(400).json({ message: "Invalid code. Check your authenticator app or use a backup code." });
+      Errors.badRequest(res, "Invalid code. Check your authenticator app or use a backup code.");
     } catch (err: any) {
-      if (err.name === "ZodError") return res.status(400).json({ message: "Invalid request body" });
-      res.status(500).json({ message: err.message });
+      if (err.name === "ZodError") return Errors.badRequest(res, "Invalid request body");
+      Errors.internal(res, err instanceof Error ? err : new Error(err.message));
     }
   });
 
@@ -160,7 +162,7 @@ export function register2FARoutes(app: Express): void {
         const backupCodes: string[] = (dbUser as any)?.twoFactorBackupCodes || [];
         const matchedIndex = await twoFactorAuth.verifyBackupCode(code, backupCodes);
         if (matchedIndex < 0) {
-          return res.status(400).json({ message: "Invalid code." });
+          return Errors.badRequest(res, "Invalid code.");
         }
       }
 
@@ -175,8 +177,8 @@ export function register2FARoutes(app: Express): void {
 
       res.json({ success: true, message: "Two-factor authentication disabled." });
     } catch (err: any) {
-      if (err.name === "ZodError") return res.status(400).json({ message: "Invalid request body" });
-      res.status(500).json({ message: err.message });
+      if (err.name === "ZodError") return Errors.badRequest(res, "Invalid request body");
+      Errors.internal(res, err instanceof Error ? err : new Error(err.message));
     }
   });
 }

@@ -17,6 +17,8 @@ const updateSequenceStepSchema = insertSequenceStepSchema.partial();
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { requirePermission } from "./utils/permissions";
+import { Errors } from "./utils/errors";
+import { logger } from "./utils/logger";
 import { checkUsageLimit } from "./services/usageLimits";
 import { usageMeteringService, creditService } from "./services/credits";
 import { createRateLimiter, RATE_LIMIT_CONFIGS } from "./middleware/rateLimit";
@@ -39,10 +41,10 @@ export function registerCampaignRoutes(app: Express): void {
   api.get("/api/campaigns/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
     const campaign = await storage.getCampaign(org.id, Number(req.params.id));
-    if (!campaign) return res.status(404).json({ message: "Campaign not found" });
+    if (!campaign) return Errors.notFound(res, "Campaign");
     res.json(campaign);
   });
-  
+
   api.post("/api/campaigns", isAuthenticated, getOrCreateOrg, requirePermission("canCreateCampaign"), async (req, res) => {
     try {
       const org = req.organization;
@@ -70,7 +72,7 @@ export function registerCampaignRoutes(app: Express): void {
       res.status(201).json(campaign);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return Errors.badRequest(res, err.errors[0].message);
       }
       throw err;
     }
@@ -81,8 +83,8 @@ export function registerCampaignRoutes(app: Express): void {
     const org = req.organization;
     const campaignId = Number(req.params.id);
     const campaign = await storage.getCampaign(org.id, campaignId);
-    if (!campaign) return res.status(404).json({ message: "Campaign not found" });
-    
+    if (!campaign) return Errors.notFound(res, "Campaign");
+
     const responses = await storage.getCampaignResponses(org.id, campaignId);
     res.json(responses);
   });
@@ -92,8 +94,8 @@ export function registerCampaignRoutes(app: Express): void {
     const org = req.organization;
     const campaignId = Number(req.params.id);
     const campaign = await storage.getCampaign(org.id, campaignId);
-    if (!campaign) return res.status(404).json({ message: "Campaign not found" });
-    
+    if (!campaign) return Errors.notFound(res, "Campaign");
+
     const responsesCount = await storage.getCampaignResponsesCount(campaignId);
     const responses = await storage.getCampaignResponses(org.id, campaignId);
 
@@ -218,7 +220,7 @@ export function registerCampaignRoutes(app: Express): void {
       res.status(201).json(response);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return Errors.badRequest(res, err.errors[0].message);
       }
       throw err;
     }
@@ -227,7 +229,7 @@ export function registerCampaignRoutes(app: Express): void {
   // Get a specific response
   api.get("/api/responses/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const response = await storage.getCampaignResponse(Number(req.params.id));
-    if (!response) return res.status(404).json({ message: "Response not found" });
+    if (!response) return Errors.notFound(res, "Response");
     res.json(response);
   });
 
@@ -236,10 +238,10 @@ export function registerCampaignRoutes(app: Express): void {
     try {
       const validated = insertCampaignResponseSchema.partial().parse(req.body);
       const response = await storage.updateCampaignResponse(Number(req.params.id), validated);
-      if (!response) return res.status(404).json({ message: "Response not found" });
+      if (!response) return Errors.notFound(res, "Response");
       res.json(response);
     } catch (err) {
-      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      if (err instanceof z.ZodError) return Errors.badRequest(res, err.errors[0].message);
       throw err;
     }
   });
@@ -265,7 +267,7 @@ export function registerCampaignRoutes(app: Express): void {
   api.get("/api/target-counties/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
     const county = await storage.getTargetCounty(org.id, Number(req.params.id));
-    if (!county) return res.status(404).json({ message: "Target county not found" });
+    if (!county) return Errors.notFound(res, "Target county");
     res.json(county);
   });
 
@@ -282,7 +284,7 @@ export function registerCampaignRoutes(app: Express): void {
       res.status(201).json(county);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return Errors.badRequest(res, err.errors[0].message);
       }
       throw err;
     }
@@ -293,12 +295,12 @@ export function registerCampaignRoutes(app: Express): void {
     try {
       const org = req.organization;
       const county = await storage.getTargetCounty(org.id, Number(req.params.id));
-      if (!county) return res.status(404).json({ message: "Target county not found" });
+      if (!county) return Errors.notFound(res, "Target county");
       const validated = updateTargetCountySchema.parse(req.body);
       const updated = await storage.updateTargetCounty(county.id, validated);
       res.json(updated);
     } catch (err) {
-      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      if (err instanceof z.ZodError) return Errors.badRequest(res, err.errors[0].message);
       throw err;
     }
   });
@@ -307,7 +309,7 @@ export function registerCampaignRoutes(app: Express): void {
   api.delete("/api/target-counties/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
     const county = await storage.getTargetCounty(org.id, Number(req.params.id));
-    if (!county) return res.status(404).json({ message: "Target county not found" });
+    if (!county) return Errors.notFound(res, "Target county");
     
     await storage.deleteTargetCounty(county.id);
     res.status(204).send();
@@ -335,8 +337,8 @@ export function registerCampaignRoutes(app: Express): void {
   api.get("/api/sequences/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
     const sequence = await storage.getSequence(org.id, Number(req.params.id));
-    if (!sequence) return res.status(404).json({ message: "Sequence not found" });
-    
+    if (!sequence) return Errors.notFound(res, "Sequence");
+
     const steps = await storage.getSequenceSteps(sequence.id);
     res.json({ ...sequence, steps });
   });
@@ -353,7 +355,7 @@ export function registerCampaignRoutes(app: Express): void {
       res.status(201).json(sequence);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return Errors.badRequest(res, err.errors[0].message);
       }
       throw err;
     }
@@ -364,12 +366,12 @@ export function registerCampaignRoutes(app: Express): void {
     try {
       const org = req.organization;
       const sequence = await storage.getSequence(org.id, Number(req.params.id));
-      if (!sequence) return res.status(404).json({ message: "Sequence not found" });
+      if (!sequence) return Errors.notFound(res, "Sequence");
       const validated = updateCampaignSequenceSchema.parse(req.body);
       const updated = await storage.updateSequence(sequence.id, validated);
       res.json(updated);
     } catch (err) {
-      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      if (err instanceof z.ZodError) return Errors.badRequest(res, err.errors[0].message);
       throw err;
     }
   });
@@ -378,7 +380,7 @@ export function registerCampaignRoutes(app: Express): void {
   api.delete("/api/sequences/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
     const sequence = await storage.getSequence(org.id, Number(req.params.id));
-    if (!sequence) return res.status(404).json({ message: "Sequence not found" });
+    if (!sequence) return Errors.notFound(res, "Sequence");
     
     await storage.deleteSequence(sequence.id);
     res.status(204).send();
@@ -392,8 +394,8 @@ export function registerCampaignRoutes(app: Express): void {
   api.get("/api/sequences/:id/steps", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
     const sequence = await storage.getSequence(org.id, Number(req.params.id));
-    if (!sequence) return res.status(404).json({ message: "Sequence not found" });
-    
+    if (!sequence) return Errors.notFound(res, "Sequence");
+
     const steps = await storage.getSequenceSteps(sequence.id);
     res.json(steps);
   });
@@ -403,7 +405,7 @@ export function registerCampaignRoutes(app: Express): void {
     try {
       const org = req.organization;
       const sequence = await storage.getSequence(org.id, Number(req.params.id));
-      if (!sequence) return res.status(404).json({ message: "Sequence not found" });
+      if (!sequence) return Errors.notFound(res, "Sequence");
       
       const existingSteps = await storage.getSequenceSteps(sequence.id);
       const nextStepNumber = existingSteps.length + 1;
@@ -417,7 +419,7 @@ export function registerCampaignRoutes(app: Express): void {
       res.status(201).json(step);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return Errors.badRequest(res, err.errors[0].message);
       }
       throw err;
     }
@@ -428,12 +430,12 @@ export function registerCampaignRoutes(app: Express): void {
     try {
       const org = req.organization;
       const sequence = await storage.getSequence(org.id, Number(req.params.id));
-      if (!sequence) return res.status(404).json({ message: "Sequence not found" });
+      if (!sequence) return Errors.notFound(res, "Sequence");
       const validated = updateSequenceStepSchema.parse(req.body);
       const step = await storage.updateSequenceStep(Number(req.params.stepId), validated);
       res.json(step);
     } catch (err) {
-      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      if (err instanceof z.ZodError) return Errors.badRequest(res, err.errors[0].message);
       throw err;
     }
   });
@@ -442,7 +444,7 @@ export function registerCampaignRoutes(app: Express): void {
   api.delete("/api/sequences/:id/steps/:stepId", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
     const sequence = await storage.getSequence(org.id, Number(req.params.id));
-    if (!sequence) return res.status(404).json({ message: "Sequence not found" });
+    if (!sequence) return Errors.notFound(res, "Sequence");
     
     await storage.deleteSequenceStep(Number(req.params.stepId));
     res.status(204).send();
@@ -452,7 +454,7 @@ export function registerCampaignRoutes(app: Express): void {
   api.put("/api/sequences/:id/steps/reorder", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
     const sequence = await storage.getSequence(org.id, Number(req.params.id));
-    if (!sequence) return res.status(404).json({ message: "Sequence not found" });
+    if (!sequence) return Errors.notFound(res, "Sequence");
     
     const { stepIds } = req.body as { stepIds: number[] };
     await storage.reorderSequenceSteps(sequence.id, stepIds);
@@ -469,8 +471,8 @@ export function registerCampaignRoutes(app: Express): void {
   api.get("/api/sequences/:id/enrollments", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
     const sequence = await storage.getSequence(org.id, Number(req.params.id));
-    if (!sequence) return res.status(404).json({ message: "Sequence not found" });
-    
+    if (!sequence) return Errors.notFound(res, "Sequence");
+
     const enrollments = await storage.getSequenceEnrollments(sequence.id);
     res.json(enrollments);
   });
@@ -487,19 +489,19 @@ export function registerCampaignRoutes(app: Express): void {
     try {
       const org = req.organization;
       const sequence = await storage.getSequence(org.id, Number(req.params.id));
-      if (!sequence) return res.status(404).json({ message: "Sequence not found" });
-      
+      if (!sequence) return Errors.notFound(res, "Sequence");
+
       const { leadId } = req.body;
       const lead = await storage.getLead(org.id, leadId);
-      if (!lead) return res.status(404).json({ message: "Lead not found" });
-      
+      if (!lead) return Errors.notFound(res, "Lead");
+
       // Check if lead is already enrolled in this sequence
       const existingEnrollments = await storage.getLeadEnrollments(leadId);
       const alreadyEnrolled = existingEnrollments.find(
         e => e.sequenceId === sequence.id && e.status === "active"
       );
       if (alreadyEnrolled) {
-        return res.status(400).json({ message: "Lead is already enrolled in this sequence" });
+        return Errors.badRequest(res, "Lead is already enrolled in this sequence");
       }
       
       // Get first step delay to schedule
@@ -522,7 +524,7 @@ export function registerCampaignRoutes(app: Express): void {
       res.status(201).json(enrollment);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return Errors.badRequest(res, err.errors[0].message);
       }
       throw err;
     }
@@ -551,8 +553,8 @@ export function registerCampaignRoutes(app: Express): void {
   api.get("/api/leads/:id/enrollments", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
     const lead = await storage.getLead(org.id, Number(req.params.id));
-    if (!lead) return res.status(404).json({ message: "Lead not found" });
-    
+    if (!lead) return Errors.notFound(res, "Lead");
+
     const enrollments = await storage.getLeadEnrollments(lead.id);
     res.json(enrollments);
   });
@@ -561,10 +563,10 @@ export function registerCampaignRoutes(app: Express): void {
     try {
       const validated = updateCampaignSchema.parse(req.body);
       const campaign = await storage.updateCampaign(Number(req.params.id), validated);
-      if (!campaign) return res.status(404).json({ message: "Campaign not found" });
+      if (!campaign) return Errors.notFound(res, "Campaign");
       res.json(campaign);
     } catch (err) {
-      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      if (err instanceof z.ZodError) return Errors.badRequest(res, err.errors[0].message);
       throw err;
     }
   });
@@ -588,24 +590,22 @@ export function registerCampaignRoutes(app: Express): void {
       const usingOrgLobCredentials = await directMailService.hasOrgLobCredentials(org.id);
       
       if (!usingOrgLobCredentials && !directMailService.isAvailable()) {
-        return res.status(503).json({ error: "Direct mail service not configured. Please add LOB_API_KEY or configure your own Lob API key in Integrations." });
+        return Errors.badRequest(res, "Direct mail service not configured. Please add LOB_API_KEY or configure your own Lob API key in Integrations.");
       }
 
       const campaign = await storage.getCampaign(org.id, campaignId);
       if (!campaign || campaign.type !== 'direct_mail') {
-        return res.status(400).json({ error: "Invalid campaign or not a direct mail campaign" });
+        return Errors.badRequest(res, "Invalid campaign or not a direct mail campaign");
       }
 
       if (!leadIds || leadIds.length === 0) {
-        return res.status(400).json({ error: "No recipients specified" });
+        return Errors.badRequest(res, "No recipients specified");
       }
 
       // Get the organization's default mail sender identity
       const mailSenderIdentity = await storage.getDefaultMailSenderIdentity(org.id);
       if (!mailSenderIdentity) {
-        return res.status(400).json({ 
-          error: "No return address configured. Please set up a mail sender identity in Mail Settings." 
-        });
+        return Errors.badRequest(res, "No return address configured. Please set up a mail sender identity in Mail Settings.");
       }
 
       // Warn if identity is not verified but allow sending
@@ -630,7 +630,7 @@ export function registerCampaignRoutes(app: Express): void {
           });
         }
       } else {
-        console.log(`[DirectMailRoute] Skipping credit pre-check for org ${org.id} - using org Lob credentials`);
+        logger.info(`Skipping credit pre-check for org - using org Lob credentials`, { orgId: org.id });
       }
 
       const leadsData = await Promise.all(
@@ -639,7 +639,7 @@ export function registerCampaignRoutes(app: Express): void {
       const validLeads = leadsData.filter(l => l && l.address && l.city && l.state && l.zip);
 
       if (validLeads.length === 0) {
-        return res.status(400).json({ error: "No valid recipients with complete addresses" });
+        return Errors.badRequest(res, "No valid recipients with complete addresses");
       }
 
       // Only deduct credits if NOT using org Lob credentials (BYOK)
@@ -656,7 +656,7 @@ export function registerCampaignRoutes(app: Express): void {
           return res.status(402).json({ error: "Insufficient credits" });
         }
       } else {
-        console.log(`[DirectMailRoute] Skipping credit deduction for org ${org.id} - using org Lob credentials`);
+        logger.info(`Skipping credit deduction for org - using org Lob credentials`, { orgId: org.id });
       }
 
       // Create return address snapshot from mail sender identity
@@ -826,7 +826,7 @@ export function registerCampaignRoutes(app: Express): void {
           );
         }
       } else {
-        console.log(`[DirectMailRoute] Skipping usage recording for org ${org.id} - using org Lob credentials (BYOK)`);
+        logger.info(`Skipping usage recording for org - using org Lob credentials (BYOK)`, { orgId: org.id });
       }
 
       await storage.updateCampaign(campaignId, {
@@ -849,8 +849,8 @@ export function registerCampaignRoutes(app: Express): void {
         details: sendResults,
       });
     } catch (error: any) {
-      console.error("Direct mail send error:", error);
-      res.status(500).json({ error: error.message || "Failed to send direct mail" });
+      logger.error("Direct mail send error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to send direct mail"));
     }
   });
 
@@ -880,10 +880,10 @@ export function registerCampaignRoutes(app: Express): void {
         isTestMode: mailMode === 'test',
       });
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message));
     }
   });
-  
+
   // ============================================
   // CAMPAIGN OPTIMIZATIONS
   // ============================================
@@ -895,7 +895,7 @@ export function registerCampaignRoutes(app: Express): void {
       const analytics = await campaignOptimizerService.getCampaignAnalytics(org.id);
       res.json(analytics);
     } catch (error: any) {
-      res.status(500).json({ error: error.message || "Failed to get campaign analytics" });
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to get campaign analytics"));
     }
   });
   
@@ -906,13 +906,13 @@ export function registerCampaignRoutes(app: Express): void {
       
       const campaign = await storage.getCampaign(org.id, campaignId);
       if (!campaign) {
-        return res.status(404).json({ error: "Campaign not found" });
+        return Errors.notFound(res, "Campaign");
       }
-      
+
       const optimizations = await storage.getCampaignOptimizations(campaignId);
       res.json(optimizations);
     } catch (error: any) {
-      res.status(500).json({ error: error.message || "Failed to get optimizations" });
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to get optimizations"));
     }
   });
   
@@ -924,7 +924,7 @@ export function registerCampaignRoutes(app: Express): void {
 
       const campaign = await storage.getCampaign(org.id, campaignId);
       if (!campaign) {
-        return res.status(404).json({ error: "Campaign not found" });
+        return Errors.notFound(res, "Campaign");
       }
 
       const sevenDaysAgo = new Date();
@@ -958,7 +958,7 @@ export function registerCampaignRoutes(app: Express): void {
 
       res.json(trend);
     } catch (error: any) {
-      res.status(500).json({ error: error.message || "Failed to get response trend" });
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to get response trend"));
     }
   });
 
@@ -969,9 +969,9 @@ export function registerCampaignRoutes(app: Express): void {
       
       const campaign = await storage.getCampaign(org.id, campaignId);
       if (!campaign) {
-        return res.status(404).json({ error: "Campaign not found" });
+        return Errors.notFound(res, "Campaign");
       }
-      
+
       const { campaignOptimizerService } = await import("./services/campaignOptimizer");
       const result = await campaignOptimizerService.optimizeCampaign(campaign);
       
@@ -984,8 +984,8 @@ export function registerCampaignRoutes(app: Express): void {
         suggestions: result.suggestions,
       });
     } catch (error: any) {
-      console.error("Campaign optimization error:", error);
-      res.status(500).json({ error: error.message || "Failed to optimize campaign" });
+      logger.error("Campaign optimization error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to optimize campaign"));
     }
   });
   
@@ -996,12 +996,12 @@ export function registerCampaignRoutes(app: Express): void {
       
       const updated = await storage.markOptimizationImplemented(optimizationId, resultDelta || null);
       if (!updated) {
-        return res.status(404).json({ error: "Optimization not found" });
+        return Errors.notFound(res, "Optimization");
       }
       
       res.json(updated);
     } catch (error: any) {
-      res.status(500).json({ error: error.message || "Failed to mark optimization as implemented" });
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to mark optimization as implemented"));
     }
   });
   
@@ -1066,17 +1066,17 @@ export function registerCampaignRoutes(app: Express): void {
     const { mode } = req.body;
     
     if (mode !== 'test' && mode !== 'live') {
-      return res.status(400).json({ error: "Mode must be 'test' or 'live'" });
+      return Errors.badRequest(res, "Mode must be 'test' or 'live'");
     }
     
     const { directMailService } = await import("./services/directMail");
     
     // Validate the mode is available
     if (mode === 'live' && !directMailService.hasLiveMode()) {
-      return res.status(400).json({ error: "Live mode not available - no live API key configured" });
+      return Errors.badRequest(res, "Live mode not available - no live API key configured");
     }
     if (mode === 'test' && !directMailService.hasTestMode()) {
-      return res.status(400).json({ error: "Test mode not available - no test API key configured" });
+      return Errors.badRequest(res, "Test mode not available - no test API key configured");
     }
     
     // Update organization settings
@@ -1143,17 +1143,17 @@ export function registerCampaignRoutes(app: Express): void {
         creditsNeeded: hasEnoughCredits ? 0 : totalCostCents - creditBalance,
       });
     } catch (error: any) {
-      res.status(500).json({ error: error.message || "Failed to generate estimate" });
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to generate estimate"));
     }
   });
-  
+
   // Verify a single address
   api.post("/api/direct-mail/verify-address", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { line1, line2, city, state, zip } = req.body;
-      
+
       if (!line1 || !city || !state || !zip) {
-        return res.status(400).json({ error: "Address fields (line1, city, state, zip) are required" });
+        return Errors.badRequest(res, "Address fields (line1, city, state, zip) are required");
       }
       
       const isProduction = process.env.NODE_ENV === 'production';
@@ -1162,11 +1162,11 @@ export function registerCampaignRoutes(app: Express): void {
         : (process.env.LOB_TEST_API_KEY || process.env.LOB_LIVE_API_KEY);
       
       if (!apiKey) {
-        return res.status(400).json({ error: "Address verification service not configured. Please add Lob API key in settings." });
+        return Errors.badRequest(res, "Address verification service not configured. Please add Lob API key in settings.");
       }
-      
+
       const { verifyAddress } = await import("./services/directMailService");
-      
+
       const result = await verifyAddress({
         line1,
         line2,
@@ -1176,22 +1176,22 @@ export function registerCampaignRoutes(app: Express): void {
       });
       res.json(result);
     } catch (error: any) {
-      res.status(500).json({ error: error.message || "Failed to verify address" });
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to verify address"));
     }
   });
-  
+
   // Bulk verify addresses for leads
   api.post("/api/direct-mail/bulk-verify-addresses", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
       const { leadIds } = req.body;
-      
+
       if (!leadIds || !Array.isArray(leadIds) || leadIds.length === 0) {
-        return res.status(400).json({ error: "leadIds array is required" });
+        return Errors.badRequest(res, "leadIds array is required");
       }
-      
+
       if (leadIds.length > 100) {
-        return res.status(400).json({ error: "Maximum 100 addresses can be verified at once" });
+        return Errors.badRequest(res, "Maximum 100 addresses can be verified at once");
       }
       
       const isProduction = process.env.NODE_ENV === 'production';
@@ -1200,11 +1200,11 @@ export function registerCampaignRoutes(app: Express): void {
         : (process.env.LOB_TEST_API_KEY || process.env.LOB_LIVE_API_KEY);
       
       if (!apiKey) {
-        return res.status(400).json({ error: "Address verification service not configured. Please add Lob API key in settings." });
+        return Errors.badRequest(res, "Address verification service not configured. Please add Lob API key in settings.");
       }
-      
+
       const { verifyAddress } = await import("./services/directMailService");
-      
+
       const results: Array<{
         leadId: number;
         isValid: boolean;
@@ -1269,7 +1269,7 @@ export function registerCampaignRoutes(app: Express): void {
         results,
       });
     } catch (error: any) {
-      res.status(500).json({ error: error.message || "Failed to verify addresses" });
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to verify addresses"));
     }
   });
 
