@@ -456,14 +456,14 @@ export function registerDocSystemRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid document ID" });
+        return Errors.badRequest(res, "Invalid document ID");
       }
-      
+
       const versions = await storage.getDocumentVersions(org.id, id, "generated");
       res.json(versions);
     } catch (error: any) {
-      console.error("Get document versions error:", error);
-      res.status(500).json({ message: error.message || "Failed to fetch version history" });
+      logger.error("Get document versions error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
 
@@ -475,12 +475,12 @@ export function registerDocSystemRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid document ID" });
+        return Errors.badRequest(res, "Invalid document ID");
       }
-      
+
       const doc = await storage.getGeneratedDocument(org.id, id);
       if (!doc) {
-        return res.status(404).json({ message: "Document not found" });
+        return Errors.notFound(res, "Document");
       }
       
       const versions = await storage.getDocumentVersions(org.id, id, "generated");
@@ -498,8 +498,8 @@ export function registerDocSystemRoutes(app: Express): void {
       
       res.status(201).json(version);
     } catch (error: any) {
-      console.error("Create document version error:", error);
-      res.status(500).json({ message: error.message || "Failed to create version" });
+      logger.error("Create document version error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
 
@@ -510,22 +510,22 @@ export function registerDocSystemRoutes(app: Express): void {
       const versionId = parseInt(req.params.versionId);
       
       if (isNaN(versionId)) {
-        return res.status(400).json({ message: "Invalid version ID" });
+        return Errors.badRequest(res, "Invalid version ID");
       }
-      
+
       const version = await storage.getDocumentVersion(versionId);
       if (!version) {
-        return res.status(404).json({ message: "Version not found" });
+        return Errors.notFound(res, "Version");
       }
-      
+
       if (version.organizationId !== org.id) {
-        return res.status(403).json({ message: "Not authorized to view this version" });
+        return Errors.forbidden(res, "Not authorized to view this version");
       }
-      
+
       res.json(version);
     } catch (error: any) {
-      console.error("Get version error:", error);
-      res.status(500).json({ message: error.message || "Failed to fetch version" });
+      logger.error("Get version error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
 
@@ -536,19 +536,19 @@ export function registerDocSystemRoutes(app: Express): void {
       const versionId = parseInt(req.params.versionId);
       
       if (isNaN(versionId)) {
-        return res.status(400).json({ message: "Invalid version ID" });
+        return Errors.badRequest(res, "Invalid version ID");
       }
-      
+
       const result = await storage.restoreDocumentVersion(org.id, versionId);
-      
+
       if (!result.success) {
-        return res.status(400).json({ message: result.message });
+        return Errors.badRequest(res, result.message);
       }
       
       res.json(result);
     } catch (error: any) {
-      console.error("Restore version error:", error);
-      res.status(500).json({ message: error.message || "Failed to restore version" });
+      logger.error("Restore version error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
 
@@ -567,8 +567,8 @@ export function registerDocSystemRoutes(app: Express): void {
       const documents = await storage.getGeneratedDocuments(org.id, { dealId, propertyId, status });
       res.json(documents);
     } catch (error: any) {
-      console.error("Get documents error:", error);
-      res.status(500).json({ message: error.message || "Failed to fetch documents" });
+      logger.error("Get documents error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
 
@@ -580,14 +580,14 @@ export function registerDocSystemRoutes(app: Express): void {
       const { templateId, dealId, propertyId, name, variables } = req.body;
       
       if (!templateId) {
-        return res.status(400).json({ message: "Template ID is required" });
+        return Errors.badRequest(res, "Template ID is required");
       }
-      
+
       const template = await storage.getDocumentTemplate(templateId);
       if (!template) {
-        return res.status(404).json({ message: "Template not found" });
+        return Errors.notFound(res, "Template");
       }
-      
+
       // Auto-resolve context from deal/property, then merge with caller-supplied variables
       // (caller-supplied values take precedence over auto-resolved ones)
       const resolvedCtx = await resolveContextVariables(org.id, dealId, propertyId);
@@ -616,8 +616,8 @@ export function registerDocSystemRoutes(app: Express): void {
 
       res.status(201).json(document);
     } catch (error: any) {
-      console.error("Generate document error:", error);
-      res.status(500).json({ message: error.message || "Failed to generate document" });
+      logger.error("Generate document error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
 
@@ -630,8 +630,8 @@ export function registerDocSystemRoutes(app: Express): void {
       const ctx = await resolveContextVariables(org.id, dealId, propertyId);
       res.json(ctx);
     } catch (error: any) {
-      console.error("Resolve context error:", error);
-      res.status(500).json({ message: error.message || "Failed to resolve context" });
+      logger.error("Resolve context error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
 
@@ -646,8 +646,8 @@ export function registerDocSystemRoutes(app: Express): void {
       const documents = await storage.getGeneratedDocuments(org.id, { dealId, propertyId, status });
       res.json(documents);
     } catch (error: any) {
-      console.error("Get generated documents error:", error);
-      res.status(500).json({ message: error.message || "Failed to fetch documents" });
+      logger.error("Get generated documents error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
 
@@ -658,18 +658,18 @@ export function registerDocSystemRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid document ID" });
+        return Errors.badRequest(res, "Invalid document ID");
       }
-      
+
       const document = await storage.getGeneratedDocument(org.id, id);
       if (!document) {
-        return res.status(404).json({ message: "Document not found" });
+        return Errors.notFound(res, "Document");
       }
-      
+
       res.json(document);
     } catch (error: any) {
-      console.error("Get generated document error:", error);
-      res.status(500).json({ message: error.message || "Failed to fetch document" });
+      logger.error("Get generated document error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
 
@@ -681,14 +681,14 @@ export function registerDocSystemRoutes(app: Express): void {
       const { templateId, dealId, propertyId, name, variables } = req.body;
       
       if (!templateId) {
-        return res.status(400).json({ message: "Template ID is required" });
+        return Errors.badRequest(res, "Template ID is required");
       }
-      
+
       const template = await storage.getDocumentTemplate(templateId);
       if (!template) {
-        return res.status(404).json({ message: "Template not found" });
+        return Errors.notFound(res, "Template");
       }
-      
+
       // Auto-resolve context from deal/property, merge with caller-supplied variables
       const resolvedCtx = await resolveContextVariables(org.id, dealId, propertyId);
       const mergedVars: Record<string, string> = {
@@ -716,8 +716,8 @@ export function registerDocSystemRoutes(app: Express): void {
 
       res.status(201).json(document);
     } catch (error: any) {
-      console.error("Create generated document error:", error);
-      res.status(500).json({ message: error.message || "Failed to generate document" });
+      logger.error("Create generated document error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
 
@@ -728,14 +728,14 @@ export function registerDocSystemRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid document ID" });
+        return Errors.badRequest(res, "Invalid document ID");
       }
-      
+
       const existing = await storage.getGeneratedDocument(org.id, id);
       if (!existing) {
-        return res.status(404).json({ message: "Document not found" });
+        return Errors.notFound(res, "Document");
       }
-      
+
       const { name, content, status, signers } = req.body;
       
       const updated = await storage.updateGeneratedDocument(id, {
@@ -747,8 +747,8 @@ export function registerDocSystemRoutes(app: Express): void {
       
       res.json(updated);
     } catch (error: any) {
-      console.error("Update generated document error:", error);
-      res.status(500).json({ message: error.message || "Failed to update document" });
+      logger.error("Update generated document error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
 
@@ -763,7 +763,7 @@ export function registerDocSystemRoutes(app: Express): void {
       const { documentId, signerName, signerEmail, signerRole, signatureData, signatureType, consentGiven, consentText } = req.body;
       
       if (!signerName || !signatureData) {
-        return res.status(400).json({ message: "Signer name and signature data are required" });
+        return Errors.badRequest(res, "Signer name and signature data are required");
       }
       
       const signature = await storage.createSignature({
@@ -817,8 +817,8 @@ export function registerDocSystemRoutes(app: Express): void {
       
       res.json({ success: true, signature });
     } catch (error: any) {
-      console.error("Create signature error:", error);
-      res.status(500).json({ message: error.message || "Failed to create signature" });
+      logger.error("Create signature error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
 
@@ -831,8 +831,8 @@ export function registerDocSystemRoutes(app: Express): void {
       const signatures = await storage.getSignatures(org.id, documentId);
       res.json(signatures);
     } catch (error: any) {
-      console.error("Get signatures error:", error);
-      res.status(500).json({ message: error.message || "Failed to fetch signatures" });
+      logger.error("Get signatures error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
 
@@ -843,18 +843,18 @@ export function registerDocSystemRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid signature ID" });
+        return Errors.badRequest(res, "Invalid signature ID");
       }
-      
+
       const signature = await storage.getSignature(org.id, id);
       if (!signature) {
-        return res.status(404).json({ message: "Signature not found" });
+        return Errors.notFound(res, "Signature");
       }
-      
+
       res.json(signature);
     } catch (error: any) {
-      console.error("Get signature error:", error);
-      res.status(500).json({ message: error.message || "Failed to fetch signature" });
+      logger.error("Get signature error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
 
@@ -865,19 +865,19 @@ export function registerDocSystemRoutes(app: Express): void {
       const documentId = parseInt(req.params.id);
       
       if (isNaN(documentId)) {
-        return res.status(400).json({ message: "Invalid document ID" });
+        return Errors.badRequest(res, "Invalid document ID");
       }
-      
+
       const document = await storage.getGeneratedDocument(org.id, documentId);
       if (!document) {
-        return res.status(404).json({ message: "Document not found" });
+        return Errors.notFound(res, "Document");
       }
-      
+
       const signatures = await storage.getDocumentSignatures(documentId);
       res.json(signatures);
     } catch (error: any) {
-      console.error("Get document signatures error:", error);
-      res.status(500).json({ message: error.message || "Failed to fetch document signatures" });
+      logger.error("Get document signatures error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
 
@@ -888,22 +888,22 @@ export function registerDocSystemRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid document ID" });
+        return Errors.badRequest(res, "Invalid document ID");
       }
-      
+
       const document = await storage.getGeneratedDocument(org.id, id);
       if (!document) {
-        return res.status(404).json({ message: "Document not found" });
+        return Errors.notFound(res, "Document");
       }
-      
+
       if (document.status !== "draft") {
-        return res.status(400).json({ message: "Document has already been sent or signed" });
+        return Errors.badRequest(res, "Document has already been sent or signed");
       }
-      
+
       const { signers } = req.body;
-      
+
       if (!signers || !Array.isArray(signers) || signers.length === 0) {
-        return res.status(400).json({ message: "At least one signer is required" });
+        return Errors.badRequest(res, "At least one signer is required");
       }
       
       // Format signers with IDs
@@ -931,8 +931,8 @@ export function registerDocSystemRoutes(app: Express): void {
         signingUrl: `/sign/${id}`,
       });
     } catch (error: any) {
-      console.error("Request signature error:", error);
-      res.status(500).json({ message: error.message || "Failed to request signatures" });
+      logger.error("Request signature error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
 
@@ -943,20 +943,20 @@ export function registerDocSystemRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid document ID" });
+        return Errors.badRequest(res, "Invalid document ID");
       }
-      
+
       const document = await storage.getGeneratedDocument(org.id, id);
       if (!document) {
-        return res.status(404).json({ message: "Document not found" });
+        return Errors.notFound(res, "Document");
       }
-      
+
       if (document.status !== "draft") {
-        return res.status(400).json({ message: "Document has already been sent or signed" });
+        return Errors.badRequest(res, "Document has already been sent or signed");
       }
-      
+
       const { signers } = req.body;
-      
+
       const updated = await storage.updateGeneratedDocument(id, {
         status: "pending_signature",
         esignProvider: "native",
@@ -972,8 +972,8 @@ export function registerDocSystemRoutes(app: Express): void {
         document: updated,
       });
     } catch (error: any) {
-      console.error("Send for signature error:", error);
-      res.status(500).json({ message: error.message || "Failed to send for signature" });
+      logger.error("Send for signature error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
 
@@ -992,8 +992,8 @@ export function registerDocSystemRoutes(app: Express): void {
       const packages = await storage.getDocumentPackages(org.id, { dealId, propertyId, status });
       res.json(packages);
     } catch (error: any) {
-      console.error("Get document packages error:", error);
-      res.status(500).json({ message: error.message || "Failed to fetch document packages" });
+      logger.error("Get document packages error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
 
@@ -1004,18 +1004,18 @@ export function registerDocSystemRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid package ID" });
+        return Errors.badRequest(res, "Invalid package ID");
       }
-      
+
       const pkg = await storage.getDocumentPackage(org.id, id);
       if (!pkg) {
-        return res.status(404).json({ message: "Document package not found" });
+        return Errors.notFound(res, "Document package");
       }
-      
+
       res.json(pkg);
     } catch (error: any) {
-      console.error("Get document package error:", error);
-      res.status(500).json({ message: error.message || "Failed to fetch document package" });
+      logger.error("Get document package error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
 
@@ -1027,7 +1027,7 @@ export function registerDocSystemRoutes(app: Express): void {
       const { name, description, dealId, propertyId, documents } = req.body;
       
       if (!name) {
-        return res.status(400).json({ message: "Package name is required" });
+        return Errors.badRequest(res, "Package name is required");
       }
       
       const pkg = await storage.createDocumentPackage({
@@ -1043,8 +1043,8 @@ export function registerDocSystemRoutes(app: Express): void {
       
       res.status(201).json(pkg);
     } catch (error: any) {
-      console.error("Create document package error:", error);
-      res.status(500).json({ message: error.message || "Failed to create document package" });
+      logger.error("Create document package error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
 
@@ -1055,14 +1055,14 @@ export function registerDocSystemRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid package ID" });
+        return Errors.badRequest(res, "Invalid package ID");
       }
-      
+
       const existing = await storage.getDocumentPackage(org.id, id);
       if (!existing) {
-        return res.status(404).json({ message: "Document package not found" });
+        return Errors.notFound(res, "Document package");
       }
-      
+
       const { name, description, dealId, propertyId, documents, status, sentAt, completedAt } = req.body;
       
       const updated = await storage.updateDocumentPackage(id, {
@@ -1078,8 +1078,8 @@ export function registerDocSystemRoutes(app: Express): void {
       
       res.json(updated);
     } catch (error: any) {
-      console.error("Update document package error:", error);
-      res.status(500).json({ message: error.message || "Failed to update document package" });
+      logger.error("Update document package error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
 
@@ -1090,18 +1090,18 @@ export function registerDocSystemRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid package ID" });
+        return Errors.badRequest(res, "Invalid package ID");
       }
-      
+
       const deleted = await storage.deleteDocumentPackage(org.id, id);
       if (!deleted) {
-        return res.status(404).json({ message: "Document package not found" });
+        return Errors.notFound(res, "Document package");
       }
       
       res.json({ success: true, message: "Document package deleted" });
     } catch (error: any) {
-      console.error("Delete document package error:", error);
-      res.status(500).json({ message: error.message || "Failed to delete document package" });
+      logger.error("Delete document package error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
 
@@ -1112,18 +1112,18 @@ export function registerDocSystemRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid package ID" });
+        return Errors.badRequest(res, "Invalid package ID");
       }
-      
+
       const pkg = await storage.getDocumentPackage(org.id, id);
       if (!pkg) {
-        return res.status(404).json({ message: "Document package not found" });
+        return Errors.notFound(res, "Document package");
       }
-      
+
       const { templateId, documentId, name } = req.body;
-      
+
       if (!templateId && !documentId) {
-        return res.status(400).json({ message: "Either templateId or documentId is required" });
+        return Errors.badRequest(res, "Either templateId or documentId is required");
       }
       
       const currentDocs = pkg.documents || [];
@@ -1143,8 +1143,8 @@ export function registerDocSystemRoutes(app: Express): void {
       
       res.json(updated);
     } catch (error: any) {
-      console.error("Add document to package error:", error);
-      res.status(500).json({ message: error.message || "Failed to add document to package" });
+      logger.error("Add document to package error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
 
@@ -1156,17 +1156,17 @@ export function registerDocSystemRoutes(app: Express): void {
       const docIndex = parseInt(req.params.docIndex);
       
       if (isNaN(id) || isNaN(docIndex)) {
-        return res.status(400).json({ message: "Invalid package ID or document index" });
+        return Errors.badRequest(res, "Invalid package ID or document index");
       }
-      
+
       const pkg = await storage.getDocumentPackage(org.id, id);
       if (!pkg) {
-        return res.status(404).json({ message: "Document package not found" });
+        return Errors.notFound(res, "Document package");
       }
       
       const currentDocs = pkg.documents || [];
       if (docIndex < 0 || docIndex >= currentDocs.length) {
-        return res.status(400).json({ message: "Invalid document index" });
+        return Errors.badRequest(res, "Invalid document index");
       }
       
       const updatedDocs = currentDocs.filter((_, i) => i !== docIndex);
@@ -1178,8 +1178,8 @@ export function registerDocSystemRoutes(app: Express): void {
       
       res.json(updated);
     } catch (error: any) {
-      console.error("Remove document from package error:", error);
-      res.status(500).json({ message: error.message || "Failed to remove document from package" });
+      logger.error("Remove document from package error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
 
@@ -1191,14 +1191,14 @@ export function registerDocSystemRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid package ID" });
+        return Errors.badRequest(res, "Invalid package ID");
       }
-      
+
       const pkg = await storage.getDocumentPackage(org.id, id);
       if (!pkg) {
-        return res.status(404).json({ message: "Document package not found" });
+        return Errors.notFound(res, "Document package");
       }
-      
+
       const { variables } = req.body;
       const currentDocs = pkg.documents || [];
       const generatedDocs: any[] = [];
@@ -1285,8 +1285,8 @@ export function registerDocSystemRoutes(app: Express): void {
         package: updated,
       });
     } catch (error: any) {
-      console.error("Generate all documents error:", error);
-      res.status(500).json({ message: error.message || "Failed to generate documents" });
+      logger.error("Generate all documents error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
 
@@ -1297,14 +1297,14 @@ export function registerDocSystemRoutes(app: Express): void {
       const dealId = parseInt(req.params.id);
       
       if (isNaN(dealId)) {
-        return res.status(400).json({ message: "Invalid deal ID" });
+        return Errors.badRequest(res, "Invalid deal ID");
       }
       
       const packages = await storage.getPackagesByDeal(org.id, dealId);
       res.json(packages);
     } catch (error: any) {
-      console.error("Get deal packages error:", error);
-      res.status(500).json({ message: error.message || "Failed to fetch deal packages" });
+      logger.error("Get deal packages error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
 
@@ -1315,14 +1315,14 @@ export function registerDocSystemRoutes(app: Express): void {
       const propertyId = parseInt(req.params.id);
       
       if (isNaN(propertyId)) {
-        return res.status(400).json({ message: "Invalid property ID" });
+        return Errors.badRequest(res, "Invalid property ID");
       }
       
       const packages = await storage.getPackagesByProperty(org.id, propertyId);
       res.json(packages);
     } catch (error: any) {
-      console.error("Get property packages error:", error);
-      res.status(500).json({ message: error.message || "Failed to fetch property packages" });
+      logger.error("Get property packages error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
 

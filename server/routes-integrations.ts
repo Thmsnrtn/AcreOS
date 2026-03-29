@@ -335,9 +335,7 @@ export function registerIntegrationRoutes(app: Express): void {
           attempts: result.attempts,
         });
       } else {
-        res.status(400).json({ 
-          success: false, 
-          message: result.error,
+        Errors.badRequest(res, result.error || "Email test failed", {
           errorType: result.errorType,
           attempts: result.attempts,
           retryable: result.retryable,
