@@ -10,6 +10,8 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { requireAdminOrAbove } from "./utils/permissions";
 import { insertAbTestSchema, insertAbTestVariantSchema, Z_SCORES } from "@shared/schema";
+import { logger } from "./utils/logger";
+import { Errors } from "./utils/errors";
 
 export function registerIntegrationRoutes(app: Express): void {
   const api = app;
@@ -45,8 +47,8 @@ export function registerIntegrationRoutes(app: Express): void {
       
       res.json(masked);
     } catch (err: any) {
-      console.error("Get integrations error:", err);
-      res.status(500).json({ message: err.message });
+      logger.error("Get integrations error", err instanceof Error ? err : undefined);
+      Errors.internal(res, err);
     }
   });
   
@@ -82,8 +84,8 @@ export function registerIntegrationRoutes(app: Express): void {
         } : null,
       });
     } catch (err: any) {
-      console.error("Get integration error:", err);
-      res.status(500).json({ message: err.message });
+      logger.error("Get integration error", err instanceof Error ? err : undefined);
+      Errors.internal(res, err);
     }
   });
   
@@ -94,12 +96,12 @@ export function registerIntegrationRoutes(app: Express): void {
       const { apiKey, settings } = req.body;
 
       if (!apiKey) {
-        return res.status(400).json({ message: "API key is required" });
+        return Errors.badRequest(res, "API key is required");
       }
 
       const validProviders = ['sendgrid', 'twilio', 'lob', 'regrid', 'rapidapi'];
       if (!validProviders.includes(provider)) {
-        return res.status(400).json({ message: `Invalid provider. Must be one of: ${validProviders.join(', ')}` });
+        return Errors.badRequest(res, `Invalid provider. Must be one of: ${validProviders.join(', ')}`);
       }
 
       const { encryptJsonCredentials } = await import('./services/encryption');
@@ -139,8 +141,8 @@ export function registerIntegrationRoutes(app: Express): void {
         message: `${provider} integration configured. Click 'Test Connection' to verify.`,
       });
     } catch (err: any) {
-      console.error("Save integration error:", err);
-      res.status(500).json({ message: err.message });
+      logger.error("Save integration error", err instanceof Error ? err : undefined);
+      Errors.internal(res, err);
     }
   });
   
@@ -152,7 +154,7 @@ export function registerIntegrationRoutes(app: Express): void {
       const integration = await storage.getOrganizationIntegration(org.id, provider);
       
       if (!integration || !integration.credentials) {
-        return res.status(400).json({ message: `${provider} is not configured` });
+        return Errors.badRequest(res, `${provider} is not configured`);
       }
       
       const { decryptJsonCredentials } = await import('./services/encryption');
@@ -229,8 +231,8 @@ export function registerIntegrationRoutes(app: Express): void {
       
       res.json(testResult);
     } catch (err: any) {
-      console.error("Test integration error:", err);
-      res.status(500).json({ success: false, message: err.message });
+      logger.error("Test integration error", err instanceof Error ? err : undefined);
+      Errors.internal(res, err);
     }
   });
   
@@ -258,8 +260,8 @@ export function registerIntegrationRoutes(app: Express): void {
 
       res.json({ success: true, message: `${provider} integration removed` });
     } catch (err: any) {
-      console.error("Delete integration error:", err);
-      res.status(500).json({ message: err.message });
+      logger.error("Delete integration error", err instanceof Error ? err : undefined);
+      Errors.internal(res, err);
     }
   });
   
@@ -282,8 +284,8 @@ export function registerIntegrationRoutes(app: Express): void {
         quota,
       });
     } catch (err: any) {
-      console.error("Get email status error:", err);
-      res.status(500).json({ message: err.message });
+      logger.error("Get email status error", err instanceof Error ? err : undefined);
+      Errors.internal(res, err);
     }
   });
   
@@ -296,8 +298,8 @@ export function registerIntegrationRoutes(app: Express): void {
       const logs = emailService.getLogsByOrganization(org.id, limit);
       res.json(logs);
     } catch (err: any) {
-      console.error("Get email logs error:", err);
-      res.status(500).json({ message: err.message });
+      logger.error("Get email logs error", err instanceof Error ? err : undefined);
+      Errors.internal(res, err);
     }
   });
   
@@ -310,7 +312,7 @@ export function registerIntegrationRoutes(app: Express): void {
       const recipientEmail = to || user.email || user.claims?.email;
       
       if (!recipientEmail) {
-        return res.status(400).json({ message: "No recipient email address provided" });
+        return Errors.badRequest(res, "No recipient email address provided");
       }
       
       const { emailService } = await import("./services/emailService");
@@ -342,8 +344,8 @@ export function registerIntegrationRoutes(app: Express): void {
         });
       }
     } catch (err: any) {
-      console.error("Test email error:", err);
-      res.status(500).json({ message: err.message });
+      logger.error("Test email error", err instanceof Error ? err : undefined);
+      Errors.internal(res, err);
     }
   });
   
@@ -357,8 +359,8 @@ export function registerIntegrationRoutes(app: Express): void {
       const domains = await storage.getVerifiedEmailDomains(org.id);
       res.json(domains);
     } catch (err: any) {
-      console.error("Get email domains error:", err);
-      res.status(500).json({ message: err.message });
+      logger.error("Get email domains error", err instanceof Error ? err : undefined);
+      Errors.internal(res, err);
     }
   });
   
@@ -368,12 +370,12 @@ export function registerIntegrationRoutes(app: Express): void {
       const { domain, fromEmail, fromName } = req.body;
       
       if (!domain) {
-        return res.status(400).json({ message: "Domain is required" });
+        return Errors.badRequest(res, "Domain is required");
       }
       
       const existing = (await storage.getVerifiedEmailDomains(org.id)).find(d => d.domain === domain);
       if (existing) {
-        return res.status(400).json({ message: "Domain already exists" });
+        return Errors.badRequest(res, "Domain already exists");
       }
       
       const integration = await storage.getOrganizationIntegration(org.id, 'sendgrid');
@@ -419,10 +421,10 @@ export function registerIntegrationRoutes(app: Express): void {
             }
           } else {
             const errText = await sgResponse.text();
-            console.error('[SendGrid] Domain creation failed:', errText);
+            logger.error("[SendGrid] Domain creation failed", { detail: errText });
           }
         } catch (sgErr: any) {
-          console.error('[SendGrid] Domain API error:', sgErr.message);
+          logger.error("[SendGrid] Domain API error", sgErr instanceof Error ? sgErr : undefined);
         }
       }
       
@@ -454,8 +456,8 @@ export function registerIntegrationRoutes(app: Express): void {
 
       res.json(newDomain);
     } catch (err: any) {
-      console.error("Add email domain error:", err);
-      res.status(500).json({ message: err.message });
+      logger.error("Add email domain error", err instanceof Error ? err : undefined);
+      Errors.internal(res, err);
     }
   });
   
@@ -466,16 +468,16 @@ export function registerIntegrationRoutes(app: Express): void {
       
       const domainRecord = await storage.getVerifiedEmailDomain(domainId);
       if (!domainRecord || domainRecord.organizationId !== org.id) {
-        return res.status(404).json({ message: "Domain not found" });
+        return Errors.notFound(res, "Domain");
       }
-      
+
       if (!domainRecord.sendgridDomainId) {
-        return res.status(400).json({ message: "Domain not registered with SendGrid" });
+        return Errors.badRequest(res, "Domain not registered with SendGrid");
       }
-      
+
       const integration = await storage.getOrganizationIntegration(org.id, 'sendgrid');
       if (!integration?.credentials?.encrypted) {
-        return res.status(400).json({ message: "SendGrid not configured" });
+        return Errors.badRequest(res, "SendGrid not configured");
       }
       
       const { decryptJsonCredentials } = await import('./services/encryption');
@@ -497,8 +499,8 @@ export function registerIntegrationRoutes(app: Express): void {
       
       if (!validateResponse.ok) {
         const errText = await validateResponse.text();
-        console.error('[SendGrid] Domain validation request failed:', errText);
-        return res.status(400).json({ message: "Validation request failed" });
+        logger.error("[SendGrid] Domain validation request failed", { detail: errText });
+        return Errors.badRequest(res, "Validation request failed");
       }
       
       const validateData = await validateResponse.json();
@@ -527,8 +529,8 @@ export function registerIntegrationRoutes(app: Express): void {
         validationResults: validateData.validation_results,
       });
     } catch (err: any) {
-      console.error("Verify email domain error:", err);
-      res.status(500).json({ message: err.message });
+      logger.error("Verify email domain error", err instanceof Error ? err : undefined);
+      Errors.internal(res, err);
     }
   });
   
@@ -540,9 +542,9 @@ export function registerIntegrationRoutes(app: Express): void {
       
       const domainRecord = await storage.getVerifiedEmailDomain(domainId);
       if (!domainRecord || domainRecord.organizationId !== org.id) {
-        return res.status(404).json({ message: "Domain not found" });
+        return Errors.notFound(res, "Domain");
       }
-      
+
       if (isDefault === true) {
         const allDomains = await storage.getVerifiedEmailDomains(org.id);
         for (const d of allDomains) {
@@ -575,8 +577,8 @@ export function registerIntegrationRoutes(app: Express): void {
 
       res.json(updatedDomain);
     } catch (err: any) {
-      console.error("Update email domain error:", err);
-      res.status(500).json({ message: err.message });
+      logger.error("Update email domain error", err instanceof Error ? err : undefined);
+      Errors.internal(res, err);
     }
   });
 
@@ -587,7 +589,7 @@ export function registerIntegrationRoutes(app: Express): void {
 
       const domainRecord = await storage.getVerifiedEmailDomain(domainId);
       if (!domainRecord || domainRecord.organizationId !== org.id) {
-        return res.status(404).json({ message: "Domain not found" });
+        return Errors.notFound(res, "Domain");
       }
 
       if (domainRecord.sendgridDomainId) {
@@ -610,7 +612,7 @@ export function registerIntegrationRoutes(app: Express): void {
               }
             );
           } catch (sgErr: any) {
-            console.error('[SendGrid] Domain deletion failed:', sgErr.message);
+            logger.error("[SendGrid] Domain deletion failed", sgErr instanceof Error ? sgErr : undefined);
           }
         }
       }
@@ -634,8 +636,8 @@ export function registerIntegrationRoutes(app: Express): void {
 
       res.json({ success: true });
     } catch (err: any) {
-      console.error("Delete email domain error:", err);
-      res.status(500).json({ message: err.message });
+      logger.error("Delete email domain error", err instanceof Error ? err : undefined);
+      Errors.internal(res, err);
     }
   });
   
@@ -649,8 +651,8 @@ export function registerIntegrationRoutes(app: Express): void {
       const phones = await storage.getProvisionedPhoneNumbers(org.id);
       res.json(phones);
     } catch (err: any) {
-      console.error("Get phone numbers error:", err);
-      res.status(500).json({ message: err.message });
+      logger.error("Get phone numbers error", err instanceof Error ? err : undefined);
+      Errors.internal(res, err);
     }
   });
   
@@ -661,7 +663,7 @@ export function registerIntegrationRoutes(app: Express): void {
       
       const integration = await storage.getOrganizationIntegration(org.id, 'twilio');
       if (!integration?.credentials?.encrypted) {
-        return res.status(400).json({ message: "Twilio not configured. Add your Twilio credentials in Settings." });
+        return Errors.badRequest(res, "Twilio not configured. Add your Twilio credentials in Settings.");
       }
       
       const { decryptJsonCredentials } = await import('./services/encryption');
@@ -687,8 +689,8 @@ export function registerIntegrationRoutes(app: Express): void {
       
       if (!response.ok) {
         const errText = await response.text();
-        console.error('[Twilio] Available numbers search failed:', errText);
-        return res.status(400).json({ message: "Failed to search available numbers" });
+        logger.error("[Twilio] Available numbers search failed", { detail: errText });
+        return Errors.badRequest(res, "Failed to search available numbers");
       }
       
       const data = await response.json();
@@ -706,8 +708,8 @@ export function registerIntegrationRoutes(app: Express): void {
       
       res.json(numbers);
     } catch (err: any) {
-      console.error("Search available numbers error:", err);
-      res.status(500).json({ message: err.message });
+      logger.error("Search available numbers error", err instanceof Error ? err : undefined);
+      Errors.internal(res, err);
     }
   });
   
@@ -717,12 +719,12 @@ export function registerIntegrationRoutes(app: Express): void {
       const { phoneNumber, friendlyName } = req.body;
       
       if (!phoneNumber) {
-        return res.status(400).json({ message: "Phone number is required" });
+        return Errors.badRequest(res, "Phone number is required");
       }
       
       const integration = await storage.getOrganizationIntegration(org.id, 'twilio');
       if (!integration?.credentials?.encrypted) {
-        return res.status(400).json({ message: "Twilio not configured" });
+        return Errors.badRequest(res, "Twilio not configured");
       }
       
       const { decryptJsonCredentials } = await import('./services/encryption');
@@ -750,8 +752,8 @@ export function registerIntegrationRoutes(app: Express): void {
       
       if (!purchaseResponse.ok) {
         const errText = await purchaseResponse.text();
-        console.error('[Twilio] Phone purchase failed:', errText);
-        return res.status(400).json({ message: "Failed to purchase phone number" });
+        logger.error("[Twilio] Phone purchase failed", { detail: errText });
+        return Errors.badRequest(res, "Failed to purchase phone number");
       }
       
       const purchaseData = await purchaseResponse.json();
@@ -788,8 +790,8 @@ export function registerIntegrationRoutes(app: Express): void {
 
       res.json(newPhone);
     } catch (err: any) {
-      console.error("Purchase phone number error:", err);
-      res.status(500).json({ message: err.message });
+      logger.error("Purchase phone number error", err instanceof Error ? err : undefined);
+      Errors.internal(res, err);
     }
   });
 
@@ -801,7 +803,7 @@ export function registerIntegrationRoutes(app: Express): void {
 
       const phoneRecord = await storage.getProvisionedPhoneNumber(phoneId);
       if (!phoneRecord || phoneRecord.organizationId !== org.id) {
-        return res.status(404).json({ message: "Phone number not found" });
+        return Errors.notFound(res, "Phone number");
       }
 
       if (isDefault === true) {
@@ -835,8 +837,8 @@ export function registerIntegrationRoutes(app: Express): void {
 
       res.json(updatedPhone);
     } catch (err: any) {
-      console.error("Update phone number error:", err);
-      res.status(500).json({ message: err.message });
+      logger.error("Update phone number error", err instanceof Error ? err : undefined);
+      Errors.internal(res, err);
     }
   });
 
@@ -847,7 +849,7 @@ export function registerIntegrationRoutes(app: Express): void {
 
       const phoneRecord = await storage.getProvisionedPhoneNumber(phoneId);
       if (!phoneRecord || phoneRecord.organizationId !== org.id) {
-        return res.status(404).json({ message: "Phone number not found" });
+        return Errors.notFound(res, "Phone number");
       }
 
       if (phoneRecord.twilioSid) {
@@ -872,7 +874,7 @@ export function registerIntegrationRoutes(app: Express): void {
               }
             );
           } catch (twilioErr: any) {
-            console.error('[Twilio] Phone release failed:', twilioErr.message);
+            logger.error("[Twilio] Phone release failed", twilioErr instanceof Error ? twilioErr : undefined);
           }
         }
       }
@@ -896,8 +898,8 @@ export function registerIntegrationRoutes(app: Express): void {
 
       res.json({ success: true });
     } catch (err: any) {
-      console.error("Delete phone number error:", err);
-      res.status(500).json({ message: err.message });
+      logger.error("Delete phone number error", err instanceof Error ? err : undefined);
+      Errors.internal(res, err);
     }
   });
 
@@ -963,7 +965,7 @@ export function registerIntegrationRoutes(app: Express): void {
       
       res.json(testsWithVariants);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -972,15 +974,15 @@ export function registerIntegrationRoutes(app: Express): void {
     try {
       const org = req.organization;
       const testId = Number(req.params.id);
-      
+
       const result = await storage.getAbTestWithVariants(org.id, testId);
       if (!result) {
-        return res.status(404).json({ message: "A/B test not found" });
+        return Errors.notFound(res, "A/B test");
       }
       
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -992,13 +994,13 @@ export function registerIntegrationRoutes(app: Express): void {
       
       const campaign = await storage.getCampaign(org.id, campaignId);
       if (!campaign) {
-        return res.status(404).json({ message: "Campaign not found" });
+        return Errors.notFound(res, "Campaign");
       }
       
       // Check if campaign already has an active test
       const existingTest = await storage.getAbTestByCampaign(campaignId);
       if (existingTest && existingTest.status !== "completed") {
-        return res.status(400).json({ message: "Campaign already has an active A/B test" });
+        return Errors.badRequest(res, "Campaign already has an active A/B test");
       }
       
       const input = insertAbTestSchema.parse({
@@ -1036,9 +1038,9 @@ export function registerIntegrationRoutes(app: Express): void {
       res.status(201).json({ ...test, variants: createdVariants });
     } catch (err: any) {
       if (err.name === "ZodError") {
-        return res.status(400).json({ message: "Invalid input", errors: err.errors });
+        return Errors.badRequest(res, "Invalid input");
       }
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1050,15 +1052,15 @@ export function registerIntegrationRoutes(app: Express): void {
       
       const result = await storage.getAbTestWithVariants(org.id, testId);
       if (!result) {
-        return res.status(404).json({ message: "A/B test not found" });
+        return Errors.notFound(res, "A/B test");
       }
-      
+
       if (result.test.status !== "draft") {
-        return res.status(400).json({ message: "Test is not in draft status" });
+        return Errors.badRequest(res, "Test is not in draft status");
       }
-      
+
       if (result.variants.length < 2) {
-        return res.status(400).json({ message: "Test must have at least 2 variants" });
+        return Errors.badRequest(res, "Test must have at least 2 variants");
       }
       
       // Update test status to running
@@ -1069,7 +1071,7 @@ export function registerIntegrationRoutes(app: Express): void {
       
       res.json({ ...updatedTest, variants: result.variants });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1081,11 +1083,11 @@ export function registerIntegrationRoutes(app: Express): void {
       
       const result = await storage.getAbTestWithVariants(org.id, testId);
       if (!result) {
-        return res.status(404).json({ message: "A/B test not found" });
+        return Errors.notFound(res, "A/B test");
       }
-      
+
       if (result.test.status === "completed") {
-        return res.status(400).json({ message: "Test is already completed" });
+        return Errors.badRequest(res, "Test is already completed");
       }
       
       // Determine winner based on winning metric
@@ -1146,7 +1148,7 @@ export function registerIntegrationRoutes(app: Express): void {
       
       res.json({ ...updatedTest, variants: updatedVariants });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1177,7 +1179,7 @@ export function registerIntegrationRoutes(app: Express): void {
       const updatedVariant = await storage.updateAbTestVariant(variantId, updates);
       res.json(updatedVariant);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1197,7 +1199,7 @@ export function registerIntegrationRoutes(app: Express): void {
         power: 0.80
       });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1209,11 +1211,11 @@ export function registerIntegrationRoutes(app: Express): void {
       
       const result = await storage.getAbTestWithVariants(org.id, testId);
       if (!result) {
-        return res.status(404).json({ message: "A/B test not found" });
+        return Errors.notFound(res, "A/B test");
       }
-      
+
       if (result.test.status !== "draft") {
-        return res.status(400).json({ message: "Cannot add variants to a running or completed test" });
+        return Errors.badRequest(res, "Cannot add variants to a running or completed test");
       }
       
       const input = insertAbTestVariantSchema.parse({
@@ -1229,9 +1231,9 @@ export function registerIntegrationRoutes(app: Express): void {
       res.status(201).json(variant);
     } catch (err: any) {
       if (err.name === "ZodError") {
-        return res.status(400).json({ message: "Invalid input", errors: err.errors });
+        return Errors.badRequest(res, "Invalid input");
       }
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1243,13 +1245,13 @@ export function registerIntegrationRoutes(app: Express): void {
       
       const test = await storage.getAbTest(org.id, testId);
       if (!test) {
-        return res.status(404).json({ message: "A/B test not found" });
+        return Errors.notFound(res, "A/B test");
       }
       
       await storage.deleteAbTest(testId);
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1261,16 +1263,16 @@ export function registerIntegrationRoutes(app: Express): void {
       
       const result = await storage.getAbTestWithVariants(org.id, testId);
       if (!result) {
-        return res.status(404).json({ message: "A/B test not found" });
+        return Errors.notFound(res, "A/B test");
       }
-      
+
       if (result.test.status !== "completed" || !result.test.winnerId) {
-        return res.status(400).json({ message: "Test is not completed or has no winner" });
+        return Errors.badRequest(res, "Test is not completed or has no winner");
       }
       
       const winningVariant = result.variants.find(v => v.id === result.test.winnerId);
       if (!winningVariant) {
-        return res.status(404).json({ message: "Winning variant not found" });
+        return Errors.notFound(res, "Winning variant");
       }
       
       // Update the campaign with the winning variant
@@ -1286,7 +1288,7 @@ export function registerIntegrationRoutes(app: Express): void {
         appliedVariant: winningVariant 
       });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1302,7 +1304,7 @@ export function registerIntegrationRoutes(app: Express): void {
       const definitions = await storage.getCustomFieldDefinitions(org.id, entityType);
       res.json(definitions);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1312,11 +1314,11 @@ export function registerIntegrationRoutes(app: Express): void {
       const id = Number(req.params.id);
       const definition = await storage.getCustomFieldDefinition(org.id, id);
       if (!definition) {
-        return res.status(404).json({ message: "Custom field definition not found" });
+        return Errors.notFound(res, "Custom field definition");
       }
       res.json(definition);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1347,9 +1349,9 @@ export function registerIntegrationRoutes(app: Express): void {
       res.status(201).json(definition);
     } catch (err: any) {
       if (err.name === "ZodError") {
-        return res.status(400).json({ message: "Invalid data", errors: err.errors });
+        return Errors.badRequest(res, "Invalid data");
       }
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1360,7 +1362,7 @@ export function registerIntegrationRoutes(app: Express): void {
 
       const existing = await storage.getCustomFieldDefinition(org.id, id);
       if (!existing) {
-        return res.status(404).json({ message: "Custom field definition not found" });
+        return Errors.notFound(res, "Custom field definition");
       }
 
       const updated = await storage.updateCustomFieldDefinition(id, req.body);
@@ -1382,7 +1384,7 @@ export function registerIntegrationRoutes(app: Express): void {
 
       res.json(updated);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1393,7 +1395,7 @@ export function registerIntegrationRoutes(app: Express): void {
 
       const existing = await storage.getCustomFieldDefinition(org.id, id);
       if (!existing) {
-        return res.status(404).json({ message: "Custom field definition not found" });
+        return Errors.notFound(res, "Custom field definition");
       }
 
       await storage.deleteCustomFieldDefinition(id);
@@ -1415,7 +1417,7 @@ export function registerIntegrationRoutes(app: Express): void {
 
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1427,7 +1429,7 @@ export function registerIntegrationRoutes(app: Express): void {
       const values = await storage.getCustomFieldValues(entityType, entityId);
       res.json(values);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1438,13 +1440,13 @@ export function registerIntegrationRoutes(app: Express): void {
       
       const definition = await storage.getCustomFieldDefinition(org.id, definitionId);
       if (!definition) {
-        return res.status(404).json({ message: "Custom field definition not found" });
+        return Errors.notFound(res, "Custom field definition");
       }
       
       const fieldValue = await storage.setCustomFieldValue(definitionId, entityId, value);
       res.json(fieldValue);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1468,7 +1470,7 @@ export function registerIntegrationRoutes(app: Express): void {
       
       res.json(results);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1483,7 +1485,7 @@ export function registerIntegrationRoutes(app: Express): void {
       const views = await storage.getSavedViews(org.id, entityType);
       res.json(views);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1493,11 +1495,11 @@ export function registerIntegrationRoutes(app: Express): void {
       const id = Number(req.params.id);
       const view = await storage.getSavedView(org.id, id);
       if (!view) {
-        return res.status(404).json({ message: "Saved view not found" });
+        return Errors.notFound(res, "Saved view");
       }
       res.json(view);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1529,9 +1531,9 @@ export function registerIntegrationRoutes(app: Express): void {
       res.status(201).json(view);
     } catch (err: any) {
       if (err.name === "ZodError") {
-        return res.status(400).json({ message: "Invalid data", errors: err.errors });
+        return Errors.badRequest(res, "Invalid data");
       }
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1542,7 +1544,7 @@ export function registerIntegrationRoutes(app: Express): void {
 
       const existing = await storage.getSavedView(org.id, id);
       if (!existing) {
-        return res.status(404).json({ message: "Saved view not found" });
+        return Errors.notFound(res, "Saved view");
       }
 
       const updated = await storage.updateSavedView(id, req.body);
@@ -1564,7 +1566,7 @@ export function registerIntegrationRoutes(app: Express): void {
 
       res.json(updated);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1575,7 +1577,7 @@ export function registerIntegrationRoutes(app: Express): void {
 
       const existing = await storage.getSavedView(org.id, id);
       if (!existing) {
-        return res.status(404).json({ message: "Saved view not found" });
+        return Errors.notFound(res, "Saved view");
       }
 
       await storage.deleteSavedView(id);
@@ -1597,7 +1599,7 @@ export function registerIntegrationRoutes(app: Express): void {
 
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1608,7 +1610,7 @@ export function registerIntegrationRoutes(app: Express): void {
 
       const existing = await storage.getSavedView(org.id, id);
       if (!existing) {
-        return res.status(404).json({ message: "Saved view not found" });
+        return Errors.notFound(res, "Saved view");
       }
 
       const updated = await storage.setDefaultView(org.id, existing.entityType, id);
@@ -1630,7 +1632,7 @@ export function registerIntegrationRoutes(app: Express): void {
 
       res.json(updated);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1647,7 +1649,7 @@ export function registerIntegrationRoutes(app: Express): void {
         const result = await db.execute(sql`SELECT 1 as ok`);
         checks.database = true;
       } catch (dbErr: any) {
-        console.error("[Health] Database check failed:", dbErr.message);
+        logger.error("[Health] Database check failed", dbErr instanceof Error ? dbErr : undefined);
         checks.database = false;
       }
       
@@ -1656,7 +1658,7 @@ export function registerIntegrationRoutes(app: Express): void {
         checks
       });
     } catch (err: any) {
-      res.status(500).json({ status: 'unhealthy', error: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1673,7 +1675,7 @@ export function registerIntegrationRoutes(app: Express): void {
       const endpoints = await getWebhookEndpoints(org.id);
       res.json(endpoints);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1684,17 +1686,17 @@ export function registerIntegrationRoutes(app: Express): void {
       const { endpoints } = req.body;
 
       if (!Array.isArray(endpoints)) {
-        return res.status(400).json({ message: "endpoints must be an array" });
+        return Errors.badRequest(res, "endpoints must be an array");
       }
       if (endpoints.length > 10) {
-        return res.status(400).json({ message: "Maximum 10 webhook endpoints per organization" });
+        return Errors.badRequest(res, "Maximum 10 webhook endpoints per organization");
       }
 
       const { saveWebhookEndpoints } = await import("./services/webhookDispatcher");
       await saveWebhookEndpoints(org.id, endpoints);
       res.json({ success: true, count: endpoints.length });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1705,7 +1707,7 @@ export function registerIntegrationRoutes(app: Express): void {
       const { url, secret } = req.body;
 
       if (!url || typeof url !== "string") {
-        return res.status(400).json({ message: "url is required" });
+        return Errors.badRequest(res, "url is required");
       }
 
       const { signPayload } = await import("./services/webhookDispatcher");
@@ -1725,7 +1727,7 @@ export function registerIntegrationRoutes(app: Express): void {
       const response = await fetch(url, { method: "POST", headers, body: payload });
       res.json({ status: response.status, ok: response.ok });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 

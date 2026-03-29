@@ -1101,12 +1101,12 @@ export function registerCampaignRoutes(app: Express): void {
       const { directMailService, DIRECT_MAIL_COSTS } = await import("./services/directMail");
       
       if (!directMailService.isAvailable()) {
-        return res.status(400).json({ error: "Direct mail service not configured" });
+        return Errors.badRequest(res, "Direct mail service not configured");
       }
-      
+
       // Validate piece type
       if (!DIRECT_MAIL_COSTS[pieceType as keyof typeof DIRECT_MAIL_COSTS]) {
-        return res.status(400).json({ error: "Invalid piece type" });
+        return Errors.badRequest(res, "Invalid piece type");
       }
       
       // Calculate recipient count from IDs if provided
@@ -1124,7 +1124,7 @@ export function registerCampaignRoutes(app: Express): void {
       }
       
       if (count <= 0) {
-        return res.status(400).json({ error: "Must specify recipientCount, recipientIds, or campaignId" });
+        return Errors.badRequest(res, "Must specify recipientCount, recipientIds, or campaignId");
       }
       
       const currentMode = org.settings?.mailMode || 'test';
@@ -1284,7 +1284,7 @@ export function registerCampaignRoutes(app: Express): void {
       const campaignId = Number(req.params.id);
 
       const campaign = await storage.getCampaign(org.id, campaignId);
-      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      if (!campaign) return Errors.notFound(res, "Campaign");
 
       const input = insertCampaignVariantSchema.parse({
         campaignId,
@@ -1297,8 +1297,8 @@ export function registerCampaignRoutes(app: Express): void {
       const [variant] = await db.insert(campaignVariants).values(input).returning();
       res.status(201).json(variant);
     } catch (err: any) {
-      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
-      res.status(500).json({ error: err.message });
+      if (err instanceof z.ZodError) return Errors.badRequest(res, err.errors[0].message);
+      Errors.internal(res, err instanceof Error ? err : new Error(err.message));
     }
   });
 
@@ -1309,7 +1309,7 @@ export function registerCampaignRoutes(app: Express): void {
       const campaignId = Number(req.params.id);
 
       const campaign = await storage.getCampaign(org.id, campaignId);
-      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      if (!campaign) return Errors.notFound(res, "Campaign");
 
       const variants = await db
         .select()
@@ -1329,7 +1329,7 @@ export function registerCampaignRoutes(app: Express): void {
 
       res.json(enriched);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err instanceof Error ? err : new Error(err.message));
     }
   });
 
@@ -1342,7 +1342,7 @@ export function registerCampaignRoutes(app: Express): void {
       const variantId = Number(req.params.variantId);
 
       const campaign = await storage.getCampaign(org.id, campaignId);
-      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      if (!campaign) return Errors.notFound(res, "Campaign");
 
       const variants = await db
         .select()
@@ -1350,11 +1350,11 @@ export function registerCampaignRoutes(app: Express): void {
         .where(eq(campaignVariants.campaignId, campaignId));
 
       const winner = variants.find((v) => v.id === variantId);
-      if (!winner) return res.status(404).json({ error: "Variant not found" });
+      if (!winner) return Errors.notFound(res, "Variant");
 
       const winnerSent = winner.sentCount ?? 0;
       if (winnerSent < 50) {
-        return res.status(400).json({
+        return Errors.badRequest(res, "Winner must have at least 50 sends before declaring winner.", {
           error: "Not enough data",
           message: "Winner must have at least 50 sends before declaring winner.",
           significant: false,
@@ -1369,9 +1369,7 @@ export function registerCampaignRoutes(app: Express): void {
         const otherSent = other.sentCount ?? 0;
         const otherRate = otherSent > 0 ? (other.responseCount ?? 0) / otherSent : 0;
         if (winnerRate <= otherRate * 1.10) {
-          return res.status(400).json({
-            error: "Not statistically significant",
-            message: "Winner must have >10% better response rate than all other variants.",
+          return Errors.badRequest(res, "Winner must have >10% better response rate than all other variants.", {
             significant: false,
             winnerRate: Number((winnerRate * 100).toFixed(2)),
             comparedRate: Number((otherRate * 100).toFixed(2)),
@@ -1398,7 +1396,7 @@ export function registerCampaignRoutes(app: Express): void {
         winnerResponseRate: Number((winnerRate * 100).toFixed(2)),
       });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err instanceof Error ? err : new Error(err.message));
     }
   });
 
@@ -1409,7 +1407,7 @@ export function registerCampaignRoutes(app: Express): void {
       const campaignId = Number(req.params.id);
 
       const campaign = await storage.getCampaign(org.id, campaignId);
-      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      if (!campaign) return Errors.notFound(res, "Campaign");
 
       const variants = await db
         .select()
@@ -1470,7 +1468,7 @@ export function registerCampaignRoutes(app: Express): void {
           : `Not enough data yet. Each variant needs at least 50 sends (current minimum: ${minSends}).`,
       });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      Errors.internal(res, err instanceof Error ? err : new Error(err.message));
     }
   });
 
@@ -1480,11 +1478,11 @@ export function registerCampaignRoutes(app: Express): void {
       const org = req.organization;
       const user = req.user as any;
       const campaign = await storage.getCampaign(org.id, Number(req.params.id));
-      if (!campaign) return res.status(404).json({ message: "Campaign not found" });
+      if (!campaign) return Errors.notFound(res, "Campaign");
 
       const userEmail = user.email || user.claims?.email;
       if (!userEmail) {
-        return res.status(400).json({ message: "No email address found for current user" });
+        return Errors.badRequest(res, "No email address found for current user");
       }
 
       const { emailService } = await import("./services/emailService");
@@ -1506,7 +1504,7 @@ export function registerCampaignRoutes(app: Express): void {
 
       res.json({ success: true, to: userEmail, result });
     } catch (err: any) {
-      res.status(500).json({ message: err.message || "Test send failed" });
+      Errors.internal(res, err instanceof Error ? err : new Error(err.message || "Test send failed"));
     }
   });
 
@@ -1518,7 +1516,7 @@ export function registerCampaignRoutes(app: Express): void {
       const report = await campaignOverlapDetector.generateOverlapReport(org.id);
       res.json(report);
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      Errors.internal(res, e instanceof Error ? e : new Error(e.message));
     }
   });
 

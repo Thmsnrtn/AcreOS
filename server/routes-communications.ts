@@ -9,6 +9,8 @@ import {
 } from "@shared/schema";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
+import { Errors } from "./utils/errors";
+import { logger } from "./utils/logger";
 import { usageMeteringService, creditService } from "./services/credits";
 import { exportLeadsToCSV, exportPropertiesToCSV, exportDealsToCSV, exportNotesToCSV, type ExportFilters } from "./services/importExport";
 import { workflowEngine, LAND_INVESTING_WORKFLOW_TEMPLATES } from "./services/workflow-engine";
@@ -27,8 +29,8 @@ export function registerCommunicationRoutes(app: Express): void {
       const identities = await storage.getEmailSenderIdentities(org.id);
       res.json(identities);
     } catch (error: any) {
-      console.error("Get email identities error:", error);
-      res.status(500).json({ message: error.message || "Failed to fetch email identities" });
+      logger.error("Get email identities error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to fetch email identities"));
     }
   });
 
@@ -85,8 +87,8 @@ export function registerCommunicationRoutes(app: Express): void {
 
       res.status(201).json(identity);
     } catch (error: any) {
-      console.error("Create email identity error:", error);
-      res.status(500).json({ message: error.message || "Failed to create email identity" });
+      logger.error("Create email identity error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to create email identity"));
     }
   });
 
@@ -98,12 +100,12 @@ export function registerCommunicationRoutes(app: Express): void {
       const identity = await storage.getEmailSenderIdentity(id);
       // Task #2: IDOR prevention — verify resource belongs to requesting org
       if (!identity || identity.organizationId !== org.id) {
-        return res.status(404).json({ message: "Email identity not found" });
+        return Errors.notFound(res, "Email identity");
       }
       res.json(identity);
     } catch (error: any) {
-      console.error("Get email identity error:", error);
-      res.status(500).json({ message: error.message || "Failed to fetch email identity" });
+      logger.error("Get email identity error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to fetch email identity"));
     }
   });
 
@@ -115,7 +117,7 @@ export function registerCommunicationRoutes(app: Express): void {
       // Task #2: IDOR prevention — verify resource belongs to requesting org
       const existing = await storage.getEmailSenderIdentity(id);
       if (!existing || existing.organizationId !== org.id) {
-        return res.status(404).json({ message: "Email identity not found" });
+        return Errors.notFound(res, "Email identity");
       }
       const { fromName, replyToEmail, replyRoutingMode, isActive } = req.body;
 
@@ -143,8 +145,8 @@ export function registerCommunicationRoutes(app: Express): void {
 
       res.json(identity);
     } catch (error: any) {
-      console.error("Update email identity error:", error);
-      res.status(500).json({ message: error.message || "Failed to update email identity" });
+      logger.error("Update email identity error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to update email identity"));
     }
   });
 
@@ -172,8 +174,8 @@ export function registerCommunicationRoutes(app: Express): void {
 
       res.json({ success: true });
     } catch (error: any) {
-      console.error("Set default email identity error:", error);
-      res.status(500).json({ message: error.message || "Failed to set default email identity" });
+      logger.error("Set default email identity error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to set default email identity"));
     }
   });
 
@@ -185,7 +187,7 @@ export function registerCommunicationRoutes(app: Express): void {
       // Task #2: IDOR prevention — verify resource belongs to requesting org
       const existing = await storage.getEmailSenderIdentity(id);
       if (!existing || existing.organizationId !== org.id) {
-        return res.status(404).json({ message: "Email identity not found" });
+        return Errors.notFound(res, "Email identity");
       }
       await storage.deleteEmailSenderIdentity(id);
 
@@ -206,8 +208,8 @@ export function registerCommunicationRoutes(app: Express): void {
 
       res.json({ success: true });
     } catch (error: any) {
-      console.error("Delete email identity error:", error);
-      res.status(500).json({ message: error.message || "Failed to delete email identity" });
+      logger.error("Delete email identity error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to delete email identity"));
     }
   });
 
@@ -222,8 +224,8 @@ export function registerCommunicationRoutes(app: Express): void {
       const identities = await storage.getMailSenderIdentities(org.id);
       res.json(identities);
     } catch (error: any) {
-      console.error("Get mail identities error:", error);
-      res.status(500).json({ message: error.message || "Failed to fetch mail identities" });
+      logger.error("Get mail identities error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to fetch mail identities"));
     }
   });
 
@@ -254,8 +256,8 @@ export function registerCommunicationRoutes(app: Express): void {
 
       res.status(201).json(identity);
     } catch (error: any) {
-      console.error("Create mail identity error:", error);
-      res.status(500).json({ message: error.message || "Failed to create mail identity" });
+      logger.error("Create mail identity error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to create mail identity"));
     }
   });
 
@@ -267,12 +269,12 @@ export function registerCommunicationRoutes(app: Express): void {
       const identity = await storage.getMailSenderIdentity(id);
       // Task #2: IDOR prevention — verify resource belongs to requesting org
       if (!identity || identity.organizationId !== org.id) {
-        return res.status(404).json({ message: "Mail identity not found" });
+        return Errors.notFound(res, "Mail identity");
       }
       res.json(identity);
     } catch (error: any) {
-      console.error("Get mail identity error:", error);
-      res.status(500).json({ message: error.message || "Failed to fetch mail identity" });
+      logger.error("Get mail identity error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to fetch mail identity"));
     }
   });
 
@@ -284,7 +286,7 @@ export function registerCommunicationRoutes(app: Express): void {
       // Task #2: IDOR prevention — verify resource belongs to requesting org
       const existing = await storage.getMailSenderIdentity(id);
       if (!existing || existing.organizationId !== org.id) {
-        return res.status(404).json({ message: "Mail identity not found" });
+        return Errors.notFound(res, "Mail identity");
       }
       const identity = await storage.updateMailSenderIdentity(id, req.body);
 
@@ -305,8 +307,8 @@ export function registerCommunicationRoutes(app: Express): void {
 
       res.json(identity);
     } catch (error: any) {
-      console.error("Update mail identity error:", error);
-      res.status(500).json({ message: error.message || "Failed to update mail identity" });
+      logger.error("Update mail identity error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to update mail identity"));
     }
   });
 
@@ -334,8 +336,8 @@ export function registerCommunicationRoutes(app: Express): void {
 
       res.json({ success: true });
     } catch (error: any) {
-      console.error("Set default mail identity error:", error);
-      res.status(500).json({ message: error.message || "Failed to set default mail identity" });
+      logger.error("Set default mail identity error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to set default mail identity"));
     }
   });
 
@@ -347,7 +349,7 @@ export function registerCommunicationRoutes(app: Express): void {
       // Task #2: IDOR prevention — verify resource belongs to requesting org
       const existing = await storage.getMailSenderIdentity(id);
       if (!existing || existing.organizationId !== org.id) {
-        return res.status(404).json({ message: "Mail identity not found" });
+        return Errors.notFound(res, "Mail identity");
       }
       await storage.deleteMailSenderIdentity(id);
 
@@ -368,8 +370,8 @@ export function registerCommunicationRoutes(app: Express): void {
 
       res.json({ success: true });
     } catch (error: any) {
-      console.error("Delete mail identity error:", error);
-      res.status(500).json({ message: error.message || "Failed to delete mail identity" });
+      logger.error("Delete mail identity error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to delete mail identity"));
     }
   });
 
@@ -381,9 +383,9 @@ export function registerCommunicationRoutes(app: Express): void {
       const identity = await storage.getMailSenderIdentity(id);
       // Task #2: IDOR prevention — verify resource belongs to requesting org
       if (!identity || identity.organizationId !== org.id) {
-        return res.status(404).json({ message: "Mail identity not found" });
+        return Errors.notFound(res, "Mail identity");
       }
-      
+
       // Set status to pending_verification
       await storage.updateMailSenderIdentity(id, {
         status: "pending_verification",
@@ -425,8 +427,8 @@ export function registerCommunicationRoutes(app: Express): void {
       
       res.json(updated);
     } catch (error: any) {
-      console.error("Verify mail identity error:", error);
-      res.status(500).json({ message: error.message || "Failed to trigger verification" });
+      logger.error("Verify mail identity error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to trigger verification"));
     }
   });
 
@@ -448,8 +450,8 @@ export function registerCommunicationRoutes(app: Express): void {
       const orders = await storage.getMailingOrders(org.id, filters);
       res.json(orders);
     } catch (error: any) {
-      console.error("Get mailing orders error:", error);
-      res.status(500).json({ message: error.message || "Failed to fetch mailing orders" });
+      logger.error("Get mailing orders error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to fetch mailing orders"));
     }
   });
 
@@ -461,12 +463,12 @@ export function registerCommunicationRoutes(app: Express): void {
       const order = await storage.getMailingOrder(id);
       // Task #2: IDOR prevention — verify resource belongs to requesting org
       if (!order || order.organizationId !== org.id) {
-        return res.status(404).json({ message: "Mailing order not found" });
+        return Errors.notFound(res, "Mailing order");
       }
       res.json(order);
     } catch (error: any) {
-      console.error("Get mailing order error:", error);
-      res.status(500).json({ message: error.message || "Failed to fetch mailing order" });
+      logger.error("Get mailing order error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to fetch mailing order"));
     }
   });
 
@@ -497,8 +499,8 @@ export function registerCommunicationRoutes(app: Express): void {
 
       res.status(201).json(order);
     } catch (error: any) {
-      console.error("Create mailing order error:", error);
-      res.status(500).json({ message: error.message || "Failed to create mailing order" });
+      logger.error("Create mailing order error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to create mailing order"));
     }
   });
 
@@ -510,7 +512,7 @@ export function registerCommunicationRoutes(app: Express): void {
       // Task #2: IDOR prevention — verify resource belongs to requesting org
       const existing = await storage.getMailingOrder(id);
       if (!existing || existing.organizationId !== org.id) {
-        return res.status(404).json({ message: "Mailing order not found" });
+        return Errors.notFound(res, "Mailing order");
       }
       const order = await storage.updateMailingOrder(id, req.body);
 
@@ -531,8 +533,8 @@ export function registerCommunicationRoutes(app: Express): void {
 
       res.json(order);
     } catch (error: any) {
-      console.error("Update mailing order error:", error);
-      res.status(500).json({ message: error.message || "Failed to update mailing order" });
+      logger.error("Update mailing order error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to update mailing order"));
     }
   });
 
@@ -544,13 +546,13 @@ export function registerCommunicationRoutes(app: Express): void {
       // Task #2: IDOR prevention — verify order belongs to requesting org
       const order = await storage.getMailingOrder(orderId);
       if (!order || order.organizationId !== org.id) {
-        return res.status(404).json({ message: "Mailing order not found" });
+        return Errors.notFound(res, "Mailing order");
       }
       const pieces = await storage.getMailingOrderPieces(orderId);
       res.json(pieces);
     } catch (error: any) {
-      console.error("Get mailing order pieces error:", error);
-      res.status(500).json({ message: error.message || "Failed to fetch mailing order pieces" });
+      logger.error("Get mailing order pieces error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to fetch mailing order pieces"));
     }
   });
 
@@ -577,8 +579,8 @@ export function registerCommunicationRoutes(app: Express): void {
       
       res.json(messages);
     } catch (error: any) {
-      console.error("Get inbox messages error:", error);
-      res.status(500).json({ message: error.message || "Failed to fetch inbox messages" });
+      logger.error("Get inbox messages error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to fetch inbox messages"));
     }
   });
 
@@ -589,8 +591,8 @@ export function registerCommunicationRoutes(app: Express): void {
       const count = await storage.getUnreadInboxCount(org.id);
       res.json({ count });
     } catch (error: any) {
-      console.error("Get unread count error:", error);
-      res.status(500).json({ message: error.message || "Failed to fetch unread count" });
+      logger.error("Get unread count error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to fetch unread count"));
     }
   });
 
@@ -602,12 +604,12 @@ export function registerCommunicationRoutes(app: Express): void {
       const message = await storage.getInboxMessage(id);
       // Task #2: IDOR prevention — verify resource belongs to requesting org
       if (!message || message.organizationId !== org.id) {
-        return res.status(404).json({ message: "Message not found" });
+        return Errors.notFound(res, "Message");
       }
       res.json(message);
     } catch (error: any) {
-      console.error("Get inbox message error:", error);
-      res.status(500).json({ message: error.message || "Failed to fetch message" });
+      logger.error("Get inbox message error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to fetch message"));
     }
   });
 
@@ -618,15 +620,15 @@ export function registerCommunicationRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       const existing = await storage.getInboxMessage(id);
       if (!existing || existing.organizationId !== org.id) {
-        return res.status(404).json({ message: "Message not found" });
+        return Errors.notFound(res, "Message");
       }
       const user = req.user as any;
       const userId = user.claims?.sub || user.id;
       const message = await storage.markInboxMessageRead(id, userId);
       res.json(message);
     } catch (error: any) {
-      console.error("Mark message read error:", error);
-      res.status(500).json({ message: error.message || "Failed to mark message as read" });
+      logger.error("Mark message read error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to mark message as read"));
     }
   });
 
@@ -637,13 +639,13 @@ export function registerCommunicationRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       const existing = await storage.getInboxMessage(id);
       if (!existing || existing.organizationId !== org.id) {
-        return res.status(404).json({ message: "Message not found" });
+        return Errors.notFound(res, "Message");
       }
       const message = await storage.markInboxMessageUnread(id);
       res.json(message);
     } catch (error: any) {
-      console.error("Mark message unread error:", error);
-      res.status(500).json({ message: error.message || "Failed to mark message as unread" });
+      logger.error("Mark message unread error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to mark message as unread"));
     }
   });
 
@@ -655,13 +657,13 @@ export function registerCommunicationRoutes(app: Express): void {
       const currentMessage = await storage.getInboxMessage(id);
       // Task #2: IDOR prevention — verify resource belongs to requesting org
       if (!currentMessage || currentMessage.organizationId !== org.id) {
-        return res.status(404).json({ message: "Message not found" });
+        return Errors.notFound(res, "Message");
       }
       const message = await storage.starInboxMessage(id, !currentMessage.isStarred);
       res.json(message);
     } catch (error: any) {
-      console.error("Toggle star error:", error);
-      res.status(500).json({ message: error.message || "Failed to toggle star" });
+      logger.error("Toggle star error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to toggle star"));
     }
   });
 
@@ -672,13 +674,13 @@ export function registerCommunicationRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       const existing = await storage.getInboxMessage(id);
       if (!existing || existing.organizationId !== org.id) {
-        return res.status(404).json({ message: "Message not found" });
+        return Errors.notFound(res, "Message");
       }
       const message = await storage.archiveInboxMessage(id);
       res.json(message);
     } catch (error: any) {
-      console.error("Archive message error:", error);
-      res.status(500).json({ message: error.message || "Failed to archive message" });
+      logger.error("Archive message error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to archive message"));
     }
   });
 
@@ -689,7 +691,7 @@ export function registerCommunicationRoutes(app: Express): void {
       const { to, subject, html, text, replyTo, inReplyToMessageId } = req.body;
 
       if (!to || !subject || (!html && !text)) {
-        return res.status(400).json({ message: "Missing required fields: to, subject, and html or text" });
+        return Errors.badRequest(res, "Missing required fields: to, subject, and html or text");
       }
 
       const { emailService } = await import("./services/emailService");
@@ -720,7 +722,7 @@ export function registerCommunicationRoutes(app: Express): void {
 
         res.json({ success: true, messageId: result.messageId });
       } else {
-        res.status(500).json({ success: false, error: result.error });
+        Errors.internal(res, new Error(result.error || "Email send failed"));
       }
     } catch (error: any) {
       console.error("Send email error:", error);

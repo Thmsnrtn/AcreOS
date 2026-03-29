@@ -479,8 +479,8 @@ export function registerTeamMessagingRoutes(app: Express): void {
       
       res.json(presence);
     } catch (error: any) {
-      console.error("Update presence error:", error);
-      res.status(500).json({ message: error.message || "Failed to update presence status" });
+      logger.error("Update presence error", error);
+      Errors.internal(res, error);
     }
   });
 
@@ -501,8 +501,8 @@ export function registerTeamMessagingRoutes(app: Express): void {
       const letters = await storage.getOfferLetters(org.id, filters);
       res.json(letters);
     } catch (error: any) {
-      console.error("Get offer letters error:", error);
-      res.status(500).json({ message: error.message || "Failed to fetch offer letters" });
+      logger.error("Get offer letters error", error);
+      Errors.internal(res, error);
     }
   });
 
@@ -523,8 +523,8 @@ export function registerTeamMessagingRoutes(app: Express): void {
       
       res.status(201).json(letter);
     } catch (error: any) {
-      console.error("Create offer letter error:", error);
-      res.status(500).json({ message: error.message || "Failed to create offer letter" });
+      logger.error("Create offer letter error", error);
+      Errors.internal(res, error);
     }
   });
 
@@ -595,8 +595,8 @@ export function registerTeamMessagingRoutes(app: Express): void {
         letters: createdLetters,
       });
     } catch (error: any) {
-      console.error("Create batch offer letters error:", error);
-      res.status(500).json({ message: error.message || "Failed to create batch offers" });
+      logger.error("Create batch offer letters error", error);
+      Errors.internal(res, error);
     }
   });
 
@@ -623,8 +623,8 @@ export function registerTeamMessagingRoutes(app: Express): void {
       const updated = await storage.updateOfferLetter(id, parsed.data);
       res.json(updated);
     } catch (error: any) {
-      console.error("Update offer letter error:", error);
-      res.status(500).json({ message: error.message || "Failed to update offer letter" });
+      logger.error("Update offer letter error", error);
+      Errors.internal(res, error);
     }
   });
 
@@ -646,8 +646,8 @@ export function registerTeamMessagingRoutes(app: Express): void {
       await storage.deleteOfferLetter(id);
       res.json({ success: true });
     } catch (error: any) {
-      console.error("Delete offer letter error:", error);
-      res.status(500).json({ message: error.message || "Failed to delete offer letter" });
+      logger.error("Delete offer letter error", error);
+      Errors.internal(res, error);
     }
   });
 
@@ -677,8 +677,8 @@ export function registerTeamMessagingRoutes(app: Express): void {
       
       res.json(updated);
     } catch (error: any) {
-      console.error("Send offer letter error:", error);
-      res.status(500).json({ message: error.message || "Failed to queue offer letter" });
+      logger.error("Send offer letter error", error);
+      Errors.internal(res, error);
     }
   });
 
@@ -689,8 +689,8 @@ export function registerTeamMessagingRoutes(app: Express): void {
       const templates = await storage.getOfferTemplates(org.id);
       res.json(templates);
     } catch (error: any) {
-      console.error("Get offer templates error:", error);
-      res.status(500).json({ message: error.message || "Failed to fetch offer templates" });
+      logger.error("Get offer templates error", error);
+      Errors.internal(res, error);
     }
   });
 
@@ -711,8 +711,8 @@ export function registerTeamMessagingRoutes(app: Express): void {
       
       res.status(201).json(template);
     } catch (error: any) {
-      console.error("Create offer template error:", error);
-      res.status(500).json({ message: error.message || "Failed to create template" });
+      logger.error("Create offer template error", error);
+      Errors.internal(res, error);
     }
   });
 
@@ -739,8 +739,8 @@ export function registerTeamMessagingRoutes(app: Express): void {
       const updated = await storage.updateOfferTemplate(id, parsed.data);
       res.json(updated);
     } catch (error: any) {
-      console.error("Update offer template error:", error);
-      res.status(500).json({ message: error.message || "Failed to update template" });
+      logger.error("Update offer template error", error);
+      Errors.internal(res, error);
     }
   });
 
@@ -762,8 +762,8 @@ export function registerTeamMessagingRoutes(app: Express): void {
       await storage.deleteOfferTemplate(id);
       res.json({ success: true });
     } catch (error: any) {
-      console.error("Delete offer template error:", error);
-      res.status(500).json({ message: error.message || "Failed to delete template" });
+      logger.error("Delete offer template error", error);
+      Errors.internal(res, error);
     }
   });
 
@@ -779,8 +779,8 @@ export function registerTeamMessagingRoutes(app: Express): void {
       const listings = await storage.getPropertyListings(org.id, status ? { status } : undefined);
       res.json(listings);
     } catch (error: any) {
-      console.error("Get listings error:", error);
-      res.status(500).json({ message: error.message || "Failed to fetch listings" });
+      logger.error("Get listings error", error);
+      Errors.internal(res, error);
     }
   });
 
@@ -801,8 +801,8 @@ export function registerTeamMessagingRoutes(app: Express): void {
       
       res.json(listing);
     } catch (error: any) {
-      console.error("Get listing error:", error);
-      res.status(500).json({ message: error.message || "Failed to fetch listing" });
+      logger.error("Get listing error", error);
+      Errors.internal(res, error);
     }
   });
 
@@ -835,8 +835,8 @@ export function registerTeamMessagingRoutes(app: Express): void {
       
       res.status(201).json(listing);
     } catch (error: any) {
-      console.error("Create listing error:", error);
-      res.status(500).json({ message: error.message || "Failed to create listing" });
+      logger.error("Create listing error", error);
+      Errors.internal(res, error);
     }
   });
 
@@ -863,8 +863,8 @@ export function registerTeamMessagingRoutes(app: Express): void {
       const updated = await storage.updatePropertyListing(id, parsed.data);
       res.json(updated);
     } catch (error: any) {
-      console.error("Update listing error:", error);
-      res.status(500).json({ message: error.message || "Failed to update listing" });
+      logger.error("Update listing error", error);
+      Errors.internal(res, error);
     }
   });
 
@@ -886,8 +886,8 @@ export function registerTeamMessagingRoutes(app: Express): void {
       await storage.deletePropertyListing(id);
       res.json({ success: true });
     } catch (error: any) {
-      console.error("Delete listing error:", error);
-      res.status(500).json({ message: error.message || "Failed to delete listing" });
+      logger.error("Delete listing error", error);
+      Errors.internal(res, error);
     }
   });
 
@@ -926,8 +926,8 @@ export function registerTeamMessagingRoutes(app: Express): void {
       
       res.json(updated);
     } catch (error: any) {
-      console.error("Publish listing error:", error);
-      res.status(500).json({ message: error.message || "Failed to publish listing" });
+      logger.error("Publish listing error", error);
+      Errors.internal(res, error);
     }
   });
 
@@ -959,8 +959,8 @@ export function registerTeamMessagingRoutes(app: Express): void {
       
       res.json(updated);
     } catch (error: any) {
-      console.error("Unpublish listing error:", error);
-      res.status(500).json({ message: error.message || "Failed to unpublish listing" });
+      logger.error("Unpublish listing error", error);
+      Errors.internal(res, error);
     }
   });
 
@@ -1013,8 +1013,8 @@ export function registerTeamMessagingRoutes(app: Express): void {
       const channels = existing.sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
       res.json(channels);
     } catch (error: any) {
-      console.error("Get channels error:", error);
-      res.status(500).json({ message: error.message || "Failed to fetch channels" });
+      logger.error("Get channels error", error);
+      Errors.internal(res, error);
     }
   });
 
@@ -1063,8 +1063,8 @@ export function registerTeamMessagingRoutes(app: Express): void {
       wsServer.broadcastToOrg(org.id, "channel.created", { channel });
       res.status(201).json(channel);
     } catch (error: any) {
-      console.error("Create channel error:", error);
-      res.status(500).json({ message: error.message || "Failed to create channel" });
+      logger.error("Create channel error", error);
+      Errors.internal(res, error);
     }
   });
 
@@ -1095,8 +1095,8 @@ export function registerTeamMessagingRoutes(app: Express): void {
 
       res.json(updated);
     } catch (error: any) {
-      console.error("Join channel error:", error);
-      res.status(500).json({ message: error.message || "Failed to join channel" });
+      logger.error("Join channel error", error);
+      Errors.internal(res, error);
     }
   });
 
