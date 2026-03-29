@@ -8,6 +8,8 @@ import { usageMeteringService, creditService } from "./services/credits";
 import { deals, properties, leads, notes } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { format as formatDate } from "date-fns";
+import { logger } from "./utils/logger";
+import { Errors } from "./utils/errors";
 
 /**
  * Resolve standard context variables from deal/property context.
@@ -111,8 +113,8 @@ export function registerDocSystemRoutes(app: Express): void {
       const templates = await storage.getDocumentTemplates(org.id);
       res.json(templates);
     } catch (error: any) {
-      console.error("Get document templates error:", error);
-      res.status(500).json({ message: error.message || "Failed to fetch templates" });
+      logger.error("Get document templates error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
 
@@ -122,18 +124,18 @@ export function registerDocSystemRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid template ID" });
+        return Errors.badRequest(res, "Invalid template ID");
       }
-      
+
       const template = await storage.getDocumentTemplate(id);
       if (!template) {
-        return res.status(404).json({ message: "Template not found" });
+        return Errors.notFound(res, "Template");
       }
-      
+
       res.json(template);
     } catch (error: any) {
-      console.error("Get document template error:", error);
-      res.status(500).json({ message: error.message || "Failed to fetch template" });
+      logger.error("Get document template error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
 
@@ -144,7 +146,7 @@ export function registerDocSystemRoutes(app: Express): void {
       const { name, type, category, content, variables } = req.body;
       
       if (!name || !type || !content) {
-        return res.status(400).json({ message: "Name, type, and content are required" });
+        return Errors.badRequest(res, "Name, type, and content are required");
       }
       
       const template = await storage.createDocumentTemplate({
@@ -160,8 +162,8 @@ export function registerDocSystemRoutes(app: Express): void {
       
       res.status(201).json(template);
     } catch (error: any) {
-      console.error("Create document template error:", error);
-      res.status(500).json({ message: error.message || "Failed to create template" });
+      logger.error("Create document template error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
 
