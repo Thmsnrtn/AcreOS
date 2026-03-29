@@ -1052,8 +1052,8 @@ export function registerCommunicationRoutes(app: Express): void {
 
       res.status(204).send();
     } catch (error: any) {
-      console.error("Delete workflow error:", error);
-      res.status(500).json({ message: error.message || "Failed to delete workflow" });
+      logger.error("Delete workflow error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to delete workflow"));
     }
   });
 
@@ -1086,8 +1086,8 @@ export function registerCommunicationRoutes(app: Express): void {
 
       res.json(workflow);
     } catch (error: any) {
-      console.error("Toggle workflow error:", error);
-      res.status(500).json({ message: error.message || "Failed to toggle workflow" });
+      logger.error("Toggle workflow error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to toggle workflow"));
     }
   });
 
@@ -1104,8 +1104,8 @@ export function registerCommunicationRoutes(app: Express): void {
       const runs = await storage.getWorkflowRuns(id, limit);
       res.json(runs);
     } catch (error: any) {
-      console.error("Get workflow runs error:", error);
-      res.status(500).json({ message: error.message || "Failed to fetch workflow runs" });
+      logger.error("Get workflow runs error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to fetch workflow runs"));
     }
   });
 
@@ -1122,8 +1122,8 @@ export function registerCommunicationRoutes(app: Express): void {
       const run = await workflowEngine.testWorkflow(workflow, testData);
       res.json(run);
     } catch (error: any) {
-      console.error("Test workflow error:", error);
-      res.status(500).json({ message: error.message || "Failed to test workflow" });
+      logger.error("Test workflow error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to test workflow"));
     }
   });
 
@@ -1139,7 +1139,7 @@ export function registerCommunicationRoutes(app: Express): void {
       const { templateId } = req.params;
       const template = LAND_INVESTING_WORKFLOW_TEMPLATES.find(t => t.id === templateId);
       if (!template) {
-        return res.status(404).json({ message: "Template not found" });
+        return Errors.notFound(res, "Template");
       }
       const workflow = await storage.createWorkflow({
         organizationId: org.id,
@@ -1167,8 +1167,8 @@ export function registerCommunicationRoutes(app: Express): void {
 
       res.status(201).json(workflow);
     } catch (error: any) {
-      console.error("Install workflow template error:", error);
-      res.status(400).json({ message: error.message || "Failed to install template" });
+      logger.error("Install workflow template error", error instanceof Error ? error : undefined);
+      Errors.badRequest(res, error.message || "Failed to install template");
     }
   });
 
@@ -1271,8 +1271,8 @@ export function registerCommunicationRoutes(app: Express): void {
         generatedAt: new Date().toISOString(),
       });
     } catch (error: any) {
-      console.error("Workflow analytics error:", error);
-      res.status(500).json({ message: error.message || "Failed to fetch workflow analytics" });
+      logger.error("Workflow analytics error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to fetch workflow analytics"));
     }
   });
 
@@ -1287,8 +1287,8 @@ export function registerCommunicationRoutes(app: Express): void {
       const tasks = await storage.getScheduledTasks(org.id);
       res.json(tasks);
     } catch (error: any) {
-      console.error("Get scheduled tasks error:", error);
-      res.status(500).json({ message: error.message || "Failed to fetch scheduled tasks" });
+      logger.error("Get scheduled tasks error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to fetch scheduled tasks"));
     }
   });
 
@@ -1299,12 +1299,12 @@ export function registerCommunicationRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       const task = await storage.getScheduledTaskByOrg(org.id, id);
       if (!task) {
-        return res.status(404).json({ message: "Scheduled task not found" });
+        return Errors.notFound(res, "Scheduled task");
       }
       res.json(task);
     } catch (error: any) {
-      console.error("Get scheduled task error:", error);
-      res.status(500).json({ message: error.message || "Failed to fetch scheduled task" });
+      logger.error("Get scheduled task error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to fetch scheduled task"));
     }
   });
 
@@ -1338,8 +1338,8 @@ export function registerCommunicationRoutes(app: Express): void {
 
       res.status(201).json(task);
     } catch (error: any) {
-      console.error("Create scheduled task error:", error);
-      res.status(500).json({ message: error.message || "Failed to create scheduled task" });
+      logger.error("Create scheduled task error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to create scheduled task"));
     }
   });
 
@@ -1350,7 +1350,7 @@ export function registerCommunicationRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       const existing = await storage.getScheduledTaskByOrg(org.id, id);
       if (!existing) {
-        return res.status(404).json({ message: "Scheduled task not found" });
+        return Errors.notFound(res, "Scheduled task");
       }
 
       const updates = { ...req.body };
@@ -1381,8 +1381,8 @@ export function registerCommunicationRoutes(app: Express): void {
 
       res.json(task);
     } catch (error: any) {
-      console.error("Update scheduled task error:", error);
-      res.status(500).json({ message: error.message || "Failed to update scheduled task" });
+      logger.error("Update scheduled task error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to update scheduled task"));
     }
   });
 
@@ -1393,7 +1393,7 @@ export function registerCommunicationRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       const existing = await storage.getScheduledTaskByOrg(org.id, id);
       if (!existing) {
-        return res.status(404).json({ message: "Scheduled task not found" });
+        return Errors.notFound(res, "Scheduled task");
       }
       await storage.deleteScheduledTask(id);
 
@@ -1414,8 +1414,8 @@ export function registerCommunicationRoutes(app: Express): void {
 
       res.json({ success: true });
     } catch (error: any) {
-      console.error("Delete scheduled task error:", error);
-      res.status(500).json({ message: error.message || "Failed to delete scheduled task" });
+      logger.error("Delete scheduled task error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to delete scheduled task"));
     }
   });
 
@@ -1426,14 +1426,14 @@ export function registerCommunicationRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       const existing = await storage.getScheduledTaskByOrg(org.id, id);
       if (!existing) {
-        return res.status(404).json({ message: "Scheduled task not found" });
+        return Errors.notFound(res, "Scheduled task");
       }
       const { taskRunnerService } = await import("./services/task-runner");
       const task = await taskRunnerService.pauseTask(id);
       res.json(task);
     } catch (error: any) {
-      console.error("Pause scheduled task error:", error);
-      res.status(500).json({ message: error.message || "Failed to pause scheduled task" });
+      logger.error("Pause scheduled task error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to pause scheduled task"));
     }
   });
 
@@ -1444,14 +1444,14 @@ export function registerCommunicationRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       const existing = await storage.getScheduledTaskByOrg(org.id, id);
       if (!existing) {
-        return res.status(404).json({ message: "Scheduled task not found" });
+        return Errors.notFound(res, "Scheduled task");
       }
       const { taskRunnerService } = await import("./services/task-runner");
       const task = await taskRunnerService.resumeTask(id);
       res.json(task);
     } catch (error: any) {
-      console.error("Resume scheduled task error:", error);
-      res.status(500).json({ message: error.message || "Failed to resume scheduled task" });
+      logger.error("Resume scheduled task error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to resume scheduled task"));
     }
   });
 
@@ -1462,14 +1462,14 @@ export function registerCommunicationRoutes(app: Express): void {
       const id = parseInt(req.params.id);
       const existing = await storage.getScheduledTaskByOrg(org.id, id);
       if (!existing) {
-        return res.status(404).json({ message: "Scheduled task not found" });
+        return Errors.notFound(res, "Scheduled task");
       }
       const { taskRunnerService } = await import("./services/task-runner");
       const result = await taskRunnerService.runTask(id);
       res.json(result);
     } catch (error: any) {
-      console.error("Run scheduled task error:", error);
-      res.status(500).json({ message: error.message || "Failed to run scheduled task" });
+      logger.error("Run scheduled task error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to run scheduled task"));
     }
   });
 
