@@ -1263,6 +1263,12 @@ export async function registerRoutes(
   // ─── Elite Features (Tax Escrow, E-Signing, DD Engine, Meta Ads, Actum, Syndication, Bookkeeping, VA) ──
   await registerEliteFeatureRoutes(app);
 
+  // Enhancement routes (300 elite improvements)
+  {
+    const { registerEnhancementRoutes } = await import("./routes-enhancements");
+    await registerEnhancementRoutes(app);
+  }
+
   // ─── Address Verification ──────────────────────────────────────────
   const { verifyAddress } = await import("./services/addressVerification");
   app.post("/api/addresses/verify", isAuthenticated, async (req, res) => {
