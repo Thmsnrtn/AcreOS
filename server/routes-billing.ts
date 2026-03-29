@@ -7,6 +7,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { getAllUsageLimits, type SubscriptionTier, TIER_LIMITS } from "./services/usageLimits";
 import { idempotencyMiddleware } from "./middleware/idempotency";
 import { logger } from "./utils/logger";
+import { Errors } from "./utils/errors";
 
 export function registerBillingRoutes(app: Express): void {
   const api = app;
@@ -21,10 +22,10 @@ export function registerBillingRoutes(app: Express): void {
       const balance = await creditService.getBalance(org.id);
       res.json({ balance });
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      Errors.internal(res, error);
     }
   });
-  
+
   api.get("/api/credits/transactions", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { creditService } = await import("./services/credits");
@@ -33,10 +34,10 @@ export function registerBillingRoutes(app: Express): void {
       const transactions = await creditService.getTransactionHistory(org.id, limit);
       res.json(transactions);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      Errors.internal(res, error);
     }
   });
-  
+
   api.get("/api/usage/summary", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { usageMeteringService } = await import("./services/credits");
@@ -45,10 +46,10 @@ export function registerBillingRoutes(app: Express): void {
       const summary = await usageMeteringService.getUsageSummary(org.id, month);
       res.json(summary);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      Errors.internal(res, error);
     }
   });
-  
+
   api.get("/api/usage/records", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { usageMeteringService } = await import("./services/credits");
@@ -57,10 +58,10 @@ export function registerBillingRoutes(app: Express): void {
       const records = await usageMeteringService.getRecentUsage(org.id, limit);
       res.json(records);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      Errors.internal(res, error);
     }
   });
-  
+
   api.get("/api/usage/rates", isAuthenticated, async (req, res) => {
     try {
       const { usageMeteringService } = await import("./services/credits");
@@ -78,10 +79,10 @@ export function registerBillingRoutes(app: Express): void {
       
       res.json(rates);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      Errors.internal(res, error);
     }
   });
-  
+
   api.post("/api/usage/estimate", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { usageMeteringService, creditService } = await import("./services/credits");
@@ -90,9 +91,9 @@ export function registerBillingRoutes(app: Express): void {
       const { actionType, quantity = 1 } = req.body;
       
       if (!actionType || !USAGE_ACTION_TYPES[actionType as keyof typeof USAGE_ACTION_TYPES]) {
-        return res.status(400).json({ message: "Invalid action type" });
+        return Errors.badRequest(res, "Invalid action type");
       }
-      
+
       const cost = await usageMeteringService.calculateCost(actionType, quantity);
       const balance = await creditService.getBalance(org.id);
       
@@ -105,10 +106,10 @@ export function registerBillingRoutes(app: Express): void {
         insufficientCredits: balance < cost,
       });
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      Errors.internal(res, error);
     }
   });
-  
+
   // T6: Idempotency on payment mutations to prevent duplicate charges
   api.post("/api/credits/purchase", isAuthenticated, getOrCreateOrg, idempotencyMiddleware, async (req, res) => {
     try {
@@ -118,7 +119,7 @@ export function registerBillingRoutes(app: Express): void {
       const { packId } = req.body;
       
       if (!packId || !CREDIT_PACKS[packId as keyof typeof CREDIT_PACKS]) {
-        return res.status(400).json({ message: "Invalid credit pack ID" });
+        return Errors.badRequest(res, "Invalid credit pack ID");
       }
       
       const pack = CREDIT_PACKS[packId as keyof typeof CREDIT_PACKS];
@@ -152,7 +153,7 @@ export function registerBillingRoutes(app: Express): void {
       
       res.json({ checkoutUrl: session.url });
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      Errors.internal(res, error);
     }
   });
 
@@ -166,7 +167,7 @@ export function registerBillingRoutes(app: Express): void {
         amountCents: org.autoTopUpAmountCents || 2500,
       });
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      Errors.internal(res, error);
     }
   });
 
@@ -201,7 +202,7 @@ export function registerBillingRoutes(app: Express): void {
 
       res.json({ success: true });
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      Errors.internal(res, error);
     }
   });
 
@@ -232,10 +233,10 @@ export function registerBillingRoutes(app: Express): void {
       }));
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
-  
+
   api.post("/api/stripe/checkout", isAuthenticated, getOrCreateOrg, idempotencyMiddleware, async (req, res) => {
     try {
       const { stripeService } = await import("./stripeService");
@@ -243,7 +244,7 @@ export function registerBillingRoutes(app: Express): void {
       const { priceId } = req.body;
       
       if (!priceId) {
-        return res.status(400).json({ message: "priceId is required" });
+        return Errors.badRequest(res, "priceId is required");
       }
       
       let customerId = org.stripeCustomerId;
@@ -291,17 +292,17 @@ export function registerBillingRoutes(app: Express): void {
 
       res.json({ url: session.url });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
-  
+
   api.post("/api/stripe/portal", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { stripeService } = await import("./stripeService");
       const org = req.organization;
       
       if (!org.stripeCustomerId) {
-        return res.status(400).json({ message: "No subscription found" });
+        return Errors.badRequest(res, "No subscription found");
       }
       
       const session = await stripeService.createCustomerPortalSession(
@@ -311,10 +312,10 @@ export function registerBillingRoutes(app: Express): void {
       
       res.json({ url: session.url });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
-  
+
   api.get("/api/stripe/subscription", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { stripeService } = await import("./stripeService");
@@ -331,7 +332,7 @@ export function registerBillingRoutes(app: Express): void {
       
       res.json({ subscription: activeSubscription || null });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -349,7 +350,7 @@ export function registerBillingRoutes(app: Express): void {
       const businessName = org.name || req.body.businessName;
 
       if (!email) {
-        return res.status(400).json({ message: "Email is required" });
+        return Errors.badRequest(res, "Email is required");
       }
 
       const existing = await storage.getOrganizationIntegration(org.id, "stripe_connect");
@@ -387,7 +388,7 @@ export function registerBillingRoutes(app: Express): void {
       if (err.message?.includes("not configured")) {
         return res.status(503).json({ message: err.message });
       }
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -403,7 +404,7 @@ export function registerBillingRoutes(app: Express): void {
       if (err.message?.includes("not configured")) {
         return res.status(503).json({ message: err.message });
       }
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -415,7 +416,7 @@ export function registerBillingRoutes(app: Express): void {
       const integration = await storage.getOrganizationIntegration(org.id, "stripe_connect");
       
       if (!integration?.credentials?.stripeConnectAccountId) {
-        return res.status(400).json({ message: "No Stripe Connect account found" });
+        return Errors.badRequest(res, "No Stripe Connect account found");
       }
       
       await stripeConnectService.updateAccountStatus(org.id, integration.credentials.stripeConnectAccountId);
@@ -427,7 +428,7 @@ export function registerBillingRoutes(app: Express): void {
       if (err.message?.includes("not configured")) {
         return res.status(503).json({ message: err.message });
       }
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -459,7 +460,7 @@ export function registerBillingRoutes(app: Express): void {
       if (err.message?.includes("not configured")) {
         return res.status(503).json({ message: err.message });
       }
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -470,11 +471,11 @@ export function registerBillingRoutes(app: Express): void {
       const { amount, noteId, propertyId, paymentType, description } = req.body;
       
       if (!amount || amount <= 0) {
-        return res.status(400).json({ message: "Valid amount is required" });
+        return Errors.badRequest(res, "Valid amount is required");
       }
-      
+
       if (!paymentType || !["note_payment", "cash_sale", "down_payment"].includes(paymentType)) {
-        return res.status(400).json({ message: "Valid payment type is required" });
+        return Errors.badRequest(res, "Valid payment type is required");
       }
       
       const paymentIntent = await stripeConnectService.createPaymentIntent(
@@ -494,7 +495,7 @@ export function registerBillingRoutes(app: Express): void {
       if (err.message?.includes("not configured")) {
         return res.status(503).json({ message: err.message });
       }
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -506,7 +507,7 @@ export function registerBillingRoutes(app: Express): void {
       
       const note = await storage.getNote(org.id, noteId);
       if (!note) {
-        return res.status(404).json({ message: "Note not found" });
+        return Errors.notFound(res, "Note");
       }
       
       const amount = Number(note.monthlyPayment);
@@ -518,7 +519,7 @@ export function registerBillingRoutes(app: Express): void {
       if (err.message?.includes("not configured")) {
         return res.status(503).json({ message: err.message });
       }
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -537,7 +538,7 @@ export function registerBillingRoutes(app: Express): void {
       const status = await trialService.getTrialStatus(org.id);
       res.json(status);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      Errors.internal(res, error);
     }
   });
 
@@ -552,7 +553,7 @@ export function registerBillingRoutes(app: Express): void {
       if (error.message.includes("already used")) {
         return res.status(409).json({ message: error.message });
       }
-      res.status(500).json({ message: error.message });
+      Errors.internal(res, error);
     }
   });
 
@@ -561,12 +562,12 @@ export function registerBillingRoutes(app: Express): void {
       const { trialService } = await import("./services/trialService");
       const org = (req as any).organization;
       if (!org.isFounder) {
-        return res.status(403).json({ message: "Founder only" });
+        return Errors.forbidden(res, "Founder only");
       }
       const expired = await trialService.expireTrials();
       res.json({ expired });
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      Errors.internal(res, error);
     }
   });
 
@@ -581,12 +582,12 @@ export function registerBillingRoutes(app: Express): void {
       
       if (!webhookSecret) {
         logger.warn("Stripe webhook secret not configured", {});
-        return res.status(400).json({ message: "Webhook secret not configured" });
+        return Errors.badRequest(res, "Webhook secret not configured");
       }
       
       if (!sig) {
         logger.warn("Missing Stripe signature header", {});
-        return res.status(400).json({ message: "Missing Stripe signature" });
+        return Errors.badRequest(res, "Missing Stripe signature");
       }
       
       let event: any;
@@ -597,7 +598,7 @@ export function registerBillingRoutes(app: Express): void {
         event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
       } catch (err: any) {
         logger.error("Webhook signature verification failed", { error: err.message });
-        return res.status(400).json({ message: `Webhook Error: ${err.message}` });
+        return Errors.badRequest(res, `Webhook Error: ${err.message}`);
       }
       
       logger.info("Stripe webhook event received", {
@@ -619,7 +620,7 @@ export function registerBillingRoutes(app: Express): void {
         error: err.message,
         stack: err.stack,
       });
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 

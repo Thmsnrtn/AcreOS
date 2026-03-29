@@ -119,8 +119,7 @@ export function registerDealRoutes(app: Express): void {
         if (property?.state) {
           const usury = checkUsury(property.state, Number(dealInterestRate));
           if (usury.warningLevel === 'violation') {
-            return res.status(422).json({
-              message: `Interest rate ${dealInterestRate}% exceeds ${property.state} usury limit of ${usury.maxAllowedRate}%. This transaction cannot be saved.`,
+            return Errors.badRequest(res, `Interest rate ${dealInterestRate}% exceeds ${property.state} usury limit of ${usury.maxAllowedRate}%. This transaction cannot be saved.`, {
               code: 'USURY_VIOLATION',
               limit: usury.maxAllowedRate,
               rate: dealInterestRate,
@@ -193,8 +192,7 @@ export function registerDealRoutes(app: Express): void {
         if (property?.state) {
           const usury = checkUsury(property.state, Number(updatedInterestRate));
           if (usury.warningLevel === 'violation') {
-            return res.status(422).json({
-              message: `Interest rate ${updatedInterestRate}% exceeds ${property.state} usury limit of ${usury.maxAllowedRate}%. This transaction cannot be saved.`,
+            return Errors.badRequest(res, `Interest rate ${updatedInterestRate}% exceeds ${property.state} usury limit of ${usury.maxAllowedRate}%. This transaction cannot be saved.`, {
               code: 'USURY_VIOLATION',
               limit: usury.maxAllowedRate,
               rate: updatedInterestRate,
@@ -303,7 +301,7 @@ export function registerDealRoutes(app: Express): void {
       }
       // Task 219: surface optimistic-lock conflicts as 409 Conflict
       if (err instanceof Error && err.message.includes("modified by another request")) {
-        return res.status(409).json({ message: err.message });
+        return Errors.badRequest(res, err.message);
       }
       throw err;
     }
@@ -506,7 +504,7 @@ export function registerDealRoutes(app: Express): void {
       
       const usageCheck = await checkUsageLimit(org.id, "ai_requests");
       if (!usageCheck.allowed) {
-        return res.status(429).json({ message: "AI request limit reached. Upgrade to continue." });
+        return Errors.limitExceeded(res, "AI request limit reached. Upgrade to continue.");
       }
 
       const property = await storage.getProperty(org.id, propertyId);
