@@ -1,0 +1,11 @@
+{
+  "agent": "oracle",
+  "total_sessions": 0,
+  "success_rate": 0,
+  "correction_rate": 0,
+  "ceo_override_rate": 0,
+  "escalation_accuracy": 0,
+  "golden_suite_size": 0,
+  "last_evolution_at": null,
+  "evolution_count": 0
+}

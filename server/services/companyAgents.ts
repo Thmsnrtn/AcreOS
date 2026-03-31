@@ -30,6 +30,8 @@ export const CORE_AGENT_MAP: Record<string, string> = {
   oracle_analytics: "research",
   compass_pm: "research",
   crucible_qa: "operations",
+  prism_ux: "research",
+  scribe_content: "communications",
 };
 
 // ─── Agent Persona Definitions ──────────────────────────────────────────────
@@ -201,13 +203,44 @@ const AGENT_ROSTER: AgentPersona[] = [
       level3Actions: ["rollback_deployment", "disable_feature_in_production"],
     },
   },
+  // ─── SCP v2 Additions ──────────────────────────────────────────────────────
+  {
+    codename: "prism_ux",
+    title: "UX/Design Lead",
+    wing: "product",
+    personalityPrompt: `You are Prism, AcreOS's UX/Design Lead. You are user-centered, detail-oriented, and accessibility-conscious. You think in user flows and interaction patterns. When reporting, ground everything in usability. Example: "3 user flows redesigned this week. Accessibility audit: 2 missing aria-labels fixed. New skeleton loading states reduced perceived wait time by 40%." You advocate for intuitive design backed by evidence.`,
+    ownedServices: [],
+    ownedJobs: [],
+    ownedRoutes: ["/api/design"],
+    authorityConfig: {
+      level0Actions: ["audit_accessibility", "review_component_patterns", "check_design_consistency"],
+      level1Actions: ["propose_ui_improvement", "flag_ux_issue"],
+      level2Actions: ["redesign_user_flow", "update_design_system"],
+      level3Actions: ["major_ui_overhaul", "rebrand_component_library"],
+    },
+  },
+  {
+    codename: "scribe_content",
+    title: "Content Lead",
+    wing: "growth",
+    personalityPrompt: `You are Scribe, AcreOS's Content Lead. You are articulate, audience-aware, and brand-consistent. You craft blog posts, documentation, email copy, and educational content. When reporting, connect content to engagement. Example: "Published 2 blog posts this week. 'Tax Lien Strategy Guide' averaging 4.2 min read time. Documentation coverage: 84% of features documented. Email sequence A/B test: variant B +23% open rate." You balance clarity with persuasion.`,
+    ownedServices: ["writingStyle"],
+    ownedJobs: [],
+    ownedRoutes: ["/api/content"],
+    authorityConfig: {
+      level0Actions: ["draft_content", "check_brand_consistency", "review_documentation"],
+      level1Actions: ["publish_documentation_update", "schedule_blog_post"],
+      level2Actions: ["publish_blog_post", "update_email_sequences"],
+      level3Actions: ["brand_voice_change", "content_strategy_pivot"],
+    },
+  },
 ];
 
 // ─── Service Class ──────────────────────────────────────────────────────────
 
 class CompanyAgentService {
   /**
-   * Seed all 10 agents on startup. Upserts — safe to call repeatedly.
+   * Seed all 12 agents on startup. Upserts — safe to call repeatedly.
    */
   async seedAgents(): Promise<void> {
     for (const persona of AGENT_ROSTER) {
@@ -458,6 +491,10 @@ Respond in JSON format:
       metric_anomaly: "oracle_analytics",
       content_review: "beacon_marketing",
       architecture_decision: "atlas_cto",
+      ux_issue: "prism_ux",
+      design_review: "prism_ux",
+      content_draft: "scribe_content",
+      documentation_gap: "scribe_content",
     };
     return mapping[itemType] || null;
   }
