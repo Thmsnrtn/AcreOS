@@ -1,0 +1,14 @@
+{
+  "agent": "beacon",
+  "version": 1,
+  "parent": null,
+  "timestamp": "2026-03-31T01:27:20Z",
+  "session_id": null,
+  "changes": [],
+  "metrics_snapshot": {
+    "total_sessions": 0,
+    "success_rate": 0,
+    "correction_rate": 0,
+    "ceo_override_rate": 0
+  }
+}
