@@ -14658,3 +14658,130 @@ export type RegulatoryFeed = typeof regulatoryFeeds.$inferSelect;
 export type MarketAdaptation = typeof marketAdaptations.$inferSelect;
 export type SelfAuditReport = typeof selfAuditReports.$inferSelect;
 export type PerpetualOpsCheck = typeof perpetualOpsChecks.$inferSelect;
+
+// ─── SCP v2: Structured Memory System ──────────────────────────────────────
+
+// Semantic Memory v2 — SPO (Subject-Predicate-Object) triples with versioning
+export const scpSemanticFacts = pgTable("scp_semantic_facts", {
+  id: serial("id").primaryKey(),
+  factId: text("fact_id").notNull().unique(),
+  agentCodename: text("agent_codename").notNull(),
+  subject: text("subject").notNull(),
+  predicate: text("predicate").notNull(),
+  object: text("object").notNull(),
+  naturalLanguage: text("natural_language").notNull(),
+  sourceEpisodeIds: jsonb("source_episode_ids").$type<string[]>().notNull().default([]),
+  confidence: integer("confidence").notNull().default(50), // 0-100 (mapped from 0-1)
+  validFrom: timestamp("valid_from").notNull().defaultNow(),
+  validUntil: timestamp("valid_until"),
+  version: integer("version").notNull().default(1),
+  previousVersionId: text("previous_version_id"),
+  category: text("category").notNull().default("domain_knowledge"), // ceo_preference, domain_knowledge, team, codebase, process, tool, customer, market
+  tags: jsonb("tags").$type<string[]>().notNull().default([]),
+  orgId: integer("org_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("ssf_agent_idx").on(table.agentCodename),
+  index("ssf_subject_idx").on(table.subject),
+  index("ssf_category_idx").on(table.category),
+  index("ssf_confidence_idx").on(table.confidence),
+  index("ssf_valid_idx").on(table.validUntil),
+]);
+export type ScpSemanticFact = typeof scpSemanticFacts.$inferSelect;
+
+// Procedural Memory — learned procedures with steps and success tracking
+export const scpProcedures = pgTable("scp_procedures", {
+  id: serial("id").primaryKey(),
+  procedureId: text("procedure_id").notNull().unique(),
+  agentCodename: text("agent_codename").notNull(),
+  name: text("name").notNull(),
+  description: text("description").notNull(),
+  trigger: text("trigger").notNull(), // When to use this procedure
+  steps: jsonb("steps").$type<Array<{
+    order: number;
+    action: string;
+    tool: string | null;
+    expectedOutcome: string;
+    errorHandling: string | null;
+    decisionPoint: boolean;
+  }>>().notNull().default([]),
+  preconditions: jsonb("preconditions").$type<string[]>().notNull().default([]),
+  postconditions: jsonb("postconditions").$type<string[]>().notNull().default([]),
+  parameters: jsonb("parameters").$type<Record<string, { type: string; description: string; required: boolean }>>().notNull().default({}),
+  sourceEpisodeIds: jsonb("source_episode_ids").$type<string[]>().notNull().default([]),
+  successCount: integer("success_count").notNull().default(0),
+  failureCount: integer("failure_count").notNull().default(0),
+  lastUsedAt: timestamp("last_used_at"),
+  confidence: integer("confidence").notNull().default(50), // 0-100
+  version: integer("version").notNull().default(1),
+  orgId: integer("org_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("sp_agent_idx").on(table.agentCodename),
+  index("sp_name_idx").on(table.name),
+  index("sp_confidence_idx").on(table.confidence),
+]);
+export type ScpProcedure = typeof scpProcedures.$inferSelect;
+
+// Golden Suite — permanent regression test cases from CEO corrections
+export const scpGoldenCases = pgTable("scp_golden_cases", {
+  id: serial("id").primaryKey(),
+  caseId: text("case_id").notNull().unique(),
+  agentCodename: text("agent_codename").notNull(),
+  description: text("description").notNull(),
+  lesson: text("lesson").notNull(),
+  sessionId: text("session_id").notNull(),
+  context: jsonb("context").$type<Record<string, any>>().notNull().default({}),
+  orgId: integer("org_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("sgc_agent_idx").on(table.agentCodename),
+  index("sgc_session_idx").on(table.sessionId),
+]);
+export type ScpGoldenCase = typeof scpGoldenCases.$inferSelect;
+
+// Cross-Agent Shared Memory — validated shared knowledge
+export const scpSharedMemory = pgTable("scp_shared_memory", {
+  id: serial("id").primaryKey(),
+  memoryId: text("memory_id").notNull().unique(),
+  writtenByAgent: text("written_by_agent").notNull(),
+  category: text("category").notNull(), // company_fact, cross_domain_insight, ceo_directive
+  subject: text("subject").notNull(),
+  content: text("content").notNull(),
+  confidence: integer("confidence").notNull().default(70),
+  validatedAt: timestamp("validated_at"),
+  validationGatesPassed: jsonb("validation_gates_passed").$type<string[]>().notNull().default([]),
+  readByAgents: jsonb("read_by_agents").$type<string[]>().notNull().default([]),
+  orgId: integer("org_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("ssm_agent_idx").on(table.writtenByAgent),
+  index("ssm_category_idx").on(table.category),
+]);
+export type ScpSharedMemoryEntry = typeof scpSharedMemory.$inferSelect;
+
+// Evolution Metrics — per-agent v2 evolution tracking
+export const scpEvolutionMetrics = pgTable("scp_evolution_metrics", {
+  id: serial("id").primaryKey(),
+  agentCodename: text("agent_codename").notNull(),
+  totalSessions: integer("total_sessions").notNull().default(0),
+  successRate: integer("success_rate").notNull().default(0), // 0-100
+  correctionRate: integer("correction_rate").notNull().default(0), // 0-100
+  overrideRate: integer("override_rate").notNull().default(0), // 0-100
+  escalationAccuracy: integer("escalation_accuracy").notNull().default(0), // 0-100
+  goldenSuiteSize: integer("golden_suite_size").notNull().default(0),
+  currentVersion: integer("current_version").notNull().default(1),
+  evolutionCadence: text("evolution_cadence").notNull().default("aggressive"), // aggressive, moderate, conservative
+  lastEvolvedAt: timestamp("last_evolved_at"),
+  lastRollbackAt: timestamp("last_rollback_at"),
+  rollbackCount: integer("rollback_count").notNull().default(0),
+  orgId: integer("org_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("sem_agent_idx").on(table.agentCodename),
+]);
+export type ScpEvolutionMetric = typeof scpEvolutionMetrics.$inferSelect;
