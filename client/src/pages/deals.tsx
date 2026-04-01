@@ -1,7 +1,7 @@
 import { PageShell } from "@/components/page-shell";
 import { PaxContextButton } from "@/components/pax-context-button";
 import { ListPagination, usePagination } from "@/components/list-pagination";
-import { useDeals, useCreateDeal, useUpdateDeal, useDeleteDeal, useSaveDealAnalysis, useBulkStageUpdate, useBulkStageUndo, type BulkStageUpdateResult } from "@/hooks/use-deals";
+import { useDeals, useDealsPaginated, useCreateDeal, useUpdateDeal, useDeleteDeal, useSaveDealAnalysis, useBulkStageUpdate, useBulkStageUndo, type BulkStageUpdateResult } from "@/hooks/use-deals";
 import { useProperties } from "@/hooks/use-properties";
 import { ListSkeleton } from "@/components/list-skeleton";
 import { InlineError } from "@/components/inline-error";
@@ -105,11 +105,10 @@ const statusColors: Record<string, string> = {
 export default function DealsPage() {
   const [dealCurrentPage, setDealCurrentPage] = useState(1);
   const [dealPageSize, setDealPageSize] = useState(25);
-  const { data: dealsResponse, isLoading, isError, error, refetch } = useDeals({ page: dealCurrentPage, pageSize: dealPageSize });
+  const { data: dealsResponse, isLoading, isError, error, refetch } = useDealsPaginated({ page: dealCurrentPage, pageSize: dealPageSize });
   const deals = dealsResponse?.data;
   const serverDealTotal = dealsResponse?.total ?? 0;
-  const { data: propertiesResponse } = useProperties({ page: 1, pageSize: 100 });
-  const properties = propertiesResponse?.data;
+  const { data: properties } = useProperties();
   const searchString = useSearch();
   const urlParams = new URLSearchParams(searchString);
   const actionFromUrl = urlParams.get("action");

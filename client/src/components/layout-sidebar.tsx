@@ -383,6 +383,7 @@ const NAV_MODULES: NavModule[] = [
     founderOnly: true,
     children: [
       { label: "Dashboard", icon: Activity, href: "/sovereign", description: "Sovereign org health overview" },
+      { label: "Executive Revenue", icon: TrendingUp, href: "/executive-dashboard", description: "MRR, churn, ARPU, and NPS metrics" },
       { label: "Board of Directors", icon: Shield, href: "/board-of-directors", description: "Agent negotiations and delegation" },
       { label: "Agent Performance", icon: TrendingUp, href: "/agent-performance", description: "Trust scores and revenue attribution" },
       { label: "Memory Browser", icon: Brain, href: "/memory-browser", description: "Browse agent cognitive memories" },

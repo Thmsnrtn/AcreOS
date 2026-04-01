@@ -188,6 +188,7 @@ const ProactiveMonitorPage = React.lazy(() => import("@/pages/proactive-monitor"
 const BetaDashboardPage = React.lazy(() => import("@/pages/beta-dashboard"));
 const ResellerDashboardPage = React.lazy(() => import("@/pages/reseller-dashboard"));
 const DataMoatDashboardPage = React.lazy(() => import("@/pages/data-moat-dashboard"));
+const ExecutiveDashboardPage = React.lazy(() => import("@/pages/executive-dashboard"));
 
 // Sovereign Protocol — Phase A Visibility Layer
 const SovereignDashboardPage = React.lazy(() => import("@/pages/sovereign-dashboard"));
@@ -521,6 +522,9 @@ function Router() {
       <Route path="/founder/daily-digest">
         {() => <FounderProtectedRoute component={FounderDailyDigestPage} />}
       </Route>
+      <Route path="/executive-dashboard">
+        {() => <FounderProtectedRoute component={ExecutiveDashboardPage} />}
+      </Route>
 
       <Route path="/deal-underwriting">
         {() => <ProtectedRoute component={DealUnderwritingPage} />}
@@ -636,6 +640,7 @@ function Router() {
         <Route path="/founder/feature-flags">{() => <FounderProtectedRoute component={FounderFeatureFlags} />}</Route>
         <Route path="/founder/agents">{() => <FounderProtectedRoute component={FounderAgentsPage} />}</Route>
         <Route path="/founder/daily-digest">{() => <FounderProtectedRoute component={FounderDailyDigestPage} />}</Route>
+        <Route path="/executive-dashboard">{() => <FounderProtectedRoute component={ExecutiveDashboardPage} />}</Route>
         <Route path="/admin/beta">{() => <FounderProtectedRoute component={BetaDashboardPage} />}</Route>
         <Route path="/admin/beta-analytics">{() => <FounderProtectedRoute component={BetaAnalyticsPage} />}</Route>
         <Route path="/admin/safety-gates">{() => <FounderProtectedRoute component={SafetyGatesPage} />}</Route>

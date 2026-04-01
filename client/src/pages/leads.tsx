@@ -1,7 +1,7 @@
 import { PageShell } from "@/components/page-shell";
 import { PaxContextButton } from "@/components/pax-context-button";
 import { ListPagination, usePagination } from "@/components/list-pagination";
-import { useLeads, useCreateLead, useUpdateLead, useDeleteLead } from "@/hooks/use-leads";
+import { useLeads, useLeadsPaginated, useCreateLead, useUpdateLead, useDeleteLead } from "@/hooks/use-leads";
 import { useProperties } from "@/hooks/use-properties";
 import { useTeamMembers, useUserPermissions, getRoleBadgeStyle, getRoleLabel } from "@/hooks/use-organization";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -640,12 +640,11 @@ function TcpaConsentBadge({ lead }: { lead: Lead }) {
 export default function LeadsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
-  const { data: leadsResponse, isLoading, error, refetch } = useLeads({ page: currentPage, pageSize });
+  const { data: leadsResponse, isLoading, error, refetch } = useLeadsPaginated({ page: currentPage, pageSize });
   const leads = leadsResponse?.data;
   const serverTotal = leadsResponse?.total ?? 0;
   const serverTotalPages = leadsResponse?.totalPages ?? 1;
-  const { data: propertiesResponse } = useProperties({ page: 1, pageSize: 100 });
-  const properties = propertiesResponse?.data;
+  const { data: properties } = useProperties();
   const [, setLocation] = useLocation();
   const searchString = useSearch();
   const urlParams = new URLSearchParams(searchString);
