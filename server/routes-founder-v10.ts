@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Founder v10 Routes — Sovereign Company Protocol v10: The Conscious Organization
  *

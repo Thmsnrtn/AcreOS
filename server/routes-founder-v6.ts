@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Founder v6 Routes — Sovereign Company Protocol v6
  *
