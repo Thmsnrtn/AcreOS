@@ -389,7 +389,7 @@ const NAV_MODULES: NavModule[] = [
       { label: "Doc Intel", icon: FileSearch, href: "/document-intelligence", description: "AI contract parsing" },
       { label: "AI Assistant", icon: Bot, href: "/command-center", description: "AI assistants and automation" },
       { label: "Agent Hub", icon: Brain, href: "/agent-command-center", description: "Autonomous agent control center" },
-      { label: "Academy", icon: GraduationCap, href: "/academy", description: "Land investment education" },
+      { label: "Academy", icon: GraduationCap, href: "/academy", description: "Real estate education" },
     ],
   },
   {
@@ -444,7 +444,7 @@ const routePrefetchMap: Record<string, string> = {
 };
 
 const navItems = [
-  { label: "Dashboard", icon: LayoutDashboard, href: "/", description: "Overview of your land investment business", section: "Overview" },
+  { label: "Dashboard", icon: LayoutDashboard, href: "/", description: "Overview of your real estate business", section: "Overview" },
   { label: "Inbox", icon: Inbox, href: "/inbox", showUnreadBadge: true, description: "Messages and communications", section: "Work" },
   { label: "Leads (CRM)", icon: Users, href: "/leads", description: "Manage your land seller leads", section: "Work" },
   { label: "Inventory", icon: Map, href: "/properties", description: "Track properties you own or evaluate", section: "Work" },
@@ -492,7 +492,7 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
 
 // ─────────────────────────────────────────────────────────────────────
 // Main Sidebar component
-// Routes hidden for non-land investor types
+// Routes hidden for certain business types
 const BUSINESS_TYPE_HIDDEN_ROUTES: Record<string, string[]> = {
   residential_wholesaler: ["/maps", "/land-credit"],
   fix_and_flip:           ["/maps", "/land-credit"],
@@ -903,7 +903,7 @@ export function Sidebar() {
             <NotificationCenter />
           </div>
         </div>
-        <p className="text-xs text-muted-foreground mt-1">Land Investment Platform</p>
+        <p className="text-xs text-muted-foreground mt-1">Real Estate Platform</p>
         </div>
       </div>
 

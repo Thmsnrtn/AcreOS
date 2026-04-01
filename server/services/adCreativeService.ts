@@ -50,8 +50,8 @@ const TEMPLATE_CONTEXT: Record<string, {
   painPoints: string[];
 }> = {
   land_investors_signup: {
-    audience: "land investors, rural real estate investors, and recreational property buyers aged 30–65 in the US",
-    product: "AcreOS — an all-in-one CRM built exclusively for land investors with AI-powered lead scoring, automated follow-up sequences, visual deal pipelines, seller financing note tracking, and county parcel data integration",
+    audience: "real estate investors, land investors, rural property buyers, and real estate professionals aged 30–65 in the US",
+    product: "AcreOS — an all-in-one CRM built exclusively for real estate investors with AI-powered lead scoring, automated follow-up sequences, visual deal pipelines, seller financing note tracking, and parcel data integration",
     benefits: [
       "AI lead scoring that predicts which motivated sellers will close",
       "Automated follow-up sequences so no lead ever goes cold",
@@ -64,12 +64,12 @@ const TEMPLATE_CONTEXT: Record<string, {
       "losing motivated sellers because of disorganized spreadsheet follow-ups",
       "spending hours on manual calls and emails instead of closing deals",
       "missing deals while competitors use better automation tools",
-      "juggling fragmented tools with no single source of truth for their land business",
+      "juggling fragmented tools with no single source of truth for their real estate business",
     ],
   },
   retargeting_visitors: {
-    audience: "land investors who have already visited the AcreOS website but haven't signed up yet",
-    product: "AcreOS — the CRM built for land investors that automates your pipeline and closes more deals",
+    audience: "real estate investors who have already visited the AcreOS website but haven't signed up yet",
+    product: "AcreOS — the CRM built for real estate investors that automates your pipeline and closes more deals",
     benefits: [
       "AI predicts your most likely-to-close leads before you even call them",
       "Automated sequences mean zero leads fall through the cracks",
@@ -83,27 +83,27 @@ const TEMPLATE_CONTEXT: Record<string, {
     ],
   },
   lookalike_subscribers: {
-    audience: "people who look like current AcreOS subscribers — land investors, rural property buyers, small real estate investors",
-    product: "AcreOS — the operating system serious land investors use to systematize and scale their acquisitions",
+    audience: "people who look like current AcreOS subscribers — real estate investors, land investors, rural property buyers, and real estate professionals",
+    product: "AcreOS — the operating system serious real estate investors use to systematize and scale their acquisitions",
     benefits: [
-      "Join hundreds of land investors already closing more deals with AI automation",
+      "Join hundreds of real estate investors already closing more deals with AI automation",
       "AI-scored leads, automated follow-ups, deal tracking — all in one platform",
       "Seller financing tracking built in — no spreadsheets needed",
       "Free 7-day trial, cancel anytime",
     ],
     painPoints: [
-      "running a land business on spreadsheets and sticky notes",
+      "running a real estate business on spreadsheets and sticky notes",
       "leaving money on the table because of poor lead management",
     ],
   },
 };
 
 const COPY_ANGLE_INSTRUCTIONS: Record<CopyAngle, string> = {
-  pain_point: `Lead with a visceral, specific pain that this land investor feels TODAY. Name the problem like you've lived it. Let it sting for one beat. Then present AcreOS as the direct relief. Do NOT lead with the product — lead with the pain. Be specific and concrete, not vague.`,
+  pain_point: `Lead with a visceral, specific pain that this real estate investor feels TODAY. Name the problem like you've lived it. Let it sting for one beat. Then present AcreOS as the direct relief. Do NOT lead with the product — lead with the pain. Be specific and concrete, not vague.`,
 
   aspiration: `Paint a vivid, tangible picture of what this investor's business looks like when it runs on AcreOS. Tap into the dream of systematized, scalable deal flow. Use aspirational but grounded language — freedom, growth, focus on the deals that matter. Make them see the version of themselves they want to become.`,
 
-  social_proof: `Open with credibility — make the reader feel they're late to something proven. Use numbers, community, and implied results to lower the risk of trying AcreOS. The reader should feel that smart land investors have already figured this out. Social pressure is the lever.`,
+  social_proof: `Open with credibility — make the reader feel they're late to something proven. Use numbers, community, and implied results to lower the risk of trying AcreOS. The reader should feel that smart real estate investors have already figured this out. Social pressure is the lever.`,
 
   curiosity: `Open with a bold provocative claim, surprising insight, or sharp question that creates an information gap. Make the reader NEED to know more. Don't reveal everything — just enough to make them click. Use counterintuitive or contrarian angles to stop the scroll.`,
 };

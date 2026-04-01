@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS platform_feature_flags (
 
 -- Seed default feature flags (ambitious features start DISABLED)
 INSERT INTO platform_feature_flags (key, label, description, enabled, controlled_routes) VALUES
-  ('feature_academy',            'Academy',               'Land investment education & course library',         FALSE, '["/academy"]'),
+  ('feature_academy',            'Academy',               'Real estate education & course library',         FALSE, '["/academy"]'),
   ('feature_marketplace',        'Marketplace',           'Buy and sell deals with other investors',            FALSE, '["/marketplace"]'),
   ('feature_vision_ai',          'Vision AI',             'AI photo and satellite image analysis',              FALSE, '["/vision-ai"]'),
   ('feature_capital_markets',    'Capital Markets',       'Note securitization and institutional lenders',      FALSE, '["/capital-markets"]'),

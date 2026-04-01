@@ -2,7 +2,7 @@
 
 ## Overview
 
-The AcreOS API provides RESTful endpoints for managing land investment operations including leads, properties, deals, and finances. All endpoints require authentication unless otherwise noted.
+The AcreOS API provides RESTful endpoints for managing real estate operations including leads, properties, deals, and finances. All endpoints require authentication unless otherwise noted.
 
 ## Authentication
 

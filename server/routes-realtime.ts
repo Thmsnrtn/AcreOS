@@ -22,7 +22,7 @@ function getUser(req: Request) {
 /**
  * POST /realtime/ask
  * Body: { message: string }
- * Answers a natural language question about the user's land business.
+ * Answers a natural language question about the user's real estate business.
  * Returns a reply and optionally an action path to navigate to.
  */
 router.post('/ask', async (req: Request, res: Response) => {
@@ -32,8 +32,8 @@ router.post('/ask', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'message is required' });
     }
 
-    const systemPrompt = `You are an expert AI assistant built into AcreOS, a land investment management platform.
-You help land investors with:
+    const systemPrompt = `You are an expert AI assistant built into AcreOS, a real estate management platform.
+You help real estate professionals with:
 - Finding and evaluating properties
 - Managing leads and deals
 - Understanding market conditions

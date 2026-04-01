@@ -133,7 +133,7 @@ export default function BetaIntakePage() {
                   </Button>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Share this code with other land investors. Each person who signs up with your code moves you up the list.
+                  Share this code with other real estate professionals. Each person who signs up with your code moves you up the list.
                 </p>
               </div>
             </CardContent>
@@ -155,7 +155,7 @@ export default function BetaIntakePage() {
           </div>
           <h1 className="text-3xl font-bold">Join the AcreOS Beta</h1>
           <p className="text-muted-foreground max-w-md mx-auto">
-            Get early access to the most powerful land investment platform ever built.
+            Get early access to the most powerful real estate platform ever built.
             Limited spots available.
           </p>
         </div>

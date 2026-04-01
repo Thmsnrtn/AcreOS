@@ -35,7 +35,7 @@ export default function PrivacyPolicy() {
               <p className="text-muted-foreground leading-relaxed">
                 AcreOS, Inc. ("Company", "we", "us", or "our") is committed to protecting your privacy. 
                 This Privacy Policy explains how we collect, use, disclose, and safeguard your information 
-                when you use our land investment CRM platform ("Service").
+                when you use our real estate CRM platform ("Service").
               </p>
               <p className="text-muted-foreground leading-relaxed font-medium">
                 We will never sell your data. Your trust is essential to our business, and we are committed 

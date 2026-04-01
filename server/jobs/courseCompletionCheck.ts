@@ -124,7 +124,7 @@ async function processEnrollment(enrollment: any): Promise<{
       .where(eq(courses.id, enrollment.courseId))
       .limit(1);
 
-    const courseTitle = course?.title || "Land Investing Course";
+    const courseTitle = course?.title || "Real Estate Course";
 
     // Generate certificate
     const verificationHash = generateVerificationHash(

@@ -1,8 +1,8 @@
-# AcreOS - Land Investment Management Platform
+# AcreOS - Real Estate Management Platform
 
 ## Overview
 
-AcreOS is a full-stack SaaS platform for land investors, offering tools for managing leads, properties, deals, and finances. It includes CRM, property tracking, financial management, and AI-powered automation. The platform supports multi-tenancy, integrates Stripe for billing, and aims to be the leading solution for land investment professionals by enhancing efficiency and decision-making through advanced technology.
+AcreOS is a full-stack SaaS platform for real estate professionals, offering tools for managing leads, properties, deals, and finances. It includes CRM, property tracking, financial management, and AI-powered automation. The platform supports multi-tenancy, integrates Stripe for billing, and aims to be the leading solution for real estate professionals by enhancing efficiency and decision-making through advanced technology.
 
 ## User Preferences
 
