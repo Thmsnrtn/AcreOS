@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Quiet Hours — Sovereign Company Protocol v4
  *
@@ -12,6 +11,7 @@
 import { db } from "../db";
 import { quietHoursConfig } from "@shared/schema";
 import { eq, desc } from "drizzle-orm";
+import { logger } from "../utils/logger";
 
 /**
  * Check if current time falls within quiet hours.
@@ -108,5 +108,5 @@ export async function setQuietHours(params: {
     });
   }
 
-  console.log(`[QuietHours] ${params.isActive ? "Enabled" : "Disabled"}: ${params.startHour}:00 - ${params.endHour}:00`);
+  logger.info(`[QuietHours] ${params.isActive ? "Enabled" : "Disabled"}: ${params.startHour}:00 - ${params.endHour}:00`);
 }

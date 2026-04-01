@@ -16,6 +16,7 @@ import type { RequestHandler } from "express";
 import { db } from "../db";
 import { users } from "@shared/models/auth";
 import { eq } from "drizzle-orm";
+import { logger } from "../utils/logger";
 
 export const require2FA: RequestHandler = async (req, res, next) => {
   try {
@@ -45,7 +46,7 @@ export const require2FA: RequestHandler = async (req, res, next) => {
       code: "2FA_REQUIRED",
     });
   } catch (err: any) {
-    console.error("[require2FA] Error checking 2FA status:", err.message);
+    logger.error("[require2FA] Error checking 2FA status", err);
     return next(); // Fail open so a DB error doesn't lock all users out
   }
 };

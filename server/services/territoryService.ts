@@ -14,6 +14,7 @@
 import { db } from "../db";
 import { organizationIntegrations, teamMembers, leads } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
+import { logger } from "../utils/logger";
 
 export interface Territory {
   id: string;
@@ -169,7 +170,7 @@ export async function autoAssignLeadToTerritory(
     .set({ assignedTo: matched.teamMemberId, updatedAt: new Date() })
     .where(and(eq(leads.id, leadId), eq(leads.organizationId, organizationId)));
 
-  console.log(`[Territory] Lead ${leadId} auto-assigned to ${matched.teamMemberName || matched.teamMemberId} via territory "${matched.name}"`);
+  logger.info(`[Territory] Lead ${leadId} auto-assigned to ${matched.teamMemberName || matched.teamMemberId} via territory "${matched.name}"`);
   return matched.teamMemberId;
 }
 

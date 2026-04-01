@@ -9,6 +9,7 @@ import { usageMeteringService, creditService } from "./services/credits";
 import { organizationIntegrations, callTranscripts } from "@shared/schema";
 import { requireAdminOrAbove } from "./utils/permissions";
 import { registerAIOperationsRoutes } from "./routes-ai-operations";
+import { logger } from "./utils/logger";
 
 export async function registerMiscRoutes(app: Express): Promise<void> {
   const api = app;
@@ -28,7 +29,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       });
       res.json(alerts);
     } catch (error: any) {
-      console.error("Get alerts error:", error);
+      logger.error("Get alerts error", error);
       res.status(500).json({ message: error.message || "Failed to fetch alerts" });
     }
   });
@@ -41,7 +42,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       await leadQualificationService.acknowledgeAlert(id, user.id, actionTaken);
       res.json({ success: true });
     } catch (error: any) {
-      console.error("Acknowledge alert error:", error);
+      logger.error("Acknowledge alert error", error);
       res.status(400).json({ message: error.message || "Failed to acknowledge alert" });
     }
   });
@@ -52,7 +53,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       await leadQualificationService.dismissAlert(id);
       res.json({ success: true });
     } catch (error: any) {
-      console.error("Dismiss alert error:", error);
+      logger.error("Dismiss alert error", error);
       res.status(400).json({ message: error.message || "Failed to dismiss alert" });
     }
   });
@@ -64,7 +65,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       const score = await leadQualificationService.calculateLeadIntentScore(org.id, leadId);
       res.json(score);
     } catch (error: any) {
-      console.error("Get lead intent score error:", error);
+      logger.error("Get lead intent score error", error);
       res.status(500).json({ message: error.message || "Failed to calculate intent score" });
     }
   });
@@ -82,7 +83,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       );
       res.json(signals);
     } catch (error: any) {
-      console.error("Analyze message error:", error);
+      logger.error("Analyze message error", error);
       res.status(400).json({ message: error.message || "Failed to analyze message" });
     }
   });
@@ -99,7 +100,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       );
       res.json({ response });
     } catch (error: any) {
-      console.error("Generate suggested response error:", error);
+      logger.error("Generate suggested response error", error);
       res.status(400).json({ message: error.message || "Failed to generate response" });
     }
   });
@@ -110,7 +111,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       const hotLeadIds = await leadQualificationService.checkForHotLeads(org.id);
       res.json({ hotLeads: hotLeadIds.length, leadIds: hotLeadIds });
     } catch (error: any) {
-      console.error("Check hot leads error:", error);
+      logger.error("Check hot leads error", error);
       res.status(500).json({ message: error.message || "Failed to check hot leads" });
     }
   });
@@ -128,7 +129,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       const orgTemplates = await browserAutomationService.getOrganizationTemplates(org.id);
       res.json({ system: systemTemplates, organization: orgTemplates });
     } catch (error: any) {
-      console.error("Get automation templates error:", error);
+      logger.error("Get automation templates error", error);
       res.status(500).json({ message: error.message || "Failed to fetch templates" });
     }
   });
@@ -143,7 +144,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       });
       res.json(jobs);
     } catch (error: any) {
-      console.error("Get automation jobs error:", error);
+      logger.error("Get automation jobs error", error);
       res.status(500).json({ message: error.message || "Failed to fetch jobs" });
     }
   });
@@ -157,7 +158,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       }
       res.json(job);
     } catch (error: any) {
-      console.error("Get automation job error:", error);
+      logger.error("Get automation job error", error);
       res.status(500).json({ message: error.message || "Failed to fetch job" });
     }
   });
@@ -176,7 +177,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       });
       res.status(201).json(job);
     } catch (error: any) {
-      console.error("Create automation job error:", error);
+      logger.error("Create automation job error", error);
       res.status(400).json({ message: error.message || "Failed to create job" });
     }
   });
@@ -187,7 +188,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       await browserAutomationService.cancelJob(id);
       res.json({ success: true });
     } catch (error: any) {
-      console.error("Cancel automation job error:", error);
+      logger.error("Cancel automation job error", error);
       res.status(400).json({ message: error.message || "Failed to cancel job" });
     }
   });
@@ -204,7 +205,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       const config = await smsServiceModule.checkTwilioConfiguration(org.id);
       res.json(config);
     } catch (error: any) {
-      console.error("Check SMS config error:", error);
+      logger.error("Check SMS config error", error);
       res.status(500).json({ message: error.message || "Failed to check SMS configuration" });
     }
   });
@@ -231,7 +232,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       
       res.json({ success: true });
     } catch (error: any) {
-      console.error("Save SMS config error:", error);
+      logger.error("Save SMS config error", error);
       res.status(400).json({ message: error.message || "Failed to save SMS configuration" });
     }
   });
@@ -253,7 +254,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       
       res.json(result);
     } catch (error: any) {
-      console.error("Send SMS error:", error);
+      logger.error("Send SMS error", error);
       res.status(400).json({ message: error.message || "Failed to send SMS" });
     }
   });
@@ -277,7 +278,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       
       res.json(result);
     } catch (error: any) {
-      console.error("Send SMS to lead error:", error);
+      logger.error("Send SMS to lead error", error);
       res.status(400).json({ message: error.message || "Failed to send SMS to lead" });
     }
   });
@@ -290,7 +291,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
         return res.status(400).send("Invalid webhook payload");
       }
 
-      console.log(`[Twilio Webhook] Incoming SMS from ${From} to ${To}: ${Body.substring(0, 50)}...`);
+      logger.info(`[Twilio Webhook] Incoming SMS from ${From} to ${To}: ${Body.substring(0, 50)}...`);
       
       const orgIntegrations = await db
         .select()
@@ -322,7 +323,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
           );
 
           if (optResult.action === 'opt_out') {
-            console.log(`[Twilio Webhook] STOP keyword received from ${From} — lead ${optResult.leadId} opted out`);
+            logger.info(`[Twilio Webhook] STOP keyword received from ${From} — lead ${optResult.leadId} opted out`);
             // Respond with TCPA-required opt-out confirmation message
             res.status(200).send(
               '<?xml version="1.0" encoding="UTF-8"?><Response><Message>You have been unsubscribed and will receive no further messages. Reply START to re-subscribe.</Message></Response>'
@@ -330,7 +331,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
             return;
           }
           if (optResult.action === 'opt_in') {
-            console.log(`[Twilio Webhook] START keyword received from ${From} — lead ${optResult.leadId} opted in`);
+            logger.info(`[Twilio Webhook] START keyword received from ${From} — lead ${optResult.leadId} opted in`);
             res.status(200).send(
               '<?xml version="1.0" encoding="UTF-8"?><Response><Message>You have been re-subscribed. Reply STOP at any time to unsubscribe.</Message></Response>'
             );
@@ -344,17 +345,17 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
             Body,
             MessageSid
           );
-          console.log(`[Twilio Webhook] Inbound SMS stored for org ${matchingOrg.organizationId}`);
+          logger.info(`[Twilio Webhook] Inbound SMS stored for org ${matchingOrg.organizationId}`);
         } catch (inboundError: any) {
-          console.error("[Twilio Webhook] Error storing inbound SMS:", inboundError.message);
+          logger.error("[Twilio Webhook] Error storing inbound SMS", undefined, { metadata: { detail: inboundError.message } });
         }
       } else {
-        console.log("[Twilio Webhook] No matching organization found for phone:", To);
+        logger.info("[Twilio Webhook] No matching organization found for phone", { metadata: { detail: To } });
       }
 
       res.status(200).send("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response></Response>");
     } catch (error: any) {
-      console.error("Twilio webhook error:", error);
+      logger.error("Twilio webhook error", error);
       res.status(500).send("Webhook processing error");
     }
   });
@@ -382,10 +383,10 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
         .where(eq(messages.externalId, MessageSid));
 
       if (ErrorCode) {
-        console.warn(`[Twilio] SMS ${MessageSid} error ${ErrorCode}: ${ErrorMessage}`);
+        logger.warn(`[Twilio] SMS ${MessageSid} error ${ErrorCode}: ${ErrorMessage}`);
       }
     } catch (err: any) {
-      console.error("[Twilio SMS Status] Update failed:", err.message);
+      logger.error("[Twilio SMS Status] Update failed", err);
     }
   });
 
@@ -412,7 +413,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
         .limit(1);
 
       if (!transcript) {
-        console.log(`[Twilio Recording] No transcript found for CallSid ${CallSid}`);
+        logger.info(`[Twilio Recording] No transcript found for CallSid ${CallSid}`);
         return;
       }
 
@@ -425,12 +426,12 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       // Trigger Whisper transcription asynchronously
       const { voiceCallAIService } = await import("./services/voiceCallAI");
       voiceCallAIService.transcribeCall(transcript.id, audioUrl).catch((err: any) => {
-        console.error(`[Twilio Recording] Whisper transcription failed for transcript ${transcript.id}:`, err.message);
+        logger.error(`[Twilio Recording] Whisper transcription failed for transcript ${transcript.id}`, err);
       });
 
-      console.log(`[Twilio Recording] Queued transcription for transcript ${transcript.id} (CallSid ${CallSid})`);
+      logger.info(`[Twilio Recording] Queued transcription for transcript ${transcript.id} (CallSid ${CallSid})`);
     } catch (error: any) {
-      console.error("[Twilio Recording] Webhook error:", error.message);
+      logger.error("[Twilio Recording] Webhook error", error);
     }
   });
 
@@ -541,7 +542,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       
       res.json(statuses);
     } catch (error: any) {
-      console.error("Error fetching integration statuses:", error);
+      logger.error("Error fetching integration statuses", error);
       res.status(500).json({ message: "Failed to fetch integration statuses" });
     }
   });
@@ -586,7 +587,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
 
       res.json({ success: true, message: `${service} API key saved successfully` });
     } catch (error: any) {
-      console.error("Error saving API key:", error);
+      logger.error("Error saving API key", error);
       res.status(500).json({ message: error.message || "Failed to save API key" });
     }
   });
@@ -609,7 +610,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
 
       res.json({ valid: response.ok });
     } catch (error) {
-      console.error("Lob validation error:", error);
+      logger.error("Lob validation error", error);
       res.json({ valid: false });
     }
   });
@@ -632,7 +633,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
 
       res.json({ valid: response.ok });
     } catch (error) {
-      console.error("Regrid validation error:", error);
+      logger.error("Regrid validation error", error);
       res.json({ valid: false });
     }
   });
@@ -664,7 +665,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
 
       res.json({ valid: response.ok });
     } catch (error) {
-      console.error("Twilio validation error:", error);
+      logger.error("Twilio validation error", error);
       res.json({ valid: false });
     }
   });
@@ -688,7 +689,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
 
       res.json({ valid: response.ok });
     } catch (error) {
-      console.error("SendGrid validation error:", error);
+      logger.error("SendGrid validation error", error);
       res.json({ valid: false });
     }
   });
@@ -713,7 +714,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
 
       res.json({ valid: response.ok });
     } catch (error) {
-      console.error("RapidAPI validation error:", error);
+      logger.error("RapidAPI validation error", error);
       res.json({ valid: false });
     }
   });
@@ -733,7 +734,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       const position = await taxOptimizerService.analyzeYearEndPosition(org.id, taxYear);
       res.json(position);
     } catch (err: any) {
-      console.error("Tax optimizer error:", err);
+      logger.error("Tax optimizer error", err);
       res.status(500).json({ message: err.message || "Failed to analyze tax position" });
     }
   });

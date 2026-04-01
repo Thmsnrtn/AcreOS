@@ -21,6 +21,7 @@
 import { db } from "../db";
 import { agentEvents } from "@shared/schema";
 import { wsServer } from "../websocket";
+import { logger } from "../utils/logger";
 
 // ─── Authority Tier Definitions ──────────────────────────────────────────────
 
@@ -99,9 +100,7 @@ class TrustAuthorityEscalation {
       (a) => !oldTier.allowedActions.includes(a),
     );
 
-    console.log(
-      `[trust-authority] ${agentCodename} promoted: Level ${oldTier.level} → ${newTier.level} (${oldScore} → ${newScore}). Unlocked: ${newActions.join(", ")}`,
-    );
+    logger.info(`[trust-authority] ${agentCodename} promoted: Level ${oldTier.level} → ${newTier.level} (${oldScore} → ${newScore}). Unlocked: ${newActions.join(", ")}`);
 
     // 1. Record the promotion event
     await db.insert(agentEvents).values({

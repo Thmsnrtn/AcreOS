@@ -1,6 +1,7 @@
 import { db } from "../db";
 import { organizationIntegrations } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
+import { logger } from "../utils/logger";
 
 export enum SmsProvider {
   TWILIO = "twilio",
@@ -192,7 +193,7 @@ export async function sendSms(options: SmsOptions): Promise<SmsResult> {
   }
 
   if (!credentials) {
-    console.log(`[SMS] No provider configured - would send to ${options.to}: ${options.message.substring(0, 50)}...`);
+    logger.info(`[SMS] No provider configured - would send to ${options.to}: ${options.message.substring(0, 50)}...`);
     return { 
       success: true, 
       messageId: `mock-${Date.now()}`, 
@@ -200,7 +201,7 @@ export async function sendSms(options: SmsOptions): Promise<SmsResult> {
     };
   }
 
-  console.log(`[SMS] Sending via ${credentials.provider} to ${options.to}`);
+  logger.info(`[SMS] Sending via ${credentials.provider} to ${options.to}`);
 
   if (credentials.provider === SmsProvider.TELNYX) {
     return sendViaTelnyx(credentials, options);

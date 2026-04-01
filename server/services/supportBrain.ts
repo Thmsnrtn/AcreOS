@@ -11,6 +11,7 @@ import {
   InsertSupportAction,
 } from "@shared/schema";
 import { logActivity } from "./systemActivityLogger";
+import { logger } from "../utils/logger";
 
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
@@ -85,7 +86,7 @@ Respond in JSON format only:
         urgency: result.urgency || "medium",
       };
     } catch (error) {
-      console.error("Classification error:", error);
+      logger.error("Classification error", error);
       return {
         category: "other",
         confidence: 0.3,
@@ -339,7 +340,7 @@ Respond in JSON format only:
           };
       }
     } catch (error: any) {
-      console.error(`Action ${actionType} failed:`, error);
+      logger.error(`Action ${actionType} failed`, error);
       return { success: false, message: error.message };
     }
   }
@@ -452,7 +453,7 @@ If you cannot resolve the issue, say you will escalate to a human.`;
 
       return { response: aiResponse, actionsTaken: [], escalated: false };
     } catch (error) {
-      console.error("AI response generation failed:", error);
+      logger.error("AI response generation failed", error);
       return this.escalateCase(supportCase, "AI response generation failed");
     }
   }

@@ -5,6 +5,7 @@ import { storage } from "../storage";
 import { usageMeteringService } from "./credits";
 import OpenAI from "openai";
 import { voiceLearningService } from "./voiceLearning";
+import { logger } from "../utils/logger";
 
 function getOpenAIClient(): OpenAI | null {
   if (!process.env.OPENAI_API_KEY) {
@@ -132,7 +133,7 @@ export class CampaignOptimizerService {
   async generateOptimizations(campaign: Campaign): Promise<OptimizationSuggestion[]> {
     const openai = getOpenAIClient();
     if (!openai) {
-      console.log("OpenAI API key not configured, skipping AI optimization generation");
+      logger.info("OpenAI API key not configured, skipping AI optimization generation");
       return this.generateFallbackOptimizations(campaign);
     }
 
@@ -204,7 +205,7 @@ Respond in JSON format:
         return parsed.suggestions || [];
       }
     } catch (error) {
-      console.error("Error generating AI optimizations:", error);
+      logger.error("Error generating AI optimizations", error);
       return this.generateFallbackOptimizations(campaign);
     }
 
@@ -287,7 +288,7 @@ Respond in JSON format:
         });
         savedOptimizations++;
       } catch (err) {
-        console.error("Error saving optimization suggestion:", err);
+        logger.error("Error saving optimization suggestion", err);
       }
     }
 

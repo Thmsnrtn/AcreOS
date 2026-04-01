@@ -1,3 +1,4 @@
+import { logger } from "./logger";
 export interface ApiError {
   code: string;
   message: string;
@@ -42,7 +43,7 @@ export function internalError(res: import("express").Response, error: unknown, r
   // Import lazily to avoid circular dep (apiError.ts ← logger ← sentry ← apiError)
   import("./logger").then(({ logger }) => {
     logger.error(`API Error ${requestId || ""}`, error instanceof Error ? error : undefined);
-  }).catch(() => console.error(`[API Error] ${requestId || ""}:`, error));
+  }).catch(() => logger.error(`[API Error] ${requestId || ""}`, error));
   apiError(res, 500, "INTERNAL_ERROR", message, { retryable: true });
 }
 

@@ -6,6 +6,7 @@ import { organizations } from "@shared/schema";
 import { isAuthenticated } from "./auth/clerkAuth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { eq, count, sql } from "drizzle-orm";
+import { logger } from "./utils/logger";
 
 // Generate a random 8-char alphanumeric referral code
 function generateCode(): string {
@@ -50,7 +51,7 @@ export function registerReferralRoutes(app: Express): void {
 
       return res.json({ code });
     } catch (err) {
-      console.error("[referral] GET /code error:", err);
+      logger.error("[referral] GET /code error", err);
       return res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -82,7 +83,7 @@ export function registerReferralRoutes(app: Express): void {
         creditBalance: org?.referralCredits ?? 0, // cents currently available
       });
     } catch (err) {
-      console.error("[referral] GET /stats error:", err);
+      logger.error("[referral] GET /stats error", err);
       return res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -132,7 +133,7 @@ export function registerReferralRoutes(app: Express): void {
 
       return res.json({ ok: true });
     } catch (err) {
-      console.error("[referral] POST /apply error:", err);
+      logger.error("[referral] POST /apply error", err);
       return res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -193,7 +194,7 @@ export function registerReferralRoutes(app: Express): void {
         message: "Congratulations! You both earned a free month.",
       });
     } catch (err) {
-      console.error("[referral] POST /activate error:", err);
+      logger.error("[referral] POST /activate error", err);
       return res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -221,7 +222,7 @@ export function registerReferralRoutes(app: Express): void {
 
       return res.json({ referees });
     } catch (err) {
-      console.error("[referral] GET /referees error:", err);
+      logger.error("[referral] GET /referees error", err);
       return res.status(500).json({ message: "Internal server error" });
     }
   });

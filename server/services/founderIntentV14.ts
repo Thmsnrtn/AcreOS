@@ -25,6 +25,7 @@ import crypto from "crypto";
 import { adaptiveStrategyService } from "./adaptiveStrategyV13";
 import { governanceBrainService } from "./governanceBrainV13";
 import { founderIntelligenceService } from "./founderIntelligenceV13";
+import { logger } from "../utils/logger";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -401,12 +402,12 @@ class FounderIntentService {
         if (strategy?.strategyId) {
           summary.strategiesCreated.push(strategy.strategyId);
         } else {
-          console.warn(`[FounderIntent] Strategy creation returned no ID for ${goal.metric}`);
+          logger.warn(`[FounderIntent] Strategy creation returned no ID for ${goal.metric}`);
           summary.warnings = summary.warnings ?? [];
           (summary.warnings as string[]).push(`Strategy for ${goal.metric} created but no ID returned`);
         }
       } catch (e: any) {
-        console.error(`[FounderIntent] Strategy creation failed for ${goal.metric}: ${e.message}`);
+        logger.error(`[FounderIntent] Strategy creation failed for ${goal.metric}: ${e.message}`);
         summary.warnings = summary.warnings ?? [];
         (summary.warnings as string[]).push(`Strategy creation failed for ${goal.metric}: ${e.message}`);
       }
@@ -459,7 +460,7 @@ class FounderIntentService {
         // Chain creation may fail if reactive orchestration doesn't support this event yet — non-fatal
         const chainId = `intent_chain_${goal.metric}_${intentId.slice(0, 8)}`;
         summary.chainsCreated.push(chainId);
-        console.warn(`[FounderIntent] Chain creation fell back to reference for ${goal.metric}: ${e.message}`);
+        logger.warn(`[FounderIntent] Chain creation fell back to reference for ${goal.metric}: ${e.message}`);
       }
     }
 
@@ -885,7 +886,7 @@ class FounderIntentService {
         }
       }
     } catch (err) {
-      console.warn(`[FounderIntent] Failed to query metric ${goal.metric}:`, err);
+      logger.warn(`[FounderIntent] Failed to query metric ${goal.metric}`, { metadata: { detail: err } });
       return 0;
     }
   }

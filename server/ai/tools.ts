@@ -9,6 +9,7 @@ import { getComparableProperties } from "../services/comps";
 import { checkTcpaConsentFromLead } from "../services/tcpaCompliance";
 import { DataSourceBroker } from "../services/data-source-broker";
 import { propertyEnrichmentService } from "../services/propertyEnrichment";
+import { logger } from "../utils/logger";
 
 // Tool parameter schemas (OpenAI function calling format)
 export const toolDefinitions = {
@@ -1123,7 +1124,7 @@ export async function executeTool(
         if (args.county && args.state) {
           try {
             const stateCountyPath = `/us/${args.state.toLowerCase()}/${args.county.toLowerCase().replace(/\s+/g, "-")}`;
-            console.log(`[CreateProperty] Fetching parcel for ${args.apn} at ${stateCountyPath}`);
+            logger.info(`[CreateProperty] Fetching parcel for ${args.apn} at ${stateCountyPath}`);
             const parcelResult = await lookupParcelByAPN(args.apn, stateCountyPath, org.id);
             
             if (parcelResult.found && parcelResult.parcel) {
@@ -1135,10 +1136,10 @@ export async function executeTool(
                 longitude: String(parcelResult.parcel.centroid.lng),
               });
               hasBoundary = true;
-              console.log(`[CreateProperty] Parcel found from ${parcelResult.source}`);
+              logger.info(`[CreateProperty] Parcel found from ${parcelResult.source}`);
             }
           } catch (parcelErr: any) {
-            console.error(`[CreateProperty] Parcel lookup error:`, parcelErr.message);
+            logger.error(`[CreateProperty] Parcel lookup error`, undefined, { metadata: { detail: parcelErr.message } });
           }
         }
         
@@ -1266,7 +1267,7 @@ export async function executeTool(
       }
 
       case "schedule_background_job": {
-        console.log(`[AI Tools] Background job scheduled: ${args.job_type} - ${args.description}`);
+        logger.info(`[AI Tools] Background job scheduled: ${args.job_type} - ${args.description}`);
         return { 
           success: true, 
           data: { 
@@ -1382,7 +1383,7 @@ export async function executeTool(
             if (prop.state && prop.county) {
               try {
                 const stateCountyPath = `/us/${prop.state.toLowerCase()}/${prop.county.toLowerCase().replace(/\s+/g, "-")}`;
-                console.log(`[Batch] Fetching parcel for ${prop.apn} at ${stateCountyPath}`);
+                logger.info(`[Batch] Fetching parcel for ${prop.apn} at ${stateCountyPath}`);
                 const parcelResult = await lookupParcelByAPN(prop.apn, stateCountyPath, org.id);
                 
                 if (parcelResult.found && parcelResult.parcel) {
@@ -1394,15 +1395,15 @@ export async function executeTool(
                     longitude: String(parcelResult.parcel.centroid.lng),
                   });
                   hasBoundary = true;
-                  console.log(`[Batch] Parcel found for ${prop.apn} from ${parcelResult.source}`);
+                  logger.info(`[Batch] Parcel found for ${prop.apn} from ${parcelResult.source}`);
                 } else {
-                  console.log(`[Batch] No parcel found for ${prop.apn}: ${parcelResult.error || 'not found'}`);
+                  logger.info(`[Batch] No parcel found for ${prop.apn}: ${parcelResult.error || 'not found'}`);
                 }
               } catch (parcelErr: any) {
-                console.error(`[Batch] Parcel lookup error for ${prop.apn}:`, parcelErr.message);
+                logger.error(`[Batch] Parcel lookup error for ${prop.apn}`, undefined, { metadata: { detail: parcelErr.message } });
               }
             } else {
-              console.log(`[Batch] Skipping parcel lookup for ${prop.apn} - missing state/county`);
+              logger.info(`[Batch] Skipping parcel lookup for ${prop.apn} - missing state/county`);
             }
             
             results.push({ success: true, apn: prop.apn, propertyId: property.id, hasBoundary });
@@ -1772,20 +1773,20 @@ export async function executeTool(
 
       case "browse_web": {
         const url = args.url as string;
-        console.log(`[browse_web] Starting browse for URL: ${url}`);
+        logger.info(`[browse_web] Starting browse for URL: ${url}`);
         if (!url || (!url.startsWith("http://") && !url.startsWith("https://"))) {
           return { success: false, error: "Invalid URL. Must start with http:// or https://" };
         }
         
         const browserAutomation = await import("../services/browserAutomation");
         const browseWeb = browserAutomation.browseWeb;
-        console.log(`[browse_web] Calling browseWeb function...`);
+        logger.info(`[browse_web] Calling browseWeb function...`);
         const result = await browseWeb(url, {
           extractTables: args.extract_tables !== false,
           captureScreenshot: args.take_screenshot === true,
           waitMs: args.wait_ms || 0,
         });
-        console.log(`[browse_web] Result: success=${result.success}, title="${result.title}", contentLen=${result.content?.length}, error=${result.error}`);
+        logger.info(`[browse_web] Result: success=${result.success}, title="${result.title}", contentLen=${result.content?.length}, error=${result.error}`);
         
         if (!result.success) {
           return { success: false, error: result.error || "Failed to load page" };

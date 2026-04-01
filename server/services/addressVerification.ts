@@ -1,3 +1,4 @@
+import { logger } from "../utils/logger";
 /**
  * Address Verification Service
  * Uses USPS Web Tools Address Information API (free, requires account)
@@ -92,7 +93,7 @@ async function verifyViaUSPS(input: AddressInput, userId: string): Promise<Verif
     verified.raw = [verified.address1, verified.city, verified.state, `${verified.zip}${verified.zip4 ? "-" + verified.zip4 : ""}`].join(", ");
     return verified;
   } catch (err) {
-    console.warn("[AddressVerification] USPS API failed:", err);
+    logger.warn("[AddressVerification] USPS API failed", { metadata: { detail: err } });
     return {
       address1: input.address1,
       city: input.city,

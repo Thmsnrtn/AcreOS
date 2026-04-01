@@ -155,11 +155,21 @@ export function registerOrganizationRoutes(app: Express): void {
   });
 
   // POST /api/playbooks/:id/start - Start a playbook (creates instance)
+  const startPlaybookSchema = z.object({
+    linkedDealId: z.number().int().positive().optional().nullable(),
+    linkedPropertyId: z.number().int().positive().optional().nullable(),
+    linkedLeadId: z.number().int().positive().optional().nullable(),
+  });
+
   api.post("/api/playbooks/:id/start", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { id } = req.params;
       const org = req.organization;
-      const { linkedDealId, linkedPropertyId, linkedLeadId } = req.body;
+      const parsed = startPlaybookSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+      const { linkedDealId, linkedPropertyId, linkedLeadId } = parsed.data;
       
       const template = PLAYBOOK_TEMPLATES_DATA.find(t => t.id === id);
       if (!template) {
@@ -500,18 +510,19 @@ export function registerOrganizationRoutes(app: Express): void {
   });
   
   // Purchase additional seats
+  const purchaseSeatsSchema = z.object({
+    quantity: z.number().int().min(1, "Quantity must be at least 1"),
+    billingPeriod: z.enum(["monthly", "yearly"], { required_error: "Billing period must be 'monthly' or 'yearly'" }),
+  });
+
   api.post("/api/organization/seats/purchase", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const { quantity, billingPeriod } = req.body;
-      
-      if (!quantity || quantity < 1) {
-        return res.status(400).json({ message: "Quantity must be at least 1" });
+      const parsed = purchaseSeatsSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
       }
-      
-      if (!billingPeriod || !["monthly", "yearly"].includes(billingPeriod)) {
-        return res.status(400).json({ message: "Billing period must be 'monthly' or 'yearly'" });
-      }
+      const { quantity, billingPeriod } = parsed.data;
       
       const tier = org.subscriptionTier || "free";
       if (tier === "free" || tier === "enterprise") {
@@ -585,14 +596,20 @@ export function registerOrganizationRoutes(app: Express): void {
     }
   });
   
+  const onboardingStepSchema = z.object({
+    step: z.number().int().min(0).max(4),
+    data: z.record(z.unknown()).optional(),
+    skipped: z.boolean().optional(),
+  });
+
   api.put("/api/onboarding/step", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const { step, data, skipped } = req.body;
-      
-      if (typeof step !== "number" || step < 0 || step > 4) {
-        return res.status(400).json({ message: "Invalid step number" });
+      const parsed = onboardingStepSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
       }
+      const { step, data, skipped } = parsed.data;
       
       const status = await onboardingService.updateOnboardingStep(
         org.id, 
@@ -606,14 +623,19 @@ export function registerOrganizationRoutes(app: Express): void {
     }
   });
   
+  const completeStepSchema = z.object({
+    stepId: z.number().int().min(0).max(5),
+    data: z.record(z.unknown()).optional(),
+  });
+
   api.post("/api/onboarding/complete-step", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const { stepId, data } = req.body;
-      
-      if (typeof stepId !== "number" || stepId < 0 || stepId > 5) {
-        return res.status(400).json({ message: "Invalid step ID" });
+      const parsed = completeStepSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
       }
+      const { stepId, data } = parsed.data;
       
       const skipped = data?.skipped === true;
       const status = await onboardingService.updateOnboardingStep(
@@ -628,14 +650,18 @@ export function registerOrganizationRoutes(app: Express): void {
     }
   });
   
+  const provisionSchema = z.object({
+    businessType: z.enum(["land_flipper", "note_investor", "hybrid"]),
+  });
+
   api.post("/api/onboarding/provision", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const { businessType } = req.body;
-      
-      if (!["land_flipper", "note_investor", "hybrid"].includes(businessType)) {
-        return res.status(400).json({ message: "Invalid business type" });
+      const parsed = provisionSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
       }
+      const { businessType } = parsed.data;
       
       const result = await onboardingService.provisionTemplates(org.id, businessType as BusinessType);
       res.json(result);
@@ -654,12 +680,18 @@ export function registerOrganizationRoutes(app: Express): void {
     }
   });
   
+  const tipsSchema = z.object({
+    step: z.number().int().min(0).optional(),
+  });
+
   api.post("/api/onboarding/tips", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const { step } = req.body;
-      
-      const stepNumber = typeof step === "number" ? step : 0;
+      const parsed = tipsSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+      const stepNumber = parsed.data.step ?? 0;
       const tips = await onboardingService.generatePersonalizedTips(org.id, stepNumber);
       res.json({ tips });
     } catch (error: any) {
@@ -764,14 +796,22 @@ export function registerOrganizationRoutes(app: Express): void {
     });
   });
   
+  const updateRoleSchema = z.object({
+    role: z.string().min(1, "Role is required"),
+  });
+
   api.patch("/api/team/:id/role", isAuthenticated, getOrCreateOrg, requireAdminOrAbove(), async (req, res) => {
     const org = req.organization;
     const memberId = Number(req.params.id);
-    const { role } = req.body;
+    const parsed = updateRoleSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return Errors.validationFailed(res, parsed.error.errors);
+    }
+    const { role } = parsed.data;
     const context = req.permissionContext as UserPermissionContext;
 
     if (!ROLES.includes(role)) {
-      return res.status(400).json({ message: `Invalid role. Must be one of: ${ROLES.join(", ")}` });
+      return Errors.badRequest(res, `Invalid role. Must be one of: ${ROLES.join(", ")}`);
     }
 
     const members = await storage.getTeamMembers(org.id);
@@ -1067,10 +1107,17 @@ export function registerOrganizationRoutes(app: Express): void {
   });
 
   // Unsubscribe — remove endpoint
+  const pushUnsubscribeSchema = z.object({
+    endpoint: z.string().url("endpoint must be a valid URL"),
+  });
+
   api.post("/api/push/unsubscribe", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const { endpoint } = req.body;
-      if (!endpoint) return res.status(400).json({ message: "endpoint is required" });
+      const parsed = pushUnsubscribeSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+      const { endpoint } = parsed.data;
       await db.execute(sql`DELETE FROM push_subscriptions WHERE endpoint = ${endpoint}`);
       res.json({ success: true });
     } catch (err: any) {
@@ -1093,9 +1140,22 @@ export function registerOrganizationRoutes(app: Express): void {
   });
 
   // PUT /api/commissions/config — save tier configuration
+  const commissionConfigSchema = z.object({
+    tiers: z.array(z.object({
+      name: z.string().min(1),
+      minDealsClosed: z.number().int().min(0),
+      commissionRate: z.number().min(0).max(100),
+    })).optional(),
+    defaultRate: z.number().min(0).max(100).optional(),
+  }).passthrough();
+
   api.put("/api/commissions/config", isAuthenticated, getOrCreateOrg, requireAdminOrAbove, async (req, res) => {
     try {
-      await saveCommissionConfig(req.organization.id, req.body);
+      const parsed = commissionConfigSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+      await saveCommissionConfig(req.organization.id, parsed.data);
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -1131,12 +1191,20 @@ export function registerOrganizationRoutes(app: Express): void {
   });
 
   // POST /api/commissions — manually record a commission
+  const recordCommissionSchema = z.object({
+    teamMemberId: z.number().int().positive(),
+    dealId: z.number().int().positive(),
+    salePriceCents: z.number().int().positive(),
+    closedAt: z.string().optional(),
+  });
+
   api.post("/api/commissions", isAuthenticated, getOrCreateOrg, requireAdminOrAbove, async (req, res) => {
     try {
-      const { teamMemberId, dealId, salePriceCents, closedAt } = req.body;
-      if (!teamMemberId || !dealId || !salePriceCents) {
-        return res.status(400).json({ message: "teamMemberId, dealId, and salePriceCents are required" });
+      const parsed = recordCommissionSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
       }
+      const { teamMemberId, dealId, salePriceCents, closedAt } = parsed.data;
       const record = await recordDealCommission(
         req.organization.id,
         teamMemberId,
@@ -1151,12 +1219,17 @@ export function registerOrganizationRoutes(app: Express): void {
   });
 
   // POST /api/commissions/:id/pay — record a payment against a commission
+  const commissionPaymentSchema = z.object({
+    paidCents: z.number().int().positive("paidCents must be a positive number"),
+  });
+
   api.post("/api/commissions/:id/pay", isAuthenticated, getOrCreateOrg, requireAdminOrAbove, async (req, res) => {
     try {
-      const { paidCents } = req.body;
-      if (!paidCents || paidCents <= 0) {
-        return res.status(400).json({ message: "paidCents must be a positive number" });
+      const parsed = commissionPaymentSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
       }
+      const { paidCents } = parsed.data;
       const updated = await recordCommissionPayment(
         req.organization.id,
         req.params.id,

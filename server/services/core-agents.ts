@@ -3,6 +3,7 @@ import { dataSourceBroker, type LookupCategory } from "./data-source-broker";
 import { type InsertAgentMemory, type AgentMemory } from "@shared/schema";
 import { routeAITask, TaskComplexity, classifyTaskComplexity, MODEL_SIMPLE } from "./aiRouter";
 import { skillRegistry, type Skill, type SkillResult, type AgentContext as SkillAgentContext } from "./agent-skills";
+import { logger } from "../utils/logger";
 
 export type CoreAgentType = "research" | "deals" | "communications" | "operations";
 
@@ -55,7 +56,7 @@ abstract class CoreAgent {
       }
       return memories;
     } catch (error) {
-      console.error(`Error fetching memories for ${this.type} agent:`, error);
+      logger.error(`Error fetching memories for ${this.type} agent`, error);
       return [];
     }
   }
@@ -592,7 +593,7 @@ Create a professional, legally-minded (but not legal advice) offer letter that:
     const { refined: offerLetter, confidence, changed } = await this.selfCritique(rawOfferLetter, "legal_document", critiqueCtx);
 
     if (changed) {
-      console.log(`[DealsAgent] Offer letter refined by self-critique (confidence=${confidence.toFixed(2)})`);
+      logger.info(`[DealsAgent] Offer letter refined by self-critique (confidence=${confidence.toFixed(2)})`);
     }
 
     const result: AgentTaskResult = {

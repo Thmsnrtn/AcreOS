@@ -31,6 +31,7 @@ import {
   runOnce,
 } from "./jobs/autonomousTaskProcessor";
 import { executeAgentTask, type CoreAgentType } from "./services/core-agents";
+import { logger } from "./utils/logger";
 
 const CORE_AGENT_TYPES: CoreAgentType[] = ["research", "deals", "communications", "operations"];
 
@@ -268,7 +269,7 @@ export function registerAutonomousAgentRoutes(app: Express): void {
       await approveEscalatedTask(taskId, user.id, notes);
 
       // Immediately trigger the processor to pick it up
-      runOnce().catch(err => console.error("[autonomous] Immediate run failed:", err));
+      runOnce().catch(err => logger.error("[autonomous] Immediate run failed", err));
 
       res.json({ message: "Task approved and queued for execution" });
     } catch (err: any) {
@@ -421,7 +422,7 @@ export function registerAutonomousAgentRoutes(app: Express): void {
   router.post("/trigger-processor", async (req, res) => {
     try {
       // Fire and forget
-      runOnce().catch(err => console.error("[autonomous] Manual trigger failed:", err));
+      runOnce().catch(err => logger.error("[autonomous] Manual trigger failed", err));
       res.json({ message: "Processor triggered" });
     } catch (err: any) {
       res.status(500).json({ message: err.message });

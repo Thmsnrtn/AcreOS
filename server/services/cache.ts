@@ -1,3 +1,4 @@
+import { logger } from "../utils/logger";
 /**
  * Lightweight Redis cache utility.
  *
@@ -88,7 +89,7 @@ async function initCache(): Promise<CacheClient> {
     await client.connect();
     return new RedisCache(client);
   } catch (err) {
-    console.warn("[cache] Redis connection failed, falling back to no-op cache:", err);
+    logger.warn("[cache] Redis connection failed, falling back to no-op cache", { metadata: { detail: err } });
     return new NoopCache();
   }
 }

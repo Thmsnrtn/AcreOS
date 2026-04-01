@@ -15,6 +15,7 @@
 import { db } from "../db";
 import { agentEvents, leads, deals, tasks } from "@shared/schema";
 import { eq, and, sql, desc, gte, inArray } from "drizzle-orm";
+import { logger } from "../utils/logger";
 
 interface VerificationResult {
   agentCodename: string;
@@ -149,9 +150,7 @@ class OutcomeVerificationLoop {
       } catch {}
     }
 
-    console.log(
-      `[outcome-verification] Verified ${verified} actions: ${positive} positive, ${negative} negative, ${neutral} neutral. Quality score: ${qualityScore}`,
-    );
+    logger.info(`[outcome-verification] Verified ${verified} actions: ${positive} positive, ${negative} negative, ${neutral} neutral. Quality score: ${qualityScore}`);
 
     return { verified, positive, negative, neutral, qualityScore };
   }

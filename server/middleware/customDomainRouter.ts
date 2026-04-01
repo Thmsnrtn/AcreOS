@@ -25,11 +25,11 @@
  *   app.use("/api/tenant-only", requireTenant); // 404 guard for unknown domains
  */
 
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 import type { Request, Response, NextFunction } from "express";
 import { db } from "../storage";
 import { whitelabelTenants } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { logger } from "../utils/logger";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -142,7 +142,7 @@ async function lookupTenantByDomain(
     };
   } catch (err) {
     // Table may not exist yet in dev environments
-    console.error("[customDomainRouter] DB lookup error:", err);
+    logger.error("[customDomainRouter] DB lookup error", err);
     return null;
   }
 }
@@ -215,7 +215,7 @@ export async function customDomainRouter(
       res.setHeader("X-Tenant-Id", tenant.organizationId.toString());
     }
   } catch (err) {
-    console.error("[customDomainRouter] Unhandled error, continuing without tenant context:", err);
+    logger.error("[customDomainRouter] Unhandled error, continuing without tenant context", err);
     req.tenantContext = null;
   }
 

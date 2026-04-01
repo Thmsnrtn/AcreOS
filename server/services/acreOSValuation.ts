@@ -9,6 +9,7 @@ import {
 import { eq, and, desc, gte, sql, between } from 'drizzle-orm';
 import OpenAI from 'openai';
 import { GradientBoostingRegressor, extractLandFeatures, type LandFeatureInput } from './gradientBoosting';
+import { logger } from "../utils/logger";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -25,7 +26,7 @@ async function loadGBMModel(): Promise<GradientBoostingRegressor | null> {
     const modelJson = process.env.GBM_MODEL_JSON;
     if (modelJson) {
       _gbmModel = GradientBoostingRegressor.fromJSON(JSON.parse(modelJson));
-      console.log('[AcreOSValuation] GBM model loaded from GBM_MODEL_JSON env var');
+      logger.info('[AcreOSValuation] GBM model loaded from GBM_MODEL_JSON env var');
       return _gbmModel;
     }
     // Optionally load from disk (e.g. mounted volume in production)
@@ -34,7 +35,7 @@ async function loadGBMModel(): Promise<GradientBoostingRegressor | null> {
     const modelPath = path.resolve(process.cwd(), 'server/ml/artifacts/gbm_valuation.json');
     const raw = await fs.readFile(modelPath, 'utf8');
     _gbmModel = GradientBoostingRegressor.fromJSON(JSON.parse(raw));
-    console.log('[AcreOSValuation] GBM model loaded from disk:', modelPath);
+    logger.info('[AcreOSValuation] GBM model loaded from disk', { metadata: { detail: modelPath } });
     return _gbmModel;
   } catch {
     return null; // No trained model available yet — fall through to AI/baseline
@@ -194,7 +195,7 @@ class AcreOSValuationModel {
 
       return record.id;
     } catch (error) {
-      console.error('Failed to record transaction for training:', error);
+      logger.error('Failed to record transaction for training', error);
       throw error;
     }
   }
@@ -309,7 +310,7 @@ class AcreOSValuationModel {
         marketAdjustments: adjustments,
       };
     } catch (error) {
-      console.error('Valuation generation failed:', error);
+      logger.error('Valuation generation failed', error);
       throw error;
     }
   }
@@ -473,7 +474,7 @@ Base your estimate on typical rural land market conditions in ${county} County, 
 
       return comparablesWithScores;
     } catch (error) {
-      console.error('Failed to find comparables:', error);
+      logger.error('Failed to find comparables', error);
       return [];
     }
   }
@@ -692,7 +693,7 @@ Respond in JSON format: { "adjustment": number, "reasoning": string }`;
         reasoning: result.reasoning || 'No additional adjustments',
       };
     } catch (error) {
-      console.error('AI valuation enhancement failed:', error);
+      logger.error('AI valuation enhancement failed', error);
       return { adjustment: 0, reasoning: 'AI enhancement unavailable' };
     }
   }
@@ -758,7 +759,7 @@ Respond in JSON format: { "adjustment": number, "reasoning": string }`;
         imported++;
       } catch (error) {
         failed++;
-        console.error('Failed to import transaction:', error);
+        logger.error('Failed to import transaction', error);
       }
     }
 
@@ -781,7 +782,7 @@ Respond in JSON format: { "adjustment": number, "reasoning": string }`;
         orderBy: [desc(valuationPredictions.createdAt)],
       });
     } catch (error) {
-      console.error('Failed to get valuation history:', error);
+      logger.error('Failed to get valuation history', error);
       throw error;
     }
   }
@@ -840,7 +841,7 @@ Respond in JSON format: { "adjustment": number, "reasoning": string }`;
         avgPricePerAcre: Math.round(avgPricePerAcre),
       };
     } catch (error) {
-      console.error('Failed to get training data stats:', error);
+      logger.error('Failed to get training data stats', error);
       throw error;
     }
   }
@@ -891,13 +892,13 @@ Respond in JSON format: { "adjustment": number, "reasoning": string }`;
           valuated++;
         } catch (error) {
           failed++;
-          console.error(`Failed to valuate property ${prop.id}:`, error);
+          logger.error(`Failed to valuate property ${prop.id}`, error);
         }
       }
 
       return { valuated, failed };
     } catch (error) {
-      console.error('Bulk valuation failed:', error);
+      logger.error('Bulk valuation failed', error);
       throw error;
     }
   }

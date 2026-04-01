@@ -19,6 +19,7 @@ import {
 } from "@shared/schema";
 import { eq, and, gte, lte, desc } from "drizzle-orm";
 import { startOfYear, endOfYear, format } from "date-fns";
+import { logger } from "../utils/logger";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -272,9 +273,7 @@ export async function recordDealCommission(
   filtered.push(record);
   await saveCommissionRecordsStore(organizationId, filtered);
 
-  console.log(
-    `[Commission] Recorded $${(totalOwedCents / 100).toFixed(2)} commission for team member ${teamMemberId} on deal ${dealId} (${tier.label} tier @ ${tier.ratePercent}%)`
-  );
+  logger.info(`[Commission] Recorded $${(totalOwedCents / 100).toFixed(2)} commission for team member ${teamMemberId} on deal ${dealId} (${tier.label} tier @ ${tier.ratePercent}%)`);
 
   return record;
 }

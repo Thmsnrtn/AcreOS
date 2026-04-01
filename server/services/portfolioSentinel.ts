@@ -13,6 +13,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, gte, lte, or, isNull, sql } from "drizzle-orm";
 import { getOpenAIClient } from "../utils/openaiClient";
+import { logger } from "../utils/logger";
 
 export type AlertType = "tax_due" | "market_change" | "competitor_activity" | "maintenance" | "document_expiring" | "compliance";
 export type AlertSeverity = "low" | "medium" | "high" | "critical";
@@ -641,7 +642,7 @@ Provide a 2-3 paragraph summary with specific recommendations.`,
 
       return response.choices[0]?.message?.content || this.generateFallbackSummary(activeAlerts);
     } catch (error) {
-      console.error("[portfolio-sentinel] Error generating AI summary:", error);
+      logger.error("[portfolio-sentinel] Error generating AI summary", error);
       return this.generateFallbackSummary(activeAlerts);
     }
   }
@@ -700,7 +701,7 @@ Provide 3-5 specific action items as a JSON array of strings.`,
         return parsed.actions || parsed.suggestions || this.getDefaultActions(alert.alertType);
       }
     } catch (error) {
-      console.error("[portfolio-sentinel] Error generating action suggestions:", error);
+      logger.error("[portfolio-sentinel] Error generating action suggestions", error);
     }
 
     return this.getDefaultActions(alert.alertType);
@@ -811,7 +812,7 @@ Provide 3-5 specific action items as a JSON array of strings.`,
         payload,
       });
     } catch (error) {
-      console.error("[portfolio-sentinel] Failed to log agent event:", error);
+      logger.error("[portfolio-sentinel] Failed to log agent event", error);
     }
   }
 

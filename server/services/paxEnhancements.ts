@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Pax Intelligence Enhancements — Items 161-180
  * Property Q&A, deal advisor, county briefing, task creation, portfolio analysis, etc.

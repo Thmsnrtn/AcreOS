@@ -19,6 +19,7 @@ import { companyAgentService } from "./companyAgents";
 import { agentCommsService, type AgentChannel } from "./agentComms";
 import { executeWithAuthority } from "./agentAuthorityGate";
 import { executeAction } from "./agentActionExecutors";
+import { logger } from "../utils/logger";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -237,13 +238,13 @@ export async function processAgentReactions(): Promise<{ processed: number; reac
         // Mark the message as read by the reacting agent
         await agentCommsService.markRead(msg.id, rule.subscriberAgent);
       } catch (err) {
-        console.error(`[ReactionEngine] Rule ${rule.id} failed:`, err);
+        logger.error(`[ReactionEngine] Rule ${rule.id} failed`, err);
       }
     }
   }
 
   if (reactionsTriggered > 0) {
-    console.log(`[ReactionEngine] Processed ${processed} messages, triggered ${reactionsTriggered} reactions`);
+    logger.info(`[ReactionEngine] Processed ${processed} messages, triggered ${reactionsTriggered} reactions`);
   }
 
   return { processed, reactions: reactionsTriggered };

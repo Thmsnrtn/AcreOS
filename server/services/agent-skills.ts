@@ -7,6 +7,7 @@ import { getPropertyComps, calculateMarketValue, calculateOfferPrices, calculate
 import { emailService } from "./emailService";
 import { generateOfferLetter as generateOfferDocument } from "./documents";
 import { PropertyEnrichmentService } from "./propertyEnrichment";
+import { logger } from "../utils/logger";
 
 export type CoreAgentType = "research" | "deals" | "communications" | "operations";
 
@@ -2682,10 +2683,10 @@ export class SkillRegistry {
 
   registerSkill(skill: Skill): void {
     if (this.skills.has(skill.id)) {
-      console.warn(`[SkillRegistry] Overwriting existing skill: ${skill.id}`);
+      logger.warn(`[SkillRegistry] Overwriting existing skill: ${skill.id}`);
     }
     this.skills.set(skill.id, skill);
-    console.log(`[SkillRegistry] Registered skill: ${skill.id}`);
+    logger.info(`[SkillRegistry] Registered skill: ${skill.id}`);
   }
 
   unregisterSkill(skillId: string): boolean {
@@ -2739,13 +2740,13 @@ export class SkillRegistry {
 
     try {
       const validatedParams = skill.inputSchema.parse(params);
-      console.log(`[SkillRegistry] Executing skill: ${skillId}`, { context: { organizationId: context.organizationId } });
+      logger.info(`[SkillRegistry] Executing skill: ${skillId}`, { metadata: { detail: { context: { organizationId: context.organizationId } } } });
       
       const startTime = Date.now();
       const result = await skill.execute(validatedParams, context);
       const duration = Date.now() - startTime;
       
-      console.log(`[SkillRegistry] Skill ${skillId} completed in ${duration}ms`, { success: result.success });
+      logger.info(`[SkillRegistry] Skill ${skillId} completed in ${duration}ms`, { metadata: { detail: { success: result.success } } });
       
       return result;
     } catch (error: any) {

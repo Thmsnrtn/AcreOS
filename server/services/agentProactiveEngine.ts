@@ -17,6 +17,7 @@ import { agentCommsService } from "./agentComms";
 import { executeWithAuthority } from "./agentAuthorityGate";
 import { resolveAgentData } from "./agentDataResolvers";
 import { executeAction } from "./agentActionExecutors";
+import { logger } from "../utils/logger";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -319,12 +320,12 @@ export async function runProactiveEngine(): Promise<{ checked: number; acted: nu
         await companyAgentService.recordActivity(behavior.agentCodename);
       }
     } catch (err) {
-      console.error(`[ProactiveEngine] Behavior ${behavior.id} failed:`, err);
+      logger.error(`[ProactiveEngine] Behavior ${behavior.id} failed`, err);
     }
   }
 
   if (acted > 0) {
-    console.log(`[ProactiveEngine] Checked ${checked} behaviors, ${acted} took action`);
+    logger.info(`[ProactiveEngine] Checked ${checked} behaviors, ${acted} took action`);
   }
 
   return { checked, acted };

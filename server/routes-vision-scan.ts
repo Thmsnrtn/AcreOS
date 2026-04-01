@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 /**
  * Vision AI Field Scanner Routes
  *
@@ -6,7 +5,8 @@
  * POST /api/properties/:id/voice-memo   — audio → transcription + property note
  */
 
-import { Router, type Request, type Response } from "express";
+import { Router, type Response } from "express";
+import type { AuthenticatedRequest } from "./types/request";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { db } from "./db";
@@ -100,7 +100,7 @@ function extractObservationsFromAnalysis(analyses: any[]): FieldObservations {
 }
 
 // POST /api/properties/:id/vision-scan
-router.post("/:id/vision-scan", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
+router.post("/:id/vision-scan", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const org = req.organization;
     const propertyId = parseInt(req.params.id);
@@ -145,7 +145,7 @@ router.post("/:id/vision-scan", isAuthenticated, getOrCreateOrg, async (req: Req
     // Store as fieldScanData on the property
     await db
       .update(properties)
-      .set({ fieldScanData: observations, updatedAt: new Date() })
+      .set({ fieldScanData: observations as any, updatedAt: new Date() })
       .where(eq(properties.id, propertyId));
 
     // Recalculate LCS with field data (non-blocking)
@@ -162,7 +162,7 @@ router.post("/:id/vision-scan", isAuthenticated, getOrCreateOrg, async (req: Req
 });
 
 // POST /api/properties/:id/voice-memo
-router.post("/:id/voice-memo", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
+router.post("/:id/voice-memo", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const org = req.organization;
     const propertyId = parseInt(req.params.id);

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Autonomous Deal Machine (EPIC 2 — 24/7 Agent)
  *
@@ -51,6 +50,7 @@ import { subDays, addDays, format, differenceInDays } from "date-fns";
 import { computeSellerMotivationScore, getOptimalOutreachTiming } from "../services/sellerMotivationEngine";
 import { emailService } from "../services/emailService";
 import { getRelevantMemories, formatMemoriesForContext } from "../services/atlasMemory";
+import { logger } from "../utils/logger";
 
 export const AUTONOMOUS_DEAL_MACHINE_QUEUE = "autonomous-deal-machine";
 export const MORNING_BRIEFING_QUEUE = "morning-briefing-enhanced";
@@ -169,10 +169,7 @@ async function runAutoFollowUpEngine(
           }
         }
       } catch (err: any) {
-        console.warn(
-          `[DealMachine] Follow-up scheduling failed for lead ${lead.id}:`,
-          err.message
-        );
+        logger.warn(`[DealMachine] Follow-up scheduling failed for lead ${lead.id}`, { metadata: { detail: err.message } });
       }
     }
   }
@@ -286,7 +283,7 @@ async function scoreNewDealsForOrg(
           }
         } catch (err: any) {
           if (err.code !== "23505") {
-            console.warn(`[DealMachine] Lead creation failed:`, err.message);
+            logger.warn(`[DealMachine] Lead creation failed`, { metadata: { detail: err.message } });
           }
         }
       }
@@ -762,7 +759,7 @@ async function runAutonomousDealMachine(job: Job): Promise<void> {
 
         totalOrgsProcessed++;
       } catch (err: any) {
-        console.error(`[DealMachine] Org ${orgId} failed:`, err.message);
+        logger.error(`[DealMachine] Org ${orgId} failed`, err);
       }
     }
 
@@ -782,9 +779,9 @@ async function runAutonomousDealMachine(job: Job): Promise<void> {
         .where(eq(backgroundJobs.id, bgJobId));
     }
 
-    console.log("[DealMachine] Overnight run complete:", aggregateActivity);
+    logger.info("[DealMachine] Overnight run complete", { metadata: { detail: aggregateActivity } });
   } catch (err: any) {
-    console.error("[DealMachine] Fatal error:", err.message);
+    logger.error("[DealMachine] Fatal error", err);
     if (bgJobId) {
       await db
         .update(backgroundJobs)
@@ -844,12 +841,12 @@ export async function sendEnhancedMorningBriefings(): Promise<{ sent: number; fa
 
       sent++;
     } catch (err: any) {
-      console.error(`[EnhancedBriefing] Failed for org ${id}:`, err.message);
+      logger.error(`[EnhancedBriefing] Failed for org ${id}`, err);
       failed++;
     }
   }
 
-  console.log(`[EnhancedBriefing] Sent: ${sent}, Failed: ${failed}`);
+  logger.info(`[EnhancedBriefing] Sent: ${sent}, Failed: ${failed}`);
   return { sent, failed };
 }
 
@@ -873,7 +870,7 @@ export async function registerAutonomousDealMachineJob(queue: Queue): Promise<vo
       removeOnFail: 3,
     }
   );
-  console.log("[DealMachine] Registered nightly autonomous deal machine at 1 AM UTC");
+  logger.info("[DealMachine] Registered nightly autonomous deal machine at 1 AM UTC");
 }
 
 export function autonomousDealMachineJob(redisConnection: any): Worker {
@@ -890,11 +887,11 @@ export function autonomousDealMachineJob(redisConnection: any): Worker {
   );
 
   worker.on("completed", (job) => {
-    console.log(`[DealMachine] Job ${job.id} completed`);
+    logger.info(`[DealMachine] Job ${job.id} completed`);
   });
 
   worker.on("failed", (job, err) => {
-    console.error(`[DealMachine] Job ${job?.id} failed:`, err.message);
+    logger.error(`[DealMachine] Job ${job?.id} failed`, err);
   });
 
   return worker;

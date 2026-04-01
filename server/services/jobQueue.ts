@@ -4,6 +4,7 @@ import { log } from "../index";
 import { db } from "../db";
 import { backgroundJobs } from "@shared/schema";
 import { eq, inArray } from "drizzle-orm";
+import { logger } from "../utils/logger";
 
 export type JobType = "email" | "webhook" | "payment_sync" | "notification";
 export type JobStatus = "pending" | "processing" | "completed" | "failed" | "retrying";
@@ -41,10 +42,8 @@ const REDIS_URL = process.env.REDIS_URL;
 const USE_BULLMQ = Boolean(REDIS_URL);
 
 if (!USE_BULLMQ) {
-  console.warn(
-    "[jobQueue] REDIS_URL is not set — falling back to in-memory job queue. " +
-      "Jobs will not survive server restarts. Set REDIS_URL to enable BullMQ."
-  );
+  logger.warn("[jobQueue] REDIS_URL is not set — falling back to in-memory job queue. " +
+      "Jobs will not survive server restarts. Set REDIS_URL to enable BullMQ.");
 }
 
 // ---------------------------------------------------------------------------
@@ -778,9 +777,7 @@ async function getOrInitService(): Promise<JobQueueService> {
         _serviceInstance = await createBullMQService();
         log("BullMQ job queue initialised", "jobQueue");
       } catch (err) {
-        console.warn(
-          `[jobQueue] Failed to initialise BullMQ (${err}), falling back to in-memory queue`
-        );
+        logger.warn(`[jobQueue] Failed to initialise BullMQ (${err}), falling back to in-memory queue`);
         _serviceInstance = createInMemoryService();
       }
     } else {

@@ -30,6 +30,7 @@ import { eq, count, sql, and, isNull, gt } from "drizzle-orm";
 import { logActivity } from "./systemActivityLogger";
 import { emailService } from "./emailService";
 import { isFounderEmail } from "./founder";
+import { logger } from "../utils/logger";
 
 const RESCUE_RISK_THRESHOLD = 85;  // auto-send rescue email
 const ALERT_RISK_THRESHOLD = 80;   // create systemAlert
@@ -359,11 +360,11 @@ export const churnEngine = {
           }
         }
       } catch (err) {
-        console.error(`[ChurnEngine] Error scoring org ${org.id}:`, err);
+        logger.error(`[ChurnEngine] Error scoring org ${org.id}`, err);
       }
     }
 
-    console.log(`[ChurnEngine] Scored ${scored} orgs. ${alerted} new risk alerts. ${rescued} rescue emails sent.`);
+    logger.info(`[ChurnEngine] Scored ${scored} orgs. ${alerted} new risk alerts. ${rescued} rescue emails sent.`);
     logActivity({
       job: "churn_engine",
       action: "scoring_complete",

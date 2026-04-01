@@ -51,7 +51,7 @@ export function registerAnalyticsRoutes(app: Express): void {
       const metrics = await storage.getExecutiveMetrics(org.id, dateRange);
       res.json(metrics);
     } catch (error: any) {
-      console.error("Get executive metrics error:", error);
+      logger.error("Get executive metrics error", error);
       res.status(500).json({ message: error.message || "Failed to fetch executive metrics" });
     }
   });
@@ -66,7 +66,7 @@ export function registerAnalyticsRoutes(app: Express): void {
       const metrics = await storage.getRevenueMetrics(org.id, dateRange);
       res.json(metrics);
     } catch (error: any) {
-      console.error("Get revenue metrics error:", error);
+      logger.error("Get revenue metrics error", error);
       res.status(500).json({ message: error.message || "Failed to fetch revenue metrics" });
     }
   });
@@ -81,7 +81,7 @@ export function registerAnalyticsRoutes(app: Express): void {
       const metrics = await storage.getLeadMetrics(org.id, dateRange);
       res.json(metrics);
     } catch (error: any) {
-      console.error("Get lead metrics error:", error);
+      logger.error("Get lead metrics error", error);
       res.status(500).json({ message: error.message || "Failed to fetch lead metrics" });
     }
   });
@@ -96,7 +96,7 @@ export function registerAnalyticsRoutes(app: Express): void {
       const metrics = await storage.getDealMetrics(org.id, dateRange);
       res.json(metrics);
     } catch (error: any) {
-      console.error("Get deal metrics error:", error);
+      logger.error("Get deal metrics error", error);
       res.status(500).json({ message: error.message || "Failed to fetch deal metrics" });
     }
   });
@@ -111,7 +111,7 @@ export function registerAnalyticsRoutes(app: Express): void {
       const metrics = await storage.getCampaignMetrics(org.id, dateRange);
       res.json(metrics);
     } catch (error: any) {
-      console.error("Get campaign metrics error:", error);
+      logger.error("Get campaign metrics error", error);
       res.status(500).json({ message: error.message || "Failed to fetch campaign metrics" });
     }
   });
@@ -124,7 +124,7 @@ export function registerAnalyticsRoutes(app: Express): void {
       const metrics = await storage.getPipelineValue(org.id);
       res.json(metrics);
     } catch (error: any) {
-      console.error("Get pipeline metrics error:", error);
+      logger.error("Get pipeline metrics error", error);
       res.status(500).json({ message: error.message || "Failed to fetch pipeline metrics" });
     }
   });
@@ -139,7 +139,7 @@ export function registerAnalyticsRoutes(app: Express): void {
       const metrics = await storage.getDealVelocity(org.id, dateRange);
       res.json(metrics);
     } catch (error: any) {
-      console.error("Get velocity metrics error:", error);
+      logger.error("Get velocity metrics error", error);
       res.status(500).json({ message: error.message || "Failed to fetch velocity metrics" });
     }
   });
@@ -154,7 +154,7 @@ export function registerAnalyticsRoutes(app: Express): void {
       const metrics = await storage.getConversionRates(org.id, dateRange);
       res.json(metrics);
     } catch (error: any) {
-      console.error("Get conversion metrics error:", error);
+      logger.error("Get conversion metrics error", error);
       res.status(500).json({ message: error.message || "Failed to fetch conversion metrics" });
     }
   });
@@ -199,7 +199,7 @@ export function registerAnalyticsRoutes(app: Express): void {
 
       res.json({ kpis });
     } catch (error: any) {
-      console.error("Get team KPI error:", error);
+      logger.error("Get team KPI error", error);
       res.status(500).json({ message: error.message || "Failed to fetch team KPIs" });
     }
   });
@@ -215,7 +215,7 @@ export function registerAnalyticsRoutes(app: Express): void {
       const rules = await storage.getAutomationRules(org.id);
       res.json(rules);
     } catch (error: any) {
-      console.error("Get automation rules error:", error);
+      logger.error("Get automation rules error", error);
       res.status(500).json({ message: error.message || "Failed to fetch automation rules" });
     }
   });
@@ -231,7 +231,7 @@ export function registerAnalyticsRoutes(app: Express): void {
       }
       res.json(rule);
     } catch (error: any) {
-      console.error("Get automation rule error:", error);
+      logger.error("Get automation rule error", error);
       res.status(500).json({ message: error.message || "Failed to fetch automation rule" });
     }
   });
@@ -250,7 +250,7 @@ export function registerAnalyticsRoutes(app: Express): void {
       });
       res.status(201).json(rule);
     } catch (error: any) {
-      console.error("Create automation rule error:", error);
+      logger.error("Create automation rule error", error);
       res.status(500).json({ message: error.message || "Failed to create automation rule" });
     }
   });
@@ -269,7 +269,7 @@ export function registerAnalyticsRoutes(app: Express): void {
       const updated = await storage.updateAutomationRule(id, req.body);
       res.json(updated);
     } catch (error: any) {
-      console.error("Update automation rule error:", error);
+      logger.error("Update automation rule error", error);
       res.status(500).json({ message: error.message || "Failed to update automation rule" });
     }
   });
@@ -288,7 +288,7 @@ export function registerAnalyticsRoutes(app: Express): void {
       await storage.deleteAutomationRule(id);
       res.json({ success: true });
     } catch (error: any) {
-      console.error("Delete automation rule error:", error);
+      logger.error("Delete automation rule error", error);
       res.status(500).json({ message: error.message || "Failed to delete automation rule" });
     }
   });
@@ -305,7 +305,7 @@ export function registerAnalyticsRoutes(app: Express): void {
       const presets = await storage.getWorkspacePresets(org.id, userId);
       res.json(presets);
     } catch (error: any) {
-      console.error("Get workspace presets error:", error);
+      logger.error("Get workspace presets error", error);
       res.status(500).json({ message: error.message || "Failed to get workspace presets" });
     }
   });
@@ -323,7 +323,7 @@ export function registerAnalyticsRoutes(app: Express): void {
       });
       res.status(201).json(preset);
     } catch (error: any) {
-      console.error("Create workspace preset error:", error);
+      logger.error("Create workspace preset error", error);
       res.status(500).json({ message: error.message || "Failed to create workspace preset" });
     }
   });
@@ -341,7 +341,7 @@ export function registerAnalyticsRoutes(app: Express): void {
       await storage.deleteWorkspacePreset(id);
       res.json({ success: true });
     } catch (error: any) {
-      console.error("Delete workspace preset error:", error);
+      logger.error("Delete workspace preset error", error);
       res.status(500).json({ message: error.message || "Failed to delete workspace preset" });
     }
   });
@@ -361,7 +361,7 @@ export function registerAnalyticsRoutes(app: Express): void {
       const updated = await storage.toggleAutomationRule(id, enabled);
       res.json(updated);
     } catch (error: any) {
-      console.error("Toggle automation rule error:", error);
+      logger.error("Toggle automation rule error", error);
       res.status(500).json({ message: error.message || "Failed to toggle automation rule" });
     }
   });
@@ -376,7 +376,7 @@ export function registerAnalyticsRoutes(app: Express): void {
       const executions = await storage.getAutomationExecutions(org.id, ruleId, limit);
       res.json(executions);
     } catch (error: any) {
-      console.error("Get automation executions error:", error);
+      logger.error("Get automation executions error", error);
       res.status(500).json({ message: error.message || "Failed to fetch automation executions" });
     }
   });
@@ -395,7 +395,7 @@ export function registerAnalyticsRoutes(app: Express): void {
       const tasks = await storage.getMyTasks(org.id, userId);
       res.json(tasks);
     } catch (error: any) {
-      console.error("Get my tasks error:", error);
+      logger.error("Get my tasks error", error);
       res.status(500).json({ message: error.message || "Failed to fetch tasks" });
     }
   });
@@ -409,7 +409,7 @@ export function registerAnalyticsRoutes(app: Express): void {
       const tasks = await storage.getTasksByEntity(org.id, entityType, parseInt(entityId));
       res.json(tasks);
     } catch (error: any) {
-      console.error("Get entity tasks error:", error);
+      logger.error("Get entity tasks error", error);
       res.status(500).json({ message: error.message || "Failed to fetch tasks" });
     }
   });
@@ -428,7 +428,7 @@ export function registerAnalyticsRoutes(app: Express): void {
       const completed = await storage.completeTask(id);
       res.json(completed);
     } catch (error: any) {
-      console.error("Complete task error:", error);
+      logger.error("Complete task error", error);
       res.status(500).json({ message: error.message || "Failed to complete task" });
     }
   });
@@ -448,7 +448,7 @@ export function registerAnalyticsRoutes(app: Express): void {
       const notifications = await storage.getNotifications(org.id, userId, unreadOnly);
       res.json(notifications);
     } catch (error: any) {
-      console.error("Get notifications error:", error);
+      logger.error("Get notifications error", error);
       res.status(500).json({ message: error.message || "Failed to fetch notifications" });
     }
   });
@@ -463,7 +463,7 @@ export function registerAnalyticsRoutes(app: Express): void {
       const count = await storage.getUnreadNotificationCount(org.id, userId);
       res.json({ count });
     } catch (error: any) {
-      console.error("Get notification count error:", error);
+      logger.error("Get notification count error", error);
       res.status(500).json({ message: error.message || "Failed to fetch notification count" });
     }
   });
@@ -475,7 +475,7 @@ export function registerAnalyticsRoutes(app: Express): void {
       const notification = await storage.markNotificationRead(id);
       res.json(notification);
     } catch (error: any) {
-      console.error("Mark notification read error:", error);
+      logger.error("Mark notification read error", error);
       res.status(500).json({ message: error.message || "Failed to mark notification as read" });
     }
   });
@@ -490,7 +490,7 @@ export function registerAnalyticsRoutes(app: Express): void {
       await storage.markAllNotificationsRead(org.id, userId);
       res.json({ success: true });
     } catch (error: any) {
-      console.error("Mark all notifications read error:", error);
+      logger.error("Mark all notifications read error", error);
       res.status(500).json({ message: error.message || "Failed to mark notifications as read" });
     }
   });

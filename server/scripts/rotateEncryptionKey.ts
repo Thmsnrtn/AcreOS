@@ -14,12 +14,12 @@
  *
  * GENERATE A NEW KEY
  * ------------------
- *   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+ *   node -e "logger.info(require('crypto').randomBytes(32).toString('hex'))"
  *
  * PROCEDURE (zero-downtime)
  * -------------------------
  *  1. Generate a new 32-byte key:
- *       NEW=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
+ *       NEW=$(node -e "logger.info(require('crypto').randomBytes(32).toString('hex'))")
  *  2. Run this script with OLD_KEY = current FIELD_ENCRYPTION_KEY, NEW_KEY = $NEW
  *  3. Verify the script reports 0 errors.
  *  4. Update FIELD_ENCRYPTION_KEY in your production secret store to $NEW.
@@ -46,26 +46,22 @@ const OLD_KEY_HEX =
 const NEW_KEY_HEX = process.env.NEW_KEY || "";
 
 if (!OLD_KEY_HEX || OLD_KEY_HEX.length !== 64) {
-  console.error(
-    "ERROR: Set OLD_KEY (or FIELD_ENCRYPTION_KEY) to the current 64-hex-char key."
-  );
+  logger.error("ERROR: Set OLD_KEY (or FIELD_ENCRYPTION_KEY) to the current 64-hex-char key.");
   process.exit(1);
 }
 if (!NEW_KEY_HEX || NEW_KEY_HEX.length !== 64) {
-  console.error(
-    "ERROR: Set NEW_KEY to the new 64-hex-char key.\n" +
-    "  Generate: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\""
-  );
+  logger.error("ERROR: Set NEW_KEY to the new 64-hex-char key.\n" +
+    "  Generate: node -e \"logger.info(require('crypto').randomBytes(32).toString('hex'))\"");
   process.exit(1);
 }
 if (OLD_KEY_HEX === NEW_KEY_HEX) {
-  console.error("ERROR: OLD_KEY and NEW_KEY are identical. Nothing to rotate.");
+  logger.error("ERROR: OLD_KEY and NEW_KEY are identical. Nothing to rotate.");
   process.exit(1);
 }
 
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
-  console.error("ERROR: DATABASE_URL is required.");
+  logger.error("ERROR: DATABASE_URL is required.");
   process.exit(1);
 }
 
@@ -81,6 +77,7 @@ import {
   landCreditScores,
   portfolioSimulations,
 } from "../../shared/schema";
+import { logger } from "../utils/logger";
 
 interface EncryptedTable {
   tableName: string;
@@ -108,7 +105,7 @@ const ENCRYPTED_TABLES: EncryptedTable[] = [
 
 async function rotateTable(tableConfig: EncryptedTable): Promise<void> {
   const { tableName, table, encryptedColumns } = tableConfig;
-  console.log(`\n[rotate] Processing table: ${tableName}`);
+  logger.info(`\n[rotate] Processing table: ${tableName}`);
 
   let offset = 0;
   const BATCH = 100;
@@ -130,9 +127,7 @@ async function rotateTable(tableConfig: EncryptedTable): Promise<void> {
             updates[col] = rotateEncryption(val, OLD_KEY_HEX, NEW_KEY_HEX);
             rotatedFields++;
           } catch (err: any) {
-            console.error(
-              `  ERROR rotating ${tableName}.${col} id=${(row as any).id}: ${err.message}`
-            );
+            logger.error(`  ERROR rotating ${tableName}.${col} id=${(row as any).id}: ${err.message}`);
             errorCount++;
           }
         }
@@ -142,9 +137,7 @@ async function rotateTable(tableConfig: EncryptedTable): Promise<void> {
         try {
           await db.update(table).set(updates).where(eq(table.id, (row as any).id));
         } catch (err: any) {
-          console.error(
-            `  ERROR updating ${tableName} id=${(row as any).id}: ${err.message}`
-          );
+          logger.error(`  ERROR updating ${tableName} id=${(row as any).id}: ${err.message}`);
           errorCount++;
         }
       }
@@ -156,35 +149,31 @@ async function rotateTable(tableConfig: EncryptedTable): Promise<void> {
     process.stdout.write(`  Processed ${offset} rows...\r`);
   }
 
-  console.log(
-    `  Done: ${totalRows} rows, ${rotatedFields} fields rotated, ${errorCount} errors`
-  );
+  logger.info(`  Done: ${totalRows} rows, ${rotatedFields} fields rotated, ${errorCount} errors`);
 }
 
 async function main(): Promise<void> {
-  console.log("=".repeat(60));
-  console.log("AcreOS Field Encryption Key Rotation");
-  console.log("=".repeat(60));
-  console.log(`Old key: ${OLD_KEY_HEX.slice(0, 8)}...${OLD_KEY_HEX.slice(-8)} (redacted)`);
-  console.log(`New key: ${NEW_KEY_HEX.slice(0, 8)}...${NEW_KEY_HEX.slice(-8)} (redacted)`);
-  console.log(`Tables to process: ${ENCRYPTED_TABLES.map((t) => t.tableName).join(", ")}`);
-  console.log();
+  logger.info("=".repeat(60));
+  logger.info("AcreOS Field Encryption Key Rotation");
+  logger.info("=".repeat(60));
+  logger.info(`Old key: ${OLD_KEY_HEX.slice(0, 8)}...${OLD_KEY_HEX.slice(-8)} (redacted)`);
+  logger.info(`New key: ${NEW_KEY_HEX.slice(0, 8)}...${NEW_KEY_HEX.slice(-8)} (redacted)`);
+  logger.info(`Tables to process: ${ENCRYPTED_TABLES.map((t) => t.tableName).join(", ")}`);
+  logger.info("");
 
   for (const tableConfig of ENCRYPTED_TABLES) {
     await rotateTable(tableConfig);
   }
 
-  console.log("\n" + "=".repeat(60));
-  console.log("Key rotation complete.");
-  console.log(
-    "Next step: Update FIELD_ENCRYPTION_KEY in your secret store to the new key and restart the app."
-  );
-  console.log("=".repeat(60));
+  logger.info("\n" + "=".repeat(60));
+  logger.info("Key rotation complete.");
+  logger.info("Next step: Update FIELD_ENCRYPTION_KEY in your secret store to the new key and restart the app.");
+  logger.info("=".repeat(60));
 
   await pool.end();
 }
 
 main().catch((err) => {
-  console.error("Fatal error:", err);
+  logger.error("Fatal error", err);
   process.exit(1);
 });

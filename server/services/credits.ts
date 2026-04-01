@@ -17,6 +17,7 @@ import {
   type CreditPackId,
   type SubscriptionTier,
 } from "@shared/schema";
+import { logger } from "../utils/logger";
 
 export class CreditService {
   async isFounder(organizationId: number): Promise<boolean> {
@@ -442,7 +443,7 @@ export class UsageMeteringService {
       })
       .returning();
 
-    console.log(`Applied monthly allowance: Org ${organizationId}, Tier ${tier}, Amount: $${(monthlyCredits / 100).toFixed(2)}`);
+    logger.info(`Applied monthly allowance: Org ${organizationId}, Tier ${tier}, Amount: $${(monthlyCredits / 100).toFixed(2)}`);
     return transaction;
   }
 
@@ -465,12 +466,12 @@ export class UsageMeteringService {
         await this.applyMonthlyAllowance(org.id);
         processed++;
       } catch (err) {
-        console.error(`Failed to apply monthly allowance for org ${org.id}:`, err);
+        logger.error(`Failed to apply monthly allowance for org ${org.id}`, err);
         failed++;
       }
     }
 
-    console.log(`Monthly allowances processed: ${processed} success, ${failed} failed`);
+    logger.info(`Monthly allowances processed: ${processed} success, ${failed} failed`);
     return { processed, failed };
   }
 

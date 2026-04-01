@@ -13,6 +13,7 @@
 import { wsServer } from "../websocket";
 import { db } from "../db";
 import { sql } from "drizzle-orm";
+import { logger } from "../utils/logger";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -110,7 +111,7 @@ class NotificationDispatcher {
         await this.queueEmail(event, notification);
       }
     } catch (err: any) {
-      console.error(`[notification-dispatcher] Error dispatching ${event.eventType}:`, err.message);
+      logger.error(`[notification-dispatcher] Error dispatching ${event.eventType}`, err);
     }
   }
 
@@ -146,9 +147,7 @@ class NotificationDispatcher {
    */
   private async sendSms(event: NotificationEvent, notification: StoredNotification): Promise<void> {
     // Log SMS intent — actual sending handled by existing Twilio service
-    console.log(
-      `[notification-dispatcher] SMS queued: ${notification.title} — ${notification.message}`,
-    );
+    logger.info(`[notification-dispatcher] SMS queued: ${notification.title} — ${notification.message}`);
     // In production, this would call twilioService.sendSms(founderPhone, message)
   }
 
@@ -157,9 +156,7 @@ class NotificationDispatcher {
    */
   private async queueEmail(event: NotificationEvent, notification: StoredNotification): Promise<void> {
     // Log email intent — actual sending handled by existing email service
-    console.log(
-      `[notification-dispatcher] Email queued: ${notification.title} — ${notification.message}`,
-    );
+    logger.info(`[notification-dispatcher] Email queued: ${notification.title} — ${notification.message}`);
     // In production, this would call emailService.send(founderEmail, subject, body)
   }
 

@@ -11,6 +11,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, gte, lte, sql, avg } from "drizzle-orm";
 import { getOpenAIClient } from "../utils/openaiClient";
+import { logger } from "../utils/logger";
 
 interface RecordCallParams {
   leadId: number;
@@ -195,7 +196,7 @@ export class VoiceCallAIService {
           }
         }
       } catch (error) {
-        console.error("[voice-call-ai] Whisper transcription error:", error);
+        logger.error("[voice-call-ai] Whisper transcription error", error);
       }
     }
 
@@ -303,7 +304,7 @@ Respond in JSON format:
         sentiment = analysis.sentiment || "neutral";
         sentimentScore = analysis.sentimentScore || 0;
       } catch (error) {
-        console.error("[voice-call-ai] Analysis error:", error);
+        logger.error("[voice-call-ai] Analysis error", error);
         summary = "Error analyzing transcript";
       }
     } else {
@@ -398,7 +399,7 @@ Respond in JSON format:
           createdFromCall: true,
         }));
       } catch (error) {
-        console.error("[voice-call-ai] Action item extraction error:", error);
+        logger.error("[voice-call-ai] Action item extraction error", error);
       }
     }
 
@@ -467,7 +468,7 @@ Respond in JSON format:
         const extractedText = response.choices[0]?.message?.content || "{}";
         extractedData = JSON.parse(extractedText);
       } catch (error) {
-        console.error("[voice-call-ai] Key data extraction error:", error);
+        logger.error("[voice-call-ai] Key data extraction error", error);
       }
     }
 
@@ -564,7 +565,7 @@ Respond in JSON format:
           strengths: aiInsights.strengths || [],
         };
       } catch (error) {
-        console.error("[voice-call-ai] Coaching insights error:", error);
+        logger.error("[voice-call-ai] Coaching insights error", error);
       }
     }
 

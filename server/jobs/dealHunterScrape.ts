@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 /**
  * Deal Hunter Auto-Scrape Job
  *
@@ -22,6 +21,7 @@ import {
 import { eq, and, sql, desc } from "drizzle-orm";
 import { dealHunterService } from "../services/dealHunter";
 import { createHash } from "crypto";
+import { logger } from "../utils/logger";
 
 export const DEAL_HUNTER_QUEUE_NAME = "deal-hunter-scrape";
 
@@ -101,7 +101,7 @@ async function sendHighScoreAlerts(deal: any): Promise<void> {
         actionUrl: `/deal-hunter/${deal.id}`,
       });
     } catch (err: any) {
-      console.error(`[DealHunterScrape] Alert insert failed for rule ${rule.id}:`, err.message);
+      logger.error(`[DealHunterScrape] Alert insert failed for rule ${rule.id}`, err);
     }
   }
 }
@@ -125,7 +125,7 @@ async function processSource(sourceId: number): Promise<{ dealsFound: number; ne
 
   if (!result.success) {
     // Exponential backoff: source failure count already tracked in scrapeSource
-    console.warn(`[DealHunterScrape] Source ${sourceId} (${source.name}) failed: ${result.error}`);
+    logger.warn(`[DealHunterScrape] Source ${sourceId} (${source.name}) failed: ${result.error}`);
     return { dealsFound: 0, newDeals: 0, duplicates: 0 };
   }
 
@@ -211,7 +211,7 @@ async function processDealHunterScrapeJob(job: Job): Promise<void> {
       .where(eq(dealSources.isActive, true))
       .orderBy(desc(dealSources.priority));
 
-    console.log(`[DealHunterScrape] Processing ${sources.length} active sources`);
+    logger.info(`[DealHunterScrape] Processing ${sources.length} active sources`);
 
     for (const source of sources) {
       try {
@@ -220,10 +220,10 @@ async function processDealHunterScrapeJob(job: Job): Promise<void> {
         totalNew += newDeals;
         totalDuplicates += duplicates;
         sourcesProcessed++;
-        console.log(`[DealHunterScrape] Source ${source.name}: ${dealsFound} found, ${newDeals} new, ${duplicates} duplicates`);
+        logger.info(`[DealHunterScrape] Source ${source.name}: ${dealsFound} found, ${newDeals} new, ${duplicates} duplicates`);
       } catch (err: any) {
         sourcesFailed++;
-        console.error(`[DealHunterScrape] Source ${source.id} threw:`, err.message);
+        logger.error(`[DealHunterScrape] Source ${source.id} threw`, err);
       }
     }
 
@@ -238,9 +238,9 @@ async function processDealHunterScrapeJob(job: Job): Promise<void> {
         .where(eq(backgroundJobs.id, jobId));
     }
 
-    console.log(`[DealHunterScrape] Done. Sources: ${sourcesProcessed} ok, ${sourcesFailed} failed. Deals: ${totalNew} new of ${totalDeals} found`);
+    logger.info(`[DealHunterScrape] Done. Sources: ${sourcesProcessed} ok, ${sourcesFailed} failed. Deals: ${totalNew} new of ${totalDeals} found`);
   } catch (err: any) {
-    console.error("[DealHunterScrape] Fatal error:", err.message);
+    logger.error("[DealHunterScrape] Fatal error", err);
     if (jobId) {
       await db.update(backgroundJobs)
         .set({ status: "failed", finishedAt: new Date(), errorMessage: err.message })
@@ -276,7 +276,7 @@ export async function registerDealHunterScrapeJob(queue: Queue): Promise<void> {
       removeOnFail: 3,
     }
   );
-  console.log("[DealHunterScrape] Registered scrape job (every 2 hours)");
+  logger.info("[DealHunterScrape] Registered scrape job (every 2 hours)");
 }
 
 /**
@@ -296,11 +296,11 @@ export function dealHunterScrapeJob(redisConnection: any): Worker {
   );
 
   worker.on("completed", (job) => {
-    console.log(`[DealHunterScrape] Job ${job.id} completed`);
+    logger.info(`[DealHunterScrape] Job ${job.id} completed`);
   });
 
   worker.on("failed", (job, err) => {
-    console.error(`[DealHunterScrape] Job ${job?.id} failed:`, err.message);
+    logger.error(`[DealHunterScrape] Job ${job?.id} failed`, err);
   });
 
   return worker;

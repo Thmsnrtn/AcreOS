@@ -35,6 +35,7 @@ import {
 } from "./aiRouter";
 import { executeAgentTask, type CoreAgentType } from "./core-agents";
 import type { AgentContext } from "./core-agents";
+import { logger } from "../utils/logger";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -120,7 +121,7 @@ export class DirectorAgent {
     const observationHistory: string[] = [];
     let totalCostEstimate = 0;
 
-    console.log(`[Director] Processing goal: "${input.goal.slice(0, 80)}..."`);
+    logger.info(`[Director] Processing goal: "${input.goal.slice(0, 80)}..."`);
 
     for (let i = 1; i <= maxIter; i++) {
       // ── REASON: decide what to do next ──────────────────────────────────────
@@ -165,7 +166,7 @@ export class DirectorAgent {
       observationHistory.push(`Step ${i} (${action.agentType}.${action.action}): ${observation}`);
       steps.push({ iteration: i, thought, action, observation, goalMet: false });
 
-      console.log(`[Director] Step ${i}/${maxIter}: ${action.agentType}.${action.action} → ${observation.slice(0, 120)}`);
+      logger.info(`[Director] Step ${i}/${maxIter}: ${action.agentType}.${action.action} → ${observation.slice(0, 120)}`);
     }
 
     // ── SYNTHESIZE: produce a coherent final response ─────────────────────────
@@ -349,6 +350,6 @@ export async function queueDirectorGoal(
     } as any,
   }).returning({ id: agentTasks.id });
 
-  console.log(`[Director] Queued goal task #${task.id}: "${goal.slice(0, 60)}"`);
+  logger.info(`[Director] Queued goal task #${task.id}: "${goal.slice(0, 60)}"`);
   return task.id;
 }

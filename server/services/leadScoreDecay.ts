@@ -23,6 +23,7 @@ import {
 } from "@shared/schema";
 import { eq, and, lt, sql, gte, isNotNull, desc } from "drizzle-orm";
 import { jobQueueService } from "./jobQueue";
+import { logger } from "../utils/logger";
 
 const DECAY_PER_WEEK = 0.05; // 5% per week
 const DAYS_BEFORE_COLD_ALERT = 14;
@@ -153,7 +154,7 @@ export async function registerLeadScoreDecayJob(): Promise<void> {
     { name: "lead-score-decay", orgId: null }, // orgId null = run for all orgs
     "0 3 * * *" // 3:00 AM UTC nightly
   );
-  console.log("[LeadScoreDecay] Nightly decay job registered at 3:00 AM UTC");
+  logger.info("[LeadScoreDecay] Nightly decay job registered at 3:00 AM UTC");
 }
 
 // ─── Job processor (called by BullMQ worker) ─────────────────────────────────
@@ -169,7 +170,7 @@ export async function processLeadScoreDecay(): Promise<void> {
     if (!organizationId) continue;
     const result = await decayOrganizationLeads(organizationId);
     if (result.coldAlerts > 0) {
-      console.log(`[LeadScoreDecay] Org ${organizationId}: ${result.decayed} decayed, ${result.coldAlerts} cold alerts`);
+      logger.info(`[LeadScoreDecay] Org ${organizationId}: ${result.decayed} decayed, ${result.coldAlerts} cold alerts`);
     }
   }
 }

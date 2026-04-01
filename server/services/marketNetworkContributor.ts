@@ -16,6 +16,7 @@
 import { db } from "../db";
 import { eq, and, isNull, count, sql } from "drizzle-orm";
 import { marketMetrics, agentMemory, properties, deals, organizations } from "@shared/schema";
+import { logger } from "../utils/logger";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -222,10 +223,8 @@ export async function contributeClosedDealToNetwork(
         await setStagingEntries(county, state, []);
       }
 
-      console.log(
-        `[marketNetworkContributor] Contributed to global pool for ${county}, ${state} — ` +
-          `total now ${totalAfterThis} (flushed ${stagingEntries.length} staged)`
-      );
+      logger.info(`[marketNetworkContributor] Contributed to global pool for ${county}, ${state} — ` +
+          `total now ${totalAfterThis} (flushed ${stagingEntries.length} staged)`);
       return {
         contributed: true,
         reason: `Contributed to global pool for ${county}, ${state}`,
@@ -235,17 +234,15 @@ export async function contributeClosedDealToNetwork(
       stagingEntries.push(entry);
       await setStagingEntries(county, state, stagingEntries);
 
-      console.log(
-        `[marketNetworkContributor] Staged contribution for ${county}, ${state} — ` +
-          `${stagingEntries.length}/${MIN_COHORT_SIZE} entries (privacy threshold not yet met)`
-      );
+      logger.info(`[marketNetworkContributor] Staged contribution for ${county}, ${state} — ` +
+          `${stagingEntries.length}/${MIN_COHORT_SIZE} entries (privacy threshold not yet met)`);
       return {
         contributed: false,
         reason: `Staged for ${county}, ${state} (${stagingEntries.length}/${MIN_COHORT_SIZE} privacy threshold)`,
       };
     }
   } catch (err: any) {
-    console.error("[marketNetworkContributor] contributeClosedDealToNetwork error:", err.message);
+    logger.error("[marketNetworkContributor] contributeClosedDealToNetwork error", err);
     return { contributed: false, reason: `Error: ${err.message}` };
   }
 }
@@ -307,7 +304,7 @@ export async function getNetworkCompsForCounty(
       note: `Based on ${prices.length} AcreOS network transactions`,
     };
   } catch (err: any) {
-    console.error("[marketNetworkContributor] getNetworkCompsForCounty error:", err.message);
+    logger.error("[marketNetworkContributor] getNetworkCompsForCounty error", err);
     return null;
   }
 }
@@ -378,7 +375,7 @@ export async function getNetworkCoverageStats(): Promise<
       meetsThreshold: Number(r.dataPoints) >= MIN_COHORT_SIZE,
     }));
   } catch (err: any) {
-    console.error("[marketNetworkContributor] getNetworkCoverageStats error:", err.message);
+    logger.error("[marketNetworkContributor] getNetworkCoverageStats error", err);
     return [];
   }
 }

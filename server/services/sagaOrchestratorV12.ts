@@ -15,6 +15,7 @@ import {
 } from "@shared/schema";
 import { eq, desc, and, lte, sql, isNull, inArray } from "drizzle-orm";
 import crypto from "crypto";
+import { logger } from "../utils/logger";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -54,9 +55,7 @@ interface StepExecutionResult {
 // ─── Real Step Execution via Execution Engine ────────────────────────────────
 
 async function executeStep(step: SagaStep): Promise<StepExecutionResult> {
-  console.log(
-    `[saga] Executing step ${step.order}: ${step.agent} → ${step.action}`,
-  );
+  logger.info(`[saga] Executing step ${step.order}: ${step.agent} → ${step.action}`);
 
   try {
     const { executionEngine } = await import("./executionEngine");
@@ -94,9 +93,7 @@ async function executeStep(step: SagaStep): Promise<StepExecutionResult> {
 }
 
 async function executeCompensation(step: SagaStep): Promise<StepExecutionResult> {
-  console.log(
-    `[saga] Compensating step ${step.order}: ${step.agent} → ${step.compensatingAction}`,
-  );
+  logger.info(`[saga] Compensating step ${step.order}: ${step.agent} → ${step.compensatingAction}`);
 
   if (!step.compensatingAction) {
     return { success: true, result: { note: "No compensation defined", agent: step.agent } };
@@ -144,9 +141,7 @@ class SagaOrchestratorService {
       .limit(1);
 
     if (existing.length > 0) {
-      console.log(
-        `[saga] Idempotent hit for key ${params.idempotencyKey}, returning existing saga ${existing[0].sagaId}`,
-      );
+      logger.info(`[saga] Idempotent hit for key ${params.idempotencyKey}, returning existing saga ${existing[0].sagaId}`);
       return existing[0];
     }
 
@@ -176,9 +171,7 @@ class SagaOrchestratorService {
       })
       .returning();
 
-    console.log(
-      `[saga] Created saga ${sagaId} (${params.sagaName}) with ${steps.length} steps`,
-    );
+    logger.info(`[saga] Created saga ${sagaId} (${params.sagaName}) with ${steps.length} steps`);
     return saga;
   }
 
@@ -215,9 +208,7 @@ class SagaOrchestratorService {
         failedAtStep = i;
         await this.updateSteps(sagaId, steps, i);
 
-        console.warn(
-          `[saga] Step ${i + 1}/${steps.length} failed in saga ${sagaId}: ${result.error}`,
-        );
+        logger.warn(`[saga] Step ${i + 1}/${steps.length} failed in saga ${sagaId}: ${result.error}`);
         break;
       }
     }
@@ -235,7 +226,7 @@ class SagaOrchestratorService {
         .where(eq(sagaInstances.sagaId, sagaId))
         .returning();
 
-      console.log(`[saga] Saga ${sagaId} completed successfully`);
+      logger.info(`[saga] Saga ${sagaId} completed successfully`);
       return completed;
     }
 
@@ -267,9 +258,7 @@ class SagaOrchestratorService {
         // Compensation itself failed — partial compensation
         allCompensated = false;
         step.compensationResult = { error: result.error };
-        console.error(
-          `[saga] Compensation failed for step ${i + 1} in saga ${sagaId}`,
-        );
+        logger.error(`[saga] Compensation failed for step ${i + 1} in saga ${sagaId}`);
       }
     }
 
@@ -286,7 +275,7 @@ class SagaOrchestratorService {
       .where(eq(sagaInstances.sagaId, sagaId))
       .returning();
 
-    console.log(`[saga] Saga ${sagaId} ${finalStatus}`);
+    logger.info(`[saga] Saga ${sagaId} ${finalStatus}`);
     return updated;
   }
 
@@ -396,18 +385,13 @@ class SagaOrchestratorService {
           await this.compensate(saga.sagaId);
           compensated.push(saga.sagaId);
         } catch (err) {
-          console.error(
-            `[saga] Failed to compensate timed-out saga ${saga.sagaId}:`,
-            (err as Error).message,
-          );
+          logger.error(`[saga] Failed to compensate timed-out saga ${saga.sagaId}`, undefined, { metadata: { detail: (err as Error).message } });
         }
       }
     }
 
     if (timedOut.length > 0) {
-      console.log(
-        `[saga] Timed out ${timedOut.length} sagas, compensated ${compensated.length}`,
-      );
+      logger.info(`[saga] Timed out ${timedOut.length} sagas, compensated ${compensated.length}`);
     }
 
     return { timedOut, compensated };

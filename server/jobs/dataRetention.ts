@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Data retention job — runs nightly to archive/purge old records.
  * Prevents unbounded table growth for high-volume tables.

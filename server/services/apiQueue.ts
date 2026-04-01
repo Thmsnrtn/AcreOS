@@ -2,6 +2,7 @@ import { db } from '../db';
 import { apiJobs } from '@shared/schema';
 import { eq, lt, and, or, isNull } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
+import { logger } from "../utils/logger";
 
 interface RateLimitConfig {
   maxRequests: number;
@@ -205,7 +206,7 @@ export class ApiQueueService {
 
     const totalDeleted = completedResult.length + failedResult.length;
     if (totalDeleted > 0) {
-      console.log(`[queue] Cleaned up ${completedResult.length} completed and ${failedResult.length} failed jobs`);
+      logger.info(`[queue] Cleaned up ${completedResult.length} completed and ${failedResult.length} failed jobs`);
     }
     
     return totalDeleted;

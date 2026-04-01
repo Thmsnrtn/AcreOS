@@ -9,6 +9,7 @@ import { eq, and, isNull, or, sql } from "drizzle-orm";
 import { lookupParcelByAPN, type ParcelLookupResult } from "./parcel";
 import { getComparableProperties, calculateOfferPrices, type ComparableProperty, type OfferPrices } from "./comps";
 import OpenAI from "openai";
+import { logger } from "../utils/logger";
 
 // Cache freshness: 30 days
 const CACHE_FRESHNESS_MS = 30 * 24 * 60 * 60 * 1000;
@@ -225,7 +226,7 @@ Provide a professional assessment focusing on:
 
     return response.choices[0]?.message?.content || undefined;
   } catch (error) {
-    console.error("[DueDiligence] AI summary generation failed:", error);
+    logger.error("[DueDiligence] AI summary generation failed", error);
     return undefined;
   }
 }
@@ -277,7 +278,7 @@ async function getOrCreateParcelSnapshot(
     const isStale = Date.now() - fetchedAt > CACHE_FRESHNESS_MS;
     
     if (!isStale) {
-      console.log(`[DueDiligence] Cache hit for ${normalizedApn} in ${county}, ${state}`);
+      logger.info(`[DueDiligence] Cache hit for ${normalizedApn} in ${county}, ${state}`);
       return {
         snapshot: existingSnapshot,
         dataSource: "cache",
@@ -285,7 +286,7 @@ async function getOrCreateParcelSnapshot(
       };
     }
     
-    console.log(`[DueDiligence] Cache stale for ${normalizedApn}, refreshing...`);
+    logger.info(`[DueDiligence] Cache stale for ${normalizedApn}, refreshing...`);
     return {
       snapshot: existingSnapshot,
       dataSource: "cache",
@@ -293,7 +294,7 @@ async function getOrCreateParcelSnapshot(
     };
   }
 
-  console.log(`[DueDiligence] Cache miss for ${normalizedApn} in ${county}, ${state}`);
+  logger.info(`[DueDiligence] Cache miss for ${normalizedApn} in ${county}, ${state}`);
   return {
     snapshot: null,
     dataSource: "property_record",
@@ -373,10 +374,10 @@ async function saveParcelSnapshot(
       })
       .returning();
 
-    console.log(`[DueDiligence] Saved snapshot for ${normalizedApn}`);
+    logger.info(`[DueDiligence] Saved snapshot for ${normalizedApn}`);
     return inserted || null;
   } catch (error) {
-    console.error("[DueDiligence] Failed to save snapshot:", error);
+    logger.error("[DueDiligence] Failed to save snapshot", error);
     return null;
   }
 }
@@ -462,7 +463,7 @@ export async function generateDueDiligenceReport(
           })
           .where(eq(properties.id, propertyId));
         
-        console.log(`[DueDiligence] Updated parcel data from ${dataSource}`);
+        logger.info(`[DueDiligence] Updated parcel data from ${dataSource}`);
       } else if (parcelResult.error) {
         errors.push(`Parcel lookup: ${parcelResult.error}`);
       }

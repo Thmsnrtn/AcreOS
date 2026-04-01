@@ -11,6 +11,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, isNull, or, sql, inArray } from "drizzle-orm";
 import { getOpenAIClient } from "../utils/openaiClient";
+import { logger } from "../utils/logger";
 
 export type RuleType = "subdivision" | "building" | "zoning" | "environmental" | "disclosure" | "recording" | "tax";
 export type CheckStatus = "pending" | "compliant" | "non_compliant" | "not_applicable" | "needs_review";
@@ -125,7 +126,7 @@ class ComplianceGuardianService {
         relatedEntityId,
       });
     } catch (error) {
-      console.error(`[compliance-guardian] Failed to log agent event:`, error);
+      logger.error(`[compliance-guardian] Failed to log agent event`, error);
     }
   }
 
@@ -148,7 +149,7 @@ class ComplianceGuardianService {
 
     const [rule] = await db.insert(complianceRules).values(ruleData).returning();
     
-    console.log(`[compliance-guardian] Added rule ${rule.id}: ${rule.ruleName} for ${params.state}${params.county ? `/${params.county}` : ""}`);
+    logger.info(`[compliance-guardian] Added rule ${rule.id}: ${rule.ruleName} for ${params.state}${params.county ? `/${params.county}` : ""}`);
     
     return rule;
   }
@@ -166,7 +167,7 @@ class ComplianceGuardianService {
       .returning();
 
     if (rule) {
-      console.log(`[compliance-guardian] Updated rule ${ruleId}: ${rule.ruleName}`);
+      logger.info(`[compliance-guardian] Updated rule ${ruleId}: ${rule.ruleName}`);
     }
 
     return rule || null;
@@ -180,7 +181,7 @@ class ComplianceGuardianService {
       .returning();
 
     if (rule) {
-      console.log(`[compliance-guardian] Deactivated rule ${ruleId}: ${rule.ruleName}`);
+      logger.info(`[compliance-guardian] Deactivated rule ${ruleId}: ${rule.ruleName}`);
     }
 
     return rule || null;

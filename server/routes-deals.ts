@@ -313,11 +313,19 @@ export function registerDealRoutes(app: Express): void {
   });
 
   // Manual deal enrichment trigger endpoint
+  const enrichDealSchema = z.object({
+    forceRefresh: z.boolean().optional().default(false),
+  });
+
   api.post("/api/deals/:id/enrich", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
       const dealId = Number(req.params.id);
-      const forceRefresh = req.body.forceRefresh === true;
+      const parsed = enrichDealSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+      const forceRefresh = parsed.data.forceRefresh;
       
       const deal = await storage.getDeal(org.id, dealId);
       if (!deal) {
@@ -416,11 +424,27 @@ export function registerDealRoutes(app: Express): void {
     res.json(template);
   });
 
+  const createDueDiligenceTemplateSchema = z.object({
+    name: z.string().min(1, "Template name is required"),
+    description: z.string().optional(),
+    category: z.string().optional(),
+    items: z.array(z.object({
+      title: z.string().min(1),
+      description: z.string().optional(),
+      category: z.string().optional(),
+      priority: z.string().optional(),
+    })).optional(),
+  });
+
   api.post("/api/due-diligence/templates", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
+      const parsed = createDueDiligenceTemplateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
       const template = await storage.createDueDiligenceTemplate({
-        ...req.body,
+        ...parsed.data,
         organizationId: org.id,
       });
       res.status(201).json(template);
@@ -432,8 +456,14 @@ export function registerDealRoutes(app: Express): void {
     }
   });
 
+  const updateDueDiligenceTemplateSchema = createDueDiligenceTemplateSchema.partial();
+
   api.put("/api/due-diligence/templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const template = await storage.updateDueDiligenceTemplate(Number(req.params.id), req.body);
+    const parsed = updateDueDiligenceTemplateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return Errors.validationFailed(res, parsed.error.errors);
+    }
+    const template = await storage.updateDueDiligenceTemplate(Number(req.params.id), parsed.data);
     if (!template) return Errors.notFound(res, "Template");
     res.json(template);
   });
@@ -448,12 +478,17 @@ export function registerDealRoutes(app: Express): void {
     res.json(items);
   });
   
+  const applyTemplateSchema = z.object({
+    templateId: z.number().int().positive("templateId is required"),
+  });
+
   api.post("/api/properties/:id/due-diligence/apply-template", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const { templateId } = req.body;
-      if (!templateId) {
-        return Errors.badRequest(res, "templateId is required");
+      const parsed = applyTemplateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
       }
+      const { templateId } = parsed.data;
       const items = await storage.applyTemplateToProperty(Number(req.params.id), templateId);
       res.json(items);
     } catch (err: any) {

@@ -22,6 +22,7 @@ import {
 import { eq, and, desc, sql } from "drizzle-orm";
 import { routeAITask, TaskComplexity } from "./aiRouter";
 import { resolveAgentData } from "./agentDataResolvers";
+import { logger } from "../utils/logger";
 
 // ─── Service ─────────────────────────────────────────────────────────────────
 
@@ -327,8 +328,8 @@ Write the draft now. No preamble, just the content.`,
     const tier = await this.getAutonomyTier();
 
     if (tier === "shadow") {
-      console.log(`[FounderTwin/Shadow] WOULD SEND draft #${draftId}: "${draft.title}" (${draft.draftType})`);
-      console.log(`[FounderTwin/Shadow] Content preview: ${(draft.content || "").slice(0, 200)}...`);
+      logger.info(`[FounderTwin/Shadow] WOULD SEND draft #${draftId}: "${draft.title}" (${draft.draftType})`);
+      logger.info(`[FounderTwin/Shadow] Content preview: ${(draft.content || "").slice(0, 200)}...`);
 
       await db.update(founderDrafts)
         .set({ status: "shadow_logged", updatedAt: new Date() })

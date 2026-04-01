@@ -1,4 +1,5 @@
 import Lob from 'lob';
+import { logger } from "../utils/logger";
 
 export type LobErrorType = 
   | 'address_invalid'
@@ -146,7 +147,7 @@ export class LobService {
     try {
       const client = this.getClient(mode);
       
-      console.log(`[LobService] Sending letter via ${mode} mode to ${options.to.name}`);
+      logger.info(`[LobService] Sending letter via ${mode} mode to ${options.to.name}`);
       
       const result = await client.letters.create({
         to: {
@@ -170,7 +171,7 @@ export class LobService {
         double_sided: options.doubleSided ?? false,
       });
       
-      console.log(`[LobService] Letter sent successfully: ${result.id}, expected delivery: ${result.expected_delivery_date}`);
+      logger.info(`[LobService] Letter sent successfully: ${result.id}, expected delivery: ${result.expected_delivery_date}`);
       
       return {
         success: true,
@@ -181,12 +182,12 @@ export class LobService {
     } catch (error: any) {
       const classified = classifyLobError(error);
       
-      console.error(`[LobService] Letter send failed:`, {
+      logger.error(`[LobService] Letter send failed`, undefined, { metadata: { detail: {
         errorType: classified.type,
         message: classified.message,
         recipient: options.to.name,
         mode,
-      });
+      } } });
       
       return {
         success: false,
@@ -202,7 +203,7 @@ export class LobService {
     try {
       const client = this.getClient(mode);
       
-      console.log(`[LobService] Sending postcard via ${mode} mode to ${options.to.name}`);
+      logger.info(`[LobService] Sending postcard via ${mode} mode to ${options.to.name}`);
       
       const result = await client.postcards.create({
         to: {
@@ -226,7 +227,7 @@ export class LobService {
         size: options.size || '4x6',
       });
       
-      console.log(`[LobService] Postcard sent successfully: ${result.id}, expected delivery: ${result.expected_delivery_date}`);
+      logger.info(`[LobService] Postcard sent successfully: ${result.id}, expected delivery: ${result.expected_delivery_date}`);
       
       return {
         success: true,
@@ -237,12 +238,12 @@ export class LobService {
     } catch (error: any) {
       const classified = classifyLobError(error);
       
-      console.error(`[LobService] Postcard send failed:`, {
+      logger.error(`[LobService] Postcard send failed`, undefined, { metadata: { detail: {
         errorType: classified.type,
         message: classified.message,
         recipient: options.to.name,
         mode,
-      });
+      } } });
       
       return {
         success: false,

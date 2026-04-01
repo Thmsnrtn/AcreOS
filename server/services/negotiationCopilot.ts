@@ -16,6 +16,7 @@ import {
 import { eq, and, desc, sql, avg, count } from "drizzle-orm";
 import { getOpenAIClient } from "../utils/openaiClient";
 import { voiceLearningService } from "./voiceLearning";
+import { logger } from "../utils/logger";
 
 type ObjectionCategory = "price" | "timing" | "trust" | "emotional" | "competitive";
 type NegotiationStrategy = "empathy" | "logic" | "urgency" | "anchor" | "silence";
@@ -282,7 +283,7 @@ Respond with only the category name or "none".`,
         return result as ObjectionCategory;
       }
     } catch (error) {
-      console.error("AI objection detection failed:", error);
+      logger.error("AI objection detection failed", error);
     }
 
     return null;
@@ -412,7 +413,7 @@ Generate a response using the ${selectedStrategy} strategy.`,
 
       return generatedResponse;
     } catch (error) {
-      console.error("AI response generation failed:", error);
+      logger.error("AI response generation failed", error);
       return this.getFallbackResponse(objection.category, selectedStrategy);
     }
   }
@@ -700,7 +701,7 @@ Return a JSON object with: { "score": number (-1 to 1), "indicators": string[] }
           indicators.push(...result.indicators);
         }
       } catch (error) {
-        console.error("AI sentiment analysis failed:", error);
+        logger.error("AI sentiment analysis failed", error);
       }
     }
 
@@ -827,7 +828,7 @@ Return JSON: { "strategy": string, "reasoning": string, "actions": string[] }`,
         }
         confidence = 0.85;
       } catch (error) {
-        console.error("AI strategy recommendation failed:", error);
+        logger.error("AI strategy recommendation failed", error);
       }
     }
 

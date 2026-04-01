@@ -33,6 +33,7 @@ import { db } from "../db";
 import { organizations, deals, leads, properties, teamMembers } from "@shared/schema";
 import { eq, and, desc, gte, sql, count } from "drizzle-orm";
 import { subDays, subYears } from "date-fns";
+import { logger } from "../utils/logger";
 
 // ---------------------------------------------------------------------------
 // Investor Reputation Score
@@ -185,11 +186,9 @@ export async function shareDealWithPartner(
   const shareId = `share_${Date.now()}_${request.fromOrganizationId}_${request.toOrganizationId}`;
   const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000); // 48 hours
 
-  console.log(
-    `[InvestorNetwork] Deal share sent from org ${request.fromOrganizationId} to ${request.toOrganizationId}. ` +
+  logger.info(`[InvestorNetwork] Deal share sent from org ${request.fromOrganizationId} to ${request.toOrganizationId}. ` +
     `${request.dealSummary.acreage} acres in ${request.dealSummary.county}, ${request.dealSummary.state} at $${request.dealSummary.askingPrice.toLocaleString()}. ` +
-    `First look expires: ${expiresAt.toISOString()}`
-  );
+    `First look expires: ${expiresAt.toISOString()}`);
 
   return {
     shareId,

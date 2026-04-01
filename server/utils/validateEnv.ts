@@ -1,3 +1,4 @@
+import { logger } from "./logger";
 /**
  * Validates required environment variables at startup.
  * Call this at the very top of server/index.ts before any other initialization.
@@ -26,19 +27,15 @@ export function validateEnv(): void {
     const warnings = errors.filter(e => !e.includes("DATABASE_URL") && !e.includes("SESSION_SECRET"));
 
     if (warnings.length > 0) {
-      console.warn(
-        "\n[startup] ⚠️  Missing recommended environment variables:\n" +
+      logger.warn("\n[startup] ⚠️  Missing recommended environment variables:\n" +
           warnings.map((e) => `  • ${e}`).join("\n") +
-          "\n"
-      );
+          "\n");
     }
 
     if (hardErrors.length > 0) {
-      console.error(
-        "\n[startup] ❌ Environment validation failed — fix the following before starting the server:\n" +
+      logger.error("\n[startup] ❌ Environment validation failed — fix the following before starting the server:\n" +
           hardErrors.map((e) => `  • ${e}`).join("\n") +
-          "\n"
-      );
+          "\n");
       process.exit(1);
     }
   }

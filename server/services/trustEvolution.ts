@@ -24,6 +24,7 @@ import {
 import { eq, and, gte, desc, count, sql } from "drizzle-orm";
 import { companyAgentService } from "./companyAgents";
 import { agentCommsService } from "./agentComms";
+import { logger } from "../utils/logger";
 
 /**
  * Run trust evolution for all agents.
@@ -267,7 +268,7 @@ export async function runTrustEvolution(): Promise<{
     });
   }
 
-  console.log(`[TrustEvolution] ${updates.length} agents updated, ${promotionSuggestions.length} promotion suggestions`);
+  logger.info(`[TrustEvolution] ${updates.length} agents updated, ${promotionSuggestions.length} promotion suggestions`);
 
   return { updates, promotionSuggestions };
 }

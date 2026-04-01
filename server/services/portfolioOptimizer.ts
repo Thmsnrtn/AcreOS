@@ -6,6 +6,7 @@ import {
 } from '../../shared/schema';
 import { eq, and, desc, gte, sql } from 'drizzle-orm';
 import OpenAI from 'openai';
+import { logger } from "../utils/logger";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -206,7 +207,7 @@ class PortfolioOptimizer {
         timeline,
       };
     } catch (error) {
-      console.error('Monte Carlo simulation failed:', error);
+      logger.error('Monte Carlo simulation failed', error);
       throw error;
     }
   }
@@ -259,7 +260,7 @@ class PortfolioOptimizer {
         diversificationScore,
       };
     } catch (error) {
-      console.error('Portfolio metrics calculation failed:', error);
+      logger.error('Portfolio metrics calculation failed', error);
       throw error;
     }
   }
@@ -397,7 +398,7 @@ class PortfolioOptimizer {
         recommendations,
       };
     } catch (error) {
-      console.error('Diversification analysis failed:', error);
+      logger.error('Diversification analysis failed', error);
       throw error;
     }
   }
@@ -561,7 +562,7 @@ Respond in JSON format with array of recommendations.`;
 
       return recommendations;
     } catch (error) {
-      console.error('Optimization recommendations failed:', error);
+      logger.error('Optimization recommendations failed', error);
       throw error;
     }
   }
@@ -590,7 +591,7 @@ Respond in JSON format with array of recommendations.`;
         liquidityScore: 50, // Default medium liquidity
       }));
     } catch (error) {
-      console.error('Failed to get portfolio holdings:', error);
+      logger.error('Failed to get portfolio holdings', error);
       throw error;
     }
   }
@@ -606,7 +607,7 @@ Respond in JSON format with array of recommendations.`;
         limit,
       });
     } catch (error) {
-      console.error('Failed to get simulations:', error);
+      logger.error('Failed to get simulations', error);
       throw error;
     }
   }
@@ -624,7 +625,7 @@ Respond in JSON format with array of recommendations.`;
         orderBy: [desc(optimizationRecommendations.priority)],
       });
     } catch (error) {
-      console.error('Failed to get recommendations:', error);
+      logger.error('Failed to get recommendations', error);
       throw error;
     }
   }
@@ -648,7 +649,7 @@ Respond in JSON format with array of recommendations.`;
           eq(optimizationRecommendations.organizationId, organizationId)
         ));
     } catch (error) {
-      console.error('Failed to update recommendation status:', error);
+      logger.error('Failed to update recommendation status', error);
       throw error;
     }
   }
@@ -689,7 +690,7 @@ Respond in JSON format with array of recommendations.`;
         recommendations,
       };
     } catch (error) {
-      console.error('Complete analysis failed:', error);
+      logger.error('Complete analysis failed', error);
       throw error;
     }
   }

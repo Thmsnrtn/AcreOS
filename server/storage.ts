@@ -1,7 +1,22 @@
 // @ts-nocheck — ORM type refinement deferred; runtime-correct
 import { db } from "./db";
 export { db };
-import { eq, and, desc, sql, count, sum, arrayContains, gte, lte, lt, or, inArray, ne, ilike, type SQL } from "drizzle-orm";
+import { eq, and, desc, asc, sql, count, sum, arrayContains, gte, lte, lt, or, inArray, ne, ilike, type SQL } from "drizzle-orm";
+
+export interface PaginationOptions {
+  page: number;
+  pageSize: number;
+  sortBy: string;
+  sortOrder: "asc" | "desc";
+}
+
+export interface PaginatedResult<T> {
+  data: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
 import { aiConversations, aiMessages } from "@shared/schema";
 import {
   organizations, teamMembers, leads, leadActivities, properties, deals,
@@ -302,6 +317,9 @@ export interface IStorage {
   getLeadActivities(leadId: number, limit?: number): Promise<LeadActivity[]>;
   updateLeadScore(leadId: number, score: number, scoreFactors: Lead["scoreFactors"]): Promise<Lead>;
   
+  // Paginated Leads
+  getLeadsPaginated(orgId: number, options: PaginationOptions, filters?: { assignedTo?: number | null }): Promise<PaginatedResult<Lead>>;
+
   // Properties
   getProperties(orgId: number): Promise<Property[]>;
   getProperty(orgId: number, id: number): Promise<Property | undefined>;
@@ -312,6 +330,9 @@ export interface IStorage {
   bulkDeleteProperties(orgId: number, ids: number[]): Promise<number>;
   bulkUpdateProperties(orgId: number, ids: number[], updates: Partial<InsertProperty>): Promise<number>;
   
+  // Paginated Properties
+  getPropertiesPaginated(orgId: number, options: PaginationOptions): Promise<PaginatedResult<Property>>;
+
   // Deals
   getDeals(orgId: number): Promise<Deal[]>;
   getDeal(orgId: number, id: number): Promise<Deal | undefined>;
@@ -321,6 +342,9 @@ export interface IStorage {
   bulkDeleteDeals(orgId: number, ids: number[]): Promise<number>;
   bulkUpdateDeals(orgId: number, ids: number[], updates: Partial<InsertDeal>): Promise<number>;
   
+  // Paginated Deals
+  getDealsPaginated(orgId: number, options: PaginationOptions): Promise<PaginatedResult<Deal>>;
+
   // Notes (Financing)
   getNotes(orgId: number): Promise<Note[]>;
   getNote(orgId: number, id: number): Promise<Note | undefined>;
@@ -1243,7 +1267,32 @@ export class DatabaseStorage implements IStorage {
       .where(and(...conditions))
       .orderBy(desc(leads.createdAt));
   }
-  
+
+  async getLeadsPaginated(orgId: number, options: PaginationOptions, filters?: { assignedTo?: number | null }): Promise<PaginatedResult<Lead>> {
+    const conditions: any[] = [eq(leads.organizationId, orgId), sql`${leads.deletedAt} IS NULL`];
+    if (filters?.assignedTo === null) {
+      conditions.push(sql`${leads.assignedTo} IS NULL`);
+    } else if (filters?.assignedTo !== undefined) {
+      conditions.push(eq(leads.assignedTo, filters.assignedTo));
+    }
+    const whereClause = and(...conditions);
+    const [{ count: total }] = await db.select({ count: count() }).from(leads).where(whereClause);
+    const totalNum = Number(total);
+    const totalPages = Math.max(1, Math.ceil(totalNum / options.pageSize));
+    const offset = (options.page - 1) * options.pageSize;
+
+    const sortColumn = (leads as any)[options.sortBy] ?? leads.createdAt;
+    const orderFn = options.sortOrder === "asc" ? asc : desc;
+
+    const data = await db.select().from(leads)
+      .where(whereClause)
+      .orderBy(orderFn(sortColumn))
+      .limit(options.pageSize)
+      .offset(offset);
+
+    return { data, total: totalNum, page: options.page, pageSize: options.pageSize, totalPages };
+  }
+
   async getLead(orgId: number, id: number) {
     const [lead] = await db.select().from(leads)
       .where(and(eq(leads.organizationId, orgId), eq(leads.id, id)));
@@ -1523,6 +1572,25 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(properties.organizationId, orgId), sql`${properties.status} != 'deleted'`))
       .orderBy(desc(properties.createdAt));
   }
+
+  async getPropertiesPaginated(orgId: number, options: PaginationOptions): Promise<PaginatedResult<Property>> {
+    const whereClause = and(eq(properties.organizationId, orgId), sql`${properties.status} != 'deleted'`);
+    const [{ count: total }] = await db.select({ count: count() }).from(properties).where(whereClause);
+    const totalNum = Number(total);
+    const totalPages = Math.max(1, Math.ceil(totalNum / options.pageSize));
+    const offset = (options.page - 1) * options.pageSize;
+
+    const sortColumn = (properties as any)[options.sortBy] ?? properties.createdAt;
+    const orderFn = options.sortOrder === "asc" ? asc : desc;
+
+    const data = await db.select().from(properties)
+      .where(whereClause)
+      .orderBy(orderFn(sortColumn))
+      .limit(options.pageSize)
+      .offset(offset);
+
+    return { data, total: totalNum, page: options.page, pageSize: options.pageSize, totalPages };
+  }
   
   async getProperty(orgId: number, id: number) {
     const [property] = await db.select().from(properties)
@@ -1598,7 +1666,26 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(deals.organizationId, orgId), sql`${deals.status} != 'deleted'`))
       .orderBy(desc(deals.createdAt));
   }
-  
+
+  async getDealsPaginated(orgId: number, options: PaginationOptions): Promise<PaginatedResult<Deal>> {
+    const whereClause = and(eq(deals.organizationId, orgId), sql`${deals.status} != 'deleted'`);
+    const [{ count: total }] = await db.select({ count: count() }).from(deals).where(whereClause);
+    const totalNum = Number(total);
+    const totalPages = Math.max(1, Math.ceil(totalNum / options.pageSize));
+    const offset = (options.page - 1) * options.pageSize;
+
+    const sortColumn = (deals as any)[options.sortBy] ?? deals.createdAt;
+    const orderFn = options.sortOrder === "asc" ? asc : desc;
+
+    const data = await db.select().from(deals)
+      .where(whereClause)
+      .orderBy(orderFn(sortColumn))
+      .limit(options.pageSize)
+      .offset(offset);
+
+    return { data, total: totalNum, page: options.page, pageSize: options.pageSize, totalPages };
+  }
+
   async getDeal(orgId: number, id: number) {
     const [deal] = await db.select().from(deals)
       .where(and(eq(deals.organizationId, orgId), eq(deals.id, id)));

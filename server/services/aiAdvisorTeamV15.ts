@@ -26,6 +26,7 @@ import {
 import { eq, and, gte, desc, count, sql, lt } from "drizzle-orm";
 import { routeAITask, TaskComplexity } from "./aiRouter";
 import { getFounderEmails } from "./founder";
+import { logger } from "../utils/logger";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -475,7 +476,7 @@ class AIAdvisorTeamService {
   // ── 5. FULL ADVISOR RUN — Orchestrate Everything ────────────────────────────
 
   async runAdvisorCycle(): Promise<AdvisorReport> {
-    console.log("[AIAdvisor] Starting proactive advisor cycle...");
+    logger.info("[AIAdvisor] Starting proactive advisor cycle...");
 
     // 1. Gather current state
     const snapshot = await this.gatherHealthSnapshot();
@@ -509,7 +510,7 @@ class AIAdvisorTeamService {
 
     await this.storeReport(report);
 
-    console.log(`[AIAdvisor] Cycle complete: ${signals.length} signals, ${insights.length} insights, ${autonomousActionsTaken.length} autonomous actions`);
+    logger.info(`[AIAdvisor] Cycle complete: ${signals.length} signals, ${insights.length} insights, ${autonomousActionsTaken.length} autonomous actions`);
     return report;
   }
 
@@ -518,7 +519,7 @@ class AIAdvisorTeamService {
   async startProactiveMonitor(intervalMs: number = 60 * 60 * 1000): Promise<void> {
     // Run immediately
     await this.runAdvisorCycle().catch(err =>
-      console.error("[AIAdvisor] Cycle error:", err)
+      logger.error("[AIAdvisor] Cycle error", err)
     );
 
     // Then on interval
@@ -532,11 +533,11 @@ class AIAdvisorTeamService {
           await this.sendUrgentNotification(criticals);
         }
       } catch (err) {
-        console.error("[AIAdvisor] Cycle error:", err);
+        logger.error("[AIAdvisor] Cycle error", err);
       }
     }, intervalMs);
 
-    console.log(`[AIAdvisor] Proactive monitor started (interval: ${intervalMs / 60000}m)`);
+    logger.info(`[AIAdvisor] Proactive monitor started (interval: ${intervalMs / 60000}m)`);
   }
 
   // ── 7. AI-GENERATED STRATEGIC SUMMARY ───────────────────────────────────────

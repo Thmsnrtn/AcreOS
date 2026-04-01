@@ -10,6 +10,7 @@ import {
   type InsertSequencePerformance,
 } from "@shared/schema";
 import { getOpenAIClient } from "../utils/openaiClient";
+import { logger } from "../utils/logger";
 
 export interface MessagePerformanceParams {
   sequenceId?: number;
@@ -337,7 +338,7 @@ export class SequenceOptimizerService {
 
     const openai = getOpenAIClient();
     if (!openai) {
-      console.log("OpenAI API key not configured, using fallback suggestions");
+      logger.info("OpenAI API key not configured, using fallback suggestions");
       return this.generateFallbackSuggestions(analysis);
     }
 
@@ -426,7 +427,7 @@ Respond in JSON:
         return suggestions;
       }
     } catch (error) {
-      console.error("Error generating AI optimization suggestions:", error);
+      logger.error("Error generating AI optimization suggestions", error);
       return this.generateFallbackSuggestions(analysis);
     }
 

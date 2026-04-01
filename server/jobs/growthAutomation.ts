@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Growth Automation Engine
  *
@@ -54,6 +53,7 @@ import { eq, and, gte, lt, lte, desc, count, sql, not, isNull, ne } from "drizzl
 import { subDays, subHours, addDays, format, differenceInDays } from "date-fns";
 import { emailService } from "../services/emailService";
 import { routeComplexTask } from "../services/aiRouter";
+import { logger } from "../utils/logger";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Config
@@ -114,7 +114,7 @@ async function logGrowthEmail(orgId: number, type: string, notes: string): Promi
       notes,
     } as any);
   } catch (err: any) {
-    console.warn(`[GrowthAutomation] Failed to log intervention:`, err.message);
+    logger.warn(`[GrowthAutomation] Failed to log intervention`, { metadata: { detail: err.message } });
   }
 }
 
@@ -206,7 +206,7 @@ async function runUpsellEngine(): Promise<{ sent: number }> {
       await logGrowthEmail(org.id, `growth_upsell_${limits.nextTier}`, `Sent upsell email at ${usagePct}% ${hitResource} usage`);
       sent++;
     } catch (err: any) {
-      console.warn(`[GrowthAutomation] Upsell email failed for org ${org.id}:`, err.message);
+      logger.warn(`[GrowthAutomation] Upsell email failed for org ${org.id}`, { metadata: { detail: err.message } });
     }
   }
 
@@ -322,7 +322,7 @@ async function runWinBackEngine(): Promise<{ sent: number }> {
       await logGrowthEmail(orgId, touchType, `Win-back touch ${touchNumber} sent (${daysSinceCancel}d post-cancel)`);
       sent++;
     } catch (err: any) {
-      console.warn(`[GrowthAutomation] Win-back email failed for org ${orgId}:`, err.message);
+      logger.warn(`[GrowthAutomation] Win-back email failed for org ${orgId}`, { metadata: { detail: err.message } });
     }
   }
 
@@ -400,7 +400,7 @@ async function runReferralActivation(): Promise<{ sent: number }> {
       await logGrowthEmail(user.orgId, "growth_referral_invite", `Referral program invitation sent to power user (${user.activityCount} actions/30d)`);
       sent++;
     } catch (err: any) {
-      console.warn(`[GrowthAutomation] Referral email failed for org ${user.orgId}:`, err.message);
+      logger.warn(`[GrowthAutomation] Referral email failed for org ${user.orgId}`, { metadata: { detail: err.message } });
     }
   }
 
@@ -488,7 +488,7 @@ async function runEngagementReactivation(): Promise<{ sent: number }> {
       await logGrowthEmail(org.orgId, "growth_reengagement", `Re-engagement sent (${daysSinceActivity}d inactive, ${hotLeadCount} hot leads, ${expiringDealCount} expiring deals)`);
       sent++;
     } catch (err: any) {
-      console.warn(`[GrowthAutomation] Reengagement email failed for org ${org.orgId}:`, err.message);
+      logger.warn(`[GrowthAutomation] Reengagement email failed for org ${org.orgId}`, { metadata: { detail: err.message } });
     }
   }
 
@@ -547,7 +547,7 @@ async function runChurnRiskInterventions(): Promise<{ reengaged: number; alerted
         await logGrowthEmail(orgId, "growth_churn_reengagement", `Churn re-engagement sent (risk score: ${risk})`);
         reengaged++;
       } catch (err: any) {
-        console.warn(`[GrowthAutomation] Churn re-engagement failed for org ${orgId}:`, err.message);
+        logger.warn(`[GrowthAutomation] Churn re-engagement failed for org ${orgId}`, { metadata: { detail: err.message } });
       }
     }
 
@@ -579,7 +579,7 @@ async function runChurnRiskInterventions(): Promise<{ reengaged: number; alerted
           alerted++;
         }
       } catch (err: any) {
-        console.warn(`[GrowthAutomation] Churn alert failed for org ${orgId}:`, err.message);
+        logger.warn(`[GrowthAutomation] Churn alert failed for org ${orgId}`, { metadata: { detail: err.message } });
       }
     }
 
@@ -613,7 +613,7 @@ async function runChurnRiskInterventions(): Promise<{ reengaged: number; alerted
         await logGrowthEmail(orgId, "growth_churn_save_offer", `Save offer sent (risk score: ${risk}, health: ${health.healthScore})`);
         saveOffers++;
       } catch (err: any) {
-        console.warn(`[GrowthAutomation] Save offer failed for org ${orgId}:`, err.message);
+        logger.warn(`[GrowthAutomation] Save offer failed for org ${orgId}`, { metadata: { detail: err.message } });
       }
     }
   }
@@ -639,7 +639,7 @@ export interface GrowthAutomationResult {
 
 export async function runGrowthAutomation(): Promise<GrowthAutomationResult> {
   const runAt = new Date();
-  console.log("[GrowthAutomation] Starting growth automation run...");
+  logger.info("[GrowthAutomation] Starting growth automation run...");
 
   const [upsell, winBack, referral, reengagement, churnRisk] = await Promise.allSettled([
     runUpsellEngine(),
@@ -663,12 +663,10 @@ export async function runGrowthAutomation(): Promise<GrowthAutomationResult> {
   result.totalEmailsSent = result.upsellSent + result.winBackSent + result.referralSent +
     result.reengagementSent + result.churnReengaged + result.churnSaveOffers;
 
-  console.log(
-    `[GrowthAutomation] Complete: ${result.totalEmailsSent} total emails — ` +
+  logger.info(`[GrowthAutomation] Complete: ${result.totalEmailsSent} total emails — ` +
     `upsell: ${result.upsellSent}, win-back: ${result.winBackSent}, referral: ${result.referralSent}, ` +
     `re-engagement: ${result.reengagementSent}, churn-reengagement: ${result.churnReengaged}, ` +
-    `churn-alerts: ${result.churnAlerted}, save-offers: ${result.churnSaveOffers}`
-  );
+    `churn-alerts: ${result.churnAlerted}, save-offers: ${result.churnSaveOffers}`);
 
   return result;
 }

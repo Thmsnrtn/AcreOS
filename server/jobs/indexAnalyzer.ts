@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Database Query Analyzer & Missing Index Detector (T75)
  *
@@ -17,6 +16,7 @@ import { db } from "../db";
 import { sql } from "drizzle-orm";
 import { organizationIntegrations } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
+import { logger } from "../utils/logger";
 
 // System-level: use organization_id = 0 (platform record)
 const PLATFORM_ORG_ID = 0;
@@ -227,7 +227,7 @@ async function saveReport(report: IndexAnalysisReport): Promise<void> {
     }
   } catch (err) {
     // organizationId = 0 may not be in the organizations table — store in memory only
-    console.log("[IndexAnalyzer] Could not persist report (org 0 may not exist) — report logged above");
+    logger.info("[IndexAnalyzer] Could not persist report (org 0 may not exist) — report logged above");
   }
 }
 
@@ -261,7 +261,7 @@ export async function getLastReport(): Promise<IndexAnalysisReport | null> {
 // ---------------------------------------------------------------------------
 
 export async function runIndexAnalysis(): Promise<IndexAnalysisReport> {
-  console.log("[IndexAnalyzer] Starting database analysis...");
+  logger.info("[IndexAnalyzer] Starting database analysis...");
 
   const [slowQueries, sequentialScans, existingIndexes] = await Promise.all([
     fetchSlowQueries(),
@@ -279,31 +279,27 @@ export async function runIndexAnalysis(): Promise<IndexAnalysisReport> {
   };
 
   // Log summary
-  console.log(
-    `[IndexAnalyzer] Analysis complete: ${slowQueries.length} slow queries, ` +
-    `${sequentialScans.length} seq scan tables, ${suggestions.length} suggestions`
-  );
+  logger.info(`[IndexAnalyzer] Analysis complete: ${slowQueries.length} slow queries, ` +
+    `${sequentialScans.length} seq scan tables, ${suggestions.length} suggestions`);
 
   if (suggestions.filter((s) => s.severity === "high").length > 0) {
-    console.warn(
-      `[IndexAnalyzer] ⚠️ ${suggestions.filter((s) => s.severity === "high").length} HIGH severity index recommendations`
-    );
+    logger.warn(`[IndexAnalyzer] ⚠️ ${suggestions.filter((s) => s.severity === "high").length} HIGH severity index recommendations`);
     for (const s of suggestions.filter((s) => s.severity === "high")) {
-      console.warn(`  → ${s.tableName}: ${s.reason}`);
-      console.warn(`    ${s.suggestedSql}`);
+      logger.warn(`  → ${s.tableName}: ${s.reason}`);
+      logger.warn(`    ${s.suggestedSql}`);
     }
   }
 
   // Auto-apply if configured (opt-in)
   if (process.env.OTEL_AUTO_INDEX === "true") {
-    console.log("[IndexAnalyzer] Auto-applying HIGH severity index suggestions...");
+    logger.info("[IndexAnalyzer] Auto-applying HIGH severity index suggestions...");
     for (const s of suggestions.filter((s) => s.severity === "high")) {
       if (s.suggestedSql.startsWith("CREATE INDEX")) {
         try {
           await db.execute(sql.raw(s.suggestedSql));
-          console.log(`[IndexAnalyzer] Applied: ${s.suggestedSql}`);
+          logger.info(`[IndexAnalyzer] Applied: ${s.suggestedSql}`);
         } catch (err: any) {
-          console.error(`[IndexAnalyzer] Failed to apply index: ${err.message}`);
+          logger.error(`[IndexAnalyzer] Failed to apply index: ${err.message}`);
         }
       }
     }
@@ -328,5 +324,5 @@ export async function registerIndexAnalyzerJob(queue: any): Promise<void> {
       removeOnFail: 2,
     }
   );
-  console.log("[IndexAnalyzer] Registered weekly index analysis job (Sundays at 2 AM UTC)");
+  logger.info("[IndexAnalyzer] Registered weekly index analysis job (Sundays at 2 AM UTC)");
 }

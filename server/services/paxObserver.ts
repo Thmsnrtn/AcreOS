@@ -20,6 +20,7 @@ import {
   paxCrossOrgLearnings
 } from "@shared/schema";
 import { eq, and, desc, gte, ne, sql, like, lt, lte } from "drizzle-orm";
+import { logger } from "../utils/logger";
 
 export type ObservationSeverity = 'info' | 'low' | 'medium' | 'high';
 export type NotificationType = 'none' | 'passive' | 'active';
@@ -89,7 +90,7 @@ class PaxObserverService {
       }
       return org.level as ProactiveNotificationLevel;
     } catch (error) {
-      console.error(`[paxObserver] Error getting notification level for org ${orgId}:`, error);
+      logger.error(`[paxObserver] Error getting notification level for org ${orgId}`, error);
       return 'balanced';
     }
   }
@@ -212,7 +213,7 @@ class PaxObserverService {
         if (shouldBatch) {
           const batchedObservation = await this.updateBatchedObservation(organizationId, batchKey, existingCount + 1);
           if (batchedObservation) {
-            console.log(`[paxObserver] Batched observation for org ${organizationId}: ${type} (${existingCount + 1} occurrences)`);
+            logger.info(`[paxObserver] Batched observation for org ${organizationId}: ${type} (${existingCount + 1} occurrences)`);
             return batchedObservation;
           }
         }
@@ -243,7 +244,7 @@ class PaxObserverService {
         })
         .returning();
 
-      console.log(`[paxObserver] Recorded observation for org ${organizationId}: ${type} (${severity}, ${confidenceScore}% confidence, notify: ${notificationDecision.notificationType})`);
+      logger.info(`[paxObserver] Recorded observation for org ${organizationId}: ${type} (${severity}, ${confidenceScore}% confidence, notify: ${notificationDecision.notificationType})`);
 
       if (notificationDecision.shouldNotify) {
         await this.triggerNotification(observation, notificationDecision);
@@ -251,7 +252,7 @@ class PaxObserverService {
 
       return observation;
     } catch (error) {
-      console.error('[paxObserver] Error recording observation:', error);
+      logger.error('[paxObserver] Error recording observation', error);
       return null;
     }
   }
@@ -304,7 +305,7 @@ class PaxObserverService {
 
       return null;
     } catch (error) {
-      console.error('[paxObserver] Error updating batched observation:', error);
+      logger.error('[paxObserver] Error updating batched observation', error);
       return null;
     }
   }
@@ -317,9 +318,9 @@ class PaxObserverService {
     decision: NotificationDecision
   ): Promise<void> {
     if (decision.notificationType === 'active') {
-      console.log(`[paxObserver] Active notification for org ${observation.organizationId}: ${observation.title}`);
+      logger.info(`[paxObserver] Active notification for org ${observation.organizationId}: ${observation.title}`);
     } else if (decision.notificationType === 'passive') {
-      console.log(`[paxObserver] Passive notification (badge) for org ${observation.organizationId}: ${observation.title}`);
+      logger.info(`[paxObserver] Passive notification (badge) for org ${observation.organizationId}: ${observation.title}`);
     }
 
     // Push via SSE to connected clients
@@ -352,7 +353,7 @@ class PaxObserverService {
         .orderBy(desc(paxObservations.detectedAt))
         .limit(limit);
     } catch (error) {
-      console.error('[paxObserver] Error getting active observations:', error);
+      logger.error('[paxObserver] Error getting active observations', error);
       return [];
     }
   }
@@ -373,7 +374,7 @@ class PaxObserverService {
 
       return result[0]?.count || 0;
     } catch (error) {
-      console.error('[paxObserver] Error getting unread passive count:', error);
+      logger.error('[paxObserver] Error getting unread passive count', error);
       return 0;
     }
   }
@@ -394,7 +395,7 @@ class PaxObserverService {
 
       return true;
     } catch (error) {
-      console.error('[paxObserver] Error acknowledging observation:', error);
+      logger.error('[paxObserver] Error acknowledging observation', error);
       return false;
     }
   }
@@ -415,7 +416,7 @@ class PaxObserverService {
 
       return true;
     } catch (error) {
-      console.error('[paxObserver] Error dismissing observation:', error);
+      logger.error('[paxObserver] Error dismissing observation', error);
       return false;
     }
   }
@@ -436,7 +437,7 @@ class PaxObserverService {
 
       return true;
     } catch (error) {
-      console.error('[paxObserver] Error escalating observation:', error);
+      logger.error('[paxObserver] Error escalating observation', error);
       return false;
     }
   }
@@ -464,7 +465,7 @@ class PaxObserverService {
 
       return true;
     } catch (error) {
-      console.error('[paxObserver] Error auto-resolving observation:', error);
+      logger.error('[paxObserver] Error auto-resolving observation', error);
       return false;
     }
   }
@@ -600,12 +601,12 @@ class PaxObserverService {
         .returning({ id: paxObservations.id });
 
       if (result.length > 0) {
-        console.log(`[paxObserver] Cleaned up ${result.length} old observations`);
+        logger.info(`[paxObserver] Cleaned up ${result.length} old observations`);
       }
 
       return result.length;
     } catch (error) {
-      console.error('[paxObserver] Error cleaning up old observations:', error);
+      logger.error('[paxObserver] Error cleaning up old observations', error);
       return 0;
     }
   }
@@ -615,7 +616,7 @@ class PaxObserverService {
    */
   clearCache(): void {
     this.recentObservations.clear();
-    console.log('[paxObserver] Observation cache cleared');
+    logger.info('[paxObserver] Observation cache cleared');
   }
 
   /**
@@ -660,7 +661,7 @@ class PaxObserverService {
         return { attempted: false, success: false };
       }
       
-      console.log(`[paxObserver] Found matching fix pattern for observation ${observation.id}: ${matchedPattern.issuePattern?.substring(0, 50)}`);
+      logger.info(`[paxObserver] Found matching fix pattern for observation ${observation.id}: ${matchedPattern.issuePattern?.substring(0, 50)}`);
       
       const { paxLearningService } = await import("./paxLearning");
       const fixResult = await paxLearningService.applySelfHealingFix(
@@ -671,9 +672,9 @@ class PaxObserverService {
       
       if (fixResult.applied) {
         await this.autoResolveObservation(observation.id, true, fixResult.result);
-        console.log(`[paxObserver] Proactively fixed observation ${observation.id}: ${fixResult.result}`);
+        logger.info(`[paxObserver] Proactively fixed observation ${observation.id}: ${fixResult.result}`);
       } else {
-        console.log(`[paxObserver] Proactive fix attempt failed for observation ${observation.id}: ${fixResult.result}`);
+        logger.info(`[paxObserver] Proactive fix attempt failed for observation ${observation.id}: ${fixResult.result}`);
       }
       
       return {
@@ -683,7 +684,7 @@ class PaxObserverService {
         result: fixResult.result
       };
     } catch (error) {
-      console.error('[paxObserver] Error in proactive self-healing:', error);
+      logger.error('[paxObserver] Error in proactive self-healing', error);
       return { attempted: false, success: false };
     }
   }
@@ -743,7 +744,7 @@ class PaxObserverService {
         return keywords.some(k => patternLower.includes(k));
       });
     } catch (error) {
-      console.error('[paxObserver] Error finding matching fix patterns:', error);
+      logger.error('[paxObserver] Error finding matching fix patterns', error);
       return [];
     }
   }
@@ -800,7 +801,7 @@ class PaxObserverService {
         },
       });
     } catch (error) {
-      console.error('[paxObserver] Error checking stale leads:', error);
+      logger.error('[paxObserver] Error checking stale leads', error);
       return null;
     }
   }
@@ -860,7 +861,7 @@ class PaxObserverService {
         },
       });
     } catch (error) {
-      console.error('[paxObserver] Error checking expiring offers:', error);
+      logger.error('[paxObserver] Error checking expiring offers', error);
       return null;
     }
   }
@@ -928,7 +929,7 @@ class PaxObserverService {
         },
       });
     } catch (error) {
-      console.error('[paxObserver] Error checking pipeline velocity:', error);
+      logger.error('[paxObserver] Error checking pipeline velocity', error);
       return null;
     }
   }
@@ -1007,7 +1008,7 @@ class PaxObserverService {
         },
       });
     } catch (error) {
-      console.error('[paxObserver] Error checking high-value inactive leads:', error);
+      logger.error('[paxObserver] Error checking high-value inactive leads', error);
       return null;
     }
   }
@@ -1022,7 +1023,7 @@ class PaxObserverService {
     pipelineVelocity: PaxObservation | null;
     highValueInactive: PaxObservation | null;
   }> {
-    console.log(`[paxObserver] Running proactive checks for org ${orgId}`);
+    logger.info(`[paxObserver] Running proactive checks for org ${orgId}`);
     const [staleLeads, expiringOffers, pipelineVelocity, highValueInactive] = await Promise.all([
       this.checkStaleLeads(orgId),
       this.checkExpiringOffers(orgId),
