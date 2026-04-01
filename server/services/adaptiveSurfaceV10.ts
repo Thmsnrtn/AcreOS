@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Adaptive CEO Command Surface — Sovereign Company Protocol v10
  *

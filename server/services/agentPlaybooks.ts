@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Agent Playbooks — Sovereign Company Protocol v6
  *

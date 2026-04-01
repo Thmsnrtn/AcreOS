@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Agent Self-Improvement — Sovereign Company Protocol v7
  *

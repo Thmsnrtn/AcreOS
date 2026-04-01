@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Agent Reaction Engine — Sovereign Company Protocol v2
  *

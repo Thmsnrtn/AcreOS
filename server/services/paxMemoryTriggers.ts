@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Pax Memory Triggers — auto-store memories on key events.
  *

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Agent Resource Governor — Sovereign Company Protocol v11
  *

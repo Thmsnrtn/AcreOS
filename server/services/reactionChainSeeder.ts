@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Reaction Chain Seeder — Pre-built agent reaction chains for the full business lifecycle.
  * Idempotent: skips chains that already exist by name.

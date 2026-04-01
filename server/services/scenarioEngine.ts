@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Scenario Engine — Sovereign Company Protocol v7
  *

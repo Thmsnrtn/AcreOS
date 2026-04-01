@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Trust Evolution Service — Sovereign Company Protocol
  *

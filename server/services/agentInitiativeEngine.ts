@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Agent Initiative Engine
  *

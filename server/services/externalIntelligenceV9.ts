@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * External Intelligence Feeds — Sovereign Company Protocol v9: The Self-Running Company
  *
