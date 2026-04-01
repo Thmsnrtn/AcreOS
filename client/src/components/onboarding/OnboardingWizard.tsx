@@ -33,10 +33,52 @@ import {
   Building2,
   Check,
   Settings,
+  Home,
+  Hammer,
+  Key,
+  Landmark,
+  Palmtree,
+  Lightbulb,
+  Receipt,
+  Warehouse,
+  Truck,
+  Users,
+  type LucideIcon,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
-type BusinessType = "land_flipper" | "note_investor" | "hybrid";
+type BusinessType =
+  | "land_flipper"
+  | "note_investor"
+  | "hybrid"
+  | "residential_wholesaler"
+  | "fix_and_flip"
+  | "buy_and_hold"
+  | "commercial"
+  | "short_term_rental"
+  | "creative_finance"
+  | "developer"
+  | "tax_lien_deed"
+  | "multifamily"
+  | "mobile_home"
+  | "agent_investor";
+
+const INVESTOR_TYPES: { value: BusinessType; label: string; icon: LucideIcon; description: string }[] = [
+  { value: "land_flipper", label: "Land Flipper", icon: Map, description: "Buy raw land at wholesale and resell for profit." },
+  { value: "residential_wholesaler", label: "Residential Wholesaler", icon: Home, description: "Find distressed homes and assign contracts to cash buyers." },
+  { value: "fix_and_flip", label: "Fix & Flip", icon: Hammer, description: "Acquire, renovate, and resell properties for profit." },
+  { value: "buy_and_hold", label: "Buy & Hold", icon: Key, description: "Build a long-term rental portfolio for passive income." },
+  { value: "short_term_rental", label: "Short-Term Rental", icon: Palmtree, description: "Acquire and manage Airbnb, VRBO, and vacation rentals." },
+  { value: "multifamily", label: "Multifamily", icon: Building2, description: "Invest in apartment buildings and 5+ unit properties." },
+  { value: "commercial", label: "Commercial", icon: Landmark, description: "Office, retail, industrial, and mixed-use investments." },
+  { value: "creative_finance", label: "Creative Finance", icon: Lightbulb, description: "Subject-to, seller financing, wraps, and lease options." },
+  { value: "note_investor", label: "Note Investor", icon: FileText, description: "Buy, sell, and service mortgage notes and seller-financed paper." },
+  { value: "developer", label: "Developer / Subdivider", icon: Warehouse, description: "Land development, entitlements, subdivisions, and new construction." },
+  { value: "tax_lien_deed", label: "Tax Lien / Tax Deed", icon: Receipt, description: "Purchase tax liens and tax deeds at county auctions." },
+  { value: "mobile_home", label: "Mobile Home / MHP", icon: Truck, description: "Mobile home parks and manufactured housing investments." },
+  { value: "agent_investor", label: "Agent-Investor", icon: Users, description: "Licensed agent who also invests — manage clients and your own deals." },
+  { value: "hybrid", label: "Hybrid / Multi-Strategy", icon: Sparkles, description: "Combine multiple strategies — land, notes, rentals, and more." },
+];
 
 type OnboardingStatus = {
   completed: boolean;
@@ -361,75 +403,42 @@ export function OnboardingWizard() {
                 id="org-name"
                 value={organizationName}
                 onChange={(e) => setOrganizationName(e.target.value)}
-                placeholder="My Land Company"
+                placeholder="e.g. Apex Real Estate Group"
                 data-testid="input-org-name"
               />
             </div>
             
             <div className="space-y-3">
               <Label>What type of investing do you do?</Label>
-              <RadioGroup
-                value={businessType}
-                onValueChange={(value) => setBusinessType(value as BusinessType)}
-                className="grid gap-3"
-              >
-                <Label
-                  htmlFor="land_flipper"
-                  className={`flex items-start gap-4 p-4 rounded-md border cursor-pointer transition-colors ${
-                    businessType === "land_flipper" ? "border-primary bg-primary/5" : "border-border"
-                  }`}
-                  data-testid="option-land-flipper"
+              <div className="max-h-[280px] overflow-y-auto pr-1 -mr-1">
+                <RadioGroup
+                  value={businessType}
+                  onValueChange={(value) => setBusinessType(value as BusinessType)}
+                  className="grid grid-cols-2 gap-2"
                 >
-                  <RadioGroupItem value="land_flipper" id="land_flipper" className="mt-1" />
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Map className="w-4 h-4 text-primary" />
-                      <span className="font-medium">Land Flipper</span>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      Buy land at wholesale and resell for profit.
-                    </p>
-                  </div>
-                </Label>
-                
-                <Label
-                  htmlFor="note_investor"
-                  className={`flex items-start gap-4 p-4 rounded-md border cursor-pointer transition-colors ${
-                    businessType === "note_investor" ? "border-primary bg-primary/5" : "border-border"
-                  }`}
-                  data-testid="option-note-investor"
-                >
-                  <RadioGroupItem value="note_investor" id="note_investor" className="mt-1" />
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <FileText className="w-4 h-4 text-primary" />
-                      <span className="font-medium">Note Investor</span>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      Seller-finance land sales and collect payments.
-                    </p>
-                  </div>
-                </Label>
-                
-                <Label
-                  htmlFor="hybrid"
-                  className={`flex items-start gap-4 p-4 rounded-md border cursor-pointer transition-colors ${
-                    businessType === "hybrid" ? "border-primary bg-primary/5" : "border-border"
-                  }`}
-                  data-testid="option-hybrid"
-                >
-                  <RadioGroupItem value="hybrid" id="hybrid" className="mt-1" />
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Building2 className="w-4 h-4 text-primary" />
-                      <span className="font-medium">Both</span>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      Cash flips and seller-financed deals.
-                    </p>
-                  </div>
-                </Label>
-              </RadioGroup>
+                  {INVESTOR_TYPES.map(({ value, label, icon: Icon, description }) => (
+                    <Label
+                      key={value}
+                      htmlFor={value}
+                      className={`flex items-start gap-3 p-3 rounded-md border cursor-pointer transition-colors ${
+                        businessType === value ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/30"
+                      }`}
+                      data-testid={`option-${value}`}
+                    >
+                      <RadioGroupItem value={value} id={value} className="mt-0.5 sr-only" />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <Icon className="w-4 h-4 text-primary flex-shrink-0" />
+                          <span className="font-medium text-sm truncate">{label}</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground line-clamp-2">
+                          {description}
+                        </p>
+                      </div>
+                    </Label>
+                  ))}
+                </RadioGroup>
+              </div>
             </div>
           </motion.div>
         );

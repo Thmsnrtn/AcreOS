@@ -19,7 +19,14 @@ export type BusinessType =
   | "residential_wholesaler"
   | "fix_and_flip"
   | "buy_and_hold"
-  | "commercial";
+  | "commercial"
+  | "short_term_rental"
+  | "creative_finance"
+  | "developer"
+  | "tax_lien_deed"
+  | "multifamily"
+  | "mobile_home"
+  | "agent_investor";
 
 export type OnboardingData = {
   businessType?: BusinessType;
@@ -197,6 +204,192 @@ const COMMERCIAL_TEMPLATES = {
   },
 };
 
+const SHORT_TERM_RENTAL_TEMPLATES = {
+  campaigns: [
+    {
+      name: "Off-Market STR Acquisition",
+      type: "direct_mail",
+      status: "draft",
+      subject: "Interested in Selling Your Vacation Home?",
+      content: "Dear Property Owner,\n\nI'm actively acquiring vacation and short-term rental properties in [MARKET]. If you've been thinking about selling — whether your property is currently on Airbnb, VRBO, or simply sitting unused — I'd love to make you a fair offer.\n\nNo realtor commissions. No staging. Quick, flexible closing.\n\nReply to this letter or call [PHONE].\n\nBest regards,\n[YOUR NAME]",
+      targetCriteria: { leadStatus: ["new"], leadType: ["seller"] },
+    },
+    {
+      name: "Tired Host Outreach",
+      type: "email",
+      status: "draft",
+      subject: "Ready to Hand Off Your Rental? Let's Talk",
+      content: "Hi {{firstName}},\n\nManaging a short-term rental can be exhausting — guest turnover, cleaning, maintenance, reviews. If you're considering selling, I specialize in acquiring STR properties and can make the process simple.\n\nWould you be open to a quick call this week?\n\nBest,\n[YOUR NAME]",
+      targetCriteria: { leadStatus: ["new"], leadType: ["seller"] },
+    },
+  ],
+  defaultTags: ["STR", "Airbnb", "VRBO", "vacation rental", "beach", "mountain", "lake", "high occupancy"],
+  noteSettings: {
+    defaultInterestRate: 7.5,
+    defaultTermMonths: 360,
+    gracePeriodDays: 15,
+    lateFeePercent: 5,
+  },
+};
+
+const CREATIVE_FINANCE_TEMPLATES = {
+  campaigns: [
+    {
+      name: "Subject-To Seller Outreach",
+      type: "direct_mail",
+      status: "draft",
+      subject: "A Creative Solution for Your Home — No Repairs, No Hassle",
+      content: "Dear Property Owner,\n\nAre you behind on payments or just need to move quickly? I specialize in creative solutions that can help you avoid foreclosure, protect your credit, and walk away with peace of mind.\n\nI take over your existing mortgage payments — you get relief, I get the property. It's a win-win.\n\nCall or text [PHONE] for a confidential conversation.\n\n[YOUR NAME]",
+      targetCriteria: { leadStatus: ["new"], leadType: ["seller"] },
+    },
+    {
+      name: "Lease Option Outreach",
+      type: "email",
+      status: "draft",
+      subject: "Would You Consider a Lease-Purchase on Your Property?",
+      content: "Hi {{firstName}},\n\nI noticed your property at {{address}} and wanted to propose something different: a lease-purchase agreement. You'd receive monthly income above market rent, plus a premium purchase price when I exercise the option.\n\nThis works especially well if your home has been sitting on the market. Interested?\n\nReply or call [PHONE].\n\n[YOUR NAME]",
+      targetCriteria: { leadStatus: ["new"], leadType: ["seller"] },
+    },
+  ],
+  defaultTags: ["subject-to", "wrap", "lease option", "seller financing", "pre-foreclosure", "creative deal", "owner carry"],
+  noteSettings: {
+    defaultInterestRate: 8.0,
+    defaultTermMonths: 360,
+    gracePeriodDays: 10,
+    lateFeePercent: 5,
+  },
+};
+
+const DEVELOPER_TEMPLATES = {
+  campaigns: [
+    {
+      name: "Land Acquisition for Development",
+      type: "direct_mail",
+      status: "draft",
+      subject: "We Buy Land for Development — Top Dollar for the Right Parcel",
+      content: "Dear Property Owner,\n\nWe're a development company actively acquiring parcels for residential and mixed-use projects in [COUNTY/MARKET].\n\nIf your land is 5+ acres with road access and utilities nearby, we may be able to offer above-market pricing.\n\nNo broker fees. Flexible terms. Quick due diligence.\n\nCall [PHONE] or reply to discuss.\n\n[YOUR NAME]\n[COMPANY NAME]",
+      targetCriteria: { leadStatus: ["new"], leadType: ["seller"] },
+    },
+    {
+      name: "Lot Buyer Outreach",
+      type: "email",
+      status: "draft",
+      subject: "New Lots Available — {{subdivision}} — Starting at $[PRICE]",
+      content: "Hi {{firstName}},\n\nWe have new lots available in [SUBDIVISION NAME]:\n\n📍 Location: [CITY, STATE]\n📐 Lot sizes: [SIZE RANGE]\n💰 Starting at: $[PRICE]\n🏗️ Builder-ready with utilities\n\nThese won't last. Reply or call [PHONE] for a plat map and pricing sheet.\n\n[YOUR NAME]",
+      targetCriteria: { leadStatus: ["new"], leadType: ["buyer"] },
+    },
+  ],
+  defaultTags: ["subdividable", "entitled", "zoned residential", "utilities available", "road access", "infill", "raw land", "plat approved"],
+};
+
+const TAX_LIEN_DEED_TEMPLATES = {
+  campaigns: [
+    {
+      name: "Post-Auction Owner Outreach",
+      type: "direct_mail",
+      status: "draft",
+      subject: "Important Notice About Your Property — Tax Sale",
+      content: "Dear Property Owner,\n\nI recently acquired the tax lien / tax deed on your property at [ADDRESS]. I understand this may be stressful, and I want to work with you.\n\nYou may still have the right to redeem your property. I'm open to discussing options that work for both of us.\n\nPlease contact me at [PHONE] or reply to this letter.\n\nSincerely,\n[YOUR NAME]",
+      targetCriteria: { leadStatus: ["new"], leadType: ["seller"] },
+    },
+    {
+      name: "Pre-Delinquency Outreach",
+      type: "email",
+      status: "draft",
+      subject: "Can I Help With Your Property Taxes?",
+      content: "Hi {{firstName}},\n\nI noticed your property at {{address}} may have outstanding tax obligations. Before it goes to auction, I'd like to explore whether a private sale might make more sense for you.\n\nI buy properties directly — no agents, no fees, quick closing. If that interests you, let's talk.\n\nBest,\n[YOUR NAME]",
+      targetCriteria: { leadStatus: ["new"], leadType: ["seller"] },
+    },
+  ],
+  defaultTags: ["tax delinquent", "auction", "redeemable", "deed sale", "lien sale", "surplus", "quiet title needed"],
+};
+
+const MULTIFAMILY_TEMPLATES = {
+  campaigns: [
+    {
+      name: "Off-Market Multifamily Acquisition",
+      type: "direct_mail",
+      status: "draft",
+      subject: "Interested in Selling Your Apartment Building?",
+      content: "Dear Property Owner,\n\nI represent a private investment group actively acquiring multifamily properties (5-100+ units) in [MARKET].\n\nIf you've considered selling, we offer:\n- Competitive pricing based on actual income\n- No broker commissions\n- Flexible closing timelines\n- Assumption of existing management if desired\n\nThis is a confidential inquiry. Please call [PHONE] or reply.\n\n[YOUR NAME]\n[COMPANY NAME]",
+      targetCriteria: { leadStatus: ["new"], leadType: ["seller"] },
+    },
+    {
+      name: "Value-Add Opportunity Outreach",
+      type: "email",
+      status: "draft",
+      subject: "Quick Question About Your Property at {{address}}",
+      content: "Hi {{firstName}},\n\nI noticed your multifamily property and wanted to reach out. We specialize in acquiring value-add apartment buildings where we can improve operations and renovate units.\n\nWould you be open to an off-market conversation? Even if you're not ready to sell now, I'd love to build a relationship.\n\nBest,\n[YOUR NAME]",
+      targetCriteria: { leadStatus: ["new"], leadType: ["seller"] },
+    },
+  ],
+  defaultTags: ["value-add", "stabilized", "Class A", "Class B", "Class C", "5-20 units", "20-50 units", "50+ units", "heavy rehab"],
+  noteSettings: {
+    defaultInterestRate: 6.0,
+    defaultTermMonths: 360,
+    gracePeriodDays: 10,
+    lateFeePercent: 5,
+  },
+};
+
+const MOBILE_HOME_TEMPLATES = {
+  campaigns: [
+    {
+      name: "Mobile Home Park Acquisition",
+      type: "direct_mail",
+      status: "draft",
+      subject: "Interested in Selling Your Mobile Home Park?",
+      content: "Dear Park Owner,\n\nI'm actively acquiring mobile home parks and manufactured housing communities. If you're considering retirement, simplifying your portfolio, or just exploring options, I'd love to have a confidential conversation.\n\nWe offer fair valuations, flexible terms, and can close quickly.\n\nCall [PHONE] or reply to this letter.\n\n[YOUR NAME]\n[COMPANY NAME]",
+      targetCriteria: { leadStatus: ["new"], leadType: ["seller"] },
+    },
+    {
+      name: "Mobile Home Owner Outreach",
+      type: "email",
+      status: "draft",
+      subject: "Cash Offer for Your Mobile Home",
+      content: "Hi {{firstName}},\n\nI buy mobile homes in [AREA] — any condition, any age. If you're looking to sell, I can make a fair cash offer and close on your timeline.\n\nNo repairs needed. No agent fees. Simple process.\n\nInterested? Reply or call [PHONE].\n\n[YOUR NAME]",
+      targetCriteria: { leadStatus: ["new"], leadType: ["seller"] },
+    },
+  ],
+  defaultTags: ["MHP", "park-owned home", "tenant-owned home", "vacant lot", "55+", "all-ages", "city water", "well/septic"],
+  noteSettings: {
+    defaultInterestRate: 10.0,
+    defaultTermMonths: 84,
+    gracePeriodDays: 10,
+    lateFeePercent: 5,
+  },
+};
+
+const AGENT_INVESTOR_TEMPLATES = {
+  campaigns: [
+    {
+      name: "Buyer Lead Nurture",
+      type: "email",
+      status: "draft",
+      subject: "New Listings Matching Your Criteria — {{city}}",
+      content: "Hi {{firstName}},\n\nI have new listings that match what you're looking for:\n\n📍 [PROPERTY 1]\n📍 [PROPERTY 2]\n📍 [PROPERTY 3]\n\nWant to schedule a showing? Reply or call [PHONE].\n\nBest,\n[YOUR NAME]\n[BROKERAGE]",
+      targetCriteria: { leadStatus: ["new"], leadType: ["buyer"] },
+    },
+    {
+      name: "Expired Listing Outreach",
+      type: "direct_mail",
+      status: "draft",
+      subject: "Your Listing Expired — Let's Get It Sold",
+      content: "Dear {{firstName}},\n\nI noticed your home at {{address}} recently came off the market. That can be frustrating, but it doesn't mean your home won't sell — it may just need a different approach.\n\nI'd love to share my marketing plan and show you what I'd do differently. No pressure, just a conversation.\n\nCall or text [PHONE].\n\n[YOUR NAME]\nLicensed Real Estate Agent\n[BROKERAGE]",
+      targetCriteria: { leadStatus: ["new"], leadType: ["seller"] },
+    },
+    {
+      name: "Investment Property Acquisition",
+      type: "email",
+      status: "draft",
+      subject: "Off-Market Opportunity — {{city}}",
+      content: "Hi {{firstName}},\n\nI came across a property that might be a fit for your investment criteria:\n\n📍 {{address}}\n💰 Price: $[PRICE]\n📊 Cap Rate: [CAP_RATE]%\n\nThis is off-market and won't last. Want details?\n\nBest,\n[YOUR NAME]",
+      targetCriteria: { leadStatus: ["new"], leadType: ["buyer"] },
+    },
+  ],
+  defaultTags: ["buyer lead", "seller lead", "listing", "expired", "FSBO", "investment property", "referral", "sphere"],
+};
+
 export class OnboardingService {
   async getOnboardingStatus(orgId: number): Promise<OnboardingStatus> {
     const org = await storage.getOrganization(orgId);
@@ -345,6 +538,78 @@ export class OnboardingService {
       });
     }
 
+    if (businessType === "short_term_rental") {
+      for (const campaignTemplate of SHORT_TERM_RENTAL_TEMPLATES.campaigns) {
+        await storage.createCampaign({ organizationId: orgId, ...campaignTemplate });
+        campaignsCreated++;
+      }
+      allTags = [...allTags, ...SHORT_TERM_RENTAL_TEMPLATES.defaultTags];
+      const settings = (org.settings as any) || {};
+      await storage.updateOrganization(orgId, {
+        settings: { ...settings, ...SHORT_TERM_RENTAL_TEMPLATES.noteSettings },
+      });
+    }
+
+    if (businessType === "creative_finance") {
+      for (const campaignTemplate of CREATIVE_FINANCE_TEMPLATES.campaigns) {
+        await storage.createCampaign({ organizationId: orgId, ...campaignTemplate });
+        campaignsCreated++;
+      }
+      allTags = [...allTags, ...CREATIVE_FINANCE_TEMPLATES.defaultTags];
+      const settings = (org.settings as any) || {};
+      await storage.updateOrganization(orgId, {
+        settings: { ...settings, ...CREATIVE_FINANCE_TEMPLATES.noteSettings },
+      });
+    }
+
+    if (businessType === "developer") {
+      for (const campaignTemplate of DEVELOPER_TEMPLATES.campaigns) {
+        await storage.createCampaign({ organizationId: orgId, ...campaignTemplate });
+        campaignsCreated++;
+      }
+      allTags = [...allTags, ...DEVELOPER_TEMPLATES.defaultTags];
+    }
+
+    if (businessType === "tax_lien_deed") {
+      for (const campaignTemplate of TAX_LIEN_DEED_TEMPLATES.campaigns) {
+        await storage.createCampaign({ organizationId: orgId, ...campaignTemplate });
+        campaignsCreated++;
+      }
+      allTags = [...allTags, ...TAX_LIEN_DEED_TEMPLATES.defaultTags];
+    }
+
+    if (businessType === "multifamily") {
+      for (const campaignTemplate of MULTIFAMILY_TEMPLATES.campaigns) {
+        await storage.createCampaign({ organizationId: orgId, ...campaignTemplate });
+        campaignsCreated++;
+      }
+      allTags = [...allTags, ...MULTIFAMILY_TEMPLATES.defaultTags];
+      const settings = (org.settings as any) || {};
+      await storage.updateOrganization(orgId, {
+        settings: { ...settings, ...MULTIFAMILY_TEMPLATES.noteSettings },
+      });
+    }
+
+    if (businessType === "mobile_home") {
+      for (const campaignTemplate of MOBILE_HOME_TEMPLATES.campaigns) {
+        await storage.createCampaign({ organizationId: orgId, ...campaignTemplate });
+        campaignsCreated++;
+      }
+      allTags = [...allTags, ...MOBILE_HOME_TEMPLATES.defaultTags];
+      const settings = (org.settings as any) || {};
+      await storage.updateOrganization(orgId, {
+        settings: { ...settings, ...MOBILE_HOME_TEMPLATES.noteSettings },
+      });
+    }
+
+    if (businessType === "agent_investor") {
+      for (const campaignTemplate of AGENT_INVESTOR_TEMPLATES.campaigns) {
+        await storage.createCampaign({ organizationId: orgId, ...campaignTemplate });
+        campaignsCreated++;
+      }
+      allTags = [...allTags, ...AGENT_INVESTOR_TEMPLATES.defaultTags];
+    }
+
     const currentData = (org.onboardingData as OnboardingData) || {};
     await storage.updateOrganization(orgId, {
       onboardingData: {
@@ -384,6 +649,13 @@ export class OnboardingService {
       fix_and_flip: "fix and flip investor",
       buy_and_hold: "buy and hold / rental investor",
       commercial: "commercial real estate investor",
+      short_term_rental: "short-term rental / Airbnb investor",
+      creative_finance: "creative finance investor (subject-to, wraps, lease options)",
+      developer: "real estate developer / subdivider",
+      tax_lien_deed: "tax lien and tax deed investor",
+      multifamily: "multifamily / apartment building investor",
+      mobile_home: "mobile home and manufactured housing investor",
+      agent_investor: "licensed real estate agent who also invests",
     };
 
     const stepInfo = ONBOARDING_STEPS[step];
@@ -456,7 +728,7 @@ Generate 3 helpful tips for this step.`,
       4: [
         "Review your setup before launching.",
         "You can always come back and make changes later.",
-        "Congratulations on setting up your land investment business!",
+        "Congratulations on setting up your real estate business!",
       ],
     };
 
@@ -654,6 +926,131 @@ Generate 3 helpful tips for this step.`,
           status: "owned",
           marketValue: "35000",
           purchasePrice: "28000",
+        } as any);
+      } else if (businessType === "short_term_rental") {
+        await storage.createLead({
+          organizationId: orgId, type: "seller", firstName: "Heather", lastName: "Brooks",
+          email: "h.brooks@example.com", phone: "555-0701", address: "42 Lakefront Dr",
+          city: "Gatlinburg", state: "TN", zip: "37738", status: "new", source: "direct_mail",
+          tags: ["STR", "tired host"], notes: "Airbnb superhost burning out, 4.8 rating, 85% occupancy",
+        } as any);
+        const strProperty = await storage.createProperty({
+          organizationId: orgId, county: "Sevier", state: "TN", address: "42 Lakefront Dr",
+          city: "Gatlinburg", zip: "37738", status: "prospect", marketValue: "425000",
+          purchasePrice: null,
+        } as any);
+        await storage.createDeal({
+          organizationId: orgId, propertyId: strProperty.id, type: "acquisition",
+          status: "negotiating", offerAmount: "380000",
+          notes: "STR acquisition — est. $65k/yr gross revenue, 85% occupancy",
+        } as any);
+      } else if (businessType === "creative_finance") {
+        await storage.createLead({
+          organizationId: orgId, type: "seller", firstName: "Derek", lastName: "Nguyen",
+          email: "d.nguyen@example.com", phone: "555-0801", address: "1515 Sunset Blvd",
+          city: "Orlando", state: "FL", zip: "32801", status: "new", source: "direct_mail",
+          tags: ["pre-foreclosure", "subject-to candidate"], notes: "2 months behind on mortgage, wants to avoid foreclosure",
+        } as any);
+        const cfProperty = await storage.createProperty({
+          organizationId: orgId, county: "Orange", state: "FL", address: "1515 Sunset Blvd",
+          city: "Orlando", zip: "32801", status: "prospect", marketValue: "310000",
+          purchasePrice: null,
+        } as any);
+        await storage.createDeal({
+          organizationId: orgId, propertyId: cfProperty.id, type: "acquisition",
+          status: "negotiating", offerAmount: "0",
+          notes: "Subject-to — existing mortgage $245k at 3.5%, equity $65k, monthly PITI $1,450",
+        } as any);
+      } else if (businessType === "developer") {
+        await storage.createLead({
+          organizationId: orgId, type: "seller", firstName: "Margaret", lastName: "Ellis",
+          email: "m.ellis@example.com", phone: "555-0901", address: "Hwy 290 Tract",
+          city: "Dripping Springs", state: "TX", zip: "78620", status: "new", source: "cold_call",
+          tags: ["subdividable", "utilities available"], notes: "20-acre tract, zoned residential, city water at road",
+        } as any);
+        const devProperty = await storage.createProperty({
+          organizationId: orgId, county: "Hays", state: "TX", address: "Hwy 290 Tract",
+          city: "Dripping Springs", zip: "78620", sizeAcres: "20.0", status: "prospect", marketValue: "800000",
+          purchasePrice: null,
+        } as any);
+        await storage.createDeal({
+          organizationId: orgId, propertyId: devProperty.id, type: "acquisition",
+          status: "negotiating", offerAmount: "650000",
+          notes: "Development — 20 acres into 40 half-acre lots, est. $45k/lot retail, $1.8M total revenue",
+        } as any);
+      } else if (businessType === "tax_lien_deed") {
+        await storage.createLead({
+          organizationId: orgId, type: "seller", firstName: "Roy", lastName: "Watkins",
+          email: "r.watkins@example.com", phone: "555-1001", address: "8800 County Rd 12",
+          city: "Ocala", state: "FL", zip: "34470", status: "new", source: "direct_mail",
+          tags: ["tax delinquent", "3+ years"], notes: "Property taxes delinquent 3 years, owner unreachable",
+        } as any);
+        const tlProperty = await storage.createProperty({
+          organizationId: orgId, county: "Marion", state: "FL", address: "8800 County Rd 12",
+          city: "Ocala", zip: "34470", sizeAcres: "1.5", status: "prospect", marketValue: "55000",
+          purchasePrice: null,
+        } as any);
+        await storage.createDeal({
+          organizationId: orgId, propertyId: tlProperty.id, type: "acquisition",
+          status: "negotiating", offerAmount: "4200",
+          notes: "Tax deed — purchased at auction for $4,200, market value $55k, needs quiet title",
+        } as any);
+      } else if (businessType === "multifamily") {
+        await storage.createLead({
+          organizationId: orgId, type: "seller", firstName: "Gloria", lastName: "Reeves",
+          email: "g.reeves@example.com", phone: "555-1101", address: "2200 Park Ave",
+          city: "Kansas City", state: "MO", zip: "64108", status: "new", source: "referral",
+          tags: ["value-add", "12 units"], notes: "Owner retiring, 12-unit building, below-market rents",
+        } as any);
+        const mfProperty = await storage.createProperty({
+          organizationId: orgId, county: "Jackson", state: "MO", address: "2200 Park Ave",
+          city: "Kansas City", zip: "64108", status: "prospect", marketValue: "960000",
+          purchasePrice: null,
+        } as any);
+        await storage.createDeal({
+          organizationId: orgId, propertyId: mfProperty.id, type: "acquisition",
+          status: "negotiating", offerAmount: "820000",
+          notes: "Multifamily value-add — 12 units, current NOI $62k, target NOI $96k after reno, 7.2% cap",
+        } as any);
+      } else if (businessType === "mobile_home") {
+        await storage.createLead({
+          organizationId: orgId, type: "seller", firstName: "Earl", lastName: "Dixon",
+          email: "e.dixon@example.com", phone: "555-1201", address: "Pine Ridge MHP",
+          city: "Fayetteville", state: "NC", zip: "28301", status: "new", source: "direct_mail",
+          tags: ["MHP", "25 lots"], notes: "Retiring park owner, 25 lots, 20 occupied, city water/sewer",
+        } as any);
+        const mhProperty = await storage.createProperty({
+          organizationId: orgId, county: "Cumberland", state: "NC", address: "Pine Ridge MHP",
+          city: "Fayetteville", zip: "28301", status: "prospect", marketValue: "625000",
+          purchasePrice: null,
+        } as any);
+        await storage.createDeal({
+          organizationId: orgId, propertyId: mhProperty.id, type: "acquisition",
+          status: "negotiating", offerAmount: "500000",
+          notes: "MHP — 25 lots, 20 occupied at $350/lot rent, $7k/mo gross, 80% occupancy target 96%",
+        } as any);
+      } else if (businessType === "agent_investor") {
+        await storage.createLead({
+          organizationId: orgId, type: "seller", firstName: "Tamara", lastName: "Wells",
+          email: "t.wells@example.com", phone: "555-1301", address: "900 Cherry Ln",
+          city: "Raleigh", state: "NC", zip: "27601", status: "new", source: "expired_listing",
+          tags: ["expired", "FSBO"], notes: "Listing expired after 90 days, motivated to sell",
+        } as any);
+        await storage.createLead({
+          organizationId: orgId, type: "buyer", firstName: "Jason", lastName: "Park",
+          email: "j.park@example.com", phone: "555-1302", address: "220 Investor Way",
+          city: "Raleigh", state: "NC", zip: "27602", status: "new", source: "referral",
+          tags: ["buyer lead", "investment property"], notes: "Looking for SFR under $250k, cash buyer",
+        } as any);
+        const aiProperty = await storage.createProperty({
+          organizationId: orgId, county: "Wake", state: "NC", address: "900 Cherry Ln",
+          city: "Raleigh", zip: "27601", status: "prospect", marketValue: "285000",
+          purchasePrice: null,
+        } as any);
+        await storage.createDeal({
+          organizationId: orgId, propertyId: aiProperty.id, type: "acquisition",
+          status: "negotiating", offerAmount: "255000",
+          notes: "Expired listing — owner motivated, ARV $310k, could list or wholesale",
         } as any);
       }
     } catch (sampleDataError) {
