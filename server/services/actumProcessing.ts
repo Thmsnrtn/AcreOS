@@ -1,7 +1,7 @@
 /**
- * Actum Processing Service — Stable ACH for Land Investing
+ * Actum Processing Service — Stable ACH for Real Estate Professionals
  *
- * Actum is the preferred ACH processor for land investors using GeekPay.
+ * Actum is the preferred ACH processor for real estate professionals using GeekPay.
  * It exclusively supports ACH payments and is optimized for recurring
  * monthly land contract payments — more stable and cheaper than Stripe
  * for this use case.

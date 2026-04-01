@@ -173,7 +173,7 @@ registerExecutor("forge_revenue", "send_churn_rescue", async (ctx) => {
     subject: `Your AcreOS account — we'd love to hear from you`,
     html: `
       <p>Hi ${org.name} team,</p>
-      <p>I'm reaching out from AcreOS because I want to make sure our platform is delivering real value for your land investment business.</p>
+      <p>I'm reaching out from AcreOS because I want to make sure our platform is delivering real value for your real estate business.</p>
       <p>If there's anything that's not working for you, or features you wish we had, I'd genuinely love to hear about it. Your success is our priority.</p>
       <p>Would you be open to a quick 10-minute call this week?</p>
       <p>Best,<br/>The AcreOS Team</p>

@@ -55,7 +55,7 @@ export default function MarketDataPage() {
             Land Prices by State
           </h1>
           <p className="text-muted-foreground mt-2 text-lg">
-            AcreOS Market Intelligence — real-time land investment data
+            AcreOS Market Intelligence — real-time real estate market data
           </p>
         </div>
       </div>

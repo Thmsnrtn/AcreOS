@@ -1833,7 +1833,7 @@ export async function executeTool(
           messages: [
             {
               role: "system",
-              content: "You are a professional land investment offer writer. Draft clear, concise, and professional land purchase offer letters."
+              content: "You are a professional real estate offer writer. Draft clear, concise, and professional land purchase offer letters."
             },
             {
               role: "user",
@@ -2065,7 +2065,7 @@ export async function executeTool(
           messages: [
             {
               role: "system",
-              content: "You are an expert land investment outreach specialist. Write personalized, empathetic messages that connect with landowners. Never be pushy. Focus on helping the seller understand their options."
+              content: "You are an expert real estate outreach specialist. Write personalized, empathetic messages that connect with landowners. Never be pushy. Focus on helping the seller understand their options."
             },
             {
               role: "user",

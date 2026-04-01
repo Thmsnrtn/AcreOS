@@ -2716,7 +2716,7 @@ export type InsertDueDiligenceTemplate = z.infer<typeof insertDueDiligenceTempla
 export type DueDiligenceItem = typeof dueDiligenceItems.$inferSelect;
 export type InsertDueDiligenceItem = z.infer<typeof insertDueDiligenceItemSchema>;
 
-// Default templates for land investment due diligence
+// Default templates for real estate due diligence
 export const DEFAULT_DUE_DILIGENCE_TEMPLATES = [
   {
     name: "Standard Land Due Diligence",

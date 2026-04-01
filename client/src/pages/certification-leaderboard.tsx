@@ -198,7 +198,7 @@ function LeaderboardTab() {
 
   function handleShareLinkedIn(entry: LeaderboardEntry) {
     const text = encodeURIComponent(
-      `I'm ranked #${entry.rank} on the AcreOS Certification Leaderboard with ${entry.certificationsEarned} land investing certifications! 🏆 #LandInvesting #AcreOS`
+      `I'm ranked #${entry.rank} on the AcreOS Certification Leaderboard with ${entry.certificationsEarned} real estate certifications! 🏆 #RealEstate #AcreOS`
     );
     const url = `https://www.linkedin.com/sharing/share-offsite/?text=${text}`;
     window.open(url, '_blank', 'noopener,noreferrer');

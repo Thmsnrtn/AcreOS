@@ -264,7 +264,7 @@ export async function registerDailyBriefingJob(queue: any): Promise<void> {
     {
       repeat: {
         cron: '0 7 * * *', // 7 AM UTC daily
-        timezone: 'America/Chicago', // Central time (most land investors are central/mountain)
+        timezone: 'America/Chicago', // Central time (most users are central/mountain)
       },
       removeOnComplete: 5,
       removeOnFail: 3,

@@ -447,7 +447,7 @@ function StepExit({ report, onNext, onBack }: any) {
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-bold mb-1">Step 4: Exit Strategy</h2>
-        <p className="text-sm text-muted-foreground">Compare cash flip vs. owner financing. Most land investors start with cash flips, then build to a note portfolio.</p>
+        <p className="text-sm text-muted-foreground">Compare cash flip vs. owner financing. Most real estate investors start with cash flips, then build to a note portfolio.</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -574,7 +574,7 @@ I look forward to hearing from you.
 Sincerely,
 
 [Your Name]
-Private Land Investor`;
+Private Real Estate Investor`;
 
   function copyLetter() {
     navigator.clipboard.writeText(letterText);

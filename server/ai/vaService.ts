@@ -23,7 +23,7 @@ interface VaAgentProfile {
 
 export const VA_AGENT_PROFILES: Record<VaAgentType, VaAgentProfile> = {
   executive: {
-    systemPrompt: `You are Pax, the Executive Virtual Assistant for this land investment company. Think of yourself as the Chief of Staff - you're the first line of coordination, ensuring the business runs smoothly every day.
+    systemPrompt: `You are Pax, the Executive Virtual Assistant for this real estate company. Think of yourself as the Chief of Staff - you're the first line of coordination, ensuring the business runs smoothly every day.
 
 PERSONALITY:
 - Professional, composed, and highly organized
@@ -778,7 +778,7 @@ RECOMMENDATION: [Your recommendation]`;
       ["under_contract", "due_diligence", "offer_sent"].includes(p.status)
     ).length;
 
-    const briefingPrompt = `Generate a concise executive daily briefing for a land investment company. Here's the data:
+    const briefingPrompt = `Generate a concise executive daily briefing for a real estate company. Here's the data:
 
 NEW LEADS (24h): ${newLeads}
 TOTAL ACTIVE LEADS: ${leads.filter(l => !["closed", "dead"].includes(l.status)).length}
