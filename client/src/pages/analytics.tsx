@@ -122,6 +122,12 @@ export default function AnalyticsPage() {
           </Suspense>
         </TabsContent>
 
+        <TabsContent value="retention" data-testid="tab-content-retention">
+          <Suspense fallback={<TabFallback />}>
+            <CohortRetentionDashboard />
+          </Suspense>
+        </TabsContent>
+
         <TabsContent value="attribution" data-testid="tab-content-attribution">
           <Suspense fallback={<TabFallback />}>
             <AttributionAnalytics />
