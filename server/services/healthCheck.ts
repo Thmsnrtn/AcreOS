@@ -218,7 +218,7 @@ class HealthCheckService {
         return this.createHealth(name, 'unconfigured', undefined, 'REDIS_URL not configured');
       }
 
-      // @ts-ignore — redis types may not be installed
+      // redis types may not be installed; `as any` cast handles the mismatch
       const { createClient } = await import('redis') as any;
       const client = createClient({ url: redisUrl });
       await client.connect();

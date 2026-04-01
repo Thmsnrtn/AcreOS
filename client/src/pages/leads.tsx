@@ -2509,6 +2509,40 @@ function LeadDetailDrawer({ lead, onClose, onEdit }: { lead: Lead; onClose: () =
             </TabsContent>
 
             <TabsContent value="timeline" className="space-y-6">
+              {/* Contact interaction summary */}
+              <Card className="glass-panel">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <History className="w-4 h-4" /> Contact Interactions
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Phone className="w-3 h-3" />
+                      <span>Calls</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Mail className="w-3 h-3" />
+                      <span>Emails</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <StickyNote className="w-3 h-3" />
+                      <span>Notes</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Clock className="w-3 h-3" />
+                      <span>
+                        {lead.lastContactedAt
+                          ? `Last: ${format(new Date(lead.lastContactedAt), "MMM d")}`
+                          : "No contact yet"}
+                      </span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Full timeline with all interaction types */}
               <ActivityTimeline entityType="lead" entityId={lead.id} />
             </TabsContent>
           </Tabs>

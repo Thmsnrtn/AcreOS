@@ -501,11 +501,18 @@ export function registerDealRoutes(app: Express): void {
     try {
       const org = req.organization;
       const propertyId = Number(req.params.id);
-      const { message, conversationHistory } = req.body;
-      
-      if (!message) {
-        return Errors.badRequest(res, "Message is required");
+      const analyzeSchema = z.object({
+        message: z.string().min(1, "Message is required").max(10000),
+        conversationHistory: z.array(z.object({
+          role: z.string(),
+          content: z.string(),
+        })).optional(),
+      });
+      const parsed = analyzeSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
       }
+      const { message, conversationHistory } = parsed.data;
       
       const usageCheck = await checkUsageLimit(org.id, "ai_requests");
       if (!usageCheck.allowed) {

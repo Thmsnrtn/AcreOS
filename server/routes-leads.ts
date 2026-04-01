@@ -473,16 +473,21 @@ export function registerLeadRoutes(app: Express): void {
         return Errors.notFound(res, "Lead");
       }
 
-      const { latitude, longitude, forceRefresh } = req.body;
-
-      if (!latitude || !longitude) {
-        return Errors.badRequest(res, "latitude and longitude are required");
+      const enrichSchema = z.object({
+        latitude: z.union([z.number(), z.string()]).transform(Number).pipe(z.number()),
+        longitude: z.union([z.number(), z.string()]).transform(Number).pipe(z.number()),
+        forceRefresh: z.boolean().optional(),
+      });
+      const parsed = enrichSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
       }
-      
+      const { latitude, longitude, forceRefresh } = parsed.data;
+
       const result = await propertyEnrichmentService.enrichLead(
         org.id,
         leadId,
-        { latitude: parseFloat(latitude), longitude: parseFloat(longitude) },
+        { latitude, longitude },
         forceRefresh === true
       );
       
@@ -601,7 +606,32 @@ export function registerLeadRoutes(app: Express): void {
     const org = req.organization;
     const leadId = Number(req.params.id);
     const eventTypes = req.query.eventTypes ? (req.query.eventTypes as string).split(",") : undefined;
+    const includeDealChanges = req.query.includeDealChanges !== "false";
+
     const events = await storage.getActivityEvents(org.id, "lead", leadId, eventTypes);
+
+    // Also fetch related deal stage changes and campaign touches for a richer timeline
+    if (includeDealChanges) {
+      try {
+        const dealEvents = await storage.getActivityEvents(org.id, "deal", leadId, undefined);
+        // Merge deal events that reference this lead, avoiding duplicates
+        const existingIds = new Set(events.map((e: any) => e.id));
+        for (const de of dealEvents) {
+          if (!existingIds.has((de as any).id)) {
+            events.push(de);
+          }
+        }
+        // Sort merged list by date descending
+        events.sort((a: any, b: any) => {
+          const dateA = new Date(a.eventDate || a.createdAt).getTime();
+          const dateB = new Date(b.eventDate || b.createdAt).getTime();
+          return dateB - dateA;
+        });
+      } catch {
+        // If deal events fail, still return the lead events
+      }
+    }
+
     res.json(events);
   });
 

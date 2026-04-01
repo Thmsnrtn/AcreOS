@@ -667,7 +667,7 @@ export function registerAIRoutes(app: Express): void {
       ].join("\n");
 
       if (format === "pdf") {
-        // @ts-ignore - pdfkit has no type declarations
+        // @ts-expect-error — pdfkit has no type declarations installed
         const PDFDocument = (await import("pdfkit")).default;
         res.setHeader("Content-Type", "application/pdf");
         res.setHeader("Content-Disposition", `attachment; filename="pax-conversation-${convId}.pdf"`);

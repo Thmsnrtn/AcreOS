@@ -108,7 +108,7 @@ function useGPS() {
         enableHighAccuracy: true,
         timeout: 15000,
         maximumAge: 5000,        // Cache for 5s (reduced for field accuracy)
-        // @ts-ignore — desiredAccuracy is non-standard but supported on some devices
+        // @ts-expect-error — desiredAccuracy is non-standard but supported on some mobile browsers
         desiredAccuracy: 5,      // 5 metres target
       }
     );
@@ -145,9 +145,8 @@ function useCompass(): CompassData {
   useEffect(() => {
     // iOS 13+ requires permission for DeviceOrientationEvent
     const handler = (e: DeviceOrientationEvent) => {
-      // @ts-ignore — webkitCompassHeading is iOS-specific
+      // webkitCompassHeading / webkitCompassAccuracy are iOS-specific; cast handles the type mismatch
       const heading = (e as any).webkitCompassHeading ?? (e.alpha !== null ? (360 - e.alpha) : null);
-      // @ts-ignore
       const accuracy = (e as any).webkitCompassAccuracy ?? null;
       if (heading !== null) {
         setData({ heading: Math.round(heading * 10) / 10, accuracy, supported: true });

@@ -593,10 +593,15 @@ export function registerCampaignRoutes(app: Express): void {
     try {
       const org = req.organization;
       const campaignId = parseInt(req.params.id);
-      const { pieceType, leadIds } = req.body as {
-        pieceType: 'postcard_4x6' | 'postcard_6x9' | 'postcard_6x11' | 'letter_1_page';
-        leadIds: number[];
-      };
+      const sendMailSchema = z.object({
+        pieceType: z.enum(['postcard_4x6', 'postcard_6x9', 'postcard_6x11', 'letter_1_page']),
+        leadIds: z.array(z.number().int().positive()).min(1, "leadIds must be a non-empty array"),
+      });
+      const parsed = sendMailSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+      const { pieceType, leadIds } = parsed.data;
 
       const { directMailService, DIRECT_MAIL_COSTS } = await import("./services/directMail");
       
@@ -1077,11 +1082,12 @@ export function registerCampaignRoutes(app: Express): void {
   // Update mail mode (test/live)
   api.patch("/api/direct-mail/mode", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const { mode } = req.body;
-    
-    if (mode !== 'test' && mode !== 'live') {
-      return Errors.badRequest(res, "Mode must be 'test' or 'live'");
+    const modeSchema = z.object({ mode: z.enum(["test", "live"]) });
+    const parsed = modeSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return Errors.validationFailed(res, parsed.error.errors);
     }
+    const { mode } = parsed.data;
     
     const { directMailService } = await import("./services/directMail");
     
@@ -1110,17 +1116,22 @@ export function registerCampaignRoutes(app: Express): void {
   api.post("/api/direct-mail/estimate", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const { pieceType, recipientCount, recipientIds, campaignId } = req.body;
-      
-      const { directMailService, DIRECT_MAIL_COSTS } = await import("./services/directMail");
-      
+      const estimateSchema = z.object({
+        pieceType: z.enum(['postcard_4x6', 'postcard_6x9', 'postcard_6x11', 'letter_1_page']),
+        recipientCount: z.number().int().min(0).optional(),
+        recipientIds: z.array(z.number().int().positive()).optional(),
+        campaignId: z.number().int().positive().optional(),
+      });
+      const parsed = estimateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+      const { pieceType, recipientCount, recipientIds, campaignId } = parsed.data;
+
+      const { directMailService } = await import("./services/directMail");
+
       if (!directMailService.isAvailable()) {
         return Errors.badRequest(res, "Direct mail service not configured");
-      }
-
-      // Validate piece type
-      if (!DIRECT_MAIL_COSTS[pieceType as keyof typeof DIRECT_MAIL_COSTS]) {
-        return Errors.badRequest(res, "Invalid piece type");
       }
       
       // Calculate recipient count from IDs if provided
@@ -1164,11 +1175,18 @@ export function registerCampaignRoutes(app: Express): void {
   // Verify a single address
   api.post("/api/direct-mail/verify-address", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const { line1, line2, city, state, zip } = req.body;
-
-      if (!line1 || !city || !state || !zip) {
-        return Errors.badRequest(res, "Address fields (line1, city, state, zip) are required");
+      const addressSchema = z.object({
+        line1: z.string().min(1, "line1 is required"),
+        line2: z.string().optional(),
+        city: z.string().min(1, "city is required"),
+        state: z.string().min(1, "state is required"),
+        zip: z.string().min(1, "zip is required"),
+      });
+      const parsed = addressSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
       }
+      const { line1, line2, city, state, zip } = parsed.data;
       
       const isProduction = process.env.NODE_ENV === 'production';
       const apiKey = isProduction 
@@ -1198,11 +1216,14 @@ export function registerCampaignRoutes(app: Express): void {
   api.post("/api/direct-mail/bulk-verify-addresses", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const { leadIds } = req.body;
-
-      if (!leadIds || !Array.isArray(leadIds) || leadIds.length === 0) {
-        return Errors.badRequest(res, "leadIds array is required");
+      const bulkVerifySchema = z.object({
+        leadIds: z.array(z.number().int().positive()).min(1, "leadIds array is required").max(100, "Maximum 100 addresses per batch"),
+      });
+      const parsed = bulkVerifySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
       }
+      const { leadIds } = parsed.data;
 
       if (leadIds.length > 100) {
         return Errors.badRequest(res, "Maximum 100 addresses can be verified at once");

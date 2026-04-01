@@ -1,4 +1,6 @@
-// @ts-nocheck
+// @ts-nocheck — TODO: Add proper type declarations for optional OpenTelemetry SDK imports.
+// The SDK is lazily imported and all types are set to `any`. This requires adding
+// @opentelemetry/* type packages and guarding with proper type narrowing.
 /**
  * OpenTelemetry Distributed Tracing (T74)
  *
