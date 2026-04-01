@@ -14799,3 +14799,47 @@ export const scpEvolutionMetrics = pgTable("scp_evolution_metrics", {
   index("sem_agent_idx").on(table.agentCodename),
 ]);
 export type ScpEvolutionMetric = typeof scpEvolutionMetrics.$inferSelect;
+
+// ── Field Scout ─────────────────────────────────────────────────────────────
+
+export const fieldScoutVisits = pgTable("field_scout_visits", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").notNull(),
+  visitorId: varchar("visitor_id", { length: 255 }).notNull(),
+  leadId: integer("lead_id"),
+  propertyId: integer("property_id"),
+  latitude: doublePrecision("latitude"),
+  longitude: doublePrecision("longitude"),
+  notes: text("notes"),
+  status: varchar("status", { length: 50 }).default("completed"),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => [
+  index("fsv_org_idx").on(t.organizationId),
+  index("fsv_visitor_idx").on(t.visitorId),
+]);
+
+export const insertFieldScoutVisitSchema = createInsertSchema(fieldScoutVisits).omit({ id: true, createdAt: true, updatedAt: true });
+export type FieldScoutVisit = typeof fieldScoutVisits.$inferSelect;
+export type InsertFieldScoutVisit = z.infer<typeof insertFieldScoutVisitSchema>;
+
+export const fieldScoutPhotos = pgTable("field_scout_photos", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").notNull(),
+  visitId: integer("visit_id").notNull(),
+  leadId: integer("lead_id"),
+  url: text("url").notNull(),
+  caption: text("caption"),
+  latitude: doublePrecision("latitude"),
+  longitude: doublePrecision("longitude"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => [
+  index("fsp_visit_idx").on(t.visitId),
+  index("fsp_lead_idx").on(t.leadId),
+]);
+
+export const insertFieldScoutPhotoSchema = createInsertSchema(fieldScoutPhotos).omit({ id: true, createdAt: true });
+export type FieldScoutPhoto = typeof fieldScoutPhotos.$inferSelect;
+export type InsertFieldScoutPhoto = z.infer<typeof insertFieldScoutPhotoSchema>;
