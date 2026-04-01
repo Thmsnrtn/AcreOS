@@ -1,4 +1,6 @@
-// @ts-nocheck
+// @ts-nocheck — TODO: Replace `Request` with `AuthenticatedRequest` from server/types/request.ts
+// throughout this file to remove @ts-nocheck. Main issues: req.organization, req.user,
+// req.organizationId, and req.permissionContext are used on plain Express Request type.
 import type { Express, Request, Response, NextFunction } from "express";
 import express from "express";
 import type { Server } from "http";

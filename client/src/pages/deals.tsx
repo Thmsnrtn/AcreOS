@@ -1,5 +1,6 @@
 import { PageShell } from "@/components/page-shell";
 import { PaxContextButton } from "@/components/pax-context-button";
+import { ListPagination, usePagination } from "@/components/list-pagination";
 import { useDeals, useCreateDeal, useUpdateDeal, useDeleteDeal, useSaveDealAnalysis, useBulkStageUpdate, useBulkStageUndo, type BulkStageUpdateResult } from "@/hooks/use-deals";
 import { useProperties } from "@/hooks/use-properties";
 import { ListSkeleton } from "@/components/list-skeleton";
@@ -123,6 +124,8 @@ export default function DealsPage() {
   const [selectedStageIndex, setSelectedStageIndex] = useState(0);
   const [activeDragId, setActiveDragId] = useState<number | null>(null);
   const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [dealCurrentPage, setDealCurrentPage] = useState(1);
+  const [dealPageSize, setDealPageSize] = useState(25);
   const { mutate: updateDealStage } = useUpdateDeal();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
