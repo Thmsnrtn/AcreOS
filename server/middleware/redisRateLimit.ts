@@ -206,7 +206,7 @@ export function createOrgRateLimit(redisClient: any) {
       return next();
     } catch (err) {
       // Fail open — never block requests due to rate limit system errors
-      logger.error("Redis rate limit middleware error — allowing request", err instanceof Error ? err : undefined);
+      logger.error("Redis rate limit middleware error — allowing request", { error: err instanceof Error ? err.message : String(err) });
       return next();
     }
   };
@@ -216,13 +216,13 @@ export function createOrgRateLimit(redisClient: any) {
  * API key rate limiter for public developer API
  */
 export function createApiKeyRateLimit(redisClient: any) {
-  return async (req: Request, res: Response, next: NextFunction) => {
+  return async (req: RateLimitRequest, res: Response, next: NextFunction) => {
     const apiKey = (req.headers.authorization || "").replace("Bearer ", "");
     if (!apiKey || !apiKey.startsWith("acr_")) {
       return next(); // Not an API key request — skip
     }
 
-    const apiTier = (req as any).apiKeyTier || "free";
+    const apiTier = req.apiKeyTier || "free";
     const limits = API_KEY_TIERS[apiTier] || API_KEY_TIERS.free;
 
     const minuteResult = await checkRateLimit(redisClient, `apikey:${apiKey.substring(0, 20)}`, {
