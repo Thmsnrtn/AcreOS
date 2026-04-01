@@ -1,7 +1,7 @@
 import React, { Suspense } from "react";
 import { Switch, Route, Redirect, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { CookieConsentBanner } from "@/components/cookie-consent-banner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -41,6 +41,7 @@ import { DynamicIslandProvider } from "@/contexts/dynamic-island-context";
 import { useCursorGlass } from "@/hooks/use-cursor-glass";
 import { TrialBanner } from "@/components/trial-banner";
 import { NotificationBanner } from "@/components/notification-banner";
+import { NpsDialog } from "@/components/nps-dialog";
 
 // Eagerly loaded: must be available immediately with no delay
 import AuthPage from "@/pages/auth-page";
@@ -687,6 +688,34 @@ function AppContent() {
   useWhiteLabel();
   useCursorGlass();
 
+  // NPS feedback collection
+  const [npsOpen, setNpsOpen] = React.useState(false);
+  const [npsDismissChecked, setNpsDismissChecked] = React.useState(false);
+
+  const { data: npsData } = useQuery<{ shouldShow: boolean; trigger: string | null }>({
+    queryKey: ["/api/nps/pending"],
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000, // Check at most every 5 minutes
+    refetchOnWindowFocus: false,
+  });
+
+  React.useEffect(() => {
+    if (!npsData?.shouldShow || npsDismissChecked) return;
+    setNpsDismissChecked(true);
+
+    // Respect 7-day dismiss window
+    const dismissedAt = localStorage.getItem("nps_dismissed_at");
+    if (dismissedAt) {
+      const dismissedDate = new Date(dismissedAt);
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      if (dismissedDate > sevenDaysAgo) return;
+    }
+
+    // Delay showing NPS dialog so it doesn't interrupt page load
+    const timer = setTimeout(() => setNpsOpen(true), 3000);
+    return () => clearTimeout(timer);
+  }, [npsData, npsDismissChecked]);
+
   React.useEffect(() => {
     if (user) {
       telemetry.sessionStart();
@@ -726,6 +755,13 @@ function AppContent() {
       {user && <PaxCopilotRail />}
       {user && <DynamicIsland />}
       {user && <NotificationBanner />}
+      {user && npsData?.shouldShow && npsData.trigger && (
+        <NpsDialog
+          open={npsOpen}
+          trigger={npsData.trigger}
+          onClose={() => setNpsOpen(false)}
+        />
+      )}
       <PWAInstallPrompt />
     </>
   );

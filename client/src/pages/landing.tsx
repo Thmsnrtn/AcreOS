@@ -159,11 +159,12 @@ export default function LandingPage() {
           <p className="text-muted-foreground">
             Start free. Upgrade when you're ready. 14-day free trial on all paid plans.
           </p>
-          <div className="grid sm:grid-cols-3 gap-4 mt-8">
+          <div className="grid sm:grid-cols-4 gap-4 mt-8">
             {[
-              { name: "Free", price: "$0", desc: "25 leads, 5 properties" },
+              { name: "Free", price: "$0", desc: "10 leads, 3 properties" },
               { name: "Starter", price: "$20/mo", desc: "250 leads, campaigns" },
               { name: "Pro", price: "$49/mo", desc: "500 leads, BYOK, unlimited" },
+              { name: "Scale", price: "$79/mo", desc: "10 seats, unlimited everything" },
             ].map((tier) => (
               <Card key={tier.name} className={tier.name === "Pro" ? "border-primary shadow-md" : ""}>
                 <CardContent className="pt-6 text-center">

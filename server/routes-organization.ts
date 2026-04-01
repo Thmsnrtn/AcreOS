@@ -1,8 +1,8 @@
 import type { Express } from "express";
 import { storage, db } from "./storage";
 import { z } from "zod";
-import { eq, sql, desc } from "drizzle-orm";
-import { insertOrganizationSchema, leads, deals, properties } from "@shared/schema";
+import { eq, and, sql, desc } from "drizzle-orm";
+import { insertOrganizationSchema, leads, deals, properties, npsResponses, organizations } from "@shared/schema";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { requireAdminOrAbove, requireOwner } from "./utils/permissions";
@@ -22,6 +22,9 @@ import {
   generateCommissionStatement,
 } from "./services/commissionService";
 import { logger } from "./utils/logger";
+import { Errors } from "./utils/errors";
+import type { AuthenticatedRequest } from "./types/request";
+import { getOrganizationId } from "./types/request";
 
 export function registerOrganizationRoutes(app: Express): void {
   const api = app;
@@ -687,7 +690,35 @@ export function registerOrganizationRoutes(app: Express): void {
   api.get("/api/usage/limits", async (req, res) => {
     res.json(TIER_LIMITS);
   });
-  
+
+  // Usage status for in-app limit banners
+  api.get("/api/usage/status", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const allUsage = await getAllUsageLimits(orgId, { isFounder: req.isFounder });
+
+      const RESOURCE_LABELS: Record<string, string> = {
+        leads: "Leads",
+        properties: "Properties",
+        notes: "Notes",
+        ai_requests: "Daily AI Requests",
+      };
+
+      const limits = Object.entries(allUsage.usage).map(([resource, info]) => ({
+        resource,
+        current: info.current,
+        limit: info.limit,
+        percentUsed: info.percentage ?? 0,
+        label: RESOURCE_LABELS[resource] || resource,
+      }));
+
+      res.json({ limits, tier: allUsage.tier });
+    } catch (error) {
+      logger.error("Failed to fetch usage status", { error });
+      return Errors.internal(res, error);
+    }
+  });
+
   // ============================================
   // TEAM MEMBERS
   // ============================================
@@ -1127,6 +1158,133 @@ export function registerOrganizationRoutes(app: Express): void {
       res.send(statement);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // NPS FEEDBACK COLLECTION
+  // ============================================
+
+  // POST /api/nps — Submit an NPS response
+  api.post("/api/nps", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const authReq = req as AuthenticatedRequest;
+      const orgId = getOrganizationId(authReq);
+      const userId = String(authReq.user.id);
+
+      const schema = z.object({
+        score: z.number().int().min(0).max(10),
+        feedback: z.string().optional(),
+        trigger: z.string().min(1),
+      });
+
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+
+      const { score, feedback, trigger } = parsed.data;
+
+      const [inserted] = await db.insert(npsResponses).values({
+        organizationId: orgId,
+        userId,
+        score,
+        feedback: feedback || null,
+        trigger,
+      }).returning();
+
+      logger.info("NPS response submitted", { orgId, userId, score, trigger });
+      res.json({ success: true, id: inserted.id });
+    } catch (err: any) {
+      logger.error("NPS submission failed", { error: err.message });
+      return Errors.internal(res, err);
+    }
+  });
+
+  // GET /api/nps/pending — Check if user has a pending NPS prompt
+  api.get("/api/nps/pending", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const authReq = req as AuthenticatedRequest;
+      const orgId = getOrganizationId(authReq);
+      const userId = String(authReq.user.id);
+
+      const org = authReq.organization;
+      const now = new Date();
+      const createdAt = org.createdAt ? new Date(org.createdAt) : now;
+      const daysSinceCreation = Math.floor(
+        (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24)
+      );
+
+      // Check for any NPS dismissed within last 7 days (stored in query param or localStorage on client)
+      // Server only checks: have they submitted for this trigger already?
+
+      // Trigger: day_14 — org created >= 14 days ago, no existing day_14 response
+      if (daysSinceCreation >= 14) {
+        const [existing] = await db.select({ id: npsResponses.id })
+          .from(npsResponses)
+          .where(and(
+            eq(npsResponses.organizationId, orgId),
+            eq(npsResponses.trigger, "day_14"),
+          ))
+          .limit(1);
+
+        if (!existing) {
+          return res.json({ shouldShow: true, trigger: "day_14" });
+        }
+      }
+
+      // Trigger: upgrade — check if subscriptionTier changed recently (use subscriptionEvents)
+      // We check if there's a recent upgrade event and no NPS for it
+      try {
+        const { subscriptionEvents } = await import("@shared/schema");
+        const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        const [recentUpgrade] = await db.select({ id: subscriptionEvents.id })
+          .from(subscriptionEvents)
+          .where(and(
+            eq(subscriptionEvents.organizationId, orgId),
+            eq(subscriptionEvents.eventType, "plan_upgraded"),
+            sql`${subscriptionEvents.createdAt} >= ${sevenDaysAgo}`,
+          ))
+          .limit(1);
+
+        if (recentUpgrade) {
+          const [existingUpgradeNps] = await db.select({ id: npsResponses.id })
+            .from(npsResponses)
+            .where(and(
+              eq(npsResponses.organizationId, orgId),
+              eq(npsResponses.trigger, "upgrade"),
+              sql`${npsResponses.createdAt} >= ${sevenDaysAgo}`,
+            ))
+            .limit(1);
+
+          if (!existingUpgradeNps) {
+            return res.json({ shouldShow: true, trigger: "upgrade" });
+          }
+        }
+      } catch {
+        // subscriptionEvents may not exist in all environments
+      }
+
+      // Trigger: quarterly — every 90 days, check last NPS of any type
+      if (daysSinceCreation >= 90) {
+        const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+        const [recentAny] = await db.select({ id: npsResponses.id })
+          .from(npsResponses)
+          .where(and(
+            eq(npsResponses.organizationId, orgId),
+            sql`${npsResponses.createdAt} >= ${ninetyDaysAgo}`,
+          ))
+          .limit(1);
+
+        if (!recentAny) {
+          return res.json({ shouldShow: true, trigger: "quarterly" });
+        }
+      }
+
+      return res.json({ shouldShow: false, trigger: null });
+    } catch (err: any) {
+      logger.error("NPS pending check failed", { error: err.message });
+      return Errors.internal(res, err);
     }
   });
 

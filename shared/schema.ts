@@ -10757,6 +10757,21 @@ export const insertChurnRiskScoreSchema = createInsertSchema(churnRiskScores).om
 export type InsertChurnRiskScore = z.infer<typeof insertChurnRiskScoreSchema>;
 export type ChurnRiskScore = typeof churnRiskScores.$inferSelect;
 
+// NPS Responses — Net Promoter Score feedback collection
+export const npsResponses = pgTable("nps_responses", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  userId: text("user_id").notNull(),
+  score: integer("score").notNull(), // 0-10
+  feedback: text("feedback"), // Optional free-text
+  trigger: text("trigger").notNull(), // "day_14", "churn", "upgrade", "quarterly"
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertNpsResponseSchema = createInsertSchema(npsResponses).omit({ id: true, createdAt: true });
+export type InsertNpsResponse = z.infer<typeof insertNpsResponseSchema>;
+export type NpsResponse = typeof npsResponses.$inferSelect;
+
 // Job Health Logs — execution records for all background jobs
 export const jobHealthLogs = pgTable("job_health_logs", {
   id: serial("id").primaryKey(),

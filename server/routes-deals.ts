@@ -7,7 +7,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { leadScoringService } from "./services/leadScoring";
 import { propertyEnrichmentService } from "./services/propertyEnrichment";
 import { checkUsageLimit } from "./services/usageLimits";
-import { db } from "./db";
+import { db, withTransaction } from "./db";
 import { outcomeTelemetry } from "@shared/schema";
 import { checkUsury } from "./services/usury";
 import { logger } from "./utils/logger";
@@ -129,26 +129,31 @@ export function registerDealRoutes(app: Express): void {
         }
       }
 
-      const deal = await storage.createDeal(input);
-
+      // Wrap deal creation + audit log in a transaction so both succeed or
+      // both roll back — prevents orphaned deals with no audit trail.
       const user = req.user as any;
       const userId = user?.claims?.sub || user?.id;
-      await storage.createAuditLogEntry({
-        organizationId: org.id,
-        userId,
-        action: "create",
-        entityType: "deal",
-        entityId: deal.id,
-        changes: { after: input, fields: Object.keys(input) },
-        ipAddress: req.ip || req.socket?.remoteAddress,
-        userAgent: req.headers["user-agent"],
+
+      const deal = await withTransaction(async () => {
+        const newDeal = await storage.createDeal(input);
+        await storage.createAuditLogEntry({
+          organizationId: org.id,
+          userId,
+          action: "create",
+          entityType: "deal",
+          entityId: newDeal.id,
+          changes: { after: input, fields: Object.keys(input) },
+          ipAddress: req.ip || req.socket?.remoteAddress,
+          userAgent: req.headers["user-agent"],
+        });
+        return newDeal;
       });
-      
+
       // Trigger async enrichment if deal has a propertyId (non-blocking)
       if (deal.propertyId) {
         triggerDealEnrichmentAsync(org.id, deal.id, deal.propertyId);
       }
-      
+
       res.status(201).json(deal);
     } catch (err) {
       if (err instanceof z.ZodError) {
