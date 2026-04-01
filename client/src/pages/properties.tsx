@@ -175,8 +175,6 @@ export default function PropertiesPage() {
   const { filters: gisFilters, setFilters: setGisFilters, resetFilters: resetGisFilters, getShareableUrl } = usePersistedGisFilters();
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [distressFilter, setDistressFilter] = useState<string>("any");
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(25);
   const { toast } = useToast();
   const { mutate: fetchAllParcels, isPending: isFetchingAllParcels } = useFetchAllParcels();
 
@@ -221,11 +219,10 @@ export default function PropertiesPage() {
     return result;
   }, [properties, gisFilters, statusFilter, distressFilter]);
 
-  const { paginatedItems: paginatedProperties, totalItems: totalPropertyItems, currentPage: safePropertyPage } = usePagination(
-    filteredProperties,
-    currentPage,
-    pageSize
-  );
+  // Server-side pagination: data is already one page
+  const paginatedProperties = filteredProperties;
+  const totalPropertyItems = serverTotal;
+  const safePropertyPage = currentPage;
 
   const handlePropertyPageChange = (page: number) => {
     setCurrentPage(page);
@@ -679,7 +676,7 @@ export default function PropertiesPage() {
                 </div>
               )}
             </div>
-            {filteredProperties.length > pageSize && (
+            {serverTotal > pageSize && (
               <ListPagination
                 currentPage={safePropertyPage}
                 totalItems={totalPropertyItems}
