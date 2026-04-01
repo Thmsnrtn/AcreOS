@@ -4,6 +4,7 @@ import { processChat } from "../ai/executive";
 import { paxScheduledTaskRuns } from "@shared/schema";
 import type { PaxScheduledTask } from "@shared/schema";
 import type { Organization } from "@shared/schema";
+import { logger } from "../utils/logger";
 
 // ── Schedule preset → next run time ─────────────────────────────────────────
 
@@ -121,7 +122,7 @@ const runningOrgs = new Set<number>();
 
 export async function executeTask(task: PaxScheduledTask, org: Organization): Promise<void> {
   if (runningOrgs.has(org.id)) {
-    console.log(`[pax-scheduler] Skipping task ${task.id} — org ${org.id} has a task running`);
+    logger.info(`[pax-scheduler] Skipping task ${task.id} — org ${org.id} has a task running`);
     return;
   }
   runningOrgs.add(org.id);
@@ -165,9 +166,9 @@ export async function executeTask(task: PaxScheduledTask, org: Organization): Pr
       durationMs: Date.now() - startedAt,
     } as any).catch(() => {});
 
-    console.log(`[pax-scheduler] Task ${task.id} "${task.name}" completed (conv ${result.conversationId})`);
+    logger.info(`[pax-scheduler] Task ${task.id} "${task.name}" completed (conv ${result.conversationId})`);
   } catch (err: any) {
-    console.error(`[pax-scheduler] Task ${task.id} "${task.name}" failed:`, err.message);
+    logger.error(`[pax-scheduler] Task ${task.id} "${task.name}" failed`, err);
     await storage.updatePaxScheduledTask(task.id, {
       lastRunAt: new Date(),
       nextRunAt: computeNextRun(task.schedule, effectiveTimezone),
@@ -194,19 +195,19 @@ export async function processPaxScheduledTasks(): Promise<void> {
   const due = await storage.getPaxScheduledTasksDue(now);
   if (due.length === 0) return;
 
-  console.log(`[pax-scheduler] ${due.length} task(s) due`);
+  logger.info(`[pax-scheduler] ${due.length} task(s) due`);
 
   for (const task of due) {
     try {
       // Load the org — executeTask needs the full org object
       const org = await storage.getOrganization(task.organizationId);
       if (!org) {
-        console.warn(`[pax-scheduler] Org ${task.organizationId} not found for task ${task.id}`);
+        logger.warn(`[pax-scheduler] Org ${task.organizationId} not found for task ${task.id}`);
         continue;
       }
       await executeTask(task, org);
     } catch (err: any) {
-      console.error(`[pax-scheduler] Unexpected error for task ${task.id}:`, err.message);
+      logger.error(`[pax-scheduler] Unexpected error for task ${task.id}`, err);
     }
   }
 }

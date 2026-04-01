@@ -2,6 +2,7 @@ import { dataSourceBroker, type LookupCategory } from "./data-source-broker";
 import { storage } from "../storage";
 import type { Property, Lead } from "@shared/schema";
 import { recordSourceSuccess, recordSourceFailure } from "./dataQualityMonitor";
+import { logger } from "../utils/logger";
 
 export interface EnrichmentResult {
   propertyId?: number;
@@ -518,7 +519,7 @@ export class PropertyEnrichmentService {
       const enrichedAt = new Date(property.enrichedAt);
       const daysSinceEnrichment = (Date.now() - enrichedAt.getTime()) / (1000 * 60 * 60 * 24);
       if (daysSinceEnrichment < 30) {
-        console.log(`[PropertyEnrichment] Skipping enrichment for property ${propertyId} — enriched ${Math.round(daysSinceEnrichment)} days ago (< 30 day threshold). Use forceRefresh=true to override.`);
+        logger.info(`[PropertyEnrichment] Skipping enrichment for property ${propertyId} — enriched ${Math.round(daysSinceEnrichment)} days ago (< 30 day threshold). Use forceRefresh=true to override.`);
         return (property.enrichmentData || {}) as unknown as EnrichmentResult;
       }
     }
@@ -700,9 +701,9 @@ export class PropertyEnrichmentService {
         k => enrichment[k as keyof EnrichmentResult] !== undefined &&
              !['propertyId', 'latitude', 'longitude', 'enrichedAt', 'lookupTimeMs'].includes(k)
       );
-      console.log(`[PropertyEnrichment] Property enrichment persisted for propertyId=${propertyId}, orgId=${organizationId}, completeness=${completeness.score}%, categories: ${categoriesEnriched.join(', ')}`);
+      logger.info(`[PropertyEnrichment] Property enrichment persisted for propertyId=${propertyId}, orgId=${organizationId}, completeness=${completeness.score}%, categories: ${categoriesEnriched.join(', ')}`);
     } catch (error) {
-      console.error("Failed to save property enrichment:", error);
+      logger.error("Failed to save property enrichment", error);
     }
   }
   
@@ -727,9 +728,9 @@ export class PropertyEnrichmentService {
         k => enrichment[k as keyof EnrichmentResult] !== undefined && 
              !['leadId', 'latitude', 'longitude', 'enrichedAt', 'lookupTimeMs'].includes(k)
       );
-      console.log(`[PropertyEnrichment] Lead enrichment persisted for leadId=${leadId}, categories: ${categoriesEnriched.join(', ')}`);
+      logger.info(`[PropertyEnrichment] Lead enrichment persisted for leadId=${leadId}, categories: ${categoriesEnriched.join(', ')}`);
     } catch (error) {
-      console.error("Failed to save lead enrichment:", error);
+      logger.error("Failed to save lead enrichment", error);
     }
   }
 }

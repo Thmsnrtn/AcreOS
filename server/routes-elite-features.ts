@@ -31,6 +31,7 @@ import { getStateConfig, getDeedTypeLabel, getLandContractLabel, getRecordingEst
 import { db } from "./db";
 import { properties, notes, organizations, generatedDocuments, organizationIntegrations } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
+import { logger } from "./utils/logger";
 
 const auth = [isAuthenticated, getOrCreateOrg];
 
@@ -271,7 +272,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
       await eSigningService.processDropboxSignWebhook(req.body);
       res.json({ success: true });
     } catch (err: any) {
-      console.error("Dropbox Sign webhook error:", err);
+      logger.error("Dropbox Sign webhook error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -338,7 +339,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
       }
       res.json({ success: true });
     } catch (err: any) {
-      console.error("Meta Lead Ads webhook error:", err);
+      logger.error("Meta Lead Ads webhook error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -419,7 +420,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
       await actumProcessing.processActumWebhook(req.body);
       res.json({ success: true });
     } catch (err: any) {
-      console.error("Actum webhook error:", err);
+      logger.error("Actum webhook error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -653,5 +654,5 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
     }
   });
 
-  console.log("✅ Elite feature routes registered");
+  logger.info("✅ Elite feature routes registered");
 }

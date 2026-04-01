@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Mail, TrendingUp, DollarSign, Server, AlertTriangle } from "lucide-react";
+import { InfoTooltip } from "@/components/info-tooltip";
 
 export default function FounderDailyDigestPage() {
   const { data: briefs, isLoading } = useQuery<any[]>({
@@ -33,8 +34,8 @@ export default function FounderDailyDigestPage() {
             </CardHeader>
             <CardContent>
               <ul className="space-y-1 text-sm">
-                <li>{digest.growth?.newSignups ?? 0} new signups yesterday</li>
-                <li>{digest.growth?.activeUsers ?? 0} active users</li>
+                <li>{digest.growth?.newSignups ?? 0} new signups (yesterday)</li>
+                <li>{digest.growth?.activeUsers ?? 0} active users (this week)</li>
               </ul>
             </CardContent>
           </Card>
@@ -47,7 +48,7 @@ export default function FounderDailyDigestPage() {
             </CardHeader>
             <CardContent>
               <ul className="space-y-1 text-sm">
-                <li>MRR: {digest.revenue?.mrrFormatted ?? "N/A"}</li>
+                <li><InfoTooltip term="Monthly Revenue" explanation="The total recurring revenue from all paying customers this month">MRR</InfoTooltip>: {digest.revenue?.mrrFormatted ?? "N/A"}</li>
                 <li>Paying customers: {digest.revenue?.payingCustomers ?? "N/A"}</li>
               </ul>
             </CardContent>
@@ -61,8 +62,8 @@ export default function FounderDailyDigestPage() {
             </CardHeader>
             <CardContent>
               <ul className="space-y-1 text-sm">
-                <li>{digest.customers?.emailsSent ?? 0} emails auto-sent</li>
-                <li>{digest.customers?.emailsQueued ?? 0} emails queued for approval</li>
+                <li>{digest.customers?.emailsSent ?? 0} emails auto-sent (today)</li>
+                <li>{digest.customers?.emailsQueued ?? 0} emails queued for approval (today)</li>
               </ul>
             </CardContent>
           </Card>

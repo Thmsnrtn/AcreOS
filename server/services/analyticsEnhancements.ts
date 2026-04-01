@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Analytics & Insights Enhancements — Items 241-260
  * Funnel viz, feature adoption, retention curves, NPS, user health, etc.

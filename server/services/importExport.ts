@@ -296,6 +296,9 @@ export async function importLeads(
     errors: [],
   };
 
+  // Phase 1: Validate all rows and collect parsed data
+  const validatedRows: { index: number; data: any; dupCriteria: any }[] = [];
+
   for (let i = 0; i < csvData.length; i++) {
     const rawRow = csvData[i];
     const row = normalizeRow<Record<string, string>>(rawRow, LEAD_COLUMN_MAP);
@@ -323,7 +326,7 @@ export async function importLeads(
         throw new Error(errorMessages);
       }
 
-      // Task 221: Duplicate detection — check by email, phone, or full name before inserting
+      // Build duplicate criteria for later checking
       const dupCriteria: Parameters<typeof storage.findDuplicateLeads>[1] = {};
       if (parseResult.data.email) dupCriteria.email = parseResult.data.email;
       if (parseResult.data.phone) dupCriteria.phone = parseResult.data.phone;
@@ -332,20 +335,7 @@ export async function importLeads(
         dupCriteria.lastName = parseResult.data.lastName;
       }
 
-      if (Object.keys(dupCriteria).length > 0) {
-        const duplicates = await storage.findDuplicateLeads(organizationId, dupCriteria);
-        if (duplicates.length > 0) {
-          result.duplicatesSkipped++;
-          continue; // skip creating a duplicate
-        }
-      }
-
-      await storage.createLead({
-        ...parseResult.data,
-        organizationId,
-      });
-
-      result.successCount++;
+      validatedRows.push({ index: i, data: parseResult.data, dupCriteria });
     } catch (error) {
       result.errorCount++;
       result.errors.push({
@@ -353,6 +343,47 @@ export async function importLeads(
         data: rawRow,
         error: error instanceof Error ? error.message : String(error),
       });
+    }
+  }
+
+  // Phase 2: Duplicate detection — still per-row since criteria varies,
+  // but we batch the non-duplicate inserts afterward
+  const nonDuplicateRows: typeof validatedRows = [];
+  for (const row of validatedRows) {
+    if (Object.keys(row.dupCriteria).length > 0) {
+      const duplicates = await storage.findDuplicateLeads(organizationId, row.dupCriteria);
+      if (duplicates.length > 0) {
+        result.duplicatesSkipped++;
+        continue;
+      }
+    }
+    nonDuplicateRows.push(row);
+  }
+
+  // Phase 3: Batch insert non-duplicate leads in chunks of 100
+  const BATCH_SIZE = 100;
+  for (let i = 0; i < nonDuplicateRows.length; i += BATCH_SIZE) {
+    const chunk = nonDuplicateRows.slice(i, i + BATCH_SIZE);
+    try {
+      const created = await storage.createLeadsBatch(
+        chunk.map(c => ({ ...c.data, organizationId }))
+      );
+      result.successCount += created.length;
+    } catch {
+      // If batch fails, fall back to individual inserts for this chunk
+      for (const item of chunk) {
+        try {
+          await storage.createLead({ ...item.data, organizationId });
+          result.successCount++;
+        } catch (error) {
+          result.errorCount++;
+          result.errors.push({
+            row: item.index + 2,
+            data: csvData[item.index],
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
     }
   }
 

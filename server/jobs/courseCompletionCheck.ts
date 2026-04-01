@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 /**
  * Course Completion Check Job
  *
@@ -25,6 +24,7 @@ import {
 } from "@shared/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { sendEmail } from "../services/emailService";
+import { logger } from "../utils/logger";
 
 export const COURSE_COMPLETION_QUEUE_NAME = "course-completion-check";
 
@@ -173,12 +173,10 @@ async function processEnrollment(enrollment: any): Promise<{
         verificationHash,
       });
     } catch (emailErr: any) {
-      console.warn(`[CourseCompletion] Email failed for enrollment ${enrollment.id}:`, emailErr.message);
+      logger.warn(`[CourseCompletion] Email failed for enrollment ${enrollment.id}`, { metadata: { detail: emailErr.message } });
     }
 
-    console.log(
-      `[CourseCompletion] Enrollment ${enrollment.id} (user ${enrollment.userId}) completed course ${enrollment.courseId}`
-    );
+    logger.info(`[CourseCompletion] Enrollment ${enrollment.id} (user ${enrollment.userId}) completed course ${enrollment.courseId}`);
     return { action: "completed", progressPct: 100 };
   }
 
@@ -225,7 +223,7 @@ async function processCourseCompletionJob(job: Job): Promise<void> {
       .from(courseEnrollments)
       .where(eq(courseEnrollments.isCompleted, false));
 
-    console.log(`[CourseCompletion] Checking ${activeEnrollments.length} active enrollments`);
+    logger.info(`[CourseCompletion] Checking ${activeEnrollments.length} active enrollments`);
 
     for (const enrollment of activeEnrollments) {
       try {
@@ -235,7 +233,7 @@ async function processCourseCompletionJob(job: Job): Promise<void> {
         if (result.action === "progress_updated") totalProgressUpdated++;
       } catch (err: any) {
         totalFailed++;
-        console.error(`[CourseCompletion] Enrollment ${enrollment.id} error:`, err.message);
+        logger.error(`[CourseCompletion] Enrollment ${enrollment.id} error`, err);
       }
     }
 
@@ -251,11 +249,9 @@ async function processCourseCompletionJob(job: Job): Promise<void> {
         .where(eq(backgroundJobs.id, bgJobId));
     }
 
-    console.log(
-      `[CourseCompletion] Done. Checked: ${totalChecked}, Completed: ${totalCompleted}, Progress updated: ${totalProgressUpdated}, Failed: ${totalFailed}`
-    );
+    logger.info(`[CourseCompletion] Done. Checked: ${totalChecked}, Completed: ${totalCompleted}, Progress updated: ${totalProgressUpdated}, Failed: ${totalFailed}`);
   } catch (err: any) {
-    console.error("[CourseCompletion] Fatal error:", err.message);
+    logger.error("[CourseCompletion] Fatal error", err);
     if (bgJobId) {
       await db
         .update(backgroundJobs)
@@ -286,7 +282,7 @@ export async function registerCourseCompletionJob(queue: Queue): Promise<void> {
       removeOnFail: 3,
     }
   );
-  console.log("[CourseCompletion] Registered daily completion check at 6 AM UTC");
+  logger.info("[CourseCompletion] Registered daily completion check at 6 AM UTC");
 }
 
 export function courseCompletionCheckJob(redisConnection: any): Worker {
@@ -302,11 +298,11 @@ export function courseCompletionCheckJob(redisConnection: any): Worker {
   );
 
   worker.on("completed", (job) => {
-    console.log(`[CourseCompletion] Job ${job.id} completed`);
+    logger.info(`[CourseCompletion] Job ${job.id} completed`);
   });
 
   worker.on("failed", (job, err) => {
-    console.error(`[CourseCompletion] Job ${job?.id} failed:`, err.message);
+    logger.error(`[CourseCompletion] Job ${job?.id} failed`, err);
   });
 
   return worker;

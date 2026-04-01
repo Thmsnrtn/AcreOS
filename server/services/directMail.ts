@@ -1,6 +1,7 @@
 import Lob from 'lob';
 import { storage } from '../storage';
 import { decryptJsonCredentials } from './encryption';
+import { logger } from "../utils/logger";
 
 async function logLobApiUsage(
   orgId: number | undefined,
@@ -18,7 +19,7 @@ async function logLobApiUsage(
       metadata,
     });
   } catch (error) {
-    console.error('[DirectMail] Failed to log API usage:', error);
+    logger.error('[DirectMail] Failed to log API usage', error);
   }
 }
 
@@ -162,7 +163,7 @@ export class DirectMailService {
         );
         
         if (decrypted.apiKey) {
-          console.log(`[DirectMail] Using organization Lob credentials for org ${orgId}`);
+          logger.info(`[DirectMail] Using organization Lob credentials for org ${orgId}`);
           return {
             client: new Lob({ apiKey: decrypted.apiKey }),
             source: 'organization',
@@ -170,7 +171,7 @@ export class DirectMailService {
         }
       }
     } catch (error) {
-      console.error(`[DirectMail] Failed to get org Lob credentials for org ${orgId}:`, error);
+      logger.error(`[DirectMail] Failed to get org Lob credentials for org ${orgId}`, error);
     }
     
     return null;
@@ -187,7 +188,7 @@ export class DirectMailService {
         return !!decrypted.apiKey;
       }
     } catch (error) {
-      console.error(`[DirectMail] Failed to check org Lob credentials for org ${orgId}:`, error);
+      logger.error(`[DirectMail] Failed to check org Lob credentials for org ${orgId}`, error);
     }
     return false;
   }

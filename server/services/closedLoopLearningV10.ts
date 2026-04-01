@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Closed-Loop Learning Engine — Sovereign Company Protocol v10
  *
@@ -23,6 +22,7 @@ import {
 import { eq, desc, and, lte, gte, sql, count } from "drizzle-orm";
 import { routeAITask, TaskComplexity } from "./aiRouter";
 import { companyAgentService } from "./companyAgents";
+import { logger } from "../utils/logger";
 
 // ─── Learning Type Routing ─────────────────────────────────────────────────
 
@@ -147,7 +147,7 @@ Respond in JSON:
 
       return { calibration: updated };
     } catch (err) {
-      console.error("[ClosedLoop] Learning extraction failed:", err);
+      logger.error("[ClosedLoop] Learning extraction failed", err);
       return { calibration: updated };
     }
   }

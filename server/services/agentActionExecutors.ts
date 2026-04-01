@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Agent Action Executors — Sovereign Company Protocol v4
  *
@@ -26,6 +25,7 @@ import { wsServer } from "../websocket";
 import { scheduleVerification } from "./outcomeVerifiers";
 import { registerActionUndo } from "./undoRegistry";
 import { isQuietHours, shouldBreakQuietHours } from "./quietHours";
+import { logger } from "../utils/logger";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -616,7 +616,7 @@ export async function executeAction(ctx: ActionContext): Promise<ActionResult> {
   const executor = executors.get(key);
 
   if (!executor) {
-    console.warn(`[ActionExecutor] No executor registered for ${key}`);
+    logger.warn(`[ActionExecutor] No executor registered for ${key}`);
     return { success: false, detail: `No executor for ${key}` };
   }
 
@@ -680,7 +680,7 @@ export async function executeAction(ctx: ActionContext): Promise<ActionResult> {
     }).returning({ id: agentActionLog.id });
     logId = inserted?.id;
   } catch (err) {
-    console.error("[ActionExecutor] Failed to log action:", err);
+    logger.error("[ActionExecutor] Failed to log action", err);
   }
 
   // Broadcast real-time agent activity via WebSocket

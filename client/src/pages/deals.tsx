@@ -1,6 +1,7 @@
 import { PageShell } from "@/components/page-shell";
 import { PaxContextButton } from "@/components/pax-context-button";
-import { useDeals, useCreateDeal, useUpdateDeal, useDeleteDeal, useSaveDealAnalysis, useBulkStageUpdate, useBulkStageUndo, type BulkStageUpdateResult } from "@/hooks/use-deals";
+import { ListPagination, usePagination } from "@/components/list-pagination";
+import { useDeals, useDealsPaginated, useCreateDeal, useUpdateDeal, useDeleteDeal, useSaveDealAnalysis, useBulkStageUpdate, useBulkStageUndo, type BulkStageUpdateResult } from "@/hooks/use-deals";
 import { useProperties } from "@/hooks/use-properties";
 import { ListSkeleton } from "@/components/list-skeleton";
 import { InlineError } from "@/components/inline-error";
@@ -102,7 +103,11 @@ const statusColors: Record<string, string> = {
 };
 
 export default function DealsPage() {
-  const { data: deals, isLoading, isError, error, refetch } = useDeals();
+  const [dealCurrentPage, setDealCurrentPage] = useState(1);
+  const [dealPageSize, setDealPageSize] = useState(25);
+  const { data: dealsResponse, isLoading, isError, error, refetch } = useDealsPaginated({ page: dealCurrentPage, pageSize: dealPageSize });
+  const deals = dealsResponse?.data;
+  const serverDealTotal = dealsResponse?.total ?? 0;
   const { data: properties } = useProperties();
   const searchString = useSearch();
   const urlParams = new URLSearchParams(searchString);
@@ -225,6 +230,21 @@ export default function DealsPage() {
       ...deal,
       property: properties?.find(p => p.id === deal.propertyId),
     }));
+
+  // Server-side pagination: data is already one page
+  const paginatedDeals = enrichedDeals;
+  const totalDealItems = serverDealTotal;
+  const safeDealPage = dealCurrentPage;
+
+  const handleDealPageChange = (page: number) => {
+    setDealCurrentPage(page);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleDealPageSizeChange = (size: number) => {
+    setDealPageSize(size);
+    setDealCurrentPage(1);
+  };
 
   const acquisitions = enrichedDeals.filter(d => d.type === 'acquisition' && d.status !== 'cancelled');
   const dispositions = enrichedDeals.filter(d => d.type === 'disposition' && d.status !== 'cancelled');
@@ -638,7 +658,7 @@ export default function DealsPage() {
               {isMobile && mobileViewMode === 'list' ? (
                 <div className="space-y-4">
                   {dealStages.map((stage) => {
-                    const stageDeals = enrichedDeals.filter(d => d.status === stage.value);
+                    const stageDeals = paginatedDeals.filter(d => d.status === stage.value);
                     if (stageDeals.length === 0) return null;
                     return (
                       <div key={stage.value}>
@@ -674,6 +694,15 @@ export default function DealsPage() {
                       </div>
                     );
                   })}
+                  {serverDealTotal > dealPageSize && (
+                    <ListPagination
+                      currentPage={safeDealPage}
+                      totalItems={totalDealItems}
+                      pageSize={dealPageSize}
+                      onPageChange={handleDealPageChange}
+                      onPageSizeChange={handleDealPageSizeChange}
+                    />
+                  )}
                 </div>
               ) : isMobile && mobileViewMode === 'kanban' ? (
                 <div className="space-y-2">

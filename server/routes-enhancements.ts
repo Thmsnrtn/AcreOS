@@ -1,5 +1,5 @@
-// @ts-nocheck
 import type { Express } from "express";
+import type { AuthenticatedRequest } from "./types/request";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
@@ -12,7 +12,7 @@ export async function registerEnhancementRoutes(app: Express) {
   // Item 2: Seed sample leads for new org
   app.post("/api/enhancements/seed-sample-leads", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = (req as AuthenticatedRequest).organization;
       const { seedSampleLeads } = await import("./services/onboardingEnhancements");
       const count = await seedSampleLeads(org.id);
       res.json({ success: true, leadsCreated: count });
@@ -51,7 +51,7 @@ export async function registerEnhancementRoutes(app: Express) {
   // Item 51: Lead deduplication
   app.get("/api/enhancements/lead-duplicates", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = (req as AuthenticatedRequest).organization;
       const { findDuplicateLeads } = await import("./services/crmEnhancements");
       const duplicates = await findDuplicateLeads(org.id);
       res.json(duplicates);
@@ -63,7 +63,7 @@ export async function registerEnhancementRoutes(app: Express) {
   // Item 55: Lead aging alerts
   app.get("/api/enhancements/aging-leads", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = (req as AuthenticatedRequest).organization;
       const days = parseInt(req.query.days as string) || 14;
       const { getAgingLeads } = await import("./services/crmEnhancements");
       const leads = await getAgingLeads(org.id, days);
@@ -76,7 +76,7 @@ export async function registerEnhancementRoutes(app: Express) {
   // Item 65: Lead scoring explanation
   app.get("/api/enhancements/lead-score-explanation/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = (req as AuthenticatedRequest).organization;
       const { leads } = await import("@shared/schema");
       const { eq, and } = await import("drizzle-orm");
       const { db } = await import("./storage");
@@ -92,7 +92,7 @@ export async function registerEnhancementRoutes(app: Express) {
   // Item 68: Lead conversion funnel
   app.get("/api/enhancements/lead-funnel", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = (req as AuthenticatedRequest).organization;
       const { getLeadFunnel } = await import("./services/crmEnhancements");
       const funnel = await getLeadFunnel(org.id);
       res.json(funnel);
@@ -106,7 +106,7 @@ export async function registerEnhancementRoutes(app: Express) {
   // Item 73: Negotiation analytics
   app.get("/api/enhancements/negotiation-analytics", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = (req as AuthenticatedRequest).organization;
       const { getNegotiationAnalytics } = await import("./services/negotiationEnhancements");
       const analytics = await getNegotiationAnalytics(org.id);
       res.json(analytics);
@@ -132,7 +132,7 @@ export async function registerEnhancementRoutes(app: Express) {
   // Item 86: Payment calendar
   app.get("/api/enhancements/payment-calendar/:year/:month", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = (req as AuthenticatedRequest).organization;
       const { getPaymentCalendar } = await import("./services/financeEnhancements");
       const calendar = await getPaymentCalendar(org.id, parseInt(req.params.year), parseInt(req.params.month));
       res.json(calendar);
@@ -144,7 +144,7 @@ export async function registerEnhancementRoutes(app: Express) {
   // Item 92: Portfolio stress test
   app.get("/api/enhancements/stress-test", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = (req as AuthenticatedRequest).organization;
       const defaultRate = parseFloat(req.query.defaultRate as string) || 0.2;
       const { stressTestPortfolio } = await import("./services/financeEnhancements");
       const result = await stressTestPortfolio(org.id, defaultRate);
@@ -172,7 +172,7 @@ export async function registerEnhancementRoutes(app: Express) {
   // Item 155: Pipeline velocity
   app.get("/api/enhancements/pipeline-velocity", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = (req as AuthenticatedRequest).organization;
       const { getPipelineVelocity } = await import("./services/reportingEnhancements");
       const velocity = await getPipelineVelocity(org.id);
       res.json(velocity);
@@ -212,7 +212,7 @@ export async function registerEnhancementRoutes(app: Express) {
   // Item 241: Signup funnel
   app.get("/api/enhancements/signup-funnel", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = (req as AuthenticatedRequest).organization;
       if (!org?.isFounder) return Errors.forbidden(res, "Founder access required");
       const { getSignupFunnel } = await import("./services/analyticsEnhancements");
       const funnel = await getSignupFunnel();
@@ -225,7 +225,7 @@ export async function registerEnhancementRoutes(app: Express) {
   // Item 244: Retention curves
   app.get("/api/enhancements/retention", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = (req as AuthenticatedRequest).organization;
       if (!org?.isFounder) return Errors.forbidden(res, "Founder access required");
       const { getRetentionCurves } = await import("./services/analyticsEnhancements");
       const curves = await getRetentionCurves();

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Compound Sagas — Multi-agent coordinated workflows using the saga orchestrator.
  *
@@ -7,6 +6,7 @@
  */
 
 import { v4 as uuidv4 } from "uuid";
+import { logger } from "../utils/logger";
 
 export interface CompoundSagaDef {
   name: string;
@@ -91,7 +91,7 @@ export async function executeCompoundSaga(
 
   // Execute asynchronously
   sagaOrchestratorService.executeSaga(saga.sagaId).catch(err => {
-    console.error(`[CompoundSagas] Saga ${sagaName} execution failed:`, err);
+    logger.error(`[CompoundSagas] Saga ${sagaName} execution failed`, err);
   });
 
   return { sagaId: saga.sagaId, status: "running" };

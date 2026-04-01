@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Trust Enforcement Layer — Sovereign Company Protocol v12: FOUNDATION
  *

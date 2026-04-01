@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 /**
  * Customer Success Agent — ensures no user falls through the cracks.
  * Watches for onboarding completions, inactive users, campaign gaps, and milestones.

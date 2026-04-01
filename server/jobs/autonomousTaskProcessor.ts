@@ -20,6 +20,7 @@ import { agentTasks, agentRuns } from "@shared/schema";
 import { eq, and, lte, isNull, desc } from "drizzle-orm";
 import { autonomousAgentEngine, type ActionRiskProfile, type ActionCategory } from "../services/autonomousAgentEngine";
 import { executeAgentTask, type CoreAgentType } from "../services/core-agents";
+import { logger } from "../utils/logger";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -243,7 +244,7 @@ async function processBatch(): Promise<{ processed: number; autoExecuted: number
         stats.failed++;
       }
     } catch (err: any) {
-      console.error(`[autonomousTaskProcessor] Task ${task.id} failed:`, err.message);
+      logger.error(`[autonomousTaskProcessor] Task ${task.id} failed`, err);
       stats.failed++;
 
       await db
@@ -298,7 +299,7 @@ async function updateAgentRunRecord(
       });
     }
   } catch (e) {
-    console.warn("[autonomousTaskProcessor] Failed to update agent run record:", e);
+    logger.warn("[autonomousTaskProcessor] Failed to update agent run record", { metadata: { detail: e } });
   }
 }
 
@@ -309,7 +310,7 @@ let isRunning = false;
 
 export async function runOnce(): Promise<void> {
   if (isRunning) {
-    console.log("[autonomousTaskProcessor] Already running, skipping");
+    logger.info("[autonomousTaskProcessor] Already running, skipping");
     return;
   }
 
@@ -318,12 +319,10 @@ export async function runOnce(): Promise<void> {
 
   try {
     const stats = await processBatch();
-    console.log(
-      `[autonomousTaskProcessor] Batch complete — processed:${stats.processed} auto:${stats.autoExecuted} escalated:${stats.escalated} failed:${stats.failed}`
-    );
+    logger.info(`[autonomousTaskProcessor] Batch complete — processed:${stats.processed} auto:${stats.autoExecuted} escalated:${stats.escalated} failed:${stats.failed}`);
     await updateAgentRunRecord("completed", stats);
   } catch (err: any) {
-    console.error("[autonomousTaskProcessor] Fatal error:", err.message);
+    logger.error("[autonomousTaskProcessor] Fatal error", err);
     await updateAgentRunRecord("failed", undefined, err.message);
   } finally {
     isRunning = false;
@@ -333,13 +332,13 @@ export async function runOnce(): Promise<void> {
 export function startAutonomousTaskProcessor(): void {
   if (runnerInterval) return; // already started
 
-  console.log(`[autonomousTaskProcessor] Starting — polling every ${RUN_INTERVAL_MS / 1000}s`);
+  logger.info(`[autonomousTaskProcessor] Starting — polling every ${RUN_INTERVAL_MS / 1000}s`);
 
   // Run immediately on start, then on interval
-  runOnce().catch(err => console.error("[autonomousTaskProcessor] Initial run failed:", err));
+  runOnce().catch(err => logger.error("[autonomousTaskProcessor] Initial run failed", err));
 
   runnerInterval = setInterval(() => {
-    runOnce().catch(err => console.error("[autonomousTaskProcessor] Interval run failed:", err));
+    runOnce().catch(err => logger.error("[autonomousTaskProcessor] Interval run failed", err));
   }, RUN_INTERVAL_MS);
 }
 
@@ -347,7 +346,7 @@ export function stopAutonomousTaskProcessor(): void {
   if (runnerInterval) {
     clearInterval(runnerInterval);
     runnerInterval = null;
-    console.log("[autonomousTaskProcessor] Stopped");
+    logger.info("[autonomousTaskProcessor] Stopped");
   }
 }
 

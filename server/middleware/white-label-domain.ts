@@ -1,6 +1,6 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 import type { Request, Response, NextFunction } from 'express';
 import { whiteLabelService } from '../services/whiteLabelService';
+import { logger } from "../utils/logger";
 
 interface WhiteLabelOrgInfo {
   orgId: number;
@@ -115,7 +115,7 @@ export async function whiteLabelDomainMiddleware(
     next();
   } catch (err) {
     // Non-fatal: if domain lookup fails, continue without white-label context
-    console.error('[WhiteLabelDomainMiddleware] Error resolving domain:', err);
+    logger.error('[WhiteLabelDomainMiddleware] Error resolving domain', err);
     req.whiteLabelOrg = null;
     next();
   }

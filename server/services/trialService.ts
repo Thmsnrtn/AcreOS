@@ -2,6 +2,7 @@ import { db } from "../storage";
 import { organizations } from "@shared/schema";
 import { eq, and, lt, isNotNull, isNull } from "drizzle-orm";
 import { sql } from "drizzle-orm";
+import { logger } from "../utils/logger";
 
 const TRIAL_DURATION_DAYS = 14;
 
@@ -108,7 +109,7 @@ export async function expireTrials(): Promise<number> {
 
   const count = (result as any).rowCount ?? 0;
   if (count > 0) {
-    console.log(`[trialService] Expired ${count} trial(s)`);
+    logger.info(`[trialService] Expired ${count} trial(s)`);
   }
   return count;
 }

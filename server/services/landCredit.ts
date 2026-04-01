@@ -1,10 +1,10 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 import { db } from '../db';
 import { 
   landCreditScores, 
   properties 
 } from '../../shared/schema';
 import { eq, and, desc } from 'drizzle-orm';
+import { logger } from "../utils/logger";
 
 interface ScoringFactors {
   location: {
@@ -188,7 +188,7 @@ class LandCreditScoring {
         confidence,
       };
     } catch (error) {
-      console.error('Credit score calculation failed:', error);
+      logger.error('Credit score calculation failed', error);
       throw error;
     }
   }
@@ -665,7 +665,7 @@ class LandCreditScoring {
         orderBy: [desc(landCreditScores.createdAt)],
       });
     } catch (error) {
-      console.error('Failed to get score history:', error);
+      logger.error('Failed to get score history', error);
       throw error;
     }
   }
@@ -690,13 +690,13 @@ class LandCreditScoring {
           scored++;
         } catch (error) {
           failed++;
-          console.error(`Failed to score property ${prop.id}:`, error);
+          logger.error(`Failed to score property ${prop.id}`, error);
         }
       }
 
       return { scored, failed };
     } catch (error) {
-      console.error('Bulk scoring failed:', error);
+      logger.error('Bulk scoring failed', error);
       throw error;
     }
   }
@@ -754,7 +754,7 @@ class LandCreditScoring {
         riskDistribution,
       };
     } catch (error) {
-      console.error('Failed to get portfolio distribution:', error);
+      logger.error('Failed to get portfolio distribution', error);
       throw error;
     }
   }

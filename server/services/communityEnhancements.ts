@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Community & Education Enhancements — Items 281-300
  * Knowledge base, tutorials, changelog, roadmap, feedback, tips, etc.
@@ -20,7 +19,7 @@ export const KNOWLEDGE_BASE = [
   { id: "marketplace", title: "Listing Properties for Sale", category: "Marketplace", content: "Go to Marketplace > New Listing. Add photos, description, and pricing.", keywords: ["marketplace", "listing", "sell", "buy"] },
 ];
 
-export function searchKnowledgeBase(query) {
+export function searchKnowledgeBase(query: string) {
   const lower = query.toLowerCase();
   return KNOWLEDGE_BASE.filter(article =>
     article.title.toLowerCase().includes(lower) ||
@@ -43,13 +42,13 @@ export const WEEKLY_TIPS = [
   "Export any table as CSV with the export button in the top-right corner.",
 ];
 
-export function getWeeklyTip() {
+export function getWeeklyTip(): string {
   const weekNumber = Math.floor(Date.now() / (7 * 24 * 60 * 60 * 1000));
   return WEEKLY_TIPS[weekNumber % WEEKLY_TIPS.length];
 }
 
 // Item 290: Feature announcements
-export function getRecentAnnouncements() {
+export function getRecentAnnouncements(): Array<{ id: string; title: string; description: string; date: string; category: string }> {
   return [
     { id: "agent-executors", title: "Agent Execution Capabilities", description: "AI agents can now take real actions: extend trials, send emails, create issues.", date: "2026-03-29", category: "feature" },
     { id: "reaction-chains", title: "Automated Reaction Chains", description: "15 pre-built reaction chains handle user lifecycle, deal events, and platform health.", date: "2026-03-29", category: "feature" },
@@ -59,7 +58,7 @@ export function getRecentAnnouncements() {
 }
 
 // Item 293: Changelog
-export function getChangelog() {
+export function getChangelog(): Array<{ week: string; entries: Array<{ title: string; type: string }> }> {
   return [
     {
       week: "March 24-29, 2026",
@@ -76,19 +75,19 @@ export function getChangelog() {
 }
 
 // Item 294: Public roadmap
-export async function getPublicRoadmap() {
+export async function getPublicRoadmap(): Promise<Array<{ title: string; description: string; votes: number; status: string }>> {
   const requests = await db.select().from(featureRequests).orderBy(desc(sql`COALESCE(${featureRequests.votes}, 0)`)).limit(20);
   return requests.map(r => ({ title: r.title || "", description: r.description || "", votes: Number(r.votes || 0), status: r.status || "planned" }));
 }
 
 // Item 291: Page feedback
-export async function submitPageFeedback(orgId, page, helpful, suggestion) {
+export async function submitPageFeedback(orgId: number, page: string, helpful: boolean, suggestion?: string) {
   const { userFeedback } = await import("@shared/schema");
   await db.insert(userFeedback).values({ userId: String(orgId), orgId, page, feedback: helpful ? (suggestion || "helpful") : (suggestion || "not helpful") });
 }
 
 // Item 298: Case study data
-export async function gatherCaseStudyData(dealId, orgId) {
+export async function gatherCaseStudyData(dealId: number, orgId: number) {
   const { deals } = await import("@shared/schema");
   const deal = await db.query.deals.findFirst({ where: and(eq(deals.id, dealId), eq(deals.organizationId, orgId)) });
   if (!deal) return null;

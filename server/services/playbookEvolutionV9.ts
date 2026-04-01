@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Playbook Evolution Engine — Sovereign Company Protocol v9: The Self-Running Company
  *

@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 import { db } from '../db';
 import { 
   propertyPhotos, 
@@ -8,6 +7,7 @@ import {
 } from '../../shared/schema';
 import { eq, and, desc } from 'drizzle-orm';
 import OpenAI from 'openai';
+import { logger } from "../utils/logger";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -111,7 +111,7 @@ Respond in JSON format with keys: features (array), landscapeType, buildingDetec
 
       return analysis;
     } catch (error) {
-      console.error('Photo analysis failed:', error);
+      logger.error('Photo analysis failed', error);
       throw error;
     }
   }
@@ -179,13 +179,13 @@ Respond in JSON format with keys: features (array), landscapeType, buildingDetec
           analyzed++;
         } catch (error) {
           failed++;
-          console.error(`Failed to analyze photo ${photo.id}:`, error);
+          logger.error(`Failed to analyze photo ${photo.id}`, error);
         }
       }
 
       return { analyzed, failed };
     } catch (error) {
-      console.error('Property photo analysis failed:', error);
+      logger.error('Property photo analysis failed', error);
       throw error;
     }
   }
@@ -242,7 +242,7 @@ Respond in JSON format with keys: features (array), landscapeType, buildingDetec
         analysis: bestAnalysis,
       };
     } catch (error) {
-      console.error('Failed to get best marketing photo:', error);
+      logger.error('Failed to get best marketing photo', error);
       return null;
     }
   }
@@ -280,7 +280,7 @@ Create a flowing description that highlights the best features without repeating
 
       return completion.choices[0].message.content || descriptions[0];
     } catch (error) {
-      console.error('Failed to generate property description:', error);
+      logger.error('Failed to generate property description', error);
       return 'Property description generation failed.';
     }
   }
@@ -314,7 +314,7 @@ Create a flowing description that highlights the best features without repeating
 
       return snapshot.id;
     } catch (error) {
-      console.error('Failed to capture satellite snapshot:', error);
+      logger.error('Failed to capture satellite snapshot', error);
       throw error;
     }
   }
@@ -385,7 +385,7 @@ Respond in JSON format with keys: changeDetected (boolean), changeType, changeSe
         confidence: 70,
       };
     } catch (error) {
-      console.error('Change detection failed:', error);
+      logger.error('Change detection failed', error);
       throw error;
     }
   }
@@ -400,7 +400,7 @@ Respond in JSON format with keys: changeDetected (boolean), changeType, changeSe
         orderBy: [desc(satelliteSnapshots.captureDate)],
       });
     } catch (error) {
-      console.error('Failed to get property snapshots:', error);
+      logger.error('Failed to get property snapshots', error);
       return [];
     }
   }
@@ -466,7 +466,7 @@ Respond in JSON format with keys: changeDetected (boolean), changeType, changeSe
         .slice(0, limit)
         .map(([propId]) => propId);
     } catch (error) {
-      console.error('Failed to find similar properties:', error);
+      logger.error('Failed to find similar properties', error);
       return [];
     }
   }
@@ -496,13 +496,13 @@ Respond in JSON format with keys: changeDetected (boolean), changeType, changeSe
           await new Promise(resolve => setTimeout(resolve, 1000));
         } catch (error) {
           failed++;
-          console.error(`Failed to analyze photo ${photo.id}:`, error);
+          logger.error(`Failed to analyze photo ${photo.id}`, error);
         }
       }
 
       return { analyzed, failed };
     } catch (error) {
-      console.error('Batch photo analysis failed:', error);
+      logger.error('Batch photo analysis failed', error);
       throw error;
     }
   }
@@ -581,7 +581,7 @@ Respond in JSON format with keys: changeDetected (boolean), changeType, changeSe
         marketingReady,
       };
     } catch (error) {
-      console.error('Failed to get property analysis summary:', error);
+      logger.error('Failed to get property analysis summary', error);
       throw error;
     }
   }

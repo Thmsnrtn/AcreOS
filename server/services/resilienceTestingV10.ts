@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Resilience & Chaos Testing — Sovereign Company Protocol v10
  *
@@ -18,6 +17,7 @@ import {
 import { eq, desc, sql } from "drizzle-orm";
 import { routeAITask, TaskComplexity } from "./aiRouter";
 import { companyAgentService } from "./companyAgents";
+import { logger } from "../utils/logger";
 
 // ─── Agent Capability Map (for SPOF detection) ────────────────────────────
 
@@ -103,7 +103,7 @@ class ResilienceTestingService {
         allSpofs.push(...(test.singlePointsOfFailure as any[] || []));
         allRecommendations.push(...(test.recommendations as any[] || []));
       } catch (err) {
-        console.error(`[Resilience] Test ${type} failed:`, err);
+        logger.error(`[Resilience] Test ${type} failed`, err);
       }
     }
 

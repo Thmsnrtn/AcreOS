@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 import { db } from '../db';
 import { 
   regulatoryChanges, 
@@ -7,6 +6,7 @@ import {
 } from '../../shared/schema';
 import { eq, and, desc, gte } from 'drizzle-orm';
 import OpenAI from 'openai';
+import { logger } from "../utils/logger";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -49,7 +49,7 @@ class ComplianceAI {
         sourceUrl: c.sourceUrl || undefined,
       }));
     } catch (error) {
-      console.error('Failed to monitor jurisdiction:', error);
+      logger.error('Failed to monitor jurisdiction', error);
       return [];
     }
   }
@@ -85,7 +85,7 @@ class ComplianceAI {
 
       return record.id.toString();
     } catch (error) {
-      console.error('Failed to record regulatory change:', error);
+      logger.error('Failed to record regulatory change', error);
       throw error;
     }
   }
@@ -123,7 +123,7 @@ class ComplianceAI {
         );
       }
     } catch (error) {
-      console.error('Failed to identify affected properties:', error);
+      logger.error('Failed to identify affected properties', error);
     }
   }
 
@@ -169,7 +169,7 @@ class ComplianceAI {
         status: 'pending',
       });
     } catch (error) {
-      console.error('Failed to create compliance alert:', error);
+      logger.error('Failed to create compliance alert', error);
     }
   }
 
@@ -193,7 +193,7 @@ class ComplianceAI {
         orderBy: [desc(complianceAlerts.createdAt)],
       });
     } catch (error) {
-      console.error('Failed to get alerts:', error);
+      logger.error('Failed to get alerts', error);
       return [];
     }
   }
@@ -214,7 +214,7 @@ class ComplianceAI {
         orderBy: [desc(complianceAlerts.createdAt)],
       });
     } catch (error) {
-      console.error('Failed to get property alerts:', error);
+      logger.error('Failed to get property alerts', error);
       return [];
     }
   }
@@ -239,7 +239,7 @@ class ComplianceAI {
           eq(complianceAlerts.organizationId, organizationId)
         ));
     } catch (error) {
-      console.error('Failed to acknowledge alert:', error);
+      logger.error('Failed to acknowledge alert', error);
       throw error;
     }
   }
@@ -262,7 +262,7 @@ class ComplianceAI {
           eq(complianceAlerts.organizationId, organizationId)
         ));
     } catch (error) {
-      console.error('Failed to resolve alert:', error);
+      logger.error('Failed to resolve alert', error);
       throw error;
     }
   }
@@ -365,7 +365,7 @@ Format as a professional report.`;
 
       return completion.choices[0].message.content || 'Disclosure generation failed';
     } catch (error) {
-      console.error('Failed to generate disclosure:', error);
+      logger.error('Failed to generate disclosure', error);
       return 'Error generating disclosure document';
     }
   }
@@ -416,7 +416,7 @@ Format as a professional report.`;
         complianceScore: score,
       };
     } catch (error) {
-      console.error('Failed to check compliance:', error);
+      logger.error('Failed to check compliance', error);
       return {
         isCompliant: false,
         criticalIssues: 0,
@@ -483,7 +483,7 @@ Format as a professional report.`;
         topRisks,
       };
     } catch (error) {
-      console.error('Failed to get compliance dashboard:', error);
+      logger.error('Failed to get compliance dashboard', error);
       return {
         totalAlerts: 0,
         criticalAlerts: 0,

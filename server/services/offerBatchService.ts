@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * T34 — Automated Offer Batch Service
  *

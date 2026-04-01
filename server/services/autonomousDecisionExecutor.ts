@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Autonomous Decision Executor
  *
@@ -57,6 +56,7 @@ import { routeCriticalTask } from "./aiRouter";
 import { emailService } from "./emailService";
 import { format } from "date-fns";
 import { companyAgentService } from "./companyAgents";
+import { logger } from "../utils/logger";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Configuration — all controlled via env vars (founder owns these, system cannot change)
@@ -592,7 +592,7 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
       })
       .where(eq(decisionsInboxItems.id, item.id));
 
-    console.log(`[AutonomousExecutor] Hard guardrail blocked item #${item.id}: ${guardrailCheck.reason}`);
+    logger.info(`[AutonomousExecutor] Hard guardrail blocked item #${item.id}: ${guardrailCheck.reason}`);
     return result;
   }
 
@@ -771,7 +771,7 @@ export interface DecisionExecutorRunResult {
 
 export async function runAutonomousDecisionExecutor(): Promise<DecisionExecutorRunResult> {
   if (!EXECUTOR_CONFIG.ENABLED) {
-    console.log("[AutonomousExecutor] Disabled via AUTONOMOUS_EXECUTOR_ENABLED=false");
+    logger.info("[AutonomousExecutor] Disabled via AUTONOMOUS_EXECUTOR_ENABLED=false");
     return {
       runAt: new Date(), itemsProcessed: 0, itemsApproved: 0, itemsRejected: 0,
       itemsDeferred: 0, itemsHardStopped: 0, executionSuccesses: 0, executionFailures: 0, results: [],
@@ -798,7 +798,7 @@ export async function runAutonomousDecisionExecutor(): Promise<DecisionExecutorR
 
   for (const item of pendingItems) {
     try {
-      console.log(`[AutonomousExecutor] Processing item #${item.id} (${item.itemType}, urgency: ${item.urgencyScore})`);
+      logger.info(`[AutonomousExecutor] Processing item #${item.id} (${item.itemType}, urgency: ${item.urgencyScore})`);
       const result = await processInboxItem(item);
       results.push(result);
 
@@ -810,7 +810,7 @@ export async function runAutonomousDecisionExecutor(): Promise<DecisionExecutorR
       if (result.executionSuccess) successes++;
       if (result.executed && !result.executionSuccess) failures++;
     } catch (err: any) {
-      console.error(`[AutonomousExecutor] Failed to process item #${item.id}:`, err.message);
+      logger.error(`[AutonomousExecutor] Failed to process item #${item.id}`, err);
       failures++;
     }
   }
@@ -828,11 +828,9 @@ export async function runAutonomousDecisionExecutor(): Promise<DecisionExecutorR
   };
 
   if (pendingItems.length > 0) {
-    console.log(
-      `[AutonomousExecutor] Complete: ${pendingItems.length} items — ` +
+    logger.info(`[AutonomousExecutor] Complete: ${pendingItems.length} items — ` +
       `${approved} approved, ${rejected} rejected, ${deferred} deferred, ${hardStopped} hard-stopped | ` +
-      `${successes} executed successfully, ${failures} failed`
-    );
+      `${successes} executed successfully, ${failures} failed`);
   }
 
   return runResult;

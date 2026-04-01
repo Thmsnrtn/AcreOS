@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Agent Workflow Engine — Sovereign Company Protocol v6
  *
@@ -20,6 +19,7 @@ import { executeAction } from "./agentActionExecutors";
 import { companyAgentService } from "./companyAgents";
 import { agentCommsService } from "./agentComms";
 import { wsServer } from "../websocket";
+import { logger } from "../utils/logger";
 
 // ─── Built-in Workflow Templates ─────────────────────────────────────────────
 
@@ -295,7 +295,7 @@ class WorkflowEngine {
 
     // Execute asynchronously
     this.executeRun(run.id, workflow).catch(err => {
-      console.error(`[WorkflowEngine] Run ${run.id} failed:`, err);
+      logger.error(`[WorkflowEngine] Run ${run.id} failed`, err);
     });
 
     return run.id;

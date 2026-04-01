@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Real-Time Nervous System — Sovereign Company Protocol v10
  *
@@ -19,6 +18,7 @@ import { db } from "../db";
 import { realtimeEventLog, type RealtimeEvent } from "@shared/schema";
 import { eq, desc, gte, and, count, sql } from "drizzle-orm";
 import { wsServer } from "../websocket";
+import { logger } from "../utils/logger";
 
 // ─── Event Type Registry ───────────────────────────────────────────────────
 
@@ -67,7 +67,7 @@ class RealtimeNervousSystemService {
         _ts: new Date().toISOString(),
       });
     } catch (err) {
-      console.error("[NervousSystem] WebSocket broadcast failed:", err);
+      logger.error("[NervousSystem] WebSocket broadcast failed", err);
     }
 
     // Log to database (fire-and-forget for non-critical events)
@@ -79,7 +79,7 @@ class RealtimeNervousSystemService {
         payload: event.payload,
       });
     } catch (err) {
-      console.error("[NervousSystem] Event log failed:", err);
+      logger.error("[NervousSystem] Event log failed", err);
     }
   }
 

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Agent Performance Reviews — Sovereign Company Protocol v6
  *

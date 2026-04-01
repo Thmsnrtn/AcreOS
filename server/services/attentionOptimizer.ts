@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Attention Optimizer — Sovereign Company Protocol v7
  *

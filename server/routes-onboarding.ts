@@ -10,6 +10,7 @@
 
 import { Router, type Request, type Response } from "express";
 import { onboardingService } from "./services/onboarding";
+import { logger } from "./utils/logger";
 
 const router = Router();
 
@@ -194,7 +195,7 @@ router.get("/instant-deal-hunt", async (req: Request, res: Response) => {
       totalScanned: 0, source: "county_intelligence",
     });
   } catch (err: any) {
-    console.error("[OnboardingDealHunt]", err.message);
+    logger.error("[OnboardingDealHunt]", err);
     res.status(500).json({ error: err.message, opportunities: [], totalScanned: 0 });
   }
 });

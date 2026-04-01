@@ -78,7 +78,7 @@ export class WebhookHandlers {
     try {
       await WebhookHandlers.dispatchEvent(event);
     } catch (err: any) {
-      console.error(`[webhook] Unrecoverable error processing ${event.type} (${event.id}):`, err.message);
+      logger.error(`[webhook] Unrecoverable error processing ${event.type} (${event.id})`, err);
     } finally {
       await WebhookHandlers.markProcessed(event.id, event.type);
     }

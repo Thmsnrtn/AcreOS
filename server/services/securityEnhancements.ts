@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Security & Compliance Enhancements — Items 221-240
  * CSP, session management, data retention, GDPR, audit, etc.

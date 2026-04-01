@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Agent Goal Manager — Sovereign Company Protocol v2
  *
@@ -19,6 +18,7 @@ import { agentGoals } from "@shared/schema";
 import { eq, and, desc, ne } from "drizzle-orm";
 import { companyAgentService } from "./companyAgents";
 import { agentCommsService } from "./agentComms";
+import { logger } from "../utils/logger";
 
 // ─── Goal CRUD ──────────────────────────────────────────────────────────────
 
@@ -230,7 +230,7 @@ export async function checkStaleGoals(): Promise<number> {
   }
 
   if (failed > 0) {
-    console.log(`[GoalManager] Marked ${failed} stale goals as failed`);
+    logger.info(`[GoalManager] Marked ${failed} stale goals as failed`);
   }
 
   return failed;

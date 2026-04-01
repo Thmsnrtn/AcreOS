@@ -12,7 +12,7 @@
  *
  * Algorithm: AES-256-GCM (authenticated encryption, tamper-evident)
  * Key source: process.env.FIELD_ENCRYPTION_KEY (hex-encoded 32-byte key)
- *             Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+ *             Generate with: node -e "logger.info(require('crypto').randomBytes(32).toString('hex'))"
  *
  * Wire format (Base64 of JSON):
  *   { v: 1, iv: "<hex>", tag: "<hex>", ct: "<hex>" }
@@ -28,6 +28,7 @@
 
 import crypto from "crypto";
 import type { Request, Response, NextFunction } from "express";
+import { logger } from "../utils/logger";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -48,13 +49,11 @@ function loadEncryptionKey(): Buffer {
     if (process.env.NODE_ENV === "production") {
       throw new Error(
         "[fieldEncryption] FIELD_ENCRYPTION_KEY is required in production. " +
-        "Generate with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\""
+        "Generate with: node -e \"logger.info(require('crypto').randomBytes(32).toString('hex'))\""
       );
     }
-    console.warn(
-      "[fieldEncryption] FIELD_ENCRYPTION_KEY not set — using insecure dev key. " +
-      "Set FIELD_ENCRYPTION_KEY in production."
-    );
+    logger.warn("[fieldEncryption] FIELD_ENCRYPTION_KEY not set — using insecure dev key. " +
+      "Set FIELD_ENCRYPTION_KEY in production.");
     return Buffer.alloc(KEY_BYTES, 0x42); // dev-only all-0x42 key
   }
 
@@ -218,7 +217,7 @@ export function decryptFields<T extends Record<string, unknown>>(
     try {
       out[field] = decrypt(value) as T[keyof T];
     } catch (err) {
-      console.error(`[fieldEncryption] Failed to decrypt field "${String(field)}":`, err);
+      logger.error(`[fieldEncryption] Failed to decrypt field "${String(field)}"`, err);
       // Leave the encrypted value in place rather than crashing
     }
   }
@@ -299,7 +298,7 @@ export function encryptionMiddleware(
     (req as any).encryptFields = encryptFields;
     (req as any).decryptFields = decryptFields;
   } catch (err) {
-    console.error("[fieldEncryption] Encryption middleware error:", err);
+    logger.error("[fieldEncryption] Encryption middleware error", err);
     // In production, propagate; in dev, allow the app to start
     if (process.env.NODE_ENV === "production") {
       next(err);

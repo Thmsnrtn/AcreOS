@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Confidence Cascade — Sovereign Company Protocol v14 — "The Self-Running Company"
  *
@@ -18,6 +17,7 @@ import { adaptiveStrategyService } from "./adaptiveStrategyV13";
 import { collaborationProtocolService } from "./collaborationProtocolV13";
 import { governanceBrainService } from "./governanceBrainV13";
 import { selfHealingMeshService } from "./selfHealingMeshV13";
+import { logger } from "../utils/logger";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -561,7 +561,7 @@ class ConfidenceCascadeService {
         });
       } catch (_err) {
         // Non-critical — log but don't fail the resolution
-        console.warn(`[cascade] Failed to record founder resolution to memory: ${(_err as Error).message}`);
+        logger.warn(`[cascade] Failed to record founder resolution to memory: ${(_err as Error).message}`);
       }
     }
 

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Founder Intelligence Layer — Sovereign Company Protocol v13
  * Daily briefings, what-if simulations, strategic recommendations,

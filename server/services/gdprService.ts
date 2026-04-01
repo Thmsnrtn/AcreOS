@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * T174 — GDPR Data Service
  *

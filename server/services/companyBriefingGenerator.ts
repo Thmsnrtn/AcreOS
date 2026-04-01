@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Company Briefing Generator — Sovereign Company Protocol
  *
@@ -16,6 +15,7 @@ import {
 import { eq, and, gte, desc, count, sql } from "drizzle-orm";
 import { companyAgentService } from "./companyAgents";
 import { agentCommsService } from "./agentComms";
+import { logger } from "../utils/logger";
 
 /**
  * Generate and cache a CEO briefing.
@@ -162,7 +162,7 @@ export async function generateCompanyBriefing(): Promise<any> {
     mood,
   });
 
-  console.log(`[CompanyBriefing] Generated at ${now.toISOString()} | Health: ${healthScore} | Mood: ${mood} | Agents: ${reports.length}`);
+  logger.info(`[CompanyBriefing] Generated at ${now.toISOString()} | Health: ${healthScore} | Mood: ${mood} | Agents: ${reports.length}`);
 
   return briefing;
 }

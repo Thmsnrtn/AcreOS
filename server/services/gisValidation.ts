@@ -1,6 +1,7 @@
 import { db } from "../db";
 import { countyGisEndpoints } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { logger } from "../utils/logger";
 
 interface ValidationJob {
   id: string;
@@ -166,7 +167,7 @@ export async function validateAllEndpoints(
     ? allEndpoints.filter(e => e.state.toUpperCase() === stateFilter.toUpperCase())
     : allEndpoints;
   
-  console.log(`[GISValidation] Testing ${endpoints.length} endpoints...`);
+  logger.info(`[GISValidation] Testing ${endpoints.length} endpoints...`);
   
   const results: EndpointValidationResult[] = [];
   let completed = 0;
@@ -221,7 +222,7 @@ export async function validateAllEndpoints(
     testedAt: new Date(),
   };
   
-  console.log(`[GISValidation] Complete: ${online.length}/${results.length} online (${Math.round(online.length / results.length * 100)}%)`);
+  logger.info(`[GISValidation] Complete: ${online.length}/${results.length} online (${Math.round(online.length / results.length * 100)}%)`);
   
   return { results, summary };
 }
@@ -234,14 +235,14 @@ export async function validateSampleEndpoints(
   const shuffled = allEndpoints.sort(() => Math.random() - 0.5);
   const sample = shuffled.slice(0, sampleSize);
   
-  console.log(`[GISValidation] Testing sample of ${sample.length} endpoints...`);
+  logger.info(`[GISValidation] Testing sample of ${sample.length} endpoints...`);
   
   const results: EndpointValidationResult[] = [];
   
   for (const endpoint of sample) {
     const result = await testEndpoint(endpoint, 8000);
     results.push(result);
-    console.log(`[GISValidation] ${result.state}/${result.county}: ${result.status} (${result.responseTime}ms)`);
+    logger.info(`[GISValidation] ${result.state}/${result.county}: ${result.status} (${result.responseTime}ms)`);
   }
   
   const online = results.filter(r => r.status === "online");
@@ -344,12 +345,12 @@ export async function startValidationJob(
       job.summary = result.summary;
       job.results = result.results;
       
-      console.log(`[GISValidation] Job ${jobId} completed: ${result.summary.online}/${result.summary.total} online`);
+      logger.info(`[GISValidation] Job ${jobId} completed: ${result.summary.online}/${result.summary.total} online`);
     } catch (error: any) {
       job.status = "failed";
       job.completedAt = new Date();
       job.error = error.message || String(error);
-      console.error(`[GISValidation] Job ${jobId} failed:`, error);
+      logger.error(`[GISValidation] Job ${jobId} failed`, error);
     }
   });
   

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * @Mention Service (T57)
  *
@@ -14,6 +13,7 @@ import { db } from "../db";
 import { teamMembers } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { storage } from "../storage";
+import { logger } from "../utils/logger";
 
 export interface MentionContext {
   entityType: "lead" | "deal" | "property";
@@ -125,11 +125,9 @@ export async function processMentions(
         },
       });
       notifiedIds.push(m.id);
-      console.log(
-        `[Mention] Notified ${m.displayName || m.email} (member #${m.id}) on ${entityLabel}`
-      );
+      logger.info(`[Mention] Notified ${m.displayName || m.email} (member #${m.id}) on ${entityLabel}`);
     } catch (err) {
-      console.error(`[Mention] Failed to notify member #${m.id}:`, err);
+      logger.error(`[Mention] Failed to notify member #${m.id}`, err);
     }
   }
 

@@ -2,6 +2,7 @@ import { db } from '../db';
 import { digestSubscriptions, organizations, leads, campaigns, notes, payments, teamMembers } from '@shared/schema';
 import { eq, and, gte, lte, sql, isNull, or, lt } from 'drizzle-orm';
 import { storage } from '../storage';
+import { logger } from "../utils/logger";
 
 export interface DigestData {
   organizationId: number;
@@ -303,21 +304,21 @@ export class DigestService {
             });
             
             if (result.success) {
-              console.log(`[Digest] Sent weekly digest to ${email} for org ${sub.organizationId}`);
+              logger.info(`[Digest] Sent weekly digest to ${email} for org ${sub.organizationId}`);
               await this.markDigestSent(sub.userId, sub.organizationId);
               sent++;
             } else {
-              console.log(`[Digest] Email delivery logged for org ${sub.organizationId}: ${result.error || 'No email provider configured'}`);
+              logger.info(`[Digest] Email delivery logged for org ${sub.organizationId}: ${result.error || 'No email provider configured'}`);
               await this.markDigestSent(sub.userId, sub.organizationId);
               sent++;
             }
           } else {
-            console.log(`[Digest] No email address for user ${sub.userId}`);
+            logger.info(`[Digest] No email address for user ${sub.userId}`);
             failed++;
           }
         }
       } catch (error) {
-        console.error(`[Digest] Failed for org ${sub.organizationId}:`, error);
+        logger.error(`[Digest] Failed for org ${sub.organizationId}`, error);
         failed++;
       }
     }

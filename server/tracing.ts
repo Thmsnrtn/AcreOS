@@ -1,4 +1,6 @@
-// @ts-nocheck
+import { logger } from "./utils/logger";
+// OpenTelemetry SDK imports are lazily loaded and typed as `any` since
+// @opentelemetry/* type packages may not be installed.
 /**
  * OpenTelemetry Distributed Tracing (T74)
  *
@@ -76,12 +78,10 @@ async function buildExporter(): Promise<SpanExporter | null> {
         const [k, v] = part.split("=");
         if (k && v) headers[k.trim()] = v.trim();
       }
-      console.log(`[Tracing] Using OTLP exporter → ${endpoint}`);
+      logger.info(`[Tracing] Using OTLP exporter → ${endpoint}`);
       return new OTLPTraceExporter({ url: `${endpoint}/v1/traces`, headers });
     } catch (err) {
-      console.warn(
-        "[Tracing] @opentelemetry/exporter-trace-otlp-http not available — falling back to console"
-      );
+      logger.warn("[Tracing] @opentelemetry/exporter-trace-otlp-http not available — falling back to console");
       return new ConsoleSpanExporter();
     }
   }
@@ -93,7 +93,7 @@ export async function initTracing(): Promise<void> {
   const exporter = await buildExporter();
 
   if (!exporter) {
-    console.log("[Tracing] Tracing disabled (set OTEL_EXPORTER=console|otlp to enable)");
+    logger.info("[Tracing] Tracing disabled (set OTEL_EXPORTER=console|otlp to enable)");
     return;
   }
 
@@ -118,7 +118,7 @@ export async function initTracing(): Promise<void> {
     instrumentations: [
       new HttpInstrumentation({
         // Ignore noisy health check and static asset requests
-        ignoreIncomingRequestHook: (req) => {
+        ignoreIncomingRequestHook: (req: any) => {
           const url = req.url ?? "";
           return (
             url === "/health" ||
@@ -133,7 +133,7 @@ export async function initTracing(): Promise<void> {
 
   _tracer = trace.getTracer(SERVICE_NAME, SERVICE_VERSION);
 
-  console.log(`[Tracing] OpenTelemetry tracing initialized (service: ${SERVICE_NAME})`);
+  logger.info(`[Tracing] OpenTelemetry tracing initialized (service: ${SERVICE_NAME})`);
 }
 
 /**
@@ -185,7 +185,7 @@ export async function traceAsync<T>(
   attributes?: Record<string, string | number | boolean>
 ): Promise<T> {
   const tracer = getTracer();
-  return tracer.startActiveSpan(name, { attributes: attributes ?? {} }, async (span) => {
+  return tracer.startActiveSpan(name, { attributes: attributes ?? {} }, async (span: any) => {
     try {
       const result = await fn();
       span.setStatus({ code: 1 }); // OK

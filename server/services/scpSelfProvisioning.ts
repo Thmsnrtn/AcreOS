@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * SCP v3 Self-Provisioning — Sovereign Company Protocol
  *

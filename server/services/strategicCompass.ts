@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Strategic Compass — Sovereign Company Protocol v4
  *
@@ -13,6 +12,7 @@
 import { db } from "../db";
 import { companyPriorities } from "@shared/schema";
 import { eq, desc } from "drizzle-orm";
+import { logger } from "../utils/logger";
 
 /**
  * Get all active company priorities, ordered by weight.
@@ -50,7 +50,7 @@ export async function createPriority(params: {
     setBy: params.setBy || "ceo",
   }).returning({ id: companyPriorities.id });
 
-  console.log(`[StrategicCompass] New priority: "${params.priority}" (weight: ${params.weight || 5})`);
+  logger.info(`[StrategicCompass] New priority: "${params.priority}" (weight: ${params.weight || 5})`);
   return row.id;
 }
 

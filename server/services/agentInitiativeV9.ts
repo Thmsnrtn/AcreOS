@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Agent Initiative System — Sovereign Company Protocol v9: The Self-Running Company
  *
@@ -26,6 +25,7 @@ import { companyAgentService } from "./companyAgents";
 import { resolveAgentData } from "./agentDataResolvers";
 import { strategicCompassV8Service } from "./strategicCompassV8";
 import { institutionalMemoryService } from "./institutionalMemory";
+import { logger } from "../utils/logger";
 
 // ─── Initiative Priority Levels ──────────────────────────────────────────────
 
@@ -63,7 +63,7 @@ class AgentInitiativeService {
     const thinkingPromises = agents.map(agent =>
       this.runAgentThinking(agent.codename, agent.title, agent.personalityPrompt || "", mode, northStar)
         .catch(err => {
-          console.error(`[Initiative] ${agent.codename} thinking failed:`, err);
+          logger.error(`[Initiative] ${agent.codename} thinking failed`, err);
           return null;
         })
     );

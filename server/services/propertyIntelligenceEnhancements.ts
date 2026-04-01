@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Property Intelligence Enhancements — Items 31-50
  * Satellite imagery, comparison, ownership history, nearby properties, etc.

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Compass Auto-Recommendation — Sovereign Company Protocol v9: The Self-Running Company
  *

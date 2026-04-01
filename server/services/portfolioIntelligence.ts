@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 /**
  * Portfolio Intelligence — health score, wealth snapshot, optimization recs.
  *

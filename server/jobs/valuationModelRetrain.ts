@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 /**
  * Valuation Model Retrain Job
  *
@@ -28,6 +27,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, sql, gte } from "drizzle-orm";
 import { sendEmail } from "../services/emailService";
+import { logger } from "../utils/logger";
 
 export const VALUATION_RETRAIN_QUEUE_NAME = "valuation-model-retrain";
 
@@ -281,7 +281,7 @@ async function sendAdminNotification(params: {
       });
     }
   } catch (emailErr: any) {
-    console.warn("[ValuationRetrain] Admin email failed:", emailErr.message);
+    logger.warn("[ValuationRetrain] Admin email failed", { metadata: { detail: emailErr.message } });
   }
 }
 
@@ -308,7 +308,7 @@ async function processValuationRetrainJob(job: Job): Promise<void> {
     // Step 1: Validate training data
     const validation = await validateTrainingData();
     if (!validation.valid) {
-      console.warn(`[ValuationRetrain] Skipping: ${validation.reason}`);
+      logger.warn(`[ValuationRetrain] Skipping: ${validation.reason}`);
       if (bgJobId) {
         await db
           .update(backgroundJobs)
@@ -318,7 +318,7 @@ async function processValuationRetrainJob(job: Job): Promise<void> {
       return;
     }
 
-    console.log(`[ValuationRetrain] Starting training with ${validation.sampleCount} samples`);
+    logger.info(`[ValuationRetrain] Starting training with ${validation.sampleCount} samples`);
 
     // Step 2: Run training
     const output = await runTrainingScript(validation.sampleCount);
@@ -334,9 +334,7 @@ async function processValuationRetrainJob(job: Job): Promise<void> {
     } else {
       const relativeImprovement = (priorMae - output.mae) / priorMae;
       promoted = relativeImprovement > ACCURACY_IMPROVEMENT_THRESHOLD;
-      console.log(
-        `[ValuationRetrain] Prior MAE: ${priorMae.toFixed(2)}, New MAE: ${output.mae.toFixed(2)}, Improvement: ${(relativeImprovement * 100).toFixed(2)}% — ${promoted ? "AUTO-PROMOTING" : "staging only"}`
-      );
+      logger.info(`[ValuationRetrain] Prior MAE: ${priorMae.toFixed(2)}, New MAE: ${output.mae.toFixed(2)}, Improvement: ${(relativeImprovement * 100).toFixed(2)}% — ${promoted ? "AUTO-PROMOTING" : "staging only"}`);
     }
 
     // Step 4: Persist version
@@ -367,9 +365,9 @@ async function processValuationRetrainJob(job: Job): Promise<void> {
         .where(eq(backgroundJobs.id, bgJobId));
     }
 
-    console.log(`[ValuationRetrain] Complete. Version ${output.version} ${promoted ? "promoted to production" : "in staging"}.`);
+    logger.info(`[ValuationRetrain] Complete. Version ${output.version} ${promoted ? "promoted to production" : "in staging"}.`);
   } catch (err: any) {
-    console.error("[ValuationRetrain] Fatal error:", err.message);
+    logger.error("[ValuationRetrain] Fatal error", err);
     if (bgJobId) {
       await db
         .update(backgroundJobs)
@@ -400,7 +398,7 @@ export async function registerValuationRetrainJob(queue: Queue): Promise<void> {
       removeOnFail: 3,
     }
   );
-  console.log("[ValuationRetrain] Registered weekly retrain job (Sundays at 1 AM UTC)");
+  logger.info("[ValuationRetrain] Registered weekly retrain job (Sundays at 1 AM UTC)");
 }
 
 export function valuationModelRetrainJob(redisConnection: any): Worker {
@@ -416,11 +414,11 @@ export function valuationModelRetrainJob(redisConnection: any): Worker {
   );
 
   worker.on("completed", (job) => {
-    console.log(`[ValuationRetrain] Job ${job.id} completed`);
+    logger.info(`[ValuationRetrain] Job ${job.id} completed`);
   });
 
   worker.on("failed", (job, err) => {
-    console.error(`[ValuationRetrain] Job ${job?.id} failed:`, err.message);
+    logger.error(`[ValuationRetrain] Job ${job?.id} failed`, err);
   });
 
   return worker;

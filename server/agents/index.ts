@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 /**
  * Agent Registry — manages lifecycle of all autonomous founder operations agents.
  * Call startAll() after database is ready on server boot.
@@ -10,6 +9,7 @@ import { revenueAgent } from "./revenue";
 import { operationsAgent } from "./operations";
 import { founderDigestAgent } from "./founder-digest";
 import type { BaseAgent, AgentHealth } from "./base-agent";
+import { logger } from "../utils/logger";
 
 // Feature flags — all agents individually toggleable
 const AGENT_FEATURE_FLAGS: Record<string, boolean> = {
@@ -29,7 +29,7 @@ const agents: BaseAgent[] = [
 ];
 
 export async function startAll(): Promise<void> {
-  console.log("[AgentRegistry] Starting all agents...");
+  logger.info("[AgentRegistry] Starting all agents...");
 
   for (const agent of agents) {
     const enabled = AGENT_FEATURE_FLAGS[agent.featureFlag] ?? false;
@@ -38,19 +38,19 @@ export async function startAll(): Promise<void> {
       try {
         await agent.start();
       } catch (err: any) {
-        console.error(`[AgentRegistry] Failed to start ${agent.name}:`, err.message);
+        logger.error(`[AgentRegistry] Failed to start ${agent.name}`, err);
       }
     }
   }
 
-  console.log(`[AgentRegistry] ${agents.filter((a) => a.getHealth().enabled).length}/${agents.length} agents started`);
+  logger.info(`[AgentRegistry] ${agents.filter((a) => a.getHealth().enabled).length}/${agents.length} agents started`);
 }
 
 export function stopAll(): void {
   for (const agent of agents) {
     agent.stop();
   }
-  console.log("[AgentRegistry] All agents stopped");
+  logger.info("[AgentRegistry] All agents stopped");
 }
 
 export function getAgentStatus(): AgentHealth[] {

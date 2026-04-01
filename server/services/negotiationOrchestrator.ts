@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 import { db } from '../db';
 import { 
   negotiationThreads, 
@@ -9,6 +8,7 @@ import {
 } from '../../shared/schema';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import OpenAI from 'openai';
+import { logger } from "../utils/logger";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -97,7 +97,7 @@ Respond in JSON format.`;
 
       return profile;
     } catch (error) {
-      console.error('Seller psychology analysis failed:', error);
+      logger.error('Seller psychology analysis failed', error);
       // Return neutral profile as fallback
       return {
         motivation: 'neutral',
@@ -211,7 +211,7 @@ Respond in JSON format.`;
 
       return recommendation;
     } catch (error) {
-      console.error('Counter-offer generation failed:', error);
+      logger.error('Counter-offer generation failed', error);
       throw error;
     }
   }
@@ -268,7 +268,7 @@ Respond in JSON format.`;
 
       return thread.id;
     } catch (error) {
-      console.error('Failed to create negotiation thread:', error);
+      logger.error('Failed to create negotiation thread', error);
       throw error;
     }
   }
@@ -306,7 +306,7 @@ Respond in JSON format.`;
           .where(eq(negotiationThreads.id, threadId));
       }
     } catch (error) {
-      console.error('Failed to record negotiation move:', error);
+      logger.error('Failed to record negotiation move', error);
       throw error;
     }
   }
@@ -340,7 +340,7 @@ Respond in JSON format.`;
         moves,
       };
     } catch (error) {
-      console.error('Failed to get thread:', error);
+      logger.error('Failed to get thread', error);
       throw error;
     }
   }
@@ -358,7 +358,7 @@ Respond in JSON format.`;
         orderBy: [desc(negotiationThreads.createdAt)],
       });
     } catch (error) {
-      console.error('Failed to get active negotiations:', error);
+      logger.error('Failed to get active negotiations', error);
       throw error;
     }
   }
@@ -394,7 +394,7 @@ Respond in JSON format.`;
 
       return strategy.id;
     } catch (error) {
-      console.error('Failed to create strategy:', error);
+      logger.error('Failed to create strategy', error);
       throw error;
     }
   }
@@ -432,7 +432,7 @@ Respond in JSON format.`;
         await this.updateStrategyPerformance(organizationId, thread.strategyId);
       }
     } catch (error) {
-      console.error('Failed to record outcome:', error);
+      logger.error('Failed to record outcome', error);
       throw error;
     }
   }
@@ -480,7 +480,7 @@ Respond in JSON format.`;
         .set({ performance })
         .where(eq(negotiationStrategies.id, strategyId));
     } catch (error) {
-      console.error('Failed to update strategy performance:', error);
+      logger.error('Failed to update strategy performance', error);
     }
   }
 
@@ -506,7 +506,7 @@ Respond in JSON format.`;
 
       return testedStrategies.length > 0 ? testedStrategies[0] : strategies[0];
     } catch (error) {
-      console.error('Failed to get best strategy:', error);
+      logger.error('Failed to get best strategy', error);
       return null;
     }
   }
@@ -544,7 +544,7 @@ Tone should match the ${sellerProfile.communicationStyle} communication style.`;
 
       return completion.choices[0].message.content || '';
     } catch (error) {
-      console.error('Failed to generate negotiation script:', error);
+      logger.error('Failed to generate negotiation script', error);
       return 'Script generation failed';
     }
   }
@@ -624,7 +624,7 @@ Tone should match the ${sellerProfile.communicationStyle} communication style.`;
         message: `Auto-countered at $${newOffer.toLocaleString()}`,
       };
     } catch (error) {
-      console.error('Auto-negotiate failed:', error);
+      logger.error('Auto-negotiate failed', error);
       return { success: false, message: 'Auto-negotiation failed' };
     }
   }
@@ -892,7 +892,7 @@ build_negotiation_plan as your final tool to produce the structured output.`,
         toolsInvoked: toolsInvoked.map((t) => t.split(':')[0]),
       };
     } catch (error) {
-      console.error('Negotiation assistant failed:', error);
+      logger.error('Negotiation assistant failed', error);
       return {
         recommendation: 'Unable to generate recommendation at this time.',
         toolsInvoked,

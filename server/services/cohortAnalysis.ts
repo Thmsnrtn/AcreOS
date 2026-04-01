@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * T41 — Cohort Analysis for Lead Conversion
  *

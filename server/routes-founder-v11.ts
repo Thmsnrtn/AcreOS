@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Founder v11 Routes — Sovereign Company Protocol v11: The Anticipatory Enterprise
  *

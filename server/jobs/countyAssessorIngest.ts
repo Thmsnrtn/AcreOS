@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 /**
  * County Assessor Ingestion Pipeline (EPIC 1 — Real Data Foundation)
  *
@@ -32,6 +31,7 @@ import {
 } from "@shared/schema";
 import { eq, and, sql, desc, gte } from "drizzle-orm";
 import { createHash } from "crypto";
+import { logger } from "../utils/logger";
 
 export const COUNTY_ASSESSOR_QUEUE_NAME = "county-assessor-ingest";
 
@@ -146,7 +146,7 @@ async function fetchAttomComparables(
 ): Promise<AttomComparable[]> {
   const apiKey = process.env.ATTOM_API_KEY;
   if (!apiKey) {
-    console.log(`[CountyAssessor] ATTOM_API_KEY not configured — skipping comps for ${county}, ${state}`);
+    logger.info(`[CountyAssessor] ATTOM_API_KEY not configured — skipping comps for ${county}, ${state}`);
     return [];
   }
 
@@ -172,7 +172,7 @@ async function fetchAttomComparables(
     });
 
     if (!resp.ok) {
-      console.warn(`[CountyAssessor] ATTOM API error ${resp.status} for ${county}, ${state}`);
+      logger.warn(`[CountyAssessor] ATTOM API error ${resp.status} for ${county}, ${state}`);
       return [];
     }
 
@@ -204,7 +204,7 @@ async function fetchAttomComparables(
       })
       .filter((c: AttomComparable) => c.salePrice > 0 && c.acreage > 0);
   } catch (err: any) {
-    console.error(`[CountyAssessor] ATTOM fetch error for ${county}, ${state}:`, err.message);
+    logger.error(`[CountyAssessor] ATTOM fetch error for ${county}, ${state}`, err);
     return [];
   }
 }
@@ -312,7 +312,7 @@ async function fetchTaxDelinquentList(
 
   // For counties without direct API: queue a browser scrape task
   // The actual scrape happens in browserAutomation service
-  console.log(`[CountyAssessor] ${county}, ${state} (FIPS: ${fips}) — queued for browser scrape`);
+  logger.info(`[CountyAssessor] ${county}, ${state} (FIPS: ${fips}) — queued for browser scrape`);
 
   // Return synthetic test data structure that browser scrape would return
   // Real implementation: integrate with existing browserAutomation.ts service
@@ -592,7 +592,7 @@ async function updateCountyMarketStats(
       });
   } catch (err: any) {
     // If countyMarkets table doesn't have onConflictDoUpdate support, try update
-    console.warn(`[CountyAssessor] Market stats upsert: ${err.message}`);
+    logger.warn(`[CountyAssessor] Market stats upsert: ${err.message}`);
   }
 
   return stats;
@@ -656,9 +656,7 @@ async function processCounty(
     if (motivationResult.score >= 70) {
       highMotivationCount++;
       // Flag for immediate skip tracing + outreach consideration
-      console.log(
-        `[CountyAssessor] HIGH MOTIVATION: ${record.ownerName} in ${county}, ${state} — Score: ${motivationResult.score} (${motivationResult.grade}) — ${motivationResult.topReason}`
-      );
+      logger.info(`[CountyAssessor] HIGH MOTIVATION: ${record.ownerName} in ${county}, ${state} — Score: ${motivationResult.score} (${motivationResult.grade}) — ${motivationResult.topReason}`);
     }
   }
 
@@ -683,7 +681,7 @@ async function processCounty(
       } catch (err: any) {
         // Skip duplicate or schema mismatches
         if (err.code !== "23505") {
-          console.warn(`[CountyAssessor] Comp insert warning: ${err.message}`);
+          logger.warn(`[CountyAssessor] Comp insert warning: ${err.message}`);
         }
       }
     }
@@ -731,7 +729,7 @@ async function processCountyAssessorIngestJob(job: Job): Promise<void> {
     .sort((a, b) => a.priority - b.priority)
     .slice(0, 50);
 
-  console.log(`[CountyAssessor] Starting batch: ${batchCounties.length} counties`);
+  logger.info(`[CountyAssessor] Starting batch: ${batchCounties.length} counties`);
 
   for (const countyConfig of batchCounties) {
     try {
@@ -745,10 +743,7 @@ async function processCountyAssessorIngestJob(job: Job): Promise<void> {
       await new Promise((r) => setTimeout(r, 2000));
     } catch (err: any) {
       countriesFailed++;
-      console.error(
-        `[CountyAssessor] County ${countyConfig.county}, ${countyConfig.state} failed:`,
-        err.message
-      );
+      logger.error(`[CountyAssessor] County ${countyConfig.county}, ${countyConfig.state} failed`, err);
     }
   }
 
@@ -763,7 +758,7 @@ async function processCountyAssessorIngestJob(job: Job): Promise<void> {
     durationMs: Date.now() - startedAt.getTime(),
   };
 
-  console.log("[CountyAssessor] Batch complete:", JSON.stringify(summary));
+  logger.info("[CountyAssessor] Batch complete", { metadata: { detail: JSON.stringify(summary) } });
 
   if (bgJobId) {
     await db
@@ -797,7 +792,7 @@ export async function registerCountyAssessorIngestJob(queue: Queue): Promise<voi
       removeOnFail: 3,
     }
   );
-  console.log("[CountyAssessor] Registered nightly county assessor ingest at 11 PM UTC");
+  logger.info("[CountyAssessor] Registered nightly county assessor ingest at 11 PM UTC");
 }
 
 export function countyAssessorIngestJob(redisConnection: any): Worker {
@@ -814,11 +809,11 @@ export function countyAssessorIngestJob(redisConnection: any): Worker {
   );
 
   worker.on("completed", (job) => {
-    console.log(`[CountyAssessor] Job ${job.id} completed`);
+    logger.info(`[CountyAssessor] Job ${job.id} completed`);
   });
 
   worker.on("failed", (job, err) => {
-    console.error(`[CountyAssessor] Job ${job?.id} failed:`, err.message);
+    logger.error(`[CountyAssessor] Job ${job?.id} failed`, err);
   });
 
   return worker;

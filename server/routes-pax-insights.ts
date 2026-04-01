@@ -4,10 +4,11 @@ import { eq, and, desc, lt, gte, lte, gt, sql } from "drizzle-orm";
 import { paxObservations, paxNudges, leads, deals, leadActivities, properties, voiceCalls } from "@shared/schema";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
+import { logger } from "./utils/logger";
 
 const logger = {
   error: (msg: string, meta?: Record<string, any>) =>
-    console.error(JSON.stringify({ level: "ERROR", timestamp: new Date().toISOString(), message: msg, ...meta })),
+    logger.error(JSON.stringify({ level: "ERROR", timestamp: new Date().toISOString(), message: msg, ...meta })),
 };
 
 const router = Router();

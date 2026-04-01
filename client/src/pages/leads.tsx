@@ -1,6 +1,7 @@
 import { PageShell } from "@/components/page-shell";
 import { PaxContextButton } from "@/components/pax-context-button";
-import { useLeads, useCreateLead, useUpdateLead, useDeleteLead } from "@/hooks/use-leads";
+import { ListPagination, usePagination } from "@/components/list-pagination";
+import { useLeads, useLeadsPaginated, useCreateLead, useUpdateLead, useDeleteLead } from "@/hooks/use-leads";
 import { useProperties } from "@/hooks/use-properties";
 import { useTeamMembers, useUserPermissions, getRoleBadgeStyle, getRoleLabel } from "@/hooks/use-organization";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -17,7 +18,7 @@ import { insertLeadSchema, type Lead } from "@shared/schema";
 import { z } from "zod";
 import { useLocation, useSearch } from "wouter";
 
-const { data: leads, isLoading: leadsLoading, isError: leadsError, error: leadsErr, refetch: refetchLeads } = useLeads();
+// Module-level hook removed — use inside component instead
 
 // Phone number formatting helper
 const formatPhoneNumber = (phone: string): string => {
@@ -637,7 +638,12 @@ function TcpaConsentBadge({ lead }: { lead: Lead }) {
 }
 
 export default function LeadsPage() {
-  const { data: leads, isLoading, error, refetch } = useLeads();
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const { data: leadsResponse, isLoading, error, refetch } = useLeadsPaginated({ page: currentPage, pageSize });
+  const leads = leadsResponse?.data;
+  const serverTotal = leadsResponse?.total ?? 0;
+  const serverTotalPages = leadsResponse?.totalPages ?? 1;
   const { data: properties } = useProperties();
   const [, setLocation] = useLocation();
   const searchString = useSearch();
@@ -747,6 +753,7 @@ export default function LeadsPage() {
 
   const handleStageFilterChange = (value: string) => {
     setStageFilter(value);
+    setCurrentPage(1);
     if (value === "all") {
       setLocation("/leads");
     } else {
@@ -947,6 +954,23 @@ export default function LeadsPage() {
     
     return result;
   }, [leads, search, stageFilter, assigneeFilter, gisFilters, sortOrder]);
+
+  // Server-side pagination: the data returned is already one page
+  // Client-side filtering (search, GIS) is applied on the current page
+  const paginatedLeads = filteredLeads;
+  const totalLeadItems = serverTotal;
+  const safeCurrentPage = currentPage;
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    // Scroll to top of the list area
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handlePageSizeChange = (size: number) => {
+    setPageSize(size);
+    setCurrentPage(1);
+  };
 
   const handleDelete = () => {
     if (deletingLead) {
@@ -1400,7 +1424,7 @@ export default function LeadsPage() {
                               </TableCell>
                             </TableRow>
                           )}
-                          {filteredLeads?.map((lead) => (
+                          {paginatedLeads.map((lead) => (
                             <TableRow key={lead.id} className="group" data-testid={`row-lead-${lead.id}`}>
                               <TableCell>
                                 <Checkbox
@@ -1528,6 +1552,16 @@ export default function LeadsPage() {
                           ))}
                         </TableBody>
                       </Table>
+                      {serverTotal > pageSize && (
+                        <ListPagination
+                          currentPage={safeCurrentPage}
+                          totalItems={totalLeadItems}
+                          pageSize={pageSize}
+                          onPageChange={handlePageChange}
+                          onPageSizeChange={handlePageSizeChange}
+                          className="border-t px-4"
+                        />
+                      )}
                     </div>
 
                     {/* Mobile Card View */}
@@ -1566,9 +1600,9 @@ export default function LeadsPage() {
                         </div>
                       )}
                       <div className="divide-y">
-                        {filteredLeads?.map((lead) => (
-                          <div 
-                            key={lead.id} 
+                        {paginatedLeads.map((lead) => (
+                          <div
+                            key={lead.id}
                             className="p-4 hover-elevate"
                             data-testid={`card-lead-${lead.id}`}
                           >
@@ -1658,12 +1692,22 @@ export default function LeadsPage() {
                           </div>
                         ))}
                       </div>
+                      {serverTotal > pageSize && (
+                        <ListPagination
+                          currentPage={safeCurrentPage}
+                          totalItems={totalLeadItems}
+                          pageSize={pageSize}
+                          onPageChange={handlePageChange}
+                          onPageSizeChange={handlePageSizeChange}
+                          className="border-t px-4"
+                        />
+                      )}
                     </div>
                   </>
                 )}
               </div>
             </div>
-            
+
             <div className="lg:w-80 flex-shrink-0">
               <FocusList />
             </div>
@@ -2466,6 +2510,40 @@ function LeadDetailDrawer({ lead, onClose, onEdit }: { lead: Lead; onClose: () =
             </TabsContent>
 
             <TabsContent value="timeline" className="space-y-6">
+              {/* Contact interaction summary */}
+              <Card className="glass-panel">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <History className="w-4 h-4" /> Contact Interactions
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Phone className="w-3 h-3" />
+                      <span>Calls</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Mail className="w-3 h-3" />
+                      <span>Emails</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <StickyNote className="w-3 h-3" />
+                      <span>Notes</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Clock className="w-3 h-3" />
+                      <span>
+                        {lead.lastContactedAt
+                          ? `Last: ${format(new Date(lead.lastContactedAt), "MMM d")}`
+                          : "No contact yet"}
+                      </span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Full timeline with all interaction types */}
               <ActivityTimeline entityType="lead" entityId={lead.id} />
             </TabsContent>
           </Tabs>

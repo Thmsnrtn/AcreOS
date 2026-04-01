@@ -9,6 +9,7 @@
  * to actually block operations with violations.
  */
 import type { Request, Response, NextFunction } from "express";
+import { logger } from "../utils/logger";
 
 export interface ComplianceWarning {
   type: "dodd_frank" | "usury" | "tcpa";
@@ -102,7 +103,7 @@ export function complianceGate(checkType: "note" | "deal") {
       next();
     } catch (err) {
       // Compliance gate should never block normal operation on error
-      console.error("[complianceGate] Error during compliance check:", err);
+      logger.error("[complianceGate] Error during compliance check", err);
       next();
     }
   };

@@ -18,6 +18,7 @@ import {
 import { eq, and, gte, lte, desc, asc, sql } from "drizzle-orm";
 import { DataSourceBroker } from "./data-source-broker";
 import { getCountyNetworkIntelligence } from "./marketNetworkContributor";
+import { logger } from "../utils/logger";
 
 const dataSourceBroker = new DataSourceBroker();
 
@@ -1106,7 +1107,7 @@ class MarketIntelligenceService {
         relatedEntityType: "market",
       });
       
-      console.log(`[MarketIntelligence] Alert triggered for ${county}, ${state}: ${predictions.horizon6Month.predictedChangePercent}% change predicted`);
+      logger.info(`[MarketIntelligence] Alert triggered for ${county}, ${state}: ${predictions.horizon6Month.predictedChangePercent}% change predicted`);
     }
   }
   

@@ -3,6 +3,8 @@ import { db } from "../db";
 import { dataSources, dataSourceCache } from "@shared/schema";
 import { eq, and, gte, desc, sql, or, ilike } from "drizzle-orm";
 import type { DataSource } from "@shared/schema";
+import { enrichmentCircuitBreaker, countyApiCircuitBreaker, CircuitOpenError } from "../utils/circuitBreaker";
+import { logger } from "../utils/logger";
 
 export type AccessTier = "free" | "cached" | "byok" | "paid";
 export type LookupCategory =
@@ -471,7 +473,7 @@ export class DataSourceBroker {
         geometryType: this.inferGeometryType(s.category, s.subcategory),
       }));
     } catch (error: any) {
-      console.error("Error fetching map layers:", error.message);
+      logger.error("Error fetching map layers", error instanceof Error ? error : undefined);
       return [];
     }
   }
@@ -566,35 +568,37 @@ export class DataSourceBroker {
   }
 
   private async queryFemaFlood(lat: number, lng: number): Promise<any> {
-    const baseUrl = "https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer";
-    const geometryParam = encodeURIComponent(JSON.stringify({ x: lng, y: lat, spatialReference: { wkid: 4326 } }));
-    const url = `${baseUrl}/28/query?geometry=${geometryParam}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&outFields=DFIRM_ID,FLD_ZONE,ZONE_SUBTY,STATIC_BFE&returnGeometry=false&f=json`;
-    
-    const response = await fetch(url, { 
-      headers: { "User-Agent": "AcreOS Real Estate Platform" },
-      signal: AbortSignal.timeout(10000),
+    return enrichmentCircuitBreaker.call(async () => {
+      const baseUrl = "https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer";
+      const geometryParam = encodeURIComponent(JSON.stringify({ x: lng, y: lat, spatialReference: { wkid: 4326 } }));
+      const url = `${baseUrl}/28/query?geometry=${geometryParam}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&outFields=DFIRM_ID,FLD_ZONE,ZONE_SUBTY,STATIC_BFE&returnGeometry=false&f=json`;
+
+      const response = await fetch(url, {
+        headers: { "User-Agent": "AcreOS Real Estate Platform" },
+        signal: AbortSignal.timeout(10000),
+      });
+
+      if (!response.ok) throw new Error(`FEMA API error: ${response.status}`);
+      const data = await response.json();
+      if (data.error) throw new Error(data.error.message);
+
+      const feature = data.features?.[0]?.attributes;
+      const zone = feature?.FLD_ZONE || "X";
+      const highRiskZones = ["A", "AE", "AH", "AO", "AR", "A99", "V", "VE"];
+      const mediumRiskZones = ["B", "X500"];
+
+      let riskLevel: "low" | "medium" | "high" = "low";
+      if (highRiskZones.some(z => zone.startsWith(z))) riskLevel = "high";
+      else if (mediumRiskZones.some(z => zone.startsWith(z))) riskLevel = "medium";
+
+      return {
+        zone: feature ? `Zone ${zone}` : "Zone X (Minimal Flood Hazard)",
+        riskLevel,
+        source: "FEMA NFHL",
+        lastUpdated: new Date().toISOString(),
+        details: feature || {},
+      };
     });
-    
-    if (!response.ok) throw new Error(`FEMA API error: ${response.status}`);
-    const data = await response.json();
-    if (data.error) throw new Error(data.error.message);
-    
-    const feature = data.features?.[0]?.attributes;
-    const zone = feature?.FLD_ZONE || "X";
-    const highRiskZones = ["A", "AE", "AH", "AO", "AR", "A99", "V", "VE"];
-    const mediumRiskZones = ["B", "X500"];
-    
-    let riskLevel: "low" | "medium" | "high" = "low";
-    if (highRiskZones.some(z => zone.startsWith(z))) riskLevel = "high";
-    else if (mediumRiskZones.some(z => zone.startsWith(z))) riskLevel = "medium";
-    
-    return {
-      zone: feature ? `Zone ${zone}` : "Zone X (Minimal Flood Hazard)",
-      riskLevel,
-      source: "FEMA NFHL",
-      lastUpdated: new Date().toISOString(),
-      details: feature || {},
-    };
   }
 
   private async queryNwiWetlands(lat: number, lng: number): Promise<any> {
@@ -725,23 +729,25 @@ export class DataSourceBroker {
     const baseUrl = source.apiUrl || source.portalUrl;
     if (!baseUrl) throw new Error("No API URL available");
 
-    const geometryParam = encodeURIComponent(JSON.stringify({ x: lng, y: lat, spatialReference: { wkid: 4326 } }));
-    const url = `${baseUrl}/0/query?geometry=${geometryParam}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&outFields=*&returnGeometry=false&f=json`;
+    return countyApiCircuitBreaker.call(async () => {
+      const geometryParam = encodeURIComponent(JSON.stringify({ x: lng, y: lat, spatialReference: { wkid: 4326 } }));
+      const url = `${baseUrl}/0/query?geometry=${geometryParam}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&outFields=*&returnGeometry=false&f=json`;
 
-    const response = await fetch(url, {
-      headers: { "User-Agent": "AcreOS Real Estate Platform" },
-      signal: AbortSignal.timeout(15000),
+      const response = await fetch(url, {
+        headers: { "User-Agent": "AcreOS Real Estate Platform" },
+        signal: AbortSignal.timeout(15000),
+      });
+
+      if (!response.ok) throw new Error(`County GIS error: ${response.status}`);
+      const data = await response.json();
+      if (data.error) throw new Error(data.error.message);
+
+      return {
+        parcelData: data.features?.[0]?.attributes || {},
+        source: source.title,
+        lastUpdated: new Date().toISOString(),
+      };
     });
-
-    if (!response.ok) throw new Error(`County GIS error: ${response.status}`);
-    const data = await response.json();
-    if (data.error) throw new Error(data.error.message);
-
-    return {
-      parcelData: data.features?.[0]?.attributes || {},
-      source: source.title,
-      lastUpdated: new Date().toISOString(),
-    };
   }
 
   private async queryInfrastructure(lat: number, lng: number): Promise<any> {
@@ -1856,19 +1862,21 @@ export class DataSourceBroker {
   private async queryGenericApi(source: DataSource, options: BrokerLookupOptions): Promise<any> {
     if (!source.apiUrl) throw new Error("No API URL configured");
 
-    let url = source.apiUrl;
-    url = url.replace("{lat}", options.latitude.toString());
-    url = url.replace("{lng}", options.longitude.toString());
-    url = url.replace("{latitude}", options.latitude.toString());
-    url = url.replace("{longitude}", options.longitude.toString());
+    return enrichmentCircuitBreaker.call(async () => {
+      let url = source.apiUrl!;
+      url = url.replace("{lat}", options.latitude.toString());
+      url = url.replace("{lng}", options.longitude.toString());
+      url = url.replace("{latitude}", options.latitude.toString());
+      url = url.replace("{longitude}", options.longitude.toString());
 
-    const response = await fetch(url, {
-      headers: { "User-Agent": "AcreOS Real Estate Platform" },
-      signal: AbortSignal.timeout(15000),
+      const response = await fetch(url, {
+        headers: { "User-Agent": "AcreOS Real Estate Platform" },
+        signal: AbortSignal.timeout(15000),
+      });
+
+      if (!response.ok) throw new Error(`API error: ${response.status}`);
+      return response.json();
     });
-
-    if (!response.ok) throw new Error(`API error: ${response.status}`);
-    return response.json();
   }
 
   async getHealthMetrics(): Promise<SourceHealth[]> {

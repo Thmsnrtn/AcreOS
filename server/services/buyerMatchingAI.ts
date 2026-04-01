@@ -15,6 +15,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, inArray, isNull, or } from "drizzle-orm";
 import { getOpenAIClient } from "../utils/openaiClient";
+import { logger } from "../utils/logger";
 
 type ProfileType = "individual" | "investor" | "developer" | "builder";
 type MatchStatus = "pending" | "presented" | "interested" | "not_interested" | "purchased";
@@ -757,7 +758,7 @@ Match Score: ${match.matchScore}/100`
 
       return pitch;
     } catch (error) {
-      console.error("Error generating AI pitch:", error);
+      logger.error("Error generating AI pitch", error);
       return this.generateDefaultPitch(match, property, buyerProfile);
     }
   }
@@ -1041,7 +1042,7 @@ ${property.listPrice ? `Listed at $${parseFloat(property.listPrice).toLocaleStri
 
         analysis.aiInsights = response.choices[0]?.message?.content ?? undefined;
       } catch (error) {
-        console.error("Error generating AI insights:", error);
+        logger.error("Error generating AI insights", error);
       }
     }
 
@@ -1070,7 +1071,7 @@ ${property.listPrice ? `Listed at $${parseFloat(property.listPrice).toLocaleStri
         relatedEntityId,
       });
     } catch (error) {
-      console.error("Error logging event:", error);
+      logger.error("Error logging event", error);
     }
   }
 }

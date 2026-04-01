@@ -1051,7 +1051,7 @@ class AcquisitionRadarService {
           }
         }
       } catch (error) {
-        console.error(`[acquisition-radar] Error scoring parcel ${property.apn}:`, error);
+        logger.error(`[acquisition-radar] Error scoring parcel ${property.apn}`, error);
       }
     }
 
@@ -1088,14 +1088,14 @@ class AcquisitionRadarService {
       if (this.isScanning) return;
       
       this.isScanning = true;
-      console.log(`[acquisition-radar] Starting background scan for org ${organizationId}`);
+      logger.info(`[acquisition-radar] Starting background scan for org ${organizationId}`);
       
       try {
         await this.markStaleOpportunities(organizationId);
         const results = await this.scanParcelsForOrganization(organizationId);
-        console.log(`[acquisition-radar] Scan complete:`, results);
+        logger.info(`[acquisition-radar] Scan complete`, { metadata: { detail: results } });
       } catch (error) {
-        console.error(`[acquisition-radar] Background scan error:`, error);
+        logger.error(`[acquisition-radar] Background scan error`, error);
       } finally {
         this.isScanning = false;
       }

@@ -147,7 +147,7 @@ export function OnboardingProgress() {
       title: "Chat with Pax AI",
       description: "Try the AI assistant",
       icon: Bot,
-      href: "/command-center",
+      href: "/ai",
       isComplete: ((onboardingStatus as OnboardingStatus | undefined)?.data?.completedSteps?.includes(4) || false),
     },
   ];

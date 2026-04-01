@@ -14,7 +14,6 @@
  * "All AI output must match the user's style — non-negotiable."
  */
 
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 import { db } from '../db';
 import {
   leads,
@@ -26,6 +25,7 @@ import {
 } from '../../shared/schema';
 import { eq, desc, and, isNotNull, not } from 'drizzle-orm';
 import OpenAI from 'openai';
+import { logger } from "../utils/logger";
 
 let _openai: OpenAI | null = null;
 function getOpenAI() {
@@ -179,7 +179,7 @@ Return ONLY a valid JSON object (no markdown, no explanation) with these exact f
         sampleCount: samples.length,
       };
     } catch (err) {
-      console.error('[VoiceLearning] Failed to analyze style:', err);
+      logger.error('[VoiceLearning] Failed to analyze style', err);
       return this.defaultProfile(organizationId);
     }
   }
@@ -315,7 +315,7 @@ Return ONLY a valid JSON object (no markdown, no explanation) with these exact f
 
       return completion.choices[0].message.content?.trim() || text;
     } catch (err) {
-      console.error('[VoiceLearning] Failed to apply voice:', err);
+      logger.error('[VoiceLearning] Failed to apply voice', err);
       return text;
     }
   }

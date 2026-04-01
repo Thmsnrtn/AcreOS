@@ -17,6 +17,7 @@ import { db } from "../db";
 import { eq, and, gte, sql } from "drizzle-orm";
 import { agentMemory, organizations } from "@shared/schema";
 import { storage } from "../storage";
+import { logger } from "../utils/logger";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -76,7 +77,7 @@ export async function checkSendRateLimit(
 
     return { allowed: true };
   } catch (err: any) {
-    console.error("[autonomyGuardrails] checkSendRateLimit error:", err.message);
+    logger.error("[autonomyGuardrails] checkSendRateLimit error", err);
     // Fail safe on error
     return { allowed: false, reason: "Rate limit check failed — blocking autonomous send" };
   }
@@ -135,7 +136,7 @@ export async function checkTcpaBeforeSend(
 
     return { allowed: true };
   } catch (err: any) {
-    console.error("[autonomyGuardrails] checkTcpaBeforeSend error:", err.message);
+    logger.error("[autonomyGuardrails] checkTcpaBeforeSend error", err);
     return { allowed: false, reason: "TCPA check failed — blocking autonomous send" };
   }
 }
@@ -204,11 +205,9 @@ export async function recordAutonomousSend(
       confidence: "1.0",
     });
 
-    console.log(
-      `[autonomyGuardrails] Recorded autonomous ${channelType} send for org ${orgId}, lead ${leadId}`
-    );
+    logger.info(`[autonomyGuardrails] Recorded autonomous ${channelType} send for org ${orgId}, lead ${leadId}`);
   } catch (err: any) {
-    console.error("[autonomyGuardrails] recordAutonomousSend error:", err.message);
+    logger.error("[autonomyGuardrails] recordAutonomousSend error", err);
     // Non-blocking — don't throw; the send already happened
   }
 }
@@ -312,7 +311,7 @@ export async function generateAutonomousAuditSummary(
 
     return parts.join(" ");
   } catch (err: any) {
-    console.error("[autonomyGuardrails] generateAutonomousAuditSummary error:", err.message);
+    logger.error("[autonomyGuardrails] generateAutonomousAuditSummary error", err);
     return `**Pax Autonomous Activity (last ${hours}h):** Summary unavailable due to an internal error.`;
   }
 }
@@ -517,7 +516,7 @@ export async function getAutonomyEligibility(
       metrics,
     };
   } catch (err: any) {
-    console.error("[autonomyGuardrails] getAutonomyEligibility error:", err.message);
+    logger.error("[autonomyGuardrails] getAutonomyEligibility error", err);
     return {
       currentLevel: "assisted",
       upgradeAvailable: false,
@@ -623,10 +622,8 @@ export async function checkCircuitBreaker(
       });
     }
 
-    console.warn(
-      `[autonomyGuardrails] CIRCUIT BREAKER TRIPPED for org ${organizationId}: ` +
-      `${overridesInWindow} overrides in 1h. Downgraded to assisted.`
-    );
+    logger.warn(`[autonomyGuardrails] CIRCUIT BREAKER TRIPPED for org ${organizationId}: ` +
+      `${overridesInWindow} overrides in 1h. Downgraded to assisted.`);
 
     return {
       tripped: true,
@@ -635,7 +632,7 @@ export async function checkCircuitBreaker(
       reason: `Circuit breaker tripped: ${overridesInWindow} overrides in the last hour. Org downgraded to assisted mode. Founder notified.`,
     };
   } catch (err: any) {
-    console.error("[autonomyGuardrails] checkCircuitBreaker error:", err.message);
+    logger.error("[autonomyGuardrails] checkCircuitBreaker error", err);
     // Fail safe — report as tripped so caller can take defensive action
     return {
       tripped: true,

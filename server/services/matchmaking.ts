@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 import { db } from '../db';
 import { 
   marketplaceListings, 
@@ -7,6 +6,7 @@ import {
   properties 
 } from '../../shared/schema';
 import { eq, and, gte, lte, desc } from 'drizzle-orm';
+import { logger } from "../utils/logger";
 
 interface MatchScore {
   listingId: number;
@@ -53,7 +53,7 @@ class Matchmaking {
 
       return matches.slice(0, 20); // Top 20 matches
     } catch (error) {
-      console.error('Failed to find matches for investor:', error);
+      logger.error('Failed to find matches for investor', error);
       return [];
     }
   }
@@ -184,7 +184,7 @@ class Matchmaking {
 
       return matches.slice(0, 10); // Top 10 potential buyers
     } catch (error) {
-      console.error('Failed to find buyers for listing:', error);
+      logger.error('Failed to find buyers for listing', error);
       return [];
     }
   }
@@ -247,7 +247,7 @@ class Matchmaking {
 
       return listings.slice(0, 10);
     } catch (error) {
-      console.error('Failed to get recommendations:', error);
+      logger.error('Failed to get recommendations', error);
       return [];
     }
   }
@@ -260,11 +260,11 @@ class Matchmaking {
       const matches = await this.findBuyersForListing(listingId);
 
       // In production, would send emails/notifications here
-      console.log(`Would notify ${matches.length} matched buyers for listing ${listingId}`);
+      logger.info(`Would notify ${matches.length} matched buyers for listing ${listingId}`);
 
       return matches.length;
     } catch (error) {
-      console.error('Failed to notify matched buyers:', error);
+      logger.error('Failed to notify matched buyers', error);
       return 0;
     }
   }
@@ -317,7 +317,7 @@ class Matchmaking {
 
       return Math.min(100, similarity);
     } catch (error) {
-      console.error('Failed to calculate similarity:', error);
+      logger.error('Failed to calculate similarity', error);
       return 0;
     }
   }

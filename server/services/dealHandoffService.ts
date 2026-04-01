@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Deal Handoff Workflow Service (T55)
  *
@@ -20,6 +19,7 @@ import {
   leads,
 } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
+import { logger } from "../utils/logger";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -180,13 +180,11 @@ export async function initiateHandoff(
     try {
       await sendHandoffNotification(organizationId, handoff);
     } catch (err) {
-      console.error("[DealHandoff] Notification failed:", err);
+      logger.error("[DealHandoff] Notification failed", err);
     }
   });
 
-  console.log(
-    `[DealHandoff] Initiated handoff ${handoff.id} for deal ${input.dealId}: member ${input.fromTeamMemberId} → ${input.toTeamMemberId}`
-  );
+  logger.info(`[DealHandoff] Initiated handoff ${handoff.id} for deal ${input.dealId}: member ${input.fromTeamMemberId} → ${input.toTeamMemberId}`);
 
   return handoff;
 }
@@ -264,11 +262,11 @@ export async function completeHandoff(
     try {
       await generateAtlasBriefing(organizationId, handoffs[idx]);
     } catch (err) {
-      console.error("[DealHandoff] Atlas briefing failed:", err);
+      logger.error("[DealHandoff] Atlas briefing failed", err);
     }
   });
 
-  console.log(`[DealHandoff] Completed handoff ${handoffId}`);
+  logger.info(`[DealHandoff] Completed handoff ${handoffId}`);
   return handoffs[idx];
 }
 
@@ -345,11 +343,9 @@ async function sendHandoffNotification(
       text: `Deal #${handoff.dealId} has been handed off to you. Notes: ${handoff.notes}`,
     });
 
-    console.log(
-      `[DealHandoff] Notification sent to ${recipient.email} for handoff ${handoff.id}`
-    );
+    logger.info(`[DealHandoff] Notification sent to ${recipient.email} for handoff ${handoff.id}`);
   } catch (err) {
-    console.error("[DealHandoff] Failed to send notification:", err);
+    logger.error("[DealHandoff] Failed to send notification", err);
   }
 }
 
@@ -388,6 +384,6 @@ async function generateAtlasBriefing(
       "atlas"
     );
   } catch (err) {
-    console.error("[DealHandoff] Atlas memory update failed:", err);
+    logger.error("[DealHandoff] Atlas memory update failed", err);
   }
 }

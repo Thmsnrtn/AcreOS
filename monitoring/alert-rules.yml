@@ -93,6 +93,37 @@ groups:
           description: "Prometheus cannot scrape the AcreOS /metrics endpoint. The service may be down."
           runbook_url: "https://github.com/Thmsnrtn/AcreOS/blob/main/docs/disaster-recovery.md"
 
+  # ── Middleware Metrics (server/middleware/metrics.ts) ─────────────────────────
+  - name: acreos_middleware_metrics
+    rules:
+
+      - alert: HighP95Latency
+        expr: acreos_http_request_duration_ms_p95 > 500
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "P95 latency exceeds 500ms"
+
+      - alert: HighErrorRate
+        expr: rate(acreos_errors_total[5m]) / rate(acreos_http_requests_total[5m]) > 0.01
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "Error rate exceeds 1%"
+
+      - alert: HighMemoryUsage
+        expr: acreos_memory_heap_used_bytes / acreos_memory_heap_total_bytes > 0.9
+        for: 10m
+        labels:
+          severity: critical
+          team: infra
+        annotations:
+          summary: "Heap memory usage above 90%"
+
   # ── Cache Performance ───────────────────────────────────────────────────────
   - name: acreos_cache
     rules:

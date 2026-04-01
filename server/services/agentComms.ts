@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Agent Communications — Sovereign Company Protocol
  *

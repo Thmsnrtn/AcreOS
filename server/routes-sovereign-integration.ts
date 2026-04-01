@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Sovereign Company Protocol — Integration Routes
  *
@@ -9,10 +8,13 @@
  */
 
 import type { Express, Request, Response } from "express";
+import type { AuthenticatedRequest } from "./types/request";
 import { db } from "./db";
 import { jobHealthLogs, agentMessages, agentEvents } from "@shared/schema";
 import { eq, desc, sql, and, gte, inArray } from "drizzle-orm";
 import { wsServer } from "./websocket";
+import { logger } from "./utils/logger";
+import { logger } from "./utils/logger";
 
 export function registerSovereignIntegrationRoutes(app: Express) {
   // ─── Phase A: Job Health ───────────────────────────────────────────────────
@@ -29,7 +31,7 @@ export function registerSovereignIntegrationRoutes(app: Express) {
         .limit(200);
       res.json(logs);
     } catch (err: any) {
-      console.error("[job-health] Error fetching logs:", err.message);
+      logger.error("[job-health] Error fetching logs", err);
       res.json([]);
     }
   });
@@ -53,7 +55,7 @@ export function registerSovereignIntegrationRoutes(app: Express) {
 
       res.json({ success: true, message: `Manual trigger logged for ${jobName}` });
     } catch (err: any) {
-      console.error("[job-health] Error triggering job:", err.message);
+      logger.error("[job-health] Error triggering job", err);
       res.status(500).json({ error: err.message });
     }
   });
@@ -131,7 +133,7 @@ export function registerSovereignIntegrationRoutes(app: Express) {
         channel: "system:test",
         payload: { message: req.body.message ?? "This is a test notification" },
         priority: req.body.priority ?? 3,
-        orgId: (req as any).organization?.id,
+        orgId: (req as AuthenticatedRequest).organization?.id,
       });
       res.json({ success: true });
     } catch (err: any) {
@@ -154,7 +156,7 @@ export function registerSovereignIntegrationRoutes(app: Express) {
         .limit(limit);
       res.json(messages);
     } catch (err: any) {
-      console.error("[collaboration] Error fetching messages:", err.message);
+      logger.error("[collaboration] Error fetching messages", err);
       res.json([]);
     }
   });
@@ -190,7 +192,7 @@ export function registerSovereignIntegrationRoutes(app: Express) {
 
       res.json({ success: true, event });
     } catch (err: any) {
-      console.error("[collaboration] Error recording override:", err.message);
+      logger.error("[collaboration] Error recording override", err);
       res.status(500).json({ error: err.message });
     }
   });
@@ -236,7 +238,7 @@ export function registerSovereignIntegrationRoutes(app: Express) {
 
       res.json({ success: true, message });
     } catch (err: any) {
-      console.error("[collaboration] Error delegating:", err.message);
+      logger.error("[collaboration] Error delegating", err);
       res.status(500).json({ error: err.message });
     }
   });
@@ -280,14 +282,14 @@ export function registerSovereignIntegrationRoutes(app: Express) {
 
       // Phase C: Broadcast consensus start to WebSocket
       wsServer.broadcastFounderEvent("agent:consensus_started", {
-        topic: consensusTopic,
+        topic,
         participants,
         consensusId: event.id,
       });
 
       res.json({ success: true, consensusId: event.id, event });
     } catch (err: any) {
-      console.error("[collaboration] Error starting consensus:", err.message);
+      logger.error("[collaboration] Error starting consensus", err);
       res.status(500).json({ error: err.message });
     }
   });

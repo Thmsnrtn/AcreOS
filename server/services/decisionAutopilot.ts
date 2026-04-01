@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Decision Autopilot — Sovereign Company Protocol v7
  *

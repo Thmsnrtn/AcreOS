@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Autonomous Health Monitor — Self-Healing Platform Watchdog
  *
@@ -44,6 +43,7 @@ import { eq, and, gte, desc, count, sum, sql, lt } from "drizzle-orm";
 import { subHours, subDays, format } from "date-fns";
 import { emailService } from "../services/emailService";
 import { clearAICache, getAICacheStats } from "../services/aiRouter";
+import { logger } from "../utils/logger";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Configuration — all limits are environment-variable controlled
@@ -121,7 +121,7 @@ async function createAlert(
       source: "autonomous_health_monitor",
     } as any);
   } catch (err: any) {
-    console.warn("[HealthMonitor] Failed to create alert:", err.message);
+    logger.warn("[HealthMonitor] Failed to create alert", { metadata: { detail: err.message } });
   }
 }
 
@@ -206,7 +206,7 @@ async function checkJobHealth(): Promise<HealthCheckResult[]> {
       });
     }
   } catch (err: any) {
-    console.error("[HealthMonitor] Job health check failed:", err.message);
+    logger.error("[HealthMonitor] Job health check failed", err);
     results.push({
       category: "Job Health",
       status: "warning",
@@ -343,7 +343,7 @@ async function checkAICosts(): Promise<HealthCheckResult[]> {
       });
     }
   } catch (err: any) {
-    console.error("[HealthMonitor] AI cost check failed:", err.message);
+    logger.error("[HealthMonitor] AI cost check failed", err);
   }
 
   return results;
@@ -427,7 +427,7 @@ async function checkPlatformHealth(): Promise<HealthCheckResult[]> {
       });
     }
   } catch (err: any) {
-    console.error("[HealthMonitor] Platform health check failed:", err.message);
+    logger.error("[HealthMonitor] Platform health check failed", err);
     await createAlert(
       "Health monitor self-check failed",
       `The autonomous health monitor encountered an error during its own check: ${err.message}`,
@@ -481,7 +481,7 @@ async function checkRevenueHealth(): Promise<HealthCheckResult[]> {
       });
     }
   } catch (err: any) {
-    console.error("[HealthMonitor] Revenue health check failed:", err.message);
+    logger.error("[HealthMonitor] Revenue health check failed", err);
   }
 
   return results;
@@ -530,7 +530,7 @@ async function notifyFounderIfNeeded(checks: HealthCheckResult[]): Promise<boole
     try {
       await emailService.sendEmail({ to: email, subject, html, text: `Critical alert:\n\n${issueList}\n\nOpen dashboard: ${appUrl}/founder/intelligence` });
     } catch (err: any) {
-      console.warn(`[HealthMonitor] Failed to notify founder ${email}:`, err.message);
+      logger.warn(`[HealthMonitor] Failed to notify founder ${email}`, { metadata: { detail: err.message } });
     }
   }
 
@@ -543,7 +543,7 @@ async function notifyFounderIfNeeded(checks: HealthCheckResult[]): Promise<boole
 
 export async function runAutonomousHealthMonitor(): Promise<MonitorRunResult> {
   const runAt = new Date();
-  console.log("[HealthMonitor] Starting autonomous health check...");
+  logger.info("[HealthMonitor] Starting autonomous health check...");
 
   const [jobChecks, costChecks, platformChecks, revenueChecks] = await Promise.all([
     checkJobHealth(),
@@ -573,11 +573,9 @@ export async function runAutonomousHealthMonitor(): Promise<MonitorRunResult> {
   const statusCounts = { healthy: 0, warning: 0, critical: 0 };
   allChecks.forEach(c => statusCounts[c.status]++);
 
-  console.log(
-    `[HealthMonitor] Complete: ${allChecks.length} checks — ` +
+  logger.info(`[HealthMonitor] Complete: ${allChecks.length} checks — ` +
     `${statusCounts.healthy} healthy, ${statusCounts.warning} warning, ${statusCounts.critical} critical | ` +
-    `${issuesAutoResolved} auto-resolved | founder notified: ${founderNotified}`
-  );
+    `${issuesAutoResolved} auto-resolved | founder notified: ${founderNotified}`);
 
   return result;
 }
@@ -597,5 +595,5 @@ export async function registerAutonomousHealthMonitorJob(queue: any): Promise<vo
       removeOnFail: 5,
     }
   );
-  console.log("[HealthMonitor] Registered autonomous health monitor (hourly)");
+  logger.info("[HealthMonitor] Registered autonomous health monitor (hourly)");
 }

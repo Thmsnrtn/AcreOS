@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Graduated Financial Authority Gate — Sovereign Company Protocol
  *

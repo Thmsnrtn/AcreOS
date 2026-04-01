@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Agent Evolution Engine — Sovereign Company Protocol Phase 18
  *

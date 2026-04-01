@@ -4,6 +4,7 @@ import { organizations, campaigns, type Organization } from "@shared/schema";
 import { storage } from "../storage";
 import type { InsertLead, InsertProperty, InsertDeal } from "@shared/schema";
 import OpenAI from "openai";
+import { logger } from "../utils/logger";
 
 function getOpenAIClient(): OpenAI | null {
   if (!process.env.OPENAI_API_KEY) {
@@ -697,7 +698,7 @@ Generate 3 helpful tips for this step.`,
         }
       }
     } catch (error) {
-      console.error("Error generating AI tips:", error);
+      logger.error("Error generating AI tips", error);
     }
 
     return this.getDefaultTips(step);
@@ -1055,7 +1056,7 @@ Generate 3 helpful tips for this step.`,
       }
     } catch (sampleDataError) {
       // Sample data creation failure must not break onboarding completion
-      console.error("[onboarding] Failed to create sample data (non-fatal):", sampleDataError);
+      logger.error("[onboarding] Failed to create sample data (non-fatal)", undefined, { metadata: { detail: sampleDataError } });
     }
 
     const settings = (org.settings as any) || {};

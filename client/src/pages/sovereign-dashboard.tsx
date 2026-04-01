@@ -12,6 +12,7 @@ import {
   Network, Eye, Gauge, HeartPulse,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { InfoTooltip } from "@/components/info-tooltip";
 import {
   useAgentRuntimeStates,
   useEventMeshStats,
@@ -39,7 +40,7 @@ function StatusIndicator({ status }: { status: string }) {
 }
 
 function MetricCard({ title, value, subtitle, icon: Icon, trend }: {
-  title: string;
+  title: React.ReactNode;
   value: string | number;
   subtitle?: string;
   icon: React.ComponentType<{ className?: string }>;
@@ -123,7 +124,7 @@ export default function SovereignDashboard() {
         {/* Top-Level Metrics */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <MetricCard
-            title="Autonomy Score"
+            title={<InfoTooltip term="Autonomy Score" explanation="How much of your business runs automatically without needing your input. 100% means fully autonomous.">Autonomy Score</InfoTooltip>}
             value={`${Math.round(autonomyScore)}%`}
             subtitle="Self-running capability"
             icon={Gauge}
@@ -137,13 +138,13 @@ export default function SovereignDashboard() {
             trend={activeAgents >= totalAgents ? "up" : "neutral"}
           />
           <MetricCard
-            title="Event Throughput"
+            title={<InfoTooltip term="Event Throughput" explanation="How many automated tasks your system is processing per minute.">Event Throughput</InfoTooltip>}
             value={meshStats?.recentEventsPerMinute ?? 0}
             subtitle="Events/min (5m avg)"
             icon={Zap}
           />
           <MetricCard
-            title="System Health"
+            title={<InfoTooltip term="System Health" explanation="Whether all background systems are running correctly.">System Health</InfoTooltip>}
             value={failedJobs === 0 ? "Healthy" : `${failedJobs} Failed`}
             subtitle={`${healthyJobs} jobs succeeded`}
             icon={HeartPulse}

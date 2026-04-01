@@ -15,6 +15,7 @@ import { IncomingMessage, Server } from 'http';
 import crypto from 'crypto';
 import { db } from './db';
 import { sql } from 'drizzle-orm';
+import { logger } from "./utils/logger";
 
 /** Inline cookie parser — avoids requiring @types/cookie. */
 function parseCookies(header: string): Record<string, string> {
@@ -115,7 +116,7 @@ class AcreOSWebSocketServer {
     // Ping clients every 30 seconds to keep connections alive
     this.pingInterval = setInterval(() => this.pingClients(), 30_000);
 
-    console.log('[WebSocket] Server initialized on /ws');
+    logger.info('[WebSocket] Server initialized on /ws');
   }
 
   private async handleConnection(ws: WebSocket, req: IncomingMessage): Promise<void> {

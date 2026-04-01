@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 /**
  * Feature Engineering Job
  *
@@ -22,6 +21,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, sql, gte } from "drizzle-orm";
 import { subDays } from "date-fns";
+import { logger } from "../utils/logger";
 
 export const FEATURE_ENGINEERING_QUEUE_NAME = "feature-engineering";
 
@@ -203,7 +203,7 @@ async function processFeatureEngineeringJob(job: Job): Promise<void> {
       .from(properties)
       .limit(1000); // Safety cap per nightly run
 
-    console.log(`[FeatureEngineering] Computing features for ${allProperties.length} properties`);
+    logger.info(`[FeatureEngineering] Computing features for ${allProperties.length} properties`);
 
     for (let i = 0; i < allProperties.length; i += BATCH_SIZE) {
       const batch = allProperties.slice(i, i + BATCH_SIZE);
@@ -220,7 +220,7 @@ async function processFeatureEngineeringJob(job: Job): Promise<void> {
             totalProcessed++;
           } catch (err: any) {
             totalFailed++;
-            console.error(`[FeatureEngineering] Property ${property.id} failed:`, err.message);
+            logger.error(`[FeatureEngineering] Property ${property.id} failed`, err);
           }
         })
       );
@@ -238,9 +238,9 @@ async function processFeatureEngineeringJob(job: Job): Promise<void> {
         .where(eq(backgroundJobs.id, bgJobId));
     }
 
-    console.log(`[FeatureEngineering] Done. Processed: ${totalProcessed}, Failed: ${totalFailed}`);
+    logger.info(`[FeatureEngineering] Done. Processed: ${totalProcessed}, Failed: ${totalFailed}`);
   } catch (err: any) {
-    console.error("[FeatureEngineering] Fatal error:", err.message);
+    logger.error("[FeatureEngineering] Fatal error", err);
     if (bgJobId) {
       await db
         .update(backgroundJobs)
@@ -271,7 +271,7 @@ export async function registerFeatureEngineeringJob(queue: Queue): Promise<void>
       removeOnFail: 3,
     }
   );
-  console.log("[FeatureEngineering] Registered nightly feature precomputation at 11 PM UTC");
+  logger.info("[FeatureEngineering] Registered nightly feature precomputation at 11 PM UTC");
 }
 
 export function featureEngineeringJob(redisConnection: any): Worker {
@@ -287,11 +287,11 @@ export function featureEngineeringJob(redisConnection: any): Worker {
   );
 
   worker.on("completed", (job) => {
-    console.log(`[FeatureEngineering] Job ${job.id} completed`);
+    logger.info(`[FeatureEngineering] Job ${job.id} completed`);
   });
 
   worker.on("failed", (job, err) => {
-    console.error(`[FeatureEngineering] Job ${job?.id} failed:`, err.message);
+    logger.error(`[FeatureEngineering] Job ${job?.id} failed`, err);
   });
 
   return worker;

@@ -1,3 +1,4 @@
+import { logger } from "../utils/logger";
 /**
  * USPS Address Validation via Lob's US Verification API
  * Validates and standardizes mailing addresses before mail orders or lead imports.
@@ -53,7 +54,7 @@ export async function validateAddress(address: AddressInput): Promise<AddressVal
   const apiKey = getLobApiKey();
 
   if (!apiKey) {
-    console.warn('[AddressValidation] No Lob API key configured — skipping validation');
+    logger.warn('[AddressValidation] No Lob API key configured — skipping validation');
     return {
       valid: true,
       deliverability: 'unchecked',
@@ -82,7 +83,7 @@ export async function validateAddress(address: AddressInput): Promise<AddressVal
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('[AddressValidation] Lob API error:', errorText);
+      logger.error('[AddressValidation] Lob API error', undefined, { metadata: { detail: errorText } });
       // Don't fail hard — let address through with warning
       return {
         valid: true,
@@ -124,7 +125,7 @@ export async function validateAddress(address: AddressInput): Promise<AddressVal
       },
     };
   } catch (err: any) {
-    console.error('[AddressValidation] Request failed:', err.message);
+    logger.error('[AddressValidation] Request failed', err);
     return {
       valid: true,
       deliverability: 'unchecked',

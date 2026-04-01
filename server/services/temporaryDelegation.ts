@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Temporary Delegation — Sovereign Company Protocol v5
  *
@@ -12,6 +11,7 @@
 import { db } from "../db";
 import { companyAgents } from "@shared/schema";
 import { eq, and, gte, lte } from "drizzle-orm";
+import { logger } from "../utils/logger";
 
 interface Delegation {
   id: string;
@@ -52,7 +52,7 @@ export function grantTemporaryAuthority(params: {
   };
 
   activeDelegations.set(id, delegation);
-  console.log(`[Delegation] Granted: ${params.agentCodename} elevated to level ${delegation.toLevel} for ${params.durationHours}h. Reason: ${params.reason}`);
+  logger.info(`[Delegation] Granted: ${params.agentCodename} elevated to level ${delegation.toLevel} for ${params.durationHours}h. Reason: ${params.reason}`);
 
   return delegation;
 }
@@ -73,7 +73,7 @@ export function checkTemporaryDelegation(agentCodename: string, action: string):
     if (deleg.expiresAt <= now) {
       deleg.isActive = false;
       activeDelegations.delete(id);
-      console.log(`[Delegation] Expired: ${deleg.agentCodename} delegation ${id}`);
+      logger.info(`[Delegation] Expired: ${deleg.agentCodename} delegation ${id}`);
     }
   }
 
@@ -101,7 +101,7 @@ export function revokeDelegation(delegationId: string): boolean {
   if (!deleg) return false;
   deleg.isActive = false;
   activeDelegations.delete(delegationId);
-  console.log(`[Delegation] Revoked: ${deleg.agentCodename} delegation ${delegationId}`);
+  logger.info(`[Delegation] Revoked: ${deleg.agentCodename} delegation ${delegationId}`);
   return true;
 }
 

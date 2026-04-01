@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Financial Forecaster — Sovereign Company Protocol v5
  *

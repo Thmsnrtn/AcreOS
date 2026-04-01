@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 /**
  * Deal Feed Engine — orchestrated pipeline with composite scoring,
  * feedback learning loop, and preference-adjusted rankings.

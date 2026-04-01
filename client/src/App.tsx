@@ -1,7 +1,7 @@
 import React, { Suspense } from "react";
 import { Switch, Route, Redirect, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { CookieConsentBanner } from "@/components/cookie-consent-banner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -41,6 +41,7 @@ import { DynamicIslandProvider } from "@/contexts/dynamic-island-context";
 import { useCursorGlass } from "@/hooks/use-cursor-glass";
 import { TrialBanner } from "@/components/trial-banner";
 import { NotificationBanner } from "@/components/notification-banner";
+import { NpsDialog } from "@/components/nps-dialog";
 
 // Eagerly loaded: must be available immediately with no delay
 import AuthPage from "@/pages/auth-page";
@@ -170,6 +171,7 @@ const MatchingEnginePage = React.lazy(() => import("@/pages/matching-engine"));
 // Admin / Founder
 const AdminSupportPage = React.lazy(() => import("@/pages/admin-support"));
 const FounderDashboard = React.lazy(() => import("@/pages/founder-dashboard"));
+const FounderHomePage = React.lazy(() => import("@/pages/founder-home"));
 const FounderAiObservatory = React.lazy(() => import("@/pages/founder-ai-observatory"));
 const FounderFeatureFlags = React.lazy(() => import("@/pages/founder/feature-flags"));
 const DealUnderwritingPage = React.lazy(() => import("@/pages/deal-underwriting"));
@@ -187,6 +189,7 @@ const ProactiveMonitorPage = React.lazy(() => import("@/pages/proactive-monitor"
 const BetaDashboardPage = React.lazy(() => import("@/pages/beta-dashboard"));
 const ResellerDashboardPage = React.lazy(() => import("@/pages/reseller-dashboard"));
 const DataMoatDashboardPage = React.lazy(() => import("@/pages/data-moat-dashboard"));
+const ExecutiveDashboardPage = React.lazy(() => import("@/pages/executive-dashboard"));
 
 // Sovereign Protocol — Phase A Visibility Layer
 const SovereignDashboardPage = React.lazy(() => import("@/pages/sovereign-dashboard"));
@@ -345,8 +348,11 @@ function Router() {
       <Route path="/money">
         {() => <ProtectedRoute component={MoneyPage} />}
       </Route>
-      <Route path="/pax">
+      <Route path="/ai">
         {() => <ProtectedRoute component={PaxPage} />}
+      </Route>
+      <Route path="/pax">
+        {() => <Redirect to="/ai" />}
       </Route>
       <Route path="/leads">
         {() => <ProtectedRoute component={LeadsPage} />}
@@ -409,13 +415,13 @@ function Router() {
         {() => <ProtectedRoute component={ToolsPage} />}
       </Route>
       <Route path="/command-center">
-        {() => <ProtectedRoute component={CommandCenterPage} />}
+        {() => <Redirect to="/ai#chat" />}
       </Route>
       <Route path="/agents">
-        {() => <Redirect to="/command-center" />}
+        {() => <Redirect to="/ai#agents" />}
       </Route>
       <Route path="/ai-team">
-        {() => <Redirect to="/command-center" />}
+        {() => <Redirect to="/ai#agents" />}
       </Route>
       <Route path="/support">
         {() => <ProtectedRoute component={SupportPage} />}
@@ -438,8 +444,11 @@ function Router() {
       <Route path="/admin/support">
         {() => <ProtectedRoute component={AdminSupportPage} />}
       </Route>
+      <Route path="/founder-home">
+        {() => <FounderProtectedRoute component={FounderHomePage} />}
+      </Route>
       <Route path="/founder">
-        {() => <FounderProtectedRoute component={FounderDashboard} />}
+        {() => <Redirect to="/founder-home" />}
       </Route>
       <Route path="/founder/ai-observatory">
         {() => <FounderProtectedRoute component={FounderAiObservatory} />}
@@ -517,6 +526,9 @@ function Router() {
       <Route path="/founder/daily-digest">
         {() => <FounderProtectedRoute component={FounderDailyDigestPage} />}
       </Route>
+      <Route path="/executive-dashboard">
+        {() => <FounderProtectedRoute component={ExecutiveDashboardPage} />}
+      </Route>
 
       <Route path="/deal-underwriting">
         {() => <ProtectedRoute component={DealUnderwritingPage} />}
@@ -569,13 +581,13 @@ function Router() {
         <Route path="/deal-patterns">{() => <ProtectedRoute component={DealPatternsPage} />}</Route>
         <Route path="/document-intelligence">{() => <ProtectedRoute component={DocumentIntelligencePage} />}</Route>
         <Route path="/tax-researcher">{() => <ProtectedRoute component={TaxResearcherPage} />}</Route>
-        <Route path="/command-center">{() => <ProtectedRoute component={CommandCenterPage} />}</Route>
+        <Route path="/command-center">{() => <Redirect to="/ai#chat" />}</Route>
         <Route path="/conscious-organization">{() => <ProtectedRoute component={ConsciousOrganizationPage} />}</Route>
         <Route path="/anticipatory-enterprise">{() => <ProtectedRoute component={AnticipatoryEnterprisePage} />}</Route>
         <Route path="/real-runtime">{() => <ProtectedRoute component={RealRuntimePage} />}</Route>
-        <Route path="/agent-command-center">{() => <ProtectedRoute component={AgentCommandCenterPage} />}</Route>
-        <Route path="/agents">{() => <Redirect to="/agent-command-center" />}</Route>
-        <Route path="/ai-team">{() => <Redirect to="/agent-command-center" />}</Route>
+        <Route path="/agent-command-center">{() => <Redirect to="/ai#agents" />}</Route>
+        <Route path="/agents">{() => <Redirect to="/ai#agents" />}</Route>
+        <Route path="/ai-team">{() => <Redirect to="/ai#agents" />}</Route>
 
         {/* Operations */}
         <Route path="/maps">{() => <ProtectedRoute component={MapsPage} />}</Route>
@@ -625,13 +637,15 @@ function Router() {
         <Route path="/admin/support">{() => <ProtectedRoute component={AdminSupportPage} />}</Route>
 
         {/* Founder / Admin */}
-        <Route path="/founder">{() => <FounderProtectedRoute component={FounderDashboard} />}</Route>
+        <Route path="/founder-home">{() => <FounderProtectedRoute component={FounderHomePage} />}</Route>
+        <Route path="/founder">{() => <Redirect to="/founder-home" />}</Route>
         <Route path="/founder/v13">{() => <FounderProtectedRoute component={SovereignV13Page} />}</Route>
         <Route path="/founder/agents/:codename">{() => <FounderProtectedRoute component={AgentDetailPage} />}</Route>
         <Route path="/founder/ai-observatory">{() => <FounderProtectedRoute component={FounderAiObservatory} />}</Route>
         <Route path="/founder/feature-flags">{() => <FounderProtectedRoute component={FounderFeatureFlags} />}</Route>
         <Route path="/founder/agents">{() => <FounderProtectedRoute component={FounderAgentsPage} />}</Route>
         <Route path="/founder/daily-digest">{() => <FounderProtectedRoute component={FounderDailyDigestPage} />}</Route>
+        <Route path="/executive-dashboard">{() => <FounderProtectedRoute component={ExecutiveDashboardPage} />}</Route>
         <Route path="/admin/beta">{() => <FounderProtectedRoute component={BetaDashboardPage} />}</Route>
         <Route path="/admin/beta-analytics">{() => <FounderProtectedRoute component={BetaAnalyticsPage} />}</Route>
         <Route path="/admin/safety-gates">{() => <FounderProtectedRoute component={SafetyGatesPage} />}</Route>
@@ -687,6 +701,34 @@ function AppContent() {
   useWhiteLabel();
   useCursorGlass();
 
+  // NPS feedback collection
+  const [npsOpen, setNpsOpen] = React.useState(false);
+  const [npsDismissChecked, setNpsDismissChecked] = React.useState(false);
+
+  const { data: npsData } = useQuery<{ shouldShow: boolean; trigger: string | null }>({
+    queryKey: ["/api/nps/pending"],
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000, // Check at most every 5 minutes
+    refetchOnWindowFocus: false,
+  });
+
+  React.useEffect(() => {
+    if (!npsData?.shouldShow || npsDismissChecked) return;
+    setNpsDismissChecked(true);
+
+    // Respect 7-day dismiss window
+    const dismissedAt = localStorage.getItem("nps_dismissed_at");
+    if (dismissedAt) {
+      const dismissedDate = new Date(dismissedAt);
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      if (dismissedDate > sevenDaysAgo) return;
+    }
+
+    // Delay showing NPS dialog so it doesn't interrupt page load
+    const timer = setTimeout(() => setNpsOpen(true), 3000);
+    return () => clearTimeout(timer);
+  }, [npsData, npsDismissChecked]);
+
   React.useEffect(() => {
     if (user) {
       telemetry.sessionStart();
@@ -726,6 +768,13 @@ function AppContent() {
       {user && <PaxCopilotRail />}
       {user && <DynamicIsland />}
       {user && <NotificationBanner />}
+      {user && npsData?.shouldShow && npsData.trigger && (
+        <NpsDialog
+          open={npsOpen}
+          trigger={npsData.trigger}
+          onClose={() => setNpsOpen(false)}
+        />
+      )}
       <PWAInstallPrompt />
     </>
   );

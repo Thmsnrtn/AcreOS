@@ -26,6 +26,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, gte, sql, count } from "drizzle-orm";
 import { DataSourceBroker } from "./data-source-broker";
+import { logger } from "../utils/logger";
 
 interface ScoreFactorResult {
   value: number | boolean | string;
@@ -169,7 +170,7 @@ export class LeadScoringService {
         const result = await this.scoreLead(leadId, organizationId, triggerSource);
         results.push(result);
       } catch (error: any) {
-        console.error(`[LeadScoring] Failed to score lead ${leadId}:`, error.message);
+        logger.error(`[LeadScoring] Failed to score lead ${leadId}`, error);
       }
     }
     
@@ -194,7 +195,7 @@ export class LeadScoringService {
             enrichmentData.parcelData = parcelResult.data;
           }
         } catch (e) {
-          console.log("[LeadScoring] Parcel lookup failed:", e);
+          logger.info("[LeadScoring] Parcel lookup failed", { metadata: { detail: e } });
         }
         
         try {
@@ -207,7 +208,7 @@ export class LeadScoringService {
             enrichmentData.floodData = floodResult.data;
           }
         } catch (e) {
-          console.log("[LeadScoring] Flood lookup failed:", e);
+          logger.info("[LeadScoring] Flood lookup failed", { metadata: { detail: e } });
         }
       }
     }
@@ -245,7 +246,7 @@ export class LeadScoringService {
       const { lat, lon } = results[0];
       return { lat: parseFloat(lat), lng: parseFloat(lon) };
     } catch (error) {
-      console.warn('[LeadScoring] Geocoding failed:', error);
+      logger.warn('[LeadScoring] Geocoding failed', { metadata: { detail: error } });
       return null;
     }
   }

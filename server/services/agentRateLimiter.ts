@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Agent Rate Limiter — Per-agent action rate limiting and anomaly detection.
  *

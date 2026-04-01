@@ -28,6 +28,7 @@ import CommandCenterPage from "@/pages/command-center";
 
 const ActivityPage = lazy(() => import("@/pages/activity"));
 const AutomationPage = lazy(() => import("@/pages/automation"));
+const AgentCommandCenterPage = lazy(() => import("@/pages/agent-command-center"));
 
 type TabValue = "insights" | "chat" | "activity" | "agents" | "automation";
 
@@ -544,8 +545,8 @@ export default function PaxPage() {
   return (
     <PageShell>
       <div>
-        <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-pax-title">
-          Pax
+        <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-ai-hub-title">
+          AI Hub
         </h1>
         <p className="text-muted-foreground text-sm md:text-base">
           AI assistant, agents, and automation for your land business.
@@ -554,8 +555,8 @@ export default function PaxPage() {
 
       <GreetingBanner />
 
-      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6" data-testid="tabs-pax">
-        <TabsList className="w-full sm:w-auto overflow-x-auto flex-nowrap" data-testid="tabs-list-pax">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6" data-testid="tabs-ai-hub">
+        <TabsList className="w-full sm:w-auto overflow-x-auto flex-nowrap" data-testid="tabs-list-ai-hub">
           <TabsTrigger value="insights" className="flex items-center gap-2 min-w-max" data-testid="tab-insights">
             <Sparkles className="h-4 w-4" />
             <span>Insights</span>
@@ -596,9 +597,9 @@ export default function PaxPage() {
         </TabsContent>
 
         <TabsContent value="agents" data-testid="tab-content-agents">
-          <AiChatGuard>
-            <CommandCenterPage />
-          </AiChatGuard>
+          <Suspense fallback={<TabFallback />}>
+            <AgentCommandCenterPage />
+          </Suspense>
         </TabsContent>
 
         <TabsContent value="automation" data-testid="tab-content-automation">

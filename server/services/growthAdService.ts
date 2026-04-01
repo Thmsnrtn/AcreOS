@@ -13,6 +13,7 @@
  */
 
 import type { FounderAdAccount } from "@shared/schema";
+import { logger } from "../utils/logger";
 
 const META_API_BASE = "https://graph.facebook.com/v21.0";
 
@@ -365,7 +366,7 @@ class GrowthAdService {
           status: "PAUSED",
         });
       } catch (err: any) {
-        console.error(`[growthAds] Failed to create ad variant ${copy.angleLabel}:`, err?.message);
+        logger.error(`[growthAds] Failed to create ad variant ${copy.angleLabel}`, undefined, { metadata: { detail: err?.message } });
         // Non-fatal: continue with other variants
       }
     }

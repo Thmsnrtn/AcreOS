@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 /**
  * Self-Assessment Agent
  *
@@ -17,6 +16,7 @@ import {
   paxCrossOrgLearnings,
 } from "@shared/schema";
 import { eq, desc, gte, sql, and, lt } from "drizzle-orm";
+import { logger } from "../utils/logger";
 
 // ---------------------------------------------------------------------------
 // OpenRouter client (Claude Opus for deep analysis, DeepSeek for cheap tasks)
@@ -40,26 +40,22 @@ const CHEAP_MODEL = "deepseek/deepseek-chat";
 const SYSTEM_ORG_ID = 1;
 
 const log = (msg: string, meta?: Record<string, unknown>) =>
-  console.log(
-    JSON.stringify({
+  logger.info(JSON.stringify({
       level: "INFO",
       timestamp: new Date().toISOString(),
       source: "[self-assessment]",
       message: msg,
       ...meta,
-    })
-  );
+    }));
 
 const logError = (msg: string, meta?: Record<string, unknown>) =>
-  console.error(
-    JSON.stringify({
+  logger.error(JSON.stringify({
       level: "ERROR",
       timestamp: new Date().toISOString(),
       source: "[self-assessment]",
       message: msg,
       ...meta,
-    })
-  );
+    }));
 
 // ---------------------------------------------------------------------------
 // analyzeToolFailures

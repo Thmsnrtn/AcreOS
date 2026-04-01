@@ -8,6 +8,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { usageMeteringService, creditService } from "./services/credits";
 import { activityLogger } from "./services/activityLogger";
 import { generateOfferSuggestions, generateOfferLetter, predictAcceptanceProbability, type PropertyData, type OfferLetterRequest, type AcceptancePredictionRequest } from "./services/aiOfferService";
+import { logger } from "./utils/logger";
 
 export function registerCRMExtrasRoutes(app: Express): void {
   const api = app;
@@ -33,7 +34,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
       
       res.json(result);
     } catch (error: any) {
-      console.error("AI generate-offer error:", error);
+      logger.error("AI generate-offer error", error);
       res.status(500).json({ 
         message: error.message || "Failed to generate offer suggestions" 
       });
@@ -64,7 +65,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
       
       res.json(result);
     } catch (error: any) {
-      console.error("AI generate-letter error:", error);
+      logger.error("AI generate-letter error", error);
       res.status(500).json({ 
         message: error.message || "Failed to generate offer letter" 
       });
@@ -89,7 +90,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
       
       res.json(result);
     } catch (error: any) {
-      console.error("AI predict-acceptance error:", error);
+      logger.error("AI predict-acceptance error", error);
       res.status(500).json({ 
         message: error.message || "Failed to predict acceptance probability" 
       });
@@ -129,7 +130,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
         total: events.length,
       });
     } catch (error: any) {
-      console.error("Activity feed error:", error);
+      logger.error("Activity feed error", error);
       res.status(500).json({ message: error.message || "Failed to fetch activity feed" });
     }
   });
@@ -146,7 +147,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
       const preferences = await storage.getNotificationPreferences(userId, orgId);
       res.json(preferences);
     } catch (error: any) {
-      console.error("Get notification preferences error:", error);
+      logger.error("Get notification preferences error", error);
       res.status(500).json({ message: error.message || "Failed to fetch notification preferences" });
     }
   });
@@ -173,7 +174,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
       
       res.json(pref);
     } catch (error: any) {
-      console.error("Create notification preference error:", error);
+      logger.error("Create notification preference error", error);
       res.status(500).json({ message: error.message || "Failed to save notification preference" });
     }
   });
@@ -198,7 +199,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
 
       res.json(pref);
     } catch (error: any) {
-      console.error("Update notification preference error:", error);
+      logger.error("Update notification preference error", error);
       res.status(500).json({ message: error.message || "Failed to update notification preference" });
     }
   });
@@ -221,7 +222,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
       const tasks = await storage.getTasks(orgId, Object.keys(filters).length > 0 ? filters : undefined);
       res.json(tasks);
     } catch (error: any) {
-      console.error("Get tasks error:", error);
+      logger.error("Get tasks error", error);
       res.status(500).json({ message: error.message || "Failed to fetch tasks" });
     }
   });
@@ -238,7 +239,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
       
       res.json(task);
     } catch (error: any) {
-      console.error("Get task error:", error);
+      logger.error("Get task error", error);
       res.status(500).json({ message: error.message || "Failed to fetch task" });
     }
   });
@@ -280,7 +281,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
       
       res.status(201).json(task);
     } catch (error: any) {
-      console.error("Create task error:", error);
+      logger.error("Create task error", error);
       res.status(500).json({ message: error.message || "Failed to create task" });
     }
   });
@@ -326,7 +327,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
       
       res.json(task);
     } catch (error: any) {
-      console.error("Update task error:", error);
+      logger.error("Update task error", error);
       res.status(500).json({ message: error.message || "Failed to update task" });
     }
   });
@@ -359,7 +360,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
       
       res.json({ message: "Task deleted" });
     } catch (error: any) {
-      console.error("Delete task error:", error);
+      logger.error("Delete task error", error);
       res.status(500).json({ message: error.message || "Failed to delete task" });
     }
   });
@@ -393,7 +394,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
       
       res.json({ completedTask });
     } catch (error: any) {
-      console.error("Complete task error:", error);
+      logger.error("Complete task error", error);
       res.status(500).json({ message: error.message || "Failed to complete task" });
     }
   });
@@ -410,7 +411,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
       
       res.json({ processed: recurringTasksDue.length, created: createdTasks });
     } catch (error: any) {
-      console.error("Process recurring tasks error:", error);
+      logger.error("Process recurring tasks error", error);
       res.status(500).json({ message: error.message || "Failed to process recurring tasks" });
     }
   });

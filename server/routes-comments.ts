@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 /**
  * Contextual Team Comments Routes
  *
@@ -7,9 +6,12 @@
  * DELETE /api/comments/:id                    — own comments only
  */
 
-import { Router, type Request, type Response } from "express";
+import { Router, type Response } from "express";
+import { z } from "zod";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
+import type { AuthenticatedRequest } from "./types/request";
+import { Errors } from "./utils/errors";
 import { db } from "./db";
 import { entityComments, notifications, teamMembers } from "@shared/schema";
 import { eq, and, lt, desc } from "drizzle-orm";
@@ -17,8 +19,12 @@ import { logger } from "./utils/logger";
 
 const router = Router();
 
-const VALID_ENTITY_TYPES = ["lead", "deal", "property", "note"];
+const VALID_ENTITY_TYPES = ["lead", "deal", "property", "note"] as const;
 const PAGE_SIZE = 20;
+
+const createCommentSchema = z.object({
+  content: z.string().min(1, "content is required").max(10000, "content too long"),
+});
 
 /**
  * Parse @mentions from comment content.
@@ -38,18 +44,18 @@ function parseMentions(content: string): string[] {
 }
 
 // GET /api/comments/:entityType/:entityId — cursor-based pagination
-router.get("/:entityType/:entityId", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
+router.get("/:entityType/:entityId", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const org = req.organization;
     const { entityType, entityId } = req.params;
     const cursor = req.query.cursor ? parseInt(req.query.cursor as string) : undefined;
 
-    if (!VALID_ENTITY_TYPES.includes(entityType)) {
-      return res.status(400).json({ error: `invalid entity type, must be one of: ${VALID_ENTITY_TYPES.join(", ")}` });
+    if (!VALID_ENTITY_TYPES.includes(entityType as typeof VALID_ENTITY_TYPES[number])) {
+      return Errors.badRequest(res, `invalid entity type, must be one of: ${VALID_ENTITY_TYPES.join(", ")}`);
     }
 
     const entityIdNum = parseInt(entityId);
-    if (isNaN(entityIdNum)) return res.status(400).json({ error: "invalid entity ID" });
+    if (isNaN(entityIdNum)) return Errors.badRequest(res, "invalid entity ID");
 
     const conditions = [
       eq(entityComments.organizationId, org.id),
@@ -79,29 +85,30 @@ router.get("/:entityType/:entityId", isAuthenticated, getOrCreateOrg, async (req
     });
   } catch (err) {
     logger.error("failed to fetch comments", err instanceof Error ? err : undefined);
-    res.status(500).json({ error: "failed to fetch comments" });
+    Errors.internal(res, err);
   }
 });
 
 // POST /api/comments/:entityType/:entityId — create comment
-router.post("/:entityType/:entityId", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
+router.post("/:entityType/:entityId", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const org = req.organization;
-    const user = req.user as any;
-    const userId = user?.claims?.sub ?? user?.id;
+    const user = req.user;
+    const userId = (user as any)?.claims?.sub ?? user?.id;
     const { entityType, entityId } = req.params;
-    const { content } = req.body;
 
-    if (!VALID_ENTITY_TYPES.includes(entityType)) {
-      return res.status(400).json({ error: `invalid entity type` });
+    if (!VALID_ENTITY_TYPES.includes(entityType as typeof VALID_ENTITY_TYPES[number])) {
+      return Errors.badRequest(res, "invalid entity type");
     }
 
     const entityIdNum = parseInt(entityId);
-    if (isNaN(entityIdNum)) return res.status(400).json({ error: "invalid entity ID" });
+    if (isNaN(entityIdNum)) return Errors.badRequest(res, "invalid entity ID");
 
-    if (!content || typeof content !== "string" || content.trim().length === 0) {
-      return res.status(400).json({ error: "content is required" });
+    const parsed = createCommentSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return Errors.validationFailed(res, parsed.error.errors);
     }
+    const { content } = parsed.data;
 
     // Parse @mentions
     const mentions = parseMentions(content);
@@ -169,19 +176,19 @@ router.post("/:entityType/:entityId", isAuthenticated, getOrCreateOrg, async (re
     res.status(201).json({ comment });
   } catch (err) {
     logger.error("failed to create comment", err instanceof Error ? err : undefined);
-    res.status(500).json({ error: "failed to create comment" });
+    Errors.internal(res, err);
   }
 });
 
 // DELETE /api/comments/:id — own comments only
-router.delete("/:id", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
+router.delete("/:id", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const org = req.organization;
-    const user = req.user as any;
-    const userId = String(user?.claims?.sub ?? user?.id);
+    const user = req.user;
+    const userId = String((user as any)?.claims?.sub ?? user?.id);
     const commentId = parseInt(req.params.id);
 
-    if (isNaN(commentId)) return res.status(400).json({ error: "invalid comment ID" });
+    if (isNaN(commentId)) return Errors.badRequest(res, "invalid comment ID");
 
     // Verify ownership
     const [existing] = await db
@@ -190,10 +197,10 @@ router.delete("/:id", isAuthenticated, getOrCreateOrg, async (req: Request, res:
       .where(and(eq(entityComments.id, commentId), eq(entityComments.organizationId, org.id)))
       .limit(1);
 
-    if (!existing) return res.status(404).json({ error: "comment not found" });
+    if (!existing) return Errors.notFound(res, "Comment");
 
     if (existing.userId !== userId) {
-      return res.status(403).json({ error: "can only delete your own comments" });
+      return Errors.forbidden(res, "can only delete your own comments");
     }
 
     await db.delete(entityComments).where(eq(entityComments.id, commentId));
@@ -201,7 +208,7 @@ router.delete("/:id", isAuthenticated, getOrCreateOrg, async (req: Request, res:
     res.json({ success: true });
   } catch (err) {
     logger.error("failed to delete comment", err instanceof Error ? err : undefined);
-    res.status(500).json({ error: "failed to delete comment" });
+    Errors.internal(res, err);
   }
 });
 

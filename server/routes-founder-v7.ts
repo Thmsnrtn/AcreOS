@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Founder v7 Routes — Sovereign Company Protocol v7: The Learning Company
  *

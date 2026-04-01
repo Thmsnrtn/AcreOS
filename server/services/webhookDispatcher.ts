@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Webhook Outbound Dispatcher (T49)
  *
@@ -21,6 +20,7 @@ import { db } from "../db";
 import { organizationIntegrations } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { createHmac } from "crypto";
+import { logger } from "../utils/logger";
 
 export type WebhookEventType =
   // Lead lifecycle
@@ -201,14 +201,14 @@ export async function dispatchWebhook(
 
         if (response.ok) {
           dispatched++;
-          console.log(`[Webhook] ${event} → ${endpoint.url}: ${response.status}`);
+          logger.info(`[Webhook] ${event} → ${endpoint.url}: ${response.status}`);
         } else {
           failed++;
-          console.warn(`[Webhook] ${event} → ${endpoint.url}: HTTP ${response.status}`);
+          logger.warn(`[Webhook] ${event} → ${endpoint.url}: HTTP ${response.status}`);
         }
       } catch (err: any) {
         failed++;
-        console.error(`[Webhook] ${event} → ${endpoint.url} failed: ${err.message}`);
+        logger.error(`[Webhook] ${event} → ${endpoint.url} failed: ${err.message}`);
       }
     })
   );

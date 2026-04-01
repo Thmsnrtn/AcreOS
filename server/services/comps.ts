@@ -5,6 +5,7 @@
 
 import { storage } from '../storage';
 import { decryptJsonCredentials } from './encryption';
+import { logger } from "../utils/logger";
 
 async function logRegridApiUsage(
   orgId: number | undefined,
@@ -21,7 +22,7 @@ async function logRegridApiUsage(
       metadata,
     });
   } catch (error) {
-    console.error('[CompsService] Failed to log API usage:', error);
+    logger.error('[CompsService] Failed to log API usage', error);
   }
 }
 
@@ -167,7 +168,7 @@ async function getRegridCredentials(orgId?: number): Promise<RegridCredentials |
         );
         
         if (decrypted.apiKey) {
-          console.log(`[CompsService] Using organization Regrid credentials for org ${orgId}`);
+          logger.info(`[CompsService] Using organization Regrid credentials for org ${orgId}`);
           return {
             apiKey: decrypted.apiKey,
             source: 'organization',
@@ -175,13 +176,13 @@ async function getRegridCredentials(orgId?: number): Promise<RegridCredentials |
         }
       }
     } catch (error) {
-      console.error(`[CompsService] Failed to get org Regrid credentials for org ${orgId}:`, error);
+      logger.error(`[CompsService] Failed to get org Regrid credentials for org ${orgId}`, error);
     }
   }
   
   const platformKey = process.env.REGRID_API_KEY;
   if (platformKey) {
-    console.log(`[CompsService] Using platform Regrid credentials${orgId ? ` for org ${orgId}` : ''}`);
+    logger.info(`[CompsService] Using platform Regrid credentials${orgId ? ` for org ${orgId}` : ''}`);
     return {
       apiKey: platformKey,
       source: 'platform',
@@ -380,7 +381,7 @@ export async function getComparableProperties(
 
     return result;
   } catch (error) {
-    console.error("Comps search error:", error);
+    logger.error("Comps search error", error);
     return {
       success: false,
       comps: [],

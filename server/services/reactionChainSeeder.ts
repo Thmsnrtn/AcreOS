@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Reaction Chain Seeder — Pre-built agent reaction chains for the full business lifecycle.
  * Idempotent: skips chains that already exist by name.
@@ -8,6 +7,7 @@ import { db } from "../db";
 import { reactionChains } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
+import { logger } from "../utils/logger";
 
 interface ChainStep {
   agent: string;
@@ -227,7 +227,7 @@ export async function seedReactionChains(): Promise<{ seeded: number; skipped: n
 
       seeded++;
     } catch (err) {
-      console.error(`[ReactionChainSeeder] Failed to seed chain "${def.name}":`, err);
+      logger.error(`[ReactionChainSeeder] Failed to seed chain "${def.name}"`, err);
     }
   }
 

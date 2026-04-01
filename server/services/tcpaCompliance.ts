@@ -3,6 +3,7 @@ import { storage } from "../storage";
 import { leads, activityLog } from "@shared/schema";
 import { eq, and, ilike } from "drizzle-orm";
 import type { Lead } from "@shared/schema";
+import { logger } from "../utils/logger";
 
 export interface TcpaConsentResult {
   allowed: boolean;
@@ -150,7 +151,7 @@ export async function processOptKeyword(
       action: 'tcpa_opt_out',
       metadata: { messageSid, phone, keyword: messageBody.trim(), channel: 'sms' },
     });
-    console.log(`[TCPA] Lead ${matched.id} opted OUT via STOP keyword "${messageBody.trim()}"`);
+    logger.info(`[TCPA] Lead ${matched.id} opted OUT via STOP keyword "${messageBody.trim()}"`);
   } else {
     await db
       .update(leads)
@@ -164,7 +165,7 @@ export async function processOptKeyword(
       action: 'tcpa_opt_in',
       metadata: { messageSid, phone, keyword: messageBody.trim(), channel: 'sms' },
     });
-    console.log(`[TCPA] Lead ${matched.id} opted IN via "${messageBody.trim()}"`);
+    logger.info(`[TCPA] Lead ${matched.id} opted IN via "${messageBody.trim()}"`);
   }
 
   return { action, leadId: matched.id };

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * v5 Maintenance Job — Sovereign Company Protocol
  *
@@ -11,6 +10,7 @@
 
 import { processVerificationQueue } from "../services/outcomeVerifiers";
 import { checkStaleGoals } from "../services/agentGoalManager";
+import { logger } from "../utils/logger";
 
 /**
  * Main maintenance function. Called by the job supervisor.
@@ -23,7 +23,7 @@ export async function runV5Maintenance(): Promise<{
   const staleGoals = await checkStaleGoals();
 
   if (verifications.processed > 0 || staleGoals > 0) {
-    console.log(`[v5Maintenance] Verifications: ${verifications.processed} processed (${verifications.verified} verified, ${verifications.failed} failed). Stale goals failed: ${staleGoals}`);
+    logger.info(`[v5Maintenance] Verifications: ${verifications.processed} processed (${verifications.verified} verified, ${verifications.failed} failed). Stale goals failed: ${staleGoals}`);
   }
 
   return { verifications, staleGoals };

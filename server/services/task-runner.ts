@@ -1,13 +1,13 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 import { storage } from "../storage";
 import { workflowEngine } from "./workflow-engine";
 import type { ScheduledTask, InsertScheduledTask } from "@shared/schema";
+import { logger } from "../utils/logger";
 
 const log = (msg: string, meta?: Record<string, any>) => 
-  console.log(JSON.stringify({ level: 'INFO', timestamp: new Date().toISOString(), source: 'task-runner', message: msg, ...meta }));
+  logger.info(JSON.stringify({ level: 'INFO', timestamp: new Date().toISOString(), source: 'task-runner', message: msg, ...meta }));
 
 const logError = (msg: string, meta?: Record<string, any>) => 
-  console.error(JSON.stringify({ level: 'ERROR', timestamp: new Date().toISOString(), source: 'task-runner', message: msg, ...meta }));
+  logger.error(JSON.stringify({ level: 'ERROR', timestamp: new Date().toISOString(), source: 'task-runner', message: msg, ...meta }));
 
 export function parseSchedule(schedule: string): Date {
   const now = new Date();

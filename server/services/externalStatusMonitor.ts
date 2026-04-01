@@ -2,6 +2,7 @@ import { db } from "../db";
 import { systemAlerts, organizations } from "@shared/schema";
 import { eq, and, gte, desc, sql, notInArray } from "drizzle-orm";
 import { logActivity } from "./systemActivityLogger";
+import { logger } from "../utils/logger";
 
 interface ServiceStatus {
   name: string;
@@ -210,7 +211,7 @@ export const externalStatusMonitor = {
         for (const outage of outages) {
           if (outage.status.status === "outage") {
             await this.notifyUsersOfOutage(outage.service, outage.impact);
-            console.log(`[external-status] Detected ${outage.service} outage, notifying users`);
+            logger.info(`[external-status] Detected ${outage.service} outage, notifying users`);
             logActivity({
               job: "external_monitor",
               action: "service_alert_created",
@@ -235,10 +236,10 @@ export const externalStatusMonitor = {
           }
         }
       } catch (error) {
-        console.error("[external-status] Error in periodic monitoring:", error);
+        logger.error("[external-status] Error in periodic monitoring", error);
       }
     }, intervalMs);
     
-    console.log(`[external-status] Started periodic monitoring (every ${intervalMs / 1000}s)`);
+    logger.info(`[external-status] Started periodic monitoring (every ${intervalMs / 1000}s)`);
   }
 };

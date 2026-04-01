@@ -1,5 +1,6 @@
 import { dataSourceValidator } from "./data-source-validator";
 import type { DataSource } from "@shared/schema";
+import { logger } from "../utils/logger";
 
 const BATCH_SIZE = 10;
 const DELAY_BETWEEN_BATCHES_MS = 5000;
@@ -14,7 +15,7 @@ export async function runValidationJob(options?: {
   onProgress?: (progress: typeof currentBatchProgress) => void;
 }): Promise<{ validated: number; valid: number; invalid: number }> {
   if (isRunning) {
-    console.log("[DataSourceValidationJob] Job already running, skipping");
+    logger.info("[DataSourceValidationJob] Job already running, skipping");
     return { validated: 0, valid: 0, invalid: 0 };
   }
 
@@ -28,11 +29,11 @@ export async function runValidationJob(options?: {
     const sourcesToValidate = await dataSourceValidator.getSourcesNeedingValidation(limit, options?.category);
     
     if (sourcesToValidate.length === 0) {
-      console.log("[DataSourceValidationJob] No sources need validation");
+      logger.info("[DataSourceValidationJob] No sources need validation");
       return { validated: 0, valid: 0, invalid: 0 };
     }
 
-    console.log(`[DataSourceValidationJob] Starting validation of ${sourcesToValidate.length} sources`);
+    logger.info(`[DataSourceValidationJob] Starting validation of ${sourcesToValidate.length} sources`);
     currentBatchProgress = { completed: 0, total: sourcesToValidate.length, currentBatch: 0 };
 
     const batches: DataSource[][] = [];
@@ -44,7 +45,7 @@ export async function runValidationJob(options?: {
       const batch = batches[batchIndex];
       currentBatchProgress.currentBatch = batchIndex + 1;
       
-      console.log(`[DataSourceValidationJob] Processing batch ${batchIndex + 1}/${batches.length} (${batch.length} sources)`);
+      logger.info(`[DataSourceValidationJob] Processing batch ${batchIndex + 1}/${batches.length} (${batch.length} sources)`);
       
       const results = await dataSourceValidator.validateBatch(batch, CONCURRENT_VALIDATIONS);
       
@@ -66,9 +67,9 @@ export async function runValidationJob(options?: {
       }
     }
 
-    console.log(`[DataSourceValidationJob] Completed: ${validated} validated, ${valid} valid, ${invalid} invalid`);
+    logger.info(`[DataSourceValidationJob] Completed: ${validated} validated, ${valid} valid, ${invalid} invalid`);
   } catch (error) {
-    console.error("[DataSourceValidationJob] Error during validation:", error);
+    logger.error("[DataSourceValidationJob] Error during validation", error);
   } finally {
     isRunning = false;
   }

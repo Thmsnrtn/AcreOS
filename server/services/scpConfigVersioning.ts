@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * SCP Config Versioning — Sovereign Company Protocol v2
  *

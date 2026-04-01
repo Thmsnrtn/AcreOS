@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Outcome Verifiers — Sovereign Company Protocol v4
  *
@@ -16,6 +15,7 @@ import {
   churnRiskScores, campaigns, agentActionLog, outcomeVerificationQueue,
 } from "@shared/schema";
 import { eq, and, gte, count, desc } from "drizzle-orm";
+import { logger } from "../utils/logger";
 
 // Types
 interface VerificationResult {
@@ -195,7 +195,7 @@ export async function scheduleVerification(
       status: "pending",
     });
   } catch (err) {
-    console.error("[OutcomeVerifier] Failed to schedule verification:", err);
+    logger.error("[OutcomeVerifier] Failed to schedule verification", err);
   }
 }
 
@@ -273,7 +273,7 @@ export async function processVerificationQueue(): Promise<{
   }
 
   if (processed > 0) {
-    console.log(`[OutcomeVerifier] Processed ${processed}: ${verified} verified, ${failed} failed`);
+    logger.info(`[OutcomeVerifier] Processed ${processed}: ${verified} verified, ${failed} failed`);
   }
 
   return { processed, verified, failed };

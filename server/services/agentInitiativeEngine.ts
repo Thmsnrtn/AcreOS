@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Agent Initiative Engine
  *
@@ -19,6 +18,7 @@ import {
 import { eq, and, sql, desc, lt, gte, isNull } from "drizzle-orm";
 import { wsServer } from "../websocket";
 import { trustAuthorityEscalation } from "./trustAuthorityEscalation";
+import { logger } from "../utils/logger";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -266,14 +266,12 @@ class AgentInitiativeEngine {
           }
         }
       } catch (err: any) {
-        console.error(`[initiative] Scanner ${scannerName} failed:`, err.message);
+        logger.error(`[initiative] Scanner ${scannerName} failed`, err);
       }
     }
 
     if (totalProposals > 0) {
-      console.log(
-        `[initiative] Cycle complete: ${totalProposals} proposals, ${autoExecuted} auto-executed, ${escalated} escalated`,
-      );
+      logger.info(`[initiative] Cycle complete: ${totalProposals} proposals, ${autoExecuted} auto-executed, ${escalated} escalated`);
     }
 
     return { proposals: totalProposals, autoExecuted, escalated };

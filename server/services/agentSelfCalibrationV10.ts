@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Agent Self-Calibration Protocol — Sovereign Company Protocol v10
  *
@@ -20,6 +19,7 @@ import {
 import { eq, desc, and, gte, count, sql } from "drizzle-orm";
 import { routeAITask, TaskComplexity } from "./aiRouter";
 import { companyAgentService } from "./companyAgents";
+import { logger } from "../utils/logger";
 
 // ─── Calibration Rules ─────────────────────────────────────────────────────
 
@@ -141,7 +141,7 @@ class AgentSelfCalibrationService {
           results.push(entry);
         }
       } catch (err) {
-        console.error(`[SelfCalibration] Rule evaluation failed for ${rule.agentCodename}:`, err);
+        logger.error(`[SelfCalibration] Rule evaluation failed for ${rule.agentCodename}`, err);
       }
     }
 
@@ -206,7 +206,7 @@ If no calibration needed, respond: { "shouldCalibrate": false }`;
 
       return null;
     } catch (err) {
-      console.error(`[SelfCalibration] AI analysis failed for ${agentCodename}:`, err);
+      logger.error(`[SelfCalibration] AI analysis failed for ${agentCodename}`, err);
       return null;
     }
   }

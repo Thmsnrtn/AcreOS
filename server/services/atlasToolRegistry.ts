@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * T25 — Atlas Tool Registry (Self-Documenting)
  *

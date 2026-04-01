@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 import { db } from '../db';
 import { 
   noteSecurities, 
@@ -9,6 +8,7 @@ import {
   properties 
 } from '../../shared/schema';
 import { eq, and, desc, gte, sql } from 'drizzle-orm';
+import { logger } from "../utils/logger";
 
 interface NotePooling {
   noteIds: number[];
@@ -80,7 +80,7 @@ class CapitalMarkets {
         diversificationScore,
       };
     } catch (error) {
-      console.error('Failed to pool notes:', error);
+      logger.error('Failed to pool notes', error);
       throw error;
     }
   }
@@ -119,7 +119,7 @@ class CapitalMarkets {
 
       return security.id.toString();
     } catch (error) {
-      console.error('Failed to create securitization:', error);
+      logger.error('Failed to create securitization', error);
       throw error;
     }
   }
@@ -175,7 +175,7 @@ class CapitalMarkets {
         orderBy: [desc(noteSecurities.createdAt)],
       });
     } catch (error) {
-      console.error('Failed to list securities:', error);
+      logger.error('Failed to list securities', error);
       return [];
     }
   }
@@ -221,7 +221,7 @@ class CapitalMarkets {
 
       // In production, would create investor record, transfer funds, etc.
     } catch (error) {
-      console.error('Failed to invest in security:', error);
+      logger.error('Failed to invest in security', error);
       throw error;
     }
   }
@@ -266,7 +266,7 @@ class CapitalMarkets {
 
       return lender.id.toString();
     } catch (error) {
-      console.error('Failed to add lender:', error);
+      logger.error('Failed to add lender', error);
       throw error;
     }
   }
@@ -309,7 +309,7 @@ class CapitalMarkets {
 
       return lenders;
     } catch (error) {
-      console.error('Failed to get lender network:', error);
+      logger.error('Failed to get lender network', error);
       return [];
     }
   }
@@ -353,7 +353,7 @@ class CapitalMarkets {
         return (b.dealCount || 0) - (a.dealCount || 0);
       });
     } catch (error) {
-      console.error('Failed to match lenders:', error);
+      logger.error('Failed to match lenders', error);
       return [];
     }
   }
@@ -389,7 +389,7 @@ class CapitalMarkets {
 
       return raise.id.toString();
     } catch (error) {
-      console.error('Failed to create capital raise:', error);
+      logger.error('Failed to create capital raise', error);
       throw error;
     }
   }
@@ -418,7 +418,7 @@ class CapitalMarkets {
         orderBy: [desc(capitalRaises.createdAt)],
       });
     } catch (error) {
-      console.error('Failed to get capital raises:', error);
+      logger.error('Failed to get capital raises', error);
       return [];
     }
   }
@@ -464,7 +464,7 @@ class CapitalMarkets {
         cashOnCashReturn: roi, // Simplified — same as ROI without leverage
       };
     } catch (error) {
-      console.error('Failed to calculate capital efficiency:', error);
+      logger.error('Failed to calculate capital efficiency', error);
       return {
         totalDeployed: 0,
         totalReturns: 0,

@@ -4,6 +4,7 @@ import { storage } from '../storage';
 import { checkTcpaConsentFromLead, canSendViaChannel, checkTcpaConsent } from './tcpaCompliance';
 import { lobService, LobErrorType } from './lobService';
 import { apiQueueService } from './apiQueue';
+import { logger } from "../utils/logger";
 
 export interface CommunicationOptions {
   leadId: number;
@@ -52,7 +53,7 @@ export class CommunicationsService {
     const tcpaCheck = checkTcpaConsentFromLead(lead);
     
     if (tcpaCheck.blocked) {
-      console.log(`[Communications] All communications blocked for lead ${options.leadId}: ${tcpaCheck.reason}`);
+      logger.info(`[Communications] All communications blocked for lead ${options.leadId}: ${tcpaCheck.reason}`);
       return { 
         success: false, 
         channel: 'none', 
@@ -68,7 +69,7 @@ export class CommunicationsService {
     if (channel === 'sms') {
       const smsCheck = canSendViaChannel(lead, 'sms');
       if (!smsCheck.allowed) {
-        console.log(`[Communications] SMS blocked for lead ${options.leadId}: ${smsCheck.reason}`);
+        logger.info(`[Communications] SMS blocked for lead ${options.leadId}: ${smsCheck.reason}`);
         return { 
           success: false, 
           channel: 'sms', 
@@ -123,7 +124,7 @@ export class CommunicationsService {
     if (channel === 'sms' || channel === 'both') {
       const smsCheck = canSendViaChannel(lead, 'sms');
       if (!smsCheck.allowed) {
-        console.log(`[Communications] SMS blocked for lead ${options.leadId}: ${smsCheck.reason}`);
+        logger.info(`[Communications] SMS blocked for lead ${options.leadId}: ${smsCheck.reason}`);
         smsResult = { 
           success: false, 
           channel: 'sms', 
@@ -184,7 +185,7 @@ export class CommunicationsService {
         metadata,
       });
     } catch (error) {
-      console.error('[Communications] Error recording activity:', error);
+      logger.error('[Communications] Error recording activity', error);
     }
   }
 
@@ -252,7 +253,7 @@ export class CommunicationsService {
 
     const channelCheck = canSendViaChannel(lead, 'direct_mail');
     if (!channelCheck.allowed) {
-      console.log(`[Communications] Direct mail blocked for lead ${leadId}: ${channelCheck.reason}`);
+      logger.info(`[Communications] Direct mail blocked for lead ${leadId}: ${channelCheck.reason}`);
       return { 
         success: false, 
         channel: 'direct_mail', 
@@ -270,7 +271,7 @@ export class CommunicationsService {
     }
 
     if (!lobService.isConfigured()) {
-      console.error('[Communications] Lob service not configured - LOB_TEST_API_KEY or LOB_LIVE_API_KEY required');
+      logger.error('[Communications] Lob service not configured - LOB_TEST_API_KEY or LOB_LIVE_API_KEY required');
       return {
         success: false,
         channel: 'direct_mail',
@@ -315,7 +316,7 @@ export class CommunicationsService {
       zip: lead.zip,
     };
 
-    console.log(`[Communications] Sending direct mail to ${toAddress.name} at ${toAddress.addressLine1} (attempt ${attempt + 1}/${MAX_RETRIES})`);
+    logger.info(`[Communications] Sending direct mail to ${toAddress.name} at ${toAddress.addressLine1} (attempt ${attempt + 1}/${MAX_RETRIES})`);
 
     const letterHtml = content.htmlContent || `
       <html>
@@ -338,7 +339,7 @@ export class CommunicationsService {
     );
 
     if (lobResult.success) {
-      console.log(`[Communications] Direct mail sent successfully to lead ${leadId}, lob_mailing_id: ${lobResult.lobMailingId}`);
+      logger.info(`[Communications] Direct mail sent successfully to lead ${leadId}, lob_mailing_id: ${lobResult.lobMailingId}`);
       
       await this.recordCommunication(leadId, organizationId, 'direct_mail', {
         subject: content.subject,
@@ -356,15 +357,15 @@ export class CommunicationsService {
       };
     }
 
-    console.error(`[Communications] Direct mail failed for lead ${leadId}:`, {
+    logger.error(`[Communications] Direct mail failed for lead ${leadId}`, undefined, { metadata: { detail: {
       attempt: attempt + 1,
       errorType: lobResult.errorType,
       error: lobResult.error,
-    });
+    } } });
 
     if (lobResult.errorType && lobService.isRetryableError(lobResult.errorType) && attempt < MAX_RETRIES - 1) {
       const delay = RETRY_DELAYS[attempt];
-      console.log(`[Communications] Retrying direct mail for lead ${leadId} in ${delay}ms (attempt ${attempt + 2}/${MAX_RETRIES})`);
+      logger.info(`[Communications] Retrying direct mail for lead ${leadId} in ${delay}ms (attempt ${attempt + 2}/${MAX_RETRIES})`);
       
       await new Promise(resolve => setTimeout(resolve, delay));
       return this.sendDirectMailWithRetry(leadId, organizationId, lead, content, attempt + 1);
@@ -391,12 +392,12 @@ export class CommunicationsService {
     errorType?: LobErrorType,
     errorMessage?: string
   ): Promise<void> {
-    console.error(`[Communications] Direct mail retries exhausted for lead ${leadId}:`, {
+    logger.error(`[Communications] Direct mail retries exhausted for lead ${leadId}`, undefined, { metadata: { detail: {
       errorType,
       errorMessage,
       recipient: `${lead.firstName} ${lead.lastName}`,
       address: lead.address,
-    });
+    } } });
 
     await apiQueueService.enqueue(
       'lob',
@@ -436,9 +437,9 @@ export class CommunicationsService {
           retriesAttempted: MAX_RETRIES,
         },
       });
-      console.log(`[Communications] System alert created for direct mail failure to lead ${leadId}`);
+      logger.info(`[Communications] System alert created for direct mail failure to lead ${leadId}`);
     } catch (alertError) {
-      console.error('[Communications] Failed to create system alert:', alertError);
+      logger.error('[Communications] Failed to create system alert', undefined, { metadata: { detail: alertError } });
     }
   }
 }

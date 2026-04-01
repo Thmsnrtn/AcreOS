@@ -2,6 +2,7 @@ import { db } from '../db';
 import { systemAlerts, organizations, leads, type Lead } from '@shared/schema';
 import { eq, and, gte, sql, ne, isNotNull } from 'drizzle-orm';
 import { storage } from '../storage';
+import { logger } from "../utils/logger";
 
 export interface AgingLead {
   id: number;
@@ -166,7 +167,7 @@ export class AlertingService {
           await this.createAlert(organizationId, rule.severity, result);
         }
       } catch (error) {
-        console.error(`[Alerting] Error checking rule ${rule.id}:`, error);
+        logger.error(`[Alerting] Error checking rule ${rule.id}`, error);
       }
     }
   }
@@ -206,7 +207,7 @@ export class AlertingService {
       status: 'new',
     });
 
-    console.log(`[Alerting] Created ${severity} alert: ${alert.title}`);
+    logger.info(`[Alerting] Created ${severity} alert: ${alert.title}`);
 
     // Sovereign Company Protocol — Sentinel broadcasts to incidents channel
     if (severity === "critical" || severity === "high") {
@@ -293,7 +294,7 @@ export class AlertingService {
         alertsCreated += (afterCount[0]?.count || 0) - (beforeCount[0]?.count || 0);
         checked++;
       } catch (error) {
-        console.error(`[Alerting] Error checking org ${org.id}:`, error);
+        logger.error(`[Alerting] Error checking org ${org.id}`, error);
       }
     }
 

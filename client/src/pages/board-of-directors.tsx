@@ -11,6 +11,16 @@ import {
   MessageSquare, Gavel, ChevronDown, ChevronUp,
   ThumbsUp, ThumbsDown, XCircle,
 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { formatDistanceToNow } from "date-fns";
 import {
   useAgentNegotiations,
@@ -22,6 +32,7 @@ import {
 
 function NegotiationCard({ negotiation }: { negotiation: any }) {
   const [expanded, setExpanded] = useState(false);
+  const [pendingResolution, setPendingResolution] = useState<"approved" | "rejected" | null>(null);
   const queryClient = useQueryClient();
 
   const resolveMutation = useMutation({
@@ -88,7 +99,7 @@ function NegotiationCard({ negotiation }: { negotiation: any }) {
               <div className="flex gap-2">
                 <Button
                   size="sm"
-                  onClick={() => resolveMutation.mutate("approved")}
+                  onClick={() => setPendingResolution("approved")}
                   disabled={resolveMutation.isPending}
                 >
                   <ThumbsUp className="w-3 h-3 mr-1" /> Approve
@@ -96,13 +107,39 @@ function NegotiationCard({ negotiation }: { negotiation: any }) {
                 <Button
                   size="sm"
                   variant="destructive"
-                  onClick={() => resolveMutation.mutate("rejected")}
+                  onClick={() => setPendingResolution("rejected")}
                   disabled={resolveMutation.isPending}
                 >
                   <ThumbsDown className="w-3 h-3 mr-1" /> Reject
                 </Button>
               </div>
             )}
+
+            <AlertDialog open={!!pendingResolution} onOpenChange={(open) => { if (!open) setPendingResolution(null); }}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>
+                    {pendingResolution === "approved" ? "Approve this decision?" : "Reject this decision?"}
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {pendingResolution === "approved"
+                      ? `You're approving this decision regarding "${negotiation.topic ?? negotiation.subject ?? "this negotiation"}". The system will proceed with the proposed action.`
+                      : `You're rejecting this decision regarding "${negotiation.topic ?? negotiation.subject ?? "this negotiation"}". The system will not proceed and may escalate to you again later.`}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => {
+                    if (pendingResolution) {
+                      resolveMutation.mutate(pendingResolution);
+                      setPendingResolution(null);
+                    }
+                  }}>
+                    Yes, {pendingResolution === "approved" ? "approve" : "reject"} it
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
 
             {negotiation.createdAt && (
               <p className="text-xs text-muted-foreground">

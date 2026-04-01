@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 import { db } from "../db";
 import { 
   supportTickets, supportResolutionHistory, paxMemory, 
@@ -7,6 +6,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, gte, sql, count, like, or } from "drizzle-orm";
 import OpenAI from "openai";
+import { logger } from "../utils/logger";
 
 const openai = new OpenAI();
 
@@ -105,7 +105,7 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
           ticket.organizationId
         );
       } catch (crossOrgErr) {
-        console.error("[pax-learning] Error updating cross-org learning:", crossOrgErr);
+        logger.error("[pax-learning] Error updating cross-org learning", undefined, { metadata: { detail: crossOrgErr } });
       }
       
       try {
@@ -130,14 +130,14 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
           sourceTicketId: ticket.id
         });
       } catch (memErr) {
-        console.error("[pax-learning] Error saving memory:", memErr);
+        logger.error("[pax-learning] Error saving memory", undefined, { metadata: { detail: memErr } });
       }
       
-      console.log(`[pax-learning] Learned from human resolution of ticket ${ticketId}`);
+      logger.info(`[pax-learning] Learned from human resolution of ticket ${ticketId}`);
       
       return { learned: true, learningEntry: resolutionEntry, crossOrgLearning };
     } catch (error) {
-      console.error("[pax-learning] Error learning from resolution:", error);
+      logger.error("[pax-learning] Error learning from resolution", error);
       return { learned: false, error: String(error) };
     }
   },
@@ -188,7 +188,7 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
         .where(eq(paxCrossOrgLearnings.id, existing.id))
         .returning();
       
-      console.log(`[pax-learning] Updated cross-org learning pattern: ${issuePattern.substring(0, 50)}`);
+      logger.info(`[pax-learning] Updated cross-org learning pattern: ${issuePattern.substring(0, 50)}`);
       return updated;
     } else {
       const [newLearning] = await db.insert(paxCrossOrgLearnings).values({
@@ -208,7 +208,7 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
         contributingOrgs: 1
       }).returning();
       
-      console.log(`[pax-learning] Created new cross-org learning pattern: ${issuePattern.substring(0, 50)}`);
+      logger.info(`[pax-learning] Created new cross-org learning pattern: ${issuePattern.substring(0, 50)}`);
       return newLearning;
     }
   },
@@ -445,28 +445,28 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
           case "clear_cache":
             const { contextAggregator } = await import("./aiContextAggregator");
             contextAggregator.invalidateCache(orgId, "all");
-            console.log(`[pax-bulk-fix] Cleared cache for org ${orgId}`);
+            logger.info(`[pax-bulk-fix] Cleared cache for org ${orgId}`);
             break;
           case "resync_data":
             const { healthCheckService } = await import("./healthCheck");
             await healthCheckService.runHealthCheck(orgId);
-            console.log(`[pax-bulk-fix] Resynced health data for org ${orgId}`);
+            logger.info(`[pax-bulk-fix] Resynced health data for org ${orgId}`);
             break;
           case "retry_failed_jobs":
             const { jobQueueService } = await import("./jobQueue");
             await jobQueueService.processJobs();
-            console.log(`[pax-bulk-fix] Processed pending jobs for org ${orgId}`);
+            logger.info(`[pax-bulk-fix] Processed pending jobs for org ${orgId}`);
             break;
           case "refresh_sessions":
-            console.log(`[pax-bulk-fix] Session refresh recommended for org ${orgId}`);
+            logger.info(`[pax-bulk-fix] Session refresh recommended for org ${orgId}`);
             break;
           case "reset_limits":
-            console.log(`[pax-bulk-fix] Limits reset not available for org ${orgId}`);
+            logger.info(`[pax-bulk-fix] Limits reset not available for org ${orgId}`);
             break;
         }
         fixedOrgs.push(orgId);
       } catch (err) {
-        console.error(`[pax-bulk-fix] Failed to apply ${fixAction} for org ${orgId}:`, err);
+        logger.error(`[pax-bulk-fix] Failed to apply ${fixAction} for org ${orgId}`, err);
         failedOrgs.push(orgId);
       }
     }
@@ -613,7 +613,7 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
     
     const backoffDelay = BASE_BACKOFF_MS * Math.pow(2, failedCount);
     if (failedCount > 0) {
-      console.log(`[pax-self-heal] Waiting ${backoffDelay}ms before retry attempt ${currentAttemptNumber}`);
+      logger.info(`[pax-self-heal] Waiting ${backoffDelay}ms before retry attempt ${currentAttemptNumber}`);
       await new Promise(resolve => setTimeout(resolve, backoffDelay));
     }
     
@@ -628,25 +628,25 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
         contextAggregator.invalidateCache(orgId, "all");
         result = "Cache cleared successfully";
         success = true;
-        console.log(`[pax-self-heal] Cleared cache for org ${orgId} (attempt ${currentAttemptNumber})`);
+        logger.info(`[pax-self-heal] Cleared cache for org ${orgId} (attempt ${currentAttemptNumber})`);
       } else if (fixAction.includes("retry") || fixAction.includes("job")) {
         const { jobQueueService } = await import("./jobQueue");
         const jobResult = await jobQueueService.processJobs();
         result = `Failed jobs retried: ${jobResult.processed} processed, ${jobResult.failed} failed`;
         success = jobResult.failed === 0;
-        console.log(`[pax-self-heal] Retried jobs for org ${orgId}: ${JSON.stringify(jobResult)}`);
+        logger.info(`[pax-self-heal] Retried jobs for org ${orgId}: ${JSON.stringify(jobResult)}`);
       } else if (fixAction.includes("sync") || fixAction.includes("refresh")) {
         const { healthCheckService } = await import("./healthCheck");
         await healthCheckService.runHealthCheck(orgId);
         result = "Data resynced via health check";
         success = true;
-        console.log(`[pax-self-heal] Resynced data for org ${orgId}`);
+        logger.info(`[pax-self-heal] Resynced data for org ${orgId}`);
       } else {
         errorMessage = "Fix requires manual intervention";
         success = false;
       }
     } catch (fixErr) {
-      console.error(`[pax-self-heal] Error applying fix for org ${orgId}:`, fixErr);
+      logger.error(`[pax-self-heal] Error applying fix for org ${orgId}`, undefined, { metadata: { detail: fixErr } });
       errorMessage = String(fixErr);
       success = false;
     }
@@ -686,7 +686,7 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
           importance: 7
         });
       } catch (memErr) {
-        console.error("[pax-learning] Error saving self-heal memory:", memErr);
+        logger.error("[pax-learning] Error saving self-heal memory", undefined, { metadata: { detail: memErr } });
       }
       
       try {
@@ -697,7 +697,7 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
           })
           .where(like(paxCrossOrgLearnings.issuePattern, `%${matchingFix.issuePattern.substring(0, 50)}%`));
       } catch (updateErr) {
-        console.error("[pax-learning] Error updating cross-org success count:", updateErr);
+        logger.error("[pax-learning] Error updating cross-org success count", undefined, { metadata: { detail: updateErr } });
       }
     } else {
       try {
@@ -708,7 +708,7 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
           })
           .where(like(paxCrossOrgLearnings.issuePattern, `%${matchingFix.issuePattern.substring(0, 50)}%`));
       } catch (updateErr) {
-        console.error("[pax-learning] Error updating cross-org failure count:", updateErr);
+        logger.error("[pax-learning] Error updating cross-org failure count", undefined, { metadata: { detail: updateErr } });
       }
     }
     
@@ -752,10 +752,10 @@ This requires human investigation.`,
         source: "auto_escalation"
       }).returning();
       
-      console.log(`[pax-learning] Escalated to human: ${issuePattern.substring(0, 50)} (ticket ${ticket.id})`);
+      logger.info(`[pax-learning] Escalated to human: ${issuePattern.substring(0, 50)} (ticket ${ticket.id})`);
       return true;
     } catch (err) {
-      console.error("[pax-learning] Error escalating to human:", err);
+      logger.error("[pax-learning] Error escalating to human", err);
       return false;
     }
   },
@@ -988,7 +988,7 @@ This requires human investigation.`,
         } as any);
       }
     } catch (err) {
-      console.error("[PaxLearning] learnFromRating error:", err);
+      logger.error("[PaxLearning] learnFromRating error", err);
     }
   },
 };

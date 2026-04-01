@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * War Room Service — Sovereign Company Protocol v6
  *

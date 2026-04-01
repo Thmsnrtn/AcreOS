@@ -610,7 +610,7 @@ What negotiation approach do you recommend?`
         return [parsed.approach as RecommendedApproach, parsed.reasoning];
       }
     } catch (error) {
-      console.error("[SellerIntentPredictor] AI recommendation failed:", error);
+      logger.error("[SellerIntentPredictor] AI recommendation failed", error);
     }
 
     return this.generateFallbackRecommendation(signals, intentLevel);

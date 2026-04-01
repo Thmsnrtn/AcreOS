@@ -15,6 +15,7 @@ import { eq, sql, lt } from "drizzle-orm";
 import { organizations, jobHealthLogs, agentEvents } from "@shared/schema";
 import { logger, requestLoggingMiddleware, errorLoggingMiddleware } from "./utils/logger";
 import { securityHeaders, corsMiddleware, requestTimeout, validateContentType, sanitizeQueryParams } from "./middleware/security";
+import { metricsMiddleware, metricsHandler } from "./middleware/metrics";
 import { telemetryMiddleware } from "./middleware/telemetry";
 import crypto from "crypto";
 import { wsServer } from "./websocket";
@@ -196,6 +197,7 @@ app.set("trust proxy", 1);
 // app.use(compressionMiddleware);
 app.use(telemetryMiddleware); // Task #74: OpenTelemetry span recording per request
 app.use(securityHeaders);
+app.use(metricsMiddleware); // Prometheus request metrics collection
 app.use(corsMiddleware);
 app.use(requestTimeout);
 app.use(sanitizeQueryParams);
@@ -398,6 +400,9 @@ app.use("/api", apiLimiter);
       "Policy: https://acreos.fly.dev/terms",
     ].join("\n") + "\n");
   });
+
+  // Prometheus scrape endpoint — serves collected metrics in text exposition format
+  app.get("/metrics", metricsHandler);
 
   // Initialize distributed tracing before routes so Express instrumentation captures all routes
   try {
@@ -748,6 +753,9 @@ app.use("/api", apiLimiter);
 
         // Evolution pipeline: process pending proposals (runs every 6 hours, deploys at 3-5am)
         startEvolutionPipelineJob();
+
+        // Data retention: nightly purge of expired rows (3:30am UTC)
+        startDataRetentionJob();
       }
     },
   );
@@ -1725,6 +1733,31 @@ function startEvolutionPipelineJob() {
       log(`Evolution pipeline lock error: ${err}`, 'evolution-pipeline');
     });
   }, 6 * 60 * 60 * 1000);
+}
+
+// ── Data Retention: nightly purge of expired rows (3:30am UTC) ───────────────
+async function processDataRetentionJob() {
+  try {
+    const { runDataRetention } = await import("./jobs/dataRetention");
+    const result = await runDataRetention();
+    log(`Data retention: purged ${result.purged} total rows`, 'data-retention');
+    jobSupervisor.notifyResult('data_retention', 24 * 60 * 60 * 1000, true);
+  } catch (err) {
+    log(`Data retention job error: ${err}`, 'data-retention');
+    jobSupervisor.notifyResult('data_retention', 24 * 60 * 60 * 1000, false, undefined, String(err));
+  }
+}
+
+function startDataRetentionJob() {
+  log('Starting data retention job (nightly at 3:30am UTC)', 'data-retention');
+  setInterval(() => {
+    const now = new Date();
+    if (now.getUTCHours() === 3 && now.getUTCMinutes() >= 30 && now.getUTCMinutes() < 35) {
+      withJobLock('data_retention', 23 * 60 * 60, processDataRetentionJob).catch(err => {
+        log(`Data retention lock error: ${err}`, 'data-retention');
+      });
+    }
+  }, 5 * 60 * 1000);
 }
 
 // ============================================================================

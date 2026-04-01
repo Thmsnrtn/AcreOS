@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { marketPredictionService } from './services/marketPrediction';
+import { logger } from "./utils/logger";
 
 const router = Router();
 
@@ -22,7 +23,7 @@ router.get('/county/:state/:county', async (req: Request, res: Response) => {
 
     res.json({ success: true, prediction });
   } catch (error) {
-    console.error('Failed to get county prediction:', error);
+    logger.error('Failed to get county prediction', error);
     res.status(500).json({ error: 'Failed to get market prediction' });
   }
 });
@@ -46,7 +47,7 @@ router.get('/property/:id/trajectory', async (req: Request, res: Response) => {
 
     res.json({ success: true, trajectory });
   } catch (error) {
-    console.error('Failed to get property trajectory:', error);
+    logger.error('Failed to get property trajectory', error);
     res.status(500).json({ error: 'Failed to get price trajectory' });
   }
 });
@@ -62,7 +63,7 @@ router.get('/opportunity-windows', async (req: Request, res: Response) => {
 
     res.json({ success: true, windows });
   } catch (error) {
-    console.error('Failed to get opportunity windows:', error);
+    logger.error('Failed to get opportunity windows', error);
     res.status(500).json({ error: 'Failed to detect opportunity windows' });
   }
 });
@@ -94,7 +95,7 @@ router.get('/market-timing/:state/:county', async (req: Request, res: Response) 
       },
     });
   } catch (error) {
-    console.error('Failed to get market timing:', error);
+    logger.error('Failed to get market timing', error);
     res.status(500).json({ error: 'Failed to get market timing' });
   }
 });
@@ -115,7 +116,7 @@ router.post('/refresh/:state/:county', async (req: Request, res: Response) => {
       prediction,
     });
   } catch (error) {
-    console.error('Failed to refresh predictions:', error);
+    logger.error('Failed to refresh predictions', error);
     res.status(500).json({ error: 'Failed to refresh predictions' });
   }
 });
@@ -131,7 +132,7 @@ router.get('/hot-markets', async (req: Request, res: Response) => {
 
     res.json({ success: true, markets });
   } catch (error) {
-    console.error('Failed to get hot markets:', error);
+    logger.error('Failed to get hot markets', error);
     res.status(500).json({ error: 'Failed to get hot markets' });
   }
 });
