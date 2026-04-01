@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Delegation Depth — Sovereign Company Protocol v9: The Self-Running Company
  *

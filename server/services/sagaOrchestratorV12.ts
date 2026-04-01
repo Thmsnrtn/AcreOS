@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Saga Orchestrator — Sovereign Company Protocol v12
  *

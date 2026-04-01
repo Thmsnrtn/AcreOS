@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Agent Lifecycle Runtime — Sovereign Company Protocol v12
  *

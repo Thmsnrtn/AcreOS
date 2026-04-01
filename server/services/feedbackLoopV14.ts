@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Feedback Loop Processor — Sovereign Company Protocol v14 "The Self-Running Company"
  *

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Agent Data Resolvers — Sovereign Company Protocol v2
  *

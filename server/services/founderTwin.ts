@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Founder Digital Twin — Sovereign Company Protocol v7
  *

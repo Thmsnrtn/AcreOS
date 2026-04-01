@@ -1,5 +1,4 @@
 import { logger } from "../utils/logger";
-// @ts-nocheck
 /**
  * External Service Health Check System
  * 

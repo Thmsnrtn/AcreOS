@@ -14,7 +14,6 @@
  * "All AI output must match the user's style — non-negotiable."
  */
 
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 import { db } from '../db';
 import {
   leads,

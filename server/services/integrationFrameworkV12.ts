@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Integration Execution Framework — Sovereign Company Protocol v12: FOUNDATION
  *

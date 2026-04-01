@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * CEO Reminders — Sovereign Company Protocol v6
  *

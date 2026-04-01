@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * SCP Dynamic Tool Registry — Sovereign Company Protocol v2
  *

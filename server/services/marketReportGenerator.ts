@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 /**
  * Market Report Generator — monthly market reports and county deep dives.
  *

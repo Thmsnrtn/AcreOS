@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Autonomy Bootstrap — Seeds the system with everything needed
  * for 100% autonomous operation:

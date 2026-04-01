@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Agent Proactive Engine — Sovereign Company Protocol v2
  *

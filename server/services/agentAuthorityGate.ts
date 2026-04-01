@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Agent Authority Gate — Sovereign Company Protocol v2
  *

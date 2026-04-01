@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * USDA NASS QuickStats Service
  *
