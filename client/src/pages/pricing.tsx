@@ -33,6 +33,15 @@ const TIERS = [
     cta: "Start 14-Day Free Trial",
     highlighted: true,
   },
+  {
+    id: "scale",
+    name: "Scale",
+    price: 79,
+    yearlyPrice: 758,
+    description: "For growing teams",
+    cta: "Start 14-Day Free Trial",
+    highlighted: false,
+  },
 ];
 
 interface Feature {
@@ -40,25 +49,26 @@ interface Feature {
   free: string | boolean;
   starter: string | boolean;
   pro: string | boolean;
+  scale: string | boolean;
 }
 
 const FEATURES: Feature[] = [
-  { name: "Leads", free: "25", starter: "250", pro: "500" },
-  { name: "Properties", free: "5", starter: "50", pro: "100" },
-  { name: "Notes", free: "3", starter: "25", pro: "50" },
-  { name: "AI Requests / day", free: "50", starter: "500", pro: "1,000" },
-  { name: "Campaigns", free: false, starter: "5", pro: "Unlimited" },
-  { name: "Sequences", free: false, starter: "2", pro: "Unlimited" },
-  { name: "BYOK Data Providers", free: false, starter: false, pro: true },
-  { name: "Team Seats", free: "1", starter: "1", pro: "2 (add more at $20/seat)" },
-  { name: "Open Data Sources (18)", free: true, starter: true, pro: true },
-  { name: "AI Deal Intelligence", free: true, starter: true, pro: true },
-  { name: "Document Generation", free: true, starter: true, pro: true },
-  { name: "Portfolio Mapping", free: true, starter: true, pro: true },
-  { name: "Stripe Connect Payments", free: false, starter: true, pro: true },
-  { name: "Direct Mail Integration", free: false, starter: true, pro: true },
-  { name: "SMS/Voice Outreach", free: false, starter: false, pro: true },
-  { name: "Priority Support", free: false, starter: false, pro: true },
+  { name: "Leads", free: "10", starter: "250", pro: "500", scale: "Unlimited" },
+  { name: "Properties", free: "3", starter: "50", pro: "100", scale: "Unlimited" },
+  { name: "Notes", free: "2", starter: "25", pro: "50", scale: "Unlimited" },
+  { name: "AI Requests / day", free: "25", starter: "500", pro: "1,000", scale: "Unlimited" },
+  { name: "Campaigns", free: false, starter: "5", pro: "Unlimited", scale: "Unlimited" },
+  { name: "Sequences", free: false, starter: "2", pro: "Unlimited", scale: "Unlimited" },
+  { name: "BYOK Data Providers", free: false, starter: false, pro: true, scale: true },
+  { name: "Team Seats", free: "1", starter: "1", pro: "2 (add more at $20/seat)", scale: "10 (add more at $40/seat)" },
+  { name: "Open Data Sources (18)", free: true, starter: true, pro: true, scale: true },
+  { name: "AI Deal Intelligence", free: true, starter: true, pro: true, scale: true },
+  { name: "Document Generation", free: true, starter: true, pro: true, scale: true },
+  { name: "Portfolio Mapping", free: true, starter: true, pro: true, scale: true },
+  { name: "Stripe Connect Payments", free: false, starter: true, pro: true, scale: true },
+  { name: "Direct Mail Integration", free: false, starter: true, pro: true, scale: true },
+  { name: "SMS/Voice Outreach", free: false, starter: false, pro: true, scale: true },
+  { name: "Priority Support", free: false, starter: false, pro: true, scale: true },
 ];
 
 function FeatureValue({ value }: { value: string | boolean }) {
@@ -125,7 +135,7 @@ export default function PricingPage() {
 
       {/* Tier cards */}
       <section className="px-6 pb-16">
-        <div className="max-w-5xl mx-auto grid sm:grid-cols-3 gap-6">
+        <div className="max-w-5xl mx-auto grid sm:grid-cols-4 gap-6">
           {TIERS.map((tier) => {
             const displayPrice = annual
               ? Math.round(tier.yearlyPrice / 12)
@@ -188,6 +198,7 @@ export default function PricingPage() {
                   <th className="text-center p-3 font-medium w-28">Free</th>
                   <th className="text-center p-3 font-medium w-28">Starter</th>
                   <th className="text-center p-3 font-medium w-28 text-primary">Pro</th>
+                  <th className="text-center p-3 font-medium w-28">Scale</th>
                 </tr>
               </thead>
               <tbody>
@@ -203,6 +214,9 @@ export default function PricingPage() {
                     <td className="p-3 text-center">
                       <FeatureValue value={feature.pro} />
                     </td>
+                    <td className="p-3 text-center">
+                      <FeatureValue value={feature.scale} />
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -210,7 +224,7 @@ export default function PricingPage() {
           </div>
 
           <p className="text-center text-sm text-muted-foreground mt-8">
-            Scale and Enterprise tiers coming soon. Need custom pricing?{" "}
+            Need custom enterprise pricing?{" "}
             <a href="mailto:hello@acreos.com" className="text-primary hover:underline">
               Contact us
             </a>

@@ -57,3 +57,22 @@ replicaPool.on("error", (err) => {
 });
 
 export const dbReadOnly = drizzle(replicaPool, { schema });
+
+// ── Transaction helper ───────────────────────────────────────────────────────
+// Wraps a callback in a Drizzle transaction so that all DB operations within
+// `fn` share the same underlying Postgres transaction and are committed or
+// rolled back atomically.
+//
+// Usage:
+//   import { withTransaction } from "./db";
+//   const result = await withTransaction(async (tx) => {
+//     await tx.insert(deals).values(deal);
+//     await tx.insert(auditLog).values(entry);
+//     return deal;
+//   });
+
+export async function withTransaction<T>(fn: (tx: typeof db) => Promise<T>): Promise<T> {
+  return db.transaction(async (tx) => {
+    return fn(tx as unknown as typeof db);
+  });
+}

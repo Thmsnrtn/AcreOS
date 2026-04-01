@@ -496,6 +496,132 @@ async function runEngagementReactivation(): Promise<{ sent: number }> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 5. Churn Risk Intervention Engine
+//    Uses the existing customerHealthScoring system to run daily health checks
+//    and trigger tiered interventions based on churn risk score.
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function runChurnRiskInterventions(): Promise<{ reengaged: number; alerted: number; saveOffers: number }> {
+  let reengaged = 0, alerted = 0, saveOffers = 0;
+
+  const { getAllCustomerHealth } = await import("../services/customerHealthScoring");
+  const allHealth = await getAllCustomerHealth(200);
+
+  for (const health of allHealth) {
+    const orgId = health.orgId;
+    // churnRisk is 0-100 where higher = more risk
+    const risk = health.churnRisk;
+
+    // Update the churnRiskScore field on the organizations table
+    await db.update(organizations)
+      .set({ churnRiskScore: risk, churnRiskUpdatedAt: new Date() } as any)
+      .where(eq(organizations.id, orgId));
+
+    // Tier 1: score >= 70 — send re-engagement email
+    if (risk >= 70 && risk < 85) {
+      if (await wasRecentlyEmailed(orgId)) continue;
+      const contact = await getOwnerEmail(orgId);
+      if (!contact) continue;
+
+      try {
+        await emailService.sendEmail({
+          to: contact.email,
+          subject: `${contact.name}, your AcreOS account needs attention`,
+          html: `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#1a1a1a;">
+            <h2 style="color:#1e3a5f;">We want to make sure you're getting value</h2>
+            <p>Hi ${contact.name},</p>
+            <p>We noticed your activity on AcreOS has slowed down recently. We want to make sure you're getting the most out of the platform.</p>
+            <p>Here are a few things you might not have tried yet:</p>
+            <ul style="line-height:1.8;color:#374151;">
+              <li><strong>Atlas AI</strong> — automatically finds deals overnight</li>
+              <li><strong>Acquisition Radar</strong> — AI-scored counties for deal sourcing</li>
+              <li><strong>Automated follow-ups</strong> — never let a lead go cold</li>
+            </ul>
+            <div style="text-align:center;margin:24px 0;">
+              <a href="${CONFIG.APP_URL}/dashboard" style="background:#1e3a5f;color:white;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;">Log back in</a>
+            </div>
+            <p style="color:#6b7280;font-size:13px;">Questions or feedback? Just reply to this email.</p>
+          </div>`,
+          text: `Hi ${contact.name}, your AcreOS activity has slowed down. Log back in to see what's new: ${CONFIG.APP_URL}/dashboard`,
+        });
+        await logGrowthEmail(orgId, "growth_churn_reengagement", `Churn re-engagement sent (risk score: ${risk})`);
+        reengaged++;
+      } catch (err: any) {
+        console.warn(`[GrowthAutomation] Churn re-engagement failed for org ${orgId}:`, err.message);
+      }
+    }
+
+    // Tier 2: score >= 85 — log high-priority system alert
+    if (risk >= 85) {
+      try {
+        const { systemAlerts } = await import("@shared/schema");
+        const { isNull } = await import("drizzle-orm");
+
+        // Check for existing unresolved alert
+        const [existing] = await db.select({ id: systemAlerts.id })
+          .from(systemAlerts)
+          .where(and(
+            eq(systemAlerts.organizationId, orgId),
+            sql`type = 'churn_risk'`,
+            isNull(systemAlerts.resolvedAt),
+          ))
+          .limit(1);
+
+        if (!existing) {
+          await db.insert(systemAlerts).values({
+            organizationId: orgId,
+            type: "churn_risk" as any,
+            severity: "critical",
+            title: `High churn risk: ${health.orgName}`,
+            message: `Organization "${health.orgName}" has a churn risk score of ${risk}/100. Health score: ${health.healthScore}/100 (${health.trend}). ${health.details.plan} plan, last login ${health.details.daysSinceLastLogin} days ago.`,
+            metadata: { riskScore: risk, healthScore: health.healthScore, trend: health.trend },
+          });
+          alerted++;
+        }
+      } catch (err: any) {
+        console.warn(`[GrowthAutomation] Churn alert failed for org ${orgId}:`, err.message);
+      }
+    }
+
+    // Tier 3: score >= 95 — trigger special save offer
+    if (risk >= 95) {
+      if (await wasRecentlyEmailed(orgId)) continue;
+      const contact = await getOwnerEmail(orgId);
+      if (!contact) continue;
+
+      try {
+        await emailService.sendEmail({
+          to: contact.email,
+          subject: `${contact.name}, we'd like to offer you something special`,
+          html: `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#1a1a1a;">
+            <h2 style="color:#1e3a5f;">We value you as a customer</h2>
+            <p>Hi ${contact.name},</p>
+            <p>We noticed you haven't been using AcreOS as much lately, and we want to make sure we're the right fit for your business.</p>
+            <p>We'd like to offer you a special deal:</p>
+            <div style="background:#f0fdf4;border:2px solid #16a34a;border-radius:12px;padding:20px;margin:20px 0;text-align:center;">
+              <h3 style="color:#16a34a;margin:0 0 8px;">50% off your next 2 months</h3>
+              <p style="color:#374151;margin:0;font-size:14px;">Plus a free 1-on-1 onboarding call to help you get the most out of AcreOS</p>
+            </div>
+            <p>If there's something that's not working for you, we genuinely want to know. Reply to this email and we'll work with you personally.</p>
+            <div style="text-align:center;margin:24px 0;">
+              <a href="${CONFIG.APP_URL}/settings/billing" style="background:#16a34a;color:white;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;">Claim your offer</a>
+            </div>
+            <p style="margin-top:24px;color:#6b7280;font-size:13px;">This offer expires in 7 days.</p>
+          </div>`,
+          text: `Hi ${contact.name}, we'd like to offer you 50% off your next 2 months of AcreOS plus a free onboarding call. Reply to claim or visit: ${CONFIG.APP_URL}/settings/billing`,
+        });
+        await logGrowthEmail(orgId, "growth_churn_save_offer", `Save offer sent (risk score: ${risk}, health: ${health.healthScore})`);
+        saveOffers++;
+      } catch (err: any) {
+        console.warn(`[GrowthAutomation] Save offer failed for org ${orgId}:`, err.message);
+      }
+    }
+  }
+
+  return { reengaged, alerted, saveOffers };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Main orchestrator
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -505,6 +631,9 @@ export interface GrowthAutomationResult {
   winBackSent: number;
   referralSent: number;
   reengagementSent: number;
+  churnReengaged: number;
+  churnAlerted: number;
+  churnSaveOffers: number;
   totalEmailsSent: number;
 }
 
@@ -512,11 +641,12 @@ export async function runGrowthAutomation(): Promise<GrowthAutomationResult> {
   const runAt = new Date();
   console.log("[GrowthAutomation] Starting growth automation run...");
 
-  const [upsell, winBack, referral, reengagement] = await Promise.allSettled([
+  const [upsell, winBack, referral, reengagement, churnRisk] = await Promise.allSettled([
     runUpsellEngine(),
     runWinBackEngine(),
     runReferralActivation(),
     runEngagementReactivation(),
+    runChurnRiskInterventions(),
   ]);
 
   const result: GrowthAutomationResult = {
@@ -525,13 +655,19 @@ export async function runGrowthAutomation(): Promise<GrowthAutomationResult> {
     winBackSent: winBack.status === "fulfilled" ? winBack.value.sent : 0,
     referralSent: referral.status === "fulfilled" ? referral.value.sent : 0,
     reengagementSent: reengagement.status === "fulfilled" ? reengagement.value.sent : 0,
+    churnReengaged: churnRisk.status === "fulfilled" ? churnRisk.value.reengaged : 0,
+    churnAlerted: churnRisk.status === "fulfilled" ? churnRisk.value.alerted : 0,
+    churnSaveOffers: churnRisk.status === "fulfilled" ? churnRisk.value.saveOffers : 0,
     totalEmailsSent: 0,
   };
-  result.totalEmailsSent = result.upsellSent + result.winBackSent + result.referralSent + result.reengagementSent;
+  result.totalEmailsSent = result.upsellSent + result.winBackSent + result.referralSent +
+    result.reengagementSent + result.churnReengaged + result.churnSaveOffers;
 
   console.log(
     `[GrowthAutomation] Complete: ${result.totalEmailsSent} total emails — ` +
-    `upsell: ${result.upsellSent}, win-back: ${result.winBackSent}, referral: ${result.referralSent}, re-engagement: ${result.reengagementSent}`
+    `upsell: ${result.upsellSent}, win-back: ${result.winBackSent}, referral: ${result.referralSent}, ` +
+    `re-engagement: ${result.reengagementSent}, churn-reengagement: ${result.churnReengaged}, ` +
+    `churn-alerts: ${result.churnAlerted}, save-offers: ${result.churnSaveOffers}`
   );
 
   return result;

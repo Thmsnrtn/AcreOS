@@ -27,7 +27,6 @@ import {
   Target,
   Shield,
   BarChart2,
-  GraduationCap,
   Search,
   Eye,
   Globe,
@@ -270,6 +269,7 @@ interface NavModule {
   href: string;
   description?: string;
   showUnreadBadge?: boolean;
+  founderOnly?: boolean;
   children?: NavChild[];
 }
 
@@ -303,7 +303,6 @@ const NAV_MODULES: NavModule[] = [
       { label: "Blind Offer Wizard", icon: Wand2, href: "/blind-offer-wizard", description: "Calculate Podolsky-formula offers step-by-step" },
       { label: "Campaigns", icon: Mail, href: "/campaigns", description: "Email, SMS, and direct mail campaigns" },
       { label: "Sequences", icon: Zap, href: "/sequences", description: "Automated follow-up sequences" },
-      { label: "A/B Tests", icon: BarChart2, href: "/ab-tests", description: "Campaign split tests" },
       { label: "Voice Analytics", icon: Phone, href: "/voice-analytics", description: "Call recording analysis and insights" },
       { label: "Field Scout", icon: Compass, href: "/field-scout", description: "Offline-first mobile companion for field visits" },
     ],
@@ -369,27 +368,29 @@ const NAV_MODULES: NavModule[] = [
     href: "/analytics",
     description: "AI-powered insights and analysis",
     children: [
+      // Analytics & Valuation
       { label: "Insights", icon: TrendingUp, href: "/analytics", description: "Analytics and market insights" },
       { label: "AVM™", icon: TrendingUp, href: "/avm", description: "AcreOS Valuation Model" },
       { label: "Bulk AVM", icon: TrendingUp, href: "/avm-bulk", description: "Bulk valuations via CSV upload" },
+      { label: "Land Credit", icon: Shield, href: "/land-credit", description: "Proprietary 300–850 land scoring" },
+      { label: "Price Optimizer", icon: DollarSign, href: "/price-optimizer", description: "AI pricing for offers and listings" },
+      // Market Research
       { label: "Markets", icon: Globe, href: "/market-intelligence", description: "Market analysis and price trends" },
       { label: "Watchlist", icon: Eye, href: "/market-watchlist", description: "Monitor counties for market alerts" },
       { label: "Counties", icon: Landmark, href: "/counties", description: "USDA + Census county intelligence" },
+      { label: "Tax Research", icon: Gavel, href: "/tax-researcher", description: "Tax lien auctions and delinquent properties" },
+      // Deal Intelligence
       { label: "Acq. Radar", icon: Target, href: "/radar", description: "AI-scored deal opportunities" },
-      { label: "Land Credit", icon: Shield, href: "/land-credit", description: "Proprietary 300–850 land scoring" },
       { label: "Deal Hunter", icon: Search, href: "/deal-hunter", description: "Automated deal sourcing" },
       { label: "Seller Intent", icon: Brain, href: "/seller-intent", description: "AI-predicted seller motivation" },
-      { label: "Price Optimizer", icon: DollarSign, href: "/price-optimizer", description: "AI pricing for offers and listings" },
       { label: "Deal Patterns", icon: GitBranch, href: "/deal-patterns", description: "Replicate successful deal structures" },
-      { label: "Vision AI", icon: Eye, href: "/vision-ai", description: "AI photo and satellite analysis" },
       { label: "Negotiation", icon: Brain, href: "/negotiation", description: "AI negotiation copilot" },
-      { label: "Tax Research", icon: Gavel, href: "/tax-researcher", description: "Tax lien auctions and delinquent properties" },
-      { label: "Compliance", icon: ShieldCheck, href: "/compliance", description: "Regulatory monitoring" },
-      { label: "Regulatory", icon: ShieldCheck, href: "/regulatory-intel", description: "State regulatory profiles and alerts" },
+      // AI & Document Tools
+      { label: "Vision AI", icon: Eye, href: "/vision-ai", description: "AI photo and satellite analysis" },
       { label: "Doc Intel", icon: FileSearch, href: "/document-intelligence", description: "AI contract parsing" },
+      { label: "Compliance", icon: ShieldCheck, href: "/compliance", description: "Regulatory monitoring" },
       { label: "AI Assistant", icon: Bot, href: "/command-center", description: "AI assistants and automation" },
       { label: "Agent Hub", icon: Brain, href: "/agent-command-center", description: "Autonomous agent control center" },
-      { label: "Academy", icon: GraduationCap, href: "/academy", description: "Real estate education" },
     ],
   },
   {
@@ -398,6 +399,7 @@ const NAV_MODULES: NavModule[] = [
     icon: Crown,
     href: "/sovereign",
     description: "Autonomous organization oversight",
+    founderOnly: true,
     children: [
       { label: "Dashboard", icon: Activity, href: "/sovereign", description: "Sovereign org health overview" },
       { label: "Board of Directors", icon: Shield, href: "/board-of-directors", description: "Agent negotiations and delegation" },
@@ -443,26 +445,6 @@ const routePrefetchMap: Record<string, string> = {
   "/inbox": "/api/inbox",
 };
 
-const navItems = [
-  { label: "Dashboard", icon: LayoutDashboard, href: "/", description: "Overview of your real estate business", section: "Overview" },
-  { label: "Inbox", icon: Inbox, href: "/inbox", showUnreadBadge: true, description: "Messages and communications", section: "Work" },
-  { label: "Leads (CRM)", icon: Users, href: "/leads", description: "Manage your land seller leads", section: "Work" },
-  { label: "Inventory", icon: Map, href: "/properties", description: "Track properties you own or evaluate", section: "Work" },
-  { label: "Deal Pipeline", icon: GitBranch, href: "/deals", description: "Visualize your deal flow", section: "Work" },
-  { label: "Tasks", icon: ListTodo, href: "/tasks", description: "Your action items and to-do list", section: "Work" },
-  { label: "Automation", icon: Zap, href: "/automation", description: "Set up automated workflows and rules", section: "Automation" },
-  { label: "Workflows", icon: Workflow, href: "/workflows", description: "Design and manage complex workflows", section: "Automation" },
-  { label: "AI", icon: Bot, href: "/command-center", description: "AI assistants and automation", section: "Automation" },
-  { label: "Insights", icon: TrendingUp, href: "/analytics", description: "Analytics and market insights", section: "Insights" },
-  { label: "Finance", icon: Banknote, href: "/finance", description: "Manage seller-financed notes", section: "Insights" },
-  { label: "Portfolio", icon: PieChart, href: "/portfolio", description: "View your investment portfolio", section: "Insights" },
-  { label: "Listings", icon: Store, href: "/listings", description: "Properties available for sale", section: "Sales" },
-  { label: "Documents", icon: FileText, href: "/documents", description: "Store and manage documents", section: "Sales" },
-  { label: "Marketing", icon: Mail, href: "/campaigns", description: "Email, SMS, and direct mail campaigns", section: "Sales" },
-  { label: "Tools", icon: Calculator, href: "/tools", description: "Calculators and utility tools", section: "Operations" },
-  { label: "Help & Support", icon: HelpCircle, href: "/help", description: "Help topics and support resources", section: "Operations" },
-  { label: "Settings", icon: Settings, href: "/settings", description: "Configure your account and preferences", section: "Operations" },
-] as const;
 
 // ─────────────────────────────────────────────────────────────────────
 // Provider — wrap app at root so page-shell can consume
@@ -523,13 +505,15 @@ export function Sidebar() {
   // or hidden for the user's investor type.
   // While flags are loading we show everything (prevents flicker on initial load)
   const visibleModules = flagsLoading
-    ? NAV_MODULES
+    ? NAV_MODULES.filter((module) => !module.founderOnly || isFounder)
     : NAV_MODULES.map((module) => ({
         ...module,
         children: module.children?.filter(
           (child) => isRouteEnabled(child.href) && !hiddenForType.includes(child.href)
         ),
       })).filter((module) => {
+        // Hide founder-only modules for non-founders
+        if (module.founderOnly && !isFounder) return false;
         // If the module itself has a controlled route, check it
         if (!isRouteEnabled(module.href)) return false;
         if (hiddenForType.includes(module.href)) return false;
@@ -906,7 +890,6 @@ export function Sidebar() {
           <div className="flex items-center gap-1">
             <PaxNotificationBadge />
             <ProviderStatusBadges />
-            <PaxNotificationBadge />
             <NotificationCenter />
           </div>
         </div>

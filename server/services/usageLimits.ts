@@ -21,7 +21,7 @@ export interface TierLimits {
 
 // Feature flags for higher tiers — Scale and Enterprise are hidden until manually enabled
 export const PRICING_FEATURE_FLAGS = {
-  pricing_scale_tier_enabled: false,
+  pricing_scale_tier_enabled: true,
   pricing_enterprise_tier_enabled: false,
 } as const;
 
@@ -45,10 +45,10 @@ export interface UsageLimitResult {
 
 export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
   free: {
-    leads: 25,
-    properties: 5,
-    notes: 3,
-    ai_requests: 50,
+    leads: 10,
+    properties: 3,
+    notes: 2,
+    ai_requests: 25,
     campaigns: 0, // No campaigns on free tier
     sequences: 0, // No sequences on free tier
     byokSupport: false,

@@ -2,6 +2,7 @@ import { Sidebar, useSidebarCollapsed } from "@/components/layout-sidebar";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { PageHeaderSkeleton } from "@/components/list-skeleton";
 import { usePaxRail } from "@/contexts/pax-rail-context";
+import { UsageLimitBanner } from "@/components/usage-limit-banner";
 
 interface PageShellProps {
   children: React.ReactNode;
@@ -54,6 +55,7 @@ export function PageShell({ children, isLoading, loadingFallback, maxWidth = "7x
           isCollapsed ? "md:ml-[76px]" : "md:ml-[17rem]"
         } ${railOpen ? "md:mr-[360px]" : "md:mr-12"}`}
       >
+        <UsageLimitBanner />
         <div className={`${MAX_WIDTH_CLASSES[maxWidth]} mx-auto space-y-6 md:space-y-8 page-enter`}>
           <ErrorBoundary>
             {isLoading

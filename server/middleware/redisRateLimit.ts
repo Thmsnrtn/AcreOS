@@ -21,6 +21,7 @@
  */
 
 import type { Request, Response, NextFunction } from "express";
+import { logger } from "../utils/logger";
 
 // ---------------------------------------------------------------------------
 // Sliding window rate limiter using Redis ZRANGEBYSCORE + ZADD
@@ -99,7 +100,7 @@ async function checkRateLimit(
     }
   } catch (err) {
     // Redis error — fail open (allow request, log error)
-    console.error("[RedisRateLimit] Redis error:", err instanceof Error ? err.message : String(err));
+    logger.error("Redis rate limit check failed — allowing request", { error: err instanceof Error ? err.message : String(err) });
     return { allowed: true, remaining: config.maxRequests, resetAt: new Date(), totalRequests: 0 };
   }
 }
@@ -196,7 +197,7 @@ export function createOrgRateLimit(redisClient: any) {
       return next();
     } catch (err) {
       // Fail open — never block requests due to rate limit system errors
-      console.error("[RedisRateLimit] Middleware error:", err instanceof Error ? err.message : String(err));
+      logger.error("Redis rate limit middleware error — allowing request", { error: err instanceof Error ? err.message : String(err) });
       return next();
     }
   };
@@ -357,7 +358,7 @@ export function createWebhookRateLimit(redisClient: any) {
     });
 
     if (!result.allowed) {
-      console.warn(`[RateLimit] Webhook flood from org ${orgId} — throttled`);
+      logger.warn("Webhook flood detected — throttled", { organizationId: orgId });
       return res.status(429).json({ error: "webhook_rate_limited" });
     }
 

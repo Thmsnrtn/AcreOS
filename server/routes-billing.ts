@@ -8,6 +8,7 @@ import { getAllUsageLimits, type SubscriptionTier, TIER_LIMITS } from "./service
 import { idempotencyMiddleware } from "./middleware/idempotency";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
+import { withTransaction } from "./db";
 
 export function registerBillingRoutes(app: Express): void {
   const api = app;
@@ -124,18 +125,21 @@ export function registerBillingRoutes(app: Express): void {
       
       const pack = CREDIT_PACKS[packId as keyof typeof CREDIT_PACKS];
       
+      // Ensure Stripe customer creation and org update are atomic
       let customerId = org.stripeCustomerId;
       if (!customerId) {
-        const user = req.user as any;
-        const customer = await stripeService.createCustomer(
-          user.email || '',
-          user.id,
-          org.name
-        );
-        await storage.updateOrganization(org.id, { stripeCustomerId: customer.id });
-        customerId = customer.id;
+        customerId = await withTransaction(async () => {
+          const user = req.user as any;
+          const customer = await stripeService.createCustomer(
+            user.email || '',
+            user.id,
+            org.name
+          );
+          await storage.updateOrganization(org.id, { stripeCustomerId: customer.id });
+          return customer.id;
+        });
       }
-      
+
       const session = await stripeService.createCreditPurchaseCheckout(
         customerId,
         packId,
@@ -247,18 +251,21 @@ export function registerBillingRoutes(app: Express): void {
         return Errors.badRequest(res, "priceId is required");
       }
       
+      // Ensure Stripe customer creation and org update are atomic
       let customerId = org.stripeCustomerId;
       if (!customerId) {
-        const user = req.user as any;
-        const customer = await stripeService.createCustomer(
-          user.email,
-          user.id,
-          org.name
-        );
-        await storage.updateOrganization(org.id, { stripeCustomerId: customer.id });
-        customerId = customer.id;
+        customerId = await withTransaction(async () => {
+          const user = req.user as any;
+          const customer = await stripeService.createCustomer(
+            user.email,
+            user.id,
+            org.name
+          );
+          await storage.updateOrganization(org.id, { stripeCustomerId: customer.id });
+          return customer.id;
+        });
       }
-      
+
       // Check if organization is eligible for 14-day free trial (first subscription only)
       const trialDays = org.trialUsed ? undefined : 14;
       
