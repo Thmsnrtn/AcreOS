@@ -272,6 +272,7 @@ export interface IStorage {
   getLeads(orgId: number, filters?: { assignedTo?: number | null }): Promise<Lead[]>;
   getLead(orgId: number, id: number): Promise<Lead | undefined>;
   createLead(lead: InsertLead): Promise<Lead>;
+  createLeadsBatch(leadsData: InsertLead[]): Promise<Lead[]>;
   updateLead(id: number, updates: Partial<InsertLead>): Promise<Lead>;
   deleteLead(id: number): Promise<void>;
   getLeadCount(orgId: number): Promise<number>;
@@ -1260,7 +1261,25 @@ export class DatabaseStorage implements IStorage {
     });
     return newLead;
   }
-  
+
+  async createLeadsBatch(leadsData: InsertLead[]): Promise<Lead[]> {
+    if (leadsData.length === 0) return [];
+    // Batch insert all leads in a single query instead of N individual inserts
+    const newLeads = await db.insert(leads).values(leadsData).returning();
+    // Batch-log activity for all created leads
+    if (newLeads.length > 0) {
+      const activityEntries = newLeads.map((lead) => ({
+        organizationId: lead.organizationId,
+        action: "created" as const,
+        entityType: "lead" as const,
+        entityId: lead.id,
+        description: `Lead ${lead.firstName} ${lead.lastName} created (batch import)`,
+      }));
+      await db.insert(activityLog).values(activityEntries);
+    }
+    return newLeads;
+  }
+
   async updateLead(id: number, updates: Partial<InsertLead>) {
     const [updated] = await db.update(leads)
       .set({ ...updates, updatedAt: new Date() })

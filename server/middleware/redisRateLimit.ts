@@ -266,10 +266,10 @@ export function createApiKeyRateLimit(redisClient: any) {
  * Applies stricter per-org limits for /api/ai/* routes
  */
 export function createAIRateLimit(redisClient: any) {
-  return async (req: Request, res: Response, next: NextFunction) => {
+  return async (req: RateLimitRequest, res: Response, next: NextFunction) => {
     const orgId = req.organizationId;
-    const isFounder = req.organization?.isFounder;
-    const tier = req.organization?.subscriptionTier || "free";
+    const isFounder = (req.organization as any)?.isFounder;
+    const tier = (req.organization as any)?.subscriptionTier || "free";
 
     if (!orgId || isFounder) return next();
 
@@ -315,7 +315,7 @@ export function createIpRateLimit(
   const maxPerMinute = options.maxPerMinute || 30;
   const maxPerHour = options.maxPerHour || 200;
 
-  return async (req: Request, res: Response, next: NextFunction) => {
+  return async (req: RateLimitRequest, res: Response, next: NextFunction) => {
     const ip =
       req.headers["x-forwarded-for"]?.toString().split(",")[0].trim() ||
       req.socket?.remoteAddress ||
@@ -356,7 +356,7 @@ export function createIpRateLimit(
  * Prevents flood attacks via webhook replay or large payloads
  */
 export function createWebhookRateLimit(redisClient: any) {
-  return async (req: Request, res: Response, next: NextFunction) => {
+  return async (req: RateLimitRequest, res: Response, next: NextFunction) => {
     const orgId = req.organizationId;
     if (!orgId) return next();
 
@@ -367,7 +367,7 @@ export function createWebhookRateLimit(redisClient: any) {
     });
 
     if (!result.allowed) {
-      logger.warn(`Webhook flood detected from org ${orgId} — throttled`, { organizationId: orgId });
+      logger.warn("Webhook flood detected — throttled", { organizationId: orgId });
       return res.status(429).json({ error: "webhook_rate_limited" });
     }
 
