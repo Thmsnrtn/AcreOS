@@ -385,6 +385,10 @@ export function registerAIRoutes(app: Express): void {
   });
 
   // PATCH /api/ai/conversations/:id/project — set active project for conversation
+  const setConversationProjectSchema = z.object({
+    projectId: z.number().int().positive().nullable().optional(),
+  });
+
   api.patch("/api/ai/conversations/:id/project", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
@@ -393,7 +397,11 @@ export function registerAIRoutes(app: Express): void {
       if (!conversation || conversation.organizationId !== org.id) {
         return Errors.notFound(res, "Conversation");
       }
-      const { projectId } = req.body;
+      const parsed = setConversationProjectSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+      const { projectId } = parsed.data;
       await storage.setConversationProject(conversationId, projectId ?? null);
       res.json({ success: true });
     } catch (err: any) {
@@ -415,11 +423,22 @@ export function registerAIRoutes(app: Express): void {
     }
   });
 
+  const knowledgeUploadSchema = z.object({
+    name: z.string().min(1, "File name is required"),
+    content: z.string().min(1, "Content is required"),
+    mimeType: z.string().min(1, "MIME type is required"),
+    sizeBytes: z.number().int().min(0).optional(),
+  });
+
   api.post("/api/ai/knowledge", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
       const userId = req.user?.id ?? "unknown";
-      const { name, content, mimeType, sizeBytes } = req.body;
+      const parsed = knowledgeUploadSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+      const { name, content, mimeType, sizeBytes } = parsed.data;
 
       // Check limit
       const existing = await storage.getKnowledgeFiles(org.id);
@@ -449,9 +468,18 @@ export function registerAIRoutes(app: Express): void {
     }
   });
 
+  const updateKnowledgeSchema = z.object({
+    isActive: z.boolean().optional(),
+    description: z.string().nullable().optional(),
+  });
+
   api.patch("/api/ai/knowledge/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const { isActive, description } = req.body;
+      const parsed = updateKnowledgeSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+      const { isActive, description } = parsed.data;
       await storage.updateKnowledgeFile(parseInt(req.params.id), { isActive, description });
       res.json({ success: true });
     } catch (err: any) {
@@ -499,12 +527,22 @@ export function registerAIRoutes(app: Express): void {
     }
   });
 
+  const createProjectSchema = z.object({
+    name: z.string().min(1, "name is required"),
+    description: z.string().optional(),
+    entityType: z.string().optional(),
+    entityId: z.union([z.number(), z.string()]).optional(),
+  });
+
   api.post("/api/ai/projects", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
       const userId = req.user?.id ?? "unknown";
-      const { name, description, entityType, entityId } = req.body;
-      if (!name) return Errors.badRequest(res, "name required");
+      const parsed = createProjectSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+      const { name, description, entityType, entityId } = parsed.data;
       const proj = await storage.createPaxProject({ organizationId: org.id, userId, name, description, entityType, entityId });
       res.json(proj);
     } catch (err: any) {
