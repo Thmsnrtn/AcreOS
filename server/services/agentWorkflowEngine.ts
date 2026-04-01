@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Agent Workflow Engine — Sovereign Company Protocol v6
  *

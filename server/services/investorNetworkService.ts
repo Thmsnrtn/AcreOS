@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Investor Network Service (EPIC 5 — Defensible Social Graph)
  *

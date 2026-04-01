@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * SCP v3 Financial Autonomy — Sovereign Company Protocol
  *

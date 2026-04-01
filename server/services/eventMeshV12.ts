@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Event Mesh — Sovereign Company Protocol v12
  *

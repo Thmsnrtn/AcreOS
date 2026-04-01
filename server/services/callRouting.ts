@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 import { db } from "../db";
 import { voiceCalls } from "@shared/schema";
 import { eq, and, desc, sql } from "drizzle-orm";

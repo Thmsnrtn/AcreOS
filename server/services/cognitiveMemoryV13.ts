@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Cognitive Memory Layer — Sovereign Company Protocol v13
  *

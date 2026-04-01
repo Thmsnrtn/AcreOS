@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Agent Version Control — Sovereign Company Protocol v12: FOUNDATION
  *

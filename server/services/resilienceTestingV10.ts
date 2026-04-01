@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Resilience & Chaos Testing — Sovereign Company Protocol v10
  *

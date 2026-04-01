@@ -119,6 +119,7 @@ async function runTool(
       if (!state) throw new Error('state is required');
       // Delegate to predictions service if available; otherwise return a stub
       try {
+        // @ts-expect-error -- dynamic import; module may not exist at compile time
         const { predictionsService } = await import('./services/predictionsService');
         const prediction = await predictionsService.getMarketPrediction(state, county);
         return prediction;
@@ -237,7 +238,9 @@ export async function mcpHandler(req: Request, res: Response): Promise<void> {
     try {
       await storage.logActivity({
         organizationId: orgId,
-        type: 'mcp_execution',
+        action: 'mcp_execution',
+        entityType: 'mcp_tool',
+        entityId: 0,
         description: `MCP tool executed: ${tool}`,
         metadata: { tool, params, durationMs: Date.now() - startedAt },
       });
@@ -257,7 +260,9 @@ export async function mcpHandler(req: Request, res: Response): Promise<void> {
     try {
       await storage.logActivity({
         organizationId: orgId,
-        type: 'mcp_execution_error',
+        action: 'mcp_execution_error',
+        entityType: 'mcp_tool',
+        entityId: 0,
         description: `MCP tool failed: ${tool} — ${err.message}`,
         metadata: { tool, params, error: err.message, durationMs: Date.now() - startedAt },
       });
