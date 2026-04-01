@@ -93,21 +93,22 @@ router.get("/:entityType/:entityId", isAuthenticated, getOrCreateOrg, async (req
 router.post("/:entityType/:entityId", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const org = req.organization;
-    const user = req.user as any;
-    const userId = user?.claims?.sub ?? user?.id;
+    const user = req.user;
+    const userId = (user as any)?.claims?.sub ?? user?.id;
     const { entityType, entityId } = req.params;
-    const { content } = req.body;
 
-    if (!VALID_ENTITY_TYPES.includes(entityType)) {
-      return res.status(400).json({ error: `invalid entity type` });
+    if (!VALID_ENTITY_TYPES.includes(entityType as typeof VALID_ENTITY_TYPES[number])) {
+      return Errors.badRequest(res, "invalid entity type");
     }
 
     const entityIdNum = parseInt(entityId);
-    if (isNaN(entityIdNum)) return res.status(400).json({ error: "invalid entity ID" });
+    if (isNaN(entityIdNum)) return Errors.badRequest(res, "invalid entity ID");
 
-    if (!content || typeof content !== "string" || content.trim().length === 0) {
-      return res.status(400).json({ error: "content is required" });
+    const parsed = createCommentSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return Errors.validationFailed(res, parsed.error.errors);
     }
+    const { content } = parsed.data;
 
     // Parse @mentions
     const mentions = parseMentions(content);
@@ -175,7 +176,7 @@ router.post("/:entityType/:entityId", isAuthenticated, getOrCreateOrg, async (re
     res.status(201).json({ comment });
   } catch (err) {
     logger.error("failed to create comment", err instanceof Error ? err : undefined);
-    res.status(500).json({ error: "failed to create comment" });
+    Errors.internal(res, err);
   }
 });
 
@@ -183,11 +184,11 @@ router.post("/:entityType/:entityId", isAuthenticated, getOrCreateOrg, async (re
 router.delete("/:id", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const org = req.organization;
-    const user = req.user as any;
-    const userId = String(user?.claims?.sub ?? user?.id);
+    const user = req.user;
+    const userId = String((user as any)?.claims?.sub ?? user?.id);
     const commentId = parseInt(req.params.id);
 
-    if (isNaN(commentId)) return res.status(400).json({ error: "invalid comment ID" });
+    if (isNaN(commentId)) return Errors.badRequest(res, "invalid comment ID");
 
     // Verify ownership
     const [existing] = await db
