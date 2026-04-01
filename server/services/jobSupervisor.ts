@@ -15,6 +15,7 @@
 import { db } from "../db";
 import { systemAlerts, organizations } from "@shared/schema";
 import { logActivity } from "./systemActivityLogger";
+import { logger } from "../utils/logger";
 
 export interface JobHealth {
   name: string;
@@ -103,7 +104,7 @@ class JobSupervisor {
         }).catch(() => {});
 
         // Don't re-throw — jobs should be resilient
-        console.error(`[JobSupervisor] ${name} failed (attempt ${job.consecutiveFailures}):`, err?.message);
+        logger.error(`[JobSupervisor] ${name} failed (attempt ${job.consecutiveFailures})`, undefined, { metadata: { detail: err?.message } });
         return undefined;
       }
     };
@@ -131,7 +132,7 @@ class JobSupervisor {
           summary: `${job.name} appears stalled — last ran ${minutesSince} min ago (expected every ${Math.round(job.intervalMs / 60_000)} min)`,
           metadata: { minutesSince, intervalMs: job.intervalMs },
         }).catch(() => {});
-        console.warn(`[JobSupervisor] ${job.name} is stalled (${minutesSince} min since last run)`);
+        logger.warn(`[JobSupervisor] ${job.name} is stalled (${minutesSince} min since last run)`);
       }
     }
   }

@@ -12,6 +12,7 @@
  */
 
 import { getOpenAIClient } from "../utils/openaiClient";
+import { logger } from "../utils/logger";
 
 export type CopyAngle = "pain_point" | "aspiration" | "social_proof" | "curiosity";
 
@@ -257,7 +258,7 @@ Make each variant distinctly different. These will run as A/B tests so they must
           });
         }
       } catch (err: any) {
-        console.error(`[adCreative] Failed to generate ${spec.style} image:`, err?.message);
+        logger.error(`[adCreative] Failed to generate ${spec.style} image`, undefined, { metadata: { detail: err?.message } });
         // Non-fatal — continue with remaining images
       }
     }
@@ -309,7 +310,7 @@ Make each variant distinctly different. These will run as A/B tests so they must
       const firstKey = Object.keys(imagesObj)[0];
       return imagesObj[firstKey]?.hash ?? null;
     } catch (err: any) {
-      console.error("[adCreative] uploadImageToMeta error:", err?.message);
+      logger.error("[adCreative] uploadImageToMeta error", undefined, { metadata: { detail: err?.message } });
       return null;
     }
   }

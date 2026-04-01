@@ -1,4 +1,5 @@
 import { getUncachableStripeClient } from './stripeClient';
+import { logger } from "./utils/logger";
 
 // Only Pro tier supports additional seats in the 3-tier launch
 const SEAT_ADDON_PRODUCTS = [
@@ -46,12 +47,12 @@ const SUBSCRIPTION_PRODUCTS = [
 ];
 
 async function seedProducts() {
-  console.log('Starting product seed...');
+  logger.info('Starting product seed...');
   
   const stripe = await getUncachableStripeClient();
   
   for (const product of SUBSCRIPTION_PRODUCTS) {
-    console.log(`Creating product: ${product.name}`);
+    logger.info(`Creating product: ${product.name}`);
     
     // Check if product already exists
     const existingProducts = await stripe.products.search({
@@ -59,7 +60,7 @@ async function seedProducts() {
     });
     
     if (existingProducts.data.length > 0) {
-      console.log(`Product ${product.name} already exists, skipping...`);
+      logger.info(`Product ${product.name} already exists, skipping...`);
       continue;
     }
     
@@ -70,7 +71,7 @@ async function seedProducts() {
       metadata: product.metadata,
     });
     
-    console.log(`Created product: ${stripeProduct.id}`);
+    logger.info(`Created product: ${stripeProduct.id}`);
     
     // Create monthly price
     const monthlyPrice = await stripe.prices.create({
@@ -81,7 +82,7 @@ async function seedProducts() {
       metadata: { billingPeriod: 'monthly' },
     });
     
-    console.log(`Created monthly price: ${monthlyPrice.id} ($${product.monthlyPrice / 100}/mo)`);
+    logger.info(`Created monthly price: ${monthlyPrice.id} ($${product.monthlyPrice / 100}/mo)`);
     
     // Create yearly price
     const yearlyPrice = await stripe.prices.create({
@@ -92,14 +93,14 @@ async function seedProducts() {
       metadata: { billingPeriod: 'yearly' },
     });
     
-    console.log(`Created yearly price: ${yearlyPrice.id} ($${product.yearlyPrice / 100}/yr)`);
+    logger.info(`Created yearly price: ${yearlyPrice.id} ($${product.yearlyPrice / 100}/yr)`);
   }
   
-  console.log('Subscription products complete!');
+  logger.info('Subscription products complete!');
   
   // Seed seat add-on products
   for (const addon of SEAT_ADDON_PRODUCTS) {
-    console.log(`Creating seat add-on product: ${addon.name}`);
+    logger.info(`Creating seat add-on product: ${addon.name}`);
     
     // Check if product already exists
     const existingProducts = await stripe.products.search({
@@ -107,7 +108,7 @@ async function seedProducts() {
     });
     
     if (existingProducts.data.length > 0) {
-      console.log(`Product ${addon.name} already exists, skipping...`);
+      logger.info(`Product ${addon.name} already exists, skipping...`);
       continue;
     }
     
@@ -118,7 +119,7 @@ async function seedProducts() {
       metadata: addon.metadata,
     });
     
-    console.log(`Created seat add-on product: ${stripeProduct.id}`);
+    logger.info(`Created seat add-on product: ${stripeProduct.id}`);
     
     // Create monthly price (per seat)
     const monthlyPrice = await stripe.prices.create({
@@ -133,7 +134,7 @@ async function seedProducts() {
       },
     });
     
-    console.log(`Created monthly seat price: ${monthlyPrice.id} ($${addon.monthlyPrice / 100}/seat/mo)`);
+    logger.info(`Created monthly seat price: ${monthlyPrice.id} ($${addon.monthlyPrice / 100}/seat/mo)`);
     
     // Create yearly price (per seat)
     const yearlyPrice = await stripe.prices.create({
@@ -148,10 +149,10 @@ async function seedProducts() {
       },
     });
     
-    console.log(`Created yearly seat price: ${yearlyPrice.id} ($${addon.yearlyPrice / 100}/seat/yr)`);
+    logger.info(`Created yearly seat price: ${yearlyPrice.id} ($${addon.yearlyPrice / 100}/seat/yr)`);
   }
   
-  console.log('Product seed complete!');
+  logger.info('Product seed complete!');
 }
 
-seedProducts().catch(console.error);
+seedProducts().catch(err => logger.error("Product seed failed", err));

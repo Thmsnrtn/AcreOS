@@ -16,6 +16,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, sql, gte, count } from "drizzle-orm";
 import crypto from "crypto";
+import { logger } from "../utils/logger";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -408,10 +409,8 @@ class CollaborationProtocolService {
       data.qualityScore < existing.slaQualityThreshold
     ) {
       slaViolation = true;
-      console.warn(
-        `[collaboration] SLA quality violation on delegation ${delegationId}: ` +
-        `score ${data.qualityScore} < threshold ${existing.slaQualityThreshold}`
-      );
+      logger.warn(`[collaboration] SLA quality violation on delegation ${delegationId}: ` +
+        `score ${data.qualityScore} < threshold ${existing.slaQualityThreshold}`);
     }
 
     return { ...updated, slaViolation };

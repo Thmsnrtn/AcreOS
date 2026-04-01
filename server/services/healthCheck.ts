@@ -1,3 +1,4 @@
+import { logger } from "../utils/logger";
 // @ts-nocheck
 /**
  * External Service Health Check System
@@ -371,11 +372,11 @@ class HealthCheckService {
     
     this.checkInterval = setInterval(() => {
       this.checkAll().catch(err => {
-        console.error('[healthCheck] Periodic health check failed:', err);
+        logger.error('[healthCheck] Periodic health check failed', err);
       });
     }, intervalMs);
     
-    console.log(`[healthCheck] Started periodic health checks (every ${intervalMs / 1000}s)`);
+    logger.info(`[healthCheck] Started periodic health checks (every ${intervalMs / 1000}s)`);
   }
 
   /**
@@ -385,7 +386,7 @@ class HealthCheckService {
     if (this.checkInterval) {
       clearInterval(this.checkInterval);
       this.checkInterval = null;
-      console.log('[healthCheck] Stopped periodic health checks');
+      logger.info('[healthCheck] Stopped periodic health checks');
     }
   }
 }

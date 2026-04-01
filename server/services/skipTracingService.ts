@@ -1,3 +1,4 @@
+import { logger } from "../utils/logger";
 /**
  * T26 — Skip Tracing Real Integration
  *
@@ -183,7 +184,7 @@ export const skipTracingService = {
       try {
         return await traceViaBatchSkipTracing(input);
       } catch (err: any) {
-        console.warn(`[skipTrace] Primary provider failed: ${err.message}`);
+        logger.warn(`[skipTrace] Primary provider failed: ${err.message}`);
       }
     }
 
@@ -192,7 +193,7 @@ export const skipTracingService = {
       try {
         return await traceViaREISkip(input);
       } catch (err: any) {
-        console.warn(`[skipTrace] Fallback provider failed: ${err.message}`);
+        logger.warn(`[skipTrace] Fallback provider failed: ${err.message}`);
       }
     }
 

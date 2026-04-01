@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 /**
  * Realtime Transcription Job
  *
@@ -18,6 +17,7 @@ import {
   backgroundJobs,
 } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
+import { logger } from "../utils/logger";
 
 export const TRANSCRIPTION_QUEUE_NAME = "realtime-transcription";
 
@@ -122,11 +122,9 @@ async function triggerPostCallSummary(voiceCallId: number, transcriptId: number)
   try {
     // In production this could enqueue a separate AI summarisation job.
     // For now we log the intent and a downstream worker picks it up.
-    console.log(
-      `[RealtimeTranscription] Queuing post-call summary for voiceCall ${voiceCallId}, transcript ${transcriptId}`
-    );
+    logger.info(`[RealtimeTranscription] Queuing post-call summary for voiceCall ${voiceCallId}, transcript ${transcriptId}`);
   } catch (err: any) {
-    console.error(`[RealtimeTranscription] Failed to trigger post-call summary:`, err.message);
+    logger.error(`[RealtimeTranscription] Failed to trigger post-call summary`, err);
   }
 }
 
@@ -172,7 +170,7 @@ async function processTranscriptionJob(job: Job): Promise<void> {
       .set({ transcriptionStatus: "processing" })
       .where(eq(voiceCallRecordings.id, recordingId));
 
-    console.log(`[RealtimeTranscription] Transcribing recording ${recordingId} (call ${recording.voiceCallId})`);
+    logger.info(`[RealtimeTranscription] Transcribing recording ${recordingId} (call ${recording.voiceCallId})`);
 
     // Call Whisper
     const whisperResult = await transcribeWithWhisper(recording.audioFileUrl);
@@ -249,11 +247,9 @@ async function processTranscriptionJob(job: Job): Promise<void> {
         .where(eq(backgroundJobs.id, bgJobId));
     }
 
-    console.log(
-      `[RealtimeTranscription] Recording ${recordingId} transcribed → transcript ${transcript.id} (${formattedSegments.length} segments)`
-    );
+    logger.info(`[RealtimeTranscription] Recording ${recordingId} transcribed → transcript ${transcript.id} (${formattedSegments.length} segments)`);
   } catch (err: any) {
-    console.error(`[RealtimeTranscription] Failed for recording ${recordingId}:`, err.message);
+    logger.error(`[RealtimeTranscription] Failed for recording ${recordingId}`, err);
 
     // Mark recording as failed
     await db
@@ -297,7 +293,7 @@ export async function enqueueTranscriptionJob(
       removeOnFail: 5,
     }
   );
-  console.log(`[RealtimeTranscription] Enqueued transcription for recording ${recordingId}`);
+  logger.info(`[RealtimeTranscription] Enqueued transcription for recording ${recordingId}`);
 }
 
 /**
@@ -316,15 +312,15 @@ export function realtimeTranscriptionJob(redisConnection: any): Worker {
   );
 
   worker.on("completed", (job) => {
-    console.log(`[RealtimeTranscription] Job ${job.id} completed successfully`);
+    logger.info(`[RealtimeTranscription] Job ${job.id} completed successfully`);
   });
 
   worker.on("failed", (job, err) => {
-    console.error(`[RealtimeTranscription] Job ${job?.id} failed (attempt ${job?.attemptsMade}):`, err.message);
+    logger.error(`[RealtimeTranscription] Job ${job?.id} failed (attempt ${job?.attemptsMade})`, err);
   });
 
   worker.on("error", (err) => {
-    console.error("[RealtimeTranscription] Worker error:", err.message);
+    logger.error("[RealtimeTranscription] Worker error", err);
   });
 
   return worker;

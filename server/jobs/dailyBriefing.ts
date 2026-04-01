@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Atlas Daily Briefing Job
  *
@@ -19,6 +18,7 @@ import { eq, and, gte, lte, desc, lt, gt } from "drizzle-orm";
 import { addDays, subDays, format, startOfDay, endOfDay, isAfter } from "date-fns";
 import { sendEmail } from "../services/emailService";
 import { getRelevantMemories, formatMemoriesForContext } from "../services/atlasMemory";
+import { logger } from "../utils/logger";
 
 interface BriefingData {
   orgId: number;
@@ -245,12 +245,12 @@ export async function sendDailyBriefings(): Promise<{ sent: number; failed: numb
 
       sent++;
     } catch (err: any) {
-      console.error(`[DailyBriefing] Failed for org ${id}:`, err.message);
+      logger.error(`[DailyBriefing] Failed for org ${id}`, err);
       failed++;
     }
   }
 
-  console.log(`[DailyBriefing] Sent ${sent} briefings, ${failed} failed`);
+  logger.info(`[DailyBriefing] Sent ${sent} briefings, ${failed} failed`);
   return { sent, failed };
 }
 
@@ -270,5 +270,5 @@ export async function registerDailyBriefingJob(queue: any): Promise<void> {
       removeOnFail: 3,
     }
   );
-  console.log('[DailyBriefing] Registered daily briefing job at 7 AM CT');
+  logger.info('[DailyBriefing] Registered daily briefing job at 7 AM CT');
 }

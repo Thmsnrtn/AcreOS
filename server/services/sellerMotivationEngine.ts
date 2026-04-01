@@ -45,6 +45,7 @@ import { db } from "../db";
 import { leads, properties, deals, countyMarkets } from "@shared/schema";
 import { eq, and, desc, gte, sql } from "drizzle-orm";
 import { subDays, subYears, differenceInYears, differenceInDays } from "date-fns";
+import { logger } from "../utils/logger";
 
 // ---------------------------------------------------------------------------
 // Core motivation score factors & computation
@@ -604,7 +605,7 @@ export async function rescoreLeadsForOrg(organizationId: number): Promise<{
       if (result.score >= 75) highMotivation++;
       if (result.score > prevScore + 10) upgraded++;
     } catch (err: any) {
-      console.warn(`[SellerMotivation] Lead ${lead.id} rescore failed:`, err.message);
+      logger.warn(`[SellerMotivation] Lead ${lead.id} rescore failed`, { metadata: { detail: err.message } });
     }
   }
 

@@ -20,6 +20,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, asc, gte, lte, sql, or, inArray, isNotNull } from "drizzle-orm";
 import * as browserAutomation from "./browserAutomation";
+import { logger } from "../utils/logger";
 
 export interface ParcelTaxData {
   apn: string;
@@ -125,7 +126,7 @@ class TaxResearcherService {
     const sourceKey = `${county.toLowerCase().replace(/\s+/g, "_")}_${state.toLowerCase()}`;
     const sourceUrl = COUNTY_AUCTION_SOURCES[sourceKey];
     
-    console.log(`[tax-researcher] Scanning auction calendar for ${county}, ${state}`);
+    logger.info(`[tax-researcher] Scanning auction calendar for ${county}, ${state}`);
     
     const result = {
       auctions: [] as Partial<InsertTaxSaleAuction>[],
@@ -151,7 +152,7 @@ class TaxResearcherService {
           },
         });
 
-        console.log(`[tax-researcher] Created browser automation job ${job.id} for ${county}, ${state}`);
+        logger.info(`[tax-researcher] Created browser automation job ${job.id} for ${county}, ${state}`);
       }
 
       const mockAuctions = this.generateMockAuctionData(county, state);
@@ -192,7 +193,7 @@ class TaxResearcherService {
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error(`[tax-researcher] Error scanning ${county}, ${state}:`, errorMessage);
+      logger.error(`[tax-researcher] Error scanning ${county}, ${state}`, undefined, { metadata: { detail: errorMessage } });
       result.error = errorMessage;
     }
 
@@ -536,7 +537,7 @@ class TaxResearcherService {
     source: string;
     scannedAt: string;
   }> {
-    console.log(`[tax-researcher] Tracking tax delinquent properties in ${county}, ${state}`);
+    logger.info(`[tax-researcher] Tracking tax delinquent properties in ${county}, ${state}`);
 
     const delinquentProperties = this.generateMockDelinquentProperties(county, state, 10);
 
@@ -677,7 +678,7 @@ class TaxResearcherService {
       })
       .returning();
 
-    console.log(`[tax-researcher] Created tax sale alert ${created.id} for org ${organizationId}`);
+    logger.info(`[tax-researcher] Created tax sale alert ${created.id} for org ${organizationId}`);
 
     return created;
   }
@@ -871,11 +872,11 @@ class TaxResearcherService {
         });
         surfacedCount++;
       } catch (error) {
-        console.error(`[tax-researcher] Error surfacing listing ${listing.id}:`, error);
+        logger.error(`[tax-researcher] Error surfacing listing ${listing.id}`, error);
       }
     }
 
-    console.log(`[tax-researcher] Surfaced ${surfacedCount} tax opportunities to Acquisition Radar`);
+    logger.info(`[tax-researcher] Surfaced ${surfacedCount} tax opportunities to Acquisition Radar`);
     return surfacedCount;
   }
 

@@ -21,6 +21,7 @@ import { eq, desc } from "drizzle-orm";
 import { routeAITask, TaskComplexity } from "./aiRouter";
 import { companyAgentService } from "./companyAgents";
 import { resolveAgentData } from "./agentDataResolvers";
+import { logger } from "../utils/logger";
 
 // ─── Agent Perspectives by Scenario Type ─────────────────────────────────────
 
@@ -89,7 +90,7 @@ class ScenarioEngineService {
 
     // Run analysis asynchronously
     this.runAnalysis(sim.id, hypothesis, agents).catch(err => {
-      console.error(`[ScenarioEngine] Simulation ${sim.id} failed:`, err);
+      logger.error(`[ScenarioEngine] Simulation ${sim.id} failed`, err);
       db.update(scenarioSimulations)
         .set({ status: "failed" })
         .where(eq(scenarioSimulations.id, sim.id))

@@ -17,6 +17,7 @@
 import { db } from "../db";
 import { agentEvents } from "@shared/schema";
 import { sql } from "drizzle-orm";
+import { logger } from "../utils/logger";
 
 // ─── 1. Default Reaction Chains ──────────────────────────────────────────────
 
@@ -311,9 +312,9 @@ export async function bootstrapAutonomy(): Promise<{ chains: number; playbooks: 
         // Chain may already exist — skip
       }
     }
-    console.log(`[autonomy-bootstrap] Seeded ${chains} reaction chains`);
+    logger.info(`[autonomy-bootstrap] Seeded ${chains} reaction chains`);
   } catch (err: any) {
-    console.log(`[autonomy-bootstrap] Reaction chains skipped: ${err.message}`);
+    logger.info(`[autonomy-bootstrap] Reaction chains skipped: ${err.message}`);
   }
 
   // 2. Seed incident playbooks
@@ -333,9 +334,9 @@ export async function bootstrapAutonomy(): Promise<{ chains: number; playbooks: 
         // Playbook may already exist
       }
     }
-    console.log(`[autonomy-bootstrap] Seeded ${playbooks} incident playbooks`);
+    logger.info(`[autonomy-bootstrap] Seeded ${playbooks} incident playbooks`);
   } catch (err: any) {
-    console.log(`[autonomy-bootstrap] Playbooks skipped: ${err.message}`);
+    logger.info(`[autonomy-bootstrap] Playbooks skipped: ${err.message}`);
   }
 
   // 3. Seed degradation modes
@@ -349,9 +350,9 @@ export async function bootstrapAutonomy(): Promise<{ chains: number; playbooks: 
         // Mode may already exist
       }
     }
-    console.log(`[autonomy-bootstrap] Seeded ${modes} degradation modes`);
+    logger.info(`[autonomy-bootstrap] Seeded ${modes} degradation modes`);
   } catch (err: any) {
-    console.log(`[autonomy-bootstrap] Degradation modes skipped: ${err.message}`);
+    logger.info(`[autonomy-bootstrap] Degradation modes skipped: ${err.message}`);
   }
 
   // 4. Seed cognitive memories
@@ -371,9 +372,9 @@ export async function bootstrapAutonomy(): Promise<{ chains: number; playbooks: 
         // Memory may already exist
       }
     }
-    console.log(`[autonomy-bootstrap] Seeded ${memories} cognitive memories`);
+    logger.info(`[autonomy-bootstrap] Seeded ${memories} cognitive memories`);
   } catch (err: any) {
-    console.log(`[autonomy-bootstrap] Memories skipped: ${err.message}`);
+    logger.info(`[autonomy-bootstrap] Memories skipped: ${err.message}`);
   }
 
   // 5. Seed adaptive strategies
@@ -387,11 +388,11 @@ export async function bootstrapAutonomy(): Promise<{ chains: number; playbooks: 
         // Strategy may already exist
       }
     }
-    console.log(`[autonomy-bootstrap] Seeded ${strategies} adaptive strategies`);
+    logger.info(`[autonomy-bootstrap] Seeded ${strategies} adaptive strategies`);
   } catch (err: any) {
-    console.log(`[autonomy-bootstrap] Strategies skipped: ${err.message}`);
+    logger.info(`[autonomy-bootstrap] Strategies skipped: ${err.message}`);
   }
 
-  console.log(`[autonomy-bootstrap] Bootstrap complete: ${chains} chains, ${playbooks} playbooks, ${modes} modes, ${memories} memories, ${strategies} strategies`);
+  logger.info(`[autonomy-bootstrap] Bootstrap complete: ${chains} chains, ${playbooks} playbooks, ${modes} modes, ${memories} memories, ${strategies} strategies`);
   return { chains, playbooks, modes, memories, strategies };
 }

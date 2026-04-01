@@ -1,12 +1,13 @@
 import { storage } from "../storage";
 import type { InsertActivityEvent, ActivityEventType } from "@shared/schema";
+import { logger } from "../utils/logger";
 
 export class ActivityLoggerService {
   async logEvent(data: InsertActivityEvent): Promise<void> {
     try {
       await storage.createActivityEvent(data);
     } catch (error) {
-      console.error("Failed to log activity event:", error);
+      logger.error("Failed to log activity event", error);
     }
   }
 

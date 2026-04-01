@@ -1,3 +1,4 @@
+import { logger } from "./utils/logger";
 // @ts-nocheck — TODO: Add proper type declarations for optional OpenTelemetry SDK imports.
 // The SDK is lazily imported and all types are set to `any`. This requires adding
 // @opentelemetry/* type packages and guarding with proper type narrowing.
@@ -78,12 +79,10 @@ async function buildExporter(): Promise<SpanExporter | null> {
         const [k, v] = part.split("=");
         if (k && v) headers[k.trim()] = v.trim();
       }
-      console.log(`[Tracing] Using OTLP exporter → ${endpoint}`);
+      logger.info(`[Tracing] Using OTLP exporter → ${endpoint}`);
       return new OTLPTraceExporter({ url: `${endpoint}/v1/traces`, headers });
     } catch (err) {
-      console.warn(
-        "[Tracing] @opentelemetry/exporter-trace-otlp-http not available — falling back to console"
-      );
+      logger.warn("[Tracing] @opentelemetry/exporter-trace-otlp-http not available — falling back to console");
       return new ConsoleSpanExporter();
     }
   }
@@ -95,7 +94,7 @@ export async function initTracing(): Promise<void> {
   const exporter = await buildExporter();
 
   if (!exporter) {
-    console.log("[Tracing] Tracing disabled (set OTEL_EXPORTER=console|otlp to enable)");
+    logger.info("[Tracing] Tracing disabled (set OTEL_EXPORTER=console|otlp to enable)");
     return;
   }
 
@@ -135,7 +134,7 @@ export async function initTracing(): Promise<void> {
 
   _tracer = trace.getTracer(SERVICE_NAME, SERVICE_VERSION);
 
-  console.log(`[Tracing] OpenTelemetry tracing initialized (service: ${SERVICE_NAME})`);
+  logger.info(`[Tracing] OpenTelemetry tracing initialized (service: ${SERVICE_NAME})`);
 }
 
 /**

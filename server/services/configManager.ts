@@ -13,6 +13,7 @@ import crypto from "crypto";
 import { db } from "../db";
 import { platformConfig } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { logger } from "../utils/logger";
 
 // ─── Encryption ──────────────────────────────────────────────────────────────
 
@@ -80,15 +81,15 @@ export async function loadConfigToEnv(): Promise<void> {
         process.env[row.key] = plaintext;
         patched++;
       } catch (e) {
-        console.warn(`[configManager] Failed to decrypt config key: ${row.key}`);
+        logger.warn(`[configManager] Failed to decrypt config key: ${row.key}`);
       }
     }
     if (patched > 0) {
-      console.log(`[configManager] Patched ${patched} credentials from DB into process.env`);
+      logger.info(`[configManager] Patched ${patched} credentials from DB into process.env`);
     }
   } catch (e) {
     // DB might not be ready at startup — this is non-fatal
-    console.warn("[configManager] Could not load config from DB (table may not exist yet):", (e as Error).message);
+    logger.warn("[configManager] Could not load config from DB (table may not exist yet)", { metadata: { detail: (e as Error).message } });
   }
 }
 

@@ -34,6 +34,7 @@
 import { db } from "../db";
 import { deals, properties, documents, backgroundJobs } from "@shared/schema";
 import { eq, and, desc, gte } from "drizzle-orm";
+import { logger } from "../utils/logger";
 
 // ---------------------------------------------------------------------------
 // Title Chain Models
@@ -720,21 +721,19 @@ export async function runPostCloseAutomation(
     const salePrice = parseFloat(deal.listPrice || "0");
     const profit = salePrice - purchasePrice;
 
-    console.log(
-      `[PostClose] Deal ${dealId} closed. Purchase: $${purchasePrice}, Sale: $${salePrice}, Profit: $${profit}`
-    );
+    logger.info(`[PostClose] Deal ${dealId} closed. Purchase: $${purchasePrice}, Sale: $${salePrice}, Profit: $${profit}`);
     result.bookkeepingEntryCreated = true;
 
     // Generate performance metrics
     const roiPercent =
       purchasePrice > 0 ? ((profit / purchasePrice) * 100).toFixed(1) : "N/A";
 
-    console.log(`[PostClose] Deal ${dealId} performance: ${roiPercent}% ROI`);
+    logger.info(`[PostClose] Deal ${dealId} performance: ${roiPercent}% ROI`);
     result.performanceReportGenerated = true;
     result.dealDocumentsArchived = true;
     result.sellerMovedToPastSellers = true;
   } catch (err: any) {
-    console.error(`[PostClose] Automation failed for deal ${dealId}:`, err.message);
+    logger.error(`[PostClose] Automation failed for deal ${dealId}`, err);
   }
 
   return result;

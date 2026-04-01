@@ -6,6 +6,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { inArray, or } from "drizzle-orm";
 import { knowledgeBaseArticles, paxMemory, systemAlerts, organizations } from "@shared/schema";
+import { logger } from "./utils/logger";
 
 export function registerSupportTicketRoutes(app: Express): void {
   const api = app;
@@ -36,7 +37,7 @@ export function registerSupportTicketRoutes(app: Express): void {
       
       res.status(201).json(ticket);
     } catch (error: any) {
-      console.error("[support] Error creating ticket:", error);
+      logger.error("[support] Error creating ticket", error);
       res.status(500).json({ message: error.message || "Failed to create support ticket" });
     }
   });
@@ -56,7 +57,7 @@ export function registerSupportTicketRoutes(app: Express): void {
       
       res.json(tickets);
     } catch (error: any) {
-      console.error("[support] Error fetching tickets:", error);
+      logger.error("[support] Error fetching tickets", error);
       res.status(500).json({ message: error.message || "Failed to fetch tickets" });
     }
   });
@@ -79,7 +80,7 @@ export function registerSupportTicketRoutes(app: Express): void {
       
       res.json({ ticket, messages });
     } catch (error: any) {
-      console.error("[support] Error fetching ticket:", error);
+      logger.error("[support] Error fetching ticket", error);
       res.status(500).json({ message: error.message || "Failed to fetch ticket" });
     }
   });
@@ -109,7 +110,7 @@ export function registerSupportTicketRoutes(app: Express): void {
       
       res.json(response);
     } catch (error: any) {
-      console.error("[support] Error processing message:", error);
+      logger.error("[support] Error processing message", error);
       res.status(500).json({ message: error.message || "Failed to process message" });
     }
   });
@@ -133,7 +134,7 @@ export function registerSupportTicketRoutes(app: Express): void {
       
       res.json({ success: true });
     } catch (error: any) {
-      console.error("[support] Error closing ticket:", error);
+      logger.error("[support] Error closing ticket", error);
       res.status(500).json({ message: error.message || "Failed to close ticket" });
     }
   });
@@ -178,7 +179,7 @@ export function registerSupportTicketRoutes(app: Express): void {
       try {
         const { paxLearningService } = await import("./services/paxLearning");
         learningResult = await paxLearningService.learnFromHumanResolution(ticketId);
-        console.log(`[support] Pax learned from human resolution: ${JSON.stringify(learningResult)}`);
+        logger.info(`[support] Pax learned from human resolution: ${JSON.stringify(learningResult)}`);
         
         // If cross-org learning was created and addToKnowledgeBase is true, create KB article
         if (addToKnowledgeBase && learningResult?.crossOrgLearning) {
@@ -206,7 +207,7 @@ export function registerSupportTicketRoutes(app: Express): void {
             }).returning();
             
             knowledgeBaseArticle = article;
-            console.log(`[support] Created KB article from human resolution: ${article.id}`);
+            logger.info(`[support] Created KB article from human resolution: ${article.id}`);
           }
         }
         
@@ -231,10 +232,10 @@ export function registerSupportTicketRoutes(app: Express): void {
             sourceTicketId: ticketId
           });
         } catch (memErr) {
-          console.error("[support] Error saving resolution memory:", memErr);
+          logger.error("[support] Error saving resolution memory", undefined, { metadata: { detail: memErr } });
         }
       } catch (learnErr) {
-        console.error("[support] Error in Pax learning:", learnErr);
+        logger.error("[support] Error in Pax learning", undefined, { metadata: { detail: learnErr } });
       }
       
       res.json({ 
@@ -250,7 +251,7 @@ export function registerSupportTicketRoutes(app: Express): void {
         } : null
       });
     } catch (error: any) {
-      console.error("[support] Error resolving ticket:", error);
+      logger.error("[support] Error resolving ticket", error);
       res.status(500).json({ message: error.message || "Failed to resolve ticket" });
     }
   });
@@ -279,7 +280,7 @@ export function registerSupportTicketRoutes(app: Express): void {
       
       res.json(filtered);
     } catch (error: any) {
-      console.error("[support] Error fetching knowledge base:", error);
+      logger.error("[support] Error fetching knowledge base", error);
       res.status(500).json({ message: error.message || "Failed to fetch articles" });
     }
   });
@@ -304,7 +305,7 @@ export function registerSupportTicketRoutes(app: Express): void {
       
       res.json(article);
     } catch (error: any) {
-      console.error("[support] Error fetching article:", error);
+      logger.error("[support] Error fetching article", error);
       res.status(500).json({ message: error.message || "Failed to fetch article" });
     }
   });
@@ -332,7 +333,7 @@ export function registerSupportTicketRoutes(app: Express): void {
       
       res.json({ success: true });
     } catch (error: any) {
-      console.error("[support] Error recording feedback:", error);
+      logger.error("[support] Error recording feedback", error);
       res.status(500).json({ message: error.message || "Failed to record feedback" });
     }
   });
@@ -356,7 +357,7 @@ export function registerSupportTicketRoutes(app: Express): void {
         }))
       });
     } catch (error: any) {
-      console.error("[support] Error fetching alerts:", error);
+      logger.error("[support] Error fetching alerts", error);
       res.json({ alerts: [] }); // Return empty array on error instead of failing
     }
   });
@@ -377,7 +378,7 @@ export function registerSupportTicketRoutes(app: Express): void {
       
       res.json(tickets);
     } catch (error: any) {
-      console.error("[support] Error fetching all tickets:", error);
+      logger.error("[support] Error fetching all tickets", error);
       res.status(500).json({ message: error.message || "Failed to fetch tickets" });
     }
   });
@@ -420,7 +421,7 @@ export function registerSupportTicketRoutes(app: Express): void {
         averageRating: avgRatingNum
       });
     } catch (error: any) {
-      console.error("[support] Error fetching analytics:", error);
+      logger.error("[support] Error fetching analytics", error);
       res.status(500).json({ message: error.message || "Failed to fetch analytics" });
     }
   });
@@ -519,7 +520,7 @@ export function registerSupportTicketRoutes(app: Express): void {
       
       res.json(enrichedTickets);
     } catch (error: any) {
-      console.error("[founder] Error fetching escalations:", error);
+      logger.error("[founder] Error fetching escalations", error);
       res.status(500).json({ message: error.message || "Failed to fetch escalations" });
     }
   });
@@ -667,7 +668,7 @@ This ticket was escalated by Pax (AI Support Agent) because it could not be reso
 
       res.json({ prompt });
     } catch (error: any) {
-      console.error("[founder] Error generating prompt:", error);
+      logger.error("[founder] Error generating prompt", error);
       res.status(500).json({ message: error.message || "Failed to generate prompt" });
     }
   });
@@ -763,7 +764,7 @@ ${Object.entries(byCategory).map(([cat, tix]) => `- ${cat}: ${tix.length} ticket
 
       res.json({ prompt });
     } catch (error: any) {
-      console.error("[founder] Error generating batch prompt:", error);
+      logger.error("[founder] Error generating batch prompt", error);
       res.status(500).json({ message: error.message || "Failed to generate batch prompt" });
     }
   });
@@ -795,7 +796,7 @@ ${Object.entries(byCategory).map(([cat, tix]) => `- ${cat}: ${tix.length} ticket
       
       res.json({ success: true });
     } catch (error: any) {
-      console.error("[founder] Error resolving escalation:", error);
+      logger.error("[founder] Error resolving escalation", error);
       res.status(500).json({ message: error.message || "Failed to resolve escalation" });
     }
   });
@@ -818,7 +819,7 @@ ${Object.entries(byCategory).map(([cat, tix]) => `- ${cat}: ${tix.length} ticket
       
       res.json(learnings);
     } catch (error: any) {
-      console.error("[founder] Error fetching Pax learnings:", error);
+      logger.error("[founder] Error fetching Pax learnings", error);
       res.status(500).json({ message: error.message || "Failed to fetch learnings" });
     }
   });
@@ -854,7 +855,7 @@ ${Object.entries(byCategory).map(([cat, tix]) => `- ${cat}: ${tix.length} ticket
         const { healthCheckService } = await import("./services/healthCheck");
         orgHealth = await (healthCheckService as any).checkAll();
       } catch (err) {
-        console.error("[support] Error fetching org health for bug report:", err);
+        logger.error("[support] Error fetching org health for bug report", err);
       }
       
       let recentErrors: any[] = [];
@@ -873,7 +874,7 @@ ${Object.entries(byCategory).map(([cat, tix]) => `- ${cat}: ${tix.length} ticket
           a.action?.toLowerCase().includes('fail')
         );
       } catch (err) {
-        console.error("[support] Error fetching recent errors for bug report:", err);
+        logger.error("[support] Error fetching recent errors for bug report", err);
       }
       
       const bugTicketData = {
@@ -921,7 +922,7 @@ ${actualBehavior || 'Not provided'}
         .values(bugTicketData as any)
         .returning();
       
-      console.log(`[support] Bug report created: ticket ${ticket.id} for org ${org.id}`);
+      logger.info(`[support] Bug report created: ticket ${ticket.id} for org ${org.id}`);
       
       res.json({
         success: true,
@@ -929,7 +930,7 @@ ${actualBehavior || 'Not provided'}
         message: "Bug report submitted successfully. We'll look into it."
       });
     } catch (error: any) {
-      console.error("[support] Error creating bug report:", error);
+      logger.error("[support] Error creating bug report", error);
       res.status(500).json({ message: error.message || "Failed to submit bug report" });
     }
   });

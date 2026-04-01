@@ -13,6 +13,7 @@ import { db } from "../db";
 import { agentEvents, agentMessages } from "@shared/schema";
 import { eq, and, sql, desc, gte, lt, inArray } from "drizzle-orm";
 import { wsServer } from "../websocket";
+import { logger } from "../utils/logger";
 
 // ─── 1. Daily Autonomous Summary ─────────────────────────────────────────────
 
@@ -113,7 +114,7 @@ export async function generateDailyAutonomousSummary(): Promise<{
     });
   } catch {}
 
-  console.log(`[daily-summary] ${summary}`);
+  logger.info(`[daily-summary] ${summary}`);
   return { totalActions, autoExecuted, escalated, blocked, topAgents, summary };
 }
 
@@ -184,11 +185,11 @@ export async function checkDelegationCompletions(): Promise<{ completed: number;
       }
     }
   } catch (err: any) {
-    console.log(`[delegation-check] Skipped: ${err.message}`);
+    logger.info(`[delegation-check] Skipped: ${err.message}`);
   }
 
   if (completed > 0 || escalated > 0) {
-    console.log(`[delegation-check] ${completed} auto-completed, ${escalated} SLA escalations`);
+    logger.info(`[delegation-check] ${completed} auto-completed, ${escalated} SLA escalations`);
   }
 
   return { completed, escalated };
@@ -246,11 +247,11 @@ export async function retryFailedActions(): Promise<{ retried: number; succeeded
       } catch {}
     }
   } catch (err: any) {
-    console.log(`[retry-queue] Skipped: ${err.message}`);
+    logger.info(`[retry-queue] Skipped: ${err.message}`);
   }
 
   if (retried > 0) {
-    console.log(`[retry-queue] Retried ${retried}, succeeded ${succeeded}`);
+    logger.info(`[retry-queue] Retried ${retried}, succeeded ${succeeded}`);
   }
 
   return { retried, succeeded };
@@ -301,11 +302,11 @@ export async function executeResolvedConsensus(): Promise<{ executed: number }> 
       }
     }
   } catch (err: any) {
-    console.log(`[consensus-exec] Skipped: ${err.message}`);
+    logger.info(`[consensus-exec] Skipped: ${err.message}`);
   }
 
   if (executed > 0) {
-    console.log(`[consensus-exec] Executed ${executed} consensus decisions`);
+    logger.info(`[consensus-exec] Executed ${executed} consensus decisions`);
   }
 
   return { executed };

@@ -25,6 +25,7 @@ import {
   payments, notes, deals, leads, campaigns, leadScoreHistory,
   activityLog, organizations,
 } from "@shared/schema";
+import { logger } from "./utils/logger";
 
 const router = Router();
 
@@ -254,7 +255,7 @@ router.get("/snapshot", async (req: Request, res: Response) => {
       nitecapWisdom: getTodaysQuote(),
     });
   } catch (err: any) {
-    console.error("[NightCap] Snapshot error:", err);
+    logger.error("[NightCap] Snapshot error", err);
     res.status(500).json({ error: err.message || "Failed to load Night Cap snapshot" });
   }
 });

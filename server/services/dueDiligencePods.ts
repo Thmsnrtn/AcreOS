@@ -10,6 +10,7 @@ import {
 import { eq, and, desc } from "drizzle-orm";
 import { getOpenAIClient } from "../utils/openaiClient";
 import { DataSourceBroker } from "./data-source-broker";
+import { logger } from "../utils/logger";
 
 const dataSourceBroker = new DataSourceBroker();
 
@@ -328,7 +329,7 @@ class DueDiligencePodService {
         encumbrances: [],
       };
     } catch (error) {
-      console.error(`[due-diligence-pods] Title research error for property ${propertyId}:`, error);
+      logger.error(`[due-diligence-pods] Title research error for property ${propertyId}`, error);
       return {
         clear: false,
         issues: ["Unable to verify title status - manual review required"],
@@ -370,7 +371,7 @@ class DueDiligencePodService {
         specialAssessments: [],
       };
     } catch (error) {
-      console.error(`[due-diligence-pods] Tax research error for property ${propertyId}:`, error);
+      logger.error(`[due-diligence-pods] Tax research error for property ${propertyId}`, error);
       return {
         current: false,
         yearsDelinquent: 0,
@@ -432,7 +433,7 @@ class DueDiligencePodService {
         floodZone,
       };
     } catch (error) {
-      console.error(`[due-diligence-pods] Environmental research error for property ${propertyId}:`, error);
+      logger.error(`[due-diligence-pods] Environmental research error for property ${propertyId}`, error);
       return {
         clean: false,
         concerns: ["Environmental check could not be completed"],
@@ -474,7 +475,7 @@ class DueDiligencePodService {
         overlays: [],
       };
     } catch (error) {
-      console.error(`[due-diligence-pods] Zoning research error for property ${propertyId}:`, error);
+      logger.error(`[due-diligence-pods] Zoning research error for property ${propertyId}`, error);
       return {
         current: "Unknown",
         restrictions: ["Zoning verification required"],
@@ -516,7 +517,7 @@ class DueDiligencePodService {
         roadMaintenance: "Unknown",
       };
     } catch (error) {
-      console.error(`[due-diligence-pods] Access research error for property ${propertyId}:`, error);
+      logger.error(`[due-diligence-pods] Access research error for property ${propertyId}`, error);
       return {
         type: "Unknown",
         legal: false,
@@ -560,7 +561,7 @@ class DueDiligencePodService {
         trend: "Stable",
       };
     } catch (error) {
-      console.error(`[due-diligence-pods] Comps research error for property ${propertyId}:`, error);
+      logger.error(`[due-diligence-pods] Comps research error for property ${propertyId}`, error);
       return {
         trend: "Unable to determine",
       };
@@ -796,7 +797,7 @@ REASONING: [reasoning]`;
           };
         }
       } catch (error) {
-        console.error("[due-diligence-pods] AI recommendation error:", error);
+        logger.error("[due-diligence-pods] AI recommendation error", error);
       }
     }
 
@@ -868,7 +869,7 @@ Write a professional executive summary suitable for an investor.`;
 
         return response.choices[0]?.message?.content?.trim() || this.generateFallbackSummary(dossier, propertyInfo);
       } catch (error) {
-        console.error("[due-diligence-pods] AI summary error:", error);
+        logger.error("[due-diligence-pods] AI summary error", error);
       }
     }
 
@@ -925,7 +926,7 @@ Write a professional executive summary suitable for an investor.`;
         relatedEntityId: payload.dossierId,
       });
     } catch (error) {
-      console.error("[due-diligence-pods] Failed to log agent event:", error);
+      logger.error("[due-diligence-pods] Failed to log agent event", error);
     }
   }
 }

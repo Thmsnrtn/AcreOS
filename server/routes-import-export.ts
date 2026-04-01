@@ -13,6 +13,7 @@ import {
   getLeadsData, getPropertiesData, getDealsData, getNotesData,
   createBackupZip, getExpectedColumns, type ExportFilters,
 } from "./services/importExport";
+import { logger } from "./utils/logger";
 
 const MAX_CSV_IMPORT_ROWS = 500;
 
@@ -70,7 +71,7 @@ export function registerImportExportRoutes(app: Express): void {
       const preview = previewImport(data, entityType);
       res.json(preview);
     } catch (error: any) {
-      console.error("Import preview error:", error);
+      logger.error("Import preview error", error);
       res.status(500).json({ message: error.message || "Failed to preview import" });
     }
   });
@@ -129,7 +130,7 @@ export function registerImportExportRoutes(app: Express): void {
 
       res.json(result);
     } catch (error: any) {
-      console.error("Import error:", error);
+      logger.error("Import error", error);
       res.status(500).json({ message: error.message || "Failed to import data" });
     }
   });
@@ -199,7 +200,7 @@ export function registerImportExportRoutes(app: Express): void {
 
       res.json(result);
     } catch (error: any) {
-      console.error("[import/notes] Error:", error);
+      logger.error("[import/notes] Error", error);
       res.status(500).json({ message: error.message || "Failed to import notes" });
     }
   });
@@ -266,7 +267,7 @@ export function registerImportExportRoutes(app: Express): void {
         res.send(csv);
       }
     } catch (error: any) {
-      console.error("Export error:", error);
+      logger.error("Export error", error);
       res.status(500).json({ message: error.message || "Failed to export data" });
     }
   });
@@ -295,7 +296,7 @@ export function registerImportExportRoutes(app: Express): void {
       );
       res.send(JSON.stringify(jsonResponse, null, 2));
     } catch (error: any) {
-      console.error("Backup error:", error);
+      logger.error("Backup error", error);
       res.status(500).json({ message: error.message || "Failed to create backup" });
     }
   });
@@ -336,7 +337,7 @@ export function registerImportExportRoutes(app: Express): void {
       
       res.json({ logs, count });
     } catch (error: any) {
-      console.error("Audit log error:", error);
+      logger.error("Audit log error", error);
       res.status(500).json({ message: error.message || "Failed to fetch audit logs" });
     }
   });
@@ -348,7 +349,7 @@ export function registerImportExportRoutes(app: Express): void {
       const leads = await storage.getLeadsWithoutConsent(orgId);
       res.json(leads);
     } catch (error: any) {
-      console.error("TCPA no-consent error:", error);
+      logger.error("TCPA no-consent error", error);
       res.status(500).json({ message: error.message || "Failed to fetch leads without consent" });
     }
   });
@@ -359,7 +360,7 @@ export function registerImportExportRoutes(app: Express): void {
       const leads = await storage.getLeadsOptedOut(orgId);
       res.json(leads);
     } catch (error: any) {
-      console.error("TCPA opted-out error:", error);
+      logger.error("TCPA opted-out error", error);
       res.status(500).json({ message: error.message || "Failed to fetch opted-out leads" });
     }
   });
@@ -400,7 +401,7 @@ export function registerImportExportRoutes(app: Express): void {
       
       res.json(updated);
     } catch (error: any) {
-      console.error("Update consent error:", error);
+      logger.error("Update consent error", error);
       res.status(500).json({ message: error.message || "Failed to update consent" });
     }
   });
@@ -417,7 +418,7 @@ export function registerImportExportRoutes(app: Express): void {
       };
       res.json(policies);
     } catch (error: any) {
-      console.error("Get retention policies error:", error);
+      logger.error("Get retention policies error", error);
       res.status(500).json({ message: error.message || "Failed to fetch retention policies" });
     }
   });
@@ -454,7 +455,7 @@ export function registerImportExportRoutes(app: Express): void {
       
       res.json(updated.settings?.retentionPolicies);
     } catch (error: any) {
-      console.error("Update retention policies error:", error);
+      logger.error("Update retention policies error", error);
       res.status(500).json({ message: error.message || "Failed to update retention policies" });
     }
   });
@@ -507,7 +508,7 @@ export function registerImportExportRoutes(app: Express): void {
       
       res.json({ purgedCount, dataType, beforeDate });
     } catch (error: any) {
-      console.error("Purge data error:", error);
+      logger.error("Purge data error", error);
       res.status(500).json({ message: error.message || "Failed to purge data" });
     }
   });
@@ -532,7 +533,7 @@ export function registerImportExportRoutes(app: Express): void {
         optedOut: optedOut.length
       });
     } catch (error: any) {
-      console.error("TCPA stats error:", error);
+      logger.error("TCPA stats error", error);
       res.status(500).json({ message: error.message || "Failed to fetch TCPA stats" });
     }
   });

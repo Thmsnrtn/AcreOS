@@ -4,6 +4,7 @@ import { voiceCalls, callTranscripts, properties, leads, activityLog } from '../
 import { eq, and, desc, sql } from 'drizzle-orm';
 import OpenAI from 'openai';
 import { logActivity } from './systemActivityLogger';
+import { logger } from "../utils/logger";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -38,11 +39,11 @@ class VoiceAI {
       }).returning();
 
       // In production, would initialize Twilio call here
-      console.log(`Initiated ${direction} call to ${phoneNumber}`);
+      logger.info(`Initiated ${direction} call to ${phoneNumber}`);
 
       return call.id.toString();
     } catch (error) {
-      console.error('Failed to initiate call:', error);
+      logger.error('Failed to initiate call', error);
       throw error;
     }
   }
@@ -59,10 +60,10 @@ class VoiceAI {
       // Real-time audio transcription requires a WebSocket connection
       // to OpenAI's Realtime API. This method is a no-op until
       // a WebSocket-based voice pipeline is configured.
-      console.warn('[VoiceAI] Real-time transcription not yet configured.');
+      logger.warn('[VoiceAI] Real-time transcription not yet configured.');
       return '';
     } catch (error) {
-      console.error('Failed to process audio chunk:', error);
+      logger.error('Failed to process audio chunk', error);
       return '';
     }
   }
@@ -114,7 +115,7 @@ class VoiceAI {
 
       return transcript.id.toString();
     } catch (error) {
-      console.error('Failed to transcribe call:', error);
+      logger.error('Failed to transcribe call', error);
       throw error;
     }
   }
@@ -162,7 +163,7 @@ Respond with JSON in this format:
         };
       }
     } catch (error) {
-      console.error('Failed to analyze intent:', error);
+      logger.error('Failed to analyze intent', error);
       return {
         type: 'other',
         confidence: 0,
@@ -204,7 +205,7 @@ Format:
         return { score: 0, label: 'neutral' };
       }
     } catch (error) {
-      console.error('Failed to analyze sentiment:', error);
+      logger.error('Failed to analyze sentiment', error);
       return { score: 0, label: 'neutral' };
     }
   }
@@ -237,7 +238,7 @@ ${transcript.fullTranscript}`;
 
       return completion.choices[0].message.content || 'Unable to generate summary';
     } catch (error) {
-      console.error('Failed to generate summary:', error);
+      logger.error('Failed to generate summary', error);
       return 'Error generating summary';
     }
   }
@@ -294,7 +295,7 @@ ${transcript.fullTranscript}`;
         }
       }
     } catch (error) {
-      console.error('Failed to complete call:', error);
+      logger.error('Failed to complete call', error);
       throw error;
     }
   }
@@ -313,7 +314,7 @@ ${transcript.fullTranscript}`;
         limit,
       });
     } catch (error) {
-      console.error('Failed to get call history:', error);
+      logger.error('Failed to get call history', error);
       return [];
     }
   }
@@ -340,7 +341,7 @@ ${transcript.fullTranscript}`;
         transcript,
       };
     } catch (error) {
-      console.error('Failed to get call details:', error);
+      logger.error('Failed to get call details', error);
       return null;
     }
   }
@@ -357,7 +358,7 @@ ${transcript.fullTranscript}`;
       // For now, return recent calls
       return await this.getCallHistory(organizationId, 20);
     } catch (error) {
-      console.error('Failed to search calls:', error);
+      logger.error('Failed to search calls', error);
       return [];
     }
   }
@@ -419,7 +420,7 @@ ${transcript.fullTranscript}`;
         inboundVsOutbound: { inbound, outbound },
       };
     } catch (error) {
-      console.error('Failed to get call analytics:', error);
+      logger.error('Failed to get call analytics', error);
       return {
         totalCalls: 0,
         averageDuration: 0,
@@ -484,7 +485,7 @@ ${transcript.fullTranscript}`;
         metadata: { callId, actionItems },
       }).catch(() => {});
     } catch (err) {
-      console.error('[VoiceAI] updateLeadFromCall failed:', err);
+      logger.error('[VoiceAI] updateLeadFromCall failed', err);
     }
   }
 
@@ -522,7 +523,7 @@ Format: ["Action item 1", "Action item 2", ...]`;
         return [];
       }
     } catch (error) {
-      console.error('Failed to extract action items:', error);
+      logger.error('Failed to extract action items', error);
       return [];
     }
   }

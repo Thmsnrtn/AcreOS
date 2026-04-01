@@ -24,6 +24,7 @@
  */
 
 import { wsServer } from "../websocket";
+import { logger } from "../utils/logger";
 
 const MOTIVATION_KEYWORDS = [
   "divorce", "divorcing", "separated",
@@ -124,7 +125,7 @@ export async function createDeepgramStream(
 ): Promise<{ send: (audioChunk: Buffer) => void; close: () => void } | null> {
   const apiKey = process.env.DEEPGRAM_API_KEY;
   if (!apiKey) {
-    console.warn("[transcription] DEEPGRAM_API_KEY not set — real-time transcription unavailable");
+    logger.warn("[transcription] DEEPGRAM_API_KEY not set — real-time transcription unavailable");
     return null;
   }
 
@@ -154,7 +155,7 @@ export async function createDeepgramStream(
     });
 
     dg.on("error", (err: Error) => {
-      console.warn(`[transcription] Deepgram error for call ${callSid}: ${err.message}`);
+      logger.warn(`[transcription] Deepgram error for call ${callSid}: ${err.message}`);
     });
 
     return {
@@ -171,7 +172,7 @@ export async function createDeepgramStream(
       },
     };
   } catch (err: any) {
-    console.warn(`[transcription] Failed to create Deepgram stream: ${err.message}`);
+    logger.warn(`[transcription] Failed to create Deepgram stream: ${err.message}`);
     return null;
   }
 }

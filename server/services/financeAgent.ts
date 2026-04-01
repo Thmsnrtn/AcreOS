@@ -3,6 +3,7 @@ import { usageMeteringService } from "./credits";
 import { type Note, type Lead, type InsertPaymentReminder, type InsertSystemAlert } from "@shared/schema";
 import { logActivity } from "./systemActivityLogger";
 import OpenAI from "openai";
+import { logger } from "../utils/logger";
 
 function getOpenAIClient(): OpenAI | null {
   if (!process.env.OPENAI_API_KEY) {
@@ -119,7 +120,7 @@ export class FinanceAgentService {
 
       return response.choices[0]?.message?.content || this.getFallbackContent(borrowerName, amount, dueDate, type);
     } catch (error) {
-      console.error("Error generating reminder content:", error);
+      logger.error("Error generating reminder content", error);
       return this.getFallbackContent(borrowerName, amount, dueDate, type);
     }
   }
@@ -234,7 +235,7 @@ export class FinanceAgentService {
 
     for (const reminder of unprocessedReminders) {
       try {
-        console.log(`[FinanceAgent] Sending reminder ${reminder.id} (${reminder.type}) for note ${reminder.noteId}`);
+        logger.info(`[FinanceAgent] Sending reminder ${reminder.id} (${reminder.type}) for note ${reminder.noteId}`);
         
         const note = await storage.getNote(reminder.organizationId, reminder.noteId);
         if (!note) {
@@ -257,7 +258,7 @@ export class FinanceAgentService {
           });
           
           if (!result.success) {
-            console.log(`[FinanceAgent] Communication fallback for reminder ${reminder.id}: ${result.error || 'No provider configured'}`);
+            logger.info(`[FinanceAgent] Communication fallback for reminder ${reminder.id}: ${result.error || 'No provider configured'}`);
           }
         }
         
@@ -271,7 +272,7 @@ export class FinanceAgentService {
         maxProcessedId = Math.max(maxProcessedId, reminder.id);
         await storage.updateJobCursor(JOB_TYPE, maxProcessedId, 'running');
       } catch (error) {
-        console.error(`[FinanceAgent] Failed to send reminder ${reminder.id}:`, error);
+        logger.error(`[FinanceAgent] Failed to send reminder ${reminder.id}`, error);
         await storage.updatePaymentReminder(reminder.id, {
           status: "failed",
           failureReason: error instanceof Error ? error.message : "Unknown error",
@@ -307,7 +308,7 @@ export class FinanceAgentService {
       };
 
       await storage.createSystemAlert(alert);
-      console.log(`[FinanceAgent] Created default candidate alert for note ${note.id}`);
+      logger.info(`[FinanceAgent] Created default candidate alert for note ${note.id}`);
     }
   }
 
@@ -351,13 +352,13 @@ export class FinanceAgentService {
         } catch (error) {
           const errorMsg = `Error processing note ${note.id}: ${error instanceof Error ? error.message : "Unknown error"}`;
           errors.push(errorMsg);
-          console.error(`[FinanceAgent] ${errorMsg}`);
+          logger.error(`[FinanceAgent] ${errorMsg}`);
         }
       }
     } catch (error) {
       const errorMsg = `Error fetching notes for org ${orgId}: ${error instanceof Error ? error.message : "Unknown error"}`;
       errors.push(errorMsg);
-      console.error(`[FinanceAgent] ${errorMsg}`);
+      logger.error(`[FinanceAgent] ${errorMsg}`);
     }
 
     return { processed, remindersScheduled, statusUpdates, errors };
@@ -371,7 +372,7 @@ export class FinanceAgentService {
     errors: string[];
   }> {
     const JOB_TYPE = 'dunning';
-    console.log("[FinanceAgent] Starting finance agent job...");
+    logger.info("[FinanceAgent] Starting finance agent job...");
     
     const allErrors: string[] = [];
     let orgsProcessed = 0;
@@ -385,7 +386,7 @@ export class FinanceAgentService {
       const lastProcessedId = cursor?.lastProcessedId || 0;
 
       const { sent, failed } = await this.processRemindersWithCursor(lastProcessedId);
-      console.log(`[FinanceAgent] Processed pending reminders: ${sent} sent, ${failed} failed`);
+      logger.info(`[FinanceAgent] Processed pending reminders: ${sent} sent, ${failed} failed`);
 
       const orgs = await storage.getOrganizationsInDunning();
       const activeOrgs = orgs.length > 0 ? orgs : [];
@@ -408,7 +409,7 @@ export class FinanceAgentService {
       await storage.setJobStatus(JOB_TYPE, 'failed');
     }
 
-    console.log(`[FinanceAgent] Job complete: ${orgsProcessed} orgs, ${totalNotes} notes, ${remindersScheduled} scheduled`);
+    logger.info(`[FinanceAgent] Job complete: ${orgsProcessed} orgs, ${totalNotes} notes, ${remindersScheduled} scheduled`);
     if (remindersScheduled > 0 || orgsProcessed > 0) {
       logActivity({
         job: "finance_agent",

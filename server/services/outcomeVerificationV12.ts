@@ -14,6 +14,7 @@ import {
   type OutcomeVerificationContract,
 } from "@shared/schema";
 import { eq, desc, and, lte, sql, isNull } from "drizzle-orm";
+import { logger } from "../utils/logger";
 
 // ─── Verification Method Registry ─────────────────────────────────────────────
 
@@ -299,10 +300,8 @@ class OutcomeVerificationService {
       })
       .returning();
 
-    console.log(
-      `[outcome-verify] Contract created for ${params.agentCodename}/${params.actionType} — ` +
-        `next check at ${nextVerificationAt.toISOString()}`,
-    );
+    logger.info(`[outcome-verify] Contract created for ${params.agentCodename}/${params.actionType} — ` +
+        `next check at ${nextVerificationAt.toISOString()}`);
     return contract;
   }
 
@@ -344,17 +343,12 @@ class OutcomeVerificationService {
         }
       } catch (err) {
         errors++;
-        console.error(
-          `[outcome-verify] Error verifying contract ${contract.id}:`,
-          (err as Error).message,
-        );
+        logger.error(`[outcome-verify] Error verifying contract ${contract.id}`, undefined, { metadata: { detail: (err as Error).message } });
       }
     }
 
-    console.log(
-      `[outcome-verify] Processed ${processed} contracts: ${passed} passed, ` +
-        `${discrepancies} discrepancies, ${errors} errors`,
-    );
+    logger.info(`[outcome-verify] Processed ${processed} contracts: ${passed} passed, ` +
+        `${discrepancies} discrepancies, ${errors} errors`);
     return { processed, passed, discrepancies, errors };
   }
 
@@ -432,10 +426,8 @@ class OutcomeVerificationService {
       .returning();
 
     if (discrepancyDetected) {
-      console.warn(
-        `[outcome-verify] DISCREPANCY for contract ${contractId} ` +
-          `(${contract.agentCodename}/${contract.actionType}): ${discrepancyDetails}`,
-      );
+      logger.warn(`[outcome-verify] DISCREPANCY for contract ${contractId} ` +
+          `(${contract.agentCodename}/${contract.actionType}): ${discrepancyDetails}`);
     }
 
     return updated;

@@ -14,6 +14,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, gte, sql, count } from "drizzle-orm";
 import crypto from "crypto";
+import { logger } from "../utils/logger";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -260,7 +261,7 @@ class CrisisLeadershipEngine {
       const { infrastructureManager } = await import("./predictiveAutoscaler");
       await infrastructureManager.activateSurvivalMode(reason);
     } catch {
-      console.log(`[CrisisEngine] Survival mode requested but infrastructure manager unavailable: ${reason}`);
+      logger.info(`[CrisisEngine] Survival mode requested but infrastructure manager unavailable: ${reason}`);
     }
   }
 

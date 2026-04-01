@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Leading Indicators — Forward-looking metrics for Oracle's briefing.
  *

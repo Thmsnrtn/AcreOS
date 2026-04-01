@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { logger } from "../utils/logger";
 
 let openaiClient: OpenAI | null = null;
 
@@ -217,7 +218,7 @@ Respond in JSON format:
       };
     }
   } catch (error) {
-    console.error("AI intent classification error:", error);
+    logger.error("AI intent classification error", error);
   }
 
   return simpleResult;

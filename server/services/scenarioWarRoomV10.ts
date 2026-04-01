@@ -26,6 +26,7 @@ import { eq, desc, and } from "drizzle-orm";
 import { routeAITask, TaskComplexity } from "./aiRouter";
 import { companyAgentService } from "./companyAgents";
 import { resolveAgentData } from "./agentDataResolvers";
+import { logger } from "../utils/logger";
 
 // ─── Agent Domain Mapping ──────────────────────────────────────────────────
 
@@ -154,7 +155,7 @@ Respond in JSON:
           opportunities: parsed.opportunities || [],
         };
       } catch (err) {
-        console.error(`[WarRoom] ${agent.codename} projection failed:`, err);
+        logger.error(`[WarRoom] ${agent.codename} projection failed`, err);
         return {
           agentCodename: agent.codename,
           domain: domainInfo.domain,

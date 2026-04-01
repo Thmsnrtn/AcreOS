@@ -26,6 +26,7 @@ import { eq, desc, and, isNull } from "drizzle-orm";
 import { routeAITask, TaskComplexity } from "./aiRouter";
 import { companyAgentService } from "./companyAgents";
 import { resolveAgentData } from "./agentDataResolvers";
+import { logger } from "../utils/logger";
 
 // ─── Service ─────────────────────────────────────────────────────────────────
 
@@ -58,7 +59,7 @@ class DelegationDepthService {
 
     // Run the breakdown asynchronously
     this.breakdownGoal(topGoal.id, input.goal, input.coordinatorAgent).catch(err => {
-      console.error(`[Delegation] Goal ${topGoal.id} breakdown failed:`, err);
+      logger.error(`[Delegation] Goal ${topGoal.id} breakdown failed`, err);
     });
 
     return topGoal.id;
@@ -164,7 +165,7 @@ Respond in JSON:
         .where(eq(delegatedGoals.id, parentGoalId));
 
     } catch (err) {
-      console.error(`[Delegation] Breakdown failed for goal ${parentGoalId}:`, err);
+      logger.error(`[Delegation] Breakdown failed for goal ${parentGoalId}`, err);
     }
   }
 

@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 /**
  * Data Ingest Job
  *
@@ -23,6 +22,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, gte, isNotNull, sql } from "drizzle-orm";
 import { subDays } from "date-fns";
+import { logger } from "../utils/logger";
 
 export const DATA_INGEST_QUEUE_NAME = "data-ingest";
 
@@ -134,7 +134,7 @@ async function processDataIngestJob(job: Job): Promise<void> {
       .limit(2000);
 
     totalPulled = recentDeals.length;
-    console.log(`[DataIngest] Pulled ${totalPulled} closed deals from last ${LOOKBACK_DAYS} days`);
+    logger.info(`[DataIngest] Pulled ${totalPulled} closed deals from last ${LOOKBACK_DAYS} days`);
 
     for (const deal of recentDeals) {
       // Fetch associated property
@@ -205,7 +205,7 @@ async function processDataIngestJob(job: Job): Promise<void> {
         if (insertErr.code === "23505") {
           totalDuplicates++;
         } else {
-          console.error(`[DataIngest] Insert failed for deal ${deal.id}:`, insertErr.message);
+          logger.error(`[DataIngest] Insert failed for deal ${deal.id}`, undefined, { metadata: { detail: insertErr.message } });
           totalRejected++;
         }
       }
@@ -231,11 +231,9 @@ async function processDataIngestJob(job: Job): Promise<void> {
         .where(eq(backgroundJobs.id, bgJobId));
     }
 
-    console.log(
-      `[DataIngest] Done. Pulled: ${totalPulled}, Valid: ${totalValid} (H:${qualityHigh}/M:${qualityMedium}/L:${qualityLow}), Duplicates: ${totalDuplicates}, Rejected: ${totalRejected}`
-    );
+    logger.info(`[DataIngest] Done. Pulled: ${totalPulled}, Valid: ${totalValid} (H:${qualityHigh}/M:${qualityMedium}/L:${qualityLow}), Duplicates: ${totalDuplicates}, Rejected: ${totalRejected}`);
   } catch (err: any) {
-    console.error("[DataIngest] Fatal error:", err.message);
+    logger.error("[DataIngest] Fatal error", err);
     if (bgJobId) {
       await db
         .update(backgroundJobs)
@@ -266,7 +264,7 @@ export async function registerDataIngestJob(queue: Queue): Promise<void> {
       removeOnFail: 5,
     }
   );
-  console.log("[DataIngest] Registered nightly data ingestion job at 10 PM UTC");
+  logger.info("[DataIngest] Registered nightly data ingestion job at 10 PM UTC");
 }
 
 export function dataIngestJob(redisConnection: any): Worker {
@@ -282,11 +280,11 @@ export function dataIngestJob(redisConnection: any): Worker {
   );
 
   worker.on("completed", (job) => {
-    console.log(`[DataIngest] Job ${job.id} completed`);
+    logger.info(`[DataIngest] Job ${job.id} completed`);
   });
 
   worker.on("failed", (job, err) => {
-    console.error(`[DataIngest] Job ${job?.id} failed:`, err.message);
+    logger.error(`[DataIngest] Job ${job?.id} failed`, err);
   });
 
   return worker;

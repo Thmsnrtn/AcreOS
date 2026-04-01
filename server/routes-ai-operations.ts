@@ -173,6 +173,7 @@ function validateNumericParam(paramName: string) {
 
 // Org middleware — imported from shared module
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
+import { logger } from "./utils/logger";
 
 export function registerAIOperationsRoutes(app: Express): void {
   const router = createRouter();
@@ -190,7 +191,7 @@ export function registerAIOperationsRoutes(app: Express): void {
       
       res.json({ success: true, dossierId: dossier.id });
     } catch (error: any) {
-      console.error("Due diligence request error:", error);
+      logger.error("Due diligence request error", error);
       res.status(500).json({ message: error.message || "Failed to create dossier request" });
     }
   });
@@ -207,7 +208,7 @@ export function registerAIOperationsRoutes(app: Express): void {
       }
       res.json(dossier);
     } catch (error: any) {
-      console.error("Get dossier error:", error);
+      logger.error("Get dossier error", error);
       res.status(500).json({ message: error.message || "Failed to get dossier" });
     }
   });
@@ -225,7 +226,7 @@ export function registerAIOperationsRoutes(app: Express): void {
       
       res.json(prediction);
     } catch (error: any) {
-      console.error("Intent prediction error:", error);
+      logger.error("Intent prediction error", error);
       res.status(500).json({ message: error.message || "Failed to predict intent" });
     }
   });
@@ -240,7 +241,7 @@ export function registerAIOperationsRoutes(app: Express): void {
       
       res.json(predictions);
     } catch (error: any) {
-      console.error("Get predictions error:", error);
+      logger.error("Get predictions error", error);
       res.status(500).json({ message: error.message || "Failed to get predictions" });
     }
   });
@@ -258,7 +259,7 @@ export function registerAIOperationsRoutes(app: Express): void {
       
       res.json(recommendation);
     } catch (error: any) {
-      console.error("Acquisition pricing error:", error);
+      logger.error("Acquisition pricing error", error);
       res.status(500).json({ message: error.message || "Failed to calculate acquisition price" });
     }
   });
@@ -273,7 +274,7 @@ export function registerAIOperationsRoutes(app: Express): void {
       
       res.json(recommendation);
     } catch (error: any) {
-      console.error("Disposition pricing error:", error);
+      logger.error("Disposition pricing error", error);
       res.status(500).json({ message: error.message || "Failed to calculate disposition price" });
     }
   });
@@ -333,7 +334,7 @@ export function registerAIOperationsRoutes(app: Express): void {
         propertyAcres: acres,
       });
     } catch (error: any) {
-      console.error("Pricing optimization error:", error);
+      logger.error("Pricing optimization error", error);
       res.status(500).json({ message: error.message || "Failed to optimize pricing" });
     }
   });
@@ -351,7 +352,7 @@ export function registerAIOperationsRoutes(app: Express): void {
       
       res.json(pattern);
     } catch (error: any) {
-      console.error("Pattern analysis error:", error);
+      logger.error("Pattern analysis error", error);
       res.status(500).json({ message: error.message || "Failed to analyze deal pattern" });
     }
   });
@@ -366,7 +367,7 @@ export function registerAIOperationsRoutes(app: Express): void {
       
       res.json(matches);
     } catch (error: any) {
-      console.error("Pattern matching error:", error);
+      logger.error("Pattern matching error", error);
       res.status(500).json({ message: error.message || "Failed to find matching patterns" });
     }
   });
@@ -384,7 +385,7 @@ export function registerAIOperationsRoutes(app: Express): void {
       
       res.json(session);
     } catch (error: any) {
-      console.error("Start negotiation session error:", error);
+      logger.error("Start negotiation session error", error);
       res.status(500).json({ message: error.message || "Failed to start negotiation session" });
     }
   });
@@ -399,7 +400,7 @@ export function registerAIOperationsRoutes(app: Express): void {
       
       res.json(response);
     } catch (error: any) {
-      console.error("Handle objection error:", error);
+      logger.error("Handle objection error", error);
       res.status(500).json({ message: error.message || "Failed to handle objection" });
     }
   });
@@ -414,7 +415,7 @@ export function registerAIOperationsRoutes(app: Express): void {
       
       res.json(sessions);
     } catch (error: any) {
-      console.error("Get negotiation session error:", error);
+      logger.error("Get negotiation session error", error);
       res.status(500).json({ message: error.message || "Failed to get negotiation session" });
     }
   });
@@ -432,7 +433,7 @@ export function registerAIOperationsRoutes(app: Express): void {
       
       res.json({ success: true });
     } catch (error: any) {
-      console.error("Record sequence performance error:", error);
+      logger.error("Record sequence performance error", error);
       res.status(500).json({ message: error.message || "Failed to record performance" });
     }
   });
@@ -447,7 +448,7 @@ export function registerAIOperationsRoutes(app: Express): void {
       
       res.json(analysis);
     } catch (error: any) {
-      console.error("Sequence analysis error:", error);
+      logger.error("Sequence analysis error", error);
       res.status(500).json({ message: error.message || "Failed to analyze sequence" });
     }
   });
@@ -465,7 +466,7 @@ export function registerAIOperationsRoutes(app: Express): void {
       
       res.json({ success: true, transcriptId });
     } catch (error: any) {
-      console.error("Record voice call error:", error);
+      logger.error("Record voice call error", error);
       res.status(500).json({ message: error.message || "Failed to record call" });
     }
   });
@@ -480,7 +481,7 @@ export function registerAIOperationsRoutes(app: Express): void {
       
       res.json(transcripts);
     } catch (error: any) {
-      console.error("Get transcript error:", error);
+      logger.error("Get transcript error", error);
       res.status(500).json({ message: error.message || "Failed to get transcript" });
     }
   });
@@ -498,7 +499,7 @@ export function registerAIOperationsRoutes(app: Express): void {
       
       res.json(result);
     } catch (error: any) {
-      console.error("Portfolio monitor error:", error);
+      logger.error("Portfolio monitor error", error);
       res.status(500).json({ message: error.message || "Failed to monitor property" });
     }
   });
@@ -518,7 +519,7 @@ export function registerAIOperationsRoutes(app: Express): void {
       
       res.json(alerts);
     } catch (error: any) {
-      console.error("Get alerts error:", error);
+      logger.error("Get alerts error", error);
       res.status(500).json({ message: error.message || "Failed to get alerts" });
     }
   });
@@ -544,7 +545,7 @@ export function registerAIOperationsRoutes(app: Express): void {
       }
       res.json(alert);
     } catch (error: any) {
-      console.error("Update alert error:", error);
+      logger.error("Update alert error", error);
       res.status(500).json({ message: error.message || "Failed to update alert" });
     }
   });
@@ -558,7 +559,7 @@ export function registerAIOperationsRoutes(app: Express): void {
       
       res.json({ success: true, results, alertsGenerated: results.reduce((sum, r) => sum + r.alertsCreated, 0) });
     } catch (error: any) {
-      console.error("Portfolio scan error:", error);
+      logger.error("Portfolio scan error", error);
       res.status(500).json({ message: error.message || "Failed to scan portfolio" });
     }
   });
@@ -576,7 +577,7 @@ export function registerAIOperationsRoutes(app: Express): void {
       
       res.json(analysis);
     } catch (error: any) {
-      console.error("Document analysis error:", error);
+      logger.error("Document analysis error", error);
       res.status(500).json({ message: error.message || "Failed to analyze document" });
     }
   });
@@ -591,7 +592,7 @@ export function registerAIOperationsRoutes(app: Express): void {
       
       res.json(documents);
     } catch (error: any) {
-      console.error("Get document analysis error:", error);
+      logger.error("Get document analysis error", error);
       res.status(500).json({ message: error.message || "Failed to get document analysis" });
     }
   });
@@ -609,7 +610,7 @@ export function registerAIOperationsRoutes(app: Express): void {
       
       res.json(forecast);
     } catch (error: any) {
-      console.error("Cash flow forecast error:", error);
+      logger.error("Cash flow forecast error", error);
       res.status(500).json({ message: error.message || "Failed to generate forecast" });
     }
   });
@@ -623,7 +624,7 @@ export function registerAIOperationsRoutes(app: Express): void {
       
       res.json(summary);
     } catch (error: any) {
-      console.error("Get organization cash flow error:", error);
+      logger.error("Get organization cash flow error", error);
       res.status(500).json({ message: error.message || "Failed to get organization cash flow" });
     }
   });
@@ -640,7 +641,7 @@ export function registerAIOperationsRoutes(app: Express): void {
       
       res.json(rule);
     } catch (error: any) {
-      console.error("Add compliance rule error:", error);
+      logger.error("Add compliance rule error", error);
       res.status(500).json({ message: error.message || "Failed to add compliance rule" });
     }
   });
@@ -656,7 +657,7 @@ export function registerAIOperationsRoutes(app: Express): void {
       
       res.json(rules);
     } catch (error: any) {
-      console.error("Get compliance rules error:", error);
+      logger.error("Get compliance rules error", error);
       res.status(500).json({ message: error.message || "Failed to get compliance rules" });
     }
   });
@@ -671,7 +672,7 @@ export function registerAIOperationsRoutes(app: Express): void {
       
       res.json(result);
     } catch (error: any) {
-      console.error("Compliance check error:", error);
+      logger.error("Compliance check error", error);
       res.status(500).json({ message: error.message || "Failed to run compliance check" });
     }
   });
@@ -689,7 +690,7 @@ export function registerAIOperationsRoutes(app: Express): void {
       
       res.json(profile);
     } catch (error: any) {
-      console.error("Create buyer profile error:", error);
+      logger.error("Create buyer profile error", error);
       res.status(500).json({ message: error.message || "Failed to create buyer profile" });
     }
   });
@@ -704,7 +705,7 @@ export function registerAIOperationsRoutes(app: Express): void {
       
       res.json(matches);
     } catch (error: any) {
-      console.error("Find buyer matches error:", error);
+      logger.error("Find buyer matches error", error);
       res.status(500).json({ message: error.message || "Failed to find buyer matches" });
     }
   });
@@ -722,7 +723,7 @@ export function registerAIOperationsRoutes(app: Express): void {
       
       res.json(qualification);
     } catch (error: any) {
-      console.error("Buyer qualification error:", error);
+      logger.error("Buyer qualification error", error);
       res.status(500).json({ message: error.message || "Failed to qualify buyer" });
     }
   });
@@ -739,7 +740,7 @@ export function registerAIOperationsRoutes(app: Express): void {
       }
       res.json(qualification);
     } catch (error: any) {
-      console.error("Get qualification error:", error);
+      logger.error("Get qualification error", error);
       res.status(500).json({ message: error.message || "Failed to get qualification" });
     }
   });
@@ -757,7 +758,7 @@ export function registerAIOperationsRoutes(app: Express): void {
       
       res.json(recommendations);
     } catch (error: any) {
-      console.error("Disposition recommendation error:", error);
+      logger.error("Disposition recommendation error", error);
       res.status(500).json({ message: error.message || "Failed to get disposition recommendations" });
     }
   });
@@ -772,7 +773,7 @@ export function registerAIOperationsRoutes(app: Express): void {
       
       res.json(recommendations);
     } catch (error: any) {
-      console.error("Get property recommendations error:", error);
+      logger.error("Get property recommendations error", error);
       res.status(500).json({ message: error.message || "Failed to get property recommendations" });
     }
   });

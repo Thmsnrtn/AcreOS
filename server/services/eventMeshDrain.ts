@@ -16,6 +16,7 @@ import { notificationDispatcher } from "./notificationDispatcher";
 import { db } from "../db";
 import { eventMeshSubscriptions } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { logger } from "../utils/logger";
 
 // ─── Subscriber Callbacks ────────────────────────────────────────────────────
 
@@ -76,7 +77,7 @@ const subscriberCallbacks: Record<string, SubscriberCallback> = {
     if (agentEvents.some((t) => event.eventType.includes(t))) {
       // The existing agent reaction processor will pick this up
       // We just ensure it's visible in the event stream
-      console.log(`[event-mesh-drain] Agent event: ${event.eventType} from ${event.publisher}`);
+      logger.info(`[event-mesh-drain] Agent event: ${event.eventType} from ${event.publisher}`);
     }
   },
 };
@@ -110,9 +111,9 @@ class EventMeshDrainService {
       });
 
       this.initialized = true;
-      console.log("[event-mesh-drain] Initialized with 3 system subscribers");
+      logger.info("[event-mesh-drain] Initialized with 3 system subscribers");
     } catch (err: any) {
-      console.error("[event-mesh-drain] Initialization error:", err.message);
+      logger.error("[event-mesh-drain] Initialization error", err);
     }
   }
 
@@ -148,10 +149,7 @@ class EventMeshDrainService {
               processed++;
             } catch (eventErr: any) {
               errors++;
-              console.error(
-                `[event-mesh-drain] Error processing ${event.eventId} for ${sub.subscriber}:`,
-                eventErr.message,
-              );
+              logger.error(`[event-mesh-drain] Error processing ${event.eventId} for ${sub.subscriber}`, undefined, { metadata: { detail: eventErr.message } });
 
               // Dead-letter after max retries
               if ((event.retryCount ?? 0) >= (event.maxRetries ?? 3)) {
@@ -161,15 +159,15 @@ class EventMeshDrainService {
           }
         } catch (subErr: any) {
           errors++;
-          console.error(`[event-mesh-drain] Error for subscriber ${sub.subscriber}:`, subErr.message);
+          logger.error(`[event-mesh-drain] Error for subscriber ${sub.subscriber}`, undefined, { metadata: { detail: subErr.message } });
         }
       }
     } catch (err: any) {
-      console.error("[event-mesh-drain] Drain error:", err.message);
+      logger.error("[event-mesh-drain] Drain error", err);
     }
 
     if (processed > 0 || errors > 0) {
-      console.log(`[event-mesh-drain] Processed ${processed}, errors ${errors}`);
+      logger.info(`[event-mesh-drain] Processed ${processed}, errors ${errors}`);
     }
 
     return { processed, errors };

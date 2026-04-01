@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Marketplace Enhancements — Items 126-140
  * Listing quality, buyer saved searches, price history, activity indicators, etc.

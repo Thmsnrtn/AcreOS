@@ -8,6 +8,7 @@ import {
   type Organization
 } from "@shared/schema";
 import { logActivity } from "./systemActivityLogger";
+import { logger } from "../utils/logger";
 
 class DunningService {
   private readonly HIGH_VALUE_THRESHOLD_CENTS = 10000; // $100+ = high value customer
@@ -20,11 +21,11 @@ class DunningService {
     attemptNumber: number
   ): Promise<void> {
     try {
-      console.log(`[Dunning] Handling payment failure for org ${organizationId}, invoice ${stripeInvoiceId}, attempt ${attemptNumber}`);
+      logger.info(`[Dunning] Handling payment failure for org ${organizationId}, invoice ${stripeInvoiceId}, attempt ${attemptNumber}`);
 
       const org = await storage.getOrganization(organizationId);
       if (!org) {
-        console.error(`[Dunning] Organization ${organizationId} not found`);
+        logger.error(`[Dunning] Organization ${organizationId} not found`);
         return;
       }
 
@@ -76,7 +77,7 @@ class DunningService {
       await storage.updateOrganization(organizationId, orgUpdates);
 
       if (notificationToSend) {
-        console.log(`[Dunning] Scheduled ${notificationToSend.type} notification for org ${organizationId}`);
+        logger.info(`[Dunning] Scheduled ${notificationToSend.type} notification for org ${organizationId}`);
       }
 
       if (amountDueCents >= this.HIGH_VALUE_THRESHOLD_CENTS) {
@@ -87,7 +88,7 @@ class DunningService {
         );
       }
 
-      console.log(`[Dunning] Updated org ${organizationId} to stage: ${newStage}, next retry: ${nextRetryAt?.toISOString() || 'none'}`);
+      logger.info(`[Dunning] Updated org ${organizationId} to stage: ${newStage}, next retry: ${nextRetryAt?.toISOString() || 'none'}`);
       logActivity({
         orgId: organizationId,
         job: "dunning",
@@ -96,7 +97,7 @@ class DunningService {
         metadata: { newStage, amountDueCents, attemptNumber },
       }).catch(() => {});
     } catch (error) {
-      console.error(`[Dunning] Error handling payment failure for org ${organizationId}:`, error);
+      logger.error(`[Dunning] Error handling payment failure for org ${organizationId}`, error);
       throw error;
     }
   }
@@ -107,16 +108,16 @@ class DunningService {
     amountPaidCents: number
   ): Promise<void> {
     try {
-      console.log(`[Dunning] Handling payment success for org ${organizationId}, invoice ${stripeInvoiceId}`);
+      logger.info(`[Dunning] Handling payment success for org ${organizationId}, invoice ${stripeInvoiceId}`);
 
       const org = await storage.getOrganization(organizationId);
       if (!org) {
-        console.error(`[Dunning] Organization ${organizationId} not found`);
+        logger.error(`[Dunning] Organization ${organizationId} not found`);
         return;
       }
 
       if (org.dunningStage === "none" || !org.dunningStage) {
-        console.log(`[Dunning] Org ${organizationId} not in dunning, skipping resolution`);
+        logger.info(`[Dunning] Org ${organizationId} not in dunning, skipping resolution`);
         return;
       }
 
@@ -138,7 +139,7 @@ class DunningService {
         }
       }
 
-      console.log(`[Dunning] Resolved dunning for org ${organizationId}, payment of ${amountPaidCents} cents received`);
+      logger.info(`[Dunning] Resolved dunning for org ${organizationId}, payment of ${amountPaidCents} cents received`);
       logActivity({
         orgId: organizationId,
         job: "dunning",
@@ -147,7 +148,7 @@ class DunningService {
         metadata: { amountPaidCents, stripeInvoiceId },
       }).catch(() => {});
     } catch (error) {
-      console.error(`[Dunning] Error handling payment success for org ${organizationId}:`, error);
+      logger.error(`[Dunning] Error handling payment success for org ${organizationId}`, error);
       throw error;
     }
   }
@@ -169,14 +170,14 @@ class DunningService {
     try {
       return await storage.getOrganizationsInDunning();
     } catch (error) {
-      console.error("[Dunning] Error fetching organizations in dunning:", error);
+      logger.error("[Dunning] Error fetching organizations in dunning", error);
       return [];
     }
   }
 
   async processScheduledTasks(): Promise<void> {
     try {
-      console.log("[Dunning] Processing scheduled dunning tasks...");
+      logger.info("[Dunning] Processing scheduled dunning tasks...");
       
       const orgsInDunning = await this.getActiveDunningOrgs();
       const now = new Date();
@@ -190,14 +191,14 @@ class DunningService {
           const expectedStage = this.calculateDunningStage(daysSinceFailure);
 
           if (expectedStage !== org.dunningStage) {
-            console.log(`[Dunning] Advancing org ${org.id} from ${org.dunningStage} to ${expectedStage}`);
+            logger.info(`[Dunning] Advancing org ${org.id} from ${org.dunningStage} to ${expectedStage}`);
             
             await storage.updateOrganization(org.id, {
               dunningStage: expectedStage,
             });
 
             if (expectedStage === "cancelled") {
-              console.log(`[Dunning] Org ${org.id} reached cancellation stage - subscription should be cancelled`);
+              logger.info(`[Dunning] Org ${org.id} reached cancellation stage - subscription should be cancelled`);
               
               await this.createRevenueAtRiskAlert(
                 org.id,
@@ -217,7 +218,7 @@ class DunningService {
               const alreadySent = sentNotifications.some(n => n.type === notification.type);
               
               if (!alreadySent) {
-                console.log(`[Dunning] Sending ${notification.type} notification for org ${org.id}`);
+                logger.info(`[Dunning] Sending ${notification.type} notification for org ${org.id}`);
                 
                 await storage.updateDunningEvent(latestEvent.id, {
                   notificationsSent: [
@@ -233,13 +234,13 @@ class DunningService {
             }
           }
         } catch (orgError) {
-          console.error(`[Dunning] Error processing org ${org.id}:`, orgError);
+          logger.error(`[Dunning] Error processing org ${org.id}`, undefined, { metadata: { detail: orgError } });
         }
       }
 
-      console.log(`[Dunning] Processed ${orgsInDunning.length} organizations`);
+      logger.info(`[Dunning] Processed ${orgsInDunning.length} organizations`);
     } catch (error) {
-      console.error("[Dunning] Error processing scheduled tasks:", error);
+      logger.error("[Dunning] Error processing scheduled tasks", error);
       throw error;
     }
   }
@@ -277,9 +278,9 @@ class DunningService {
       };
 
       await storage.createSystemAlert(alert);
-      console.log(`[Dunning] Created revenue at risk alert for org ${organizationId}: $${formattedAmount}`);
+      logger.info(`[Dunning] Created revenue at risk alert for org ${organizationId}: $${formattedAmount}`);
     } catch (error) {
-      console.error(`[Dunning] Error creating revenue at risk alert for org ${organizationId}:`, error);
+      logger.error(`[Dunning] Error creating revenue at risk alert for org ${organizationId}`, error);
     }
   }
 
@@ -312,7 +313,7 @@ class DunningService {
       const org = await storage.getOrganization(organizationId);
       if (!org || !org.dunningStage || org.dunningStage === "none") return;
 
-      console.log(`[Dunning] Payment recovered for org ${organizationId} — clearing dunning stage`);
+      logger.info(`[Dunning] Payment recovered for org ${organizationId} — clearing dunning stage`);
       await storage.updateOrganization(organizationId, {
         dunningStage: "none",
         dunningStartedAt: null,
@@ -330,7 +331,7 @@ class DunningService {
         } as any);
       } catch {}
     } catch (err: any) {
-      console.error(`[Dunning] handlePaymentRecovered error for org ${organizationId}:`, err.message);
+      logger.error(`[Dunning] handlePaymentRecovered error for org ${organizationId}`, err);
     }
   }
 }

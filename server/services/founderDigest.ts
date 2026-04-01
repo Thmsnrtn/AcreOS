@@ -8,6 +8,7 @@ import { eq, and, desc, gte, count, sql, lt } from "drizzle-orm";
 import OpenAI from "openai";
 import { emailService } from "./emailService";
 import { getFounderEmails } from "./founder";
+import { logger } from "../utils/logger";
 
 const openai = new OpenAI();
 
@@ -206,7 +207,7 @@ export const founderDigestService = {
     const founderEmails = getFounderEmails();
     const primaryEmail = founderEmails[0];
     if (!primaryEmail) {
-      console.warn("[founderDigest] No founder email configured (set FOUNDER_EMAIL or FOUNDER_EMAILS env var)");
+      logger.warn("[founderDigest] No founder email configured (set FOUNDER_EMAIL or FOUNDER_EMAILS env var)");
       return { digestId: digestRecord.id, emailSent: false };
     }
 
@@ -249,15 +250,15 @@ export async function startFounderDigestJob(withJobLock: Function): Promise<void
     if (utcHour !== SEND_UTC_HOUR) return;
 
     await withJobLock("founder_digest", 23 * 60 * 60, async () => {
-      console.log("[founderDigest] Generating daily digest...");
+      logger.info("[founderDigest] Generating daily digest...");
       const result = await founderDigestService.generate();
-      console.log(`[founderDigest] Digest #${result.digestId} generated, email sent: ${result.emailSent}`);
+      logger.info(`[founderDigest] Digest #${result.digestId} generated, email sent: ${result.emailSent}`);
     });
   };
 
   // Check every hour
   setInterval(() => {
-    runCheck().catch(err => console.error("[founderDigest] Error:", err));
+    runCheck().catch(err => logger.error("[founderDigest] Error", err));
   }, ONE_HOUR_MS);
 
   // Run check immediately (handles case where server restarts at send hour)

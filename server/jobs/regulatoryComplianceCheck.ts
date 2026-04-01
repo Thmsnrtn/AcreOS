@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 /**
  * Regulatory Compliance Check Job
  *
@@ -27,6 +26,7 @@ import {
 import { eq, and, desc, gte, inArray } from "drizzle-orm";
 import { subDays } from "date-fns";
 import { sendEmail } from "../services/emailService";
+import { logger } from "../utils/logger";
 
 export const REGULATORY_COMPLIANCE_QUEUE_NAME = "regulatory-compliance-check";
 
@@ -93,7 +93,7 @@ async function fetchFeedItems(feed: FeedDefinition): Promise<FeedItem[]> {
     });
 
     if (!response.ok) {
-      console.warn(`[RegulatoryCompliance] Feed ${feed.name} returned ${response.status}`);
+      logger.warn(`[RegulatoryCompliance] Feed ${feed.name} returned ${response.status}`);
       return [];
     }
 
@@ -118,7 +118,7 @@ async function fetchFeedItems(feed: FeedDefinition): Promise<FeedItem[]> {
 
     return items;
   } catch (err: any) {
-    console.warn(`[RegulatoryCompliance] Failed to fetch feed ${feed.name}:`, err.message);
+    logger.warn(`[RegulatoryCompliance] Failed to fetch feed ${feed.name}`, { metadata: { detail: err.message } });
     return [];
   }
 }
@@ -256,16 +256,14 @@ async function processRegulatoryComplianceJob(job: Job): Promise<void> {
             const alerts = await alertAffectedOrgs(change, state);
             totalAlertsCreated += alerts;
 
-            console.log(
-              `[RegulatoryCompliance] New change: "${item.title}" — ${alerts} alerts created`
-            );
+            logger.info(`[RegulatoryCompliance] New change: "${item.title}" — ${alerts} alerts created`);
           } catch (itemErr: any) {
-            console.warn(`[RegulatoryCompliance] Failed to process item "${item.title}":`, itemErr.message);
+            logger.warn(`[RegulatoryCompliance] Failed to process item "${item.title}"`, { metadata: { detail: itemErr.message } });
           }
         }
       } catch (feedErr: any) {
         totalFailed++;
-        console.error(`[RegulatoryCompliance] Feed "${feed.name}" error:`, feedErr.message);
+        logger.error(`[RegulatoryCompliance] Feed "${feed.name}" error`, undefined, { metadata: { detail: feedErr.message } });
       }
     }
 
@@ -281,11 +279,9 @@ async function processRegulatoryComplianceJob(job: Job): Promise<void> {
         .where(eq(backgroundJobs.id, bgJobId));
     }
 
-    console.log(
-      `[RegulatoryCompliance] Done. Feeds: ${totalFeedsChecked}, New changes: ${totalNewChanges}, Alerts: ${totalAlertsCreated}, Failures: ${totalFailed}`
-    );
+    logger.info(`[RegulatoryCompliance] Done. Feeds: ${totalFeedsChecked}, New changes: ${totalNewChanges}, Alerts: ${totalAlertsCreated}, Failures: ${totalFailed}`);
   } catch (err: any) {
-    console.error("[RegulatoryCompliance] Fatal error:", err.message);
+    logger.error("[RegulatoryCompliance] Fatal error", err);
     if (bgJobId) {
       await db
         .update(backgroundJobs)
@@ -316,7 +312,7 @@ export async function registerRegulatoryComplianceJob(queue: Queue): Promise<voi
       removeOnFail: 3,
     }
   );
-  console.log("[RegulatoryCompliance] Registered daily compliance check at 4 AM UTC");
+  logger.info("[RegulatoryCompliance] Registered daily compliance check at 4 AM UTC");
 }
 
 export function regulatoryComplianceCheckJob(redisConnection: any): Worker {
@@ -332,11 +328,11 @@ export function regulatoryComplianceCheckJob(redisConnection: any): Worker {
   );
 
   worker.on("completed", (job) => {
-    console.log(`[RegulatoryCompliance] Job ${job.id} completed`);
+    logger.info(`[RegulatoryCompliance] Job ${job.id} completed`);
   });
 
   worker.on("failed", (job, err) => {
-    console.error(`[RegulatoryCompliance] Job ${job?.id} failed:`, err.message);
+    logger.error(`[RegulatoryCompliance] Job ${job?.id} failed`, err);
   });
 
   return worker;

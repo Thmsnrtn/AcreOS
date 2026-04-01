@@ -12,6 +12,7 @@
 import { db } from "../db";
 import { agentMemory } from "@shared/schema";
 import { eq, and, desc, sql, inArray } from "drizzle-orm";
+import { logger } from "../utils/logger";
 
 // Knowledge sharing rules: who shares what with whom
 const SHARING_RULES: Record<string, { recipients: string[]; topics: string[] }> = {
@@ -81,7 +82,7 @@ export async function shareKnowledge(params: {
   }
 
   if (sharedWith.length > 0) {
-    console.log(`[KnowledgeGraph] ${params.fromAgent} shared "${params.topic}" with ${sharedWith.join(", ")}`);
+    logger.info(`[KnowledgeGraph] ${params.fromAgent} shared "${params.topic}" with ${sharedWith.join(", ")}`);
   }
 
   return { sharedWith };

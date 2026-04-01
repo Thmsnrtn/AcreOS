@@ -15,6 +15,7 @@
  */
 
 import type { Request, Response, NextFunction } from "express";
+import { logger } from "../utils/logger";
 
 // ─── Injection patterns ───────────────────────────────────────────────────────
 
@@ -82,9 +83,7 @@ export function promptInjectionMiddleware(
         const original = req.body[field] as string;
         const sanitized = sanitizePrompt(original);
         if (sanitized !== original) {
-          console.warn(
-            `[promptInjection] Potential injection detected and sanitized in field "${field}" from ${req.ip}`
-          );
+          logger.warn(`[promptInjection] Potential injection detected and sanitized in field "${field}" from ${req.ip}`);
         }
         req.body[field] = sanitized;
       }
@@ -97,9 +96,7 @@ export function promptInjectionMiddleware(
           const original = msg.content as string;
           const sanitized = sanitizePrompt(original);
           if (sanitized !== original) {
-            console.warn(
-              `[promptInjection] Potential injection sanitized in messages[].content from ${req.ip}`
-            );
+            logger.warn(`[promptInjection] Potential injection sanitized in messages[].content from ${req.ip}`);
           }
           return { ...msg, content: sanitized };
         }

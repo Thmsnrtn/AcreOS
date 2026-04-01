@@ -2,6 +2,7 @@ import { db } from "../db";
 import { organizationIntegrations } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import Lob from 'lob';
+import { logger } from "../utils/logger";
 
 export enum MailProvider {
   LOB = "lob",
@@ -346,7 +347,7 @@ export async function sendLetter(options: LetterOptions): Promise<MailResult> {
   }
 
   if (!credentials) {
-    console.log(`[Mail] No provider configured - would send letter to ${options.to.name}`);
+    logger.info(`[Mail] No provider configured - would send letter to ${options.to.name}`);
     return {
       success: true,
       mailingId: `mock-letter-${Date.now()}`,
@@ -355,7 +356,7 @@ export async function sendLetter(options: LetterOptions): Promise<MailResult> {
     };
   }
 
-  console.log(`[Mail] Sending letter via ${credentials.provider} to ${options.to.name}`);
+  logger.info(`[Mail] Sending letter via ${credentials.provider} to ${options.to.name}`);
 
   if (credentials.provider === MailProvider.PCM) {
     return sendLetterViaPCM(credentials, options);
@@ -376,7 +377,7 @@ export async function sendPostcard(options: PostcardOptions): Promise<MailResult
   }
 
   if (!credentials) {
-    console.log(`[Mail] No provider configured - would send postcard to ${options.to.name}`);
+    logger.info(`[Mail] No provider configured - would send postcard to ${options.to.name}`);
     return {
       success: true,
       mailingId: `mock-postcard-${Date.now()}`,
@@ -385,7 +386,7 @@ export async function sendPostcard(options: PostcardOptions): Promise<MailResult
     };
   }
 
-  console.log(`[Mail] Sending postcard via ${credentials.provider} to ${options.to.name}`);
+  logger.info(`[Mail] Sending postcard via ${credentials.provider} to ${options.to.name}`);
 
   if (credentials.provider === MailProvider.PCM) {
     return sendPostcardViaPCM(credentials, options);

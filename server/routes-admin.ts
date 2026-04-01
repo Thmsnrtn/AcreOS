@@ -29,11 +29,12 @@ import crypto from "crypto";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { alertingService } from "./services/alerting";
+import { logger } from "./utils/logger";
 
 const logger = {
-  info: (msg: string, meta?: Record<string, any>) => console.log(JSON.stringify({ level: 'INFO', timestamp: new Date().toISOString(), message: msg, ...meta })),
-  warn: (msg: string, meta?: Record<string, any>) => console.warn(JSON.stringify({ level: 'WARN', timestamp: new Date().toISOString(), message: msg, ...meta })),
-  error: (msg: string, meta?: Record<string, any>) => console.error(JSON.stringify({ level: 'ERROR', timestamp: new Date().toISOString(), message: msg, ...meta })),
+  info: (msg: string, meta?: Record<string, any>) => logger.info(JSON.stringify({ level: 'INFO', timestamp: new Date().toISOString(), message: msg, ...meta })),
+  warn: (msg: string, meta?: Record<string, any>) => logger.warn(JSON.stringify({ level: 'WARN', timestamp: new Date().toISOString(), message: msg, ...meta })),
+  error: (msg: string, meta?: Record<string, any>) => logger.error(JSON.stringify({ level: 'ERROR', timestamp: new Date().toISOString(), message: msg, ...meta })),
 };
 
 // ── Zod validation schemas for admin endpoints ────────────────────────────────
@@ -111,7 +112,7 @@ export function registerAdminRoutes(app: Express): void {
         classification,
       });
     } catch (err: any) {
-      console.error("Create support case error:", err);
+      logger.error("Create support case error", err);
       res.status(500).json({ error: err.message || "Failed to create support case" });
     }
   });
@@ -140,7 +141,7 @@ export function registerAdminRoutes(app: Express): void {
       });
       res.json(casesWithSla);
     } catch (err: any) {
-      console.error("Get support cases error:", err);
+      logger.error("Get support cases error", err);
       res.status(500).json({ error: err.message || "Failed to fetch support cases" });
     }
   });
@@ -161,7 +162,7 @@ export function registerAdminRoutes(app: Express): void {
 
       res.json({ case: supportCase, messages, actions });
     } catch (err: any) {
-      console.error("Get support case error:", err);
+      logger.error("Get support case error", err);
       res.status(500).json({ error: err.message || "Failed to fetch support case" });
     }
   });
@@ -194,7 +195,7 @@ export function registerAdminRoutes(app: Express): void {
         escalated: response.escalated,
       });
     } catch (err: any) {
-      console.error("Send support message error:", err);
+      logger.error("Send support message error", err);
       res.status(500).json({ error: err.message || "Failed to send message" });
     }
   });
@@ -218,7 +219,7 @@ export function registerAdminRoutes(app: Express): void {
 
       res.json({ success: true, message: "Thank you for your feedback!" });
     } catch (err: any) {
-      console.error("Rate support case error:", err);
+      logger.error("Rate support case error", err);
       res.status(500).json({ error: err.message || "Failed to rate case" });
     }
   });
@@ -239,7 +240,7 @@ export function registerAdminRoutes(app: Express): void {
 
       res.json({ success: true });
     } catch (err: any) {
-      console.error("Resolve support case error:", err);
+      logger.error("Resolve support case error", err);
       res.status(500).json({ error: err.message || "Failed to resolve case" });
     }
   });
@@ -274,7 +275,7 @@ export function registerAdminRoutes(app: Express): void {
       });
       res.json(casesWithSla);
     } catch (err: any) {
-      console.error("Get escalated cases error:", err);
+      logger.error("Get escalated cases error", err);
       res.status(500).json({ error: err.message || "Failed to fetch escalated cases" });
     }
   });
@@ -321,7 +322,7 @@ export function registerAdminRoutes(app: Express): void {
 
       res.json({ success: true });
     } catch (err: any) {
-      console.error("Admin respond to case error:", err);
+      logger.error("Admin respond to case error", err);
       res.status(500).json({ error: err.message || "Failed to respond to case" });
     }
   });
@@ -351,7 +352,7 @@ export function registerAdminRoutes(app: Express): void {
 
       res.json(metrics);
     } catch (err: any) {
-      console.error("Get support metrics error:", err);
+      logger.error("Get support metrics error", err);
       res.status(500).json({ error: err.message || "Failed to fetch support metrics" });
     }
   });
@@ -440,7 +441,7 @@ export function registerAdminRoutes(app: Express): void {
       const featureRequest = await storage.createFeatureRequest(validation.data);
       res.status(201).json(featureRequest);
     } catch (err: any) {
-      console.error("Create feature request error:", err);
+      logger.error("Create feature request error", err);
       res.status(500).json({ error: err.message || "Failed to create feature request" });
     }
   });
@@ -452,7 +453,7 @@ export function registerAdminRoutes(app: Express): void {
       const requests = await storage.getFeatureRequests(org.id);
       res.json(requests);
     } catch (err: any) {
-      console.error("Get feature requests error:", err);
+      logger.error("Get feature requests error", err);
       res.status(500).json({ error: err.message || "Failed to fetch feature requests" });
     }
   });
@@ -471,7 +472,7 @@ export function registerAdminRoutes(app: Express): void {
       const requests = await storage.getAllFeatureRequestsForFounder();
       res.json(requests);
     } catch (err: any) {
-      console.error("Get all feature requests error:", err);
+      logger.error("Get all feature requests error", err);
       res.status(500).json({ error: err.message || "Failed to fetch feature requests" });
     }
   });
@@ -500,7 +501,7 @@ export function registerAdminRoutes(app: Express): void {
       const updated = await storage.updateFeatureRequest(requestId, updates);
       res.json(updated);
     } catch (err: any) {
-      console.error("Update feature request error:", err);
+      logger.error("Update feature request error", err);
       res.status(500).json({ error: err.message || "Failed to update feature request" });
     }
   });
@@ -614,7 +615,7 @@ export function registerAdminRoutes(app: Express): void {
         }
       });
     } catch (err: any) {
-      console.error("Seed error:", err);
+      logger.error("Seed error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -634,7 +635,7 @@ export function registerAdminRoutes(app: Express): void {
       
       res.json({ success: true, message: "All data cleared for your organization" });
     } catch (err: any) {
-      console.error("Clear data error:", err);
+      logger.error("Clear data error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -685,7 +686,7 @@ export function registerAdminRoutes(app: Express): void {
       const dashboardData = await storage.getAdminDashboardData();
       res.json(dashboardData);
     } catch (err: any) {
-      console.error("Admin dashboard error:", err);
+      logger.error("Admin dashboard error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -696,7 +697,7 @@ export function registerAdminRoutes(app: Express): void {
       const alerts = await storage.getSystemAlerts(undefined, status);
       res.json(alerts);
     } catch (err: any) {
-      console.error("Admin alerts error:", err);
+      logger.error("Admin alerts error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -707,7 +708,7 @@ export function registerAdminRoutes(app: Express): void {
       const updated = await storage.acknowledgeAlert(alertId);
       res.json(updated);
     } catch (err: any) {
-      console.error("Acknowledge alert error:", err);
+      logger.error("Acknowledge alert error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -718,7 +719,7 @@ export function registerAdminRoutes(app: Express): void {
       const updated = await storage.resolveAlert(alertId);
       res.json(updated);
     } catch (err: any) {
-      console.error("Resolve alert error:", err);
+      logger.error("Resolve alert error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -728,7 +729,7 @@ export function registerAdminRoutes(app: Express): void {
       const count = await storage.acknowledgeAllAlerts();
       res.json({ success: true, count, message: `${count} alerts acknowledged` });
     } catch (err: any) {
-      console.error("Acknowledge all alerts error:", err);
+      logger.error("Acknowledge all alerts error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -738,7 +739,7 @@ export function registerAdminRoutes(app: Express): void {
       const count = await storage.resolveAllAlerts();
       res.json({ success: true, count, message: `${count} alerts resolved` });
     } catch (err: any) {
-      console.error("Resolve all alerts error:", err);
+      logger.error("Resolve all alerts error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -748,7 +749,7 @@ export function registerAdminRoutes(app: Express): void {
       const orgs = await storage.getAllOrganizations();
       res.json(orgs);
     } catch (err: any) {
-      console.error("Admin orgs error:", err);
+      logger.error("Admin orgs error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -761,7 +762,7 @@ export function registerAdminRoutes(app: Express): void {
         revenueAtRisk: dashboardData.revenueAtRisk
       });
     } catch (err: any) {
-      console.error("Admin revenue error:", err);
+      logger.error("Admin revenue error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -771,7 +772,7 @@ export function registerAdminRoutes(app: Express): void {
       const stats = await storage.getApiUsageStats();
       res.json(stats);
     } catch (err: any) {
-      console.error("API usage stats error:", err);
+      logger.error("API usage stats error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -783,7 +784,7 @@ export function registerAdminRoutes(app: Express): void {
       const stats = await getEndpointStats();
       res.json(stats);
     } catch (err: any) {
-      console.error("GIS health stats error:", err);
+      logger.error("GIS health stats error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -796,7 +797,7 @@ export function registerAdminRoutes(app: Express): void {
       const result = await validateSampleEndpoints(sampleSize);
       res.json(result);
     } catch (err: any) {
-      console.error("GIS sample validation error:", err);
+      logger.error("GIS sample validation error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -836,7 +837,7 @@ export function registerAdminRoutes(app: Express): void {
       });
       res.json(result);
     } catch (err: any) {
-      console.error("GIS full validation error:", err);
+      logger.error("GIS full validation error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -870,7 +871,7 @@ export function registerAdminRoutes(app: Express): void {
         resultsPreview: !includeFullResults ? job.results.slice(-10) : undefined,
       });
     } catch (err: any) {
-      console.error("GIS job status error:", err);
+      logger.error("GIS job status error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -891,7 +892,7 @@ export function registerAdminRoutes(app: Express): void {
       }));
       res.json(jobs);
     } catch (err: any) {
-      console.error("GIS jobs list error:", err);
+      logger.error("GIS jobs list error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -918,7 +919,7 @@ export function registerAdminRoutes(app: Express): void {
         states: Object.keys(grouped).sort(),
       });
     } catch (err: any) {
-      console.error("GIS endpoints error:", err);
+      logger.error("GIS endpoints error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -954,7 +955,7 @@ export function registerAdminRoutes(app: Express): void {
         organization: updated 
       });
     } catch (err: any) {
-      console.error("Set founder status error:", err);
+      logger.error("Set founder status error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -965,7 +966,7 @@ export function registerAdminRoutes(app: Express): void {
       const orgs = await storage.getAllOrganizationsWithDetails();
       res.json(orgs);
     } catch (err: any) {
-      console.error("Admin users error:", err);
+      logger.error("Admin users error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -975,7 +976,7 @@ export function registerAdminRoutes(app: Express): void {
       const stats = await storage.getSubscriptionStats();
       res.json(stats);
     } catch (err: any) {
-      console.error("Subscription stats error:", err);
+      logger.error("Subscription stats error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -986,7 +987,7 @@ export function registerAdminRoutes(app: Express): void {
       const events = await storage.getSubscriptionEvents({ limit });
       res.json(events);
     } catch (err: any) {
-      console.error("Subscription events error:", err);
+      logger.error("Subscription events error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -1001,7 +1002,7 @@ export function registerAdminRoutes(app: Express): void {
       const stats = await dataSourceValidator.getValidationStats();
       res.json(stats);
     } catch (err: any) {
-      console.error("Data source stats error:", err);
+      logger.error("Data source stats error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -1040,7 +1041,7 @@ export function registerAdminRoutes(app: Express): void {
       
       res.json(sources);
     } catch (err: any) {
-      console.error("Data sources list error:", err);
+      logger.error("Data sources list error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -1064,7 +1065,7 @@ export function registerAdminRoutes(app: Express): void {
       const { runValidationJob, getValidationJobStatus } = await import("./services/dataSourceValidationJob");
       
       runValidationJob({ category, limit }).catch(err => {
-        console.error("Background validation job error:", err);
+        logger.error("Background validation job error", err);
       });
       
       const status = getValidationJobStatus();
@@ -1073,7 +1074,7 @@ export function registerAdminRoutes(app: Express): void {
         ...status 
       });
     } catch (err: any) {
-      console.error("Data source validation error:", err);
+      logger.error("Data source validation error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -1084,7 +1085,7 @@ export function registerAdminRoutes(app: Express): void {
       const status = getValidationJobStatus();
       res.json(status);
     } catch (err: any) {
-      console.error("Validation status error:", err);
+      logger.error("Validation status error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -1112,7 +1113,7 @@ export function registerAdminRoutes(app: Express): void {
       
       res.json(updated);
     } catch (err: any) {
-      console.error("Update data source error:", err);
+      logger.error("Update data source error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -1131,7 +1132,7 @@ export function registerAdminRoutes(app: Express): void {
       
       res.json(categories);
     } catch (err: any) {
-      console.error("Data source categories error:", err);
+      logger.error("Data source categories error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -1146,7 +1147,7 @@ export function registerAdminRoutes(app: Express): void {
       const endpoints = await getCountyGisEndpoints();
       res.json(endpoints);
     } catch (err: any) {
-      console.error("Get county GIS endpoints error:", err);
+      logger.error("Get county GIS endpoints error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -1180,7 +1181,7 @@ export function registerAdminRoutes(app: Express): void {
       }).returning();
       res.json(endpoint[0]);
     } catch (err: any) {
-      console.error("Add county GIS endpoint error:", err);
+      logger.error("Add county GIS endpoint error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -1191,7 +1192,7 @@ export function registerAdminRoutes(app: Express): void {
       const result = await seedCountyGisEndpoints();
       res.json({ message: `Seeded ${result.added} endpoints, ${result.skipped} already existed` });
     } catch (err: any) {
-      console.error("Seed county GIS endpoints error:", err);
+      logger.error("Seed county GIS endpoints error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -1204,7 +1205,7 @@ export function registerAdminRoutes(app: Express): void {
       await db.delete(countyGisEndpoints).where(eq(countyGisEndpoints.id, id));
       res.json({ success: true });
     } catch (err: any) {
-      console.error("Delete county GIS endpoint error:", err);
+      logger.error("Delete county GIS endpoint error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -1274,7 +1275,7 @@ export function registerAdminRoutes(app: Express): void {
 
       res.json({ success, message, details });
     } catch (err: any) {
-      console.error("Test GIS endpoint error:", err);
+      logger.error("Test GIS endpoint error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -1354,7 +1355,7 @@ export function registerAdminRoutes(app: Express): void {
 
       res.json({ tested: results.length, passed, failed, results });
     } catch (err: any) {
-      console.error("Test all GIS endpoints error:", err);
+      logger.error("Test all GIS endpoints error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -1618,7 +1619,7 @@ export function registerAdminRoutes(app: Express): void {
           : "All known endpoints are already in the database"
       });
     } catch (err: any) {
-      console.error("Scan GIS endpoints error:", err);
+      logger.error("Scan GIS endpoints error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -1649,7 +1650,7 @@ export function registerAdminRoutes(app: Express): void {
         message: `Added ${result.added} endpoints, ${result.skipped} already existed`
       });
     } catch (err: any) {
-      console.error("Bulk add GIS endpoints error:", err);
+      logger.error("Bulk add GIS endpoints error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -1725,7 +1726,7 @@ export function registerAdminRoutes(app: Express): void {
 
       res.json({ issues, suggestions, endpoint: { state: endpoint.state, county: endpoint.county, lastError: endpoint.lastError } });
     } catch (err: any) {
-      console.error("Diagnose GIS endpoint error:", err);
+      logger.error("Diagnose GIS endpoint error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -1741,7 +1742,7 @@ export function registerAdminRoutes(app: Express): void {
       if (!parsedScan.success) return res.status(400).json({ message: "Invalid input", errors: parsedScan.error.errors });
       const { keywords, maxResults, targetStates } = parsedScan.data;
       
-      console.log("[Discovery] Starting ArcGIS Online scan...");
+      logger.info("[Discovery] Starting ArcGIS Online scan...");
       const result = await runDiscoveryScan({
         keywords: keywords || undefined,
         maxResults: maxResults || 100,
@@ -1762,7 +1763,7 @@ export function registerAdminRoutes(app: Express): void {
       
       const storeResult = await storage.bulkCreateDiscoveredEndpoints(endpointsToStore);
       
-      console.log(`[Discovery] Scan complete: ${storeResult.added} new, ${storeResult.skipped} duplicates`);
+      logger.info(`[Discovery] Scan complete: ${storeResult.added} new, ${storeResult.skipped} duplicates`);
       
       res.json({
         success: true,
@@ -1773,7 +1774,7 @@ export function registerAdminRoutes(app: Express): void {
         message: `Found ${result.stats.validEndpoints} endpoints, added ${storeResult.added} new (${storeResult.skipped} already exist)`
       });
     } catch (err: any) {
-      console.error("ArcGIS discovery scan error:", err);
+      logger.error("ArcGIS discovery scan error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -1785,7 +1786,7 @@ export function registerAdminRoutes(app: Express): void {
       const endpoints = await storage.getDiscoveredEndpoints({ status, state });
       res.json(endpoints);
     } catch (err: any) {
-      console.error("Get pending discovery endpoints error:", err);
+      logger.error("Get pending discovery endpoints error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -1796,7 +1797,7 @@ export function registerAdminRoutes(app: Express): void {
       const endpoints = await storage.getDiscoveredEndpoints({ state });
       res.json(endpoints);
     } catch (err: any) {
-      console.error("Get all discovery endpoints error:", err);
+      logger.error("Get all discovery endpoints error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -1826,7 +1827,7 @@ export function registerAdminRoutes(app: Express): void {
       const updated = await storage.getDiscoveredEndpoint(id);
       res.json({ ...result, endpoint: updated });
     } catch (err: any) {
-      console.error("Validate discovery endpoint error:", err);
+      logger.error("Validate discovery endpoint error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -1841,7 +1842,7 @@ export function registerAdminRoutes(app: Express): void {
       const result = await storage.approveDiscoveredEndpoint(id);
       res.json(result);
     } catch (err: any) {
-      console.error("Approve discovery endpoint error:", err);
+      logger.error("Approve discovery endpoint error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -1856,7 +1857,7 @@ export function registerAdminRoutes(app: Express): void {
       const endpoint = await storage.rejectDiscoveredEndpoint(id);
       res.json({ success: true, endpoint });
     } catch (err: any) {
-      console.error("Reject discovery endpoint error:", err);
+      logger.error("Reject discovery endpoint error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -1894,7 +1895,7 @@ export function registerAdminRoutes(app: Express): void {
         processed: Math.min(pendingEndpoints.length, 20)
       });
     } catch (err: any) {
-      console.error("Batch validate discovery endpoints error:", err);
+      logger.error("Batch validate discovery endpoints error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -1911,7 +1912,7 @@ export function registerAdminRoutes(app: Express): void {
       await db.delete(discoveredEndpoints).where(eq(discoveredEndpoints.id, id));
       res.json({ success: true });
     } catch (err: any) {
-      console.error("Delete discovery endpoint error:", err);
+      logger.error("Delete discovery endpoint error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -1934,7 +1935,7 @@ export function registerAdminRoutes(app: Express): void {
       const sources = await storage.getDataSources({ category, isEnabled });
       res.json(sources);
     } catch (err: any) {
-      console.error("Get data sources error:", err);
+      logger.error("Get data sources error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -1944,7 +1945,7 @@ export function registerAdminRoutes(app: Express): void {
       const stats = await storage.getDataSourceStats();
       res.json(stats);
     } catch (err: any) {
-      console.error("Get data sources stats error:", err);
+      logger.error("Get data sources stats error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -1969,7 +1970,7 @@ export function registerAdminRoutes(app: Express): void {
       const updated = await storage.updateDataSource(id, parseResult.data);
       res.json(updated);
     } catch (err: any) {
-      console.error("Update data source error:", err);
+      logger.error("Update data source error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -1989,7 +1990,7 @@ export function registerAdminRoutes(app: Express): void {
       await storage.deleteDataSource(id);
       res.json({ success: true });
     } catch (err: any) {
-      console.error("Delete data source error:", err);
+      logger.error("Delete data source error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -2036,7 +2037,7 @@ export function registerAdminRoutes(app: Express): void {
         }
       });
     } catch (err: any) {
-      console.error("Test data source error:", err);
+      logger.error("Test data source error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -2057,7 +2058,7 @@ export function registerAdminRoutes(app: Express): void {
       }
       
       runValidationJob({ category, limit }).catch(err => {
-        console.error("Background validation job error:", err);
+        logger.error("Background validation job error", err);
       });
       
       const status = getValidationJobStatus();
@@ -2067,7 +2068,7 @@ export function registerAdminRoutes(app: Express): void {
         ...status.progress,
       });
     } catch (err: any) {
-      console.error("Test all data sources error:", err);
+      logger.error("Test all data sources error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -2079,7 +2080,7 @@ export function registerAdminRoutes(app: Express): void {
       const status = getValidationJobStatus();
       res.json(status);
     } catch (err: any) {
-      console.error("Validation status error:", err);
+      logger.error("Validation status error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -2133,7 +2134,7 @@ export function registerAdminRoutes(app: Express): void {
 
       res.json({ imported, skipped, errors: errors.slice(0, 20) });
     } catch (err: any) {
-      console.error("Bulk import error:", err);
+      logger.error("Bulk import error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -2167,7 +2168,7 @@ export function registerAdminRoutes(app: Express): void {
       const result = await dataSourceBroker.lookup(category, options);
       res.json(result);
     } catch (err: any) {
-      console.error("Broker lookup error:", err);
+      logger.error("Broker lookup error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -2222,7 +2223,7 @@ export function registerAdminRoutes(app: Express): void {
 
       res.json(result);
     } catch (err: any) {
-      console.error("Coordinates enrichment error:", err);
+      logger.error("Coordinates enrichment error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -2238,7 +2239,7 @@ export function registerAdminRoutes(app: Express): void {
 
       res.json(layers);
     } catch (err: any) {
-      console.error("Get map layers error:", err);
+      logger.error("Get map layers error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -2260,7 +2261,7 @@ export function registerAdminRoutes(app: Express): void {
       }
       res.json(result);
     } catch (err: any) {
-      console.error("Get map layer prefs error:", err);
+      logger.error("Get map layer prefs error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -2304,7 +2305,7 @@ export function registerAdminRoutes(app: Express): void {
 
       res.json({ success: true });
     } catch (err: any) {
-      console.error("Update map layer pref error:", err);
+      logger.error("Update map layer pref error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -2317,7 +2318,7 @@ export function registerAdminRoutes(app: Express): void {
       
       res.json(categories.map((c: any) => c.category).filter(Boolean));
     } catch (err: any) {
-      console.error("Get map layer categories error:", err);
+      logger.error("Get map layer categories error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -2363,13 +2364,13 @@ export function registerAdminRoutes(app: Express): void {
             await new Promise(r => setTimeout(r, 500));
           } catch (err) {
             failed++;
-            console.warn(`[BatchEnrich] Failed property ${prop.id}:`, err);
+            logger.warn(`[BatchEnrich] Failed property ${prop.id}`, { metadata: { detail: err } });
           }
         }
-        console.log(`[BatchEnrich] Done: ${done} enriched, ${failed} failed of ${eligible.length} queued`);
+        logger.info(`[BatchEnrich] Done: ${done} enriched, ${failed} failed of ${eligible.length} queued`);
       })();
     } catch (err: any) {
-      console.error("Batch enrich error:", err);
+      logger.error("Batch enrich error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -2386,7 +2387,7 @@ export function registerAdminRoutes(app: Express): void {
 
       res.json({ health, usage, cost });
     } catch (err: any) {
-      console.error("Broker metrics error:", err);
+      logger.error("Broker metrics error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -3153,7 +3154,7 @@ export function registerAdminRoutes(app: Express): void {
             images,
           });
         } catch (err: any) {
-          console.error("[growth] Creative generation failed:", err?.message);
+          logger.error("[growth] Creative generation failed", undefined, { metadata: { detail: err?.message } });
           await storage.updateAdCreativeBundle(bundle.id, {
             status: "error",
             error: err?.message || "Generation failed",
@@ -3899,7 +3900,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   api.post("/api/admin/churn-engine/run", isAuthenticated, isFounderAdmin, async (_req, res) => {
     try {
       const { churnEngine } = await import("./services/churnEngine");
-      churnEngine.runForAllOrgs().catch(console.error); // run in background
+      churnEngine.runForAllOrgs().catch(err => logger.error("Churn engine background run failed", err)); // run in background
       res.json({ message: "Churn engine started in background" });
     } catch (err: any) {
       res.status(500).json({ message: err.message });

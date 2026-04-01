@@ -15,6 +15,7 @@ import {
   type InsertMarketplaceTransaction,
 } from "@shared/schema";
 import { eq, and, desc, gte, or, sql, inArray } from "drizzle-orm";
+import { logger } from "../utils/logger";
 
 export class MarketplaceService {
   
@@ -270,9 +271,7 @@ export class MarketplaceService {
     }).returning();
 
     if (flaggedForReview) {
-      console.warn(
-        `[marketplace] Bid ${bid.id} flagged for review: $${data.bidAmount} is >5× asking price $${askingPrice} on listing ${listingId}`
-      );
+      logger.warn(`[marketplace] Bid ${bid.id} flagged for review: $${data.bidAmount} is >5× asking price $${askingPrice} on listing ${listingId}`);
     }
     
     // Update listing inquiry count
@@ -297,7 +296,7 @@ export class MarketplaceService {
         metadata: { listingId, bidId: bid.id, bidAmount: data.bidAmount },
       });
     } catch (err) {
-      console.error('Failed to create bid notification:', err);
+      logger.error('Failed to create bid notification', err);
     }
     
     return bid;
@@ -394,7 +393,7 @@ export class MarketplaceService {
         metadata: { listingId: listing.id, bidId, action, counterOffer: data?.counterOffer },
       });
     } catch (err) {
-      console.error('Failed to create bid response notification:', err);
+      logger.error('Failed to create bid response notification', err);
     }
     
     return { success: true, action };
@@ -507,7 +506,7 @@ export class MarketplaceService {
           .where(eq(marketplaceTransactions.id, transaction.id));
       }
     } catch (err) {
-      console.error('Marketplace Stripe payment creation failed (non-blocking):', err);
+      logger.error('Marketplace Stripe payment creation failed (non-blocking)', err);
     }
     
     return transaction;
@@ -776,7 +775,7 @@ export class MarketplaceService {
       }
     } catch (err: any) {
       if (err.message?.includes('Insufficient credits')) throw err;
-      console.error('Credit deduction failed for premium listing:', err);
+      logger.error('Credit deduction failed for premium listing', err);
     }
     
     return { success: true, premiumExpiresAt: expiresAt };

@@ -2,6 +2,7 @@ import { db } from "../db";
 import { dataSources } from "@shared/schema";
 import { eq, and, isNull, or, lt, sql } from "drizzle-orm";
 import type { DataSource } from "@shared/schema";
+import { logger } from "../utils/logger";
 
 export type EndpointType = 
   | "arcgis_featureserver" 
@@ -412,7 +413,7 @@ export class DataSourceValidator {
         })
         .where(eq(dataSources.id, sourceId));
     } catch (error) {
-      console.error(`[DataSourceValidator] Failed to save validation result for source ${sourceId}:`, error);
+      logger.error(`[DataSourceValidator] Failed to save validation result for source ${sourceId}`, error);
     }
   }
 
@@ -429,7 +430,7 @@ export class DataSourceValidator {
         const result = await this.validateSource(source);
         results.push(result);
       } catch (error) {
-        console.error(`[DataSourceValidator] Error validating source ${source.id}:`, error);
+        logger.error(`[DataSourceValidator] Error validating source ${source.id}`, error);
       }
       
       await processNext();

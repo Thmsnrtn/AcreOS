@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 /**
  * Land Credit Score Recalculation Job
  *
@@ -26,6 +25,7 @@ import {
 import { eq, and, lt, desc, sql } from "drizzle-orm";
 import { subDays, addDays } from "date-fns";
 import { landCredit } from "../services/landCredit";
+import { logger } from "../utils/logger";
 
 export const LAND_CREDIT_RECALC_QUEUE_NAME = "land-credit-score-recalculation";
 
@@ -94,9 +94,7 @@ async function recalculateProperty(
   });
 
   if (dropped) {
-    console.warn(
-      `[LandCreditRecalc] Property ${property.id} score dropped ${dropAmount} points (${priorOverall} → ${newOverall})`
-    );
+    logger.warn(`[LandCreditRecalc] Property ${property.id} score dropped ${dropAmount} points (${priorOverall} → ${newOverall})`);
   }
 
   return { newScore: newOverall, dropped, dropAmount };
@@ -128,7 +126,7 @@ async function processLandCreditRecalcJob(job: Job): Promise<void> {
 
   try {
     const staleItems = await findStaleProperties();
-    console.log(`[LandCreditRecalc] ${staleItems.length} properties with stale scores`);
+    logger.info(`[LandCreditRecalc] ${staleItems.length} properties with stale scores`);
 
     for (const { property, priorScore } of staleItems) {
       try {
@@ -138,7 +136,7 @@ async function processLandCreditRecalcJob(job: Job): Promise<void> {
         if (result.dropped) totalDropped++;
       } catch (err: any) {
         totalFailed++;
-        console.error(`[LandCreditRecalc] Property ${property.id} failed:`, err.message);
+        logger.error(`[LandCreditRecalc] Property ${property.id} failed`, err);
       }
     }
 
@@ -154,11 +152,9 @@ async function processLandCreditRecalcJob(job: Job): Promise<void> {
         .where(eq(backgroundJobs.id, bgJobId));
     }
 
-    console.log(
-      `[LandCreditRecalc] Done. Checked: ${totalChecked}, Recalculated: ${totalRecalculated}, Dropped >10pts: ${totalDropped}, Failed: ${totalFailed}`
-    );
+    logger.info(`[LandCreditRecalc] Done. Checked: ${totalChecked}, Recalculated: ${totalRecalculated}, Dropped >10pts: ${totalDropped}, Failed: ${totalFailed}`);
   } catch (err: any) {
-    console.error("[LandCreditRecalc] Fatal error:", err.message);
+    logger.error("[LandCreditRecalc] Fatal error", err);
     if (bgJobId) {
       await db
         .update(backgroundJobs)
@@ -189,7 +185,7 @@ export async function registerLandCreditRecalcJob(queue: Queue): Promise<void> {
       removeOnFail: 3,
     }
   );
-  console.log("[LandCreditRecalc] Registered daily score recalculation job at 3 AM UTC");
+  logger.info("[LandCreditRecalc] Registered daily score recalculation job at 3 AM UTC");
 }
 
 export function landCreditScoreRecalculationJob(redisConnection: any): Worker {
@@ -205,11 +201,11 @@ export function landCreditScoreRecalculationJob(redisConnection: any): Worker {
   );
 
   worker.on("completed", (job) => {
-    console.log(`[LandCreditRecalc] Job ${job.id} completed`);
+    logger.info(`[LandCreditRecalc] Job ${job.id} completed`);
   });
 
   worker.on("failed", (job, err) => {
-    console.error(`[LandCreditRecalc] Job ${job?.id} failed:`, err.message);
+    logger.error(`[LandCreditRecalc] Job ${job?.id} failed`, err);
   });
 
   return worker;

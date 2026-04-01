@@ -44,6 +44,7 @@ import { db } from "../db";
 import { countyMarkets, properties, deals } from "@shared/schema";
 import { eq, and, desc, gte, sql, avg, count } from "drizzle-orm";
 import { subDays, subMonths, subYears } from "date-fns";
+import { logger } from "../utils/logger";
 
 // ---------------------------------------------------------------------------
 // County Opportunity Score (0–100)
@@ -440,7 +441,7 @@ export async function detectLeadIndicatorAlerts(
         }
       }
     } catch (err: any) {
-      console.warn(`[CountyOpportunity] News API error for ${county}, ${state}:`, err.message);
+      logger.warn(`[CountyOpportunity] News API error for ${county}, ${state}`, { metadata: { detail: err.message } });
     }
   }
 

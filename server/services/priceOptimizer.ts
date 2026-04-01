@@ -21,6 +21,7 @@ import {
 import { eq, and, desc, gte, sql, avg, count } from "drizzle-orm";
 import { getOpenAIClient } from "../utils/openaiClient";
 import { getComparableProperties, ComparableProperty, calculateMarketValue } from "./comps";
+import { logger } from "../utils/logger";
 
 interface AdjustmentFactor {
   factor: number;
@@ -403,7 +404,7 @@ export class PriceOptimizerService {
     );
 
     if (!result.success) {
-      console.error("[PriceOptimizer] Failed to find comps:", result.error);
+      logger.error("[PriceOptimizer] Failed to find comps", undefined, { metadata: { detail: result.error } });
       return [];
     }
 
@@ -689,7 +690,7 @@ export class PriceOptimizerService {
 
       return response.choices[0].message.content || null;
     } catch (error) {
-      console.error("[PriceOptimizer] AI reasoning generation failed:", error);
+      logger.error("[PriceOptimizer] AI reasoning generation failed", error);
       return this.generateFallbackReasoning(recommendation, additionalContext);
     }
   }
@@ -1019,7 +1020,7 @@ export class PriceOptimizerService {
         relatedEntityId: payload.propertyId,
       });
     } catch (error) {
-      console.error("[PriceOptimizer] Failed to log event:", error);
+      logger.error("[PriceOptimizer] Failed to log event", error);
     }
   }
 }

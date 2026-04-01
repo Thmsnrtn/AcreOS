@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Performance & Technical Enhancements — Items 201-220
  * Query optimization hints, caching, health checks, monitoring, etc.

@@ -14,6 +14,7 @@
 import { db } from "../db";
 import { systemMeta } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { logger } from "../utils/logger";
 
 interface CEOReminder {
   id: string;
@@ -81,7 +82,7 @@ async function saveReminders() {
       });
     }
   } catch (err) {
-    console.error("[CEOReminders] Failed to persist:", err);
+    logger.error("[CEOReminders] Failed to persist", err);
   }
 }
 
@@ -127,7 +128,7 @@ export async function createReminder(params: {
   reminders.push(reminder);
   await saveReminders();
 
-  console.log(`[CEOReminders] Created: "${params.message}" due ${params.dueDate.toLocaleDateString()}`);
+  logger.info(`[CEOReminders] Created: "${params.message}" due ${params.dueDate.toLocaleDateString()}`);
   return reminder;
 }
 
@@ -196,10 +197,8 @@ export async function snoozeReminder(id: string): Promise<boolean> {
   reminder.status = "pending";
 
   await saveReminders();
-  console.log(
-    `[CEOReminders] Snoozed "${reminder.message}" (${reminder.snoozeCount}/${max}), ` +
-    `next due ${reminder.dueDate.toLocaleDateString()}`
-  );
+  logger.info(`[CEOReminders] Snoozed "${reminder.message}" (${reminder.snoozeCount}/${max}), ` +
+    `next due ${reminder.dueDate.toLocaleDateString()}`);
   return true;
 }
 
@@ -251,10 +250,8 @@ export async function processRecurringReminders(): Promise<CEOReminder[]> {
     reminders.push(next);
     created.push(next);
 
-    console.log(
-      `[CEOReminders] Recurring "${next.message}" occurrence #${count}, ` +
-      `next due ${nextDue.toLocaleDateString()}`
-    );
+    logger.info(`[CEOReminders] Recurring "${next.message}" occurrence #${count}, ` +
+      `next due ${nextDue.toLocaleDateString()}`);
   }
 
   if (created.length > 0) {
@@ -379,7 +376,7 @@ export async function getContextForReminder(reminder: CEOReminder): Promise<stri
         return null;
     }
   } catch (err) {
-    console.error(`[CEOReminders] Context lookup failed for ${reminder.entityType}#${reminder.entityId}:`, err);
+    logger.error(`[CEOReminders] Context lookup failed for ${reminder.entityType}#${reminder.entityId}`, err);
     return `${reminder.entityType} #${reminder.entityId}: context unavailable`;
   }
 }

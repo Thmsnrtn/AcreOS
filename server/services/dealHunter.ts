@@ -15,6 +15,7 @@ import {
 import { eq, and, desc, gte, lte, inArray, sql } from "drizzle-orm";
 import { browserAutomationService } from "./browserAutomation";
 import { wsServer } from "../websocket";
+import { logger } from "../utils/logger";
 
 export class DealHunterService {
   
@@ -128,10 +129,8 @@ export class DealHunterService {
    * Returns empty results until a browser automation endpoint is configured.
    */
   private async scrapePuppeteer(source: any): Promise<any[]> {
-    console.warn(
-      `[DealHunter] Puppeteer scraping not configured for source ${source.id} (${source.baseUrl}). ` +
-      `Configure a browser automation service to enable live scraping.`
-    );
+    logger.warn(`[DealHunter] Puppeteer scraping not configured for source ${source.id} (${source.baseUrl}). ` +
+      `Configure a browser automation service to enable live scraping.`);
     return [];
   }
   

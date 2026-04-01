@@ -3,6 +3,7 @@ import { storage, db } from './storage';
 import { fieldScoutVisits, fieldScoutPhotos, leads, properties } from '@shared/schema';
 import { eq, and, desc, inArray } from 'drizzle-orm';
 import multer from 'multer';
+import { logger } from "./utils/logger";
 
 const fieldScoutRouter = Router();
 
@@ -78,7 +79,7 @@ fieldScoutRouter.get('/properties/parcel-lookup', async (req: Request, res: Resp
 
     res.json(parcel);
   } catch (err: any) {
-    console.error('[field-scout] parcel-lookup error:', err);
+    logger.error('[field-scout] parcel-lookup error', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -115,7 +116,7 @@ fieldScoutRouter.post('/voice/transcribe', voiceUpload.single('audio'), async (r
 
         if (!response.ok) {
           const errBody = await response.text();
-          console.error('[field-scout] Whisper API error:', errBody);
+          logger.error('[field-scout] Whisper API error', undefined, { metadata: { detail: errBody } });
           throw new Error(`Whisper API error: ${response.status}`);
         }
 
@@ -127,7 +128,7 @@ fieldScoutRouter.post('/voice/transcribe', voiceUpload.single('audio'), async (r
           confidence: 0.95, // Whisper doesn't return confidence per-transcript; use high default
         });
       } catch (whisperErr: any) {
-        console.error('[field-scout] Whisper transcription failed, returning stub:', whisperErr.message);
+        logger.error('[field-scout] Whisper transcription failed, returning stub', undefined, { metadata: { detail: whisperErr.message } });
       }
     }
 
@@ -140,7 +141,7 @@ fieldScoutRouter.post('/voice/transcribe', voiceUpload.single('audio'), async (r
       message: 'Transcription is pending — no OpenAI API key configured or service unavailable.',
     });
   } catch (err: any) {
-    console.error('[field-scout] transcribe error:', err);
+    logger.error('[field-scout] transcribe error', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -203,7 +204,7 @@ fieldScoutRouter.post('/leads/:id/photos', photoUpload.array('photos', 10), asyn
 
     res.json({ photos: results });
   } catch (err: any) {
-    console.error('[field-scout] photo upload error:', err);
+    logger.error('[field-scout] photo upload error', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -254,7 +255,7 @@ fieldScoutRouter.post('/field-scout/visits', async (req: Request, res: Response)
 
     res.status(201).json(visit);
   } catch (err: any) {
-    console.error('[field-scout] create visit error:', err);
+    logger.error('[field-scout] create visit error', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -310,7 +311,7 @@ fieldScoutRouter.get('/field-scout/visits', async (req: Request, res: Response) 
       offset,
     });
   } catch (err: any) {
-    console.error('[field-scout] list visits error:', err);
+    logger.error('[field-scout] list visits error', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -457,7 +458,7 @@ fieldScoutRouter.post('/field-scout/reports', async (req: Request, res: Response
     res.setHeader('Content-Disposition', 'attachment; filename="field-scout-report.pdf"');
     res.send(pdfBuffer);
   } catch (err: any) {
-    console.error('[field-scout] report generation error:', err);
+    logger.error('[field-scout] report generation error', err);
     res.status(500).json({ error: err.message });
   }
 });

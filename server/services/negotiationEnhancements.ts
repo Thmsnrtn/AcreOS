@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Negotiation Enhancements — Items 71-85
  * Counter-offer templates, analytics, multi-property offers, follow-up sequences, etc.

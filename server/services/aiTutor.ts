@@ -3,6 +3,7 @@ import { db } from '../db';
 import { tutorSessions, courseModules } from '../../shared/schema';
 import { eq, and, desc } from 'drizzle-orm';
 import OpenAI from 'openai';
+import { logger } from "../utils/logger";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -33,7 +34,7 @@ class AITutor {
 
       return session.id.toString();
     } catch (error) {
-      console.error('Failed to start tutor session:', error);
+      logger.error('Failed to start tutor session', error);
       throw error;
     }
   }
@@ -128,7 +129,7 @@ Be conversational, supportive, and focus on practical knowledge that students ca
 
       return assistantMessage;
     } catch (error) {
-      console.error('Failed to send tutor message:', error);
+      logger.error('Failed to send tutor message', error);
       return 'I apologize, but I encountered an error. Please try again.';
     }
   }
@@ -159,7 +160,7 @@ Be conversational, supportive, and focus on practical knowledge that students ca
         })
         .where(eq(tutorSessions.id, sessionId));
     } catch (error) {
-      console.error('Failed to end tutor session:', error);
+      logger.error('Failed to end tutor session', error);
       throw error;
     }
   }
@@ -175,7 +176,7 @@ Be conversational, supportive, and focus on practical knowledge that students ca
         limit: 20,
       });
     } catch (error) {
-      console.error('Failed to get user sessions:', error);
+      logger.error('Failed to get user sessions', error);
       return [];
     }
   }
@@ -189,7 +190,7 @@ Be conversational, supportive, and focus on practical knowledge that students ca
         where: eq(tutorSessions.id, sessionId),
       });
     } catch (error) {
-      console.error('Failed to get session:', error);
+      logger.error('Failed to get session', error);
       return null;
     }
   }
@@ -237,7 +238,7 @@ Format the response as JSON array with this structure:
         return [];
       }
     } catch (error) {
-      console.error('Failed to generate quiz:', error);
+      logger.error('Failed to generate quiz', error);
       return [];
     }
   }
@@ -285,7 +286,7 @@ Keep it concise and actionable.`;
 
       return completion.choices[0].message.content || 'Failed to generate study plan.';
     } catch (error) {
-      console.error('Failed to generate study plan:', error);
+      logger.error('Failed to generate study plan', error);
       return 'Error generating study plan. Please try again later.';
     }
   }
@@ -330,7 +331,7 @@ Keep it concise and actionable.`;
         learningVelocity,
       };
     } catch (error) {
-      console.error('Failed to analyze learning pattern:', error);
+      logger.error('Failed to analyze learning pattern', error);
       return {
         totalSessions: 0,
         averageSessionDuration: 0,

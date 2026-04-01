@@ -2,6 +2,7 @@ import { db } from "../db";
 import { aiTelemetryEvents, aiModelConfigs } from "@shared/schema";
 import { invalidateDbModelCache } from "./aiRouter";
 import { sql, eq, gte, and } from "drizzle-orm";
+import { logger } from "../utils/logger";
 
 // ============================================
 // TELEMETRY OPTIMIZER
@@ -151,7 +152,7 @@ async function getCurrentConfigsForTier(
  * Runs nightly, analyzes last 7 days of telemetry, and updates model weights.
  */
 export async function runTelemetryOptimizer(): Promise<TelemetryOptimizerResult> {
-  console.log("[telemetry-optimizer] Starting nightly optimization run...");
+  logger.info("[telemetry-optimizer] Starting nightly optimization run...");
 
   const summary: string[] = [];
   let tiersOptimized = 0;
@@ -160,13 +161,11 @@ export async function runTelemetryOptimizer(): Promise<TelemetryOptimizerResult>
   try {
     // 1. Query raw stats from last 7 days
     const rawStats = await queryRawStats();
-    console.log(
-      `[telemetry-optimizer] Loaded ${rawStats.length} model+complexity data points`
-    );
+    logger.info(`[telemetry-optimizer] Loaded ${rawStats.length} model+complexity data points`);
 
     if (rawStats.length === 0) {
       const msg = "No telemetry data found in the last 7 days. Skipping optimization.";
-      console.log(`[telemetry-optimizer] ${msg}`);
+      logger.info(`[telemetry-optimizer] ${msg}`);
       return { tiersOptimized: 0, changesApplied: 0, summary: [msg] };
     }
 
@@ -179,7 +178,7 @@ export async function runTelemetryOptimizer(): Promise<TelemetryOptimizerResult>
 
       if (qualifiedStats.length === 0) {
         const msg = `Tier '${tier}': no models with >= ${MIN_SAMPLES} samples. Skipping.`;
-        console.log(`[telemetry-optimizer] ${msg}`);
+        logger.info(`[telemetry-optimizer] ${msg}`);
         summary.push(msg);
         continue;
       }
@@ -191,17 +190,15 @@ export async function runTelemetryOptimizer(): Promise<TelemetryOptimizerResult>
       scored.sort((a, b) => b.score - a.score);
 
       const winner = scored[0];
-      console.log(
-        `[telemetry-optimizer] Tier '${tier}' winner: ${winner.model} ` +
+      logger.info(`[telemetry-optimizer] Tier '${tier}' winner: ${winner.model} ` +
           `(score=${winner.score.toFixed(4)}, errorRate=${(winner.errorRate * 100).toFixed(1)}%, ` +
-          `latency=${winner.avgLatencyMs.toFixed(0)}ms, costCents=${winner.avgCostCents.toFixed(4)})`
-      );
+          `latency=${winner.avgLatencyMs.toFixed(0)}ms, costCents=${winner.avgCostCents.toFixed(4)})`);
 
       // 4. Fetch current DB configs
       const currentConfigs = await getCurrentConfigsForTier(tier);
       if (currentConfigs.length === 0) {
         const msg = `Tier '${tier}': no enabled configs in DB. Cannot update weights.`;
-        console.log(`[telemetry-optimizer] ${msg}`);
+        logger.info(`[telemetry-optimizer] ${msg}`);
         summary.push(msg);
         continue;
       }
@@ -214,7 +211,7 @@ export async function runTelemetryOptimizer(): Promise<TelemetryOptimizerResult>
       // 5. Check if winner differs from current best in DB
       if (currentBest.modelId === winner.model) {
         const msg = `Tier '${tier}': current best '${winner.model}' already optimal. No change needed.`;
-        console.log(`[telemetry-optimizer] ${msg}`);
+        logger.info(`[telemetry-optimizer] ${msg}`);
         summary.push(msg);
         continue;
       }
@@ -224,7 +221,7 @@ export async function runTelemetryOptimizer(): Promise<TelemetryOptimizerResult>
 
       if (!winnerConfig) {
         const msg = `Tier '${tier}': winning model '${winner.model}' not found in aiModelConfigs. Cannot promote.`;
-        console.log(`[telemetry-optimizer] ${msg}`);
+        logger.info(`[telemetry-optimizer] ${msg}`);
         summary.push(msg);
         continue;
       }
@@ -252,26 +249,24 @@ export async function runTelemetryOptimizer(): Promise<TelemetryOptimizerResult>
         `Score: ${winner.score.toFixed(4)} vs prev best score: ${
           scored.find((s) => s.model === currentBest.modelId)?.score.toFixed(4) ?? "n/a"
         }`;
-      console.log(`[telemetry-optimizer] ${msg}`);
+      logger.info(`[telemetry-optimizer] ${msg}`);
       summary.push(msg);
     }
 
     // 7. Invalidate model cache if any updates were made
     if (changesApplied > 0) {
       invalidateDbModelCache();
-      console.log(
-        `[telemetry-optimizer] DB model cache invalidated after ${changesApplied} change(s).`
-      );
+      logger.info(`[telemetry-optimizer] DB model cache invalidated after ${changesApplied} change(s).`);
     }
 
     const finalMsg = `Optimization complete: ${tiersOptimized} tier(s) analyzed, ${changesApplied} update(s) applied.`;
-    console.log(`[telemetry-optimizer] ${finalMsg}`);
+    logger.info(`[telemetry-optimizer] ${finalMsg}`);
     summary.unshift(finalMsg);
 
     return { tiersOptimized, changesApplied, summary };
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
-    console.error(`[telemetry-optimizer] Fatal error: ${errMsg}`, err);
+    logger.error(`[telemetry-optimizer] Fatal error: ${errMsg}`, err);
     return {
       tiersOptimized,
       changesApplied,

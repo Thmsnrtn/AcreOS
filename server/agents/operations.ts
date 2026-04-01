@@ -6,6 +6,7 @@
 import { BaseAgent, type AgentDecision } from "./base-agent";
 import { db } from "../storage";
 import { sql } from "drizzle-orm";
+import { logger } from "../utils/logger";
 
 const MINUTE = 60 * 1000;
 const HOUR = 60 * MINUTE;
@@ -62,9 +63,9 @@ export class OperationsAgent extends BaseAgent {
         }
       }
 
-      console.log(`[${this.name}] Data sources: ${results.length - downSources.length}/${results.length} healthy`);
+      logger.info(`[${this.name}] Data sources: ${results.length - downSources.length}/${results.length} healthy`);
     } catch (err: any) {
-      console.error(`[${this.name}] Data source health check failed:`, err.message);
+      logger.error(`[${this.name}] Data source health check failed`, err);
     }
   }
 
@@ -90,7 +91,7 @@ export class OperationsAgent extends BaseAgent {
         await this.logDecision(decision);
       }
     } catch (err: any) {
-      console.error(`[${this.name}] API health check failed:`, err.message);
+      logger.error(`[${this.name}] API health check failed`, err);
     }
   }
 
@@ -110,7 +111,7 @@ export class OperationsAgent extends BaseAgent {
         });
       }
     } catch (err: any) {
-      console.error(`[${this.name}] Trial expiry check failed:`, err.message);
+      logger.error(`[${this.name}] Trial expiry check failed`, err);
     }
   }
 
@@ -153,7 +154,7 @@ export class OperationsAgent extends BaseAgent {
     };
 
     await this.storeBrief("daily", brief);
-    console.log(`[${this.name}] Daily ops brief: sources ${sourceHealthSummary}, services ${serviceHealthSummary}`);
+    logger.info(`[${this.name}] Daily ops brief: sources ${sourceHealthSummary}, services ${serviceHealthSummary}`);
   }
 }
 

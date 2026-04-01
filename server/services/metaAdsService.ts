@@ -14,6 +14,7 @@
 import { db } from "../db";
 import { leads, properties, organizations } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
+import { logger } from "../utils/logger";
 
 const META_API_BASE = "https://graph.facebook.com/v21.0";
 
@@ -83,7 +84,7 @@ export async function processLeadAdSubmission(
       fields: "field_data,created_time,ad_id,ad_name,campaign_id,campaign_name,form_id",
     });
   } catch (err) {
-    console.error("Failed to fetch lead from Meta API:", err);
+    logger.error("Failed to fetch lead from Meta API", err);
     return { leadId: null, created: false };
   }
 

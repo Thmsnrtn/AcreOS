@@ -27,6 +27,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, gte, sql, count } from "drizzle-orm";
 import crypto from "crypto";
+import { logger } from "../utils/logger";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -103,7 +104,7 @@ class PermanentSovereigntyEngine {
       durationMs: 0,
     });
 
-    console.log(`[Sovereignty] Mission Mode ACTIVATED: "${missionStatement}"`);
+    logger.info(`[Sovereignty] Mission Mode ACTIVATED: "${missionStatement}"`);
   }
 
   /**

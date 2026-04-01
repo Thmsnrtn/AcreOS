@@ -6,6 +6,7 @@
 import { BaseAgent, type AgentDecision } from "./base-agent";
 import { db } from "../storage";
 import { sql } from "drizzle-orm";
+import { logger } from "../utils/logger";
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
@@ -76,7 +77,7 @@ export class GrowthAgent extends BaseAgent {
     };
 
     await this.storeBrief("daily", report);
-    console.log(`[${this.name}] Daily growth report: ${report.signups} signups, ${report.onboardingCompletions} onboardings`);
+    logger.info(`[${this.name}] Daily growth report: ${report.signups} signups, ${report.onboardingCompletions} onboardings`);
   }
 
   private async generateWeeklyBrief(): Promise<void> {
@@ -140,7 +141,7 @@ export class GrowthAgent extends BaseAgent {
     };
 
     await this.storeBrief("weekly", brief);
-    console.log(`[${this.name}] Weekly brief: ${thisWeekCount} signups (${trend > 0 ? "+" : ""}${trend}% vs last week)`);
+    logger.info(`[${this.name}] Weekly brief: ${thisWeekCount} signups (${trend > 0 ? "+" : ""}${trend}% vs last week)`);
   }
 
   private async checkGrowthTriggers(): Promise<void> {
