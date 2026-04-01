@@ -1371,7 +1371,7 @@ export default function OnboardingV2() {
                     ? [
                         { label: "Review your deal opportunities", href: "/leads" },
                         { label: "Send your first mailer campaign", href: "/campaigns" },
-                        { label: "Ask Atlas a question about land investing", href: "/pax" },
+                        { label: "Ask Atlas a question about land investing", href: "/ai" },
                       ]
                     : selectedPath === "active"
                     ? [
