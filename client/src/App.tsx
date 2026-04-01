@@ -346,8 +346,11 @@ function Router() {
       <Route path="/money">
         {() => <ProtectedRoute component={MoneyPage} />}
       </Route>
-      <Route path="/pax">
+      <Route path="/ai">
         {() => <ProtectedRoute component={PaxPage} />}
+      </Route>
+      <Route path="/pax">
+        {() => <Redirect to="/ai" />}
       </Route>
       <Route path="/leads">
         {() => <ProtectedRoute component={LeadsPage} />}
@@ -410,13 +413,13 @@ function Router() {
         {() => <ProtectedRoute component={ToolsPage} />}
       </Route>
       <Route path="/command-center">
-        {() => <ProtectedRoute component={CommandCenterPage} />}
+        {() => <Redirect to="/ai#chat" />}
       </Route>
       <Route path="/agents">
-        {() => <Redirect to="/command-center" />}
+        {() => <Redirect to="/ai#agents" />}
       </Route>
       <Route path="/ai-team">
-        {() => <Redirect to="/command-center" />}
+        {() => <Redirect to="/ai#agents" />}
       </Route>
       <Route path="/support">
         {() => <ProtectedRoute component={SupportPage} />}
@@ -570,13 +573,13 @@ function Router() {
         <Route path="/deal-patterns">{() => <ProtectedRoute component={DealPatternsPage} />}</Route>
         <Route path="/document-intelligence">{() => <ProtectedRoute component={DocumentIntelligencePage} />}</Route>
         <Route path="/tax-researcher">{() => <ProtectedRoute component={TaxResearcherPage} />}</Route>
-        <Route path="/command-center">{() => <ProtectedRoute component={CommandCenterPage} />}</Route>
+        <Route path="/command-center">{() => <Redirect to="/ai#chat" />}</Route>
         <Route path="/conscious-organization">{() => <ProtectedRoute component={ConsciousOrganizationPage} />}</Route>
         <Route path="/anticipatory-enterprise">{() => <ProtectedRoute component={AnticipatoryEnterprisePage} />}</Route>
         <Route path="/real-runtime">{() => <ProtectedRoute component={RealRuntimePage} />}</Route>
-        <Route path="/agent-command-center">{() => <ProtectedRoute component={AgentCommandCenterPage} />}</Route>
-        <Route path="/agents">{() => <Redirect to="/agent-command-center" />}</Route>
-        <Route path="/ai-team">{() => <Redirect to="/agent-command-center" />}</Route>
+        <Route path="/agent-command-center">{() => <Redirect to="/ai#agents" />}</Route>
+        <Route path="/agents">{() => <Redirect to="/ai#agents" />}</Route>
+        <Route path="/ai-team">{() => <Redirect to="/ai#agents" />}</Route>
 
         {/* Operations */}
         <Route path="/maps">{() => <ProtectedRoute component={MapsPage} />}</Route>
