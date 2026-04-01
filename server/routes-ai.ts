@@ -1134,15 +1134,19 @@ export function registerAIRoutes(app: Express): void {
     }
   });
 
+  const checkPermissionSchema = z.object({
+    actionId: z.string().min(1, "actionId is required"),
+  });
+
   api.post("/api/assistant/check-permission", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
       const user = req.user;
-      const { actionId } = req.body;
-      
-      if (!actionId) {
-        return Errors.badRequest(res, "actionId is required");
+      const parsed = checkPermissionSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
       }
+      const { actionId } = parsed.data;
       
       const isFounder = user?.id === 'founder' || org?.stripeCustomerId?.includes('founder');
       const tier = (org?.subscriptionTier || 'free') as SubscriptionTier;
@@ -1156,12 +1160,17 @@ export function registerAIRoutes(app: Express): void {
     }
   });
 
+  const classifyIntentSchema = z.object({
+    message: z.string().min(1, "message is required"),
+  });
+
   api.post("/api/assistant/classify-intent", isAuthenticated, async (req, res) => {
     try {
-      const { message } = req.body;
-      if (!message) {
-        return Errors.badRequest(res, "message is required");
+      const parsed = classifyIntentSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
       }
+      const { message } = parsed.data;
       const { classifyIntentSimple } = await import('./services/intent-router');
       const intent = classifyIntentSimple(message);
       res.json(intent);
@@ -1170,15 +1179,21 @@ export function registerAIRoutes(app: Express): void {
     }
   });
 
+  const assistantExecuteSchema = z.object({
+    message: z.string().min(1, "message is required"),
+    useAIClassification: z.boolean().optional(),
+    useTrialToken: z.boolean().optional(),
+  });
+
   api.post("/api/assistant/execute", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
       const user = req.user;
-      const { message, useAIClassification, useTrialToken } = req.body;
-
-      if (!message) {
-        return Errors.badRequest(res, "message is required");
+      const parsed = assistantExecuteSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
       }
+      const { message, useAIClassification, useTrialToken } = parsed.data;
 
       const { classifyIntentSimple, classifyIntentWithAI } = await import('./services/intent-router');
       const { executeAgentTask } = await import('./services/core-agents');
@@ -1341,17 +1356,27 @@ export function registerAIRoutes(app: Express): void {
   });
   
   // Update a VA agent settings
+  const updateVaAgentSchema = z.object({
+    isActive: z.boolean().optional(),
+    autonomyLevel: z.enum(["suggest", "auto_execute", "manual"]).optional(),
+    settings: z.record(z.unknown()).optional(),
+  }).passthrough();
+
   api.patch("/api/va/agents/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
       const agentId = parseInt(req.params.id);
       const agent = await storage.getVaAgent(org.id, agentId);
-      
+
       if (!agent) {
         return Errors.notFound(res, "Agent");
       }
-      
-      const updated = await storage.updateVaAgent(agentId, req.body);
+
+      const parsed = updateVaAgentSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+      const updated = await storage.updateVaAgent(agentId, parsed.data);
       res.json(updated);
     } catch (error: any) {
       Errors.internal(res, error);
@@ -1413,10 +1438,18 @@ export function registerAIRoutes(app: Express): void {
   });
   
   // Reject an action
+  const rejectActionSchema = z.object({
+    reason: z.string().optional(),
+  });
+
   api.post("/api/va/actions/:id/reject", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const actionId = parseInt(req.params.id);
-      const { reason } = req.body;
+      const parsed = rejectActionSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+      const { reason } = parsed.data;
       
       const action = await storage.getVaAction(actionId);
       if (!action) {
@@ -1431,16 +1464,20 @@ export function registerAIRoutes(app: Express): void {
   });
   
   // Process a task with an agent
+  const vaTaskSchema = z.object({
+    task: z.string().min(1, "Task description is required"),
+  });
+
   api.post("/api/va/agents/:type/task", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { vaAgentService } = await import("./ai/vaService");
       const org = req.organization;
       const agentType = req.params.type as any;
-      const { task } = req.body;
-
-      if (!task) {
-        return Errors.badRequest(res, "Task description is required");
+      const parsed = vaTaskSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
       }
+      const { task } = parsed.data;
 
       const usageCheck = await checkUsageLimit(org.id, "ai_requests");
       if (!usageCheck.allowed) {
@@ -1559,11 +1596,26 @@ export function registerAIRoutes(app: Express): void {
   });
   
   // Create calendar event
+  const createCalendarEventSchema = z.object({
+    title: z.string().min(1, "Title is required"),
+    description: z.string().optional(),
+    startDate: z.string(),
+    endDate: z.string().optional(),
+    allDay: z.boolean().optional(),
+    eventType: z.string().optional(),
+    relatedEntityType: z.string().optional(),
+    relatedEntityId: z.number().int().optional(),
+  });
+
   api.post("/api/va/calendar", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
+      const parsed = createCalendarEventSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
       const event = await storage.createVaCalendarEvent({
-        ...req.body,
+        ...parsed.data,
         organizationId: org.id
       });
       res.json(event);
@@ -1667,9 +1719,18 @@ export function registerAIRoutes(app: Express): void {
   // Expose the map so executive.ts can use it via module-level export
   (global as any).__paxPendingApprovals = pendingApprovals;
 
+  const approveToolSchema = z.object({
+    toolCallId: z.string().min(1, "toolCallId is required"),
+    approved: z.boolean(),
+  });
+
   api.post("/api/ai/conversations/:id/approve-tool", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const { toolCallId, approved } = req.body;
+      const parsed = approveToolSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+      const { toolCallId, approved } = parsed.data;
       const key = `${req.params.id}:${toolCallId}`;
       const pending = pendingApprovals.get(key);
       if (!pending) return Errors.notFound(res, "Pending approval");

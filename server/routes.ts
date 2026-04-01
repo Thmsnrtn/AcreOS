@@ -154,6 +154,9 @@ import { registerLeaseRoutes } from "./routes-leases";
 import { registerMaintenanceRoutes } from "./routes-maintenance";
 
 import { logger } from "./utils/logger";
+import { Errors } from "./utils/errors";
+import { organizations, leads, properties, deals, npsResponses } from "@shared/schema";
+import { eq, and, desc, sql, count, sum, gte, avg } from "drizzle-orm";
 
 // ============================================
 // JOB LOCKING FOR MULTI-INSTANCE DEPLOYMENT
@@ -1170,6 +1173,94 @@ export async function registerRoutes(
     const { registerSovereignIntegrationRoutes } = await import("./routes-sovereign-integration");
     registerSovereignIntegrationRoutes(app);
   }
+
+  // Executive Revenue Dashboard — Founder-only aggregate metrics
+  app.get('/api/founder/executive-dashboard', isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      if (!req.isFounder) {
+        return Errors.forbidden(res, "Executive dashboard is restricted to founders");
+      }
+
+      logger.info("[ExecutiveDashboard] Fetching metrics");
+
+      // Active organizations and subscription breakdown
+      const allOrgs = await db.select().from(organizations);
+      const activeOrgs = allOrgs.filter(o => o.subscriptionStatus === "active");
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const orgsCreatedLast30 = allOrgs.filter(o => o.createdAt && new Date(o.createdAt) >= thirtyDaysAgo).length;
+
+      // MRR calculation based on subscription tiers
+      const tierPricing: Record<string, number> = {
+        free: 0,
+        starter: 29,
+        pro: 79,
+        scale: 199,
+      };
+      const mrr = activeOrgs.reduce((total, org) => {
+        return total + (tierPricing[org.subscriptionTier] ?? 0);
+      }, 0);
+
+      // Churn: orgs that cancelled or downgraded in last 30 days
+      const churnedOrgs = allOrgs.filter(o =>
+        o.subscriptionStatus !== "active" &&
+        o.updatedAt && new Date(o.updatedAt) >= thirtyDaysAgo
+      ).length;
+      const churnRate = activeOrgs.length > 0 ? churnedOrgs / activeOrgs.length : 0;
+
+      // ARPU
+      const arpu = activeOrgs.length > 0 ? mrr / activeOrgs.length : 0;
+
+      // Tier breakdown
+      const tierBreakdown = activeOrgs.reduce((acc, org) => {
+        acc[org.subscriptionTier] = (acc[org.subscriptionTier] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+
+      // Platform-wide usage stats
+      const [leadCount] = await db.select({ count: count() }).from(leads);
+      const [propertyCount] = await db.select({ count: count() }).from(properties);
+      const [dealCount] = await db.select({ count: count() }).from(deals);
+
+      // NPS metrics
+      const npsRows = await db.select().from(npsResponses);
+      const npsCount = npsRows.length;
+      const npsAvg = npsCount > 0 ? npsRows.reduce((sum, r) => sum + r.score, 0) / npsCount : 0;
+      const promoters = npsRows.filter(r => r.score >= 9).length;
+      const detractors = npsRows.filter(r => r.score <= 6).length;
+      const passives = npsCount - promoters - detractors;
+      const npsScore = npsCount > 0 ? Math.round(((promoters - detractors) / npsCount) * 100) : 0;
+
+      const metrics = {
+        mrr,
+        activeOrganizations: activeOrgs.length,
+        totalOrganizations: allOrgs.length,
+        newOrgsLast30Days: orgsCreatedLast30,
+        churnRate: Math.round(churnRate * 10000) / 100, // percent with 2 decimals
+        churnedOrgsLast30Days: churnedOrgs,
+        arpu: Math.round(arpu * 100) / 100,
+        tierBreakdown,
+        platformUsage: {
+          totalLeads: Number(leadCount.count),
+          totalProperties: Number(propertyCount.count),
+          totalDeals: Number(dealCount.count),
+        },
+        nps: {
+          score: npsScore,
+          average: Math.round(npsAvg * 100) / 100,
+          responseCount: npsCount,
+          promoters,
+          passives,
+          detractors,
+        },
+      };
+
+      logger.info("[ExecutiveDashboard] Metrics fetched successfully", { mrr, activeOrgs: activeOrgs.length });
+      res.json(metrics);
+    } catch (err) {
+      logger.error("[ExecutiveDashboard] Failed to fetch metrics", err instanceof Error ? err : undefined);
+      Errors.internal(res, err instanceof Error ? err : new Error("Failed to fetch executive dashboard metrics"));
+    }
+  });
 
   // Epic H: Auto-Delinquent Scraper route
   app.post('/api/import/auto-delinquent', isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
