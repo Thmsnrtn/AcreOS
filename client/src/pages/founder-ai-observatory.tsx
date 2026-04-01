@@ -7,6 +7,16 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Table,
   TableBody,
   TableCell,
@@ -323,6 +333,7 @@ function DecisionCard({
   onFeedback: (id: string, feedback: "good" | "different") => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [pendingFeedback, setPendingFeedback] = useState<"good" | "different" | null>(null);
   const CategoryIcon = CATEGORY_ICONS[decision.actionType];
   const outcome = OUTCOME_DISPLAY[decision.outcome];
 
