@@ -1,7 +1,6 @@
 import { logger } from "./utils/logger";
-// @ts-nocheck — TODO: Add proper type declarations for optional OpenTelemetry SDK imports.
-// The SDK is lazily imported and all types are set to `any`. This requires adding
-// @opentelemetry/* type packages and guarding with proper type narrowing.
+// OpenTelemetry SDK imports are lazily loaded and typed as `any` since
+// @opentelemetry/* type packages may not be installed.
 /**
  * OpenTelemetry Distributed Tracing (T74)
  *

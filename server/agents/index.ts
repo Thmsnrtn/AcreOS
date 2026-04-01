@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 /**
  * Agent Registry — manages lifecycle of all autonomous founder operations agents.
  * Call startAll() after database is ready on server boot.

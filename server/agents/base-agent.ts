@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 /**
  * Base class for all autonomous founder operations agents.
  * Provides start/stop/runOnce lifecycle, scheduling, graceful degradation,

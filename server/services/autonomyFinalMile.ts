@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Autonomy Final Mile — The last ~15% toward 100% autonomous operation
  *

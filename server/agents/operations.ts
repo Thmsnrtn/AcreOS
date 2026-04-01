@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 /**
  * Operations Agent — on-call engineer replacement. Monitors data sources, API health, and background jobs.
  */

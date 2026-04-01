@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 /**
  * AcreOS MCP (Model Context Protocol) Server
  *
