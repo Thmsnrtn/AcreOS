@@ -106,7 +106,8 @@ export default function FounderAgentsPage() {
                   </div>
                   <Switch
                     checked={agent.enabled}
-                    onCheckedChange={(enabled) => toggleMutation.mutate({ name: agent.name, enabled })}
+                    onCheckedChange={(enabled) => setPendingToggle({ name: agent.name, enabled })}
+                    aria-label={`Toggle ${meta.label}`}
                   />
                 </div>
 
@@ -131,6 +132,29 @@ export default function FounderAgentsPage() {
           );
         })}
       </div>
+
+      <AlertDialog open={!!pendingToggle} onOpenChange={(open) => { if (!open) setPendingToggle(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {pendingToggle?.enabled
+                ? `Activate ${getPendingMeta().label}?`
+                : `Pause ${getPendingMeta().label}?`}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingToggle?.enabled
+                ? `This will activate ${getPendingMeta().label}. It will start handling ${getPendingMeta().description.toLowerCase()} automatically.`
+                : `Are you sure you want to pause ${getPendingMeta().label}? It handles ${getPendingMeta().description.toLowerCase()}. While paused, these tasks won't run automatically.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmToggle}>
+              Yes, {pendingToggle?.enabled ? "activate" : "pause"} it
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

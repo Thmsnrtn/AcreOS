@@ -216,6 +216,14 @@ export default function SovereignV13Page() {
 
       <div className="container mx-auto px-6 py-6 space-y-6">
 
+        <Alert>
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Advanced system monitoring</AlertTitle>
+          <AlertDescription>
+            This page is for technical review only — your system manages these automatically. No action is needed from you.
+          </AlertDescription>
+        </Alert>
+
         {/* Pillar Summary Grid */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           {pillars.map((pillar) => (
@@ -263,7 +271,7 @@ export default function SovereignV13Page() {
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm flex items-center gap-2">
                     <BookOpen className="h-4 w-4 text-purple-500" />
-                    Episodic Memory
+                    <InfoTooltip term="Episodic Memory" explanation="Timestamped records of things your system has done.">Episodic Memory</InfoTooltip>
                   </CardTitle>
                   <CardDescription>Timestamped experiences</CardDescription>
                 </CardHeader>
@@ -287,7 +295,7 @@ export default function SovereignV13Page() {
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm flex items-center gap-2">
                     <Brain className="h-4 w-4 text-purple-500" />
-                    Semantic Memory
+                    <InfoTooltip term="Semantic Memory" explanation="Facts and knowledge your system has learned over time.">Semantic Memory</InfoTooltip>
                   </CardTitle>
                   <CardDescription>Distilled facts & patterns</CardDescription>
                 </CardHeader>
@@ -303,7 +311,7 @@ export default function SovereignV13Page() {
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm flex items-center gap-2">
                     <Zap className="h-4 w-4 text-purple-500" />
-                    Working Memory
+                    <InfoTooltip term="Working Memory" explanation="Information your system is actively thinking about right now.">Working Memory</InfoTooltip>
                   </CardTitle>
                   <CardDescription>Active scratchpads</CardDescription>
                 </CardHeader>
@@ -311,7 +319,7 @@ export default function SovereignV13Page() {
                   <div className="text-3xl font-bold">{memoryStats?.workingCount ?? 0}</div>
                   <div className="mt-3 flex gap-2">
                     <Button size="sm" variant="outline" onClick={() => consolidateMutation.mutate("oracle")}>
-                      <RefreshCw className="h-3 w-3 mr-1" />Consolidate
+                      <RefreshCw className="h-3 w-3 mr-1" /><InfoTooltip term="Consolidate" explanation="Archive and organize old records to keep the system fast.">Consolidate</InfoTooltip>
                     </Button>
                     <Button size="sm" variant="outline" onClick={() => cleanupMutation.mutate()}>
                       Cleanup Expired
