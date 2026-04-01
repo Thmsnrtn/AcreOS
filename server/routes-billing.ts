@@ -9,6 +9,7 @@ import { idempotencyMiddleware } from "./middleware/idempotency";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
 import { withTransaction } from "./db";
+import { z } from "zod";
 
 export function registerBillingRoutes(app: Express): void {
   const api = app;
@@ -84,14 +85,23 @@ export function registerBillingRoutes(app: Express): void {
     }
   });
 
+  const usageEstimateSchema = z.object({
+    actionType: z.string().min(1, "actionType is required"),
+    quantity: z.number().int().positive().optional().default(1),
+  });
+
   api.post("/api/usage/estimate", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { usageMeteringService, creditService } = await import("./services/credits");
       const { USAGE_ACTION_TYPES } = await import("@shared/schema");
       const org = req.organization;
-      const { actionType, quantity = 1 } = req.body;
-      
-      if (!actionType || !USAGE_ACTION_TYPES[actionType as keyof typeof USAGE_ACTION_TYPES]) {
+      const parsed = usageEstimateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+      const { actionType, quantity } = parsed.data;
+
+      if (!USAGE_ACTION_TYPES[actionType as keyof typeof USAGE_ACTION_TYPES]) {
         return Errors.badRequest(res, "Invalid action type");
       }
 
@@ -112,14 +122,22 @@ export function registerBillingRoutes(app: Express): void {
   });
 
   // T6: Idempotency on payment mutations to prevent duplicate charges
+  const creditPurchaseSchema = z.object({
+    packId: z.string().min(1, "packId is required"),
+  });
+
   api.post("/api/credits/purchase", isAuthenticated, getOrCreateOrg, idempotencyMiddleware, async (req, res) => {
     try {
       const { stripeService } = await import("./stripeService");
       const { CREDIT_PACKS } = await import("@shared/schema");
       const org = req.organization;
-      const { packId } = req.body;
-      
-      if (!packId || !CREDIT_PACKS[packId as keyof typeof CREDIT_PACKS]) {
+      const parsed = creditPurchaseSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+      const { packId } = parsed.data;
+
+      if (!CREDIT_PACKS[packId as keyof typeof CREDIT_PACKS]) {
         return Errors.badRequest(res, "Invalid credit pack ID");
       }
       
@@ -176,11 +194,21 @@ export function registerBillingRoutes(app: Express): void {
   });
 
   // Update auto-top-up settings
+  const autoTopUpSchema = z.object({
+    enabled: z.boolean(),
+    thresholdCents: z.number().int().min(0).optional(),
+    amountCents: z.number().int().min(0).optional(),
+  });
+
   api.post("/api/credits/auto-top-up", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { usageMeteringService } = await import("./services/credits");
       const org = req.organization;
-      const { enabled, thresholdCents, amountCents } = req.body;
+      const parsed = autoTopUpSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+      const { enabled, thresholdCents, amountCents } = parsed.data;
 
       await usageMeteringService.updateAutoTopUpSettings(
         org.id,
@@ -241,15 +269,19 @@ export function registerBillingRoutes(app: Express): void {
     }
   });
 
+  const stripeCheckoutSchema = z.object({
+    priceId: z.string().min(1, "priceId is required"),
+  });
+
   api.post("/api/stripe/checkout", isAuthenticated, getOrCreateOrg, idempotencyMiddleware, async (req, res) => {
     try {
       const { stripeService } = await import("./stripeService");
       const org = req.organization;
-      const { priceId } = req.body;
-      
-      if (!priceId) {
-        return Errors.badRequest(res, "priceId is required");
+      const parsed = stripeCheckoutSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
       }
+      const { priceId } = parsed.data;
       
       // Ensure Stripe customer creation and org update are atomic
       let customerId = org.stripeCustomerId;
@@ -347,14 +379,24 @@ export function registerBillingRoutes(app: Express): void {
   // STRIPE CONNECT (User Payment Acceptance)
   // ============================================
 
+  const connectLinkSchema = z.object({
+    email: z.string().email().optional(),
+    businessName: z.string().optional(),
+  });
+
   api.post("/api/stripe/connect/link", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { stripeConnectService } = await import("./services/stripeConnect");
       const org = req.organization;
       const user = req.user as any;
 
-      const email = user?.claims?.email || req.body.email;
-      const businessName = org.name || req.body.businessName;
+      const parsed = connectLinkSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+
+      const email = user?.claims?.email || parsed.data.email;
+      const businessName = org.name || parsed.data.businessName;
 
       if (!email) {
         return Errors.badRequest(res, "Email is required");
@@ -471,19 +513,23 @@ export function registerBillingRoutes(app: Express): void {
     }
   });
 
+  const paymentIntentSchema = z.object({
+    amount: z.number().positive("Valid amount is required"),
+    noteId: z.number().int().optional(),
+    propertyId: z.number().int().optional(),
+    paymentType: z.enum(["note_payment", "cash_sale", "down_payment"], { required_error: "Valid payment type is required" }),
+    description: z.string().optional(),
+  });
+
   api.post("/api/stripe/connect/payment-intent", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { stripeConnectService } = await import("./services/stripeConnect");
       const org = req.organization;
-      const { amount, noteId, propertyId, paymentType, description } = req.body;
-      
-      if (!amount || amount <= 0) {
-        return Errors.badRequest(res, "Valid amount is required");
+      const parsed = paymentIntentSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
       }
-
-      if (!paymentType || !["note_payment", "cash_sale", "down_payment"].includes(paymentType)) {
-        return Errors.badRequest(res, "Valid payment type is required");
-      }
+      const { amount, noteId, propertyId, paymentType, description } = parsed.data;
       
       const paymentIntent = await stripeConnectService.createPaymentIntent(
         org.id,
@@ -549,11 +595,19 @@ export function registerBillingRoutes(app: Express): void {
     }
   });
 
+  const trialStartSchema = z.object({
+    tier: z.enum(["starter", "pro"]).optional().default("starter"),
+  });
+
   api.post("/api/trial/start", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { trialService } = await import("./services/trialService");
       const org = (req as any).organization;
-      const tier = req.body.tier === "pro" ? "pro" : "starter";
+      const parsed = trialStartSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+      const tier = parsed.data.tier;
       const status = await trialService.startTrial(org.id, tier);
       res.json(status);
     } catch (error: any) {

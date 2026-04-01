@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Event Mesh Publisher — Phase B
  *

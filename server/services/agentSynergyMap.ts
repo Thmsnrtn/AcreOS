@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Agent Synergy Map — Sovereign Company Protocol v8
  *

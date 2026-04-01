@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Override Learner — Sovereign Company Protocol v4
  *

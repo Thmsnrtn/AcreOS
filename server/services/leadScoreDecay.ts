@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * T45 — Predictive Lead Scoring Decay
  *

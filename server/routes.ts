@@ -1,7 +1,5 @@
-// @ts-nocheck — TODO: Replace `Request` with `AuthenticatedRequest` from server/types/request.ts
-// throughout this file to remove @ts-nocheck. Main issues: req.organization, req.user,
-// req.organizationId, and req.permissionContext are used on plain Express Request type.
 import type { Express, Request, Response, NextFunction } from "express";
+import type { AuthenticatedRequest } from "./types/request";
 import express from "express";
 import type { Server } from "http";
 import crypto from "crypto";
@@ -214,7 +212,7 @@ export async function registerRoutes(
   // Mounted BEFORE WhiteLabel/Clerk middleware so health probes never fail
   // due to domain resolution or auth issues.
   // ============================================
-  app.get("/api/health", async (req, res) => {
+  app.get("/api/health", async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { healthCheckService } = await import("./services/healthCheck");
       const result = await healthCheckService.checkAll();
@@ -224,7 +222,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/health/cached", async (req, res) => {
+  app.get("/api/health/cached", async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { healthCheckService } = await import("./services/healthCheck");
       const result = healthCheckService.getLastResults();
@@ -259,7 +257,7 @@ export async function registerRoutes(
   const { registerOAuthRoutes } = await import("./auth/oauth");
   registerOAuthRoutes(app);
 
-  app.get("/api/health/:service", async (req, res) => {
+  app.get("/api/health/:service", async (req: AuthenticatedRequest, res: Response) => {
     const { healthCheckService } = await import("./services/healthCheck");
     const service = await healthCheckService.checkService(req.params.service);
     if (!service) {
@@ -273,7 +271,7 @@ export async function registerRoutes(
   // Surfaces the exact gaps between current state and production-ready.
   // Hit GET /api/founder/readiness to get a structured checklist.
   // ============================================
-  app.get("/api/founder/readiness", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  app.get("/api/founder/readiness", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const org = req.organization || req.organization;
       if (!org?.isFounder) {
@@ -430,7 +428,7 @@ export async function registerRoutes(
   // Cross-entity search across leads, properties, deals.
   // Uses PostgreSQL tsvector with ILIKE fallback.
   // ============================================
-  app.get("/api/search", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  app.get("/api/search", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const org = req.organization;
       const query = (req.query.q as string) || "";
@@ -464,7 +462,7 @@ export async function registerRoutes(
   app.use("/api/stripe/connect/webhook", webhookLimiter);
   app.use("/webhook", webhookLimiter);
   app.use("/api/import", importLimiter);
-  app.use("/api", (req, res, next) => {
+  app.use("/api", (req: Request, res: Response, next: NextFunction) => {
     if (req.path.startsWith("/health")) {
       return next();
     }
@@ -474,10 +472,11 @@ export async function registerRoutes(
   // ============================================
   // HTTP REQUEST LOGGING MIDDLEWARE
   // ============================================
-  app.use("/api", (req, res, next) => {
+  app.use("/api", (req: Request, res: Response, next: NextFunction) => {
     const requestId = crypto.randomUUID();
     const startTime = Date.now();
-    (req as any).requestId = requestId;
+    // @ts-expect-error -- requestId is added at runtime for request tracing
+    req.requestId = requestId;
     logger.info("HTTP Request", {
       requestId,
       source: "http",
@@ -512,7 +511,7 @@ export async function registerRoutes(
   // simple in-memory cache per org for dashboard stats (30s TTL)
   const statsCache: Map<number, { ts: number; data: any }> = new Map();
 
-  api.get("/api/dashboard/stats", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.get("/api/dashboard/stats", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     const org = req.organization;
     const key = org.id as number;
     const now = Date.now();
@@ -526,7 +525,7 @@ export async function registerRoutes(
   });
 
   // Preview leads that will be affected by bulk delete
-  app.post("/api/leads/bulk-delete/preview", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  app.post("/api/leads/bulk-delete/preview", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const org = req.organization;
       const { ids } = req.body;
@@ -556,7 +555,7 @@ export async function registerRoutes(
   });
 
     // Mark a lead as contacted (updates lastContactedAt timestamp)
-  app.post("/api/leads/:id/mark-contacted", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  app.post("/api/leads/:id/mark-contacted", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const org = req.organization;
       const leadId = Number(req.params.id);
@@ -603,7 +602,7 @@ export async function registerRoutes(
   });
 
     // Merge two leads
-  app.post("/api/leads/merge", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  app.post("/api/leads/merge", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const org = req.organization;
       const { primaryId, duplicateId } = req.body;
@@ -626,7 +625,7 @@ export async function registerRoutes(
   });
 
   // Record contact (marks lead as contacted now)
-  app.post("/api/leads/:id/record-contact", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  app.post("/api/leads/:id/record-contact", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const org = req.organization;
       const leadId = Number(req.params.id);
@@ -683,7 +682,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/leads/bulk-delete", isAuthenticated, getOrCreateOrg, requirePermission("canDeleteLeads"), async (req, res) => {
+  app.post("/api/leads/bulk-delete", isAuthenticated, getOrCreateOrg, requirePermission("canDeleteLeads"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const org = req.organization;
       const { ids } = req.body;
@@ -723,7 +722,7 @@ export async function registerRoutes(
   });
   
   // Get deleted/trashed leads
-  app.get("/api/leads/deleted", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  app.get("/api/leads/deleted", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const org = req.organization;
       const deletedLeads = await storage.getDeletedLeads(org.id);
@@ -735,7 +734,7 @@ export async function registerRoutes(
   });
   
   // Restore soft-deleted leads
-  app.post("/api/leads/restore", isAuthenticated, getOrCreateOrg, requirePermission("canDeleteLeads"), async (req, res) => {
+  app.post("/api/leads/restore", isAuthenticated, getOrCreateOrg, requirePermission("canDeleteLeads"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const org = req.organization;
       const { ids } = req.body;
@@ -768,7 +767,7 @@ export async function registerRoutes(
   });
   
   // Permanently delete leads (empty trash)
-  app.post("/api/leads/permanent-delete", isAuthenticated, getOrCreateOrg, requirePermission("canDeleteLeads"), async (req, res) => {
+  app.post("/api/leads/permanent-delete", isAuthenticated, getOrCreateOrg, requirePermission("canDeleteLeads"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const org = req.organization;
       const { ids } = req.body;
@@ -886,7 +885,7 @@ export async function registerRoutes(
   }
 
     // Bulk stage update for deals with undo support
-  app.post("/api/deals/bulk-stage-update", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  app.post("/api/deals/bulk-stage-update", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const org = req.organization;
       const { ids, newStage, confirmed } = req.body;
@@ -992,7 +991,7 @@ export async function registerRoutes(
   });
   
   // Undo bulk stage update
-  app.post("/api/deals/bulk-stage-undo", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  app.post("/api/deals/bulk-stage-undo", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const org = req.organization;
       const { previousStates } = req.body;
@@ -1078,7 +1077,7 @@ export async function registerRoutes(
   // ============================================
   // ADMIN FEATURE FLAGS (founder-only)
   // ============================================
-  app.get("/api/admin/feature-flags", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  app.get("/api/admin/feature-flags", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const org = req.organization || req.organization;
       if (!org?.isFounder) {
@@ -1092,7 +1091,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/admin/feature-flags/:key", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  app.patch("/api/admin/feature-flags/:key", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const org = req.organization || req.organization;
       if (!org?.isFounder) {
@@ -1173,7 +1172,7 @@ export async function registerRoutes(
   }
 
   // Epic H: Auto-Delinquent Scraper route
-  app.post('/api/import/auto-delinquent', isAuthenticated, getOrCreateOrg, async (req, res) => {
+  app.post('/api/import/auto-delinquent', isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     const { county, state } = req.body as { county: string; state: string };
     if (!county || !state) return res.status(400).json({ error: "county and state are required" });
     const { findAutoScrapeSource, scrapeCountyDelinquentList } = await import("./services/delinquentListScraper");
@@ -1267,7 +1266,7 @@ export async function registerRoutes(
 
   // ─── Address Verification ──────────────────────────────────────────
   const { verifyAddress } = await import("./services/addressVerification");
-  app.post("/api/addresses/verify", isAuthenticated, async (req, res) => {
+  app.post("/api/addresses/verify", isAuthenticated, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { address1, address2, city, state, zip } = req.body;
       if (!address1 || !city || !state) {
@@ -1288,7 +1287,7 @@ export async function registerRoutes(
     res.redirect(307, newPath);
   });
 
-  app.get("/api/tasks", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  app.get("/api/tasks", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = req.organization!.id;
       const filters: { status?: string; priority?: string; assignedTo?: number; entityType?: string; entityId?: number } = {};
@@ -1307,7 +1306,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/tasks/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  app.get("/api/tasks/:id", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = req.organization!.id;
       const id = parseInt(req.params.id);
@@ -1324,7 +1323,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/tasks", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  app.post("/api/tasks", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = req.organization!.id;
       const userId = (req.user as any).id;
@@ -1366,7 +1365,7 @@ export async function registerRoutes(
     }
   });
 
-  app.put("/api/tasks/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  app.put("/api/tasks/:id", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = req.organization!.id;
       const userId = (req.user as any).id;
@@ -1412,7 +1411,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/tasks/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  app.delete("/api/tasks/:id", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = req.organization!.id;
       const id = parseInt(req.params.id);
@@ -1445,7 +1444,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/tasks/:id/complete", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  app.post("/api/tasks/:id/complete", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = req.organization!.id;
       const userId = (req.user as any).id;
@@ -1479,7 +1478,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/tasks/process-recurring", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  app.post("/api/tasks/process-recurring", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const recurringTasksDue = await storage.getRecurringTasksDue();
       const createdTasks = [];
@@ -1497,7 +1496,7 @@ export async function registerRoutes(
   });
 
   // Dashboard summary: overdue + today's pending tasks
-  app.get("/api/tasks/dashboard-summary", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  app.get("/api/tasks/dashboard-summary", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = req.organization!.id;
       

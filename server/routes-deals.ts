@@ -81,16 +81,38 @@ async function triggerDealEnrichmentAsync(
   });
 }
 
+// Zod schema for pagination query params
+const paginationQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(25),
+  sortBy: z.string().default("createdAt"),
+  sortOrder: z.enum(["asc", "desc"]).default("desc"),
+});
+
 export function registerDealRoutes(app: Express): void {
   const api = app;
 
   // DEALS (Acquisitions/Dispositions)
   // ============================================
-  
+
   api.get("/api/deals", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const deals = await storage.getDeals(org.id);
-    res.json(deals);
+
+    const pagination = paginationQuerySchema.safeParse(req.query);
+    if (!pagination.success) {
+      return Errors.badRequest(res, "Invalid pagination parameters", pagination.error.errors);
+    }
+    const { page, pageSize, sortBy, sortOrder } = pagination.data;
+
+    const result = await storage.getDealsPaginated(org.id, { page, pageSize, sortBy, sortOrder });
+
+    res.json({
+      data: result.data,
+      total: result.total,
+      page: result.page,
+      pageSize: result.pageSize,
+      totalPages: result.totalPages,
+    });
   });
   
   api.get("/api/deals/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {

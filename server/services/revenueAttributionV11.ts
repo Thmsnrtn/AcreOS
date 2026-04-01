@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Revenue Attribution Graph — Sovereign Company Protocol v11
  *
