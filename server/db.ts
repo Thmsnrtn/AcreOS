@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * T2 — DB Connection Pool Tuning + Slow Query Monitoring
  *
@@ -15,6 +14,7 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import * as schema from "@shared/schema";
+import { logger } from "./utils/logger";
 
 const { Pool } = pg;
 
@@ -53,7 +53,7 @@ export const replicaPool = new Pool({
 });
 
 replicaPool.on("error", (err) => {
-  console.error("[db:replica] Unexpected client error:", err.message);
+  logger.error("[db:replica] Unexpected client error", err);
 });
 
 export const dbReadOnly = drizzle(replicaPool, { schema });
