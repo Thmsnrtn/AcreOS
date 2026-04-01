@@ -50,12 +50,12 @@ router.get("/:entityType/:entityId", isAuthenticated, getOrCreateOrg, async (req
     const { entityType, entityId } = req.params;
     const cursor = req.query.cursor ? parseInt(req.query.cursor as string) : undefined;
 
-    if (!VALID_ENTITY_TYPES.includes(entityType)) {
-      return res.status(400).json({ error: `invalid entity type, must be one of: ${VALID_ENTITY_TYPES.join(", ")}` });
+    if (!VALID_ENTITY_TYPES.includes(entityType as typeof VALID_ENTITY_TYPES[number])) {
+      return Errors.badRequest(res, `invalid entity type, must be one of: ${VALID_ENTITY_TYPES.join(", ")}`);
     }
 
     const entityIdNum = parseInt(entityId);
-    if (isNaN(entityIdNum)) return res.status(400).json({ error: "invalid entity ID" });
+    if (isNaN(entityIdNum)) return Errors.badRequest(res, "invalid entity ID");
 
     const conditions = [
       eq(entityComments.organizationId, org.id),
@@ -85,7 +85,7 @@ router.get("/:entityType/:entityId", isAuthenticated, getOrCreateOrg, async (req
     });
   } catch (err) {
     logger.error("failed to fetch comments", err instanceof Error ? err : undefined);
-    res.status(500).json({ error: "failed to fetch comments" });
+    Errors.internal(res, err);
   }
 });
 
