@@ -171,6 +171,7 @@ const MatchingEnginePage = React.lazy(() => import("@/pages/matching-engine"));
 // Admin / Founder
 const AdminSupportPage = React.lazy(() => import("@/pages/admin-support"));
 const FounderDashboard = React.lazy(() => import("@/pages/founder-dashboard"));
+const FounderHomePage = React.lazy(() => import("@/pages/founder-home"));
 const FounderAiObservatory = React.lazy(() => import("@/pages/founder-ai-observatory"));
 const FounderFeatureFlags = React.lazy(() => import("@/pages/founder/feature-flags"));
 const DealUnderwritingPage = React.lazy(() => import("@/pages/deal-underwriting"));
@@ -443,8 +444,11 @@ function Router() {
       <Route path="/admin/support">
         {() => <ProtectedRoute component={AdminSupportPage} />}
       </Route>
+      <Route path="/founder-home">
+        {() => <FounderProtectedRoute component={FounderHomePage} />}
+      </Route>
       <Route path="/founder">
-        {() => <FounderProtectedRoute component={FounderDashboard} />}
+        {() => <Redirect to="/founder-home" />}
       </Route>
       <Route path="/founder/ai-observatory">
         {() => <FounderProtectedRoute component={FounderAiObservatory} />}
@@ -633,7 +637,8 @@ function Router() {
         <Route path="/admin/support">{() => <ProtectedRoute component={AdminSupportPage} />}</Route>
 
         {/* Founder / Admin */}
-        <Route path="/founder">{() => <FounderProtectedRoute component={FounderDashboard} />}</Route>
+        <Route path="/founder-home">{() => <FounderProtectedRoute component={FounderHomePage} />}</Route>
+        <Route path="/founder">{() => <Redirect to="/founder-home" />}</Route>
         <Route path="/founder/v13">{() => <FounderProtectedRoute component={SovereignV13Page} />}</Route>
         <Route path="/founder/agents/:codename">{() => <FounderProtectedRoute component={AgentDetailPage} />}</Route>
         <Route path="/founder/ai-observatory">{() => <FounderProtectedRoute component={FounderAiObservatory} />}</Route>

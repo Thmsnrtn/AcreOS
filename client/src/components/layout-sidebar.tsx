@@ -14,6 +14,11 @@ import {
   GitBranch,
   Calculator,
   Crown,
+  Home,
+  Newspaper,
+  Settings2,
+  ToggleLeft,
+  Receipt,
   HelpCircle,
   PieChart,
   Store,
@@ -373,23 +378,40 @@ const NAV_MODULES: NavModule[] = [
     ],
   },
 
-  // ── Sovereign (Founder only) ──────────────────────────────────────
+  // ── My Business (Founder only) ────────────────────────────────────
   {
-    id: "sovereign",
-    label: "Sovereign",
+    id: "founder-business",
+    label: "My Business",
     icon: Crown,
-    href: "/sovereign",
-    description: "Autonomous organization oversight",
+    href: "/founder-home",
+    description: "Your business at a glance",
     founderOnly: true,
     children: [
-      { label: "Dashboard", icon: Activity, href: "/sovereign", description: "Sovereign org health overview" },
-      { label: "Executive Revenue", icon: TrendingUp, href: "/executive-dashboard", description: "MRR, churn, ARPU, and NPS metrics" },
-      { label: "Board of Directors", icon: Shield, href: "/board-of-directors", description: "Agent negotiations and delegation" },
-      { label: "Agent Performance", icon: TrendingUp, href: "/agent-performance", description: "Trust scores and revenue attribution" },
-      { label: "Memory Browser", icon: Brain, href: "/memory-browser", description: "Browse agent cognitive memories" },
-      { label: "Event Log", icon: Zap, href: "/event-log", description: "Real-time event mesh stream" },
-      { label: "Job Health", icon: Activity, href: "/job-health", description: "Background job monitoring" },
-      { label: "Collaboration", icon: Users, href: "/agent-collaboration", description: "Agent messaging, delegation, and consensus" },
+      { label: "Home", icon: Home, href: "/founder-home", description: "Morning briefing and action items" },
+      { label: "Revenue", icon: DollarSign, href: "/executive-dashboard", description: "Monthly revenue, customers, and growth" },
+      { label: "Daily Digest", icon: Newspaper, href: "/founder/daily-digest", description: "Daily summary of your business" },
+      { label: "My Agents", icon: Bot, href: "/founder/agents", description: "Your automated team members" },
+    ],
+  },
+
+  // ── Advanced (Founder only, collapsed by default) ────────────────
+  {
+    id: "founder-advanced",
+    label: "Advanced",
+    icon: Settings2,
+    href: "/sovereign",
+    description: "System monitoring and technical details",
+    founderOnly: true,
+    children: [
+      { label: "System Health", icon: Activity, href: "/sovereign", description: "Overall system status" },
+      { label: "Agent Performance", icon: TrendingUp, href: "/agent-performance", description: "How well your agents are performing" },
+      { label: "Feature Flags", icon: ToggleLeft, href: "/founder/feature-flags", description: "Enable or disable platform features" },
+      { label: "Board of Directors", icon: Shield, href: "/board-of-directors", description: "Review agent decisions" },
+      { label: "Job Health", icon: Activity, href: "/job-health", description: "Background task monitoring" },
+      { label: "Collaboration", icon: Users, href: "/agent-collaboration", description: "Communicate with your agents" },
+      { label: "Memory Browser", icon: Brain, href: "/memory-browser", description: "Browse system memory" },
+      { label: "Event Log", icon: Zap, href: "/event-log", description: "System activity log" },
+      { label: "AI Costs", icon: Receipt, href: "/founder/ai-observatory", description: "AI usage and costs" },
     ],
   },
 
@@ -410,7 +432,7 @@ const NAV_MODULES: NavModule[] = [
 ];
 
 // Default expanded modules (open by default)
-const DEFAULT_EXPANDED = new Set<string>(["leads", "properties", "deals"]);
+const DEFAULT_EXPANDED = new Set<string>(["leads", "properties", "deals", "founder-business"]);
 
 const COLLAPSED_STORAGE_KEY = "sidebar-collapsed";
 const EXPANDED_STORAGE_KEY = "sidebar-expanded-modules";
@@ -616,18 +638,18 @@ export function Sidebar() {
         {/* Founder link */}
         {isFounder && (
           <DesktopNavItem
-            href="/founder"
+            href="/founder-home"
             icon={Crown}
             label="Founder Dashboard"
-            isActive={location === "/founder"}
+            isActive={location === "/founder-home"}
             isCollapsed={isCollapsed}
             accentClass={
-              location === "/founder"
+              location === "/founder-home"
                 ? "bg-amber-500 text-white shadow-md"
                 : "bg-amber-500/10 text-amber-600 hover:bg-amber-500/20"
             }
             iconClass={
-              location === "/founder" ? "text-white" : "text-amber-500"
+              location === "/founder-home" ? "text-white" : "text-amber-500"
             }
             testId="link-founder-dashboard"
             onMouseEnter={() => {}}
@@ -884,11 +906,11 @@ export function Sidebar() {
       <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
         {isFounder && (
           <Link
-            href="/founder"
+            href="/founder-home"
             onClick={onNavClick}
             className={cn(
               "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-150 group mb-2 min-h-[44px]",
-              location === "/founder"
+              location === "/founder-home"
                 ? "bg-amber-500 text-white shadow-md"
                 : "bg-amber-500/10 text-amber-600 hover:bg-amber-500/20"
             )}
@@ -897,7 +919,7 @@ export function Sidebar() {
             <Crown
               className={cn(
                 "w-5 h-5",
-                location === "/founder" ? "text-white" : "text-amber-500"
+                location === "/founder-home" ? "text-white" : "text-amber-500"
               )}
             />
             <span className="font-medium text-sm">Founder Dashboard</span>

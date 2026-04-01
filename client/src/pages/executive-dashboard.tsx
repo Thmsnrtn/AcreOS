@@ -21,6 +21,7 @@ import {
   MapPin,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { InfoTooltip } from "@/components/info-tooltip";
 
 interface ExecutiveMetrics {
   mrr: number;
@@ -138,7 +139,7 @@ export default function ExecutiveDashboard() {
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">
-                      MRR
+                      <InfoTooltip term="Monthly Revenue" explanation="The total recurring revenue from all paying customers this month">MRR</InfoTooltip>
                     </CardTitle>
                     <DollarSign className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
@@ -157,7 +158,7 @@ export default function ExecutiveDashboard() {
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">
-                      ARPU
+                      <InfoTooltip term="Revenue Per Customer" explanation="Average monthly revenue divided by number of active customers">ARPU</InfoTooltip>
                     </CardTitle>
                     <TrendingUp className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
@@ -176,7 +177,7 @@ export default function ExecutiveDashboard() {
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Churn Rate
+                      <InfoTooltip term="Churn Rate" explanation="Percentage of customers who cancelled or downgraded in the last 30 days. Lower is better.">Churn Rate</InfoTooltip>
                     </CardTitle>
                     <TrendingDown className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
@@ -362,7 +363,7 @@ export default function ExecutiveDashboard() {
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">
-                      NPS Score
+                      <InfoTooltip term="Customer Satisfaction Score" explanation="Measures how likely customers are to recommend you. Ranges from -100 to 100. Above 50 is excellent.">NPS Score</InfoTooltip>
                     </CardTitle>
                     <Target className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
@@ -390,7 +391,7 @@ export default function ExecutiveDashboard() {
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Promoters
+                      <InfoTooltip term="Promoters" explanation="Customers who love your product and would recommend it to others (scored 9-10).">Promoters</InfoTooltip>
                     </CardTitle>
                     <ThumbsUp className="h-4 w-4 text-emerald-500" />
                   </CardHeader>
@@ -409,7 +410,7 @@ export default function ExecutiveDashboard() {
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Passives
+                      <InfoTooltip term="Passives" explanation="Customers who are satisfied but not enthusiastic. They might switch to a competitor (scored 7-8).">Passives</InfoTooltip>
                     </CardTitle>
                     <Minus className="h-4 w-4 text-amber-500" />
                   </CardHeader>
@@ -428,7 +429,7 @@ export default function ExecutiveDashboard() {
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Detractors
+                      <InfoTooltip term="Detractors" explanation="Unhappy customers who may discourage others from using your product (scored 0-6).">Detractors</InfoTooltip>
                     </CardTitle>
                     <ThumbsDown className="h-4 w-4 text-red-500" />
                   </CardHeader>
