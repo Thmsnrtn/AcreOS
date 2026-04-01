@@ -11,6 +11,16 @@ import {
   MessageSquare, Gavel, ChevronDown, ChevronUp,
   ThumbsUp, ThumbsDown, XCircle,
 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { formatDistanceToNow } from "date-fns";
 import {
   useAgentNegotiations,
