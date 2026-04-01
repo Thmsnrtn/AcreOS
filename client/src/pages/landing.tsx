@@ -90,7 +90,7 @@ export default function LandingPage() {
           <h1 className="text-5xl sm:text-6xl font-bold tracking-tight">
             The operating system for{" "}
             <span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-              land investors
+              real estate professionals
             </span>
           </h1>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
@@ -126,9 +126,9 @@ export default function LandingPage() {
       <section className="py-24 px-6">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-16">
-            <h2 className="text-3xl font-bold">Everything you need to run your land business</h2>
+            <h2 className="text-3xl font-bold">Everything you need to run your real estate business</h2>
             <p className="text-muted-foreground mt-3 max-w-xl mx-auto">
-              From lead generation to closing, AcreOS handles the full lifecycle of land investing.
+              From lead generation to closing, AcreOS handles the full lifecycle of your deals.
             </p>
           </div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -178,7 +178,7 @@ export default function LandingPage() {
       {/* CTA */}
       <section className="py-24 px-6">
         <div className="max-w-2xl mx-auto text-center space-y-6">
-          <h2 className="text-3xl font-bold">Ready to modernize your land business?</h2>
+          <h2 className="text-3xl font-bold">Ready to modernize your real estate business?</h2>
           <p className="text-muted-foreground">
             Join operators who are closing more deals with less effort.
           </p>
