@@ -185,7 +185,7 @@ export async function traceAsync<T>(
   attributes?: Record<string, string | number | boolean>
 ): Promise<T> {
   const tracer = getTracer();
-  return tracer.startActiveSpan(name, { attributes: attributes ?? {} }, async (span) => {
+  return tracer.startActiveSpan(name, { attributes: attributes ?? {} }, async (span: any) => {
     try {
       const result = await fn();
       span.setStatus({ code: 1 }); // OK
