@@ -284,7 +284,7 @@ function computeTomorrowOneThing(
   }
 
   // Rule 4: Default — send a campaign
-  return { action: "Plan tomorrow's direct mail campaign", reason: "Consistent mailing is the engine of the land business. If you haven't mailed in the last 30 days, plan a campaign tonight.", priority: "medium" };
+  return { action: "Plan tomorrow's direct mail campaign", reason: "Consistent mailing is the engine of the real estate business. If you haven't mailed in the last 30 days, plan a campaign tonight.", priority: "medium" };
 }
 
 export default router;

@@ -545,7 +545,7 @@ Property Information:
         ? conversationHistory.map((m: { role: string; content: string }) => `${m.role}: ${m.content}`).join('\n')
         : '';
 
-      const systemPrompt = `You are an AI property analyst for AcreOS, a land investment platform. You help users analyze properties, assess risks, calculate valuations, and make informed investment decisions.
+      const systemPrompt = `You are an AI property analyst for AcreOS, a real estate platform. You help users analyze properties, assess risks, calculate valuations, and make informed investment decisions.
 
 ${propertyContext}
 
@@ -555,7 +555,7 @@ ${skillsContext}
 When responding:
 1. Use the property data provided to give specific, actionable insights
 2. If asked about environmental risks (flood, wetlands, etc.), explain what data would be available and general risk factors for the location
-3. For financing questions, calculate based on typical land investment terms (10-15% interest, 5-10 year terms)
+3. For financing questions, calculate based on typical real estate investment terms (10-15% interest, 5-10 year terms)
 4. For offer generation, consider comparable sales, market conditions, and typical land discounts
 5. Be concise but thorough
 6. Suggest follow-up questions that would be helpful

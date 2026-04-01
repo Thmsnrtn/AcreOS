@@ -294,6 +294,6 @@ ${JSON.stringify(originalOutput, null, 2)}
 Please provide a corrected response that:
 1. Fixes all errors listed above
 2. Ensures all numerical calculations are mathematically consistent
-3. Uses realistic values within plausible ranges for US land investing
+3. Uses realistic values within plausible ranges for US real estate
 4. Returns the same JSON structure with corrected values`;
 }

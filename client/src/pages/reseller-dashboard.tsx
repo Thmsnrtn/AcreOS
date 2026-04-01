@@ -565,7 +565,7 @@ function WhiteLabelPanel() {
                     </div>
                     <div>
                       <p className="text-sm font-semibold">{branding.brandName} Platform</p>
-                      <p className="text-xs text-gray-500">Land Investment Suite</p>
+                      <p className="text-xs text-gray-500">Real Estate Suite</p>
                     </div>
                     <button
                       className="ml-auto text-xs text-white px-3 py-1.5 rounded font-medium"

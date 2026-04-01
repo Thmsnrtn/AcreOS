@@ -1,6 +1,6 @@
 # AcreOS
 
-Land investment management platform — CRM, deal pipeline, seller-financed notes, AI assistants, marketing automation, and portfolio analytics in one app.
+Real estate management platform — CRM, deal pipeline, seller-financed notes, AI assistants, marketing automation, and portfolio analytics in one app.
 
 ## Quick Start (Development)
 

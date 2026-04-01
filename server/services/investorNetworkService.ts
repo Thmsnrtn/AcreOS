@@ -2,13 +2,13 @@
 /**
  * Investor Network Service (EPIC 5 — Defensible Social Graph)
  *
- * The ultimate moat: 10,000 verified land investors with deal history
+ * The ultimate moat: 10,000 verified real estate investors with deal history
  * that competitors cannot replicate.
  *
- * Expert land investing community wisdom:
+ * Expert real estate investing community wisdom:
  *
  * THE POWER OF INVESTOR NETWORKS:
- * The most successful land investors have a "deal flow" network of 5–20 trusted
+ * The most successful real estate investors have a "deal flow" network of 5–20 trusted
  * investors they can call when:
  *   - A deal doesn't fit their criteria (sell or share with a partner)
  *   - They need a buyer for a wholesale deal (off-market)
@@ -16,7 +16,7 @@
  *   - They want to co-invest on a large acquisition
  *   - They want a mentor or accountability partner
  *
- * THE TRUST HIERARCHY IN LAND INVESTING:
+ * THE TRUST HIERARCHY IN REAL ESTATE INVESTING:
  * Tier 1: Verified deals (county recording proof) → "This investor delivered"
  * Tier 2: Response rate (do they actually respond to deal flow?)
  * Tier 3: Fulfillment rate (when they say they'll buy, do they close?)
@@ -279,7 +279,7 @@ export async function getTopMentors(
 // ---------------------------------------------------------------------------
 // Co-Investment Infrastructure
 //
-// Expert land investors often pool capital to acquire larger parcels
+// Expert real estate investors often pool capital to acquire larger parcels
 // that are then subdivided and sold. This requires:
 //   1. Capital calls (who puts in how much)
 //   2. Pro-rata distributions (who gets what percentage)

@@ -325,7 +325,7 @@ export function createMcpServer() {
         const url = `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=jsonv2&addressdetails=1`;
         const res = await fetch(url, {
           headers: {
-            "User-Agent": "AcreOS Land Investment Platform (contact@acreos.com)",
+            "User-Agent": "AcreOS Real Estate Platform (contact@acreos.com)",
             "Accept-Language": "en",
           },
           signal: AbortSignal.timeout(10000),
@@ -361,7 +361,7 @@ export function createMcpServer() {
         const url = `https://nominatim.openstreetmap.org/search?q=${query}&countrycodes=${country}&format=jsonv2&addressdetails=1&limit=5`;
         const res = await fetch(url, {
           headers: {
-            "User-Agent": "AcreOS Land Investment Platform (contact@acreos.com)",
+            "User-Agent": "AcreOS Real Estate Platform (contact@acreos.com)",
             "Accept-Language": "en",
           },
           signal: AbortSignal.timeout(10000),

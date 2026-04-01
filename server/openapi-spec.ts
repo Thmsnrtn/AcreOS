@@ -10,7 +10,7 @@ export function generateOpenAPISpec(): Record<string, any> {
       title: 'AcreOS API',
       version: '1.0.0',
       description:
-        'AcreOS platform API — land investing CRM, AVM, voice AI, portfolio optimizer, and data licensing.',
+        'AcreOS platform API — real estate CRM, AVM, voice AI, portfolio optimizer, and data licensing.',
       contact: { name: 'AcreOS Support', email: 'support@acreos.com' },
     },
     servers: [

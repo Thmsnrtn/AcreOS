@@ -257,7 +257,7 @@ export async function generate1099IntForms(
   const qualifying = report.notes.filter((n) => n.requires1099);
 
   return qualifying.map((note) => ({
-    payerName: org?.name || "Land Investor",
+    payerName: org?.name || "Real Estate Professional",
     payerAddress: "",
     payerEin: "00-0000000",
     payerPhone: "",

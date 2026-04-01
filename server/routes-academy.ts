@@ -137,7 +137,7 @@ router.post('/tutor/message', async (req: Request, res: Response) => {
     const { default: OpenAI } = await import('openai');
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-    const systemPrompt = `You are an expert land investment educator for AcreOS Academy.
+    const systemPrompt = `You are an expert real estate educator for AcreOS Academy.
 You help investors learn about land acquisition, seller financing, tax liens, due diligence,
 and land flipping strategies. Be concise, practical, and use real examples.
 ${courseId ? `The student is currently studying course ID: ${courseId}.` : ''}`;
