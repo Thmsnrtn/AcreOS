@@ -31,6 +31,26 @@ const bulkLeadUpdateSchema = z.object({
   updates: updateLeadSchema,
 });
 
+// Zod schemas for lead operations
+const checkDuplicatesSchema = z.object({
+  firstName: z.string().optional(),
+  lastName: z.string().optional(),
+  email: z.string().email().optional().or(z.literal("")),
+  phone: z.string().optional(),
+  address: z.string().optional(),
+}).refine(
+  (data) => data.firstName || data.lastName || data.email || data.phone || data.address,
+  { message: "At least one search field is required" }
+);
+
+const mergeLeadsSchema = z.object({
+  primaryId: z.number().int().positive("primaryId must be a positive integer"),
+  duplicateId: z.number().int().positive("duplicateId must be a positive integer"),
+}).refine(
+  (data) => data.primaryId !== data.duplicateId,
+  { message: "primaryId and duplicateId must be different" }
+);
+
 const MAX_CSV_IMPORT_ROWS = 500;
 
 const upload = multer({
@@ -211,8 +231,12 @@ export function registerLeadRoutes(app: Express): void {
   api.post("/api/leads/check-duplicates", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const { firstName, lastName, email, phone, address } = req.body;
-      
+      const parsed = checkDuplicatesSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+      const { firstName, lastName, email, phone, address } = parsed.data;
+
       const duplicates = await storage.findDuplicateLeads(org.id, {
         firstName,
         lastName,
@@ -244,12 +268,12 @@ export function registerLeadRoutes(app: Express): void {
   api.post("/api/leads/merge", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const { primaryId, duplicateId } = req.body;
-      
-      if (!primaryId || !duplicateId) {
-        return Errors.badRequest(res, "Primary and duplicate lead IDs are required");
+      const parsed = mergeLeadsSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
       }
-      
+      const { primaryId, duplicateId } = parsed.data;
+
       const merged = await storage.mergeLeads(org.id, primaryId, duplicateId);
       
       res.json({
@@ -890,10 +914,12 @@ export function registerLeadRoutes(app: Express): void {
 
       const results = { successCount: 0, errorCount: 0, errors: [] as any[] };
 
+      // Build all lead data upfront, collecting any parse errors per row
+      const validLeads: { index: number; data: any }[] = [];
       for (let i = 0; i < mappedData.length; i++) {
         try {
           const row = mappedData[i];
-          
+
           // Parse name into first and last name
           let firstName = "Unknown";
           let lastName = "Owner";
@@ -903,35 +929,59 @@ export function registerLeadRoutes(app: Express): void {
             lastName = nameParts.slice(1).join(" ") || "Owner";
           }
 
-          const leadData = {
-            organizationId: org.id,
-            type: "seller" as const,
-            firstName,
-            lastName,
-            address: row.property_address || row.mailing_address || "",
-            city: "",
-            state: row.state || "",
-            zip: "",
-            source: "tax_delinquent",
-            status: "new" as const,
-            notes: [
-              row.parcel_id ? `Parcel ID: ${row.parcel_id}` : "",
-              row.assessed_value ? `Assessed Value: $${row.assessed_value}` : "",
-              row.taxes_owed ? `Taxes Owed: $${row.taxes_owed}` : "",
-              row.tax_year ? `Tax Year: ${row.tax_year}` : "",
-              row.county ? `County: ${row.county}` : "",
-            ].filter(Boolean).join("\n"),
-            tags: ["tax_delinquent", row.county || "unknown"].filter(Boolean) as string[],
-          };
-
-          await storage.createLead(leadData);
-          results.successCount++;
+          validLeads.push({
+            index: i,
+            data: {
+              organizationId: org.id,
+              type: "seller" as const,
+              firstName,
+              lastName,
+              address: row.property_address || row.mailing_address || "",
+              city: "",
+              state: row.state || "",
+              zip: "",
+              source: "tax_delinquent",
+              status: "new" as const,
+              notes: [
+                row.parcel_id ? `Parcel ID: ${row.parcel_id}` : "",
+                row.assessed_value ? `Assessed Value: $${row.assessed_value}` : "",
+                row.taxes_owed ? `Taxes Owed: $${row.taxes_owed}` : "",
+                row.tax_year ? `Tax Year: ${row.tax_year}` : "",
+                row.county ? `County: ${row.county}` : "",
+              ].filter(Boolean).join("\n"),
+              tags: ["tax_delinquent", row.county || "unknown"].filter(Boolean) as string[],
+            },
+          });
         } catch (err) {
           results.errorCount++;
           results.errors.push({
             row: i + 1,
             error: err instanceof Error ? err.message : "Unknown error",
           });
+        }
+      }
+
+      // Batch insert in chunks of 100 to avoid oversized queries
+      const BATCH_SIZE = 100;
+      for (let i = 0; i < validLeads.length; i += BATCH_SIZE) {
+        const chunk = validLeads.slice(i, i + BATCH_SIZE);
+        try {
+          const created = await storage.createLeadsBatch(chunk.map(c => c.data));
+          results.successCount += created.length;
+        } catch (err) {
+          // If batch fails, fall back to individual inserts for this chunk
+          for (const item of chunk) {
+            try {
+              await storage.createLead(item.data);
+              results.successCount++;
+            } catch (innerErr) {
+              results.errorCount++;
+              results.errors.push({
+                row: item.index + 1,
+                error: innerErr instanceof Error ? innerErr.message : "Unknown error",
+              });
+            }
+          }
         }
       }
 

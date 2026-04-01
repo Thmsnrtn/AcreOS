@@ -53,7 +53,7 @@ export function QuickActionsMenu() {
     {
       icon: Sparkles,
       label: "Ask Pax",
-      href: "/command-center",
+      href: "/ai",
       color: "bg-amber-500 hover:bg-amber-600",
       testId: "quick-action-pax",
     },

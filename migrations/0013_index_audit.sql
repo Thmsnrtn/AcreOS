@@ -306,7 +306,7 @@ CREATE INDEX IF NOT EXISTS "notes_property_idx"
 
 -- ── payments — payments.organizationId for tenant scoping
 CREATE INDEX IF NOT EXISTS "payments_org_idx"
-  ON "note_payments" ("organization_id");
+  ON "payments" ("organization_id");
 
 -- ── tax_escrow_payments ─────────────────────────────────────────────────────
 CREATE INDEX IF NOT EXISTS "tax_escrow_payments_note_idx"

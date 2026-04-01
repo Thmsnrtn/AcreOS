@@ -26,6 +26,19 @@ import { Errors } from "./utils/errors";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId } from "./types/request";
 
+// Zod schema for safe organization updates via PATCH /api/organization.
+// Sensitive fields (subscriptionTier, isFounder, stripeCustomerId, creditBalance, etc.)
+// are deliberately excluded — they must be updated through dedicated endpoints.
+const updateOrganizationSchema = z.object({
+  name: z.string().min(1).max(255).optional(),
+  onboardingCompleted: z.boolean().optional(),
+  onboardingStep: z.number().int().min(0).optional(),
+  onboardingData: z.record(z.unknown()).optional(),
+  autoTopUpEnabled: z.boolean().optional(),
+  autoTopUpThresholdCents: z.number().int().min(0).optional(),
+  autoTopUpAmountCents: z.number().int().min(0).optional(),
+}).strict();
+
 export function registerOrganizationRoutes(app: Express): void {
   const api = app;
 
@@ -328,7 +341,11 @@ export function registerOrganizationRoutes(app: Express): void {
   
   api.patch("/api/organization", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const updates = req.body;
+    const parsed = updateOrganizationSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return Errors.validationFailed(res, parsed.error.errors);
+    }
+    const updates = parsed.data;
     const updated = await storage.updateOrganization(org.id, updates);
 
     try {
@@ -382,8 +399,11 @@ export function registerOrganizationRoutes(app: Express): void {
 
       res.json({ success: true });
     } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return Errors.validationFailed(res, error.errors);
+      }
       logger.error("Update AI settings error", error instanceof Error ? error : undefined);
-      res.status(400).json({ message: error.message || "Failed to update AI settings" });
+      Errors.internal(res, error);
     }
   });
   
@@ -979,7 +999,7 @@ export function registerOrganizationRoutes(app: Express): void {
       }).strict();
       const parsed = allowed.safeParse(req.body);
       if (!parsed.success) {
-        return res.status(400).json({ message: "Invalid settings", errors: parsed.error.flatten() });
+        return Errors.validationFailed(res, parsed.error.errors);
       }
       // Merge patch into the existing settings JSONB
       const current = await storage.getOrganization(org.id);
@@ -1016,15 +1036,24 @@ export function registerOrganizationRoutes(app: Express): void {
   });
 
   // Subscribe — store endpoint + keys
+  const pushSubscribeSchema = z.object({
+    endpoint: z.string().url("endpoint must be a valid URL"),
+    keys: z.object({
+      p256dh: z.string().min(1, "keys.p256dh is required"),
+      auth: z.string().min(1, "keys.auth is required"),
+    }),
+  });
+
   api.post("/api/push/subscribe", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
       const user = req.user;
-      const userId = user?.claims?.sub ?? user?.id ?? "unknown";
-      const { endpoint, keys } = req.body;
-      if (!endpoint || !keys?.p256dh || !keys?.auth) {
-        return res.status(400).json({ message: "endpoint, keys.p256dh and keys.auth are required" });
+      const userId = (user as any)?.claims?.sub ?? user?.id ?? "unknown";
+      const parsed = pushSubscribeSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
       }
+      const { endpoint, keys } = parsed.data;
       // Upsert: ignore if same endpoint already registered
       await db.execute(
         sql`INSERT INTO push_subscriptions (organization_id, user_id, endpoint, p256dh, auth)
@@ -1033,7 +1062,7 @@ export function registerOrganizationRoutes(app: Express): void {
       );
       res.status(201).json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message || "Failed to save subscription" });
+      Errors.internal(res, err);
     }
   });
 

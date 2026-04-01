@@ -129,7 +129,7 @@ const pages = [
   { name: "Property Map", icon: Map, path: "/maps" },
   { name: "Marketplace", icon: Store, path: "/marketplace" },
   { name: "Academy", icon: GraduationCap, path: "/academy" },
-  { name: "AI Assistant", icon: Bot, path: "/command-center" },
+  { name: "AI Hub", icon: Bot, path: "/ai" },
   { name: "Settings", icon: Settings, path: "/settings" },
 ];
 
