@@ -1134,12 +1134,6 @@ export async function registerRoutes(
     registerFounderV8Routes(app);
   }
 
-  // Sovereign Company Protocol v9 — The Self-Running Company
-  {
-    const { registerFounderV9Routes } = await import("./routes-founder-v9");
-    registerFounderV9Routes(app);
-  }
-
   // Sovereign Company Protocol v10 — The Conscious Organization
   {
     const { registerFounderV10Routes } = await import("./routes-founder-v10");

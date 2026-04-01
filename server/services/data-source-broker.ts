@@ -473,7 +473,7 @@ export class DataSourceBroker {
         geometryType: this.inferGeometryType(s.category, s.subcategory),
       }));
     } catch (error: any) {
-      logger.error("Error fetching map layers", { error: error.message });
+      logger.error("Error fetching map layers", error instanceof Error ? error : undefined);
       return [];
     }
   }

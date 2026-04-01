@@ -100,7 +100,7 @@ async function checkRateLimit(
     }
   } catch (err) {
     // Redis error — fail open (allow request, log error)
-    logger.error("Redis rate limit check failed — allowing request", { error: err instanceof Error ? err.message : String(err) });
+    logger.error("Redis rate limit check failed — allowing request", err instanceof Error ? err : undefined);
     return { allowed: true, remaining: config.maxRequests, resetAt: new Date(), totalRequests: 0 };
   }
 }
@@ -197,7 +197,7 @@ export function createOrgRateLimit(redisClient: any) {
       return next();
     } catch (err) {
       // Fail open — never block requests due to rate limit system errors
-      logger.error("Redis rate limit middleware error — allowing request", { error: err instanceof Error ? err.message : String(err) });
+      logger.error("Redis rate limit middleware error — allowing request", err instanceof Error ? err : undefined);
       return next();
     }
   };
@@ -358,7 +358,7 @@ export function createWebhookRateLimit(redisClient: any) {
     });
 
     if (!result.allowed) {
-      logger.warn("Webhook flood detected — throttled", { organizationId: orgId });
+      logger.warn(`Webhook flood detected from org ${orgId} — throttled`, { organizationId: orgId });
       return res.status(429).json({ error: "webhook_rate_limited" });
     }
 
