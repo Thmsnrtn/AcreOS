@@ -465,12 +465,20 @@ export function registerCampaignRoutes(app: Express): void {
   });
 
   // Reorder steps
+  const reorderStepsSchema = z.object({
+    stepIds: z.array(z.number().int().positive()).min(1, "stepIds must be a non-empty array"),
+  });
+
   api.put("/api/sequences/:id/steps/reorder", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
     const sequence = await storage.getSequence(org.id, Number(req.params.id));
     if (!sequence) return Errors.notFound(res, "Sequence");
-    
-    const { stepIds } = req.body as { stepIds: number[] };
+
+    const parsed = reorderStepsSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return Errors.validationFailed(res, parsed.error.errors);
+    }
+    const { stepIds } = parsed.data;
     await storage.reorderSequenceSteps(sequence.id, stepIds);
     
     const steps = await storage.getSequenceSteps(sequence.id);
@@ -499,13 +507,21 @@ export function registerCampaignRoutes(app: Express): void {
   });
 
   // Enroll a lead in a sequence
+  const enrollLeadSchema = z.object({
+    leadId: z.number().int().positive("leadId is required"),
+  });
+
   api.post("/api/sequences/:id/enroll", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
       const sequence = await storage.getSequence(org.id, Number(req.params.id));
       if (!sequence) return Errors.notFound(res, "Sequence");
 
-      const { leadId } = req.body;
+      const parsed = enrollLeadSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+      const { leadId } = parsed.data;
       const lead = await storage.getLead(org.id, leadId);
       if (!lead) return Errors.notFound(res, "Lead");
 
