@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 import { db } from "../storage";
 import { sql, eq, and, gte, desc, count } from "drizzle-orm";
 import {

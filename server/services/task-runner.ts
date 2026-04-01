@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 import { storage } from "../storage";
 import { workflowEngine } from "./workflow-engine";
 import type { ScheduledTask, InsertScheduledTask } from "@shared/schema";

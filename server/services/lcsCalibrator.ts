@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * LCS Calibrator — adjusts Land Credit Score dimension weights based on
  * empirical correlation between dimension scores and deal profitability.

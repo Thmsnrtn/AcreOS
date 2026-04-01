@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * CEO Decision Replay + Bias Detection — Sovereign Company Protocol v10
  *

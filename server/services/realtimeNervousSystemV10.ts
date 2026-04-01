@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Real-Time Nervous System — Sovereign Company Protocol v10
  *

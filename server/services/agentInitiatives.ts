@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Agent Initiative Proposals — Sovereign Company Protocol v6
  *

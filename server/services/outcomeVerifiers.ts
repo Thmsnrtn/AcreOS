@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Outcome Verifiers — Sovereign Company Protocol v4
  *

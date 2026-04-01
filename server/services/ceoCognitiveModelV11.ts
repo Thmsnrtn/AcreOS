@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * CEO Cognitive Model — Sovereign Company Protocol v11
  *

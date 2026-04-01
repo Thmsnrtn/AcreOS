@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Agent Goal Manager — Sovereign Company Protocol v2
  *

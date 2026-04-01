@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Agent Self-Calibration Protocol — Sovereign Company Protocol v10
  *

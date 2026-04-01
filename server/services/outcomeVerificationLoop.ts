@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Outcome Verification Loop
  *

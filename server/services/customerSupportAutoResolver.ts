@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Customer Support Auto-Resolver — Extracted from decisionsInbox.ts
  *

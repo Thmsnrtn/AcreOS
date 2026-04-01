@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Organizational Heartbeat Monitor — Sovereign Company Protocol v10
  *

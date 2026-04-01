@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Institutional Memory — Sovereign Company Protocol v7
  *

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Strategic Compass v8 — Sovereign Company Protocol v8
  *
