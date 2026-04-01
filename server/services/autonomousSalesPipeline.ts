@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Autonomous Revenue Engine — Sovereign Company Protocol Phase 15
  *

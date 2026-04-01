@@ -73,7 +73,7 @@ export function KeyboardShortcutsProvider({ children }: { children: ReactNode })
       ["nav-deals", { key: "g d", description: "Go to Deals", callback: () => setLocation("/deals"), global: true }],
       ["nav-finance", { key: "g f", description: "Go to Finance", callback: () => setLocation("/finance"), global: true }],
       ["nav-dashboard", { key: "g h", description: "Go to Home/Dashboard", callback: () => setLocation("/"), global: true }],
-      ["nav-ai", { key: "g a", description: "Go to AI Command Center", callback: () => setLocation("/command-center"), global: true }],
+      ["nav-ai", { key: "g a", description: "Go to AI Hub", callback: () => setLocation("/ai"), global: true }],
       ["nav-settings", { key: "g s", description: "Go to Settings", callback: () => setLocation("/settings"), global: true }],
       ["show-shortcuts", { key: "?", description: "Show keyboard shortcuts", callback: () => setDialogOpen(true), global: true }],
       ["search-focus", { key: "/", description: "Focus search", callback: () => {
@@ -115,7 +115,7 @@ export function KeyboardShortcutsProvider({ children }: { children: ReactNode })
         }
         if (e.key === "j" || e.key === "J") {
           e.preventDefault();
-          setLocation("/command-center");
+          setLocation("/ai");
           return;
         }
         // Don't return early for other meta/ctrl combos - let them pass through

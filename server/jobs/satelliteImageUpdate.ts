@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 /**
  * Satellite Image Update Job
  *
@@ -25,6 +24,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, lte, isNotNull, sql } from "drizzle-orm";
 import { subDays } from "date-fns";
+import { logger } from "../utils/logger";
 
 export const SATELLITE_UPDATE_QUEUE_NAME = "satellite-image-update";
 
@@ -206,9 +206,7 @@ async function processProperty(property: any): Promise<{
   });
 
   if (significantChange) {
-    console.warn(
-      `[SatelliteImageUpdate] Significant change detected on property ${property.id} (score: ${metrics.changeScore.toFixed(1)}%, type: ${changeType})`
-    );
+    logger.warn(`[SatelliteImageUpdate] Significant change detected on property ${property.id} (score: ${metrics.changeScore.toFixed(1)}%, type: ${changeType})`);
   }
 
   return { updated: true, significantChange, changeScore: metrics.changeScore };
@@ -249,7 +247,7 @@ async function processSatelliteUpdateJob(job: Job): Promise<void> {
       .orderBy(properties.id)
       .limit(500); // Safety cap per run
 
-    console.log(`[SatelliteImageUpdate] ${propertiesDue.length} properties eligible for refresh`);
+    logger.info(`[SatelliteImageUpdate] ${propertiesDue.length} properties eligible for refresh`);
 
     // Process in batches
     for (let i = 0; i < propertiesDue.length; i += BATCH_SIZE) {
@@ -276,7 +274,7 @@ async function processSatelliteUpdateJob(job: Job): Promise<void> {
             if (result.significantChange) totalSignificantChanges++;
           } catch (err: any) {
             totalFailed++;
-            console.error(`[SatelliteImageUpdate] Property ${property.id} failed:`, err.message);
+            logger.error(`[SatelliteImageUpdate] Property ${property.id} failed`, err);
           }
         })
       );
@@ -297,11 +295,9 @@ async function processSatelliteUpdateJob(job: Job): Promise<void> {
         .where(eq(backgroundJobs.id, bgJobId));
     }
 
-    console.log(
-      `[SatelliteImageUpdate] Done. Processed: ${totalProcessed}, Updated: ${totalUpdated}, Significant changes: ${totalSignificantChanges}, Failed: ${totalFailed}`
-    );
+    logger.info(`[SatelliteImageUpdate] Done. Processed: ${totalProcessed}, Updated: ${totalUpdated}, Significant changes: ${totalSignificantChanges}, Failed: ${totalFailed}`);
   } catch (err: any) {
-    console.error("[SatelliteImageUpdate] Fatal error:", err.message);
+    logger.error("[SatelliteImageUpdate] Fatal error", err);
     if (bgJobId) {
       await db
         .update(backgroundJobs)
@@ -332,7 +328,7 @@ export async function registerSatelliteUpdateJob(queue: Queue): Promise<void> {
       removeOnFail: 3,
     }
   );
-  console.log("[SatelliteImageUpdate] Registered daily satellite refresh job at 2 AM UTC");
+  logger.info("[SatelliteImageUpdate] Registered daily satellite refresh job at 2 AM UTC");
 }
 
 export function satelliteImageUpdateJob(redisConnection: any): Worker {
@@ -348,11 +344,11 @@ export function satelliteImageUpdateJob(redisConnection: any): Worker {
   );
 
   worker.on("completed", (job) => {
-    console.log(`[SatelliteImageUpdate] Job ${job.id} completed`);
+    logger.info(`[SatelliteImageUpdate] Job ${job.id} completed`);
   });
 
   worker.on("failed", (job, err) => {
-    console.error(`[SatelliteImageUpdate] Job ${job?.id} failed:`, err.message);
+    logger.error(`[SatelliteImageUpdate] Job ${job?.id} failed`, err);
   });
 
   return worker;

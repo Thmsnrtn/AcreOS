@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * SCP v3 Customer Lifecycle Engine — Sovereign Company Protocol
  *

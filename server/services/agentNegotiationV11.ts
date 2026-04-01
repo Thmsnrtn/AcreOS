@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Agent Negotiation Protocol — Sovereign Company Protocol v11: The Anticipatory Enterprise
  *

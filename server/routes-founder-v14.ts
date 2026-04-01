@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Founder v14 Routes — Sovereign Company Protocol v14: The Self-Running Company
  *

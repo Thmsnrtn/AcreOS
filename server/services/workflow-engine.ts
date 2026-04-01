@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 import { storage } from "../storage";
 import {
   type Workflow,
@@ -9,6 +8,7 @@ import {
   WORKFLOW_TRIGGER_EVENTS,
   WORKFLOW_ACTION_TYPES,
 } from "@shared/schema";
+import { logger } from "../utils/logger";
 
 // ---------------------------------------------------------------------------
 // Pre-built workflow templates for land investing.
@@ -763,7 +763,7 @@ class WorkflowEngine {
         try {
           await this.triggerWorkflows(eventData);
         } catch (error) {
-          console.error(`[WorkflowEngine] Error processing event ${eventData.event}:`, error);
+          logger.error(`[WorkflowEngine] Error processing event ${eventData.event}`, error);
         }
       }
     }
@@ -957,7 +957,7 @@ class WorkflowEngine {
         break;
       }
       default:
-        console.warn(`[WorkflowEngine] Unknown action type: ${action.type}`);
+        logger.warn(`[WorkflowEngine] Unknown action type: ${action.type}`);
     }
   }
 
@@ -970,7 +970,7 @@ class WorkflowEngine {
     const subject = this.interpolateTemplate(config.subject || "", context.variables);
     const body = this.interpolateTemplate(config.body || "", context.variables);
 
-    console.log(`[WorkflowEngine] Sending email to ${to}: ${subject}`);
+    logger.info(`[WorkflowEngine] Sending email to ${to}: ${subject}`);
     return { emailSent: true };
   }
 
@@ -998,7 +998,7 @@ class WorkflowEngine {
       entityId: context.triggerData.entityId,
     });
 
-    console.log(`[WorkflowEngine] Created task: ${task.id}`);
+    logger.info(`[WorkflowEngine] Created task: ${task.id}`);
     return { taskId: task.id };
   }
 
@@ -1035,7 +1035,7 @@ class WorkflowEngine {
         throw new Error(`Unknown entity type: ${entityType}`);
     }
 
-    console.log(`[WorkflowEngine] Updated ${entityType} ${entityId}`);
+    logger.info(`[WorkflowEngine] Updated ${entityType} ${entityId}`);
     return { updated: true };
   }
 
@@ -1044,7 +1044,7 @@ class WorkflowEngine {
     context: WorkflowExecutionContext
   ): Promise<{ skillExecuted: boolean; result?: any }> {
     const config = action.config;
-    console.log(`[WorkflowEngine] Running agent skill: ${config.skillId}`);
+    logger.info(`[WorkflowEngine] Running agent skill: ${config.skillId}`);
     return { skillExecuted: true };
   }
 
@@ -1065,7 +1065,7 @@ class WorkflowEngine {
       entityId: context.triggerData.entityId,
     });
 
-    console.log(`[WorkflowEngine] Sent notification: ${message}`);
+    logger.info(`[WorkflowEngine] Sent notification: ${message}`);
     return { notificationSent: true };
   }
 
@@ -1078,7 +1078,7 @@ class WorkflowEngine {
     
     await new Promise((resolve) => setTimeout(resolve, delayMs));
     
-    console.log(`[WorkflowEngine] Delayed for ${delayMinutes} minutes`);
+    logger.info(`[WorkflowEngine] Delayed for ${delayMinutes} minutes`);
     return { delayed: true, delayMinutes };
   }
 

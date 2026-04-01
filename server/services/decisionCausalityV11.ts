@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Decision Causality Graph — Sovereign Company Protocol v11
  *

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Customer Support Auto-Resolver — Extracted from decisionsInbox.ts
  *
@@ -21,6 +20,7 @@
 import { db } from "../db";
 import { supportTickets, supportTicketMessages } from "@shared/schema";
 import { eq, gte, count, and, desc } from "drizzle-orm";
+import { logger } from "../utils/logger";
 
 // Confidence thresholds per SOPHIE_CONFIDENCE_MODE env var
 const CONFIDENCE_THRESHOLDS: Record<string, number> = {
@@ -118,7 +118,7 @@ Please provide a definitive resolution.`,
 
     return { resolved: false, response: parsed.response, confidence };
   } catch (err: any) {
-    console.warn("[SophieGeniusMode] Opus second-opinion failed:", err.message);
+    logger.warn("[SophieGeniusMode] Opus second-opinion failed", { metadata: { detail: err.message } });
     return { resolved: false, confidence: 0 };
   }
 }
@@ -170,7 +170,7 @@ export const customerSupportAutoResolver = {
         .set({ status: "resolved", resolvedAt: new Date(), updatedAt: new Date() })
         .where(eq(supportTickets.id, ticketId));
 
-      console.log(`[AutoResolver] Ticket #${ticketId} auto-resolved by Sophie (confidence: ${confidence}%)`);
+      logger.info(`[AutoResolver] Ticket #${ticketId} auto-resolved by Sophie (confidence: ${confidence}%)`);
       return { autoResolved: true };
     }
 
@@ -185,7 +185,7 @@ export const customerSupportAutoResolver = {
         opts?.category ?? ticket.category ?? "general",
       );
       if (geniusResult.resolved) {
-        console.log(`[AutoResolver] Ticket #${ticketId} auto-resolved by Genius Mode (confidence: ${geniusResult.confidence}%)`);
+        logger.info(`[AutoResolver] Ticket #${ticketId} auto-resolved by Genius Mode (confidence: ${geniusResult.confidence}%)`);
         return { autoResolved: true };
       }
       // Pass back the genius response/confidence for the inbox item context

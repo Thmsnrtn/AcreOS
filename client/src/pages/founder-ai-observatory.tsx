@@ -7,6 +7,16 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Table,
   TableBody,
   TableCell,
@@ -41,6 +51,8 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { staggerContainer, staggerItem, collapsibleContent } from "@/lib/animations";
 import { format, formatDistanceToNow } from "date-fns";
+import { InfoTooltip } from "@/components/info-tooltip";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -321,6 +333,7 @@ function DecisionCard({
   onFeedback: (id: string, feedback: "good" | "different") => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [pendingFeedback, setPendingFeedback] = useState<"good" | "different" | null>(null);
   const CategoryIcon = CATEGORY_ICONS[decision.actionType];
   const outcome = OUTCOME_DISPLAY[decision.outcome];
 
@@ -383,7 +396,7 @@ function DecisionCard({
               variant={decision.feedback === "good" ? "default" : "outline"}
               size="sm"
               className="h-7 text-xs gap-1"
-              onClick={() => onFeedback(decision.id, "good")}
+              onClick={() => setPendingFeedback("good")}
             >
               <ThumbsUp className="w-3 h-3" />
               Good call
@@ -392,7 +405,7 @@ function DecisionCard({
               variant={decision.feedback === "different" ? "destructive" : "outline"}
               size="sm"
               className="h-7 text-xs gap-1"
-              onClick={() => onFeedback(decision.id, "different")}
+              onClick={() => setPendingFeedback("different")}
             >
               <ThumbsDown className="w-3 h-3" />
               I'd have decided differently
@@ -432,6 +445,32 @@ function DecisionCard({
             </motion.div>
           )}
         </AnimatePresence>
+
+        <AlertDialog open={!!pendingFeedback} onOpenChange={(open) => { if (!open) setPendingFeedback(null); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {pendingFeedback === "good" ? "Confirm positive feedback?" : "Flag this decision?"}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {pendingFeedback === "good"
+                  ? `You're confirming that the AI made a good call on: "${decision.summary}". This feedback helps the system learn your preferences.`
+                  : `You're indicating you would have decided differently on: "${decision.summary}". This feedback will be used to calibrate future AI decisions and may change how similar situations are handled.`}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={() => {
+                if (pendingFeedback) {
+                  onFeedback(decision.id, pendingFeedback);
+                  setPendingFeedback(null);
+                }
+              }}>
+                Yes, submit feedback
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </motion.div>
   );
@@ -733,6 +772,14 @@ export default function AiObservatory() {
           </p>
         </div>
 
+        <Alert>
+          <ShieldAlert className="h-4 w-4" />
+          <AlertTitle>Technical details ahead</AlertTitle>
+          <AlertDescription>
+            This page shows technical details about your AI system. Most founders don't need to check this — your system manages itself automatically.
+          </AlertDescription>
+        </Alert>
+
         {/* Stats Row */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
@@ -758,6 +805,7 @@ export default function AiObservatory() {
             value={
               stats ? `${(stats.cacheHitRate * 100).toFixed(1)}%` : "—"
             }
+            sub="Reuses previous answers instead of making new AI calls (saves money)"
             icon={Zap}
             loading={statsLoading}
           />
@@ -835,7 +883,7 @@ export default function AiObservatory() {
                       <TableHead>Model</TableHead>
                       <TableHead>Complexity</TableHead>
                       <TableHead>Tools Called</TableHead>
-                      <TableHead className="text-right">Tokens</TableHead>
+                      <TableHead className="text-right"><InfoTooltip term="Tokens" explanation="Units of text processed by the AI — like words, but smaller.">Tokens</InfoTooltip></TableHead>
                       <TableHead className="text-right">Cost</TableHead>
                       <TableHead>Status</TableHead>
                     </TableRow>

@@ -16,6 +16,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, isNull, sql } from "drizzle-orm";
 import { SkillRegistry } from "./agent-skills";
+import { logger } from "../utils/logger";
 
 const skillRegistry = new SkillRegistry();
 
@@ -266,7 +267,7 @@ class AgentOrchestrationService {
       },
     });
 
-    console.log(`[orchestration] Approval requested for step ${stepId}: ${reason}`);
+    logger.info(`[orchestration] Approval requested for step ${stepId}: ${reason}`);
     return approval;
   }
 
@@ -315,7 +316,7 @@ class AgentOrchestrationService {
       .set({ status: "pending" })
       .where(eq(agentSessionSteps.id, stepId));
 
-    console.log(`[orchestration] Step ${stepId} approved by ${approvedBy}`);
+    logger.info(`[orchestration] Step ${stepId} approved by ${approvedBy}`);
     return { approved: true, message: "Step approved successfully" };
   }
 
@@ -707,7 +708,7 @@ class AgentOrchestrationService {
     const triggerConfig = filter?.triggerConfig;
 
     if (!triggerAction) {
-      console.log(`[orchestration] No trigger action for subscription ${subscription.id}`);
+      logger.info(`[orchestration] No trigger action for subscription ${subscription.id}`);
       return;
     }
 
@@ -725,7 +726,7 @@ class AgentOrchestrationService {
             eventPayload: event.payload,
           },
         });
-        console.log(`[orchestration] Created task for agent ${subscription.subscriberId} from event ${event.eventType}`);
+        logger.info(`[orchestration] Created task for agent ${subscription.subscriberId} from event ${event.eventType}`);
         break;
 
       case "start_session":
@@ -741,7 +742,7 @@ class AgentOrchestrationService {
             },
           },
         });
-        console.log(`[orchestration] Started session from event ${event.eventType}`);
+        logger.info(`[orchestration] Started session from event ${event.eventType}`);
         break;
 
       case "call_webhook":
@@ -750,7 +751,7 @@ class AgentOrchestrationService {
             // F-A10-1: Block SSRF — reject RFC 1918, loopback, and cloud metadata targets
             const parsed = new URL(triggerConfig.webhookUrl);
             if (!["http:", "https:"].includes(parsed.protocol)) {
-              console.warn(`[orchestration] Webhook blocked — non-HTTP protocol: ${parsed.protocol}`);
+              logger.warn(`[orchestration] Webhook blocked — non-HTTP protocol: ${parsed.protocol}`);
               break;
             }
             const hostname = parsed.hostname.toLowerCase();
@@ -767,7 +768,7 @@ class AgentOrchestrationService {
               /^fd[0-9a-f]{2}:/,
             ];
             if (ssrfDenyPatterns.some((re) => re.test(hostname))) {
-              console.warn(`[orchestration] Webhook blocked — internal/private address: ${hostname}`);
+              logger.warn(`[orchestration] Webhook blocked — internal/private address: ${hostname}`);
               break;
             }
             await fetch(triggerConfig.webhookUrl, {
@@ -780,9 +781,9 @@ class AgentOrchestrationService {
                 triggeredAt: new Date().toISOString(),
               }),
             });
-            console.log(`[orchestration] Called webhook for event ${event.eventType}`);
+            logger.info(`[orchestration] Called webhook for event ${event.eventType}`);
           } catch (error: any) {
-            console.error(`[orchestration] Webhook call failed: ${error.message}`);
+            logger.error(`[orchestration] Webhook call failed: ${error.message}`);
           }
         }
         break;
@@ -830,13 +831,13 @@ class AgentOrchestrationService {
         })
         .where(eq(eventSubscriptions.id, sub.id));
 
-      console.log(`[orchestration] Triggered subscription ${sub.id} for event ${data.eventType}`);
+      logger.info(`[orchestration] Triggered subscription ${sub.id} for event ${data.eventType}`);
 
       try {
         await this.triggerSubscriptionAction(sub, event, organizationId);
         actionsTriggered++;
       } catch (error: any) {
-        console.error(`[orchestration] Failed to trigger action for subscription ${sub.id}: ${error.message}`);
+        logger.error(`[orchestration] Failed to trigger action for subscription ${sub.id}: ${error.message}`);
       }
     }
 

@@ -1,6 +1,7 @@
 import { PageShell } from "@/components/page-shell";
 import { PaxContextButton } from "@/components/pax-context-button";
-import { useProperties, useCreateProperty, useDeleteProperty, useEnrichProperty } from "@/hooks/use-properties";
+import { ListPagination, usePagination } from "@/components/list-pagination";
+import { useProperties, usePropertiesPaginated, useCreateProperty, useDeleteProperty, useEnrichProperty } from "@/hooks/use-properties";
 import { queryClient } from "@/lib/queryClient";
 import { telemetry } from "@/lib/telemetry";
 import { ListSkeleton } from "@/components/list-skeleton";
@@ -131,8 +132,13 @@ import { usePersistedGisFilters } from "@/hooks/use-persisted-gis-filters";
 import { Bot } from "lucide-react";
 
 export default function PropertiesPage() {
-  const propertiesQuery = useProperties();
-  const { data: properties, isLoading, isError, error, isRefetching } = propertiesQuery;
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const propertiesQuery = usePropertiesPaginated({ page: currentPage, pageSize });
+  const propertiesResponse = propertiesQuery.data;
+  const properties = propertiesResponse?.data;
+  const serverTotal = propertiesResponse?.total ?? 0;
+  const { isLoading, isError, error, isRefetching } = propertiesQuery;
   const refetch = propertiesQuery.refetch;
   const delayedLoading = useDelayedLoading(isLoading, 200);
   const searchString = useSearch();
@@ -212,6 +218,21 @@ export default function PropertiesPage() {
 
     return result;
   }, [properties, gisFilters, statusFilter, distressFilter]);
+
+  // Server-side pagination: data is already one page
+  const paginatedProperties = filteredProperties;
+  const totalPropertyItems = serverTotal;
+  const safePropertyPage = currentPage;
+
+  const handlePropertyPageChange = (page: number) => {
+    setCurrentPage(page);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handlePropertyPageSizeChange = (size: number) => {
+    setPageSize(size);
+    setCurrentPage(1);
+  };
 
   const handleSelectAll = (checked: boolean) => {
     if (checked && filteredProperties.length > 0) {
@@ -625,7 +646,7 @@ export default function PropertiesPage() {
                 />
               )}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredProperties.map((property) => (
+              {paginatedProperties.map((property) => (
                 <div key={property.id} className="relative">
                   <div className="absolute top-3 left-3 z-10">
                     <Checkbox
@@ -655,6 +676,15 @@ export default function PropertiesPage() {
                 </div>
               )}
             </div>
+            {serverTotal > pageSize && (
+              <ListPagination
+                currentPage={safePropertyPage}
+                totalItems={totalPropertyItems}
+                pageSize={pageSize}
+                onPageChange={handlePropertyPageChange}
+                onPageSizeChange={handlePropertyPageSizeChange}
+              />
+            )}
             </>
           ))}
 

@@ -4,6 +4,7 @@ import { voiceCalls, callTranscripts, agentEvents } from '../shared/schema';
 import { eq, and, desc, like, or } from 'drizzle-orm';
 import { voiceAI } from './services/voiceAI';
 import crypto from 'crypto';
+import { logger } from "./utils/logger";
 
 const voiceRouter = Router();
 
@@ -66,7 +67,7 @@ async function extractMotivationSignals(callId: number): Promise<{
 
     return { isMotivated, signals, confidence };
   } catch (error) {
-    console.error('[routes-voice] extractMotivationSignals error:', error);
+    logger.error('[routes-voice] extractMotivationSignals error', error);
     return { isMotivated: false, signals: [], confidence: 0 };
   }
 }
@@ -137,7 +138,7 @@ voiceRouter.post('/webhook/twilio/recording-complete', async (req: Request, res:
       RecordingDuration?: string;
     };
 
-    console.log('[twilio/recording-complete]', { RecordingSid, CallSid, RecordingDuration });
+    logger.info('[twilio/recording-complete]', { metadata: { detail: { RecordingSid, CallSid, RecordingDuration } } });
 
     if (!CallSid) {
       // Always return 200 to Twilio even on bad data
@@ -151,7 +152,7 @@ voiceRouter.post('/webhook/twilio/recording-complete', async (req: Request, res:
     });
 
     if (!voiceCall) {
-      console.warn('[twilio/recording-complete] No voiceCall found for CallSid:', CallSid);
+      logger.warn('[twilio/recording-complete] No voiceCall found for CallSid', { metadata: { detail: CallSid } });
       res.status(200).type('text/xml').send('<Response/>');
       return;
     }
@@ -193,15 +194,13 @@ voiceRouter.post('/webhook/twilio/recording-complete', async (req: Request, res:
         relatedEntityId: callId,
       });
 
-      console.log(
-        `[twilio/recording-complete] Motivated caller detected for callId=${callId}, confidence=${motivationResult.confidence}, signals=${motivationResult.signals.join(', ')}`
-      );
+      logger.info(`[twilio/recording-complete] Motivated caller detected for callId=${callId}, confidence=${motivationResult.confidence}, signals=${motivationResult.signals.join(', ')}`);
     }
 
     // Twilio expects 200 with TwiML or empty body
     res.status(200).type('text/xml').send('<Response/>');
   } catch (error: any) {
-    console.error('[twilio/recording-complete] Error:', error);
+    logger.error('[twilio/recording-complete] Error', error);
     // Still return 200 so Twilio doesn't retry indefinitely
     res.status(200).type('text/xml').send('<Response/>');
   }
@@ -230,7 +229,7 @@ voiceRouter.post('/calls', async (req: Request, res: Response) => {
 
     res.status(201).json({ callId, success: true });
   } catch (error: any) {
-    console.error('[POST /api/voice/calls] Error:', error);
+    logger.error('[POST /api/voice/calls] Error', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -265,7 +264,7 @@ voiceRouter.get('/calls', async (req: Request, res: Response) => {
 
     res.json({ calls, success: true });
   } catch (error: any) {
-    console.error('[GET /api/voice/calls] Error:', error);
+    logger.error('[GET /api/voice/calls] Error', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -300,7 +299,7 @@ voiceRouter.get('/calls/:id/transcript', async (req: Request, res: Response) => 
 
     res.json({ call, transcript: transcript || null, success: true });
   } catch (error: any) {
-    console.error('[GET /api/voice/calls/:id/transcript] Error:', error);
+    logger.error('[GET /api/voice/calls/:id/transcript] Error', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -321,7 +320,7 @@ voiceRouter.post('/webhook/disclosure', verifyTwilioSignature, async (req: Reque
 
     res.status(200).type('text/xml').send(twiml);
   } catch (error: any) {
-    console.error('[voice/webhook/disclosure] Error:', error);
+    logger.error('[voice/webhook/disclosure] Error', error);
     res.status(200).type('text/xml').send('<Response><Say>Error playing disclosure.</Say></Response>');
   }
 });
@@ -362,7 +361,7 @@ voiceRouter.post('/calls/:id/outcome', async (req: Request, res: Response) => {
 
     res.json({ success: true, callId, outcome: type });
   } catch (error: any) {
-    console.error('[POST /voice/calls/:id/outcome] Error:', error);
+    logger.error('[POST /voice/calls/:id/outcome] Error', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -409,7 +408,7 @@ voiceRouter.get('/calls/:id/summary', async (req: Request, res: Response) => {
         : null,
     });
   } catch (error: any) {
-    console.error('[GET /voice/calls/:id/summary] Error:', error);
+    logger.error('[GET /voice/calls/:id/summary] Error', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -466,7 +465,7 @@ voiceRouter.get('/transcripts/search', async (req: Request, res: Response) => {
 
     res.json({ success: true, results, total: results.length, query: q });
   } catch (error: any) {
-    console.error('[GET /voice/transcripts/search] Error:', error);
+    logger.error('[GET /voice/transcripts/search] Error', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -519,7 +518,7 @@ voiceRouter.get('/calls/:id/speakers', async (req: Request, res: Response) => {
 
     res.json({ success: true, callId, speakers, segmentCount: segments.length });
   } catch (error: any) {
-    console.error('[GET /voice/calls/:id/speakers] Error:', error);
+    logger.error('[GET /voice/calls/:id/speakers] Error', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -534,7 +533,7 @@ voiceRouter.get('/analytics', async (req: Request, res: Response) => {
     const analytics = await voiceAI.getCallAnalytics(org.id);
     res.json({ success: true, analytics });
   } catch (error: any) {
-    console.error('[GET /voice/analytics] Error:', error);
+    logger.error('[GET /voice/analytics] Error', error);
     res.status(500).json({ error: error.message });
   }
 });

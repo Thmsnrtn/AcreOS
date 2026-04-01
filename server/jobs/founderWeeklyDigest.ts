@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Founder Weekly Digest — Automated Founder Intelligence Report
  *
@@ -41,6 +40,7 @@ import {
 import { eq, and, gte, lt, desc, count, sum, avg, sql } from "drizzle-orm";
 import { subDays, subWeeks, format, startOfWeek, endOfWeek } from "date-fns";
 import { emailService } from "../services/emailService";
+import { logger } from "../utils/logger";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Data collection
@@ -861,7 +861,7 @@ export async function sendFounderWeeklyDigest(): Promise<{ sent: number; failed:
     .filter(Boolean);
 
   if (founderEmails.length === 0) {
-    console.warn("[FounderDigest] No FOUNDER_EMAIL configured — skipping weekly digest");
+    logger.warn("[FounderDigest] No FOUNDER_EMAIL configured — skipping weekly digest");
     return { sent: 0, failed: 0 };
   }
 
@@ -886,14 +886,14 @@ export async function sendFounderWeeklyDigest(): Promise<{ sent: number; failed:
           text: `AcreOS Weekly Digest (${data.weekOf})\n\nStatus: ${data.overallVibe.toUpperCase()} — ${data.vibeStatement}\n\nRevenue: ${fmtCents(data.revenue.estimatedMrrCents)} MRR | AI Cost: ${fmtCents(data.aiCosts.totalCostCentsThisWeek)}/wk | ${data.automation.successRate.toFixed(0)}% job success rate\n\nFounder actions needed: ${data.founderActions.length}\n\nOpen dashboard: ${appUrl}/founder/intelligence`,
         });
         sent++;
-        console.log(`[FounderDigest] Sent weekly digest to ${email}`);
+        logger.info(`[FounderDigest] Sent weekly digest to ${email}`);
       } catch (err: any) {
-        console.error(`[FounderDigest] Failed to send to ${email}:`, err.message);
+        logger.error(`[FounderDigest] Failed to send to ${email}`, err);
         failed++;
       }
     }
   } catch (err: any) {
-    console.error("[FounderDigest] Data collection failed:", err.message);
+    logger.error("[FounderDigest] Data collection failed", err);
     failed = founderEmails.length;
   }
 
@@ -917,5 +917,5 @@ export async function registerFounderWeeklyDigestJob(queue: any): Promise<void> 
       removeOnFail: 2,
     }
   );
-  console.log("[FounderDigest] Registered weekly founder digest job (Mondays 8 AM CT)");
+  logger.info("[FounderDigest] Registered weekly founder digest job (Mondays 8 AM CT)");
 }

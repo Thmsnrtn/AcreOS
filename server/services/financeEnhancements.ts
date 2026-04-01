@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Finance Enhancements — Items 86-105
  * Payment calendar, late reminders, note modifications, stress tests, etc.

@@ -21,6 +21,7 @@ import { emailService } from "./emailService";
 import { jobSupervisor } from "./jobSupervisor";
 import { logActivity } from "./systemActivityLogger";
 import OpenAI from "openai";
+import { logger } from "../utils/logger";
 
 const FOUNDER_EMAILS: string[] = [
   ...(process.env.FOUNDER_EMAIL ? [process.env.FOUNDER_EMAIL.trim()] : []),
@@ -182,7 +183,7 @@ async function writeBriefingWithAI(
 
 export async function sendDailyBriefing(): Promise<void> {
   if (FOUNDER_EMAILS.length === 0) {
-    console.warn("[FounderBriefing] No FOUNDER_EMAIL configured — skipping briefing");
+    logger.warn("[FounderBriefing] No FOUNDER_EMAIL configured — skipping briefing");
     return;
   }
 
@@ -215,7 +216,7 @@ export async function sendDailyBriefing(): Promise<void> {
         stats: emailStats,
       },
     }).catch((err) => {
-      console.error(`[FounderBriefing] Failed to send to ${email}:`, err?.message);
+      logger.error(`[FounderBriefing] Failed to send to ${email}`, undefined, { metadata: { detail: err?.message } });
     });
   }
 
@@ -228,5 +229,5 @@ export async function sendDailyBriefing(): Promise<void> {
     metadata: { recipients: FOUNDER_EMAILS.length, stats },
   });
 
-  console.log(`[FounderBriefing] Sent daily briefing to ${FOUNDER_EMAILS.length} founder(s)`);
+  logger.info(`[FounderBriefing] Sent daily briefing to ${FOUNDER_EMAILS.length} founder(s)`);
 }

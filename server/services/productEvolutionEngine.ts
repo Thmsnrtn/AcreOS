@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Product Evolution Engine — Sovereign Company Protocol Phase 16
  *

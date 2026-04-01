@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Event Mesh — Sovereign Company Protocol v12
  *
@@ -16,6 +15,7 @@ import {
 } from "@shared/schema";
 import { eq, desc, and, like, sql, inArray, lte, gte } from "drizzle-orm";
 import crypto from "crypto";
+import { logger } from "../utils/logger";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -66,7 +66,7 @@ class EventMeshService {
       })
       .returning();
 
-    console.log(`[event-mesh] Published ${eventType} on ${channel} (${eventId})`);
+    logger.info(`[event-mesh] Published ${eventType} on ${channel} (${eventId})`);
     return event;
   }
 
@@ -117,7 +117,7 @@ class EventMeshService {
       })
       .returning();
 
-    console.log(`[event-mesh] ${subscriber} subscribed to ${channelPattern}`);
+    logger.info(`[event-mesh] ${subscriber} subscribed to ${channelPattern}`);
     return subscription;
   }
 
@@ -235,7 +235,7 @@ class EventMeshService {
       })
       .where(eq(eventMeshEvents.eventId, eventId));
 
-    console.log(`[event-mesh] Dead-lettered ${eventId}: ${reason}`);
+    logger.info(`[event-mesh] Dead-lettered ${eventId}: ${reason}`);
   }
 
   /**

@@ -12,6 +12,7 @@ import {
 import { buildConnectorContextBlock } from "../services/connectors/registry";
 import mammoth from "mammoth";
 import { storage } from "../storage";
+import { logger } from "../utils/logger";
 
 // ── Quality Feedback Loop ────────────────────────────────────────────────────
 // Fire-and-forget: scores each Pax response quality via DeepSeek and writes
@@ -95,10 +96,10 @@ async function loadCalibrationContext(orgId: number): Promise<string> {
 function getChatProviderAndModel(complexity: TaskComplexity): { client: OpenAI; provider: AIProvider; model: string } {
   try {
     const result = selectProviderAndModel(complexity);
-    console.log(`[AI Chat] Selected provider: ${result.provider}/${result.model}`);
+    logger.info(`[AI Chat] Selected provider: ${result.provider}/${result.model}`);
     return result;
   } catch (error: any) {
-    console.error('[AI Chat] Failed to get AI provider:', error.message);
+    logger.error('[AI Chat] Failed to get AI provider', error);
     throw new Error("AI service not available. Please check configuration.");
   }
 }
@@ -575,7 +576,7 @@ async function formatFileContentAsync(file: FileAttachment): Promise<string> {
       const preview = text.slice(0, 15000);
       return `--- File: ${file.name} (Word Document) ---\n${preview}${text.length > 15000 ? '\n[...truncated...]' : ''}\n--- End of ${file.name} ---`;
     } catch (err: any) {
-      console.error(`[AI] Error parsing DOCX file ${file.name}:`, err.message);
+      logger.error(`[AI] Error parsing DOCX file ${file.name}`, err);
       return `--- File: ${file.name} ---\n[Error: Could not parse DOCX file. The file may be corrupted or in an unsupported format.]\n--- End of ${file.name} ---`;
     }
   }
@@ -778,7 +779,7 @@ async function compactConversationIfNeeded(
         .where(eq(aiConversations.id, conversationId))
         .catch(() => {});
     });
-    console.log(`[AI] Auto-compacted ${compactUpTo} messages for conversation ${conversationId}`);
+    logger.info(`[AI] Auto-compacted ${compactUpTo} messages for conversation ${conversationId}`);
     return [
       { id: -1, conversationId, role: "assistant", content: `=== CONVERSATION SUMMARY (auto-compacted) ===\n${summary}\n=== END SUMMARY ===`, createdAt: new Date() } as AiMessage,
       ...toKeep
@@ -838,7 +839,7 @@ export async function processChat(
     const fileContentsArray = await Promise.all(files.map(f => formatFileContentAsync(f)));
     const fileContents = fileContentsArray.join('\n\n');
     fullMessage = `${message}\n\nThe user has attached the following file(s). Please analyze and process them according to their request:\n\n${fileContents}`;
-    console.log(`[AI Chat] Processing ${files.length} file attachment(s)`);
+    logger.info(`[AI Chat] Processing ${files.length} file attachment(s)`);
   }
 
   // Store only the display message (without binary content) in the database
@@ -943,11 +944,11 @@ export async function processChat(
     model = options.modelOverride
       || (imageFiles.length > 0 && !result.model.includes('gpt-4o') && !result.model.includes('claude') ? 'openai/gpt-4o' : result.model);
   } catch (error: any) {
-    console.error('[AI Chat] Failed to get AI provider:', error.message);
+    logger.error('[AI Chat] Failed to get AI provider', error);
     throw new Error("AI service temporarily unavailable. Please try again.");
   }
 
-  console.log(`[AI Chat] Routing chat (${complexity}) -> ${provider}/${model}`);
+  logger.info(`[AI Chat] Routing chat (${complexity}) -> ${provider}/${model}`);
 
   let response: OpenAI.ChatCompletion;
   try {
@@ -958,7 +959,7 @@ export async function processChat(
       max_tokens: 2048
     });
   } catch (error: any) {
-    console.error(`[AI Chat] ${provider} API error:`, error.message, error.status, error.code);
+    logger.error(`[AI Chat] ${provider} API error`, error);
     throw new Error("AI request failed. Please try again in a moment.");
   }
   
@@ -978,7 +979,7 @@ export async function processChat(
       metadata: { model, complexity, provider, estimatedTokens: Math.round(estimatedTokens) },
     });
   } catch (error) {
-    console.error('[AI Chat] Failed to log API usage:', error);
+    logger.error('[AI Chat] Failed to log API usage', error);
   }
 
   let assistantMessage = response.choices[0].message;
@@ -1024,7 +1025,7 @@ export async function processChat(
         max_tokens: 2048
       });
     } catch (error: any) {
-      console.error(`[AI Chat] ${provider} API error during tool loop:`, error.message);
+      logger.error(`[AI Chat] ${provider} API error during tool loop`, error);
       throw new Error("AI request failed during processing. Please try again.");
     }
 
@@ -1115,7 +1116,7 @@ export async function* processChatStream(
     const fileContentsArray = await Promise.all(files.map(f => formatFileContentAsync(f)));
     const fileContents = fileContentsArray.join('\n\n');
     fullMessage = `${message}\n\nThe user has attached the following file(s). Please analyze and process them according to their request:\n\n${fileContents}`;
-    console.log(`[AI Stream] Processing ${files.length} file attachment(s)`);
+    logger.info(`[AI Stream] Processing ${files.length} file attachment(s)`);
   }
 
   // Store only the display message (without binary content) in the database
@@ -1216,7 +1217,7 @@ export async function* processChatStream(
     model = options.modelOverride
       || (streamImageFiles.length > 0 && !result.model.includes('gpt-4o') && !result.model.includes('claude') ? 'openai/gpt-4o' : result.model);
   } catch (error: any) {
-    console.error('[AI Stream] Failed to get AI provider:', error.message);
+    logger.error('[AI Stream] Failed to get AI provider', error);
     yield { type: "error", content: "AI service temporarily unavailable. Please try again." };
     return;
   }
@@ -1234,7 +1235,7 @@ export async function* processChatStream(
           model,
           messages: chatMessages as any,
           max_tokens: 8000,
-          // @ts-ignore — OpenRouter passes thinking param to Anthropic API
+          // OpenRouter passes thinking param to Anthropic API (cast handles type mismatch)
           thinking: { type: "enabled", budget_tokens: 6000 },
         } as any);
         const msgContent = (thinkingResponse as any).choices?.[0]?.message?.content;
@@ -1276,7 +1277,7 @@ export async function* processChatStream(
     }
   }
 
-  console.log(`[AI Stream] Routing chat stream (${complexity}) -> ${provider}/${model}`);
+  logger.info(`[AI Stream] Routing chat stream (${complexity}) -> ${provider}/${model}`);
 
   let fullResponse = "";
   const toolCallsExecuted: any[] = [];
@@ -1297,7 +1298,7 @@ export async function* processChatStream(
         stream_options: { include_usage: true }
       });
     } catch (error: any) {
-      console.error(`[AI Stream] ${provider} API error:`, error.message);
+      logger.error(`[AI Stream] ${provider} API error`, error);
       yield { type: "error", content: "AI request failed. Please try again." };
       return;
     }

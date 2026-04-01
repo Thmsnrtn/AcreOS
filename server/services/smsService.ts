@@ -1,6 +1,7 @@
 import { db } from "../db";
 import { messages, conversations, leads, organizationIntegrations, sequenceEnrollments } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
+import { logger } from "../utils/logger";
 
 const SMS_STOP_WORDS = new Set(["stop", "stopall", "unsubscribe", "cancel", "end", "quit"]);
 
@@ -68,7 +69,7 @@ export class SmsService {
 
   async sendSMS(options: SmsOptions): Promise<SmsResult> {
     if (!this.isConfigured()) {
-      console.log(`[SMS] Not configured - would send to ${options.to}: ${options.message.substring(0, 50)}...`);
+      logger.info(`[SMS] Not configured - would send to ${options.to}: ${options.message.substring(0, 50)}...`);
       return { success: true, messageId: `mock-${Date.now()}` };
     }
 
@@ -133,7 +134,7 @@ export class SmsService {
         return 'pending';
       }
     } catch (error) {
-      console.error('[SMS] Error checking status:', error);
+      logger.error('[SMS] Error checking status', error);
     }
     return 'unknown';
   }
@@ -310,7 +311,7 @@ export async function handleIncomingSMS(
         });
       } catch {}
     }
-    console.log(`[SMS] STOP received from ${fromPhone} — opted out ${matchingLeads.length} lead(s)`);
+    logger.info(`[SMS] STOP received from ${fromPhone} — opted out ${matchingLeads.length} lead(s)`);
     return { success: true, leadId: matchingLeads[0]?.id };
   }
   // ─────────────────────────────────────────────────────────────────────────
@@ -362,7 +363,7 @@ export async function handleIncomingSMS(
   }
 
   if (!existingConversation) {
-    console.log(`[SMS] No matching lead found for phone ${fromPhone} in org ${organizationId}. Message not stored.`);
+    logger.info(`[SMS] No matching lead found for phone ${fromPhone} in org ${organizationId}. Message not stored.`);
     return { 
       success: false, 
       error: `No matching lead found for phone number ${fromPhone}. Consider creating a lead first.` 

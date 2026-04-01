@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 /**
  * Evolution Pipeline
  *
@@ -30,6 +29,7 @@ import {
   aiTelemetryEvents,
 } from "@shared/schema";
 import { eq, desc, and, isNull, sql, gte, lt } from "drizzle-orm";
+import { logger } from "../utils/logger";
 
 // ---------------------------------------------------------------------------
 // OpenRouter client
@@ -86,26 +86,22 @@ const FORBIDDEN_PATTERNS = [
 // Logging helpers
 // ---------------------------------------------------------------------------
 const log = (msg: string, meta?: Record<string, unknown>) =>
-  console.log(
-    JSON.stringify({
+  logger.info(JSON.stringify({
       level: "INFO",
       timestamp: new Date().toISOString(),
       source: "[evolution-pipeline]",
       message: msg,
       ...meta,
-    })
-  );
+    }));
 
 const logError = (msg: string, meta?: Record<string, unknown>) =>
-  console.error(
-    JSON.stringify({
+  logger.error(JSON.stringify({
       level: "ERROR",
       timestamp: new Date().toISOString(),
       source: "[evolution-pipeline]",
       message: msg,
       ...meta,
-    })
-  );
+    }));
 
 // ---------------------------------------------------------------------------
 // Circuit Breaker

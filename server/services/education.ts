@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 import { db } from '../db';
 import { 
   courses, 
@@ -7,6 +6,7 @@ import {
   users 
 } from '../../shared/schema';
 import { eq, and, desc, inArray } from 'drizzle-orm';
+import { logger } from "../utils/logger";
 
 interface CourseModule {
   title: string;
@@ -61,7 +61,7 @@ class Education {
 
       return course.id.toString();
     } catch (error) {
-      console.error('Failed to create course:', error);
+      logger.error('Failed to create course', error);
       throw error;
     }
   }
@@ -89,7 +89,7 @@ class Education {
         modules,
       };
     } catch (error) {
-      console.error('Failed to get course:', error);
+      logger.error('Failed to get course', error);
       throw error;
     }
   }
@@ -129,7 +129,7 @@ class Education {
         orderBy: [desc(courses.enrollmentCount)],
       });
     } catch (error) {
-      console.error('Failed to list courses:', error);
+      logger.error('Failed to list courses', error);
       return [];
     }
   }
@@ -172,7 +172,7 @@ class Education {
 
       return enrollment.id.toString();
     } catch (error) {
-      console.error('Failed to enroll in course:', error);
+      logger.error('Failed to enroll in course', error);
       throw error;
     }
   }
@@ -222,7 +222,7 @@ class Education {
         })
         .where(eq(courseEnrollments.id, enrollmentId));
     } catch (error) {
-      console.error('Failed to update progress:', error);
+      logger.error('Failed to update progress', error);
       throw error;
     }
   }
@@ -251,7 +251,7 @@ class Education {
 
       return enriched;
     } catch (error) {
-      console.error('Failed to get user enrollments:', error);
+      logger.error('Failed to get user enrollments', error);
       return [];
     }
   }
@@ -294,7 +294,7 @@ class Education {
           .where(eq(courses.id, courseId));
       }
     } catch (error) {
-      console.error('Failed to rate course:', error);
+      logger.error('Failed to rate course', error);
       throw error;
     }
   }
@@ -311,7 +311,7 @@ class Education {
         })
         .where(eq(courses.id, courseId));
     } catch (error) {
-      console.error('Failed to publish course:', error);
+      logger.error('Failed to publish course', error);
       throw error;
     }
   }
@@ -354,7 +354,7 @@ class Education {
         averageProgress: avgProgress,
       };
     } catch (error) {
-      console.error('Failed to get course stats:', error);
+      logger.error('Failed to get course stats', error);
       return {
         enrollmentCount: 0,
         completionRate: 0,
@@ -406,7 +406,7 @@ class Education {
         limit: 5,
       });
     } catch (error) {
-      console.error('Failed to get recommended courses:', error);
+      logger.error('Failed to get recommended courses', error);
       return [];
     }
   }

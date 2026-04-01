@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Founder Wellbeing Monitor — Sovereign Company Protocol v8
  *

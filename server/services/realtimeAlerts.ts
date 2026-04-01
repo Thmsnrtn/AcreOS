@@ -21,7 +21,6 @@
  * in-process in-memory queues (single-instance only).
  */
 
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 import { db } from '../db';
 import {
   organizations,
@@ -30,6 +29,7 @@ import {
   scrapedDeals,
 } from '../../shared/schema';
 import { eq, desc, gte, and, sql } from 'drizzle-orm';
+import { logger } from "../utils/logger";
 
 export interface RealtimeAlert {
   id: string;
@@ -77,10 +77,10 @@ async function initRedis(): Promise<boolean> {
       }
     });
 
-    console.log('[RealtimeAlerts] Redis pub/sub active — multi-instance coordination enabled');
+    logger.info('[RealtimeAlerts] Redis pub/sub active — multi-instance coordination enabled');
     return true;
   } catch (err: any) {
-    console.warn('[RealtimeAlerts] Redis unavailable, using in-memory fallback:', err.message);
+    logger.warn('[RealtimeAlerts] Redis unavailable, using in-memory fallback', { metadata: { detail: err.message } });
     redisPub = null;
     redisSub = null;
     return false;
@@ -142,7 +142,7 @@ class RealtimeAlertsService {
       try {
         await redisPub.publish(ALERT_CHANNEL, JSON.stringify(fullAlert));
       } catch (err: any) {
-        console.warn('[RealtimeAlerts] Redis publish failed, falling back to local WS:', err.message);
+        logger.warn('[RealtimeAlerts] Redis publish failed, falling back to local WS', { metadata: { detail: err.message } });
         deliverToWebSocket(fullAlert);
       }
     } else {
@@ -214,7 +214,7 @@ class RealtimeAlertsService {
 
       return pushed;
     } catch (err) {
-      console.error('[RealtimeAlerts] Failed to sync deal alerts:', err);
+      logger.error('[RealtimeAlerts] Failed to sync deal alerts', err);
       return 0;
     }
   }

@@ -8,6 +8,16 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Brain,
   Target,
   Users,
@@ -32,6 +42,8 @@ import {
   Flame,
   FileText,
 } from "lucide-react";
+import { InfoTooltip } from "@/components/info-tooltip";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -41,6 +53,7 @@ type PillarTab = "memory" | "strategy" | "collaboration" | "healing" | "governan
 
 export default function SovereignV13Page() {
   const [activeTab, setActiveTab] = useState<PillarTab>("intelligence");
+  const [pendingAction, setPendingAction] = useState<"consolidate" | "cleanup" | null>(null);
   const { toast } = useToast();
 
   // ─── Queries ─────────────────────────────────────────────────────
@@ -214,6 +227,14 @@ export default function SovereignV13Page() {
 
       <div className="container mx-auto px-6 py-6 space-y-6">
 
+        <Alert>
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Advanced system monitoring</AlertTitle>
+          <AlertDescription>
+            This page is for technical review only — your system manages these automatically. No action is needed from you.
+          </AlertDescription>
+        </Alert>
+
         {/* Pillar Summary Grid */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           {pillars.map((pillar) => (
@@ -261,7 +282,7 @@ export default function SovereignV13Page() {
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm flex items-center gap-2">
                     <BookOpen className="h-4 w-4 text-purple-500" />
-                    Episodic Memory
+                    <InfoTooltip term="Episodic Memory" explanation="Timestamped records of things your system has done.">Episodic Memory</InfoTooltip>
                   </CardTitle>
                   <CardDescription>Timestamped experiences</CardDescription>
                 </CardHeader>
@@ -285,7 +306,7 @@ export default function SovereignV13Page() {
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm flex items-center gap-2">
                     <Brain className="h-4 w-4 text-purple-500" />
-                    Semantic Memory
+                    <InfoTooltip term="Semantic Memory" explanation="Facts and knowledge your system has learned over time.">Semantic Memory</InfoTooltip>
                   </CardTitle>
                   <CardDescription>Distilled facts & patterns</CardDescription>
                 </CardHeader>
@@ -301,17 +322,17 @@ export default function SovereignV13Page() {
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm flex items-center gap-2">
                     <Zap className="h-4 w-4 text-purple-500" />
-                    Working Memory
+                    <InfoTooltip term="Working Memory" explanation="Information your system is actively thinking about right now.">Working Memory</InfoTooltip>
                   </CardTitle>
                   <CardDescription>Active scratchpads</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="text-3xl font-bold">{memoryStats?.workingCount ?? 0}</div>
                   <div className="mt-3 flex gap-2">
-                    <Button size="sm" variant="outline" onClick={() => consolidateMutation.mutate("oracle")}>
-                      <RefreshCw className="h-3 w-3 mr-1" />Consolidate
+                    <Button size="sm" variant="outline" onClick={() => setPendingAction("consolidate")}>
+                      <RefreshCw className="h-3 w-3 mr-1" /><InfoTooltip term="Consolidate" explanation="Archive and organize old records to keep the system fast.">Consolidate</InfoTooltip>
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => cleanupMutation.mutate()}>
+                    <Button size="sm" variant="outline" onClick={() => setPendingAction("cleanup")}>
                       Cleanup Expired
                     </Button>
                   </div>
@@ -693,6 +714,34 @@ export default function SovereignV13Page() {
           </CardContent>
         </Card>
       </div>
+
+      <AlertDialog open={!!pendingAction} onOpenChange={(open) => { if (!open) setPendingAction(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {pendingAction === "consolidate" ? "Consolidate memory?" : "Clean up expired entries?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingAction === "consolidate"
+                ? "This will reorganize your system's memory records. Old episodes will be archived and key facts will be extracted. This is safe but may take a few minutes."
+                : "This will remove expired entries from working memory. This is safe and helps keep the system running efficiently."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              if (pendingAction === "consolidate") {
+                consolidateMutation.mutate("oracle");
+              } else if (pendingAction === "cleanup") {
+                cleanupMutation.mutate();
+              }
+              setPendingAction(null);
+            }}>
+              Yes, proceed
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

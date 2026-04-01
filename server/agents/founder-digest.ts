@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 /**
  * Founder Daily Digest Agent — aggregates all agent activity into a single daily briefing.
  */
@@ -6,6 +5,7 @@
 import { BaseAgent } from "./base-agent";
 import { db } from "../storage";
 import { sql } from "drizzle-orm";
+import { logger } from "../utils/logger";
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
@@ -94,7 +94,7 @@ export class FounderDigestAgent extends BaseAgent {
       });
     }
 
-    console.log(`[${this.name}] Daily digest generated for ${digest.date}`);
+    logger.info(`[${this.name}] Daily digest generated for ${digest.date}`);
   }
 
   private async getLatestBrief(agentType: string, briefType: string): Promise<any> {

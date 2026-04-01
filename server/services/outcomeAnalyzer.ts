@@ -21,6 +21,7 @@ import {
   deals,
   properties,
 } from "@shared/schema";
+import { logger } from "../utils/logger";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -104,7 +105,7 @@ export interface ScoringCalibrationResult {
 }
 
 export async function runScoringCalibration(): Promise<ScoringCalibrationResult> {
-  console.log("[outcomeAnalyzer] Starting runScoringCalibration");
+  logger.info("[outcomeAnalyzer] Starting runScoringCalibration");
 
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - LOOKBACK_DAYS);
@@ -198,9 +199,9 @@ export async function runScoringCalibration(): Promise<ScoringCalibrationResult>
       );
 
       orgsCalibrated++;
-      console.log(`[outcomeAnalyzer] Scoring calibrated for org ${org.id}: ${totalSamples} samples, confidence=${confidence.toFixed(2)}`);
+      logger.info(`[outcomeAnalyzer] Scoring calibrated for org ${org.id}: ${totalSamples} samples, confidence=${confidence.toFixed(2)}`);
     } catch (err: any) {
-      console.error(`[outcomeAnalyzer] runScoringCalibration error for org ${org.id}:`, err.message);
+      logger.error(`[outcomeAnalyzer] runScoringCalibration error for org ${org.id}`, err);
     }
   }
 
@@ -219,7 +220,7 @@ export async function runScoringCalibration(): Promise<ScoringCalibrationResult>
       };
     });
 
-  console.log(`[outcomeAnalyzer] runScoringCalibration complete: ${orgsCalibrated} orgs calibrated`);
+  logger.info(`[outcomeAnalyzer] runScoringCalibration complete: ${orgsCalibrated} orgs calibrated`);
   return { orgsCalibrated, totalConversions, bucketSummary };
 }
 
@@ -241,7 +242,7 @@ export interface PriceAccuracyResult {
 }
 
 export async function runPriceAccuracyTracking(): Promise<PriceAccuracyResult> {
-  console.log("[outcomeAnalyzer] Starting runPriceAccuracyTracking");
+  logger.info("[outcomeAnalyzer] Starting runPriceAccuracyTracking");
 
   const activeOrgs = await db
     .select({ id: organizations.id })
@@ -323,7 +324,7 @@ export async function runPriceAccuracyTracking(): Promise<PriceAccuracyResult> {
               actionPrompt: `Review my pricing accuracy for ${county}, ${state}. MAPE is ${mapeRounded}% across ${points.length} closed deals. How should I adjust my offer strategy?`,
             })
             .catch(() => {});
-          console.log(`[outcomeAnalyzer] Created price-accuracy nudge for org ${org.id}: ${county}, ${state} MAPE=${mapeRounded}%`);
+          logger.info(`[outcomeAnalyzer] Created price-accuracy nudge for org ${org.id}: ${county}, ${state} MAPE=${mapeRounded}%`);
         }
       }
 
@@ -340,11 +341,11 @@ export async function runPriceAccuracyTracking(): Promise<PriceAccuracyResult> {
         0.8
       );
     } catch (err: any) {
-      console.error(`[outcomeAnalyzer] runPriceAccuracyTracking error for org ${org.id}:`, err.message);
+      logger.error(`[outcomeAnalyzer] runPriceAccuracyTracking error for org ${org.id}`, err);
     }
   }
 
-  console.log(`[outcomeAnalyzer] runPriceAccuracyTracking complete: ${countiesAnalyzed} counties analyzed, ${countiesWithHighError} high-error counties`);
+  logger.info(`[outcomeAnalyzer] runPriceAccuracyTracking complete: ${countiesAnalyzed} counties analyzed, ${countiesWithHighError} high-error counties`);
   return { orgsChecked, countiesAnalyzed, countiesWithHighError, details: allDetails };
 }
 
@@ -367,7 +368,7 @@ export interface TacticAttributionResult {
 }
 
 export async function runTacticAttribution(): Promise<TacticAttributionResult> {
-  console.log("[outcomeAnalyzer] Starting runTacticAttribution");
+  logger.info("[outcomeAnalyzer] Starting runTacticAttribution");
 
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - LOOKBACK_DAYS);
@@ -505,9 +506,9 @@ export async function runTacticAttribution(): Promise<TacticAttributionResult> {
         );
       }
 
-      console.log(`[outcomeAnalyzer] Tactic attribution for org ${org.id}: ${wins.length} wins, ${losses.length} losses`);
+      logger.info(`[outcomeAnalyzer] Tactic attribution for org ${org.id}: ${wins.length} wins, ${losses.length} losses`);
     } catch (err: any) {
-      console.error(`[outcomeAnalyzer] runTacticAttribution error for org ${org.id}:`, err.message);
+      logger.error(`[outcomeAnalyzer] runTacticAttribution error for org ${org.id}`, err);
     }
   }
 
@@ -541,7 +542,7 @@ export async function runTacticAttribution(): Promise<TacticAttributionResult> {
     .sort((a, b) => a.winRate - b.winRate)
     .slice(0, 3);
 
-  console.log(`[outcomeAnalyzer] runTacticAttribution complete: ${orgsAnalyzed} orgs analyzed`);
+  logger.info(`[outcomeAnalyzer] runTacticAttribution complete: ${orgsAnalyzed} orgs analyzed`);
   return { orgsAnalyzed, totalWins, totalLosses, topTactics, topFailures };
 }
 
@@ -555,7 +556,7 @@ export interface OutcomeAnalysisSummary {
 }
 
 export async function runOutcomeAnalysis(): Promise<OutcomeAnalysisSummary> {
-  console.log("[outcomeAnalyzer] Starting nightly runOutcomeAnalysis");
+  logger.info("[outcomeAnalyzer] Starting nightly runOutcomeAnalysis");
 
   const errors: string[] = [];
 
@@ -569,21 +570,21 @@ export async function runOutcomeAnalysis(): Promise<OutcomeAnalysisSummary> {
     calibrationResult.status === "fulfilled" ? calibrationResult.value.orgsCalibrated : 0;
   if (calibrationResult.status === "rejected") {
     errors.push(`Scoring calibration failed: ${calibrationResult.reason?.message ?? "unknown"}`);
-    console.error("[outcomeAnalyzer] runScoringCalibration failed:", calibrationResult.reason);
+    logger.error("[outcomeAnalyzer] runScoringCalibration failed", undefined, { metadata: { detail: calibrationResult.reason } });
   }
 
   const priceAccuracyChecked =
     priceResult.status === "fulfilled" ? priceResult.value.orgsChecked : 0;
   if (priceResult.status === "rejected") {
     errors.push(`Price accuracy failed: ${priceResult.reason?.message ?? "unknown"}`);
-    console.error("[outcomeAnalyzer] runPriceAccuracyTracking failed:", priceResult.reason);
+    logger.error("[outcomeAnalyzer] runPriceAccuracyTracking failed", undefined, { metadata: { detail: priceResult.reason } });
   }
 
   const tacticsAnalyzed =
     tacticResult.status === "fulfilled" ? tacticResult.value.orgsAnalyzed : 0;
   if (tacticResult.status === "rejected") {
     errors.push(`Tactic attribution failed: ${tacticResult.reason?.message ?? "unknown"}`);
-    console.error("[outcomeAnalyzer] runTacticAttribution failed:", tacticResult.reason);
+    logger.error("[outcomeAnalyzer] runTacticAttribution failed", undefined, { metadata: { detail: tacticResult.reason } });
   }
 
   const summary: OutcomeAnalysisSummary = {
@@ -593,9 +594,7 @@ export async function runOutcomeAnalysis(): Promise<OutcomeAnalysisSummary> {
     errors,
   };
 
-  console.log(
-    `[outcomeAnalyzer] Nightly run complete — scoringCalibrated=${scoringCalibrated}, priceAccuracyChecked=${priceAccuracyChecked}, tacticsAnalyzed=${tacticsAnalyzed}`
-  );
+  logger.info(`[outcomeAnalyzer] Nightly run complete — scoringCalibrated=${scoringCalibrated}, priceAccuracyChecked=${priceAccuracyChecked}, tacticsAnalyzed=${tacticsAnalyzed}`);
 
   return summary;
 }

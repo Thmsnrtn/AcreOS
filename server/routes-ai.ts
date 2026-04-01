@@ -168,11 +168,19 @@ export function registerAIRoutes(app: Express): void {
   });
 
   // Create new conversation
+  const createConversationSchema = z.object({
+    agentRole: z.string().optional().default("executive"),
+  });
+
   api.post("/api/ai/conversations", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
     const user = req.user as any;
     const userId = user.claims?.sub || user.id;
-    const { agentRole = "executive" } = req.body;
+    const parsed = createConversationSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return Errors.validationFailed(res, parsed.error.errors);
+    }
+    const { agentRole } = parsed.data;
     
     const conversation = await storage.createAiConversation({
       organizationId: org.id,
@@ -185,16 +193,23 @@ export function registerAIRoutes(app: Express): void {
   });
   
   // Send a message (non-streaming)
+  const aiChatSchema = z.object({
+    message: z.string().min(1, "Message is required"),
+    conversationId: z.number().int().optional(),
+    agentRole: z.string().optional(),
+    propertyId: z.union([z.number(), z.string()]).optional(),
+  });
+
   api.post("/api/ai/chat", isAuthenticated, getOrCreateOrg, aiLimiter, usageLimitGate("ai_requests"), async (req, res) => {
     try {
       const org = req.organization;
       const user = req.user as any;
       const userId = user.claims?.sub || user.id;
-      const { message, conversationId, agentRole, propertyId } = req.body;
-
-      if (!message) {
-        return Errors.badRequest(res, "Message is required");
+      const parsed = aiChatSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
       }
+      const { message, conversationId, agentRole, propertyId } = parsed.data;
       
       const usageCheck = await checkUsageLimit(org.id, "ai_requests");
       if (!usageCheck.allowed) {
@@ -246,16 +261,35 @@ export function registerAIRoutes(app: Express): void {
   });
   
   // Send a message (streaming)
+  const aiChatStreamSchema = z.object({
+    message: z.string().min(1, "Message is required"),
+    conversationId: z.number().int().optional(),
+    agentRole: z.string().optional(),
+    files: z.array(z.object({
+      name: z.string(),
+      content: z.string(),
+      mimeType: z.string(),
+    })).optional(),
+    propertyId: z.union([z.number(), z.string()]).optional(),
+    mentionedEntities: z.array(z.object({
+      type: z.string(),
+      id: z.union([z.number(), z.string()]),
+      name: z.string().optional(),
+    })).optional(),
+    activeProjectId: z.number().int().optional(),
+    modelOverride: z.string().optional(),
+  });
+
   api.post("/api/ai/chat/stream", isAuthenticated, getOrCreateOrg, aiLimiter, usageLimitGate("ai_requests"), async (req, res) => {
     try {
       const org = req.organization;
       const user = req.user as any;
       const userId = user.claims?.sub || user.id;
-      const { message, conversationId, agentRole, files, propertyId: streamPropertyId, mentionedEntities, activeProjectId, modelOverride } = req.body;
-      
-      if (!message) {
-        return Errors.badRequest(res, "Message is required");
+      const parsed = aiChatStreamSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
       }
+      const { message, conversationId, agentRole, files, propertyId: streamPropertyId, mentionedEntities, activeProjectId, modelOverride } = parsed.data;
       
       const usageCheck = await checkUsageLimit(org.id, "ai_requests");
       if (!usageCheck.allowed) {
@@ -351,6 +385,10 @@ export function registerAIRoutes(app: Express): void {
   });
 
   // PATCH /api/ai/conversations/:id/project — set active project for conversation
+  const setConversationProjectSchema = z.object({
+    projectId: z.number().int().positive().nullable().optional(),
+  });
+
   api.patch("/api/ai/conversations/:id/project", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
@@ -359,7 +397,11 @@ export function registerAIRoutes(app: Express): void {
       if (!conversation || conversation.organizationId !== org.id) {
         return Errors.notFound(res, "Conversation");
       }
-      const { projectId } = req.body;
+      const parsed = setConversationProjectSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+      const { projectId } = parsed.data;
       await storage.setConversationProject(conversationId, projectId ?? null);
       res.json({ success: true });
     } catch (err: any) {
@@ -381,11 +423,22 @@ export function registerAIRoutes(app: Express): void {
     }
   });
 
+  const knowledgeUploadSchema = z.object({
+    name: z.string().min(1, "File name is required"),
+    content: z.string().min(1, "Content is required"),
+    mimeType: z.string().min(1, "MIME type is required"),
+    sizeBytes: z.number().int().min(0).optional(),
+  });
+
   api.post("/api/ai/knowledge", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
       const userId = req.user?.id ?? "unknown";
-      const { name, content, mimeType, sizeBytes } = req.body;
+      const parsed = knowledgeUploadSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+      const { name, content, mimeType, sizeBytes } = parsed.data;
 
       // Check limit
       const existing = await storage.getKnowledgeFiles(org.id);
@@ -415,9 +468,18 @@ export function registerAIRoutes(app: Express): void {
     }
   });
 
+  const updateKnowledgeSchema = z.object({
+    isActive: z.boolean().optional(),
+    description: z.string().nullable().optional(),
+  });
+
   api.patch("/api/ai/knowledge/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const { isActive, description } = req.body;
+      const parsed = updateKnowledgeSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+      const { isActive, description } = parsed.data;
       await storage.updateKnowledgeFile(parseInt(req.params.id), { isActive, description });
       res.json({ success: true });
     } catch (err: any) {
@@ -465,12 +527,22 @@ export function registerAIRoutes(app: Express): void {
     }
   });
 
+  const createProjectSchema = z.object({
+    name: z.string().min(1, "name is required"),
+    description: z.string().optional(),
+    entityType: z.string().optional(),
+    entityId: z.union([z.number(), z.string()]).optional(),
+  });
+
   api.post("/api/ai/projects", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
       const userId = req.user?.id ?? "unknown";
-      const { name, description, entityType, entityId } = req.body;
-      if (!name) return Errors.badRequest(res, "name required");
+      const parsed = createProjectSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+      const { name, description, entityType, entityId } = parsed.data;
       const proj = await storage.createPaxProject({ organizationId: org.id, userId, name, description, entityType, entityId });
       res.json(proj);
     } catch (err: any) {
@@ -478,9 +550,19 @@ export function registerAIRoutes(app: Express): void {
     }
   });
 
+  const updateProjectSchema = z.object({
+    name: z.string().min(1).optional(),
+    description: z.string().nullable().optional(),
+    isActive: z.boolean().optional(),
+  });
+
   api.patch("/api/ai/projects/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const { name, description, isActive } = req.body;
+      const parsed = updateProjectSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+      const { name, description, isActive } = parsed.data;
       await storage.updatePaxProject(parseInt(req.params.id), { name, description, isActive });
       res.json({ success: true });
     } catch (err: any) {
@@ -505,11 +587,22 @@ export function registerAIRoutes(app: Express): void {
     }
   });
 
+  const projectFileUploadSchema = z.object({
+    fileName: z.string().min(1, "fileName is required"),
+    content: z.string().min(1, "content is required"),
+    mimeType: z.string().min(1, "mimeType is required"),
+    sizeBytes: z.number().int().min(0).optional(),
+  });
+
   api.post("/api/ai/projects/:id/files", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const userId = req.user?.id ?? "unknown";
       const projectId = parseInt(req.params.id);
-      const { fileName, content, mimeType, sizeBytes } = req.body;
+      const parsed = projectFileUploadSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+      const { fileName, content, mimeType, sizeBytes } = parsed.data;
 
       const { formatFileContentFromBase64 } = await import("./ai/executive");
       let extractedContent = await formatFileContentFromBase64({ name: fileName, content, mimeType });
@@ -555,12 +648,22 @@ export function registerAIRoutes(app: Express): void {
     }
   });
 
+  const createScheduledTaskSchema = z.object({
+    name: z.string().min(1, "name is required"),
+    prompt: z.string().min(1, "prompt is required"),
+    schedule: z.string().min(1, "schedule is required"),
+    timezone: z.string().optional(),
+  });
+
   api.post("/api/ai/scheduled-tasks", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
       const userId = req.user?.id ?? "unknown";
-      const { name, prompt, schedule, timezone } = req.body;
-      if (!name || !prompt || !schedule) return Errors.badRequest(res, "name, prompt, schedule required");
+      const parsed = createScheduledTaskSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+      const { name, prompt, schedule, timezone } = parsed.data;
 
       const { computeNextRun } = await import("./services/paxScheduler");
       const nextRunAt = computeNextRun(schedule, timezone ?? "America/New_York");
@@ -572,9 +675,19 @@ export function registerAIRoutes(app: Express): void {
     }
   });
 
+  const updateScheduledTaskSchema = z.object({
+    isActive: z.boolean().optional(),
+    schedule: z.string().optional(),
+    timezone: z.string().optional(),
+  });
+
   api.patch("/api/ai/scheduled-tasks/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const { isActive, schedule, timezone } = req.body;
+      const parsed = updateScheduledTaskSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+      const { isActive, schedule, timezone } = parsed.data;
       const updates: any = { isActive };
       if (schedule) {
         const { computeNextRun } = await import("./services/paxScheduler");
@@ -615,11 +728,18 @@ export function registerAIRoutes(app: Express): void {
   // MESSAGE RATING
   // ============================================
 
+  const messageRatingSchema = z.object({
+    rating: z.union([z.literal(1), z.literal(-1)], { required_error: "rating must be 1 or -1" }),
+  });
+
   api.patch("/api/ai/messages/:id/rating", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const { rating } = req.body; // 1 or -1
+      const parsed = messageRatingSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+      const { rating } = parsed.data;
       const msgId = parseInt(req.params.id);
-      if (rating !== 1 && rating !== -1) return Errors.badRequest(res, "rating must be 1 or -1");
       const { aiMessages } = await import("@shared/schema");
       const { eq: _eq } = await import("drizzle-orm");
       await db.update(aiMessages).set({ rating } as any).where(_eq(aiMessages.id, msgId));
@@ -667,7 +787,7 @@ export function registerAIRoutes(app: Express): void {
       ].join("\n");
 
       if (format === "pdf") {
-        // @ts-ignore - pdfkit has no type declarations
+        // @ts-expect-error — pdfkit has no type declarations installed
         const PDFDocument = (await import("pdfkit")).default;
         res.setHeader("Content-Type", "application/pdf");
         res.setHeader("Content-Disposition", `attachment; filename="pax-conversation-${convId}.pdf"`);
@@ -816,11 +936,20 @@ export function registerAIRoutes(app: Express): void {
   });
 
   // POST /api/ai/connectors/:id/connect — save credentials and mark connected
+  const connectConnectorSchema = z.object({
+    credentials: z.record(z.unknown()).optional(),
+    settings: z.record(z.unknown()).optional(),
+  });
+
   api.post("/api/ai/connectors/:id/connect", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
       const connectorId = req.params.id;
-      const { credentials, settings } = req.body;
+      const parsed = connectConnectorSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+      const { credentials, settings } = parsed.data;
       const { getConnector } = await import("./services/connectors/registry");
       const def = getConnector(connectorId);
       if (!def) return Errors.notFound(res, "Connector");
@@ -1005,15 +1134,19 @@ export function registerAIRoutes(app: Express): void {
     }
   });
 
+  const checkPermissionSchema = z.object({
+    actionId: z.string().min(1, "actionId is required"),
+  });
+
   api.post("/api/assistant/check-permission", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
       const user = req.user;
-      const { actionId } = req.body;
-      
-      if (!actionId) {
-        return Errors.badRequest(res, "actionId is required");
+      const parsed = checkPermissionSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
       }
+      const { actionId } = parsed.data;
       
       const isFounder = user?.id === 'founder' || org?.stripeCustomerId?.includes('founder');
       const tier = (org?.subscriptionTier || 'free') as SubscriptionTier;
@@ -1027,12 +1160,17 @@ export function registerAIRoutes(app: Express): void {
     }
   });
 
+  const classifyIntentSchema = z.object({
+    message: z.string().min(1, "message is required"),
+  });
+
   api.post("/api/assistant/classify-intent", isAuthenticated, async (req, res) => {
     try {
-      const { message } = req.body;
-      if (!message) {
-        return Errors.badRequest(res, "message is required");
+      const parsed = classifyIntentSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
       }
+      const { message } = parsed.data;
       const { classifyIntentSimple } = await import('./services/intent-router');
       const intent = classifyIntentSimple(message);
       res.json(intent);
@@ -1041,15 +1179,21 @@ export function registerAIRoutes(app: Express): void {
     }
   });
 
+  const assistantExecuteSchema = z.object({
+    message: z.string().min(1, "message is required"),
+    useAIClassification: z.boolean().optional(),
+    useTrialToken: z.boolean().optional(),
+  });
+
   api.post("/api/assistant/execute", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
       const user = req.user;
-      const { message, useAIClassification, useTrialToken } = req.body;
-
-      if (!message) {
-        return Errors.badRequest(res, "message is required");
+      const parsed = assistantExecuteSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
       }
+      const { message, useAIClassification, useTrialToken } = parsed.data;
 
       const { classifyIntentSimple, classifyIntentWithAI } = await import('./services/intent-router');
       const { executeAgentTask } = await import('./services/core-agents');
@@ -1212,17 +1356,27 @@ export function registerAIRoutes(app: Express): void {
   });
   
   // Update a VA agent settings
+  const updateVaAgentSchema = z.object({
+    isActive: z.boolean().optional(),
+    autonomyLevel: z.enum(["suggest", "auto_execute", "manual"]).optional(),
+    settings: z.record(z.unknown()).optional(),
+  }).passthrough();
+
   api.patch("/api/va/agents/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
       const agentId = parseInt(req.params.id);
       const agent = await storage.getVaAgent(org.id, agentId);
-      
+
       if (!agent) {
         return Errors.notFound(res, "Agent");
       }
-      
-      const updated = await storage.updateVaAgent(agentId, req.body);
+
+      const parsed = updateVaAgentSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+      const updated = await storage.updateVaAgent(agentId, parsed.data);
       res.json(updated);
     } catch (error: any) {
       Errors.internal(res, error);
@@ -1284,10 +1438,18 @@ export function registerAIRoutes(app: Express): void {
   });
   
   // Reject an action
+  const rejectActionSchema = z.object({
+    reason: z.string().optional(),
+  });
+
   api.post("/api/va/actions/:id/reject", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const actionId = parseInt(req.params.id);
-      const { reason } = req.body;
+      const parsed = rejectActionSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+      const { reason } = parsed.data;
       
       const action = await storage.getVaAction(actionId);
       if (!action) {
@@ -1302,16 +1464,20 @@ export function registerAIRoutes(app: Express): void {
   });
   
   // Process a task with an agent
+  const vaTaskSchema = z.object({
+    task: z.string().min(1, "Task description is required"),
+  });
+
   api.post("/api/va/agents/:type/task", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { vaAgentService } = await import("./ai/vaService");
       const org = req.organization;
       const agentType = req.params.type as any;
-      const { task } = req.body;
-
-      if (!task) {
-        return Errors.badRequest(res, "Task description is required");
+      const parsed = vaTaskSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
       }
+      const { task } = parsed.data;
 
       const usageCheck = await checkUsageLimit(org.id, "ai_requests");
       if (!usageCheck.allowed) {
@@ -1430,11 +1596,26 @@ export function registerAIRoutes(app: Express): void {
   });
   
   // Create calendar event
+  const createCalendarEventSchema = z.object({
+    title: z.string().min(1, "Title is required"),
+    description: z.string().optional(),
+    startDate: z.string(),
+    endDate: z.string().optional(),
+    allDay: z.boolean().optional(),
+    eventType: z.string().optional(),
+    relatedEntityType: z.string().optional(),
+    relatedEntityId: z.number().int().optional(),
+  });
+
   api.post("/api/va/calendar", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
+      const parsed = createCalendarEventSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
       const event = await storage.createVaCalendarEvent({
-        ...req.body,
+        ...parsed.data,
         organizationId: org.id
       });
       res.json(event);
@@ -1538,9 +1719,18 @@ export function registerAIRoutes(app: Express): void {
   // Expose the map so executive.ts can use it via module-level export
   (global as any).__paxPendingApprovals = pendingApprovals;
 
+  const approveToolSchema = z.object({
+    toolCallId: z.string().min(1, "toolCallId is required"),
+    approved: z.boolean(),
+  });
+
   api.post("/api/ai/conversations/:id/approve-tool", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const { toolCallId, approved } = req.body;
+      const parsed = approveToolSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+      const { toolCallId, approved } = parsed.data;
       const key = `${req.params.id}:${toolCallId}`;
       const pending = pendingApprovals.get(key);
       if (!pending) return Errors.notFound(res, "Pending approval");

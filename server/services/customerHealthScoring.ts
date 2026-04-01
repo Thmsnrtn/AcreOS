@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Customer Health Scoring — Sovereign Company Protocol v5
  *

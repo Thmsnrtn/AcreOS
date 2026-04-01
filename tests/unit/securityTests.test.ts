@@ -160,10 +160,10 @@ describe("Rate Limit Enforcement (Task #251)", () => {
       return { req, res, next };
     };
 
-    const r1 = makeReq(); limiter(r1.req, r1.res, r1.next);
-    const r2 = makeReq(); limiter(r2.req, r2.res, r2.next);
-    const r3 = makeReq(); limiter(r3.req, r3.res, r3.next);
-    const r4 = makeReq(); limiter(r4.req, r4.res, r4.next); // over limit
+    const r1 = makeReq(); await limiter(r1.req, r1.res, r1.next);
+    const r2 = makeReq(); await limiter(r2.req, r2.res, r2.next);
+    const r3 = makeReq(); await limiter(r3.req, r3.res, r3.next);
+    const r4 = makeReq(); await limiter(r4.req, r4.res, r4.next); // over limit
 
     expect(r1.next).toHaveBeenCalled();
     expect(r2.next).toHaveBeenCalled();
@@ -191,8 +191,8 @@ describe("Rate Limit Enforcement (Task #251)", () => {
       return { req, res, next };
     };
 
-    const r1 = makeReq(); limiter(r1.req, r1.res, r1.next);
-    const r2 = makeReq(); limiter(r2.req, r2.res, r2.next);
+    const r1 = makeReq(); await limiter(r1.req, r1.res, r1.next);
+    const r2 = makeReq(); await limiter(r2.req, r2.res, r2.next);
 
     expect(r2.res.setHeader).toHaveBeenCalledWith("Retry-After", expect.any(String));
 

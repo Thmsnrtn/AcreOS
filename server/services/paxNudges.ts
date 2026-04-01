@@ -8,6 +8,7 @@ import {
   paxNudges,
   type Organization,
 } from "@shared/schema";
+import { logger } from "../utils/logger";
 
 const MAX_NUDGES_PER_ORG = 5;
 // Interval before regenerating nudges for an org (6 hours)
@@ -144,7 +145,7 @@ async function generateNudgesForOrg(org: Organization): Promise<void> {
   const toInsert = nudgesToInsert.slice(0, MAX_NUDGES_PER_ORG);
   if (toInsert.length > 0) {
     await db.insert(paxNudges as any).values(toInsert);
-    console.log(`[PaxNudges] Generated ${toInsert.length} nudges for org ${orgId}`);
+    logger.info(`[PaxNudges] Generated ${toInsert.length} nudges for org ${orgId}`);
   }
 }
 
@@ -259,10 +260,10 @@ export async function handleDomainEvent(event: {
         pushObservationSSE(orgId, { type: "nudge", ...nudge });
       } catch {}
 
-      console.log(`[PaxNudges] Event-driven nudge created for org ${orgId}: ${eventType}`);
+      logger.info(`[PaxNudges] Event-driven nudge created for org ${orgId}: ${eventType}`);
     }
   } catch (err) {
-    console.error(`[PaxNudges] handleDomainEvent error (${eventType}):`, err);
+    logger.error(`[PaxNudges] handleDomainEvent error (${eventType})`, err);
   }
 }
 
@@ -277,10 +278,10 @@ export async function processPaxNudges(): Promise<void> {
       try {
         await generateNudgesForOrg(org as Organization);
       } catch (err) {
-        console.error(`[PaxNudges] Error for org ${org.id}:`, err);
+        logger.error(`[PaxNudges] Error for org ${org.id}`, err);
       }
     }
   } catch (err) {
-    console.error("[PaxNudges] Fatal error:", err);
+    logger.error("[PaxNudges] Fatal error", err);
   }
 }

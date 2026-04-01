@@ -1,5 +1,6 @@
 import { storage } from "../storage";
 import type { DataSource, DataSourceCache } from "@shared/schema";
+import { logger } from "../utils/logger";
 
 interface LookupResult {
   success: boolean;
@@ -84,7 +85,7 @@ export class DataSourceLookupService {
         fromCache: false,
       };
     } catch (error) {
-      console.error("FEMA flood lookup error:", error);
+      logger.error("FEMA flood lookup error", error);
       return {
         success: false,
         source: "FEMA National Flood Hazard Layer",
@@ -213,7 +214,7 @@ export class DataSourceLookupService {
         fromCache: false,
       };
     } catch (error) {
-      console.error("NWI wetlands lookup error:", error);
+      logger.error("NWI wetlands lookup error", error);
       return {
         success: false,
         source: "National Wetlands Inventory",
@@ -317,7 +318,7 @@ export class DataSourceLookupService {
         fromCache: false,
       };
     } catch (error) {
-      console.error("USDA soil lookup error:", error);
+      logger.error("USDA soil lookup error", error);
       return {
         success: false,
         source: "USDA NRCS Soil Survey",
@@ -399,7 +400,7 @@ export class DataSourceLookupService {
         fromCache: false,
       };
     } catch (error) {
-      console.error("EPA data lookup error:", error);
+      logger.error("EPA data lookup error", error);
       return {
         success: false,
         source: "EPA Envirofacts",

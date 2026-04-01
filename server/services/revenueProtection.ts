@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 import { db } from "../db";
 import {
   organizations, activityLog, supportTickets, churnRiskScores,
@@ -8,6 +7,7 @@ import { eq, and, desc, gte, count, sql } from "drizzle-orm";
 import OpenAI from "openai";
 import { emailService } from "./emailService";
 import { decisionsInboxService } from "./decisionsInbox";
+import { logger } from "../utils/logger";
 
 const openai = new OpenAI();
 
@@ -292,7 +292,7 @@ export const revenueProtectionService = {
         await processOrganization(id);
         processed++;
       } catch (err) {
-        console.error(`[revenueProtection] Error processing org ${id}:`, err);
+        logger.error(`[revenueProtection] Error processing org ${id}`, err);
       }
     }
 
@@ -308,9 +308,9 @@ export async function startRevenueProtectionJob(withJobLock: Function): Promise<
 
   const runOnce = async () => {
     await withJobLock("revenue_protection", async () => {
-      console.log("[revenueProtection] Starting scoring pass...");
+      logger.info("[revenueProtection] Starting scoring pass...");
       const result = await revenueProtectionService.runScoringPass();
-      console.log(`[revenueProtection] Completed: ${result.processed} orgs scored`);
+      logger.info(`[revenueProtection] Completed: ${result.processed} orgs scored`);
     });
   };
 

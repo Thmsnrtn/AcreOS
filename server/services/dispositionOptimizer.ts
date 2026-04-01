@@ -18,6 +18,7 @@ import {
 import { eq, and, desc, gte, inArray } from "drizzle-orm";
 import { getOpenAIClient } from "../utils/openaiClient";
 import { getComparableProperties, ComparableProperty } from "./comps";
+import { logger } from "../utils/logger";
 
 type DispositionStrategy = "list_retail" | "sell_wholesale" | "owner_finance" | "auction" | "hold";
 type MarketingChannel = "mls" | "facebook" | "craigslist" | "landwatch" | "direct_mail" | "buyer_list";
@@ -690,7 +691,7 @@ export class DispositionOptimizerService {
     );
 
     if (!result.success) {
-      console.error("[DispositionOptimizer] Failed to find comps:", result.error);
+      logger.error("[DispositionOptimizer] Failed to find comps", undefined, { metadata: { detail: result.error } });
       return [];
     }
 
@@ -918,7 +919,7 @@ export class DispositionOptimizerService {
         relatedEntityId: payload.propertyId,
       });
     } catch (error) {
-      console.error("[DispositionOptimizer] Failed to log event:", error);
+      logger.error("[DispositionOptimizer] Failed to log event", error);
     }
   }
 }

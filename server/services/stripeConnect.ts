@@ -1,5 +1,6 @@
 import Stripe from "stripe";
 import { storage } from "../storage";
+import { logger } from "../utils/logger";
 
 function isStripeConfigured(): boolean {
   return !!process.env.STRIPE_SECRET_KEY;
@@ -139,7 +140,7 @@ export class StripeConnectService {
         },
       };
     } catch (error) {
-      console.error("Error retrieving Stripe account:", error);
+      logger.error("Error retrieving Stripe account", error);
       return {
         isConnected: false,
         chargesEnabled: false,
@@ -363,7 +364,7 @@ export class StripeConnectService {
               );
             }
           } catch (err: any) {
-            console.error(`[StripeWebhook] Dunning error for invoice ${invoice.id}:`, err.message);
+            logger.error(`[StripeWebhook] Dunning error for invoice ${invoice.id}`, err);
           }
         }
         break;
@@ -380,14 +381,14 @@ export class StripeConnectService {
               await dunningService.handlePaymentRecovered(org.id);
             }
           } catch (err: any) {
-            console.error(`[StripeWebhook] Dunning recovery error:`, err.message);
+            logger.error(`[StripeWebhook] Dunning recovery error`, err);
           }
         }
         break;
       }
 
       default:
-        console.log(`Unhandled Stripe webhook event: ${event.type}`);
+        logger.info(`Unhandled Stripe webhook event: ${event.type}`);
     }
   }
 
@@ -401,7 +402,7 @@ export class StripeConnectService {
     const paymentType = paymentIntent.metadata?.paymentType;
 
     if (!organizationId) {
-      console.error("No organizationId in payment intent metadata");
+      logger.error("No organizationId in payment intent metadata");
       return;
     }
 
@@ -442,15 +443,15 @@ export class StripeConnectService {
       }
     }
 
-    console.log(`Payment succeeded: ${paymentIntent.id} for org ${organizationId}`);
+    logger.info(`Payment succeeded: ${paymentIntent.id} for org ${organizationId}`);
   }
 
   private async handleFailedPayment(paymentIntent: Stripe.PaymentIntent): Promise<void> {
     const organizationId = paymentIntent.metadata?.organizationId;
     const noteId = paymentIntent.metadata?.noteId;
 
-    console.error(`Payment failed: ${paymentIntent.id} for org ${organizationId}, note ${noteId}`);
-    console.error(`Failure reason: ${paymentIntent.last_payment_error?.message}`);
+    logger.error(`Payment failed: ${paymentIntent.id} for org ${organizationId}, note ${noteId}`);
+    logger.error(`Failure reason: ${paymentIntent.last_payment_error?.message}`);
   }
 
   async getPaymentLink(

@@ -13,6 +13,7 @@ import {
   activityLog, auditLog, apiUsageLogs, paxMemory, systemAlerts
 } from "@shared/schema";
 import { gte, lte } from "drizzle-orm";
+import { logger } from "../utils/logger";
 
 function getOpenAIClient(): OpenAI {
   const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
@@ -1622,7 +1623,7 @@ export async function executeSupportTool(
               }))
             };
           } catch (err) {
-            console.error("[pax] Error gathering diagnostic bundle:", err);
+            logger.error("[pax] Error gathering diagnostic bundle", err);
             diagnosticBundle = { error: "Failed to gather full diagnostics", partial: true };
           }
         }
@@ -1672,7 +1673,7 @@ export async function executeSupportTool(
               summary,
               diagnosticBundle: diagnosticBundle ? "attached" : "none",
             },
-          }).catch((err: any) => console.error("[sophie] decisions inbox create error:", err));
+          }).catch((err: any) => logger.error("[sophie] decisions inbox create error", err));
         }
 
         // Save escalation to memory for future context
@@ -4137,7 +4138,7 @@ export async function executeSupportTool(
           summary = `Found ${logs.length} log entries (${errorCount} errors) in the last ${time_range}`;
           
         } catch (error: any) {
-          console.error("[search_logs] Error:", error);
+          logger.error("[search_logs] Error", error);
           summary = `Error searching logs: ${error.message}`;
         }
         
@@ -5063,7 +5064,7 @@ export async function executeSupportTool(
         return { success: false, error: `Unknown support tool: ${toolName}` };
     }
   } catch (error: any) {
-    console.error(`[support-tool] Error executing ${toolName}:`, error);
+    logger.error(`[support-tool] Error executing ${toolName}`, error);
     return { success: false, error: error.message };
   }
 }
@@ -5351,7 +5352,7 @@ export async function gatherSystemContext(org: Organization): Promise<{
       }
     };
   } catch (error) {
-    console.error("[support] Failed to gather system context:", error);
+    logger.error("[support] Failed to gather system context", error);
     return {
       accountHealth: "unknown",
       activeAlerts: 0,

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * SCP v2 Routes — Sovereign Company Protocol v2 CEO Interface
  *

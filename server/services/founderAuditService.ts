@@ -8,6 +8,7 @@
 import { db } from "../db";
 import { auditLog } from "@shared/schema";
 import { sql } from "drizzle-orm";
+import { logger } from "../utils/logger";
 
 export type AuditSeverity = "info" | "warning" | "critical";
 export type AuditCategory =
@@ -45,7 +46,7 @@ class FounderAuditService {
 
       // Production: structured JSON for log aggregation (Datadog, etc.)
       if (process.env.NODE_ENV === "production") {
-        console.log(JSON.stringify({ type: "FOUNDER_AUDIT", ...logEntry }));
+        logger.info(JSON.stringify({ type: "FOUNDER_AUDIT", ...logEntry }));
       }
 
       // Also persist to database audit log
@@ -65,12 +66,12 @@ class FounderAuditService {
           )
         `).catch(err => {
           // Never let audit logging failure crash the application
-          console.error("[FounderAudit] Failed to persist audit entry:", err.message);
+          logger.error("[FounderAudit] Failed to persist audit entry", err);
         });
       }
     } catch (err) {
       // Audit logging must never throw
-      console.error("[FounderAudit] Logging error:", err);
+      logger.error("[FounderAudit] Logging error", err);
     }
   }
 

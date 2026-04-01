@@ -2,6 +2,7 @@ import { db } from "../db";
 import { writingStyleProfiles, messages, conversations } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
 import OpenAI from "openai";
+import { logger } from "../utils/logger";
 
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
@@ -157,7 +158,7 @@ async function analyzeSentiment(content: string): Promise<"positive" | "neutral"
     }
     return "neutral";
   } catch (error) {
-    console.error("Error analyzing sentiment:", error);
+    logger.error("Error analyzing sentiment", error);
     return "neutral";
   }
 }
@@ -391,7 +392,7 @@ export async function importMessagesFromConversations(
       await addSampleMessage(profileId, "general", msg.content);
       addedCount++;
     } catch (error) {
-      console.error("Error adding sample message:", error);
+      logger.error("Error adding sample message", error);
     }
   }
   

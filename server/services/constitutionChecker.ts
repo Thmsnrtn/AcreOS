@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Constitution Checker — Sovereign Company Protocol v2
  *

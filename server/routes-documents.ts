@@ -4,6 +4,7 @@ import { z } from "zod";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { usageMeteringService, creditService } from "./services/credits";
+import { logger } from "./utils/logger";
 
 export function registerDocumentRoutes(app: Express): void {
   const api = app;
@@ -41,7 +42,7 @@ export function registerDocumentRoutes(app: Express): void {
       res.setHeader("Content-Disposition", `attachment; filename="promissory-note-${req.params.id}.pdf"`);
       res.send(pdfBuffer);
     } catch (err: any) {
-      console.error("PDF generation error:", err);
+      logger.error("PDF generation error", err);
       res.status(err.message === "Note not found" ? 404 : 500).json({ 
         message: err.message || "Failed to generate PDF" 
       });
@@ -78,7 +79,7 @@ export function registerDocumentRoutes(app: Express): void {
       res.setHeader("Content-Disposition", `attachment; filename="warranty-deed-${req.params.id}.pdf"`);
       res.send(pdfBuffer);
     } catch (err: any) {
-      console.error("PDF generation error:", err);
+      logger.error("PDF generation error", err);
       res.status(err.message === "Property not found" ? 404 : 500).json({ 
         message: err.message || "Failed to generate PDF" 
       });
@@ -126,7 +127,7 @@ export function registerDocumentRoutes(app: Express): void {
       res.setHeader("Content-Disposition", `attachment; filename="offer-letter-${leadId}-${propertyId}.pdf"`);
       res.send(pdfBuffer);
     } catch (err: any) {
-      console.error("PDF generation error:", err);
+      logger.error("PDF generation error", err);
       const notFound = err.message === "Lead not found" || err.message === "Property not found";
       res.status(notFound ? 404 : 500).json({ 
         message: err.message || "Failed to generate PDF" 
@@ -173,7 +174,7 @@ export function registerDocumentRoutes(app: Express): void {
       res.setHeader("Content-Disposition", `attachment; filename="settlement-statement-${propertyId}.pdf"`);
       res.send(pdfBuffer);
     } catch (err: any) {
-      console.error("PDF generation error:", err);
+      logger.error("PDF generation error", err);
       res.status(err.message === "Property not found" ? 404 : 500).json({ 
         message: err.message || "Failed to generate PDF" 
       });
@@ -219,7 +220,7 @@ export function registerDocumentRoutes(app: Express): void {
       res.setHeader("Content-Disposition", `attachment; filename="property-flyer-${propertyId}.pdf"`);
       res.send(pdfBuffer);
     } catch (err: any) {
-      console.error("PDF generation error:", err);
+      logger.error("PDF generation error", err);
       res.status(err.message === "Property not found" ? 404 : 500).json({ 
         message: err.message || "Failed to generate PDF" 
       });
@@ -261,7 +262,7 @@ export function registerDocumentRoutes(app: Express): void {
       res.setHeader("Content-Disposition", `attachment; filename="promissory-note-${noteId}.pdf"`);
       res.send(pdfBuffer);
     } catch (err: any) {
-      console.error("PDF generation error:", err);
+      logger.error("PDF generation error", err);
       res.status(err.message === "Note not found" ? 404 : 500).json({ 
         message: err.message || "Failed to generate PDF" 
       });
@@ -303,7 +304,7 @@ export function registerDocumentRoutes(app: Express): void {
       res.setHeader("Content-Disposition", `attachment; filename="warranty-deed-${propertyId}.pdf"`);
       res.send(pdfBuffer);
     } catch (err: any) {
-      console.error("PDF generation error:", err);
+      logger.error("PDF generation error", err);
       res.status(err.message === "Property not found" ? 404 : 500).json({ 
         message: err.message || "Failed to generate PDF" 
       });

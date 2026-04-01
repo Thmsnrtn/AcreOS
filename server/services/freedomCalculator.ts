@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 /**
  * Freedom Calculator — tracks passive income progress toward financial freedom.
  *

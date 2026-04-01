@@ -6,6 +6,7 @@ import { notes, payments } from "@shared/schema";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { createRateLimiter, RATE_LIMIT_CONFIGS } from "./middleware/rateLimit";
+import { logger } from "./utils/logger";
 
 const portalPaymentRateLimiter = createRateLimiter(RATE_LIMIT_CONFIGS.public, (req) => req.ip || req.socket.remoteAddress || 'unknown');
 const deprecatedPaymentRateLimiter = createRateLimiter({ maxRequests: 2, windowMs: 60 * 1000 }, (req) => req.ip || req.socket.remoteAddress || 'unknown');
@@ -31,15 +32,15 @@ async function validateBorrowerSession(req: Request, res: Response, next: NextFu
     (req as any).borrowerSession = session;
     next();
   } catch (err) {
-    console.error("Borrower session validation error:", err);
+    logger.error("Borrower session validation error", err);
     return res.status(500).json({ message: "Session validation failed" });
   }
 }
 
 const logger = {
-  info: (msg: string, meta?: Record<string, any>) => console.log(JSON.stringify({ level: 'INFO', timestamp: new Date().toISOString(), message: msg, ...meta })),
-  warn: (msg: string, meta?: Record<string, any>) => console.warn(JSON.stringify({ level: 'WARN', timestamp: new Date().toISOString(), message: msg, ...meta })),
-  error: (msg: string, meta?: Record<string, any>) => console.error(JSON.stringify({ level: 'ERROR', timestamp: new Date().toISOString(), message: msg, ...meta })),
+  info: (msg: string, meta?: Record<string, any>) => logger.info(JSON.stringify({ level: 'INFO', timestamp: new Date().toISOString(), message: msg, ...meta })),
+  warn: (msg: string, meta?: Record<string, any>) => logger.warn(JSON.stringify({ level: 'WARN', timestamp: new Date().toISOString(), message: msg, ...meta })),
+  error: (msg: string, meta?: Record<string, any>) => logger.error(JSON.stringify({ level: 'ERROR', timestamp: new Date().toISOString(), message: msg, ...meta })),
 };
 
 export function registerBorrowerRoutes(app: Express): void {
@@ -279,7 +280,7 @@ export function registerBorrowerRoutes(app: Express): void {
       
       res.json({ url: stripeSession.url, sessionId: stripeSession.id });
     } catch (err: any) {
-      console.error("Session-based portal payment error:", err);
+      logger.error("Session-based portal payment error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -363,7 +364,7 @@ export function registerBorrowerRoutes(app: Express): void {
       
       res.json({ url: session.url, sessionId: session.id });
     } catch (err: any) {
-      console.error("Portal payment error:", err);
+      logger.error("Portal payment error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -468,7 +469,7 @@ export function registerBorrowerRoutes(app: Express): void {
         newBalance,
       });
     } catch (err: any) {
-      console.error("Payment verification error:", err);
+      logger.error("Payment verification error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -508,7 +509,7 @@ export function registerBorrowerRoutes(app: Express): void {
         nextPaymentDate: note.nextPaymentDate,
       });
     } catch (err: any) {
-      console.error("Autopay toggle error:", err);
+      logger.error("Autopay toggle error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -610,7 +611,7 @@ export function registerBorrowerRoutes(app: Express): void {
         daysValid: 30,
       });
     } catch (err: any) {
-      console.error("Payoff quote error:", err);
+      logger.error("Payoff quote error", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -731,7 +732,7 @@ export function registerBorrowerRoutes(app: Express): void {
         });
       }
     } catch (err: any) {
-      console.error("Statement generation error:", err);
+      logger.error("Statement generation error", err);
       res.status(500).json({ message: err.message });
     }
   });

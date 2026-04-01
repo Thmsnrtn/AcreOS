@@ -9,6 +9,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, ilike, or } from "drizzle-orm";
 import { getOpenAIClient } from "../utils/openaiClient";
+import { logger } from "../utils/logger";
 
 type DocumentType = "deed" | "contract" | "title_report" | "survey" | "note" | "mortgage" | "tax_bill" | "closing_statement";
 
@@ -225,7 +226,7 @@ export class DocumentIntelligenceService {
 
         return extractedText;
       } catch (error) {
-        console.error(`[document-intelligence] OCR extraction error:`, error);
+        logger.error(`[document-intelligence] OCR extraction error`, error);
       }
     }
 
@@ -277,7 +278,7 @@ Return a JSON object with the extracted data. Be precise with amounts, dates, an
 
       return parsed;
     } catch (error) {
-      console.error(`[document-intelligence] Parsing error for document ${documentId}:`, error);
+      logger.error(`[document-intelligence] Parsing error for document ${documentId}`, error);
       return this.getDefaultExtractedData(documentType);
     }
   }
@@ -356,7 +357,7 @@ Return a JSON object with a "keyTerms" array containing objects with:
 
       return parsed.keyTerms || [];
     } catch (error) {
-      console.error(`[document-intelligence] Key terms extraction error:`, error);
+      logger.error(`[document-intelligence] Key terms extraction error`, error);
       return [];
     }
   }
@@ -406,7 +407,7 @@ Look for: missing signatures, unclear terms, unusual clauses, title issues, lien
 
       return parsed.riskFlags || [];
     } catch (error) {
-      console.error(`[document-intelligence] Risk analysis error:`, error);
+      logger.error(`[document-intelligence] Risk analysis error`, error);
       return [];
     }
   }
@@ -499,7 +500,7 @@ Look for: missing signatures, unclear terms, unusual clauses, title issues, lien
 
         summary = response.choices[0]?.message?.content || summary;
       } catch (error) {
-        console.error(`[document-intelligence] Comparison summary error:`, error);
+        logger.error(`[document-intelligence] Comparison summary error`, error);
       }
     }
 
@@ -582,7 +583,7 @@ Look for: missing signatures, unclear terms, unusual clauses, title issues, lien
 
       return response.choices[0]?.message?.content || "Unable to generate summary.";
     } catch (error) {
-      console.error(`[document-intelligence] Summary generation error:`, error);
+      logger.error(`[document-intelligence] Summary generation error`, error);
       return `${doc.documentType} document: ${doc.documentName}. Summary generation failed.`;
     }
   }
@@ -624,7 +625,7 @@ Look for: missing signatures, unclear terms, unusual clauses, title issues, lien
         payload,
       });
     } catch (error) {
-      console.error(`[document-intelligence] Failed to log event:`, error);
+      logger.error(`[document-intelligence] Failed to log event`, error);
     }
   }
 }

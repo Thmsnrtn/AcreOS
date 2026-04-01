@@ -436,7 +436,7 @@ export default function TodayPage() {
               <p className="text-xs text-muted-foreground">Active Agents</p>
             </div>
             <div className="text-center">
-              <Link href="/agent-command-center">
+              <Link href="/ai#agents">
                 <p className={`text-lg font-bold ${pendingApprovalCount > 0 ? "text-amber-600" : ""}`}>
                   {pendingApprovalCount}
                 </p>

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Agent Data Resolvers — Sovereign Company Protocol v2
  *
@@ -19,6 +18,7 @@ import {
   deals, decisionsInboxItems, revenueProtectionInterventions,
 } from "@shared/schema";
 import { eq, and, gte, desc, count, sum, sql, ne } from "drizzle-orm";
+import { logger } from "../utils/logger";
 
 export type AgentDataResolver = () => Promise<Record<string, any>>;
 
@@ -314,7 +314,7 @@ export async function resolveAgentData(codename: string): Promise<Record<string,
   try {
     return await resolver();
   } catch (err) {
-    console.error(`[AgentDataResolver] Error resolving ${codename}:`, err);
+    logger.error(`[AgentDataResolver] Error resolving ${codename}`, err);
     return { resolverError: true };
   }
 }

@@ -1,4 +1,4 @@
-// @ts-nocheck
+import { logger } from "../utils/logger";
 /**
  * External Service Health Check System
  * 
@@ -218,7 +218,7 @@ class HealthCheckService {
         return this.createHealth(name, 'unconfigured', undefined, 'REDIS_URL not configured');
       }
 
-      // @ts-ignore — redis types may not be installed
+      // redis types may not be installed; `as any` cast handles the mismatch
       const { createClient } = await import('redis') as any;
       const client = createClient({ url: redisUrl });
       await client.connect();
@@ -371,11 +371,11 @@ class HealthCheckService {
     
     this.checkInterval = setInterval(() => {
       this.checkAll().catch(err => {
-        console.error('[healthCheck] Periodic health check failed:', err);
+        logger.error('[healthCheck] Periodic health check failed', err);
       });
     }, intervalMs);
     
-    console.log(`[healthCheck] Started periodic health checks (every ${intervalMs / 1000}s)`);
+    logger.info(`[healthCheck] Started periodic health checks (every ${intervalMs / 1000}s)`);
   }
 
   /**
@@ -385,7 +385,7 @@ class HealthCheckService {
     if (this.checkInterval) {
       clearInterval(this.checkInterval);
       this.checkInterval = null;
-      console.log('[healthCheck] Stopped periodic health checks');
+      logger.info('[healthCheck] Stopped periodic health checks');
     }
   }
 }

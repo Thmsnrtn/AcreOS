@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Company Agents — Sovereign Company Protocol
  *

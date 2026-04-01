@@ -8,6 +8,7 @@ import {
 } from "@shared/schema";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
+import { logger } from "./utils/logger";
 
 export async function registerVAEngineRoutes(app: Express): Promise<void> {
   const api = app;
@@ -21,7 +22,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const lists = await storage.getMarketingLists(org.id);
       res.json(lists);
     } catch (error: any) {
-      console.error("Get marketing lists error:", error);
+      logger.error("Get marketing lists error", error);
       res.status(500).json({ message: error.message || "Failed to fetch marketing lists" });
     }
   });
@@ -36,7 +37,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       }
       res.json(list);
     } catch (error: any) {
-      console.error("Get marketing list error:", error);
+      logger.error("Get marketing list error", error);
       res.status(500).json({ message: error.message || "Failed to fetch marketing list" });
     }
   });
@@ -51,7 +52,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const list = await storage.createMarketingList(validated);
       res.status(201).json(list);
     } catch (error: any) {
-      console.error("Create marketing list error:", error);
+      logger.error("Create marketing list error", error);
       res.status(400).json({ message: error.message || "Failed to create marketing list" });
     }
   });
@@ -67,7 +68,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const list = await storage.updateMarketingList(org.id, id, req.body);
       res.json(list);
     } catch (error: any) {
-      console.error("Update marketing list error:", error);
+      logger.error("Update marketing list error", error);
       res.status(400).json({ message: error.message || "Failed to update marketing list" });
     }
   });
@@ -83,7 +84,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       await storage.deleteMarketingList(org.id, id);
       res.status(204).send();
     } catch (error: any) {
-      console.error("Delete marketing list error:", error);
+      logger.error("Delete marketing list error", error);
       res.status(500).json({ message: error.message || "Failed to delete marketing list" });
     }
   });
@@ -98,7 +99,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const batches = await storage.getOfferBatches(org.id);
       res.json(batches);
     } catch (error: any) {
-      console.error("Get offer batches error:", error);
+      logger.error("Get offer batches error", error);
       res.status(500).json({ message: error.message || "Failed to fetch offer batches" });
     }
   });
@@ -114,7 +115,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const batchOffers = await storage.getOffersByBatch(org.id, id);
       res.json({ ...batch, offersCount: batchOffers.length });
     } catch (error: any) {
-      console.error("Get offer batch error:", error);
+      logger.error("Get offer batch error", error);
       res.status(500).json({ message: error.message || "Failed to fetch offer batch" });
     }
   });
@@ -130,7 +131,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const batchOffers = await storage.getOffersByBatch(org.id, id);
       res.json(batchOffers);
     } catch (error: any) {
-      console.error("Get offers in batch error:", error);
+      logger.error("Get offers in batch error", error);
       res.status(500).json({ message: error.message || "Failed to fetch offers in batch" });
     }
   });
@@ -145,7 +146,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const batch = await storage.createOfferBatch(validated);
       res.status(201).json(batch);
     } catch (error: any) {
-      console.error("Create offer batch error:", error);
+      logger.error("Create offer batch error", error);
       res.status(400).json({ message: error.message || "Failed to create offer batch" });
     }
   });
@@ -161,7 +162,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const batch = await storage.updateOfferBatch(org.id, id, req.body);
       res.json(batch);
     } catch (error: any) {
-      console.error("Update offer batch error:", error);
+      logger.error("Update offer batch error", error);
       res.status(400).json({ message: error.message || "Failed to update offer batch" });
     }
   });
@@ -177,7 +178,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       await storage.deleteOfferBatch(org.id, id);
       res.status(204).send();
     } catch (error: any) {
-      console.error("Delete offer batch error:", error);
+      logger.error("Delete offer batch error", error);
       res.status(500).json({ message: error.message || "Failed to delete offer batch" });
     }
   });
@@ -207,7 +208,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       
       res.json(orgOffers);
     } catch (error: any) {
-      console.error("Get offers error:", error);
+      logger.error("Get offers error", error);
       res.status(500).json({ message: error.message || "Failed to fetch offers" });
     }
   });
@@ -222,7 +223,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       }
       res.json(offer);
     } catch (error: any) {
-      console.error("Get offer error:", error);
+      logger.error("Get offer error", error);
       res.status(500).json({ message: error.message || "Failed to fetch offer" });
     }
   });
@@ -237,7 +238,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const offer = await storage.createOffer(validated);
       res.status(201).json(offer);
     } catch (error: any) {
-      console.error("Create offer error:", error);
+      logger.error("Create offer error", error);
       res.status(400).json({ message: error.message || "Failed to create offer" });
     }
   });
@@ -253,7 +254,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const offer = await storage.updateOffer(org.id, id, req.body);
       res.json(offer);
     } catch (error: any) {
-      console.error("Update offer error:", error);
+      logger.error("Update offer error", error);
       res.status(400).json({ message: error.message || "Failed to update offer" });
     }
   });
@@ -269,7 +270,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       await storage.deleteOffer(org.id, id);
       res.status(204).send();
     } catch (error: any) {
-      console.error("Delete offer error:", error);
+      logger.error("Delete offer error", error);
       res.status(500).json({ message: error.message || "Failed to delete offer" });
     }
   });
@@ -290,7 +291,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       
       res.json(comms);
     } catch (error: any) {
-      console.error("Get seller communications error:", error);
+      logger.error("Get seller communications error", error);
       res.status(500).json({ message: error.message || "Failed to fetch seller communications" });
     }
   });
@@ -301,7 +302,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const comms = await storage.getSellerCommunicationsByLead(leadId);
       res.json(comms);
     } catch (error: any) {
-      console.error("Get seller communications by lead error:", error);
+      logger.error("Get seller communications by lead error", error);
       res.status(500).json({ message: error.message || "Failed to fetch seller communications" });
     }
   });
@@ -316,7 +317,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       }
       res.json(comm);
     } catch (error: any) {
-      console.error("Get seller communication error:", error);
+      logger.error("Get seller communication error", error);
       res.status(500).json({ message: error.message || "Failed to fetch seller communication" });
     }
   });
@@ -331,7 +332,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const comm = await storage.createSellerCommunication(validated);
       res.status(201).json(comm);
     } catch (error: any) {
-      console.error("Create seller communication error:", error);
+      logger.error("Create seller communication error", error);
       res.status(400).json({ message: error.message || "Failed to create seller communication" });
     }
   });
@@ -346,7 +347,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const postings = await storage.getAdPostings(org.id);
       res.json(postings);
     } catch (error: any) {
-      console.error("Get ad postings error:", error);
+      logger.error("Get ad postings error", error);
       res.status(500).json({ message: error.message || "Failed to fetch ad postings" });
     }
   });
@@ -357,7 +358,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const postings = await storage.getAdPostingsByProperty(propertyId);
       res.json(postings);
     } catch (error: any) {
-      console.error("Get ad postings by property error:", error);
+      logger.error("Get ad postings by property error", error);
       res.status(500).json({ message: error.message || "Failed to fetch ad postings" });
     }
   });
@@ -372,7 +373,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       }
       res.json(posting);
     } catch (error: any) {
-      console.error("Get ad posting error:", error);
+      logger.error("Get ad posting error", error);
       res.status(500).json({ message: error.message || "Failed to fetch ad posting" });
     }
   });
@@ -387,7 +388,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const posting = await storage.createAdPosting(validated);
       res.status(201).json(posting);
     } catch (error: any) {
-      console.error("Create ad posting error:", error);
+      logger.error("Create ad posting error", error);
       res.status(400).json({ message: error.message || "Failed to create ad posting" });
     }
   });
@@ -403,7 +404,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const posting = await storage.updateAdPosting(org.id, id, req.body);
       res.json(posting);
     } catch (error: any) {
-      console.error("Update ad posting error:", error);
+      logger.error("Update ad posting error", error);
       res.status(400).json({ message: error.message || "Failed to update ad posting" });
     }
   });
@@ -419,7 +420,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       await storage.deleteAdPosting(org.id, id);
       res.status(204).send();
     } catch (error: any) {
-      console.error("Delete ad posting error:", error);
+      logger.error("Delete ad posting error", error);
       res.status(500).json({ message: error.message || "Failed to delete ad posting" });
     }
   });
@@ -434,7 +435,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const prequalifications = await storage.getBuyerPrequalifications(org.id);
       res.json(prequalifications);
     } catch (error: any) {
-      console.error("Get buyer prequalifications error:", error);
+      logger.error("Get buyer prequalifications error", error);
       res.status(500).json({ message: error.message || "Failed to fetch buyer prequalifications" });
     }
   });
@@ -448,7 +449,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       }
       res.json(prequal);
     } catch (error: any) {
-      console.error("Get buyer prequalification by lead error:", error);
+      logger.error("Get buyer prequalification by lead error", error);
       res.status(500).json({ message: error.message || "Failed to fetch buyer prequalification" });
     }
   });
@@ -463,7 +464,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       }
       res.json(prequal);
     } catch (error: any) {
-      console.error("Get buyer prequalification error:", error);
+      logger.error("Get buyer prequalification error", error);
       res.status(500).json({ message: error.message || "Failed to fetch buyer prequalification" });
     }
   });
@@ -478,7 +479,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const prequal = await storage.createBuyerPrequalification(validated);
       res.status(201).json(prequal);
     } catch (error: any) {
-      console.error("Create buyer prequalification error:", error);
+      logger.error("Create buyer prequalification error", error);
       res.status(400).json({ message: error.message || "Failed to create buyer prequalification" });
     }
   });
@@ -494,7 +495,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const prequal = await storage.updateBuyerPrequalification(org.id, id, req.body);
       res.json(prequal);
     } catch (error: any) {
-      console.error("Update buyer prequalification error:", error);
+      logger.error("Update buyer prequalification error", error);
       res.status(400).json({ message: error.message || "Failed to update buyer prequalification" });
     }
   });
@@ -510,7 +511,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       await storage.deleteBuyerPrequalification(org.id, id);
       res.status(204).send();
     } catch (error: any) {
-      console.error("Delete buyer prequalification error:", error);
+      logger.error("Delete buyer prequalification error", error);
       res.status(500).json({ message: error.message || "Failed to delete buyer prequalification" });
     }
   });
@@ -525,7 +526,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const sequences = await storage.getCollectionSequences(org.id);
       res.json(sequences);
     } catch (error: any) {
-      console.error("Get collection sequences error:", error);
+      logger.error("Get collection sequences error", error);
       res.status(500).json({ message: error.message || "Failed to fetch collection sequences" });
     }
   });
@@ -540,7 +541,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       }
       res.json(sequence);
     } catch (error: any) {
-      console.error("Get collection sequence error:", error);
+      logger.error("Get collection sequence error", error);
       res.status(500).json({ message: error.message || "Failed to fetch collection sequence" });
     }
   });
@@ -555,7 +556,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const sequence = await storage.createCollectionSequence(validated);
       res.status(201).json(sequence);
     } catch (error: any) {
-      console.error("Create collection sequence error:", error);
+      logger.error("Create collection sequence error", error);
       res.status(400).json({ message: error.message || "Failed to create collection sequence" });
     }
   });
@@ -571,7 +572,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const sequence = await storage.updateCollectionSequence(org.id, id, req.body);
       res.json(sequence);
     } catch (error: any) {
-      console.error("Update collection sequence error:", error);
+      logger.error("Update collection sequence error", error);
       res.status(400).json({ message: error.message || "Failed to update collection sequence" });
     }
   });
@@ -587,7 +588,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       await storage.deleteCollectionSequence(org.id, id);
       res.status(204).send();
     } catch (error: any) {
-      console.error("Delete collection sequence error:", error);
+      logger.error("Delete collection sequence error", error);
       res.status(500).json({ message: error.message || "Failed to delete collection sequence" });
     }
   });
@@ -602,7 +603,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const enrollments = await storage.getCollectionEnrollments(org.id);
       res.json(enrollments);
     } catch (error: any) {
-      console.error("Get collection enrollments error:", error);
+      logger.error("Get collection enrollments error", error);
       res.status(500).json({ message: error.message || "Failed to fetch collection enrollments" });
     }
   });
@@ -613,7 +614,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const enrollments = await storage.getCollectionEnrollmentsByNote(noteId);
       res.json(enrollments);
     } catch (error: any) {
-      console.error("Get collection enrollments by note error:", error);
+      logger.error("Get collection enrollments by note error", error);
       res.status(500).json({ message: error.message || "Failed to fetch collection enrollments" });
     }
   });
@@ -628,7 +629,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       }
       res.json(enrollment);
     } catch (error: any) {
-      console.error("Get collection enrollment error:", error);
+      logger.error("Get collection enrollment error", error);
       res.status(500).json({ message: error.message || "Failed to fetch collection enrollment" });
     }
   });
@@ -643,7 +644,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const enrollment = await storage.createCollectionEnrollment(validated);
       res.status(201).json(enrollment);
     } catch (error: any) {
-      console.error("Create collection enrollment error:", error);
+      logger.error("Create collection enrollment error", error);
       res.status(400).json({ message: error.message || "Failed to create collection enrollment" });
     }
   });
@@ -659,7 +660,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const enrollment = await storage.updateCollectionEnrollment(org.id, id, req.body);
       res.json(enrollment);
     } catch (error: any) {
-      console.error("Update collection enrollment error:", error);
+      logger.error("Update collection enrollment error", error);
       res.status(400).json({ message: error.message || "Failed to update collection enrollment" });
     }
   });
@@ -673,7 +674,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const research = await storage.getCountyResearchList();
       res.json(research);
     } catch (error: any) {
-      console.error("Get county research list error:", error);
+      logger.error("Get county research list error", error);
       res.status(500).json({ message: error.message || "Failed to fetch county research" });
     }
   });
@@ -693,7 +694,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       }
       res.json(research);
     } catch (error: any) {
-      console.error("Get county research by state/county error:", error);
+      logger.error("Get county research by state/county error", error);
       res.status(500).json({ message: error.message || "Failed to fetch county research" });
     }
   });
@@ -707,7 +708,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       }
       res.json(research);
     } catch (error: any) {
-      console.error("Get county research error:", error);
+      logger.error("Get county research error", error);
       res.status(500).json({ message: error.message || "Failed to fetch county research" });
     }
   });
@@ -718,7 +719,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const research = await storage.createCountyResearch(validated);
       res.status(201).json(research);
     } catch (error: any) {
-      console.error("Create county research error:", error);
+      logger.error("Create county research error", error);
       res.status(400).json({ message: error.message || "Failed to create county research" });
     }
   });
@@ -733,7 +734,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const research = await storage.updateCountyResearch(id, req.body);
       res.json(research);
     } catch (error: any) {
-      console.error("Update county research error:", error);
+      logger.error("Update county research error", error);
       res.status(400).json({ message: error.message || "Failed to update county research" });
     }
   });
@@ -748,7 +749,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const reservations = await storage.getBuyerReservations(org.id);
       res.json(reservations);
     } catch (error: any) {
-      console.error("Get buyer reservations error:", error);
+      logger.error("Get buyer reservations error", error);
       res.status(500).json({ message: error.message || "Failed to fetch buyer reservations" });
     }
   });
@@ -763,7 +764,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       }
       res.json(reservation);
     } catch (error: any) {
-      console.error("Get buyer reservation error:", error);
+      logger.error("Get buyer reservation error", error);
       res.status(500).json({ message: error.message || "Failed to fetch buyer reservation" });
     }
   });
@@ -775,7 +776,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const reservations = await storage.getBuyerReservationsByProperty(org.id, propertyId);
       res.json(reservations);
     } catch (error: any) {
-      console.error("Get property reservations error:", error);
+      logger.error("Get property reservations error", error);
       res.status(500).json({ message: error.message || "Failed to fetch property reservations" });
     }
   });
@@ -789,7 +790,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       });
       res.status(201).json(reservation);
     } catch (error: any) {
-      console.error("Create buyer reservation error:", error);
+      logger.error("Create buyer reservation error", error);
       res.status(400).json({ message: error.message || "Failed to create buyer reservation" });
     }
   });
@@ -805,7 +806,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const reservation = await storage.updateBuyerReservation(org.id, id, req.body);
       res.json(reservation);
     } catch (error: any) {
-      console.error("Update buyer reservation error:", error);
+      logger.error("Update buyer reservation error", error);
       res.status(400).json({ message: error.message || "Failed to update buyer reservation" });
     }
   });
@@ -820,7 +821,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       }
       res.status(204).send();
     } catch (error: any) {
-      console.error("Delete buyer reservation error:", error);
+      logger.error("Delete buyer reservation error", error);
       res.status(500).json({ message: error.message || "Failed to delete buyer reservation" });
     }
   });
@@ -835,7 +836,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const checklists = await storage.getEscrowChecklists(org.id);
       res.json(checklists);
     } catch (error: any) {
-      console.error("Get escrow checklists error:", error);
+      logger.error("Get escrow checklists error", error);
       res.status(500).json({ message: error.message || "Failed to fetch escrow checklists" });
     }
   });
@@ -850,7 +851,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       }
       res.json(checklist);
     } catch (error: any) {
-      console.error("Get escrow checklist error:", error);
+      logger.error("Get escrow checklist error", error);
       res.status(500).json({ message: error.message || "Failed to fetch escrow checklist" });
     }
   });
@@ -862,7 +863,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const checklist = await storage.getEscrowChecklistByDeal(org.id, dealId);
       res.json(checklist);
     } catch (error: any) {
-      console.error("Get deal escrow checklist error:", error);
+      logger.error("Get deal escrow checklist error", error);
       res.status(500).json({ message: error.message || "Failed to fetch deal escrow checklist" });
     }
   });
@@ -876,7 +877,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       });
       res.status(201).json(checklist);
     } catch (error: any) {
-      console.error("Create escrow checklist error:", error);
+      logger.error("Create escrow checklist error", error);
       res.status(400).json({ message: error.message || "Failed to create escrow checklist" });
     }
   });
@@ -892,7 +893,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const checklist = await storage.updateEscrowChecklist(org.id, id, req.body);
       res.json(checklist);
     } catch (error: any) {
-      console.error("Update escrow checklist error:", error);
+      logger.error("Update escrow checklist error", error);
       res.status(400).json({ message: error.message || "Failed to update escrow checklist" });
     }
   });
@@ -907,7 +908,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       }
       res.status(204).send();
     } catch (error: any) {
-      console.error("Delete escrow checklist error:", error);
+      logger.error("Delete escrow checklist error", error);
       res.status(500).json({ message: error.message || "Failed to delete escrow checklist" });
     }
   });
@@ -922,7 +923,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const packets = await storage.getClosingPackets(org.id);
       res.json(packets);
     } catch (error: any) {
-      console.error("Get closing packets error:", error);
+      logger.error("Get closing packets error", error);
       res.status(500).json({ message: error.message || "Failed to fetch closing packets" });
     }
   });
@@ -937,7 +938,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       }
       res.json(packet);
     } catch (error: any) {
-      console.error("Get closing packet error:", error);
+      logger.error("Get closing packet error", error);
       res.status(500).json({ message: error.message || "Failed to fetch closing packet" });
     }
   });
@@ -949,7 +950,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const packets = await storage.getClosingPacketsByDeal(org.id, dealId);
       res.json(packets);
     } catch (error: any) {
-      console.error("Get deal closing packets error:", error);
+      logger.error("Get deal closing packets error", error);
       res.status(500).json({ message: error.message || "Failed to fetch deal closing packets" });
     }
   });
@@ -963,7 +964,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       });
       res.status(201).json(packet);
     } catch (error: any) {
-      console.error("Create closing packet error:", error);
+      logger.error("Create closing packet error", error);
       res.status(400).json({ message: error.message || "Failed to create closing packet" });
     }
   });
@@ -979,7 +980,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const packet = await storage.updateClosingPacket(org.id, id, req.body);
       res.json(packet);
     } catch (error: any) {
-      console.error("Update closing packet error:", error);
+      logger.error("Update closing packet error", error);
       res.status(400).json({ message: error.message || "Failed to update closing packet" });
     }
   });
@@ -994,7 +995,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       }
       res.status(204).send();
     } catch (error: any) {
-      console.error("Delete closing packet error:", error);
+      logger.error("Delete closing packet error", error);
       res.status(500).json({ message: error.message || "Failed to delete closing packet" });
     }
   });
@@ -1009,7 +1010,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const enrollments = await storage.getAutopayEnrollments(org.id);
       res.json(enrollments);
     } catch (error: any) {
-      console.error("Get autopay enrollments error:", error);
+      logger.error("Get autopay enrollments error", error);
       res.status(500).json({ message: error.message || "Failed to fetch autopay enrollments" });
     }
   });
@@ -1020,7 +1021,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const enrollments = await storage.getActiveAutopayEnrollments(org.id);
       res.json(enrollments);
     } catch (error: any) {
-      console.error("Get active autopay enrollments error:", error);
+      logger.error("Get active autopay enrollments error", error);
       res.status(500).json({ message: error.message || "Failed to fetch active autopay enrollments" });
     }
   });
@@ -1035,7 +1036,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       }
       res.json(enrollment);
     } catch (error: any) {
-      console.error("Get autopay enrollment error:", error);
+      logger.error("Get autopay enrollment error", error);
       res.status(500).json({ message: error.message || "Failed to fetch autopay enrollment" });
     }
   });
@@ -1047,7 +1048,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const enrollment = await storage.getAutopayEnrollmentByNote(org.id, noteId);
       res.json(enrollment);
     } catch (error: any) {
-      console.error("Get note autopay enrollment error:", error);
+      logger.error("Get note autopay enrollment error", error);
       res.status(500).json({ message: error.message || "Failed to fetch note autopay enrollment" });
     }
   });
@@ -1061,7 +1062,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       });
       res.status(201).json(enrollment);
     } catch (error: any) {
-      console.error("Create autopay enrollment error:", error);
+      logger.error("Create autopay enrollment error", error);
       res.status(400).json({ message: error.message || "Failed to create autopay enrollment" });
     }
   });
@@ -1077,7 +1078,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const enrollment = await storage.updateAutopayEnrollment(org.id, id, req.body);
       res.json(enrollment);
     } catch (error: any) {
-      console.error("Update autopay enrollment error:", error);
+      logger.error("Update autopay enrollment error", error);
       res.status(400).json({ message: error.message || "Failed to update autopay enrollment" });
     }
   });
@@ -1092,7 +1093,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       }
       res.status(204).send();
     } catch (error: any) {
-      console.error("Delete autopay enrollment error:", error);
+      logger.error("Delete autopay enrollment error", error);
       res.status(500).json({ message: error.message || "Failed to delete autopay enrollment" });
     }
   });
@@ -1107,7 +1108,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const quotes = await storage.getPayoffQuotes(org.id);
       res.json(quotes);
     } catch (error: any) {
-      console.error("Get payoff quotes error:", error);
+      logger.error("Get payoff quotes error", error);
       res.status(500).json({ message: error.message || "Failed to fetch payoff quotes" });
     }
   });
@@ -1122,7 +1123,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       }
       res.json(quote);
     } catch (error: any) {
-      console.error("Get payoff quote error:", error);
+      logger.error("Get payoff quote error", error);
       res.status(500).json({ message: error.message || "Failed to fetch payoff quote" });
     }
   });
@@ -1134,7 +1135,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const quotes = await storage.getPayoffQuotesByNote(org.id, noteId);
       res.json(quotes);
     } catch (error: any) {
-      console.error("Get note payoff quotes error:", error);
+      logger.error("Get note payoff quotes error", error);
       res.status(500).json({ message: error.message || "Failed to fetch note payoff quotes" });
     }
   });
@@ -1148,7 +1149,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       });
       res.status(201).json(quote);
     } catch (error: any) {
-      console.error("Create payoff quote error:", error);
+      logger.error("Create payoff quote error", error);
       res.status(400).json({ message: error.message || "Failed to create payoff quote" });
     }
   });
@@ -1164,7 +1165,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const quote = await storage.updatePayoffQuote(org.id, id, req.body);
       res.json(quote);
     } catch (error: any) {
-      console.error("Update payoff quote error:", error);
+      logger.error("Update payoff quote error", error);
       res.status(400).json({ message: error.message || "Failed to update payoff quote" });
     }
   });
@@ -1179,7 +1180,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const entries = await storage.getTrustLedgerEntries(org.id);
       res.json(entries);
     } catch (error: any) {
-      console.error("Get trust ledger entries error:", error);
+      logger.error("Get trust ledger entries error", error);
       res.status(500).json({ message: error.message || "Failed to fetch trust ledger entries" });
     }
   });
@@ -1190,7 +1191,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const balance = await storage.getTrustBalance(org.id);
       res.json({ balance });
     } catch (error: any) {
-      console.error("Get trust ledger balance error:", error);
+      logger.error("Get trust ledger balance error", error);
       res.status(500).json({ message: error.message || "Failed to fetch trust ledger balance" });
     }
   });
@@ -1202,7 +1203,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const entries = await storage.getTrustLedgerByNote(org.id, noteId);
       res.json(entries);
     } catch (error: any) {
-      console.error("Get note trust ledger entries error:", error);
+      logger.error("Get note trust ledger entries error", error);
       res.status(500).json({ message: error.message || "Failed to fetch note trust ledger entries" });
     }
   });
@@ -1216,7 +1217,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       });
       res.status(201).json(entry);
     } catch (error: any) {
-      console.error("Create trust ledger entry error:", error);
+      logger.error("Create trust ledger entry error", error);
       res.status(400).json({ message: error.message || "Failed to create trust ledger entry" });
     }
   });
@@ -1231,7 +1232,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const escalations = await storage.getDelinquencyEscalations(org.id);
       res.json(escalations);
     } catch (error: any) {
-      console.error("Get delinquency escalations error:", error);
+      logger.error("Get delinquency escalations error", error);
       res.status(500).json({ message: error.message || "Failed to fetch delinquency escalations" });
     }
   });
@@ -1242,7 +1243,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const escalations = await storage.getActiveDelinquencyEscalations(org.id);
       res.json(escalations);
     } catch (error: any) {
-      console.error("Get active delinquency escalations error:", error);
+      logger.error("Get active delinquency escalations error", error);
       res.status(500).json({ message: error.message || "Failed to fetch active delinquency escalations" });
     }
   });
@@ -1257,7 +1258,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       }
       res.json(escalation);
     } catch (error: any) {
-      console.error("Get delinquency escalation error:", error);
+      logger.error("Get delinquency escalation error", error);
       res.status(500).json({ message: error.message || "Failed to fetch delinquency escalation" });
     }
   });
@@ -1269,7 +1270,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const escalation = await storage.getDelinquencyEscalationByNote(org.id, noteId);
       res.json(escalation ? [escalation] : []);
     } catch (error: any) {
-      console.error("Get note delinquency escalations error:", error);
+      logger.error("Get note delinquency escalations error", error);
       res.status(500).json({ message: error.message || "Failed to fetch note delinquency escalations" });
     }
   });
@@ -1283,7 +1284,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       });
       res.status(201).json(escalation);
     } catch (error: any) {
-      console.error("Create delinquency escalation error:", error);
+      logger.error("Create delinquency escalation error", error);
       res.status(400).json({ message: error.message || "Failed to create delinquency escalation" });
     }
   });
@@ -1299,7 +1300,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const escalation = await storage.updateDelinquencyEscalation(org.id, id, req.body);
       res.json(escalation);
     } catch (error: any) {
-      console.error("Update delinquency escalation error:", error);
+      logger.error("Update delinquency escalation error", error);
       res.status(400).json({ message: error.message || "Failed to update delinquency escalation" });
     }
   });
@@ -1314,7 +1315,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const assignments = await storage.getDDAssignments(org.id);
       res.json(assignments);
     } catch (error: any) {
-      console.error("Get DD assignments error:", error);
+      logger.error("Get DD assignments error", error);
       res.status(500).json({ message: error.message || "Failed to fetch DD assignments" });
     }
   });
@@ -1325,7 +1326,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const assignments = await storage.getPendingDDAssignments(org.id);
       res.json(assignments);
     } catch (error: any) {
-      console.error("Get pending DD assignments error:", error);
+      logger.error("Get pending DD assignments error", error);
       res.status(500).json({ message: error.message || "Failed to fetch pending DD assignments" });
     }
   });
@@ -1340,7 +1341,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       }
       res.json(assignment);
     } catch (error: any) {
-      console.error("Get DD assignment error:", error);
+      logger.error("Get DD assignment error", error);
       res.status(500).json({ message: error.message || "Failed to fetch DD assignment" });
     }
   });
@@ -1352,7 +1353,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const assignments = await storage.getDDAssignmentsByProperty(org.id, propertyId);
       res.json(assignments);
     } catch (error: any) {
-      console.error("Get property DD assignments error:", error);
+      logger.error("Get property DD assignments error", error);
       res.status(500).json({ message: error.message || "Failed to fetch property DD assignments" });
     }
   });
@@ -1366,7 +1367,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       });
       res.status(201).json(assignment);
     } catch (error: any) {
-      console.error("Create DD assignment error:", error);
+      logger.error("Create DD assignment error", error);
       res.status(400).json({ message: error.message || "Failed to create DD assignment" });
     }
   });
@@ -1382,7 +1383,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const assignment = await storage.updateDDAssignment(org.id, id, req.body);
       res.json(assignment);
     } catch (error: any) {
-      console.error("Update DD assignment error:", error);
+      logger.error("Update DD assignment error", error);
       res.status(400).json({ message: error.message || "Failed to update DD assignment" });
     }
   });
@@ -1397,7 +1398,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       }
       res.status(204).send();
     } catch (error: any) {
-      console.error("Delete DD assignment error:", error);
+      logger.error("Delete DD assignment error", error);
       res.status(500).json({ message: error.message || "Failed to delete DD assignment" });
     }
   });
@@ -1412,7 +1413,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const reports = await storage.getSwotReports(org.id);
       res.json(reports);
     } catch (error: any) {
-      console.error("Get SWOT reports error:", error);
+      logger.error("Get SWOT reports error", error);
       res.status(500).json({ message: error.message || "Failed to fetch SWOT reports" });
     }
   });
@@ -1427,7 +1428,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       }
       res.json(report);
     } catch (error: any) {
-      console.error("Get SWOT report error:", error);
+      logger.error("Get SWOT report error", error);
       res.status(500).json({ message: error.message || "Failed to fetch SWOT report" });
     }
   });
@@ -1439,7 +1440,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const report = await storage.getSwotReportByProperty(org.id, propertyId);
       res.json(report);
     } catch (error: any) {
-      console.error("Get property SWOT report error:", error);
+      logger.error("Get property SWOT report error", error);
       res.status(500).json({ message: error.message || "Failed to fetch property SWOT report" });
     }
   });
@@ -1453,7 +1454,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       });
       res.status(201).json(report);
     } catch (error: any) {
-      console.error("Create SWOT report error:", error);
+      logger.error("Create SWOT report error", error);
       res.status(400).json({ message: error.message || "Failed to create SWOT report" });
     }
   });
@@ -1469,7 +1470,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const report = await storage.updateSwotReport(org.id, id, req.body);
       res.json(report);
     } catch (error: any) {
-      console.error("Update SWOT report error:", error);
+      logger.error("Update SWOT report error", error);
       res.status(400).json({ message: error.message || "Failed to update SWOT report" });
     }
   });
@@ -1484,7 +1485,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const memos = await storage.getGoNogoMemos(org.id);
       res.json(memos);
     } catch (error: any) {
-      console.error("Get Go/No-Go memos error:", error);
+      logger.error("Get Go/No-Go memos error", error);
       res.status(500).json({ message: error.message || "Failed to fetch Go/No-Go memos" });
     }
   });
@@ -1499,7 +1500,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       }
       res.json(memo);
     } catch (error: any) {
-      console.error("Get Go/No-Go memo error:", error);
+      logger.error("Get Go/No-Go memo error", error);
       res.status(500).json({ message: error.message || "Failed to fetch Go/No-Go memo" });
     }
   });
@@ -1511,7 +1512,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const memo = await storage.getGoNogoMemoByProperty(org.id, propertyId);
       res.json(memo);
     } catch (error: any) {
-      console.error("Get property Go/No-Go memo error:", error);
+      logger.error("Get property Go/No-Go memo error", error);
       res.status(500).json({ message: error.message || "Failed to fetch property Go/No-Go memo" });
     }
   });
@@ -1525,7 +1526,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       });
       res.status(201).json(memo);
     } catch (error: any) {
-      console.error("Create Go/No-Go memo error:", error);
+      logger.error("Create Go/No-Go memo error", error);
       res.status(400).json({ message: error.message || "Failed to create Go/No-Go memo" });
     }
   });
@@ -1541,7 +1542,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const memo = await storage.updateGoNogoMemo(org.id, id, req.body);
       res.json(memo);
     } catch (error: any) {
-      console.error("Update Go/No-Go memo error:", error);
+      logger.error("Update Go/No-Go memo error", error);
       res.status(400).json({ message: error.message || "Failed to update Go/No-Go memo" });
     }
   });
@@ -1558,7 +1559,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const profiles = await writingStyleService.getAllStyleProfiles(org.id);
       res.json(profiles);
     } catch (error: any) {
-      console.error("Get writing styles error:", error);
+      logger.error("Get writing styles error", error);
       res.status(500).json({ message: error.message || "Failed to fetch writing styles" });
     }
   });
@@ -1573,7 +1574,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       }
       res.json(profile);
     } catch (error: any) {
-      console.error("Get current writing style error:", error);
+      logger.error("Get current writing style error", error);
       res.status(500).json({ message: error.message || "Failed to fetch writing style" });
     }
   });
@@ -1586,7 +1587,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const profile = await writingStyleService.createWritingStyleProfile(org.id, user.id, name);
       res.status(201).json(profile);
     } catch (error: any) {
-      console.error("Create writing style error:", error);
+      logger.error("Create writing style error", error);
       res.status(400).json({ message: error.message || "Failed to create writing style" });
     }
   });
@@ -1598,7 +1599,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       await writingStyleService.addSampleMessage(id, context || "general", content);
       res.json({ success: true });
     } catch (error: any) {
-      console.error("Add sample message error:", error);
+      logger.error("Add sample message error", error);
       res.status(400).json({ message: error.message || "Failed to add sample message" });
     }
   });
@@ -1609,7 +1610,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const analysis = await writingStyleService.analyzeWritingStyle(id);
       res.json(analysis);
     } catch (error: any) {
-      console.error("Analyze writing style error:", error);
+      logger.error("Analyze writing style error", error);
       res.status(400).json({ message: error.message || "Failed to analyze writing style" });
     }
   });
@@ -1627,7 +1628,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       });
       res.json(result);
     } catch (error: any) {
-      console.error("Generate styled response error:", error);
+      logger.error("Generate styled response error", error);
       res.status(400).json({ message: error.message || "Failed to generate response" });
     }
   });
@@ -1646,7 +1647,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       );
       res.json({ imported: count });
     } catch (error: any) {
-      console.error("Import messages error:", error);
+      logger.error("Import messages error", error);
       res.status(400).json({ message: error.message || "Failed to import messages" });
     }
   });
@@ -1657,7 +1658,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       await writingStyleService.deleteStyleProfile(id);
       res.json({ success: true });
     } catch (error: any) {
-      console.error("Delete writing style error:", error);
+      logger.error("Delete writing style error", error);
       res.status(500).json({ message: error.message || "Failed to delete writing style" });
     }
   });
@@ -1710,7 +1711,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
         tasksByType: Object.entries(byType).map(([type, count]) => ({ type, count })),
       });
     } catch (error: any) {
-      console.error("VA metrics error:", error);
+      logger.error("VA metrics error", error);
       res.status(500).json({ message: error.message || "Failed to fetch VA metrics" });
     }
   });
@@ -1749,7 +1750,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
       res.json({ auditTrail: auditEntries, total: tasks.length });
     } catch (error: any) {
-      console.error("VA audit trail error:", error);
+      logger.error("VA audit trail error", error);
       res.status(500).json({ message: error.message || "Failed to fetch audit trail" });
     }
   });
@@ -1786,7 +1787,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
       res.json({ success: true, task: tasks[taskIndex] });
     } catch (error: any) {
-      console.error("Verify task error:", error);
+      logger.error("Verify task error", error);
       res.status(500).json({ message: error.message || "Failed to verify task" });
     }
   });
@@ -1826,7 +1827,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
       res.status(201).json({ success: true, escalation });
     } catch (error: any) {
-      console.error("Escalate task error:", error);
+      logger.error("Escalate task error", error);
       res.status(500).json({ message: error.message || "Failed to escalate task" });
     }
   });
@@ -1866,7 +1867,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
       res.json({ scheduledTasks: enriched });
     } catch (error: any) {
-      console.error("Get scheduled tasks error:", error);
+      logger.error("Get scheduled tasks error", error);
       res.status(500).json({ message: error.message || "Failed to fetch scheduled tasks" });
     }
   });
@@ -1917,7 +1918,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
       res.status(201).json({ success: true, workflow });
     } catch (error: any) {
-      console.error("Create workflow error:", error);
+      logger.error("Create workflow error", error);
       res.status(500).json({ message: error.message || "Failed to create workflow" });
     }
   });
@@ -1930,7 +1931,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const workflows: any[] = (orgRecord as any)?.settings?.va_workflows || [];
       res.json({ workflows });
     } catch (error: any) {
-      console.error("Get workflows error:", error);
+      logger.error("Get workflows error", error);
       res.status(500).json({ message: error.message || "Failed to fetch workflows" });
     }
   });

@@ -7,7 +7,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { leadScoringService } from "./services/leadScoring";
 import { propertyEnrichmentService } from "./services/propertyEnrichment";
 import { checkUsageLimit } from "./services/usageLimits";
-import { db } from "./db";
+import { db, withTransaction } from "./db";
 import { outcomeTelemetry } from "@shared/schema";
 import { checkUsury } from "./services/usury";
 import { logger } from "./utils/logger";
@@ -81,16 +81,38 @@ async function triggerDealEnrichmentAsync(
   });
 }
 
+// Zod schema for pagination query params
+const paginationQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(25),
+  sortBy: z.string().default("createdAt"),
+  sortOrder: z.enum(["asc", "desc"]).default("desc"),
+});
+
 export function registerDealRoutes(app: Express): void {
   const api = app;
 
   // DEALS (Acquisitions/Dispositions)
   // ============================================
-  
+
   api.get("/api/deals", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const deals = await storage.getDeals(org.id);
-    res.json(deals);
+
+    const pagination = paginationQuerySchema.safeParse(req.query);
+    if (!pagination.success) {
+      return Errors.badRequest(res, "Invalid pagination parameters", pagination.error.errors);
+    }
+    const { page, pageSize, sortBy, sortOrder } = pagination.data;
+
+    const result = await storage.getDealsPaginated(org.id, { page, pageSize, sortBy, sortOrder });
+
+    res.json({
+      data: result.data,
+      total: result.total,
+      page: result.page,
+      pageSize: result.pageSize,
+      totalPages: result.totalPages,
+    });
   });
   
   api.get("/api/deals/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
@@ -129,26 +151,31 @@ export function registerDealRoutes(app: Express): void {
         }
       }
 
-      const deal = await storage.createDeal(input);
-
+      // Wrap deal creation + audit log in a transaction so both succeed or
+      // both roll back — prevents orphaned deals with no audit trail.
       const user = req.user as any;
       const userId = user?.claims?.sub || user?.id;
-      await storage.createAuditLogEntry({
-        organizationId: org.id,
-        userId,
-        action: "create",
-        entityType: "deal",
-        entityId: deal.id,
-        changes: { after: input, fields: Object.keys(input) },
-        ipAddress: req.ip || req.socket?.remoteAddress,
-        userAgent: req.headers["user-agent"],
+
+      const deal = await withTransaction(async () => {
+        const newDeal = await storage.createDeal(input);
+        await storage.createAuditLogEntry({
+          organizationId: org.id,
+          userId,
+          action: "create",
+          entityType: "deal",
+          entityId: newDeal.id,
+          changes: { after: input, fields: Object.keys(input) },
+          ipAddress: req.ip || req.socket?.remoteAddress,
+          userAgent: req.headers["user-agent"],
+        });
+        return newDeal;
       });
-      
+
       // Trigger async enrichment if deal has a propertyId (non-blocking)
       if (deal.propertyId) {
         triggerDealEnrichmentAsync(org.id, deal.id, deal.propertyId);
       }
-      
+
       res.status(201).json(deal);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -308,11 +335,19 @@ export function registerDealRoutes(app: Express): void {
   });
 
   // Manual deal enrichment trigger endpoint
+  const enrichDealSchema = z.object({
+    forceRefresh: z.boolean().optional().default(false),
+  });
+
   api.post("/api/deals/:id/enrich", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
       const dealId = Number(req.params.id);
-      const forceRefresh = req.body.forceRefresh === true;
+      const parsed = enrichDealSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+      const forceRefresh = parsed.data.forceRefresh;
       
       const deal = await storage.getDeal(org.id, dealId);
       if (!deal) {
@@ -411,11 +446,27 @@ export function registerDealRoutes(app: Express): void {
     res.json(template);
   });
 
+  const createDueDiligenceTemplateSchema = z.object({
+    name: z.string().min(1, "Template name is required"),
+    description: z.string().optional(),
+    category: z.string().optional(),
+    items: z.array(z.object({
+      title: z.string().min(1),
+      description: z.string().optional(),
+      category: z.string().optional(),
+      priority: z.string().optional(),
+    })).optional(),
+  });
+
   api.post("/api/due-diligence/templates", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
+      const parsed = createDueDiligenceTemplateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
       const template = await storage.createDueDiligenceTemplate({
-        ...req.body,
+        ...parsed.data,
         organizationId: org.id,
       });
       res.status(201).json(template);
@@ -427,8 +478,14 @@ export function registerDealRoutes(app: Express): void {
     }
   });
 
+  const updateDueDiligenceTemplateSchema = createDueDiligenceTemplateSchema.partial();
+
   api.put("/api/due-diligence/templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const template = await storage.updateDueDiligenceTemplate(Number(req.params.id), req.body);
+    const parsed = updateDueDiligenceTemplateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return Errors.validationFailed(res, parsed.error.errors);
+    }
+    const template = await storage.updateDueDiligenceTemplate(Number(req.params.id), parsed.data);
     if (!template) return Errors.notFound(res, "Template");
     res.json(template);
   });
@@ -443,12 +500,17 @@ export function registerDealRoutes(app: Express): void {
     res.json(items);
   });
   
+  const applyTemplateSchema = z.object({
+    templateId: z.number().int().positive("templateId is required"),
+  });
+
   api.post("/api/properties/:id/due-diligence/apply-template", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const { templateId } = req.body;
-      if (!templateId) {
-        return Errors.badRequest(res, "templateId is required");
+      const parsed = applyTemplateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
       }
+      const { templateId } = parsed.data;
       const items = await storage.applyTemplateToProperty(Number(req.params.id), templateId);
       res.json(items);
     } catch (err: any) {
@@ -456,10 +518,24 @@ export function registerDealRoutes(app: Express): void {
     }
   });
   
+  const createDueDiligenceItemSchema = z.object({
+    title: z.string().min(1, "Title is required"),
+    description: z.string().optional(),
+    category: z.string().optional(),
+    priority: z.string().optional(),
+    completed: z.boolean().optional(),
+    notes: z.string().optional(),
+    dueDate: z.string().optional(),
+  });
+
   api.post("/api/properties/:id/due-diligence", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      const parsed = createDueDiligenceItemSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
       const item = await storage.createDueDiligenceItem({
-        ...req.body,
+        ...parsed.data,
         propertyId: Number(req.params.id),
       });
       res.status(201).json(item);
@@ -471,10 +547,16 @@ export function registerDealRoutes(app: Express): void {
     }
   });
 
+  const updateDueDiligenceItemSchema = createDueDiligenceItemSchema.partial();
+
   api.put("/api/due-diligence/items/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const parsed = updateDueDiligenceItemSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return Errors.validationFailed(res, parsed.error.errors);
+    }
     const user = req.user as any;
     const userId = user?.claims?.sub || user?.id;
-    const updates = { ...req.body };
+    const updates = { ...parsed.data } as any;
     if (updates.completed === true && userId) {
       updates.completedBy = userId;
     }
@@ -496,11 +578,18 @@ export function registerDealRoutes(app: Express): void {
     try {
       const org = req.organization;
       const propertyId = Number(req.params.id);
-      const { message, conversationHistory } = req.body;
-      
-      if (!message) {
-        return Errors.badRequest(res, "Message is required");
+      const analyzeSchema = z.object({
+        message: z.string().min(1, "Message is required").max(10000),
+        conversationHistory: z.array(z.object({
+          role: z.string(),
+          content: z.string(),
+        })).optional(),
+      });
+      const parsed = analyzeSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
       }
+      const { message, conversationHistory } = parsed.data;
       
       const usageCheck = await checkUsageLimit(org.id, "ai_requests");
       if (!usageCheck.allowed) {

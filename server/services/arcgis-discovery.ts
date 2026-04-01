@@ -1,3 +1,4 @@
+import { logger } from "../utils/logger";
 /**
  * ArcGIS Online Discovery Service
  * 
@@ -119,7 +120,7 @@ export async function searchArcGISOnline(
         const response = await fetch(`${ARCGIS_SEARCH_URL}?${params}`);
         
         if (!response.ok) {
-          console.error(`ArcGIS search failed for keyword "${keyword}": ${response.status}`);
+          logger.error(`ArcGIS search failed for keyword "${keyword}": ${response.status}`);
           break;
         }
         
@@ -143,7 +144,7 @@ export async function searchArcGISOnline(
         await delay(200);
       }
     } catch (error) {
-      console.error(`Error searching ArcGIS for keyword "${keyword}":`, error);
+      logger.error(`Error searching ArcGIS for keyword "${keyword}"`, error);
     }
     
     await delay(300);
@@ -485,10 +486,10 @@ export async function runDiscoveryScan(options: ArcGISSearchOptions = {}): Promi
     skippedNoLocation: number;
   };
 }> {
-  console.log("[ArcGIS Discovery] Starting scan...");
+  logger.info("[ArcGIS Discovery] Starting scan...");
   
   const items = await searchArcGISOnline(options.keywords || PARCEL_KEYWORDS, options);
-  console.log(`[ArcGIS Discovery] Found ${items.length} search results`);
+  logger.info(`[ArcGIS Discovery] Found ${items.length} search results`);
   
   const endpoints: DiscoveredEndpointInfo[] = [];
   let skippedNoLocation = 0;
@@ -509,7 +510,7 @@ export async function runDiscoveryScan(options: ArcGISSearchOptions = {}): Promi
     }
   }
   
-  console.log(`[ArcGIS Discovery] Extracted ${endpoints.length} valid endpoints, skipped ${skippedNoLocation}`);
+  logger.info(`[ArcGIS Discovery] Extracted ${endpoints.length} valid endpoints, skipped ${skippedNoLocation}`);
   
   return {
     items,

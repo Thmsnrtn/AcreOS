@@ -443,8 +443,8 @@ export default function DecisionQueuePage() {
 
             <div className="text-xs text-center text-muted-foreground">
               For a full conversation,{' '}
-              <a href="/pax" className="text-purple-600 underline hover:no-underline">
-                open Pax
+              <a href="/ai" className="text-purple-600 underline hover:no-underline">
+                open AI Hub
               </a>
             </div>
           </div>

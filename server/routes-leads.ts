@@ -31,6 +31,26 @@ const bulkLeadUpdateSchema = z.object({
   updates: updateLeadSchema,
 });
 
+// Zod schemas for lead operations
+const checkDuplicatesSchema = z.object({
+  firstName: z.string().optional(),
+  lastName: z.string().optional(),
+  email: z.string().email().optional().or(z.literal("")),
+  phone: z.string().optional(),
+  address: z.string().optional(),
+}).refine(
+  (data) => data.firstName || data.lastName || data.email || data.phone || data.address,
+  { message: "At least one search field is required" }
+);
+
+const mergeLeadsSchema = z.object({
+  primaryId: z.number().int().positive("primaryId must be a positive integer"),
+  duplicateId: z.number().int().positive("duplicateId must be a positive integer"),
+}).refine(
+  (data) => data.primaryId !== data.duplicateId,
+  { message: "primaryId and duplicateId must be different" }
+);
+
 const MAX_CSV_IMPORT_ROWS = 500;
 
 const upload = multer({
@@ -45,17 +65,32 @@ const upload = multer({
   },
 });
 
+// Zod schema for pagination query params
+const paginationQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(25),
+  sortBy: z.string().default("createdAt"),
+  sortOrder: z.enum(["asc", "desc"]).default("desc"),
+});
+
 export function registerLeadRoutes(app: Express): void {
   const api = app;
 
   // LEADS (CRM)
   // ============================================
-  
+
   api.get("/api/leads", isAuthenticated, getOrCreateOrg, attachPermissionContext(), async (req, res) => {
     const org = req.organization;
     const context = req.permissionContext as UserPermissionContext | undefined;
     const stage = req.query.stage as string | undefined;
     const assignedToFilter = req.query.assignedTo as string | undefined;
+
+    // Parse pagination params
+    const pagination = paginationQuerySchema.safeParse(req.query);
+    if (!pagination.success) {
+      return Errors.badRequest(res, "Invalid pagination parameters", pagination.error.errors);
+    }
+    const { page, pageSize, sortBy, sortOrder } = pagination.data;
 
     // Build SQL-level assignedTo filter to avoid full-table scan
     let sqlAssignedTo: number | null | undefined;
@@ -70,24 +105,40 @@ export function registerLeadRoutes(app: Express): void {
       }
     }
 
-    const allLeads = await storage.getLeads(org.id, sqlAssignedTo !== undefined ? { assignedTo: sqlAssignedTo } : undefined);
+    const filters = sqlAssignedTo !== undefined ? { assignedTo: sqlAssignedTo } : undefined;
 
-    const leadsWithScores = allLeads.map(lead => {
+    // If stage filter is present, we must compute scores on all leads before filtering (no SQL-level stage)
+    if (stage && ["hot", "warm", "cold", "dead"].includes(stage)) {
+      const allLeads = await storage.getLeads(org.id, filters);
+      const leadsWithScores = allLeads.map(lead => {
+        const { score, factors } = leadNurturerService.calculateLeadScore(lead);
+        const computedStage = leadNurturerService.segmentLead(score);
+        return { ...lead, score, scoreFactors: factors, nurturingStage: computedStage };
+      });
+      const filteredLeads = leadsWithScores.filter(l => l.nurturingStage === stage);
+      const total = filteredLeads.length;
+      const totalPages = Math.max(1, Math.ceil(total / pageSize));
+      const start = (page - 1) * pageSize;
+      const data = filteredLeads.slice(start, start + pageSize);
+      return res.json({ data, total, page, pageSize, totalPages });
+    }
+
+    // Server-side pagination with SQL LIMIT/OFFSET
+    const result = await storage.getLeadsPaginated(org.id, { page, pageSize, sortBy, sortOrder }, filters);
+
+    const leadsWithScores = result.data.map(lead => {
       const { score, factors } = leadNurturerService.calculateLeadScore(lead);
       const computedStage = leadNurturerService.segmentLead(score);
-      return {
-        ...lead,
-        score,
-        scoreFactors: factors,
-        nurturingStage: computedStage,
-      };
+      return { ...lead, score, scoreFactors: factors, nurturingStage: computedStage };
     });
 
-    const filteredLeads = stage && ["hot", "warm", "cold", "dead"].includes(stage)
-      ? leadsWithScores.filter(l => l.nurturingStage === stage)
-      : leadsWithScores;
-
-    res.json(filteredLeads);
+    res.json({
+      data: leadsWithScores,
+      total: result.total,
+      page: result.page,
+      pageSize: result.pageSize,
+      totalPages: result.totalPages,
+    });
   });
   
   // Paginated leads endpoint for infinite scroll
@@ -211,8 +262,12 @@ export function registerLeadRoutes(app: Express): void {
   api.post("/api/leads/check-duplicates", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const { firstName, lastName, email, phone, address } = req.body;
-      
+      const parsed = checkDuplicatesSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+      const { firstName, lastName, email, phone, address } = parsed.data;
+
       const duplicates = await storage.findDuplicateLeads(org.id, {
         firstName,
         lastName,
@@ -244,12 +299,12 @@ export function registerLeadRoutes(app: Express): void {
   api.post("/api/leads/merge", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const { primaryId, duplicateId } = req.body;
-      
-      if (!primaryId || !duplicateId) {
-        return Errors.badRequest(res, "Primary and duplicate lead IDs are required");
+      const parsed = mergeLeadsSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
       }
-      
+      const { primaryId, duplicateId } = parsed.data;
+
       const merged = await storage.mergeLeads(org.id, primaryId, duplicateId);
       
       res.json({
@@ -449,16 +504,21 @@ export function registerLeadRoutes(app: Express): void {
         return Errors.notFound(res, "Lead");
       }
 
-      const { latitude, longitude, forceRefresh } = req.body;
-
-      if (!latitude || !longitude) {
-        return Errors.badRequest(res, "latitude and longitude are required");
+      const enrichSchema = z.object({
+        latitude: z.union([z.number(), z.string()]).transform(Number).pipe(z.number()),
+        longitude: z.union([z.number(), z.string()]).transform(Number).pipe(z.number()),
+        forceRefresh: z.boolean().optional(),
+      });
+      const parsed = enrichSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
       }
-      
+      const { latitude, longitude, forceRefresh } = parsed.data;
+
       const result = await propertyEnrichmentService.enrichLead(
         org.id,
         leadId,
-        { latitude: parseFloat(latitude), longitude: parseFloat(longitude) },
+        { latitude, longitude },
         forceRefresh === true
       );
       
@@ -577,7 +637,32 @@ export function registerLeadRoutes(app: Express): void {
     const org = req.organization;
     const leadId = Number(req.params.id);
     const eventTypes = req.query.eventTypes ? (req.query.eventTypes as string).split(",") : undefined;
+    const includeDealChanges = req.query.includeDealChanges !== "false";
+
     const events = await storage.getActivityEvents(org.id, "lead", leadId, eventTypes);
+
+    // Also fetch related deal stage changes and campaign touches for a richer timeline
+    if (includeDealChanges) {
+      try {
+        const dealEvents = await storage.getActivityEvents(org.id, "deal", leadId, undefined);
+        // Merge deal events that reference this lead, avoiding duplicates
+        const existingIds = new Set(events.map((e: any) => e.id));
+        for (const de of dealEvents) {
+          if (!existingIds.has((de as any).id)) {
+            events.push(de);
+          }
+        }
+        // Sort merged list by date descending
+        events.sort((a: any, b: any) => {
+          const dateA = new Date(a.eventDate || a.createdAt).getTime();
+          const dateB = new Date(b.eventDate || b.createdAt).getTime();
+          return dateB - dateA;
+        });
+      } catch {
+        // If deal events fail, still return the lead events
+      }
+    }
+
     res.json(events);
   });
 
@@ -890,10 +975,12 @@ export function registerLeadRoutes(app: Express): void {
 
       const results = { successCount: 0, errorCount: 0, errors: [] as any[] };
 
+      // Build all lead data upfront, collecting any parse errors per row
+      const validLeads: { index: number; data: any }[] = [];
       for (let i = 0; i < mappedData.length; i++) {
         try {
           const row = mappedData[i];
-          
+
           // Parse name into first and last name
           let firstName = "Unknown";
           let lastName = "Owner";
@@ -903,35 +990,59 @@ export function registerLeadRoutes(app: Express): void {
             lastName = nameParts.slice(1).join(" ") || "Owner";
           }
 
-          const leadData = {
-            organizationId: org.id,
-            type: "seller" as const,
-            firstName,
-            lastName,
-            address: row.property_address || row.mailing_address || "",
-            city: "",
-            state: row.state || "",
-            zip: "",
-            source: "tax_delinquent",
-            status: "new" as const,
-            notes: [
-              row.parcel_id ? `Parcel ID: ${row.parcel_id}` : "",
-              row.assessed_value ? `Assessed Value: $${row.assessed_value}` : "",
-              row.taxes_owed ? `Taxes Owed: $${row.taxes_owed}` : "",
-              row.tax_year ? `Tax Year: ${row.tax_year}` : "",
-              row.county ? `County: ${row.county}` : "",
-            ].filter(Boolean).join("\n"),
-            tags: ["tax_delinquent", row.county || "unknown"].filter(Boolean) as string[],
-          };
-
-          await storage.createLead(leadData);
-          results.successCount++;
+          validLeads.push({
+            index: i,
+            data: {
+              organizationId: org.id,
+              type: "seller" as const,
+              firstName,
+              lastName,
+              address: row.property_address || row.mailing_address || "",
+              city: "",
+              state: row.state || "",
+              zip: "",
+              source: "tax_delinquent",
+              status: "new" as const,
+              notes: [
+                row.parcel_id ? `Parcel ID: ${row.parcel_id}` : "",
+                row.assessed_value ? `Assessed Value: $${row.assessed_value}` : "",
+                row.taxes_owed ? `Taxes Owed: $${row.taxes_owed}` : "",
+                row.tax_year ? `Tax Year: ${row.tax_year}` : "",
+                row.county ? `County: ${row.county}` : "",
+              ].filter(Boolean).join("\n"),
+              tags: ["tax_delinquent", row.county || "unknown"].filter(Boolean) as string[],
+            },
+          });
         } catch (err) {
           results.errorCount++;
           results.errors.push({
             row: i + 1,
             error: err instanceof Error ? err.message : "Unknown error",
           });
+        }
+      }
+
+      // Batch insert in chunks of 100 to avoid oversized queries
+      const BATCH_SIZE = 100;
+      for (let i = 0; i < validLeads.length; i += BATCH_SIZE) {
+        const chunk = validLeads.slice(i, i + BATCH_SIZE);
+        try {
+          const created = await storage.createLeadsBatch(chunk.map(c => c.data));
+          results.successCount += created.length;
+        } catch (err) {
+          // If batch fails, fall back to individual inserts for this chunk
+          for (const item of chunk) {
+            try {
+              await storage.createLead(item.data);
+              results.successCount++;
+            } catch (innerErr) {
+              results.errorCount++;
+              results.errors.push({
+                row: item.index + 1,
+                error: innerErr instanceof Error ? innerErr.message : "Unknown error",
+              });
+            }
+          }
         }
       }
 

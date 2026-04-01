@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from 'express';
+import { logger } from './utils/logger';
 import { dealHunterService } from './services/dealHunter';
 import { db } from './db';
 import { dealSources } from '../shared/schema';
@@ -112,7 +113,7 @@ router.get('/stats', async (_req: Request, res: Response) => {
 router.post('/scrape-all', async (_req: Request, res: Response) => {
   try {
     // Fire and forget
-    dealHunterService.scrapeAllActiveSources().catch(console.error);
+    dealHunterService.scrapeAllActiveSources().catch(err => logger.error("Scrape all sources failed", err));
     res.json({ success: true, message: 'Scraping all active sources in the background' });
   } catch (error: any) {
     res.status(400).json({ error: error.message });

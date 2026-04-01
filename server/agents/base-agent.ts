@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 /**
  * Base class for all autonomous founder operations agents.
  * Provides start/stop/runOnce lifecycle, scheduling, graceful degradation,
@@ -8,6 +7,7 @@
 import { db } from "../storage";
 import { sql } from "drizzle-orm";
 import { emailService } from "../services/emailService";
+import { logger } from "../utils/logger";
 
 export type AgentStatus = "idle" | "running" | "error" | "disabled";
 
@@ -48,10 +48,10 @@ export abstract class BaseAgent {
 
   async start(): Promise<void> {
     if (!this.enabled) {
-      console.log(`[${this.name}] Agent disabled via feature flag`);
+      logger.info(`[${this.name}] Agent disabled via feature flag`);
       return;
     }
-    console.log(`[${this.name}] Starting (interval: ${this.intervalMs}ms)`);
+    logger.info(`[${this.name}] Starting (interval: ${this.intervalMs}ms)`);
     // Run once immediately then schedule
     await this.safeRun();
     this.timer = setInterval(() => this.safeRun(), this.intervalMs);
@@ -65,7 +65,7 @@ export abstract class BaseAgent {
     }
     this.status = "idle";
     this.nextRun = null;
-    console.log(`[${this.name}] Stopped`);
+    logger.info(`[${this.name}] Stopped`);
   }
 
   private async safeRun(): Promise<void> {
@@ -81,7 +81,7 @@ export abstract class BaseAgent {
       this.status = "error";
       this.lastError = err.message || "Unknown error";
       this.lastRun = new Date();
-      console.error(`[${this.name}] Error:`, err.message);
+      logger.error(`[${this.name}] Error`, err);
     }
   }
 
@@ -115,14 +115,14 @@ export abstract class BaseAgent {
     organizationId?: number;
   }): Promise<boolean> {
     if (!this.isEmailConfigured()) {
-      console.log(`[${this.name}] Email not configured, skipping: ${options.subject}`);
+      logger.info(`[${this.name}] Email not configured, skipping: ${options.subject}`);
       return false;
     }
     try {
       const result = await emailService.sendEmail(options);
       return result.success;
     } catch (err: any) {
-      console.error(`[${this.name}] Email failed:`, err.message);
+      logger.error(`[${this.name}] Email failed`, err);
       return false;
     }
   }
@@ -135,7 +135,7 @@ export abstract class BaseAgent {
         VALUES (${this.name}, 'decision', ${JSON.stringify(decision)}::jsonb, NOW())
       `);
     } catch (err: any) {
-      console.error(`[${this.name}] Failed to log decision:`, err.message);
+      logger.error(`[${this.name}] Failed to log decision`, err);
     }
   }
 
@@ -147,7 +147,7 @@ export abstract class BaseAgent {
         VALUES (${this.name}, ${briefType}, ${JSON.stringify(content)}::jsonb, NOW())
       `);
     } catch (err: any) {
-      console.error(`[${this.name}] Failed to store brief:`, err.message);
+      logger.error(`[${this.name}] Failed to store brief`, err);
     }
   }
 

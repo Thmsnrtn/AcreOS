@@ -1,17 +1,57 @@
 import React from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { api, buildUrl, type InsertLead } from "@shared/routes";
 import { STALE_TIMES, CACHE_TIMES } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 
+export interface PaginatedLeadsResponse {
+  data: any[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+/**
+ * Fetch leads with server-side pagination.
+ * Returns { data, total, page, pageSize, totalPages }.
+ */
+export function useLeadsPaginated(params: { page: number; pageSize: number; sortBy?: string; sortOrder?: string; stage?: string; assignedTo?: string }) {
+  const queryParams = new URLSearchParams();
+  queryParams.set("page", String(params.page));
+  queryParams.set("pageSize", String(params.pageSize));
+  if (params.sortBy) queryParams.set("sortBy", params.sortBy);
+  if (params.sortOrder) queryParams.set("sortOrder", params.sortOrder);
+  if (params.stage) queryParams.set("stage", params.stage);
+  if (params.assignedTo) queryParams.set("assignedTo", params.assignedTo);
+  const url = `${api.leads.list.path}?${queryParams.toString()}`;
+
+  return useQuery<PaginatedLeadsResponse>({
+    queryKey: [api.leads.list.path, "paginated", params.page, params.pageSize, params.sortBy, params.sortOrder, params.stage, params.assignedTo],
+    queryFn: async () => {
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch leads");
+      return res.json();
+    },
+    staleTime: STALE_TIMES.short,
+    gcTime: CACHE_TIMES.medium,
+    placeholderData: keepPreviousData,
+  });
+}
+
+/**
+ * Legacy hook: returns the flat leads array for backward compatibility.
+ * Fetches page 1 with large pageSize from the paginated endpoint.
+ */
 export function useLeads() {
   return useQuery({
     queryKey: [api.leads.list.path],
     queryFn: async () => {
-      const res = await fetch(api.leads.list.path, { credentials: "include" });
+      const res = await fetch(`${api.leads.list.path}?page=1&pageSize=1000`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch leads");
-      return api.leads.list.responses[200].parse(await res.json());
+      const json = await res.json();
+      return json.data ?? json;
     },
     staleTime: STALE_TIMES.short,
     gcTime: CACHE_TIMES.medium,

@@ -12,6 +12,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { getOpenAIClient } from "../utils/openaiClient";
+import { logger } from "../utils/logger";
 
 type QualificationStatus = "pending" | "qualified" | "conditionally_qualified" | "not_qualified";
 type RiskLevel = "low" | "medium" | "high";
@@ -565,7 +566,7 @@ Provide 1-2 additional recommendations to improve this buyer's closing probabili
           recommendations.push(aiRecommendation);
         }
       } catch (error) {
-        console.error("AI assessment failed:", error);
+        logger.error("AI assessment failed", error);
       }
     }
 
@@ -738,7 +739,7 @@ Generate an overall recommendation.`,
 
         overallRecommendation = response.choices[0]?.message?.content || "";
       } catch (error) {
-        console.error("AI report generation failed:", error);
+        logger.error("AI report generation failed", error);
       }
     }
 

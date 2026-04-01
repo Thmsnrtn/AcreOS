@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Undo Registry — Sovereign Company Protocol v4
  *
@@ -12,6 +11,7 @@
 import { db } from "../db";
 import { agentActionUndoLog, campaigns } from "@shared/schema";
 import { eq, and, gte } from "drizzle-orm";
+import { logger } from "../utils/logger";
 
 type UndoFn = (originalInput: Record<string, any>) => Promise<{ success: boolean; detail: string }>;
 
@@ -67,7 +67,7 @@ export async function registerActionUndo(
       originalInput,
     });
   } catch (err) {
-    console.error("[UndoRegistry] Failed to register undo:", err);
+    logger.error("[UndoRegistry] Failed to register undo", err);
   }
 }
 

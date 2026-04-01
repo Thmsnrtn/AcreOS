@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Founder v13 Routes — Sovereign Company Protocol v13: The Sentient Enterprise
  *

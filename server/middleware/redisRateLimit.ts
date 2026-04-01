@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Redis-Backed Rate Limiting (EPIC 10 — Infrastructure Hardening)
  *
@@ -20,7 +19,18 @@
  *   enterprise_api: 500 req/min, unlimited
  */
 
-import type { Request, Response, NextFunction } from "express";
+import type { Response, NextFunction } from "express";
+import type { AuthenticatedRequest } from "../types/request";
+import { logger } from "../utils/logger";
+
+/**
+ * Loosely-typed request used by rate-limit middleware.
+ * These middleware functions may run before the full auth middleware
+ * has attached all properties, so fields are optional.
+ */
+type RateLimitRequest = AuthenticatedRequest & {
+  apiKeyTier?: string;
+};
 
 // ---------------------------------------------------------------------------
 // Sliding window rate limiter using Redis ZRANGEBYSCORE + ZADD
@@ -99,7 +109,7 @@ async function checkRateLimit(
     }
   } catch (err) {
     // Redis error — fail open (allow request, log error)
-    console.error("[RedisRateLimit] Redis error:", err instanceof Error ? err.message : String(err));
+    logger.error("Redis rate limit check failed — allowing request", err instanceof Error ? err : undefined);
     return { allowed: true, remaining: config.maxRequests, resetAt: new Date(), totalRequests: 0 };
   }
 }
@@ -139,11 +149,11 @@ const API_KEY_TIERS: Record<
  * Uses organization ID + subscription tier as the rate limit key
  */
 export function createOrgRateLimit(redisClient: any) {
-  return async (req: Request, res: Response, next: NextFunction) => {
+  return async (req: RateLimitRequest, res: Response, next: NextFunction) => {
     try {
-      const orgId = req.organizationId || req.user?.organizationId;
-      const tier = req.organization?.subscriptionTier || "free";
-      const isFounder = req.organization?.isFounder;
+      const orgId = req.organizationId || (req.user as any)?.organizationId;
+      const tier = (req.organization as any)?.subscriptionTier || "free";
+      const isFounder = (req.organization as any)?.isFounder;
 
       if (!orgId || isFounder) {
         // Not authenticated or founder bypass — skip rate limiting
@@ -196,7 +206,7 @@ export function createOrgRateLimit(redisClient: any) {
       return next();
     } catch (err) {
       // Fail open — never block requests due to rate limit system errors
-      console.error("[RedisRateLimit] Middleware error:", err instanceof Error ? err.message : String(err));
+      logger.error("Redis rate limit middleware error — allowing request", { error: err instanceof Error ? err.message : String(err) });
       return next();
     }
   };
@@ -206,13 +216,13 @@ export function createOrgRateLimit(redisClient: any) {
  * API key rate limiter for public developer API
  */
 export function createApiKeyRateLimit(redisClient: any) {
-  return async (req: Request, res: Response, next: NextFunction) => {
+  return async (req: RateLimitRequest, res: Response, next: NextFunction) => {
     const apiKey = (req.headers.authorization || "").replace("Bearer ", "");
     if (!apiKey || !apiKey.startsWith("acr_")) {
       return next(); // Not an API key request — skip
     }
 
-    const apiTier = (req as any).apiKeyTier || "free";
+    const apiTier = req.apiKeyTier || "free";
     const limits = API_KEY_TIERS[apiTier] || API_KEY_TIERS.free;
 
     const minuteResult = await checkRateLimit(redisClient, `apikey:${apiKey.substring(0, 20)}`, {
@@ -256,10 +266,10 @@ export function createApiKeyRateLimit(redisClient: any) {
  * Applies stricter per-org limits for /api/ai/* routes
  */
 export function createAIRateLimit(redisClient: any) {
-  return async (req: Request, res: Response, next: NextFunction) => {
+  return async (req: RateLimitRequest, res: Response, next: NextFunction) => {
     const orgId = req.organizationId;
-    const isFounder = req.organization?.isFounder;
-    const tier = req.organization?.subscriptionTier || "free";
+    const isFounder = (req.organization as any)?.isFounder;
+    const tier = (req.organization as any)?.subscriptionTier || "free";
 
     if (!orgId || isFounder) return next();
 
@@ -305,7 +315,7 @@ export function createIpRateLimit(
   const maxPerMinute = options.maxPerMinute || 30;
   const maxPerHour = options.maxPerHour || 200;
 
-  return async (req: Request, res: Response, next: NextFunction) => {
+  return async (req: RateLimitRequest, res: Response, next: NextFunction) => {
     const ip =
       req.headers["x-forwarded-for"]?.toString().split(",")[0].trim() ||
       req.socket?.remoteAddress ||
@@ -346,7 +356,7 @@ export function createIpRateLimit(
  * Prevents flood attacks via webhook replay or large payloads
  */
 export function createWebhookRateLimit(redisClient: any) {
-  return async (req: Request, res: Response, next: NextFunction) => {
+  return async (req: RateLimitRequest, res: Response, next: NextFunction) => {
     const orgId = req.organizationId;
     if (!orgId) return next();
 
@@ -357,7 +367,7 @@ export function createWebhookRateLimit(redisClient: any) {
     });
 
     if (!result.allowed) {
-      console.warn(`[RateLimit] Webhook flood from org ${orgId} — throttled`);
+      logger.warn("Webhook flood detected — throttled", { organizationId: orgId });
       return res.status(429).json({ error: "webhook_rate_limited" });
     }
 

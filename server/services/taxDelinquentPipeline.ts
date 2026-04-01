@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * T27 — Tax Delinquent List Importer Pipeline
  *

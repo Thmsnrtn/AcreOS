@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Agent Lifecycle Runtime — Sovereign Company Protocol v12
  *
@@ -16,6 +15,7 @@ import {
 } from "@shared/schema";
 import { eq, desc, sql, and, lt } from "drizzle-orm";
 import { companyAgentService } from "./companyAgents";
+import { logger } from "../utils/logger";
 
 // ─── Lifecycle State Machine ──────────────────────────────────────────────────
 
@@ -292,9 +292,7 @@ class AgentLifecycleRuntimeService {
       .where(eq(agentRuntimeState.agentCodename, agentCodename))
       .returning();
 
-    console.log(
-      `[agent-lifecycle] Restarted ${agentCodename} (restart #${updated.restartCount})`,
-    );
+    logger.info(`[agent-lifecycle] Restarted ${agentCodename} (restart #${updated.restartCount})`);
     return updated;
   }
 

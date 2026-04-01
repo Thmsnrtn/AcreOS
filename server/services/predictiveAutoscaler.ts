@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Infrastructure Self-Management — Sovereign Company Protocol Phase 13
  *
@@ -10,6 +9,7 @@ import { db } from "../db";
 import { agentActionLog, agentHealthBaselines, anomalyDetections } from "@shared/schema";
 import { eq, and, desc, gte, sql } from "drizzle-orm";
 import crypto from "crypto";
+import { logger } from "../utils/logger";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -179,7 +179,7 @@ class InfrastructureSelfManager {
         durationMs: 0,
       });
 
-      console.log(`[Infrastructure] Scaling to ${targetInstances} instances: ${reason}`);
+      logger.info(`[Infrastructure] Scaling to ${targetInstances} instances: ${reason}`);
       return { success: true, message: `Scheduled scale to ${targetInstances} instances` };
     } catch (err: any) {
       return { success: false, message: err.message };
@@ -445,7 +445,7 @@ class InfrastructureSelfManager {
       durationMs: 0,
     });
 
-    console.log(`[Infrastructure] Failover ${service}: ${config.primary} → ${newProvider} (${reason})`);
+    logger.info(`[Infrastructure] Failover ${service}: ${config.primary} → ${newProvider} (${reason})`);
     return { success: true, message: `Failed over ${service} to ${newProvider}` };
   }
 
@@ -463,7 +463,7 @@ class InfrastructureSelfManager {
    */
   async activateSurvivalMode(reason: string): Promise<void> {
     survivalModeActive = true;
-    console.log(`[Infrastructure] SURVIVAL MODE ACTIVATED: ${reason}`);
+    logger.info(`[Infrastructure] SURVIVAL MODE ACTIVATED: ${reason}`);
 
     try {
       const { agentCommsService } = await import("./agentComms");
@@ -483,7 +483,7 @@ class InfrastructureSelfManager {
    */
   async deactivateSurvivalMode(reason: string): Promise<void> {
     survivalModeActive = false;
-    console.log(`[Infrastructure] Survival mode deactivated: ${reason}`);
+    logger.info(`[Infrastructure] Survival mode deactivated: ${reason}`);
 
     try {
       const { agentCommsService } = await import("./agentComms");

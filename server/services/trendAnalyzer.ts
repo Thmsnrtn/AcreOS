@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Trend Analyzer — Sovereign Company Protocol v4
  *

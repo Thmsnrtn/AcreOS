@@ -16,6 +16,7 @@
 import { db } from "../db";
 import { agentMemory } from "@shared/schema";
 import { eq, and, desc, gte, sql } from "drizzle-orm";
+import { logger } from "../utils/logger";
 
 export type MemoryType = 'fact' | 'preference' | 'pattern' | 'goal' | 'warning';
 
@@ -197,7 +198,7 @@ EXTRACTED MEMORIES (JSON array only, no other text):`;
       m && typeof m.type === 'string' && typeof m.key === 'string' && m.value
     ).slice(0, 10); // Max 10 memories per conversation
   } catch (err: any) {
-    console.warn('[AtlasMemory] Failed to extract memories:', err.message);
+    logger.warn('[AtlasMemory] Failed to extract memories', { metadata: { detail: err.message } });
     return [];
   }
 }
@@ -225,10 +226,10 @@ export async function processConversationMemories(
       });
     }
 
-    console.log(`[AtlasMemory] Stored ${extracted.length} memories for org ${organizationId}`);
+    logger.info(`[AtlasMemory] Stored ${extracted.length} memories for org ${organizationId}`);
     return extracted.length;
   } catch (err: any) {
-    console.error('[AtlasMemory] processConversationMemories failed:', err.message);
+    logger.error('[AtlasMemory] processConversationMemories failed', err);
     return 0;
   }
 }

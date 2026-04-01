@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Delegation Tokens — Sovereign Company Protocol v11
  *

@@ -40,6 +40,7 @@ import { getActivePriorities, createPriority, deactivatePriority } from "./servi
 import { getQuietHoursConfig, setQuietHours } from "./services/quietHours";
 import { learnFromOverride } from "./services/overrideLearner";
 import { generateBriefingUpdates, generateHeadlineInsight } from "./services/aiBriefingWriter";
+import { logger } from "./utils/logger";
 
 const router = Router();
 
@@ -209,7 +210,7 @@ router.get("/morning-briefing", requireFounder, async (req: Request, res: Respon
       generatedAt: now.toISOString(),
     });
   } catch (err: any) {
-    console.error("[MorningBriefing] Error:", err);
+    logger.error("[MorningBriefing] Error", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -497,7 +498,7 @@ router.get("/pulse", requireFounder, async (req: Request, res: Response) => {
         : "🟡 A few items worth reviewing when you have time.",
     });
   } catch (err: any) {
-    console.error("[FounderIntelligence] Pulse error:", err);
+    logger.error("[FounderIntelligence] Pulse error", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -1107,7 +1108,7 @@ router.post("/decisions-inbox/:id/reject", requireFounder, async (req: Request, 
           decisionId: id,
         });
       } catch (learnErr: any) {
-        console.error("[decisions-inbox] Override learning failed (non-blocking):", learnErr.message);
+        logger.error("[decisions-inbox] Override learning failed (non-blocking)", undefined, { metadata: { detail: learnErr.message } });
       }
     }
 
@@ -1152,7 +1153,7 @@ router.post("/decisions-inbox/:id/override", requireFounder, async (req: Request
           decisionId: id,
         });
       } catch (learnErr: any) {
-        console.error("[decisions-inbox] Override learning failed (non-blocking):", learnErr.message);
+        logger.error("[decisions-inbox] Override learning failed (non-blocking)", undefined, { metadata: { detail: learnErr.message } });
       }
     }
 
@@ -1584,7 +1585,7 @@ router.post("/company-briefing", requireFounder, async (req: Request, res: Respo
 
     res.json(briefing);
   } catch (err: any) {
-    console.error("[company-briefing] Error:", err);
+    logger.error("[company-briefing] Error", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -1676,7 +1677,7 @@ router.post("/agent-chat", requireFounder, async (req: Request, res: Response) =
       }
     } catch (cmdErr) {
       // Command bridge failed — fall through to normal agent chat
-      console.warn("[agent-chat] Command bridge error, falling through:", (cmdErr as any).message);
+      logger.warn("[agent-chat] Command bridge error, falling through", { metadata: { detail: (cmdErr as any).message } });
     }
 
     // Agent lookup table
@@ -1723,7 +1724,7 @@ Respond with ONLY the agent codename (e.g. "forge_revenue") or "team" if the mes
         }
       } catch (routingErr: any) {
         // Fallback to simple name-prefix matching if AI routing fails
-        console.error("[agent-chat] AI routing failed, falling back to prefix match:", routingErr.message);
+        logger.error("[agent-chat] AI routing failed, falling back to prefix match", undefined, { metadata: { detail: routingErr.message } });
         const lowerMsg = message.toLowerCase();
         for (const [name, code] of Object.entries(AGENT_NAMES)) {
           if (lowerMsg.startsWith(name + ",") || lowerMsg.startsWith(name + " ")) {
@@ -1821,7 +1822,7 @@ Respond with ONLY the agent codename (e.g. "forge_revenue") or "team" if the mes
       dataUsed: !!liveDataStr,
     });
   } catch (err: any) {
-    console.error("[agent-chat] Error:", err);
+    logger.error("[agent-chat] Error", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -2118,7 +2119,7 @@ router.get("/activity-timeline", requireFounder, async (req: Request, res: Respo
       hasMore,
     });
   } catch (err: any) {
-    console.error("[activity-timeline] Error:", err);
+    logger.error("[activity-timeline] Error", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -2137,7 +2138,7 @@ router.post("/undo/:actionLogId", requireFounder, async (req: Request, res: Resp
     const result = await executeUndo(actionLogId);
     res.json(result);
   } catch (err: any) {
-    console.error("[undo] Error:", err);
+    logger.error("[undo] Error", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -2155,7 +2156,7 @@ router.get("/trends", requireFounder, async (req: Request, res: Response) => {
       : await getWeeklyTrends();
     res.json({ period, trends });
   } catch (err: any) {
-    console.error("[trends] Error:", err);
+    logger.error("[trends] Error", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -2169,7 +2170,7 @@ router.get("/priorities", requireFounder, async (req: Request, res: Response) =>
     const priorities = await getActivePriorities();
     res.json(priorities);
   } catch (err: any) {
-    console.error("[priorities] Error:", err);
+    logger.error("[priorities] Error", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -2183,7 +2184,7 @@ router.post("/priorities", requireFounder, async (req: Request, res: Response) =
     const result = await createPriority({ priority, description, weight });
     res.json({ success: true, ...result });
   } catch (err: any) {
-    console.error("[priorities] Error:", err);
+    logger.error("[priorities] Error", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -2197,7 +2198,7 @@ router.delete("/priorities/:id", requireFounder, async (req: Request, res: Respo
     await deactivatePriority(id);
     res.json({ success: true });
   } catch (err: any) {
-    console.error("[priorities] Error:", err);
+    logger.error("[priorities] Error", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -2211,7 +2212,7 @@ router.get("/quiet-hours", requireFounder, async (req: Request, res: Response) =
     const config = await getQuietHoursConfig();
     res.json(config);
   } catch (err: any) {
-    console.error("[quiet-hours] Error:", err);
+    logger.error("[quiet-hours] Error", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -2225,7 +2226,7 @@ router.put("/quiet-hours", requireFounder, async (req: Request, res: Response) =
     await setQuietHours({ startHour, endHour, timezone, isActive });
     res.json({ success: true });
   } catch (err: any) {
-    console.error("[quiet-hours] Error:", err);
+    logger.error("[quiet-hours] Error", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -2287,7 +2288,7 @@ router.get("/chat-history", requireFounder, async (req: Request, res: Response) 
       });
     }
   } catch (err: any) {
-    console.error("[chat-history] Error:", err);
+    logger.error("[chat-history] Error", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -2309,7 +2310,7 @@ router.post("/command", requireFounder, async (req: Request, res: Response) => {
 
     res.json(result);
   } catch (err: any) {
-    console.error("[command] Error:", err);
+    logger.error("[command] Error", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -2334,7 +2335,7 @@ router.get("/forecast", requireFounder, async (req: Request, res: Response) => {
       unitEconomics,
     });
   } catch (err: any) {
-    console.error("[forecast] Error:", err);
+    logger.error("[forecast] Error", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -2355,7 +2356,7 @@ router.get("/customer-health", requireFounder, async (req: Request, res: Respons
 
     res.json({ customers, summary });
   } catch (err: any) {
-    console.error("[customer-health] Error:", err);
+    logger.error("[customer-health] Error", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -2372,7 +2373,7 @@ router.get("/customer-health/:orgId", requireFounder, async (req: Request, res: 
     if (!health) return res.status(404).json({ error: "Customer not found" });
     res.json(health);
   } catch (err: any) {
-    console.error("[customer-health] Error:", err);
+    logger.error("[customer-health] Error", err);
     res.status(500).json({ error: err.message });
   }
 });

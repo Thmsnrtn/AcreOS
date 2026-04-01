@@ -12,6 +12,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { getOpenAIClient } from "../utils/openaiClient";
+import { logger } from "../utils/logger";
 
 export interface PatternFingerprint {
   property: {
@@ -712,7 +713,7 @@ class DealPatternCloningService {
 
       return response.data[0]?.embedding || null;
     } catch (error) {
-      console.error("Error generating embedding:", error);
+      logger.error("Error generating embedding", error);
       return this.generateSimpleEmbedding(fingerprint);
     }
   }

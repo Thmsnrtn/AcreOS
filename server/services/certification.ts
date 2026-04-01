@@ -12,7 +12,6 @@
  *   Platinum — completed all available courses
  */
 
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 import { db } from '../db';
 import {
   courses,

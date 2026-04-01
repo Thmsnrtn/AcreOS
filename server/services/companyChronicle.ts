@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Company Chronicle — Sovereign Company Protocol v8
  *

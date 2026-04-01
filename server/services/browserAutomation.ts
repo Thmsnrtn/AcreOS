@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 import { db } from "../db";
 import { 
   browserAutomationTemplates, 
@@ -8,6 +7,7 @@ import {
 import { eq, and, desc, isNull } from "drizzle-orm";
 import puppeteer, { Browser, Page } from "puppeteer-core";
 import { execSync } from "child_process";
+import { logger } from "../utils/logger";
 // DNS resolution for SSRF protection
 const dnsResolve4 = (host: string): Promise<string[]> => {
   return new Promise((resolve, reject) => {
@@ -74,14 +74,14 @@ function getChromiumPath(): string {
     
     throw new Error("Chromium not found in system. Please ensure chromium is installed.");
   } catch (error) {
-    console.error("[browser-automation] Failed to find Chromium:", error);
+    logger.error("[browser-automation] Failed to find Chromium", error);
     throw error;
   }
 }
 
 async function launchBrowser(): Promise<Browser> {
   const executablePath = getChromiumPath();
-  console.log(`[browser-automation] Launching browser from: ${executablePath}`);
+  logger.info(`[browser-automation] Launching browser from: ${executablePath}`);
   
   return puppeteer.launch({
     executablePath,
@@ -387,7 +387,7 @@ export async function seedSystemTemplates(): Promise<void> {
     .limit(1);
   
   if (existingCount.length > 0) {
-    console.log("[browser-automation] System templates already seeded");
+    logger.info("[browser-automation] System templates already seeded");
     return;
   }
   
@@ -491,7 +491,7 @@ export async function seedSystemTemplates(): Promise<void> {
     await createTemplate(template);
   }
   
-  console.log("[browser-automation] Seeded system templates");
+  logger.info("[browser-automation] Seeded system templates");
 }
 
 function interpolateVariables(
@@ -640,7 +640,7 @@ export async function executeJob(jobId: number): Promise<ExecutionResult> {
     
     for (const step of steps) {
       try {
-        console.log(`[browser-automation] Executing step ${step.order}: ${step.description}`);
+        logger.info(`[browser-automation] Executing step ${step.order}: ${step.description}`);
         await executeStep(page, step, inputData, outputData, screenshots);
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
@@ -689,7 +689,7 @@ export async function executeJob(jobId: number): Promise<ExecutionResult> {
       executionTimeMs: result.executionTimeMs,
     });
     
-    console.log(`[browser-automation] Job ${jobId} completed in ${result.executionTimeMs}ms`);
+    logger.info(`[browser-automation] Job ${jobId} completed in ${result.executionTimeMs}ms`);
     
     return result;
   } catch (error) {
@@ -731,7 +731,7 @@ export async function processJobQueue(): Promise<number> {
   }
   
   for (const job of jobs) {
-    console.log(`[browser-automation] Processing job: ${job.id} - ${job.name}`);
+    logger.info(`[browser-automation] Processing job: ${job.id} - ${job.name}`);
     await executeJob(job.id);
   }
   
@@ -741,11 +741,11 @@ export async function processJobQueue(): Promise<number> {
 let isProcessingQueue = false;
 
 export async function startJobProcessor(intervalMs: number = 30000): Promise<void> {
-  console.log(`[browser-automation] Starting job processor (interval: ${intervalMs}ms)`);
+  logger.info(`[browser-automation] Starting job processor (interval: ${intervalMs}ms)`);
   
   setInterval(async () => {
     if (isProcessingQueue) {
-      console.log("[browser-automation] Queue processor already running, skipping");
+      logger.info("[browser-automation] Queue processor already running, skipping");
       return;
     }
     
@@ -753,10 +753,10 @@ export async function startJobProcessor(intervalMs: number = 30000): Promise<voi
     try {
       const processed = await processJobQueue();
       if (processed > 0) {
-        console.log(`[browser-automation] Processed ${processed} job(s)`);
+        logger.info(`[browser-automation] Processed ${processed} job(s)`);
       }
     } catch (error) {
-      console.error("[browser-automation] Error processing queue:", error);
+      logger.error("[browser-automation] Error processing queue", error);
     } finally {
       isProcessingQueue = false;
     }
@@ -820,7 +820,7 @@ async function resolveAndCheckHost(hostname: string): Promise<{ allowed: boolean
     
     return { allowed: true };
   } catch (err) {
-    console.log(`[SSRF] DNS check error for ${hostname}:`, err);
+    logger.info(`[SSRF] DNS check error for ${hostname}`, { metadata: { detail: err } });
     return { allowed: true };
   }
 }
@@ -937,7 +937,7 @@ export async function browseWeb(url: string, options?: {
       const reqUrl = request.url();
       const check = isBlockedUrl(reqUrl);
       if (check.blocked) {
-        console.log(`[browse_web] Blocked request (URL pattern): ${reqUrl}`);
+        logger.info(`[browse_web] Blocked request (URL pattern): ${reqUrl}`);
         await request.abort("blockedbyclient");
         return;
       }
@@ -948,14 +948,14 @@ export async function browseWeb(url: string, options?: {
         
         const dnsCheck = await resolveAndCheckHost(hostname);
         if (!dnsCheck.allowed) {
-          console.log(`[browse_web] Blocked request (DNS resolve): ${reqUrl} - ${dnsCheck.reason}`);
+          logger.info(`[browse_web] Blocked request (DNS resolve): ${reqUrl} - ${dnsCheck.reason}`);
           await request.abort("blockedbyclient");
           return;
         }
         
         await request.continue();
       } catch (err) {
-        console.log(`[browse_web] Request check error, allowing: ${reqUrl}`);
+        logger.info(`[browse_web] Request check error, allowing: ${reqUrl}`);
         await request.continue();
       }
     });

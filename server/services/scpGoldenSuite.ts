@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * SCP Golden Suite & Auto-Rollback — Sovereign Company Protocol v2
  *

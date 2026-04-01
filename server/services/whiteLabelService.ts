@@ -13,7 +13,6 @@
  * - Isolated data per tenant (via existing org isolation)
  */
 
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 import { db } from '../db';
 import { organizations, whiteLabelConfigs } from '../../shared/schema';
 import { eq, and } from 'drizzle-orm';

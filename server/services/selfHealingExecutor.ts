@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Self-Healing Executor — Closes the loop between playbook evaluation and actual remediation.
  *
@@ -8,6 +7,7 @@
 
 import { executionEngine } from "./executionEngine";
 import { wsServer } from "../websocket";
+import { logger } from "../utils/logger";
 
 interface PlaybookAction {
   type: string;
@@ -27,7 +27,7 @@ class SelfHealingExecutor {
     let failed = 0;
     const results: any[] = [];
 
-    console.log(`[self-healing] Executing ${actions.length} actions from playbook: ${playbookName}`);
+    logger.info(`[self-healing] Executing ${actions.length} actions from playbook: ${playbookName}`);
 
     for (const action of actions) {
       try {
@@ -58,7 +58,7 @@ class SelfHealingExecutor {
       totalActions: actions.length,
     });
 
-    console.log(`[self-healing] Playbook ${playbookName}: ${executed} executed, ${failed} failed`);
+    logger.info(`[self-healing] Playbook ${playbookName}: ${executed} executed, ${failed} failed`);
     return { executed, failed, results };
   }
 
@@ -76,10 +76,10 @@ class SelfHealingExecutor {
       }
 
       if (matched.length > 0) {
-        console.log(`[self-healing] Executed ${matched.length} playbooks for anomaly ${anomalyId}`);
+        logger.info(`[self-healing] Executed ${matched.length} playbooks for anomaly ${anomalyId}`);
       }
     } catch (err: any) {
-      console.error(`[self-healing] Evaluate+execute failed for anomaly ${anomalyId}:`, err.message);
+      logger.error(`[self-healing] Evaluate+execute failed for anomaly ${anomalyId}`, err);
     }
   }
 }

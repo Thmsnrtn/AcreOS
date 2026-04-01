@@ -25,6 +25,7 @@
 import { db } from "../db";
 import { leads, properties, deals, notes, agentTasks, agentRuns, organizations, campaigns } from "@shared/schema";
 import { eq, and, lt, isNull, ne, gte, lte, desc, sql, count } from "drizzle-orm";
+import { logger } from "../utils/logger";
 
 // ─── Structured Logger ──────────────────────────────────────────────────────
 
@@ -38,11 +39,11 @@ function triggerLog(level: "info" | "warn" | "error", trigger: string, orgId: nu
     ...details,
   };
   if (level === "error") {
-    console.error(JSON.stringify(entry));
+    logger.error(JSON.stringify(entry));
   } else if (level === "warn") {
-    console.warn(JSON.stringify(entry));
+    logger.warn(JSON.stringify(entry));
   } else {
-    console.log(JSON.stringify(entry));
+    logger.info(JSON.stringify(entry));
   }
 }
 
@@ -119,16 +120,16 @@ class AgentTriggerMonitor {
 
   start(intervalMs = 5 * 60 * 1000): void {
     if (this.intervalHandle) return;
-    console.log(`[AgentTriggerMonitor] Starting — poll every ${intervalMs / 1000}s`);
-    this.runScan().catch(e => console.error("[AgentTriggerMonitor] initial scan error:", e));
+    logger.info(`[AgentTriggerMonitor] Starting — poll every ${intervalMs / 1000}s`);
+    this.runScan().catch(e => logger.error("[AgentTriggerMonitor] initial scan error", e));
     this.intervalHandle = setInterval(() => {
-      this.runScan().catch(e => console.error("[AgentTriggerMonitor] scan error:", e));
+      this.runScan().catch(e => logger.error("[AgentTriggerMonitor] scan error", e));
     }, intervalMs);
   }
 
   stop(): void {
     if (this.intervalHandle) { clearInterval(this.intervalHandle); this.intervalHandle = null; }
-    console.log("[AgentTriggerMonitor] Stopped.");
+    logger.info("[AgentTriggerMonitor] Stopped.");
   }
 
   // ─── Main scan ─────────────────────────────────────────────────────────────
@@ -152,7 +153,7 @@ class AgentTriggerMonitor {
       // Update agent run metadata
       await this.recordRun(queued);
     } catch (err) {
-      console.error("[AgentTriggerMonitor] scan error:", err);
+      logger.error("[AgentTriggerMonitor] scan error", err);
     }
 
     return { queued };
@@ -613,9 +614,9 @@ class AgentTriggerMonitor {
         relatedDealId: trigger.relatedDealId ?? null,
         requiresReview: trigger.priority <= 2,
       });
-      console.log(`[AgentTriggerMonitor] Queued ${trigger.type} for org ${trigger.organizationId}: ${trigger.description}`);
+      logger.info(`[AgentTriggerMonitor] Queued ${trigger.type} for org ${trigger.organizationId}: ${trigger.description}`);
     } catch (err) {
-      console.error(`[AgentTriggerMonitor] Failed to insert ${trigger.type}:`, err);
+      logger.error(`[AgentTriggerMonitor] Failed to insert ${trigger.type}`, err);
     }
   }
 

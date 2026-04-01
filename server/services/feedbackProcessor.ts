@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 /**
  * Feedback Processor — categorizes and extracts actionable insights from user feedback.
  * Uses simple keyword matching (no AI dependency) so it runs reliably without external APIs.
@@ -8,6 +7,7 @@ import { db } from "../storage";
 import { sql } from "drizzle-orm";
 import { userFeedback, processedFeedback } from "@shared/schema";
 import { eq, isNull } from "drizzle-orm";
+import { logger } from "../utils/logger";
 
 const CATEGORY_KEYWORDS: Record<string, string[]> = {
   bug: ["bug", "broken", "crash", "error", "doesn't work", "not working", "fails", "wrong", "glitch"],
@@ -93,7 +93,7 @@ export async function processNewFeedback(): Promise<number> {
   }
 
   if (processed > 0) {
-    console.log(`[feedbackProcessor] Processed ${processed} new feedback entries`);
+    logger.info(`[feedbackProcessor] Processed ${processed} new feedback entries`);
   }
 
   return processed;

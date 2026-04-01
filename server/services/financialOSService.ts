@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Financial Operating System (EPIC 7 — Land's QuickBooks)
  *

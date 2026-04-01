@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 /**
  * Due Diligence Report Generator — 6-page PDF orchestrator
  *

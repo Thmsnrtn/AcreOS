@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Company Stage Detector — Determines the current company lifecycle stage
  * for adaptive Morning Briefing content and dashboard configuration.

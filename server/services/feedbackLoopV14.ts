@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Feedback Loop Processor — Sovereign Company Protocol v14 "The Self-Running Company"
  *
@@ -13,6 +12,7 @@ import crypto from "crypto";
 import { cognitiveMemoryService } from "./cognitiveMemoryV13";
 import { adaptiveStrategyService } from "./adaptiveStrategyV13";
 import { governanceBrainService } from "./governanceBrainV13";
+import { logger } from "../utils/logger";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -296,11 +296,11 @@ class FeedbackLoopService {
         appliedToMemory.push({ factId: fact.id, appliedAt: new Date().toISOString(), verified });
         summary.memory = { applied: true, factId: String(fact.id), verified };
         if (!verified) {
-          console.warn(`[FeedbackLoop] Memory fact ${fact.id} created but verification recall failed`);
+          logger.warn(`[FeedbackLoop] Memory fact ${fact.id} created but verification recall failed`);
         }
       } catch (err: any) {
         summary.memory = { applied: false, error: err.message };
-        console.warn(`[FeedbackLoop] Memory propagation failed: ${err.message}`);
+        logger.warn(`[FeedbackLoop] Memory propagation failed: ${err.message}`);
       }
     } else {
       summary.memory = { applied: true, factId: String(appliedToMemory[0]?.factId) };
@@ -323,7 +323,7 @@ class FeedbackLoopService {
         }
       } catch (err: any) {
         summary.strategy = { applied: false, error: err.message };
-        console.warn(`[FeedbackLoop] Strategy propagation failed: ${err.message}`);
+        logger.warn(`[FeedbackLoop] Strategy propagation failed: ${err.message}`);
       }
     } else {
       summary.strategy = { applied: true, details: "Already propagated" };
@@ -349,7 +349,7 @@ class FeedbackLoopService {
         summary.governance = { applied: true, policyId: policy.policyId, verified };
       } catch (err: any) {
         summary.governance = { applied: false, error: err.message };
-        console.warn(`[FeedbackLoop] Governance propagation failed: ${err.message}`);
+        logger.warn(`[FeedbackLoop] Governance propagation failed: ${err.message}`);
       }
     } else if (appliedToPolicies.length > 0) {
       summary.governance = { applied: true, policyId: (appliedToPolicies[0] as any)?.policyId };

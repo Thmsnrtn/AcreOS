@@ -8,6 +8,7 @@ import {
   type PropertyAttributes
 } from "./comps";
 import { voiceLearningService, type VoiceProfile } from "./voiceLearning";
+import { logger } from "../utils/logger";
 
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
@@ -261,7 +262,7 @@ Provide exactly 3 offer strategies as JSON with this structure:
       aiReasoning: parsed.aiReasoning || "Analysis based on comparable sales and property attributes.",
     };
   } catch (error) {
-    console.error("Error generating offer suggestions:", error);
+    logger.error("Error generating offer suggestions", error);
     return {
       success: false,
       estimatedMarketValue: 0,
@@ -360,7 +361,7 @@ The letter should:
       subject: parsed.subject || `Offer to Purchase Property - ${request.property.county}, ${request.property.state}`,
     };
   } catch (error) {
-    console.error("Error generating offer letter:", error);
+    logger.error("Error generating offer letter", error);
     return {
       success: false,
       letter: "",
@@ -531,7 +532,7 @@ export async function predictAcceptanceProbability(
       recommendation,
     };
   } catch (error) {
-    console.error("Error predicting acceptance probability:", error);
+    logger.error("Error predicting acceptance probability", error);
     return {
       success: false,
       probability: 0,

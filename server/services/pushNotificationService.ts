@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Web Push Notification Service (T61)
  *
@@ -14,6 +13,7 @@
 
 import { db } from "../db";
 import { sql } from "drizzle-orm";
+import { logger } from "../utils/logger";
 
 interface PushSubscription {
   id: number;
@@ -53,13 +53,13 @@ async function getWebPush(): Promise<any> {
     if (publicKey && privateKey) {
       webPush.setVapidDetails(subject, publicKey, privateKey);
       vapidConfigured = true;
-      console.log("[PushNotifications] VAPID keys configured");
+      logger.info("[PushNotifications] VAPID keys configured");
     } else {
-      console.warn("[PushNotifications] VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY not set — push disabled");
+      logger.warn("[PushNotifications] VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY not set — push disabled");
     }
     return webPush;
   } catch (err) {
-    console.warn("[PushNotifications] web-push package not installed — push disabled");
+    logger.warn("[PushNotifications] web-push package not installed — push disabled");
     return null;
   }
 }
@@ -100,7 +100,7 @@ async function deleteSubscription(endpoint: string): Promise<void> {
   try {
     await db.execute(sql`DELETE FROM push_subscriptions WHERE endpoint = ${endpoint}`);
   } catch (err) {
-    console.error("[PushNotifications] Failed to delete subscription:", err);
+    logger.error("[PushNotifications] Failed to delete subscription", err);
   }
 }
 
@@ -143,7 +143,7 @@ async function sendToSubscription(
       // Subscription expired — remove it
       await deleteSubscription(subscription.endpoint);
     } else {
-      console.error("[PushNotifications] Send failed:", err.message);
+      logger.error("[PushNotifications] Send failed", err);
     }
     return false;
   }

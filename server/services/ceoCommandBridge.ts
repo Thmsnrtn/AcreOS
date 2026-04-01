@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * CEO Command Bridge — Sovereign Company Protocol v5
  *

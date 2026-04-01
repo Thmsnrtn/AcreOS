@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * SCP LLM Judges — Sovereign Company Protocol v2
  *

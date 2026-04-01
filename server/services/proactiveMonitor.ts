@@ -14,6 +14,7 @@ import { eq, and, lt, desc, isNull, count, ne, gte, sql } from "drizzle-orm";
 import { healthCheckService, ServiceStatus } from "./healthCheck";
 import { getAllUsageLimits, ResourceType } from "./usageLimits";
 import { paxObserver } from "./paxObserver";
+import { logger } from "../utils/logger";
 
 export type AlertType = 'api_error' | 'sync_failure' | 'quota_warning' | 'data_issue' | 'service_degraded' | 'activity_drop' | 'error_pattern' | 'anomaly_detected';
 export type AlertSeverity = 'info' | 'warning' | 'critical';
@@ -86,7 +87,7 @@ class ProactiveMonitorService {
         }
       }
     } catch (error) {
-      console.error(`[proactiveMonitor] Error checking quota usage for org ${orgId}:`, error);
+      logger.error(`[proactiveMonitor] Error checking quota usage for org ${orgId}`, error);
     }
   }
 
@@ -143,7 +144,7 @@ class ProactiveMonitorService {
         );
       }
     } catch (error) {
-      console.error(`[proactiveMonitor] Error checking data integrity for org ${orgId}:`, error);
+      logger.error(`[proactiveMonitor] Error checking data integrity for org ${orgId}`, error);
     }
 
     return issues;
@@ -174,7 +175,7 @@ class ProactiveMonitorService {
         }
       }
     } catch (error) {
-      console.error('[proactiveMonitor] Error checking service health:', error);
+      logger.error('[proactiveMonitor] Error checking service health', error);
     }
   }
 
@@ -234,14 +235,14 @@ class ProactiveMonitorService {
           
           orgsChecked++;
         } catch (error) {
-          console.error(`[proactiveMonitor] Error running checks for org ${org.id}:`, error);
+          logger.error(`[proactiveMonitor] Error running checks for org ${org.id}`, error);
         }
       }
 
       await this.cleanupOldAlerts();
       await paxObserver.cleanupOldObservations();
     } catch (error) {
-      console.error('[proactiveMonitor] Error running all checks:', error);
+      logger.error('[proactiveMonitor] Error running all checks', error);
     }
 
     return { orgsChecked, alertsCreated, anomaliesDetected };
@@ -273,7 +274,7 @@ class ProactiveMonitorService {
           .orderBy(desc(systemAlerts.createdAt));
       }
     } catch (error) {
-      console.error('[proactiveMonitor] Error getting active alerts:', error);
+      logger.error('[proactiveMonitor] Error getting active alerts', error);
       return [];
     }
   }
@@ -290,7 +291,7 @@ class ProactiveMonitorService {
         .orderBy(desc(systemAlerts.createdAt))
         .limit(limit);
     } catch (error) {
-      console.error('[proactiveMonitor] Error getting all alerts:', error);
+      logger.error('[proactiveMonitor] Error getting all alerts', error);
       return [];
     }
   }
@@ -309,10 +310,10 @@ class ProactiveMonitorService {
         })
         .where(eq(systemAlerts.id, alertId));
       
-      console.log(`[proactiveMonitor] Alert ${alertId} resolved by ${resolvedBy}`);
+      logger.info(`[proactiveMonitor] Alert ${alertId} resolved by ${resolvedBy}`);
       return true;
     } catch (error) {
-      console.error(`[proactiveMonitor] Error resolving alert ${alertId}:`, error);
+      logger.error(`[proactiveMonitor] Error resolving alert ${alertId}`, error);
       return false;
     }
   }
@@ -360,10 +361,10 @@ class ProactiveMonitorService {
         })
         .returning();
 
-      console.log(`[proactiveMonitor] Created alert: ${title} for org ${orgId}`);
+      logger.info(`[proactiveMonitor] Created alert: ${title} for org ${orgId}`);
       return alert;
     } catch (error) {
-      console.error('[proactiveMonitor] Error creating alert:', error);
+      logger.error('[proactiveMonitor] Error creating alert', error);
       return null;
     }
   }
@@ -410,10 +411,10 @@ class ProactiveMonitorService {
         })
         .returning();
 
-      console.log(`[proactiveMonitor] Created global alert: ${title}`);
+      logger.info(`[proactiveMonitor] Created global alert: ${title}`);
       return alert;
     } catch (error) {
-      console.error('[proactiveMonitor] Error creating global alert:', error);
+      logger.error('[proactiveMonitor] Error creating global alert', error);
       return null;
     }
   }
@@ -455,7 +456,7 @@ class ProactiveMonitorService {
 
       return resolved;
     } catch (error) {
-      console.error('[proactiveMonitor] Error auto-resolving alerts by metadata:', error);
+      logger.error('[proactiveMonitor] Error auto-resolving alerts by metadata', error);
       return 0;
     }
   }
@@ -518,7 +519,7 @@ class ProactiveMonitorService {
 
       return { hasAnomaly: false, details: { dropPercentage, recentCount, avgDailyBaseline } };
     } catch (error) {
-      console.error(`[proactiveMonitor] Error checking activity drop for org ${orgId}:`, error);
+      logger.error(`[proactiveMonitor] Error checking activity drop for org ${orgId}`, error);
       return { hasAnomaly: false, details: { error: String(error) } };
     }
   }
@@ -579,7 +580,7 @@ class ProactiveMonitorService {
 
       return { hasPattern: false, details: { totalCalls: recentApiCalls.length } };
     } catch (error) {
-      console.error(`[proactiveMonitor] Error checking error patterns for org ${orgId}:`, error);
+      logger.error(`[proactiveMonitor] Error checking error patterns for org ${orgId}`, error);
       return { hasPattern: false, details: { error: String(error) } };
     }
   }
@@ -670,7 +671,7 @@ class ProactiveMonitorService {
 
       return { hasAnomaly: false, details: { operationsChecked: recentOperations.length } };
     } catch (error) {
-      console.error(`[proactiveMonitor] Error checking anomalous patterns for org ${orgId}:`, error);
+      logger.error(`[proactiveMonitor] Error checking anomalous patterns for org ${orgId}`, error);
       return { hasAnomaly: false, details: { error: String(error) } };
     }
   }
@@ -713,12 +714,12 @@ class ProactiveMonitorService {
         .returning({ id: systemAlerts.id });
 
       if (result.length > 0) {
-        console.log(`[proactiveMonitor] Cleaned up ${result.length} old resolved alerts`);
+        logger.info(`[proactiveMonitor] Cleaned up ${result.length} old resolved alerts`);
       }
 
       return result.length;
     } catch (error) {
-      console.error('[proactiveMonitor] Error cleaning up old alerts:', error);
+      logger.error('[proactiveMonitor] Error cleaning up old alerts', error);
       return 0;
     }
   }
@@ -728,19 +729,19 @@ class ProactiveMonitorService {
    */
   startMonitoring(intervalMs: number = 5 * 60 * 1000): void {
     if (this.monitorInterval) {
-      console.log('[proactiveMonitor] Monitoring already started');
+      logger.info('[proactiveMonitor] Monitoring already started');
       return;
     }
 
-    console.log(`[proactiveMonitor] Starting proactive monitoring (every ${intervalMs / 1000}s)`);
+    logger.info(`[proactiveMonitor] Starting proactive monitoring (every ${intervalMs / 1000}s)`);
 
     this.runAllChecks().catch(err => {
-      console.error('[proactiveMonitor] Initial check failed:', err);
+      logger.error('[proactiveMonitor] Initial check failed', err);
     });
 
     this.monitorInterval = setInterval(() => {
       this.runAllChecks().catch(err => {
-        console.error('[proactiveMonitor] Periodic check failed:', err);
+        logger.error('[proactiveMonitor] Periodic check failed', err);
       });
     }, intervalMs);
   }
@@ -752,7 +753,7 @@ class ProactiveMonitorService {
     if (this.monitorInterval) {
       clearInterval(this.monitorInterval);
       this.monitorInterval = null;
-      console.log('[proactiveMonitor] Stopped proactive monitoring');
+      logger.info('[proactiveMonitor] Stopped proactive monitoring');
     }
   }
 
@@ -771,7 +772,7 @@ class ProactiveMonitorService {
    */
   clearErrorCache(): void {
     this.apiErrorCache.clear();
-    console.log('[proactiveMonitor] Error cache cleared');
+    logger.info('[proactiveMonitor] Error cache cleared');
   }
 }
 

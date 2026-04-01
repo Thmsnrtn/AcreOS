@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Agent Debates — Sovereign Company Protocol v8
  *
@@ -17,6 +16,7 @@ import { eq, desc } from "drizzle-orm";
 import { routeAITask, TaskComplexity } from "./aiRouter";
 import { companyAgentService } from "./companyAgents";
 import { resolveAgentData } from "./agentDataResolvers";
+import { logger } from "../utils/logger";
 
 // ─── Debate Participants by Category ─────────────────────────────────────────
 
@@ -73,7 +73,7 @@ class AgentDebateService {
 
     // Run the debate asynchronously
     this.runDebate(debate.id, proposition, forAgents, againstAgents).catch(err => {
-      console.error(`[Debate] ${debate.id} failed:`, err);
+      logger.error(`[Debate] ${debate.id} failed`, err);
     });
 
     return debate.id;

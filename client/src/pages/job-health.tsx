@@ -9,6 +9,16 @@ import {
   HeartPulse, CheckCircle, AlertTriangle, Clock,
   Search, Play, XCircle, SkipForward, RefreshCw,
 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { formatDistanceToNow, format } from "date-fns";
 import { useJobHealthLogs } from "@/hooks/use-sovereign-dashboard";
 
@@ -30,6 +40,7 @@ function StatusIcon({ status }: { status: string }) {
 export default function JobHealth() {
   const [searchFilter, setSearchFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [pendingJobTrigger, setPendingJobTrigger] = useState<string | null>(null);
   const { data: jobs = [], isLoading } = useJobHealthLogs();
   const queryClient = useQueryClient();
 
@@ -136,8 +147,9 @@ export default function JobHealth() {
                       variant="ghost"
                       size="sm"
                       className="shrink-0"
-                      onClick={() => triggerJobMutation.mutate(job.jobName)}
+                      onClick={() => setPendingJobTrigger(job.jobName)}
                       disabled={triggerJobMutation.isPending}
+                      aria-label={`Manually run ${job.jobName}`}
                     >
                       <Play className="w-3 h-3" />
                     </Button>
@@ -216,6 +228,30 @@ export default function JobHealth() {
           </CardContent>
         </Card>
       </div>
+
+      <AlertDialog open={!!pendingJobTrigger} onOpenChange={(open) => { if (!open) setPendingJobTrigger(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Manually run this job?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to manually run <span className="font-medium">{pendingJobTrigger}</span>?
+              This job is normally scheduled to run automatically. Running it manually will execute it immediately
+              in addition to its regular schedule.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              if (pendingJobTrigger) {
+                triggerJobMutation.mutate(pendingJobTrigger);
+                setPendingJobTrigger(null);
+              }
+            }}>
+              Yes, run it now
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </PageShell>
   );
 }

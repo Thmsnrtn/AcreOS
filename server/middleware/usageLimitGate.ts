@@ -19,6 +19,7 @@
 
 import type { Request, Response, NextFunction } from "express";
 import { checkUsageLimit, type ResourceType } from "../services/usageLimits";
+import { logger } from "../utils/logger";
 
 /**
  * Returns Express middleware that checks the organization's usage limit
@@ -48,7 +49,7 @@ export function usageLimitGate(resourceType: ResourceType) {
 
       next();
     } catch (err) {
-      console.error(`[usageLimitGate] Error checking ${resourceType} limit:`, err);
+      logger.error(`[usageLimitGate] Error checking ${resourceType} limit`, err);
       // Fail open — don't block the request if the limit check itself errors
       next();
     }

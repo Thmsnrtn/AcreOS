@@ -359,7 +359,7 @@ test.describe.serial("First Timer Fiona — Full Journey", () => {
   // ── Step 9: Pax chat ───────────────────────────────────────────────────
 
   test("9. Pax chat loads and handles missing AI key gracefully", async () => {
-    await page.goto("/pax");
+    await page.goto("/ai");
     await page.waitForTimeout(2000);
 
     await page.screenshot({ path: "tests/simulation/screenshots/fiona-15-pax.png" });

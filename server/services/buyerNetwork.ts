@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 import { db } from '../db';
 import { 
   buyerBehaviorEvents, 
@@ -6,6 +5,7 @@ import {
   properties 
 } from '../../shared/schema';
 import { eq, and, desc, gte, sql } from 'drizzle-orm';
+import { logger } from "../utils/logger";
 
 interface BuyerBehaviorEvent {
   eventType: 'property_view' | 'search' | 'save_favorite' | 'contact_seller' | 'make_offer' | 'attend_showing';
@@ -76,7 +76,7 @@ class BuyerIntelligenceNetwork {
         await this.updatePropertyDemand(organizationId, event.propertyId, event.eventType);
       }
     } catch (error) {
-      console.error('Failed to track behavior event:', error);
+      logger.error('Failed to track behavior event', error);
       // Don't throw - tracking should not break user experience
     }
   }
@@ -162,7 +162,7 @@ class BuyerIntelligenceNetwork {
         });
       }
     } catch (error) {
-      console.error('Failed to update property demand:', error);
+      logger.error('Failed to update property demand', error);
     }
   }
 
@@ -258,7 +258,7 @@ class BuyerIntelligenceNetwork {
         confidence: Math.round(confidence),
       };
     } catch (error) {
-      console.error('Failed to calculate demand heatmap:', error);
+      logger.error('Failed to calculate demand heatmap', error);
       throw error;
     }
   }
@@ -411,7 +411,7 @@ class BuyerIntelligenceNetwork {
       if (change < -20) return 'declining';
       return 'stable';
     } catch (error) {
-      console.error('Failed to calculate trend:', error);
+      logger.error('Failed to calculate trend', error);
       return 'stable';
     }
   }
@@ -445,7 +445,7 @@ class BuyerIntelligenceNetwork {
         confidence: heatmap.confidence,
       };
     } catch (error) {
-      console.error('Failed to get demand heatmap:', error);
+      logger.error('Failed to get demand heatmap', error);
       return null;
     }
   }
@@ -473,7 +473,7 @@ class BuyerIntelligenceNetwork {
         confidence: h.confidence,
       }));
     } catch (error) {
-      console.error('Failed to get top demand locations:', error);
+      logger.error('Failed to get top demand locations', error);
       return [];
     }
   }
@@ -533,7 +533,7 @@ class BuyerIntelligenceNetwork {
         demandScore,
       };
     } catch (error) {
-      console.error('Failed to get property buyer insights:', error);
+      logger.error('Failed to get property buyer insights', error);
       throw error;
     }
   }
@@ -565,13 +565,13 @@ class BuyerIntelligenceNetwork {
           updated++;
         } catch (error) {
           failed++;
-          console.error(`Failed to refresh heatmap for ${loc}:`, error);
+          logger.error(`Failed to refresh heatmap for ${loc}`, error);
         }
       }
 
       return { updated, failed };
     } catch (error) {
-      console.error('Failed to refresh heatmaps:', error);
+      logger.error('Failed to refresh heatmaps', error);
       throw error;
     }
   }
@@ -618,7 +618,7 @@ class BuyerIntelligenceNetwork {
 
       return trending;
     } catch (error) {
-      console.error('Failed to get trending searches:', error);
+      logger.error('Failed to get trending searches', error);
       return [];
     }
   }

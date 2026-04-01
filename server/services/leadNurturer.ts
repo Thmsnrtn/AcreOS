@@ -5,6 +5,7 @@ import { storage } from "../storage";
 import { usageMeteringService } from "./credits";
 import { alertingService } from "./alerting";
 import OpenAI from "openai";
+import { logger } from "../utils/logger";
 
 function getOpenAIClient(): OpenAI | null {
   if (!process.env.OPENAI_API_KEY) {
@@ -134,7 +135,7 @@ export class LeadNurturerService {
   async generateFollowUp(lead: Lead): Promise<{ message: string; subject?: string } | null> {
     const openai = getOpenAIClient();
     if (!openai) {
-      console.log("OpenAI API key not configured, skipping AI follow-up generation");
+      logger.info("OpenAI API key not configured, skipping AI follow-up generation");
       return null;
     }
 
@@ -193,7 +194,7 @@ Respond in JSON format:
         };
       }
     } catch (error) {
-      console.error("Error generating follow-up message:", error);
+      logger.error("Error generating follow-up message", error);
     }
 
     return null;

@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 /**
  * Data Quality Monitor — tracks health and availability of all 18 open data sources.
  * Provides probe URLs, health recording, and status reporting.

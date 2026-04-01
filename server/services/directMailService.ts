@@ -3,6 +3,7 @@ import type { MailSenderIdentity } from '@shared/schema';
 import { creditService, usageMeteringService } from './credits';
 import { storage } from '../storage';
 import { decryptJsonCredentials } from './encryption';
+import { logger } from "../utils/logger";
 
 interface RecipientAddress {
   line1: string;
@@ -82,7 +83,7 @@ export async function getLobClient(orgId: number): Promise<LobClientResult> {
       );
       
       if (decrypted.apiKey) {
-        console.log(`[DirectMailService] Using organization Lob credentials for org ${orgId}`);
+        logger.info(`[DirectMailService] Using organization Lob credentials for org ${orgId}`);
         return {
           client: new Lob({ apiKey: decrypted.apiKey }),
           source: 'organization',
@@ -90,7 +91,7 @@ export async function getLobClient(orgId: number): Promise<LobClientResult> {
       }
     }
   } catch (error) {
-    console.error(`[DirectMailService] Failed to get org Lob credentials for org ${orgId}:`, error);
+    logger.error(`[DirectMailService] Failed to get org Lob credentials for org ${orgId}`, error);
   }
   
   const isProduction = process.env.NODE_ENV === 'production';
@@ -102,7 +103,7 @@ export async function getLobClient(orgId: number): Promise<LobClientResult> {
     throw new Error('Lob API key not configured. Set LOB_LIVE_API_KEY or LOB_TEST_API_KEY environment variable.');
   }
   
-  console.log(`[DirectMailService] Using platform Lob credentials for org ${orgId}`);
+  logger.info(`[DirectMailService] Using platform Lob credentials for org ${orgId}`);
   return {
     client: new Lob({ apiKey }),
     source: 'platform',
@@ -172,7 +173,7 @@ async function recordUsage(organizationId: number, metadata: Record<string, any>
 export async function sendPostcard(options: SendPostcardOptions): Promise<SendResult> {
   const { organizationId, senderIdentity, recipientName, recipientAddress, frontHtml, backHtml, size = '4x6' } = options;
   
-  console.log(`[DirectMailService] Sending postcard for org ${organizationId} to ${recipientName}`);
+  logger.info(`[DirectMailService] Sending postcard for org ${organizationId} to ${recipientName}`);
   
   const { client, source } = await getLobClient(organizationId);
   
@@ -186,7 +187,7 @@ export async function sendPostcard(options: SendPostcardOptions): Promise<SendRe
   }
   
   if (source === 'organization') {
-    console.log(`[DirectMailService] Skipping credit usage for org ${organizationId} - using org credentials`);
+    logger.info(`[DirectMailService] Skipping credit usage for org ${organizationId} - using org credentials`);
   }
   
   try {
@@ -198,7 +199,7 @@ export async function sendPostcard(options: SendPostcardOptions): Promise<SendRe
       size,
     });
     
-    console.log(`[DirectMailService] Postcard sent successfully: ${result.id} (source: ${source})`);
+    logger.info(`[DirectMailService] Postcard sent successfully: ${result.id} (source: ${source})`);
     
     if (!skipCredits) {
       await recordUsage(organizationId, { type: 'postcard', lobId: result.id, recipient: recipientName });
@@ -211,7 +212,7 @@ export async function sendPostcard(options: SendPostcardOptions): Promise<SendRe
       credentialSource: source,
     };
   } catch (error: any) {
-    console.error('[DirectMailService] Postcard send failed:', error);
+    logger.error('[DirectMailService] Postcard send failed', error);
     throw new Error(`Failed to send postcard: ${error.message || 'Unknown error'}`);
   }
 }
@@ -219,7 +220,7 @@ export async function sendPostcard(options: SendPostcardOptions): Promise<SendRe
 export async function sendLetter(options: SendLetterOptions): Promise<SendResult> {
   const { organizationId, senderIdentity, recipientName, recipientAddress, htmlContent, color = false, doubleSided = false } = options;
   
-  console.log(`[DirectMailService] Sending letter for org ${organizationId} to ${recipientName}`);
+  logger.info(`[DirectMailService] Sending letter for org ${organizationId} to ${recipientName}`);
   
   const { client, source } = await getLobClient(organizationId);
   
@@ -233,7 +234,7 @@ export async function sendLetter(options: SendLetterOptions): Promise<SendResult
   }
   
   if (source === 'organization') {
-    console.log(`[DirectMailService] Skipping credit usage for org ${organizationId} - using org credentials`);
+    logger.info(`[DirectMailService] Skipping credit usage for org ${organizationId} - using org credentials`);
   }
   
   try {
@@ -245,7 +246,7 @@ export async function sendLetter(options: SendLetterOptions): Promise<SendResult
       double_sided: doubleSided,
     });
     
-    console.log(`[DirectMailService] Letter sent successfully: ${result.id} (source: ${source})`);
+    logger.info(`[DirectMailService] Letter sent successfully: ${result.id} (source: ${source})`);
     
     if (!skipCredits) {
       await recordUsage(organizationId, { type: 'letter', lobId: result.id, recipient: recipientName });
@@ -258,13 +259,13 @@ export async function sendLetter(options: SendLetterOptions): Promise<SendResult
       credentialSource: source,
     };
   } catch (error: any) {
-    console.error('[DirectMailService] Letter send failed:', error);
+    logger.error('[DirectMailService] Letter send failed', error);
     throw new Error(`Failed to send letter: ${error.message || 'Unknown error'}`);
   }
 }
 
 export async function verifyAddress(address: RecipientAddress): Promise<VerifyAddressResult> {
-  console.log(`[DirectMailService] Verifying address: ${address.line1}, ${address.city}, ${address.state} ${address.zip}`);
+  logger.info(`[DirectMailService] Verifying address: ${address.line1}, ${address.city}, ${address.state} ${address.zip}`);
   
   try {
     const client = getPlatformLobClient() as any;
@@ -280,7 +281,7 @@ export async function verifyAddress(address: RecipientAddress): Promise<VerifyAd
     const deliverability = result.deliverability || 'unknown';
     const isValid = deliverability === 'deliverable' || deliverability === 'deliverable_unnecessary_unit';
     
-    console.log(`[DirectMailService] Address verification result: ${deliverability}, isValid: ${isValid}`);
+    logger.info(`[DirectMailService] Address verification result: ${deliverability}, isValid: ${isValid}`);
     
     return {
       isValid,
@@ -306,7 +307,7 @@ export async function verifyAddress(address: RecipientAddress): Promise<VerifyAd
       },
     };
   } catch (error: any) {
-    console.error('[DirectMailService] Address verification failed:', error);
+    logger.error('[DirectMailService] Address verification failed', error);
     
     const errorMessage = error.message || 'Address verification failed';
     

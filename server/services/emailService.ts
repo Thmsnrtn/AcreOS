@@ -2,6 +2,7 @@ import { SESClient, SendEmailCommand, GetSendQuotaCommand } from '@aws-sdk/clien
 import { storage } from '../storage';
 import { decryptJsonCredentials } from './encryption';
 import { emailCircuitBreaker } from '../utils/circuitBreaker';
+import { logger } from "../utils/logger";
 
 interface AWSCredentials {
   accessKeyId: string;
@@ -144,9 +145,9 @@ async function getOrgCredentials(orgId: number): Promise<AWSCredentials | null> 
       try {
         const platformCreds = getPlatformCredentials();
         fromEmail = platformCreds.fromEmail;
-        console.log('[EmailService] Using platform from-email for org-specific AWS credentials');
+        logger.info('[EmailService] Using platform from-email for org-specific AWS credentials');
       } catch {
-        console.warn('[EmailService] Org credentials have no verified sender and platform fallback unavailable');
+        logger.warn('[EmailService] Org credentials have no verified sender and platform fallback unavailable');
         return null;
       }
     }
@@ -160,7 +161,7 @@ async function getOrgCredentials(orgId: number): Promise<AWSCredentials | null> 
       source: 'organization',
     };
   } catch (error) {
-    console.error('[EmailService] Failed to get org credentials:', error);
+    logger.error('[EmailService] Failed to get org credentials', error);
     return null;
   }
 }
@@ -342,7 +343,7 @@ export class EmailService {
           durationMs,
         });
         
-        console.log(`[EmailService] Email sent via AWS SES (${source}) to ${toAddresses.join(', ')}, MessageId: ${messageId}, attempts: ${attempts}, duration: ${durationMs}ms`);
+        logger.info(`[EmailService] Email sent via AWS SES (${source}) to ${toAddresses.join(', ')}, MessageId: ${messageId}, attempts: ${attempts}, duration: ${durationMs}ms`);
         
         return { success: true, messageId, attempts };
       } catch (error: any) {
@@ -350,19 +351,19 @@ export class EmailService {
         const errorType = categorizeError(error);
         const retryable = isRetryableError(error);
         
-        console.warn(`[EmailService] Send attempt ${attempts} failed:`, {
+        logger.warn(`[EmailService] Send attempt ${attempts} failed`, { metadata: { detail: {
           error: error.message,
           errorType,
           retryable,
           to: toAddresses.join(', '),
-        });
+        } } });
         
         if (!retryable || attempt >= config.maxRetries) {
           break;
         }
         
         const backoffMs = calculateBackoff(attempt, config);
-        console.log(`[EmailService] Retrying in ${backoffMs}ms (attempt ${attempt + 2}/${config.maxRetries + 1})`);
+        logger.info(`[EmailService] Retrying in ${backoffMs}ms (attempt ${attempt + 2}/${config.maxRetries + 1})`);
         await delay(backoffMs);
       }
     }
@@ -383,13 +384,13 @@ export class EmailService {
       durationMs,
     });
     
-    console.error('[EmailService] Failed to send email after all attempts:', {
+    logger.error('[EmailService] Failed to send email after all attempts', undefined, { metadata: { detail: {
       error: errorMessage,
       errorType,
       attempts,
       to: toAddresses.join(', '),
       durationMs,
-    });
+    } } });
     
     return { 
       success: false, 
@@ -435,7 +436,7 @@ export class EmailService {
       }
     }
     
-    console.log(`[EmailService] Bulk send complete: ${sent} sent, ${failed} failed, ${emails.length} total`);
+    logger.info(`[EmailService] Bulk send complete: ${sent} sent, ${failed} failed, ${emails.length} total`);
     
     return { 
       results, 
@@ -517,7 +518,7 @@ export class EmailService {
         sentLast24Hours: response.SentLast24Hours || 0,
       };
     } catch (error) {
-      console.error('[EmailService] Failed to get send quota:', error);
+      logger.error('[EmailService] Failed to get send quota', error);
       return null;
     }
   }
@@ -839,7 +840,7 @@ export class AWSSESDomainService {
       const response = await client.send(command);
       return response.Identities || [];
     } catch (error) {
-      console.error('[AWSSESDomainService] Failed to list identities:', error);
+      logger.error('[AWSSESDomainService] Failed to list identities', error);
       return [];
     }
   }

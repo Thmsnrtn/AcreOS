@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * CEO Absence Mode — Sovereign Company Protocol v6
  *
@@ -17,6 +16,7 @@ import { ceoAbsenceMode, companyAgents, agentActionLog, decisionsInboxItems, war
 import { eq, desc, gte, and, sql } from "drizzle-orm";
 import { routeAITask, TaskComplexity } from "./aiRouter";
 import { companyAgentService } from "./companyAgents";
+import { logger } from "../utils/logger";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -504,7 +504,7 @@ Write a brief, scannable return briefing. Start with the most important thing. U
         await crisisLeadershipEngine.seedTradeoffs();
       } catch {}
 
-      console.log("[CEOAbsence] Transitioned to Mission Mode (Permanent Sovereignty)");
+      logger.info("[CEOAbsence] Transitioned to Mission Mode (Permanent Sovereignty)");
 
       return {
         success: true,

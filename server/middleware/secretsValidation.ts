@@ -1,3 +1,4 @@
+import { logger } from "../utils/logger";
 /**
  * T15 — Secrets Management Validation
  *
@@ -28,7 +29,7 @@ const SECRETS: SecretSpec[] = [
   { key: "FOUNDER_EMAIL", required: false, description: "Comma-separated founder email(s) for admin access" },
 
   // Task #21: Field encryption key — required in production (AES-256 key = 32 bytes = 64 hex chars)
-  // Generate: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+  // Generate: node -e "logger.info(require('crypto').randomBytes(32).toString('hex'))"
   { key: "FIELD_ENCRYPTION_KEY", required: false, minLength: 64, description: "AES-256 field encryption key (64 hex chars = 32 bytes)", productionOnly: true },
 
   // AI — OpenRouter is the primary AI provider (routes to Claude, GPT-4o, DeepSeek)
@@ -98,24 +99,24 @@ export function validateSecrets(): void {
 
   // Log warnings
   if (warnings.length > 0) {
-    console.warn("\n⚠️  [secrets] Configuration warnings:");
-    warnings.forEach((w) => console.warn(`   ${w}`));
-    console.warn("");
+    logger.warn("\n⚠️  [secrets] Configuration warnings:");
+    warnings.forEach((w) => logger.warn(`   ${w}`));
+    logger.warn("");
   }
 
   // Fail hard on errors in production
   if (errors.length > 0) {
-    console.error("\n🚨 [secrets] FATAL: Missing required environment variables:");
-    errors.forEach((e) => console.error(`   ${e}`));
+    logger.error("\n🚨 [secrets] FATAL: Missing required environment variables:");
+    errors.forEach((e) => logger.error(`   ${e}`));
     if (isProduction) {
-      console.error("\nServer cannot start in production with missing required secrets.\n");
+      logger.error("\nServer cannot start in production with missing required secrets.\n");
       process.exit(1);
     } else {
-      console.error("\n(Running in development — continuing with warnings)\n");
+      logger.error("\n(Running in development — continuing with warnings)\n");
     }
   }
 
   if (errors.length === 0 && warnings.length === 0) {
-    console.log("[secrets] All required environment variables validated ✓");
+    logger.info("[secrets] All required environment variables validated ✓");
   }
 }

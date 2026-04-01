@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Founder v6 Routes — Sovereign Company Protocol v6
  *
@@ -18,6 +17,7 @@ import { agentInitiativeService } from "./services/agentInitiatives";
 import { performanceReviewService } from "./services/agentPerformanceReviews";
 import { playbookService } from "./services/agentPlaybooks";
 import { ceoAbsenceService } from "./services/ceoAbsenceMode";
+import { logger } from "./utils/logger";
 
 export function registerFounderV6Routes(app: Express) {
 
@@ -259,9 +259,9 @@ export function registerFounderV6Routes(app: Express) {
     try {
       await workflowEngine.seedWorkflows();
       await playbookService.seedPlaybooks();
-      console.log("[v6] Seeded workflows and playbooks");
+      logger.info("[v6] Seeded workflows and playbooks");
     } catch (err) {
-      console.error("[v6] Seed error:", err);
+      logger.error("[v6] Seed error", err);
     }
   }, 5000);
 }

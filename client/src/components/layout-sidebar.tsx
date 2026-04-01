@@ -14,25 +14,23 @@ import {
   GitBranch,
   Calculator,
   Crown,
+  Home,
+  Newspaper,
+  Settings2,
+  ToggleLeft,
+  Receipt,
   HelpCircle,
   PieChart,
-  ListTodo,
   Store,
   FileText,
   Zap,
   TrendingUp,
-  Workflow,
   Brain,
   Activity,
   Target,
   Shield,
-  BarChart2,
-  GraduationCap,
-  Search,
-  Eye,
   Globe,
   ShieldCheck,
-  Gavel,
   DollarSign,
   FileSearch,
   ChevronLeft,
@@ -41,14 +39,9 @@ import {
   ChevronUp,
   MapPin,
   Package,
-  CreditCard,
-  Phone,
-  Star,
   Wand2,
-  Compass,
   Landmark,
   Bell,
-  Moon,
   Sparkles,
   X,
 } from "lucide-react";
@@ -270,27 +263,21 @@ interface NavModule {
   href: string;
   description?: string;
   showUnreadBadge?: boolean;
+  founderOnly?: boolean;
   children?: NavChild[];
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Navigation structure — 9 core modules
+// Navigation structure — consolidated into logical groups
 // ─────────────────────────────────────────────────────────────────────
 const NAV_MODULES: NavModule[] = [
+  // ── Core ──────────────────────────────────────────────────────────
   {
     id: "dashboard",
     label: "Dashboard",
     icon: LayoutDashboard,
     href: "/",
     description: "Overview of your real estate business",
-  },
-  {
-    id: "inbox",
-    label: "Inbox",
-    icon: Inbox,
-    href: "/inbox",
-    description: "Messages and communications",
-    showUnreadBadge: true,
   },
   {
     id: "leads",
@@ -301,17 +288,12 @@ const NAV_MODULES: NavModule[] = [
     children: [
       { label: "All Leads", icon: Users, href: "/leads", description: "All your leads" },
       { label: "Blind Offer Wizard", icon: Wand2, href: "/blind-offer-wizard", description: "Calculate Podolsky-formula offers step-by-step" },
-      { label: "Campaigns", icon: Mail, href: "/campaigns", description: "Email, SMS, and direct mail campaigns" },
-      { label: "Sequences", icon: Zap, href: "/sequences", description: "Automated follow-up sequences" },
-      { label: "A/B Tests", icon: BarChart2, href: "/ab-tests", description: "Campaign split tests" },
-      { label: "Voice Analytics", icon: Phone, href: "/voice-analytics", description: "Call recording analysis and insights" },
-      { label: "Field Scout", icon: Compass, href: "/field-scout", description: "Offline-first mobile companion for field visits" },
     ],
   },
   {
-    id: "inventory",
-    label: "Inventory",
-    icon: Package,
+    id: "properties",
+    label: "Properties",
+    icon: Map,
     href: "/properties",
     description: "Properties you own or evaluate",
     children: [
@@ -321,8 +303,8 @@ const NAV_MODULES: NavModule[] = [
     ],
   },
   {
-    id: "pipeline",
-    label: "Pipeline",
+    id: "deals",
+    label: "Deals",
     icon: GitBranch,
     href: "/deals",
     description: "Visualize your deal flow",
@@ -330,37 +312,37 @@ const NAV_MODULES: NavModule[] = [
       { label: "Deal Pipeline", icon: GitBranch, href: "/deals", description: "Visualize your deal flow" },
       { label: "Marketplace", icon: Store, href: "/marketplace", description: "Buy and sell deals" },
       { label: "Listings", icon: FileText, href: "/listings", description: "Properties for sale" },
-      { label: "Mkt Analytics", icon: BarChart2, href: "/marketplace-analytics", description: "Marketplace performance metrics" },
+    ],
+  },
+
+  // ── Outreach ──────────────────────────────────────────────────────
+  {
+    id: "campaigns",
+    label: "Campaigns",
+    icon: Mail,
+    href: "/campaigns",
+    description: "Email, SMS, and direct mail campaigns",
+    children: [
+      { label: "Campaigns", icon: Mail, href: "/campaigns", description: "Email, SMS, and direct mail campaigns" },
+      { label: "Sequences", icon: Zap, href: "/sequences", description: "Automated follow-up sequences" },
     ],
   },
   {
-    id: "tasks",
-    label: "Tasks",
-    icon: ListTodo,
-    href: "/tasks",
-    description: "Action items and workflows",
-    children: [
-      { label: "Tasks", icon: ListTodo, href: "/tasks", description: "Your action items" },
-      { label: "Automation", icon: Zap, href: "/automation", description: "Automated workflows and rules" },
-      { label: "Workflows", icon: Workflow, href: "/workflows", description: "Design and manage workflows" },
-    ],
+    id: "inbox",
+    label: "Inbox",
+    icon: Inbox,
+    href: "/inbox",
+    description: "Messages and communications",
+    showUnreadBadge: true,
   },
+
+  // ── Intelligence ──────────────────────────────────────────────────
   {
-    id: "finance",
-    label: "Finance",
-    icon: Banknote,
-    href: "/finance",
-    description: "Seller financing and portfolio",
-    children: [
-      { label: "Finance", icon: Banknote, href: "/finance", description: "Seller-financed notes" },
-      { label: "Freedom Meter", icon: Star, href: "/freedom-meter", description: "Note income vs. expenses — track your path to financial freedom" },
-      { label: "Night Cap", icon: Moon, href: "/night-cap", description: "End-of-day passive income review — Nite Cap command center" },
-      { label: "Cash Flow", icon: Activity, href: "/cash-flow", description: "12-month cash flow forecasting" },
-      { label: "Capital Mkts", icon: DollarSign, href: "/capital-markets", description: "Note securitization and lenders" },
-      { label: "Portfolio", icon: PieChart, href: "/portfolio", description: "Investment portfolio view" },
-      { label: "Optimizer", icon: BarChart2, href: "/portfolio-optimizer", description: "Monte Carlo simulation" },
-      { label: "Fee Dashboard", icon: CreditCard, href: "/fee-dashboard", description: "Transaction fee tracking" },
-    ],
+    id: "ai-hub",
+    label: "AI Hub",
+    icon: Bot,
+    href: "/ai",
+    description: "AI assistant, agents, and automation",
   },
   {
     id: "intelligence",
@@ -370,44 +352,70 @@ const NAV_MODULES: NavModule[] = [
     description: "AI-powered insights and analysis",
     children: [
       { label: "Insights", icon: TrendingUp, href: "/analytics", description: "Analytics and market insights" },
-      { label: "AVM™", icon: TrendingUp, href: "/avm", description: "AcreOS Valuation Model" },
-      { label: "Bulk AVM", icon: TrendingUp, href: "/avm-bulk", description: "Bulk valuations via CSV upload" },
+      { label: "Cohort Retention", icon: TrendingUp, href: "/analytics#retention", description: "Cohort retention curves and revenue" },
+      { label: "AVM", icon: TrendingUp, href: "/avm", description: "AcreOS Valuation Model" },
+      { label: "Land Credit", icon: Shield, href: "/land-credit", description: "Proprietary 300-850 land scoring" },
       { label: "Markets", icon: Globe, href: "/market-intelligence", description: "Market analysis and price trends" },
-      { label: "Watchlist", icon: Eye, href: "/market-watchlist", description: "Monitor counties for market alerts" },
       { label: "Counties", icon: Landmark, href: "/counties", description: "USDA + Census county intelligence" },
       { label: "Acq. Radar", icon: Target, href: "/radar", description: "AI-scored deal opportunities" },
-      { label: "Land Credit", icon: Shield, href: "/land-credit", description: "Proprietary 300–850 land scoring" },
-      { label: "Deal Hunter", icon: Search, href: "/deal-hunter", description: "Automated deal sourcing" },
-      { label: "Seller Intent", icon: Brain, href: "/seller-intent", description: "AI-predicted seller motivation" },
-      { label: "Price Optimizer", icon: DollarSign, href: "/price-optimizer", description: "AI pricing for offers and listings" },
-      { label: "Deal Patterns", icon: GitBranch, href: "/deal-patterns", description: "Replicate successful deal structures" },
-      { label: "Vision AI", icon: Eye, href: "/vision-ai", description: "AI photo and satellite analysis" },
-      { label: "Negotiation", icon: Brain, href: "/negotiation", description: "AI negotiation copilot" },
-      { label: "Tax Research", icon: Gavel, href: "/tax-researcher", description: "Tax lien auctions and delinquent properties" },
-      { label: "Compliance", icon: ShieldCheck, href: "/compliance", description: "Regulatory monitoring" },
-      { label: "Regulatory", icon: ShieldCheck, href: "/regulatory-intel", description: "State regulatory profiles and alerts" },
       { label: "Doc Intel", icon: FileSearch, href: "/document-intelligence", description: "AI contract parsing" },
-      { label: "AI Assistant", icon: Bot, href: "/command-center", description: "AI assistants and automation" },
-      { label: "Agent Hub", icon: Brain, href: "/agent-command-center", description: "Autonomous agent control center" },
-      { label: "Academy", icon: GraduationCap, href: "/academy", description: "Real estate education" },
+      { label: "Compliance", icon: ShieldCheck, href: "/compliance", description: "Regulatory monitoring" },
     ],
   },
+
+  // ── Finance ───────────────────────────────────────────────────────
   {
-    id: "sovereign",
-    label: "Sovereign",
-    icon: Crown,
-    href: "/sovereign",
-    description: "Autonomous organization oversight",
+    id: "finance",
+    label: "Finance",
+    icon: Banknote,
+    href: "/finance",
+    description: "Seller financing and portfolio",
     children: [
-      { label: "Dashboard", icon: Activity, href: "/sovereign", description: "Sovereign org health overview" },
-      { label: "Board of Directors", icon: Shield, href: "/board-of-directors", description: "Agent negotiations and delegation" },
-      { label: "Agent Performance", icon: TrendingUp, href: "/agent-performance", description: "Trust scores and revenue attribution" },
-      { label: "Memory Browser", icon: Brain, href: "/memory-browser", description: "Browse agent cognitive memories" },
-      { label: "Event Log", icon: Zap, href: "/event-log", description: "Real-time event mesh stream" },
-      { label: "Job Health", icon: Activity, href: "/job-health", description: "Background job monitoring" },
-      { label: "Collaboration", icon: Users, href: "/agent-collaboration", description: "Agent messaging, delegation, and consensus" },
+      { label: "Finance", icon: Banknote, href: "/finance", description: "Seller-financed notes" },
+      { label: "Cash Flow", icon: Activity, href: "/cash-flow", description: "12-month cash flow forecasting" },
+      { label: "Portfolio", icon: PieChart, href: "/portfolio", description: "Investment portfolio view" },
+      { label: "Capital Mkts", icon: DollarSign, href: "/capital-markets", description: "Note securitization and lenders" },
     ],
   },
+
+  // ── My Business (Founder only) ────────────────────────────────────
+  {
+    id: "founder-business",
+    label: "My Business",
+    icon: Crown,
+    href: "/founder-home",
+    description: "Your business at a glance",
+    founderOnly: true,
+    children: [
+      { label: "Home", icon: Home, href: "/founder-home", description: "Morning briefing and action items" },
+      { label: "Revenue", icon: DollarSign, href: "/executive-dashboard", description: "Monthly revenue, customers, and growth" },
+      { label: "Daily Digest", icon: Newspaper, href: "/founder/daily-digest", description: "Daily summary of your business" },
+      { label: "My Agents", icon: Bot, href: "/founder/agents", description: "Your automated team members" },
+    ],
+  },
+
+  // ── Advanced (Founder only, collapsed by default) ────────────────
+  {
+    id: "founder-advanced",
+    label: "Advanced",
+    icon: Settings2,
+    href: "/sovereign",
+    description: "System monitoring and technical details",
+    founderOnly: true,
+    children: [
+      { label: "System Health", icon: Activity, href: "/sovereign", description: "Overall system status" },
+      { label: "Agent Performance", icon: TrendingUp, href: "/agent-performance", description: "How well your agents are performing" },
+      { label: "Feature Flags", icon: ToggleLeft, href: "/founder/feature-flags", description: "Enable or disable platform features" },
+      { label: "Board of Directors", icon: Shield, href: "/board-of-directors", description: "Review agent decisions" },
+      { label: "Job Health", icon: Activity, href: "/job-health", description: "Background task monitoring" },
+      { label: "Collaboration", icon: Users, href: "/agent-collaboration", description: "Communicate with your agents" },
+      { label: "Memory Browser", icon: Brain, href: "/memory-browser", description: "Browse system memory" },
+      { label: "Event Log", icon: Zap, href: "/event-log", description: "System activity log" },
+      { label: "AI Costs", icon: Receipt, href: "/founder/ai-observatory", description: "AI usage and costs" },
+    ],
+  },
+
+  // ── Settings ──────────────────────────────────────────────────────
   {
     id: "settings",
     label: "Settings",
@@ -417,7 +425,6 @@ const NAV_MODULES: NavModule[] = [
     children: [
       { label: "Settings", icon: Settings, href: "/settings", description: "Account and preferences" },
       { label: "Tools", icon: Calculator, href: "/tools", description: "Calculators and utilities" },
-      { label: "VA Dashboard", icon: Users, href: "/va-dashboard", description: "Virtual assistant management" },
       { label: "Data Export", icon: Package, href: "/data-export", description: "Export your data as CSV or JSON" },
       { label: "Help & Support", icon: HelpCircle, href: "/help", description: "Help topics and support" },
     ],
@@ -425,7 +432,7 @@ const NAV_MODULES: NavModule[] = [
 ];
 
 // Default expanded modules (open by default)
-const DEFAULT_EXPANDED = new Set<string>(["leads", "inventory", "pipeline"]);
+const DEFAULT_EXPANDED = new Set<string>(["leads", "properties", "deals", "founder-business"]);
 
 const COLLAPSED_STORAGE_KEY = "sidebar-collapsed";
 const EXPANDED_STORAGE_KEY = "sidebar-expanded-modules";
@@ -441,28 +448,8 @@ const routePrefetchMap: Record<string, string> = {
   "/finance": "/api/notes",
   "/campaigns": "/api/campaigns",
   "/inbox": "/api/inbox",
+  "/ai": "/api/pax/insights",
 };
-
-const navItems = [
-  { label: "Dashboard", icon: LayoutDashboard, href: "/", description: "Overview of your real estate business", section: "Overview" },
-  { label: "Inbox", icon: Inbox, href: "/inbox", showUnreadBadge: true, description: "Messages and communications", section: "Work" },
-  { label: "Leads (CRM)", icon: Users, href: "/leads", description: "Manage your land seller leads", section: "Work" },
-  { label: "Inventory", icon: Map, href: "/properties", description: "Track properties you own or evaluate", section: "Work" },
-  { label: "Deal Pipeline", icon: GitBranch, href: "/deals", description: "Visualize your deal flow", section: "Work" },
-  { label: "Tasks", icon: ListTodo, href: "/tasks", description: "Your action items and to-do list", section: "Work" },
-  { label: "Automation", icon: Zap, href: "/automation", description: "Set up automated workflows and rules", section: "Automation" },
-  { label: "Workflows", icon: Workflow, href: "/workflows", description: "Design and manage complex workflows", section: "Automation" },
-  { label: "AI", icon: Bot, href: "/command-center", description: "AI assistants and automation", section: "Automation" },
-  { label: "Insights", icon: TrendingUp, href: "/analytics", description: "Analytics and market insights", section: "Insights" },
-  { label: "Finance", icon: Banknote, href: "/finance", description: "Manage seller-financed notes", section: "Insights" },
-  { label: "Portfolio", icon: PieChart, href: "/portfolio", description: "View your investment portfolio", section: "Insights" },
-  { label: "Listings", icon: Store, href: "/listings", description: "Properties available for sale", section: "Sales" },
-  { label: "Documents", icon: FileText, href: "/documents", description: "Store and manage documents", section: "Sales" },
-  { label: "Marketing", icon: Mail, href: "/campaigns", description: "Email, SMS, and direct mail campaigns", section: "Sales" },
-  { label: "Tools", icon: Calculator, href: "/tools", description: "Calculators and utility tools", section: "Operations" },
-  { label: "Help & Support", icon: HelpCircle, href: "/help", description: "Help topics and support resources", section: "Operations" },
-  { label: "Settings", icon: Settings, href: "/settings", description: "Configure your account and preferences", section: "Operations" },
-] as const;
 
 // ─────────────────────────────────────────────────────────────────────
 // Provider — wrap app at root so page-shell can consume
@@ -523,13 +510,15 @@ export function Sidebar() {
   // or hidden for the user's investor type.
   // While flags are loading we show everything (prevents flicker on initial load)
   const visibleModules = flagsLoading
-    ? NAV_MODULES
+    ? NAV_MODULES.filter((module) => !module.founderOnly || isFounder)
     : NAV_MODULES.map((module) => ({
         ...module,
         children: module.children?.filter(
           (child) => isRouteEnabled(child.href) && !hiddenForType.includes(child.href)
         ),
       })).filter((module) => {
+        // Hide founder-only modules for non-founders
+        if (module.founderOnly && !isFounder) return false;
         // If the module itself has a controlled route, check it
         if (!isRouteEnabled(module.href)) return false;
         if (hiddenForType.includes(module.href)) return false;
@@ -648,18 +637,18 @@ export function Sidebar() {
         {/* Founder link */}
         {isFounder && (
           <DesktopNavItem
-            href="/founder"
+            href="/founder-home"
             icon={Crown}
             label="Founder Dashboard"
-            isActive={location === "/founder"}
+            isActive={location === "/founder-home"}
             isCollapsed={isCollapsed}
             accentClass={
-              location === "/founder"
+              location === "/founder-home"
                 ? "bg-amber-500 text-white shadow-md"
                 : "bg-amber-500/10 text-amber-600 hover:bg-amber-500/20"
             }
             iconClass={
-              location === "/founder" ? "text-white" : "text-amber-500"
+              location === "/founder-home" ? "text-white" : "text-amber-500"
             }
             testId="link-founder-dashboard"
             onMouseEnter={() => {}}
@@ -906,7 +895,6 @@ export function Sidebar() {
           <div className="flex items-center gap-1">
             <PaxNotificationBadge />
             <ProviderStatusBadges />
-            <PaxNotificationBadge />
             <NotificationCenter />
           </div>
         </div>
@@ -917,11 +905,11 @@ export function Sidebar() {
       <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
         {isFounder && (
           <Link
-            href="/founder"
+            href="/founder-home"
             onClick={onNavClick}
             className={cn(
               "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-150 group mb-2 min-h-[44px]",
-              location === "/founder"
+              location === "/founder-home"
                 ? "bg-amber-500 text-white shadow-md"
                 : "bg-amber-500/10 text-amber-600 hover:bg-amber-500/20"
             )}
@@ -930,7 +918,7 @@ export function Sidebar() {
             <Crown
               className={cn(
                 "w-5 h-5",
-                location === "/founder" ? "text-white" : "text-amber-500"
+                location === "/founder-home" ? "text-white" : "text-amber-500"
               )}
             />
             <span className="font-medium text-sm">Founder Dashboard</span>

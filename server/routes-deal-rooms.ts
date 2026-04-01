@@ -15,8 +15,8 @@
  * POST   /deal-rooms/:id/notifications           — send notification to participants
  */
 
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 import { Router, type Request, type Response } from 'express';
+import type { AuthenticatedRequest } from './types/request';
 import { db } from './db';
 import {
   dealRooms,
@@ -27,12 +27,13 @@ import { eq, desc, and, asc } from 'drizzle-orm';
 import crypto from 'crypto';
 import { asyncHandler } from './middleware/asyncHandler';
 import { validateUrl } from './middleware/fileUploadSecurity';
+import { logger } from "./utils/logger";
 
 const router = Router();
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function getUser(req: Request) {
+function getUser(req: AuthenticatedRequest) {
   const user = req.user;
   if (!user) throw new Error('Not authenticated');
   return user;
@@ -49,9 +50,10 @@ async function getDealRoomOrFail(id: number, res: Response) {
 }
 
 /** Broadcast to all WebSocket clients subscribed to a deal room */
-function broadcastToDealRoom(req: Request, dealRoomId: number, event: object) {
+function broadcastToDealRoom(req: Request | AuthenticatedRequest, dealRoomId: number, event: object) {
   try {
-    const wss = (req as any).wss;
+    // @ts-expect-error -- wss is attached by WebSocket middleware at runtime
+    const wss = req.wss;
     if (!wss) return;
     const payload = JSON.stringify({ dealRoomId, ...event });
     wss.clients?.forEach((client: any) => {
@@ -66,7 +68,7 @@ function broadcastToDealRoom(req: Request, dealRoomId: number, event: object) {
 
 // ─── GET /deal-rooms/:id ──────────────────────────────────────────────────────
 
-router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
+router.get('/:id', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
     const dealRoom = await getDealRoomOrFail(parseInt(req.params.id), res);
     if (!dealRoom) return;
@@ -78,7 +80,7 @@ router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
 
 // ─── GET /deal-rooms/:id/messages ─────────────────────────────────────────────
 
-router.get('/:id/messages', asyncHandler(async (req: Request, res: Response) => {
+router.get('/:id/messages', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
     const dealRoomId = parseInt(req.params.id);
     const limit = Math.min(100, parseInt(String(req.query.limit ?? '50')));
@@ -100,7 +102,7 @@ router.get('/:id/messages', asyncHandler(async (req: Request, res: Response) => 
 
 // ─── POST /deal-rooms/:id/messages ────────────────────────────────────────────
 
-router.post('/:id/messages', asyncHandler(async (req: Request, res: Response) => {
+router.post('/:id/messages', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
     const dealRoomId = parseInt(req.params.id);
     const user = getUser(req);
@@ -134,7 +136,7 @@ router.post('/:id/messages', asyncHandler(async (req: Request, res: Response) =>
 
 // ─── GET /deal-rooms/:id/documents ────────────────────────────────────────────
 
-router.get('/:id/documents', asyncHandler(async (req: Request, res: Response) => {
+router.get('/:id/documents', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
     const dealRoomId = parseInt(req.params.id);
 
@@ -166,7 +168,7 @@ router.get('/:id/documents', asyncHandler(async (req: Request, res: Response) =>
 
 // ─── POST /deal-rooms/:id/documents ───────────────────────────────────────────
 
-router.post('/:id/documents', asyncHandler(async (req: Request, res: Response) => {
+router.post('/:id/documents', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
     const dealRoomId = parseInt(req.params.id);
     const user = getUser(req);
@@ -240,7 +242,7 @@ router.post('/:id/documents', asyncHandler(async (req: Request, res: Response) =
 
 // ─── GET /deal-rooms/:id/documents/:docId/download ────────────────────────────
 
-router.get('/:id/documents/:docId/download', asyncHandler(async (req: Request, res: Response) => {
+router.get('/:id/documents/:docId/download', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
     const dealRoomId = parseInt(req.params.id);
     const docId = parseInt(req.params.docId);
@@ -275,7 +277,7 @@ router.get('/:id/documents/:docId/download', asyncHandler(async (req: Request, r
 
 // ─── POST /deal-rooms/:id/participants ────────────────────────────────────────
 
-router.post('/:id/participants', asyncHandler(async (req: Request, res: Response) => {
+router.post('/:id/participants', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
     const dealRoomId = parseInt(req.params.id);
     const dealRoom = await getDealRoomOrFail(dealRoomId, res);
@@ -326,7 +328,7 @@ router.post('/:id/participants', asyncHandler(async (req: Request, res: Response
       });
     } catch (emailErr) {
       // Non-fatal: participant is already added; log and continue
-      console.error('[deal-rooms] Failed to send invitation email:', emailErr);
+      logger.error('[deal-rooms] Failed to send invitation email', undefined, { metadata: { detail: emailErr } });
     }
 
     broadcastToDealRoom(req, dealRoomId, { type: 'participant_added', participant: newParticipant });
@@ -339,7 +341,7 @@ router.post('/:id/participants', asyncHandler(async (req: Request, res: Response
 
 // ─── PATCH /deal-rooms/:id/participants/:userId ───────────────────────────────
 
-router.patch('/:id/participants/:userId', asyncHandler(async (req: Request, res: Response) => {
+router.patch('/:id/participants/:userId', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
     const dealRoomId = parseInt(req.params.id);
     const { userId } = req.params;
@@ -368,7 +370,7 @@ router.patch('/:id/participants/:userId', asyncHandler(async (req: Request, res:
 
 // ─── DELETE /deal-rooms/:id/participants/:userId ──────────────────────────────
 
-router.delete('/:id/participants/:userId', asyncHandler(async (req: Request, res: Response) => {
+router.delete('/:id/participants/:userId', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
     const dealRoomId = parseInt(req.params.id);
     const { userId } = req.params;
@@ -401,7 +403,7 @@ router.delete('/:id/participants/:userId', asyncHandler(async (req: Request, res
 
 // ─── GET /deal-rooms/:id/activity ─────────────────────────────────────────────
 
-router.get('/:id/activity', asyncHandler(async (req: Request, res: Response) => {
+router.get('/:id/activity', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
     const dealRoomId = parseInt(req.params.id);
     const limit = Math.min(100, parseInt(String(req.query.limit ?? '50')));
@@ -451,7 +453,7 @@ router.get('/:id/activity', asyncHandler(async (req: Request, res: Response) => 
 
 // ─── POST /deal-rooms/:id/nda ─────────────────────────────────────────────────
 
-router.post('/:id/nda', asyncHandler(async (req: Request, res: Response) => {
+router.post('/:id/nda', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
     const dealRoomId = parseInt(req.params.id);
     const user = getUser(req);
@@ -526,7 +528,7 @@ Verification Code: ${crypto.randomBytes(8).toString('hex').toUpperCase()}
 
 // ─── POST /deal-rooms/:id/notifications ───────────────────────────────────────
 
-router.post('/:id/notifications', asyncHandler(async (req: Request, res: Response) => {
+router.post('/:id/notifications', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
     const dealRoomId = parseInt(req.params.id);
     const user = getUser(req);

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * T43 — AVM Training Data Feedback Loop
  *

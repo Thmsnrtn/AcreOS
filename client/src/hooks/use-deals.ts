@@ -1,12 +1,55 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { apiRequest, STALE_TIMES, CACHE_TIMES } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 import type { Deal, InsertDeal } from "@shared/schema";
 
+export interface PaginatedDealsResponse {
+  data: Deal[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+/**
+ * Fetch deals with server-side pagination.
+ * Returns { data, total, page, pageSize, totalPages }.
+ */
+export function useDealsPaginated(params: { page: number; pageSize: number; sortBy?: string; sortOrder?: string }) {
+  const queryParams = new URLSearchParams();
+  queryParams.set("page", String(params.page));
+  queryParams.set("pageSize", String(params.pageSize));
+  if (params.sortBy) queryParams.set("sortBy", params.sortBy);
+  if (params.sortOrder) queryParams.set("sortOrder", params.sortOrder);
+  const url = `/api/deals?${queryParams.toString()}`;
+
+  return useQuery<PaginatedDealsResponse>({
+    queryKey: ['/api/deals', "paginated", params.page, params.pageSize, params.sortBy, params.sortOrder],
+    queryFn: async () => {
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch deals");
+      return res.json();
+    },
+    staleTime: STALE_TIMES.short,
+    gcTime: CACHE_TIMES.medium,
+    placeholderData: keepPreviousData,
+  });
+}
+
+/**
+ * Legacy hook: returns the flat deals array for backward compatibility.
+ * Fetches page 1 with large pageSize from the paginated endpoint.
+ */
 export function useDeals() {
   return useQuery<Deal[]>({
     queryKey: ['/api/deals'],
+    queryFn: async () => {
+      const res = await fetch('/api/deals?page=1&pageSize=1000', { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch deals");
+      const json = await res.json();
+      return json.data ?? json;
+    },
     staleTime: STALE_TIMES.short,
     gcTime: CACHE_TIMES.medium,
   });

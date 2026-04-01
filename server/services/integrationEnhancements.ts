@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Integration & Ecosystem Enhancements — Items 261-280
  * Zapier webhooks, Google Sheets, Slack, iCal, etc.

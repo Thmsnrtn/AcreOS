@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Spend Autonomy Layer — Sovereign Company Protocol v9: The Self-Running Company
  *

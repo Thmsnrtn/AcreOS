@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import crypto from "crypto";
+import { logger } from "../utils/logger";
 
 // ============================================
 // AI RESPONSE CACHE — Dual-layer
@@ -697,7 +698,7 @@ export async function routeAITask(
     const cached = getCachedResponse(cacheKey);
     if (cached) {
       cacheHits++;
-      console.log(`[AIRouter] Cache HIT (exact) for ${task.taskType}`);
+      logger.info(`[AIRouter] Cache HIT (exact) for ${task.taskType}`);
       recordAITelemetry({ orgId: config.orgId, taskType: task.taskType, provider: cached.provider, model: cached.model, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCostCents: 0, latencyMs: 0, cacheHit: true, complexity: task.complexity, success: true });
       return { content: cached.content, provider: cached.provider, model: cached.model, usage: cached.usage, estimatedCost: 0 };
     }
@@ -706,7 +707,7 @@ export async function routeAITask(
     const semanticHit = findSemanticCacheHit(task);
     if (semanticHit) {
       semanticCacheHits++;
-      console.log(`[AIRouter] Cache HIT (semantic) for ${task.taskType}`);
+      logger.info(`[AIRouter] Cache HIT (semantic) for ${task.taskType}`);
       recordAITelemetry({ orgId: config.orgId, taskType: task.taskType, provider: semanticHit.provider, model: semanticHit.model, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCostCents: 0, latencyMs: 0, cacheHit: true, complexity: task.complexity, success: true });
       return { content: semanticHit.content, provider: semanticHit.provider, model: semanticHit.model, usage: semanticHit.usage, estimatedCost: 0 };
     }
@@ -717,7 +718,7 @@ export async function routeAITask(
   // ── Model selection ──────────────────────────────────────────────────────────
   const startTime = Date.now();
   const { provider, model, client, maxTokens: dbMaxTokens } = await selectProviderAndModelAsync(task.complexity, task.taskType, config);
-  console.log(`[AIRouter] Routing ${task.taskType} (${task.complexity}) → ${provider}/${model}`);
+  logger.info(`[AIRouter] Routing ${task.taskType} (${task.complexity}) → ${provider}/${model}`);
 
   // ── Primary generation ───────────────────────────────────────────────────────
   let content = '';
@@ -796,7 +797,7 @@ export async function routeAITask(
         null; // Sonnet is the ceiling for auto-cascade; Opus requires explicit routing
 
       if (escalatedModel) {
-        console.log(`[AIRouter] Cascade escalating ${task.taskType}: score=${quality.score}/10 "${quality.reason}" → ${escalatedModel}`);
+        logger.info(`[AIRouter] Cascade escalating ${task.taskType}: score=${quality.score}/10 "${quality.reason}" → ${escalatedModel}`);
         try {
           const escalatedResponse = await client.chat.completions.create({
             model: escalatedModel,
@@ -812,7 +813,7 @@ export async function routeAITask(
             finalModel = escalatedModel;
           }
         } catch (escalationErr) {
-          console.warn(`[AIRouter] Cascade escalation failed, using original response:`, escalationErr);
+          logger.warn(`[AIRouter] Cascade escalation failed, using original response`, { metadata: { detail: escalationErr } });
           // Stick with original content — fail gracefully
         }
       }
@@ -1065,7 +1066,7 @@ function recordAITelemetry(payload: TelemetryPayload): void {
       });
     } catch (err) {
       // Telemetry is non-critical — log and continue
-      console.warn('[AIRouter] Failed to record telemetry:', err);
+      logger.warn('[AIRouter] Failed to record telemetry', { metadata: { detail: err } });
     }
   })();
 }

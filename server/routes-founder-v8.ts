@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Founder v8 Routes — Sovereign Company Protocol v8: The Living Organization
  */

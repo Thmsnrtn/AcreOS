@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 /**
  * Revenue Operations Agent — monitors MRR, usage limits, payment failures, and upgrade opportunities.
  */
@@ -7,6 +6,7 @@ import { BaseAgent, type AgentDecision } from "./base-agent";
 import { db } from "../storage";
 import { sql } from "drizzle-orm";
 import { TIER_LIMITS, type SubscriptionTier } from "../services/usageLimits";
+import { logger } from "../utils/logger";
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
@@ -173,7 +173,7 @@ export class RevenueAgent extends BaseAgent {
     };
 
     await this.storeBrief("weekly", brief);
-    console.log(`[${this.name}] Weekly revenue: MRR ${brief.mrrFormatted}, ${payingCustomers} paying`);
+    logger.info(`[${this.name}] Weekly revenue: MRR ${brief.mrrFormatted}, ${payingCustomers} paying`);
   }
 }
 

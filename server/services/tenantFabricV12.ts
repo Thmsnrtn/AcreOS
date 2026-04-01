@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Tenant Context Fabric — Sovereign Company Protocol v12: FOUNDATION
  *

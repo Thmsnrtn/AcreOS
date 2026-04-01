@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * SCP Memory System v2 — Sovereign Company Protocol
  *

@@ -1,4 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
+import { getRedisClient } from "../utils/redis";
+import { logger } from "../utils/logger";
 
 // ── Rate Limit Hit Monitoring ────────────────────────────────────────────────
 // Tracks how many times each key has been rate-limited in the current hour.
@@ -22,11 +24,11 @@ function recordRateLimitHit(key: string, endpoint: string): void {
 
   // Escalating log levels: warn at threshold, error at 2×, critical at 5×
   if (entry.count === ALERT_THRESHOLD) {
-    console.warn(`[rate-limit] ALERT: key=${key} has been rate-limited ${entry.count} times in 1h on ${endpoint}`);
+    logger.warn(`Rate limit alert: key=${key} rate-limited ${entry.count} times in 1h`, { metadata: { key, count: entry.count, endpoint } });
   } else if (entry.count === ALERT_THRESHOLD * 2) {
-    console.error(`[rate-limit] HIGH: key=${key} has been rate-limited ${entry.count} times in 1h on ${endpoint} — possible abuse`);
+    logger.error(`Rate limit HIGH: key=${key} rate-limited ${entry.count} times in 1h — possible abuse`);
   } else if (entry.count >= ALERT_THRESHOLD * 5 && entry.count % (ALERT_THRESHOLD * 5) === 0) {
-    console.error(`[rate-limit] CRITICAL: key=${key} rate-limited ${entry.count} times in 1h — likely attack on ${endpoint}`);
+    logger.error(`Rate limit CRITICAL: key=${key} rate-limited ${entry.count} times in 1h — likely attack`);
   }
 }
 
@@ -49,7 +51,7 @@ export function getRateLimitHitStats(): Array<{ key: string; count: number; endp
 }
 
 /**
- * Rate limit entry in the in-memory store
+ * Rate limit entry in the in-memory store (fallback when Redis is unavailable)
  * Uses sliding window algorithm with array of timestamps
  */
 interface RateLimitEntry {
@@ -80,16 +82,12 @@ export const RATE_LIMIT_CONFIGS = {
   public: { maxRequests: 50, windowMs: 60 * 1000 } as RateLimitConfig, // 50 per minute
 } as const;
 
-/**
- * In-memory store for rate limit tracking
- * Key format: "ip:address" or "user:userId"
- */
+// ── In-memory fallback store ─────────────────────────────────────────────────
+// Used only when Redis is unavailable. Per-instance enforcement is still better
+// than no enforcement.
+
 const rateLimitStore = new Map<string, RateLimitEntry>();
 
-/**
- * Cleanup interval to remove old entries and prevent memory leaks
- * Runs every minute
- */
 const CLEANUP_INTERVAL = 60 * 1000;
 
 setInterval(() => {
@@ -98,8 +96,6 @@ setInterval(() => {
 
   const entries = Array.from(rateLimitStore.entries());
   for (const [key, entry] of entries) {
-    // Remove timestamps that are older than the maximum possible window
-    // Keep 2 minutes of history as buffer to handle edge cases
     const maxWindowMs = Math.max(
       RATE_LIMIT_CONFIGS.default.windowMs,
       RATE_LIMIT_CONFIGS.strict.windowMs,
@@ -108,7 +104,6 @@ setInterval(() => {
     );
     const cutoffTime = now - (2 * maxWindowMs);
 
-    // Filter out old timestamps
     const recentTimestamps = entry.timestamps.filter((ts: number) => ts > cutoffTime);
 
     if (recentTimestamps.length === 0) {
@@ -118,20 +113,91 @@ setInterval(() => {
     }
   }
 
-  // Delete entries with no recent activity
   for (const key of keysToDelete) {
     rateLimitStore.delete(key);
   }
 }, CLEANUP_INTERVAL);
 
+// ── Redis-backed sliding window check ────────────────────────────────────────
+// Uses INCR + EXPIRE for a fixed-window counter in Redis. This works correctly
+// across multiple server instances. Falls back to in-memory if Redis is down.
+
+interface RateLimitResult {
+  allowed: boolean;
+  remaining: number;
+  resetTime: number; // epoch ms
+  retryAfterSeconds: number;
+}
+
+async function checkRateLimitRedis(
+  redisKey: string,
+  config: RateLimitConfig,
+): Promise<RateLimitResult | null> {
+  try {
+    const redis = await getRedisClient();
+    if (!redis) return null; // No Redis — caller should use in-memory fallback
+
+    const now = Date.now();
+    const windowSeconds = Math.ceil(config.windowMs / 1000);
+    const fullKey = `rl:${redisKey}`;
+
+    const count = await redis.incr(fullKey);
+    if (count === 1) {
+      // First request in this window — set expiry
+      await redis.expire(fullKey, windowSeconds);
+    }
+
+    // Get the TTL to calculate reset time
+    const ttl = await redis.ttl(fullKey);
+    const resetTime = now + (ttl > 0 ? ttl * 1000 : config.windowMs);
+
+    const allowed = count <= config.maxRequests;
+    const remaining = Math.max(0, config.maxRequests - count);
+    const retryAfterSeconds = allowed ? 0 : Math.ceil((resetTime - now) / 1000);
+
+    return { allowed, remaining, resetTime, retryAfterSeconds };
+  } catch (err) {
+    logger.error("Redis rate limit check failed — falling back to in-memory", err instanceof Error ? err : undefined);
+    return null; // Signal caller to use in-memory fallback
+  }
+}
+
+function checkRateLimitInMemory(
+  key: string,
+  config: RateLimitConfig,
+): RateLimitResult {
+  const now = Date.now();
+  const windowStart = now - config.windowMs;
+
+  let entry = rateLimitStore.get(key);
+  if (!entry) {
+    entry = { timestamps: [] };
+    rateLimitStore.set(key, entry);
+  }
+
+  entry.timestamps = entry.timestamps.filter((ts) => ts > windowStart);
+
+  if (entry.timestamps.length >= config.maxRequests) {
+    const oldestTimestamp = entry.timestamps[0];
+    const resetTime = oldestTimestamp + config.windowMs;
+    const retryAfterSeconds = Math.ceil((resetTime - now) / 1000);
+    return { allowed: false, remaining: 0, resetTime, retryAfterSeconds };
+  }
+
+  entry.timestamps.push(now);
+  const remaining = config.maxRequests - entry.timestamps.length;
+  const resetTime = entry.timestamps[0] + config.windowMs;
+
+  return { allowed: true, remaining, resetTime, retryAfterSeconds: 0 };
+}
+
 /**
- * Create a rate limiting middleware with sliding window algorithm
+ * Create a rate limiting middleware with Redis-backed sliding window.
  *
- * The sliding window algorithm:
- * 1. Removes timestamps older than the current window
- * 2. Checks if the number of remaining timestamps exceeds the limit
- * 3. If not exceeded, adds current timestamp and allows request
- * 4. Sets appropriate response headers
+ * Strategy:
+ * 1. Try Redis INCR + EXPIRE for cross-instance enforcement
+ * 2. If Redis is unavailable, fall back to per-instance in-memory sliding window
+ * 3. Never block requests due to rate limiter infrastructure errors (fail open)
  *
  * @param config - Rate limit configuration with maxRequests and windowMs
  * @param keyFunction - Optional function to generate rate limit key from request
@@ -141,7 +207,6 @@ export function createRateLimiter(
   config: RateLimitConfig,
   keyFunction?: KeyFunction
 ) {
-  // Default key function uses IP address
   const getKey =
     keyFunction ||
     ((req: Request) => {
@@ -149,58 +214,39 @@ export function createRateLimiter(
       return `ip:${ip}`;
     });
 
-  return (req: Request, res: Response, next: NextFunction) => {
+  return async (req: Request, res: Response, next: NextFunction) => {
     const key = getKey(req);
-    const now = Date.now();
-    const windowStart = now - config.windowMs;
 
-    // Get or create entry for this key
-    let entry = rateLimitStore.get(key);
-    if (!entry) {
-      entry = { timestamps: [] };
-      rateLimitStore.set(key, entry);
-    }
+    try {
+      // Try Redis first for cross-instance enforcement
+      const redisResult = await checkRateLimitRedis(key, config);
+      const result = redisResult ?? checkRateLimitInMemory(key, config);
 
-    // Sliding window: remove timestamps outside the current window
-    entry.timestamps = entry.timestamps.filter((ts) => ts > windowStart);
-
-    // Check if limit is exceeded
-    if (entry.timestamps.length >= config.maxRequests) {
-      const oldestTimestamp = entry.timestamps[0];
-      const resetTime = oldestTimestamp + config.windowMs;
-      const retryAfterSeconds = Math.ceil((resetTime - now) / 1000);
-
-      // Set standard rate limit response headers
+      // Set rate limit headers
       res.setHeader("X-RateLimit-Limit", config.maxRequests.toString());
-      res.setHeader("X-RateLimit-Remaining", "0");
-      res.setHeader(
-        "X-RateLimit-Reset",
-        Math.ceil(resetTime / 1000).toString()
-      );
-      res.setHeader("Retry-After", retryAfterSeconds.toString());
+      res.setHeader("X-RateLimit-Remaining", result.remaining.toString());
+      res.setHeader("X-RateLimit-Reset", Math.ceil(result.resetTime / 1000).toString());
 
-      recordRateLimitHit(key, req.path);
+      if (!result.allowed) {
+        res.setHeader("Retry-After", result.retryAfterSeconds.toString());
+        recordRateLimitHit(key, req.path);
 
-      return res.status(429).json({
-        message: `Rate limit exceeded. Maximum ${config.maxRequests} requests per ${Math.round(config.windowMs / 1000)} seconds allowed.`,
-        retryAfter: retryAfterSeconds,
+        return res.status(429).json({
+          error: "rate_limit_exceeded",
+          message: `Rate limit exceeded. Maximum ${config.maxRequests} requests per ${Math.round(config.windowMs / 1000)} seconds allowed.`,
+          retryAfter: result.retryAfterSeconds,
+          statusCode: 429,
+        });
+      }
+
+      next();
+    } catch (err) {
+      // Fail open — never block requests due to rate limiter errors
+      logger.error("Rate limiter middleware error — allowing request", err instanceof Error ? err : undefined, {
+        metadata: { key },
       });
+      next();
     }
-
-    // Add current request timestamp
-    entry.timestamps.push(now);
-
-    // Calculate remaining requests and reset time
-    const remaining = config.maxRequests - entry.timestamps.length;
-    const oldestTimestamp = entry.timestamps[0];
-    const resetTime = oldestTimestamp + config.windowMs;
-
-    // Set rate limit headers for successful requests
-    res.setHeader("X-RateLimit-Limit", config.maxRequests.toString());
-    res.setHeader("X-RateLimit-Remaining", remaining.toString());
-    res.setHeader("X-RateLimit-Reset", Math.ceil(resetTime / 1000).toString());
-
-    next();
   };
 }
 
