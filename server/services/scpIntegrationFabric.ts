@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * SCP v3 Integration Fabric — Sovereign Company Protocol
  *

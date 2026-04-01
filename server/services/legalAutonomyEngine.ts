@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Legal Autonomy Engine — Sovereign Company Protocol
  *

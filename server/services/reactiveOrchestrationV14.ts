@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Reactive Orchestration Engine — Sovereign Company Protocol v14
  *

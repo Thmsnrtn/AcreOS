@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * AI Advisor Team — Sovereign Company Protocol v15: Proactive Business Intelligence
  *

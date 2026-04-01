@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Scenario War Room — Sovereign Company Protocol v10: The Conscious Organization
  *

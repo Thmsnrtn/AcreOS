@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Agent Action Executors — Sovereign Company Protocol v4
  *

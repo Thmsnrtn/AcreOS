@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * SCP Evolution Engine v2 — Sovereign Company Protocol
  *

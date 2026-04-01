@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * CEO Absence Mode — Sovereign Company Protocol v6
  *

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Permanent Sovereignty Engine — Sovereign Company Protocol Phase 20 (The Endgame)
  *

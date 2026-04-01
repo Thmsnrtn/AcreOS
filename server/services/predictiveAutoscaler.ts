@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Infrastructure Self-Management — Sovereign Company Protocol Phase 13
  *
