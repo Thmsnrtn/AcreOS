@@ -728,11 +728,18 @@ export function registerAIRoutes(app: Express): void {
   // MESSAGE RATING
   // ============================================
 
+  const messageRatingSchema = z.object({
+    rating: z.union([z.literal(1), z.literal(-1)], { required_error: "rating must be 1 or -1" }),
+  });
+
   api.patch("/api/ai/messages/:id/rating", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const { rating } = req.body; // 1 or -1
+      const parsed = messageRatingSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+      const { rating } = parsed.data;
       const msgId = parseInt(req.params.id);
-      if (rating !== 1 && rating !== -1) return Errors.badRequest(res, "rating must be 1 or -1");
       const { aiMessages } = await import("@shared/schema");
       const { eq: _eq } = await import("drizzle-orm");
       await db.update(aiMessages).set({ rating } as any).where(_eq(aiMessages.id, msgId));
@@ -929,11 +936,20 @@ export function registerAIRoutes(app: Express): void {
   });
 
   // POST /api/ai/connectors/:id/connect — save credentials and mark connected
+  const connectConnectorSchema = z.object({
+    credentials: z.record(z.unknown()).optional(),
+    settings: z.record(z.unknown()).optional(),
+  });
+
   api.post("/api/ai/connectors/:id/connect", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
       const connectorId = req.params.id;
-      const { credentials, settings } = req.body;
+      const parsed = connectConnectorSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+      const { credentials, settings } = parsed.data;
       const { getConnector } = await import("./services/connectors/registry");
       const def = getConnector(connectorId);
       if (!def) return Errors.notFound(res, "Connector");
