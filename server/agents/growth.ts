@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 /**
  * Growth Intelligence Agent — tracks signups, activations, channels, and produces growth briefs.
  */

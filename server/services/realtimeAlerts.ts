@@ -21,7 +21,6 @@
  * in-process in-memory queues (single-instance only).
  */
 
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 import { db } from '../db';
 import {
   organizations,

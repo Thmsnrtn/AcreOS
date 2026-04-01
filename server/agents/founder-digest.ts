@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 /**
  * Founder Daily Digest Agent — aggregates all agent activity into a single daily briefing.
  */

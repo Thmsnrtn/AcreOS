@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Closed-Loop Learning Engine — Sovereign Company Protocol v10
  *

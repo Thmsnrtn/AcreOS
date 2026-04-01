@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 /**
  * Revenue Operations Agent — monitors MRR, usage limits, payment failures, and upgrade opportunities.
  */
