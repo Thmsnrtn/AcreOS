@@ -132,8 +132,13 @@ import { usePersistedGisFilters } from "@/hooks/use-persisted-gis-filters";
 import { Bot } from "lucide-react";
 
 export default function PropertiesPage() {
-  const propertiesQuery = useProperties();
-  const { data: properties, isLoading, isError, error, isRefetching } = propertiesQuery;
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const propertiesQuery = useProperties({ page: currentPage, pageSize });
+  const propertiesResponse = propertiesQuery.data;
+  const properties = propertiesResponse?.data;
+  const serverTotal = propertiesResponse?.total ?? 0;
+  const { isLoading, isError, error, isRefetching } = propertiesQuery;
   const refetch = propertiesQuery.refetch;
   const delayedLoading = useDelayedLoading(isLoading, 200);
   const searchString = useSearch();

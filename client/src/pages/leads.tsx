@@ -1553,7 +1553,7 @@ export default function LeadsPage() {
                           ))}
                         </TableBody>
                       </Table>
-                      {(filteredLeads?.length ?? 0) > pageSize && (
+                      {serverTotal > pageSize && (
                         <ListPagination
                           currentPage={safeCurrentPage}
                           totalItems={totalLeadItems}
@@ -1693,7 +1693,7 @@ export default function LeadsPage() {
                           </div>
                         ))}
                       </div>
-                      {(filteredLeads?.length ?? 0) > pageSize && (
+                      {serverTotal > pageSize && (
                         <ListPagination
                           currentPage={safeCurrentPage}
                           totalItems={totalLeadItems}

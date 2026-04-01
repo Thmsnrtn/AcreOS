@@ -550,9 +550,19 @@ export function registerAIRoutes(app: Express): void {
     }
   });
 
+  const updateProjectSchema = z.object({
+    name: z.string().min(1).optional(),
+    description: z.string().nullable().optional(),
+    isActive: z.boolean().optional(),
+  });
+
   api.patch("/api/ai/projects/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const { name, description, isActive } = req.body;
+      const parsed = updateProjectSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+      const { name, description, isActive } = parsed.data;
       await storage.updatePaxProject(parseInt(req.params.id), { name, description, isActive });
       res.json({ success: true });
     } catch (err: any) {
@@ -577,11 +587,22 @@ export function registerAIRoutes(app: Express): void {
     }
   });
 
+  const projectFileUploadSchema = z.object({
+    fileName: z.string().min(1, "fileName is required"),
+    content: z.string().min(1, "content is required"),
+    mimeType: z.string().min(1, "mimeType is required"),
+    sizeBytes: z.number().int().min(0).optional(),
+  });
+
   api.post("/api/ai/projects/:id/files", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const userId = req.user?.id ?? "unknown";
       const projectId = parseInt(req.params.id);
-      const { fileName, content, mimeType, sizeBytes } = req.body;
+      const parsed = projectFileUploadSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+      const { fileName, content, mimeType, sizeBytes } = parsed.data;
 
       const { formatFileContentFromBase64 } = await import("./ai/executive");
       let extractedContent = await formatFileContentFromBase64({ name: fileName, content, mimeType });
@@ -627,12 +648,22 @@ export function registerAIRoutes(app: Express): void {
     }
   });
 
+  const createScheduledTaskSchema = z.object({
+    name: z.string().min(1, "name is required"),
+    prompt: z.string().min(1, "prompt is required"),
+    schedule: z.string().min(1, "schedule is required"),
+    timezone: z.string().optional(),
+  });
+
   api.post("/api/ai/scheduled-tasks", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
       const userId = req.user?.id ?? "unknown";
-      const { name, prompt, schedule, timezone } = req.body;
-      if (!name || !prompt || !schedule) return Errors.badRequest(res, "name, prompt, schedule required");
+      const parsed = createScheduledTaskSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+      const { name, prompt, schedule, timezone } = parsed.data;
 
       const { computeNextRun } = await import("./services/paxScheduler");
       const nextRunAt = computeNextRun(schedule, timezone ?? "America/New_York");
@@ -644,9 +675,19 @@ export function registerAIRoutes(app: Express): void {
     }
   });
 
+  const updateScheduledTaskSchema = z.object({
+    isActive: z.boolean().optional(),
+    schedule: z.string().optional(),
+    timezone: z.string().optional(),
+  });
+
   api.patch("/api/ai/scheduled-tasks/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const { isActive, schedule, timezone } = req.body;
+      const parsed = updateScheduledTaskSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+      const { isActive, schedule, timezone } = parsed.data;
       const updates: any = { isActive };
       if (schedule) {
         const { computeNextRun } = await import("./services/paxScheduler");
