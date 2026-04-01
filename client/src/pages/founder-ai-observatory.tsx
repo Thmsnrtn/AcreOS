@@ -41,6 +41,8 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { staggerContainer, staggerItem, collapsibleContent } from "@/lib/animations";
 import { format, formatDistanceToNow } from "date-fns";
+import { InfoTooltip } from "@/components/info-tooltip";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
