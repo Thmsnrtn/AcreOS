@@ -598,6 +598,185 @@ export function registerAnalyticsRoutes(app: Express): void {
   });
 
   // ============================================
+  // COHORT RETENTION DASHBOARD
+  // Groups organizations/leads by signup week/month,
+  // computes retention curves, revenue per cohort,
+  // and lead conversion rates.
+  // ============================================
+
+  api.get("/api/analytics/cohort-dashboard", isAuthenticated, getOrCreateOrg, async (req: any, res) => {
+    try {
+      const org = getOrganization(req as AuthenticatedRequest);
+      const granularity = (req.query.granularity as string) || "week";
+      const weeksBack = parseInt(req.query.weeksBack as string) || 12;
+
+      const now = new Date();
+      const cutoff = new Date(now);
+      if (granularity === "month") {
+        cutoff.setMonth(cutoff.getMonth() - weeksBack);
+      } else {
+        cutoff.setDate(cutoff.getDate() - weeksBack * 7);
+      }
+
+      // Truncation expression based on granularity
+      const truncExpr = granularity === "month"
+        ? sql`date_trunc('month', ${leads.createdAt})`
+        : sql`date_trunc('week', ${leads.createdAt})`;
+
+      // 1. Signup cohorts: leads grouped by created_at period
+      const cohortSignups = await db
+        .select({
+          cohort: truncExpr.as("cohort"),
+          total: count().as("total"),
+        })
+        .from(leads)
+        .where(
+          and(
+            eq(leads.organizationId, org.id),
+            gte(leads.createdAt, cutoff)
+          )
+        )
+        .groupBy(sql`cohort`)
+        .orderBy(sql`cohort`);
+
+      // 2. Active leads per cohort (leads that have deals or were updated recently)
+      const retentionData = await db
+        .select({
+          cohort: truncExpr.as("cohort"),
+          weeksAfter: sql<number>`
+            EXTRACT(EPOCH FROM (${deals.createdAt} - date_trunc(${granularity === "month" ? sql`'month'` : sql`'week'`}, ${leads.createdAt})))
+            / (7 * 86400)
+          `.as("weeks_after"),
+          activeCount: count().as("active_count"),
+        })
+        .from(leads)
+        .innerJoin(deals, and(
+          eq(deals.organizationId, org.id),
+          sql`${deals.propertyId} IS NOT NULL`
+        ))
+        .where(
+          and(
+            eq(leads.organizationId, org.id),
+            gte(leads.createdAt, cutoff)
+          )
+        )
+        .groupBy(sql`cohort`, sql`weeks_after`)
+        .orderBy(sql`cohort`, sql`weeks_after`);
+
+      // 3. Revenue per cohort (closed deals linked to leads in each cohort)
+      const revenueByCohort = await db
+        .select({
+          cohort: truncExpr.as("cohort"),
+          totalRevenue: sql<string>`COALESCE(SUM(CAST(${deals.acceptedAmount} AS numeric)), 0)`.as("total_revenue"),
+          closedDeals: count().as("closed_deals"),
+        })
+        .from(leads)
+        .innerJoin(deals, and(
+          eq(deals.organizationId, org.id),
+          eq(deals.status, "closed")
+        ))
+        .where(
+          and(
+            eq(leads.organizationId, org.id),
+            gte(leads.createdAt, cutoff)
+          )
+        )
+        .groupBy(sql`cohort`)
+        .orderBy(sql`cohort`);
+
+      // 4. Lead conversion rates by cohort
+      const conversionByCohort = await db
+        .select({
+          cohort: truncExpr.as("cohort"),
+          totalLeads: count().as("total_leads"),
+          contacted: sql<number>`COUNT(CASE WHEN ${leads.status} != 'new' THEN 1 END)`.as("contacted"),
+          converted: sql<number>`COUNT(CASE WHEN ${leads.status} = 'closed' THEN 1 END)`.as("converted"),
+        })
+        .from(leads)
+        .where(
+          and(
+            eq(leads.organizationId, org.id),
+            gte(leads.createdAt, cutoff)
+          )
+        )
+        .groupBy(sql`cohort`)
+        .orderBy(sql`cohort`);
+
+      // Build cohort labels and combine data
+      const cohortMap = new Map<string, any>();
+
+      for (const row of cohortSignups) {
+        const label = new Date(row.cohort as string).toLocaleDateString("en-US", {
+          month: "short",
+          day: granularity === "week" ? "numeric" : undefined,
+          year: "numeric",
+        });
+        cohortMap.set(String(row.cohort), {
+          label,
+          cohortDate: row.cohort,
+          signups: Number(row.total),
+          retention: [] as { week: number; active: number; rate: number }[],
+          revenue: 0,
+          closedDeals: 0,
+          totalLeads: 0,
+          contacted: 0,
+          converted: 0,
+          contactRate: 0,
+          conversionRate: 0,
+        });
+      }
+
+      // Merge retention data
+      for (const row of retentionData) {
+        const cohort = cohortMap.get(String(row.cohort));
+        if (cohort) {
+          const weekBucket = Math.floor(Number(row.weeksAfter));
+          if (weekBucket >= 0 && weekBucket <= weeksBack) {
+            cohort.retention.push({
+              week: weekBucket,
+              active: Number(row.activeCount),
+              rate: cohort.signups > 0 ? Number(row.activeCount) / cohort.signups : 0,
+            });
+          }
+        }
+      }
+
+      // Merge revenue data
+      for (const row of revenueByCohort) {
+        const cohort = cohortMap.get(String(row.cohort));
+        if (cohort) {
+          cohort.revenue = Number(row.totalRevenue);
+          cohort.closedDeals = Number(row.closedDeals);
+        }
+      }
+
+      // Merge conversion data
+      for (const row of conversionByCohort) {
+        const cohort = cohortMap.get(String(row.cohort));
+        if (cohort) {
+          cohort.totalLeads = Number(row.totalLeads);
+          cohort.contacted = Number(row.contacted);
+          cohort.converted = Number(row.converted);
+          cohort.contactRate = cohort.totalLeads > 0 ? cohort.contacted / cohort.totalLeads : 0;
+          cohort.conversionRate = cohort.totalLeads > 0 ? cohort.converted / cohort.totalLeads : 0;
+        }
+      }
+
+      const cohorts = Array.from(cohortMap.values());
+
+      res.json({
+        granularity,
+        weeksBack,
+        cohorts,
+        generatedAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      logger.error("Cohort dashboard error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
+    }
+  });
+
+  // ============================================
   // T92 — ATTRIBUTION ANALYTICS
   // Which campaigns, channels, and touch numbers convert leads?
   // Provides ROI scoring per campaign and channel.
