@@ -396,7 +396,7 @@ function DecisionCard({
               variant={decision.feedback === "good" ? "default" : "outline"}
               size="sm"
               className="h-7 text-xs gap-1"
-              onClick={() => onFeedback(decision.id, "good")}
+              onClick={() => setPendingFeedback("good")}
             >
               <ThumbsUp className="w-3 h-3" />
               Good call
@@ -405,7 +405,7 @@ function DecisionCard({
               variant={decision.feedback === "different" ? "destructive" : "outline"}
               size="sm"
               className="h-7 text-xs gap-1"
-              onClick={() => onFeedback(decision.id, "different")}
+              onClick={() => setPendingFeedback("different")}
             >
               <ThumbsDown className="w-3 h-3" />
               I'd have decided differently
@@ -445,6 +445,32 @@ function DecisionCard({
             </motion.div>
           )}
         </AnimatePresence>
+
+        <AlertDialog open={!!pendingFeedback} onOpenChange={(open) => { if (!open) setPendingFeedback(null); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {pendingFeedback === "good" ? "Confirm positive feedback?" : "Flag this decision?"}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {pendingFeedback === "good"
+                  ? `You're confirming that the AI made a good call on: "${decision.summary}". This feedback helps the system learn your preferences.`
+                  : `You're indicating you would have decided differently on: "${decision.summary}". This feedback will be used to calibrate future AI decisions and may change how similar situations are handled.`}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={() => {
+                if (pendingFeedback) {
+                  onFeedback(decision.id, pendingFeedback);
+                  setPendingFeedback(null);
+                }
+              }}>
+                Yes, submit feedback
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </motion.div>
   );
