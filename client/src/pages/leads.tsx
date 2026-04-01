@@ -1,5 +1,6 @@
 import { PageShell } from "@/components/page-shell";
 import { PaxContextButton } from "@/components/pax-context-button";
+import { ListPagination, usePagination } from "@/components/list-pagination";
 import { useLeads, useCreateLead, useUpdateLead, useDeleteLead } from "@/hooks/use-leads";
 import { useProperties } from "@/hooks/use-properties";
 import { useTeamMembers, useUserPermissions, getRoleBadgeStyle, getRoleLabel } from "@/hooks/use-organization";
@@ -684,6 +685,8 @@ export default function LeadsPage() {
   const [isBulkUpdating, setIsBulkUpdating] = useState(false);
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const { toast } = useToast();
 
   const handleSelectAll = (checked: boolean) => {
@@ -747,6 +750,7 @@ export default function LeadsPage() {
 
   const handleStageFilterChange = (value: string) => {
     setStageFilter(value);
+    setCurrentPage(1);
     if (value === "all") {
       setLocation("/leads");
     } else {
@@ -947,6 +951,25 @@ export default function LeadsPage() {
     
     return result;
   }, [leads, search, stageFilter, assigneeFilter, gisFilters, sortOrder]);
+
+  // Reset to page 1 when filters change
+  const filteredCount = filteredLeads?.length ?? 0;
+  const { paginatedItems: paginatedLeads, totalItems: totalLeadItems, currentPage: safeCurrentPage } = usePagination(
+    filteredLeads ?? [],
+    currentPage,
+    pageSize
+  );
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    // Scroll to top of the list area
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handlePageSizeChange = (size: number) => {
+    setPageSize(size);
+    setCurrentPage(1);
+  };
 
   const handleDelete = () => {
     if (deletingLead) {
@@ -1400,7 +1423,7 @@ export default function LeadsPage() {
                               </TableCell>
                             </TableRow>
                           )}
-                          {filteredLeads?.map((lead) => (
+                          {paginatedLeads.map((lead) => (
                             <TableRow key={lead.id} className="group" data-testid={`row-lead-${lead.id}`}>
                               <TableCell>
                                 <Checkbox
@@ -1528,6 +1551,16 @@ export default function LeadsPage() {
                           ))}
                         </TableBody>
                       </Table>
+                      {(filteredLeads?.length ?? 0) > pageSize && (
+                        <ListPagination
+                          currentPage={safeCurrentPage}
+                          totalItems={totalLeadItems}
+                          pageSize={pageSize}
+                          onPageChange={handlePageChange}
+                          onPageSizeChange={handlePageSizeChange}
+                          className="border-t px-4"
+                        />
+                      )}
                     </div>
 
                     {/* Mobile Card View */}
@@ -1566,9 +1599,9 @@ export default function LeadsPage() {
                         </div>
                       )}
                       <div className="divide-y">
-                        {filteredLeads?.map((lead) => (
-                          <div 
-                            key={lead.id} 
+                        {paginatedLeads.map((lead) => (
+                          <div
+                            key={lead.id}
                             className="p-4 hover-elevate"
                             data-testid={`card-lead-${lead.id}`}
                           >
@@ -1658,12 +1691,22 @@ export default function LeadsPage() {
                           </div>
                         ))}
                       </div>
+                      {(filteredLeads?.length ?? 0) > pageSize && (
+                        <ListPagination
+                          currentPage={safeCurrentPage}
+                          totalItems={totalLeadItems}
+                          pageSize={pageSize}
+                          onPageChange={handlePageChange}
+                          onPageSizeChange={handlePageSizeChange}
+                          className="border-t px-4"
+                        />
+                      )}
                     </div>
                   </>
                 )}
               </div>
             </div>
-            
+
             <div className="lg:w-80 flex-shrink-0">
               <FocusList />
             </div>

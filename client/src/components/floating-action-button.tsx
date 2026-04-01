@@ -45,7 +45,7 @@ export function FloatingActionButton() {
     {
       icon: MessageSquare,
       label: "AI Assistant",
-      href: "/command-center",
+      href: "/ai",
       testId: "fab-ai-assistant",
     },
     {

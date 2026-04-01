@@ -15,6 +15,34 @@ import { logger } from "./utils/logger";
 // Partial update schema for PUT endpoints
 const updatePropertySchema = insertPropertySchema.partial().omit({ organizationId: true });
 
+// Zod schema for comps search
+const compsSearchSchema = z.object({
+  lat: z.number({ required_error: "lat is required" }),
+  lng: z.number({ required_error: "lng is required" }),
+  radius: z.number().min(0.1).max(50).optional(),
+  subjectAcreage: z.number().min(0).optional(),
+  filters: z.object({
+    minAcreage: z.number().optional(),
+    maxAcreage: z.number().optional(),
+    propertyType: z.string().optional(),
+    minSaleDate: z.string().optional(),
+    maxSaleDate: z.string().optional(),
+    maxResults: z.number().int().positive().optional(),
+  }).optional(),
+});
+
+// Zod schema for parcel lookup
+const parcelLookupSchema = z.object({
+  apn: z.string().optional(),
+  lat: z.number().optional(),
+  lng: z.number().optional(),
+  state: z.string().optional(),
+  county: z.string().optional(),
+}).refine(
+  (data) => data.apn || (data.lat !== undefined && data.lng !== undefined),
+  { message: "Provide either APN or coordinates (lat/lng)" }
+);
+
 // Task #202: Zod schemas for bulk operations
 const bulkIdsSchema = z.object({
   ids: z.array(z.number().int().positive()).min(1, "ids must be a non-empty array"),
@@ -481,11 +509,11 @@ export function registerPropertyRoutes(app: Express): void {
   api.post("/api/comps/search", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const { lat, lng, radius, subjectAcreage, filters } = req.body;
-      
-      if (!lat || !lng) {
-        return Errors.badRequest(res, "Latitude and longitude are required");
+      const parsed = compsSearchSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
       }
+      const { lat, lng, radius, subjectAcreage, filters } = parsed.data;
       
       // Check if org has their own Regrid credentials (BYOK) - if so, skip credit check
       const regridIntegration = await storage.getOrganizationIntegration(org.id, 'regrid');
@@ -541,12 +569,12 @@ export function registerPropertyRoutes(app: Express): void {
   api.post("/api/parcels/lookup", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { lookupParcelByAPN, lookupParcelByCoordinates } = await import("./services/parcel");
-      
-      const { apn, lat, lng, state, county } = req.body;
-      
-      if (!apn && (!lat || !lng)) {
-        return Errors.badRequest(res, "Provide either APN or coordinates (lat/lng)");
+
+      const parsed = parcelLookupSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
       }
+      const { apn, lat, lng, state, county } = parsed.data;
       
       let result;
       if (apn) {

@@ -1,5 +1,6 @@
 import { PageShell } from "@/components/page-shell";
 import { PaxContextButton } from "@/components/pax-context-button";
+import { ListPagination, usePagination } from "@/components/list-pagination";
 import { useProperties, useCreateProperty, useDeleteProperty, useEnrichProperty } from "@/hooks/use-properties";
 import { queryClient } from "@/lib/queryClient";
 import { telemetry } from "@/lib/telemetry";
@@ -169,6 +170,8 @@ export default function PropertiesPage() {
   const { filters: gisFilters, setFilters: setGisFilters, resetFilters: resetGisFilters, getShareableUrl } = usePersistedGisFilters();
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [distressFilter, setDistressFilter] = useState<string>("any");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const { toast } = useToast();
   const { mutate: fetchAllParcels, isPending: isFetchingAllParcels } = useFetchAllParcels();
 
@@ -212,6 +215,22 @@ export default function PropertiesPage() {
 
     return result;
   }, [properties, gisFilters, statusFilter, distressFilter]);
+
+  const { paginatedItems: paginatedProperties, totalItems: totalPropertyItems, currentPage: safePropertyPage } = usePagination(
+    filteredProperties,
+    currentPage,
+    pageSize
+  );
+
+  const handlePropertyPageChange = (page: number) => {
+    setCurrentPage(page);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handlePropertyPageSizeChange = (size: number) => {
+    setPageSize(size);
+    setCurrentPage(1);
+  };
 
   const handleSelectAll = (checked: boolean) => {
     if (checked && filteredProperties.length > 0) {
@@ -625,7 +644,7 @@ export default function PropertiesPage() {
                 />
               )}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredProperties.map((property) => (
+              {paginatedProperties.map((property) => (
                 <div key={property.id} className="relative">
                   <div className="absolute top-3 left-3 z-10">
                     <Checkbox

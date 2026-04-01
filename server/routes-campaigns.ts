@@ -176,7 +176,21 @@ export function registerCampaignRoutes(app: Express): void {
   api.post("/api/responses", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const { trackingCode, channel, content, leadId, contactName, contactEmail, contactPhone, metadata } = req.body;
+      const responseBodySchema = z.object({
+        trackingCode: z.string().optional(),
+        channel: z.string().min(1, "channel is required"),
+        content: z.string().optional(),
+        leadId: z.number().int().positive().optional(),
+        contactName: z.string().optional(),
+        contactEmail: z.string().email().optional().or(z.literal("")),
+        contactPhone: z.string().optional(),
+        metadata: z.record(z.unknown()).optional(),
+      });
+      const bodyParsed = responseBodySchema.safeParse(req.body);
+      if (!bodyParsed.success) {
+        return Errors.validationFailed(res, bodyParsed.error.errors);
+      }
+      const { trackingCode, channel, content, leadId, contactName, contactEmail, contactPhone, metadata } = bodyParsed.data;
       
       let campaignId: number | undefined;
       let isAttributed = false;
