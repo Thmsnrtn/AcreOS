@@ -97,6 +97,7 @@ export class CircuitBreaker {
 
   private onSuccessInternal(): void {
     this.consecutiveFailures = 0;
+    this.failureTimestamps = [];
     if (this.state === "HALF_OPEN") {
       this.transition("CLOSED");
     }
