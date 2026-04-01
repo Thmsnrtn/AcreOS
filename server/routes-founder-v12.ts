@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Founder v12 Routes — Sovereign Company Protocol v12: The Real Runtime
  *
