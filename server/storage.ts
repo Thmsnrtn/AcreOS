@@ -41,6 +41,7 @@ import {
   propertyListings,
   parcelSnapshots,
   workspacePresets,
+  fieldScoutVisits, fieldScoutPhotos,
   type Organization, type InsertOrganization,
   type TeamMember, type InsertTeamMember,
   type Lead, type InsertLead,
@@ -215,6 +216,8 @@ import {
   paxProjects, type PaxProject,
   paxProjectFiles, type PaxProjectFile,
   paxScheduledTasks, type PaxScheduledTask,
+  type FieldScoutVisit, type InsertFieldScoutVisit,
+  type FieldScoutPhoto, type InsertFieldScoutPhoto,
 } from "@shared/schema";
 
 // Helper to calculate amortization schedule
