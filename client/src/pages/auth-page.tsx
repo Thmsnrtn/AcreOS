@@ -19,9 +19,9 @@ export default function AuthPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">
       {mode === "sign-up" ? (
-        <SignUp routing="hash" forceRedirectUrl="/" />
+        <SignUp routing="hash" forceRedirectUrl="/today" />
       ) : (
-        <SignIn routing="hash" forceRedirectUrl="/" />
+        <SignIn routing="hash" forceRedirectUrl="/today" />
       )}
     </div>
   );
