@@ -30,7 +30,7 @@ export function getOrganization(req: AuthenticatedRequest): Organization {
 /**
  * Extract the user ID from the request, handling both direct id and claims patterns.
  */
-export function getUserId(req: AuthenticatedRequest): number {
+export function getUserId(req: AuthenticatedRequest): string {
   const user = req.user;
   if (!user?.id) {
     throw new Error("User not found on request — is isAuthenticated middleware applied?");
