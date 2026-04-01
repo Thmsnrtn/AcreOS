@@ -8,6 +8,16 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Brain,
   Target,
   Users,
@@ -43,6 +53,7 @@ type PillarTab = "memory" | "strategy" | "collaboration" | "healing" | "governan
 
 export default function SovereignV13Page() {
   const [activeTab, setActiveTab] = useState<PillarTab>("intelligence");
+  const [pendingAction, setPendingAction] = useState<"consolidate" | "cleanup" | null>(null);
   const { toast } = useToast();
 
   // ─── Queries ─────────────────────────────────────────────────────
@@ -318,10 +329,10 @@ export default function SovereignV13Page() {
                 <CardContent>
                   <div className="text-3xl font-bold">{memoryStats?.workingCount ?? 0}</div>
                   <div className="mt-3 flex gap-2">
-                    <Button size="sm" variant="outline" onClick={() => consolidateMutation.mutate("oracle")}>
+                    <Button size="sm" variant="outline" onClick={() => setPendingAction("consolidate")}>
                       <RefreshCw className="h-3 w-3 mr-1" /><InfoTooltip term="Consolidate" explanation="Archive and organize old records to keep the system fast.">Consolidate</InfoTooltip>
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => cleanupMutation.mutate()}>
+                    <Button size="sm" variant="outline" onClick={() => setPendingAction("cleanup")}>
                       Cleanup Expired
                     </Button>
                   </div>
