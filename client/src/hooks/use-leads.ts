@@ -1,20 +1,39 @@
 import React from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { api, buildUrl, type InsertLead } from "@shared/routes";
 import { STALE_TIMES, CACHE_TIMES } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 
-export function useLeads() {
-  return useQuery({
-    queryKey: [api.leads.list.path],
+export interface PaginatedLeadsResponse {
+  data: any[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+export function useLeads(params?: { page?: number; pageSize?: number; sortBy?: string; sortOrder?: string; stage?: string; assignedTo?: string }) {
+  const queryParams = new URLSearchParams();
+  if (params?.page) queryParams.set("page", String(params.page));
+  if (params?.pageSize) queryParams.set("pageSize", String(params.pageSize));
+  if (params?.sortBy) queryParams.set("sortBy", params.sortBy);
+  if (params?.sortOrder) queryParams.set("sortOrder", params.sortOrder);
+  if (params?.stage) queryParams.set("stage", params.stage);
+  if (params?.assignedTo) queryParams.set("assignedTo", params.assignedTo);
+  const qs = queryParams.toString();
+  const url = qs ? `${api.leads.list.path}?${qs}` : api.leads.list.path;
+
+  return useQuery<PaginatedLeadsResponse>({
+    queryKey: [api.leads.list.path, params?.page ?? 1, params?.pageSize ?? 25, params?.sortBy, params?.sortOrder, params?.stage, params?.assignedTo],
     queryFn: async () => {
-      const res = await fetch(api.leads.list.path, { credentials: "include" });
+      const res = await fetch(url, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch leads");
-      return api.leads.list.responses[200].parse(await res.json());
+      return res.json();
     },
     staleTime: STALE_TIMES.short,
     gcTime: CACHE_TIMES.medium,
+    placeholderData: keepPreviousData,
   });
 }
 

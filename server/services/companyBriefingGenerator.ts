@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Company Briefing Generator — Sovereign Company Protocol
  *

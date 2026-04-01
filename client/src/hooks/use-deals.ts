@@ -1,14 +1,36 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { apiRequest, STALE_TIMES, CACHE_TIMES } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 import type { Deal, InsertDeal } from "@shared/schema";
 
-export function useDeals() {
-  return useQuery<Deal[]>({
-    queryKey: ['/api/deals'],
+export interface PaginatedDealsResponse {
+  data: Deal[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+export function useDeals(params?: { page?: number; pageSize?: number; sortBy?: string; sortOrder?: string }) {
+  const queryParams = new URLSearchParams();
+  if (params?.page) queryParams.set("page", String(params.page));
+  if (params?.pageSize) queryParams.set("pageSize", String(params.pageSize));
+  if (params?.sortBy) queryParams.set("sortBy", params.sortBy);
+  if (params?.sortOrder) queryParams.set("sortOrder", params.sortOrder);
+  const qs = queryParams.toString();
+  const url = qs ? `/api/deals?${qs}` : '/api/deals';
+
+  return useQuery<PaginatedDealsResponse>({
+    queryKey: ['/api/deals', params?.page ?? 1, params?.pageSize ?? 25, params?.sortBy, params?.sortOrder],
+    queryFn: async () => {
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch deals");
+      return res.json();
+    },
     staleTime: STALE_TIMES.short,
     gcTime: CACHE_TIMES.medium,
+    placeholderData: keepPreviousData,
   });
 }
 

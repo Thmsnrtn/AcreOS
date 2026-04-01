@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * T19 — Real-Time Call Transcription Service
  *

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Trust-Based Authority Escalation
  *

@@ -168,11 +168,19 @@ export function registerAIRoutes(app: Express): void {
   });
 
   // Create new conversation
+  const createConversationSchema = z.object({
+    agentRole: z.string().optional().default("executive"),
+  });
+
   api.post("/api/ai/conversations", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
     const user = req.user as any;
     const userId = user.claims?.sub || user.id;
-    const { agentRole = "executive" } = req.body;
+    const parsed = createConversationSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return Errors.validationFailed(res, parsed.error.errors);
+    }
+    const { agentRole } = parsed.data;
     
     const conversation = await storage.createAiConversation({
       organizationId: org.id,
@@ -185,16 +193,23 @@ export function registerAIRoutes(app: Express): void {
   });
   
   // Send a message (non-streaming)
+  const aiChatSchema = z.object({
+    message: z.string().min(1, "Message is required"),
+    conversationId: z.number().int().optional(),
+    agentRole: z.string().optional(),
+    propertyId: z.union([z.number(), z.string()]).optional(),
+  });
+
   api.post("/api/ai/chat", isAuthenticated, getOrCreateOrg, aiLimiter, usageLimitGate("ai_requests"), async (req, res) => {
     try {
       const org = req.organization;
       const user = req.user as any;
       const userId = user.claims?.sub || user.id;
-      const { message, conversationId, agentRole, propertyId } = req.body;
-
-      if (!message) {
-        return Errors.badRequest(res, "Message is required");
+      const parsed = aiChatSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
       }
+      const { message, conversationId, agentRole, propertyId } = parsed.data;
       
       const usageCheck = await checkUsageLimit(org.id, "ai_requests");
       if (!usageCheck.allowed) {
@@ -246,16 +261,35 @@ export function registerAIRoutes(app: Express): void {
   });
   
   // Send a message (streaming)
+  const aiChatStreamSchema = z.object({
+    message: z.string().min(1, "Message is required"),
+    conversationId: z.number().int().optional(),
+    agentRole: z.string().optional(),
+    files: z.array(z.object({
+      name: z.string(),
+      content: z.string(),
+      mimeType: z.string(),
+    })).optional(),
+    propertyId: z.union([z.number(), z.string()]).optional(),
+    mentionedEntities: z.array(z.object({
+      type: z.string(),
+      id: z.union([z.number(), z.string()]),
+      name: z.string().optional(),
+    })).optional(),
+    activeProjectId: z.number().int().optional(),
+    modelOverride: z.string().optional(),
+  });
+
   api.post("/api/ai/chat/stream", isAuthenticated, getOrCreateOrg, aiLimiter, usageLimitGate("ai_requests"), async (req, res) => {
     try {
       const org = req.organization;
       const user = req.user as any;
       const userId = user.claims?.sub || user.id;
-      const { message, conversationId, agentRole, files, propertyId: streamPropertyId, mentionedEntities, activeProjectId, modelOverride } = req.body;
-      
-      if (!message) {
-        return Errors.badRequest(res, "Message is required");
+      const parsed = aiChatStreamSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
       }
+      const { message, conversationId, agentRole, files, propertyId: streamPropertyId, mentionedEntities, activeProjectId, modelOverride } = parsed.data;
       
       const usageCheck = await checkUsageLimit(org.id, "ai_requests");
       if (!usageCheck.allowed) {

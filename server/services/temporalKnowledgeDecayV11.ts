@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Temporal Knowledge Decay — Sovereign Company Protocol v11
  *

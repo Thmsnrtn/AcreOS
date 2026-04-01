@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Undo Registry — Sovereign Company Protocol v4
  *

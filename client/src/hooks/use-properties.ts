@@ -1,20 +1,37 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { api, buildUrl, type InsertProperty } from "@shared/routes";
 import { z } from "zod";
 import { STALE_TIMES, CACHE_TIMES } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 
-export function useProperties() {
-  return useQuery({
-    queryKey: [api.properties.list.path],
+export interface PaginatedPropertiesResponse {
+  data: any[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+export function useProperties(params?: { page?: number; pageSize?: number; sortBy?: string; sortOrder?: string }) {
+  const queryParams = new URLSearchParams();
+  if (params?.page) queryParams.set("page", String(params.page));
+  if (params?.pageSize) queryParams.set("pageSize", String(params.pageSize));
+  if (params?.sortBy) queryParams.set("sortBy", params.sortBy);
+  if (params?.sortOrder) queryParams.set("sortOrder", params.sortOrder);
+  const qs = queryParams.toString();
+  const url = qs ? `${api.properties.list.path}?${qs}` : api.properties.list.path;
+
+  return useQuery<PaginatedPropertiesResponse>({
+    queryKey: [api.properties.list.path, params?.page ?? 1, params?.pageSize ?? 25, params?.sortBy, params?.sortOrder],
     queryFn: async () => {
-      const res = await fetch(api.properties.list.path, { credentials: "include" });
+      const res = await fetch(url, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch properties");
-      return api.properties.list.responses[200].parse(await res.json());
+      return res.json();
     },
     staleTime: STALE_TIMES.short,
     gcTime: CACHE_TIMES.medium,
+    placeholderData: keepPreviousData,
   });
 }
 

@@ -78,16 +78,38 @@ const upload = multer({
   },
 });
 
+// Zod schema for pagination query params
+const paginationQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(25),
+  sortBy: z.string().default("createdAt"),
+  sortOrder: z.enum(["asc", "desc"]).default("desc"),
+});
+
 export function registerPropertyRoutes(app: Express): void {
   const api = app;
 
   // PROPERTIES (INVENTORY)
   // ============================================
-  
+
   api.get("/api/properties", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const properties = await storage.getProperties(org.id);
-    res.json(properties);
+
+    const pagination = paginationQuerySchema.safeParse(req.query);
+    if (!pagination.success) {
+      return Errors.badRequest(res, "Invalid pagination parameters", pagination.error.errors);
+    }
+    const { page, pageSize, sortBy, sortOrder } = pagination.data;
+
+    const result = await storage.getPropertiesPaginated(org.id, { page, pageSize, sortBy, sortOrder });
+
+    res.json({
+      data: result.data,
+      total: result.total,
+      page: result.page,
+      pageSize: result.pageSize,
+      totalPages: result.totalPages,
+    });
   });
   
   api.get("/api/properties/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {

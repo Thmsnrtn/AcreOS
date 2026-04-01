@@ -18,7 +18,7 @@ import { insertLeadSchema, type Lead } from "@shared/schema";
 import { z } from "zod";
 import { useLocation, useSearch } from "wouter";
 
-const { data: leads, isLoading: leadsLoading, isError: leadsError, error: leadsErr, refetch: refetchLeads } = useLeads();
+// Module-level hook removed — use inside component instead
 
 // Phone number formatting helper
 const formatPhoneNumber = (phone: string): string => {
@@ -638,8 +638,14 @@ function TcpaConsentBadge({ lead }: { lead: Lead }) {
 }
 
 export default function LeadsPage() {
-  const { data: leads, isLoading, error, refetch } = useLeads();
-  const { data: properties } = useProperties();
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const { data: leadsResponse, isLoading, error, refetch } = useLeads({ page: currentPage, pageSize });
+  const leads = leadsResponse?.data;
+  const serverTotal = leadsResponse?.total ?? 0;
+  const serverTotalPages = leadsResponse?.totalPages ?? 1;
+  const { data: propertiesResponse } = useProperties({ page: 1, pageSize: 100 });
+  const properties = propertiesResponse?.data;
   const [, setLocation] = useLocation();
   const searchString = useSearch();
   const urlParams = new URLSearchParams(searchString);

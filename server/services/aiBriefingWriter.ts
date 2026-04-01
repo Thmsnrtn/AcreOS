@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * AI Briefing Writer — Sovereign Company Protocol v4
  *

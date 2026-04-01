@@ -561,8 +561,16 @@ export function registerCampaignRoutes(app: Express): void {
   });
 
   // Pause an enrollment
+  const pauseEnrollmentSchema = z.object({
+    reason: z.string().optional(),
+  });
+
   api.post("/api/enrollments/:id/pause", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const { reason } = req.body;
+    const parsed = pauseEnrollmentSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return Errors.validationFailed(res, parsed.error.errors);
+    }
+    const { reason } = parsed.data;
     const enrollment = await storage.pauseEnrollment(Number(req.params.id), reason || "Manually paused");
     res.json(enrollment);
   });
