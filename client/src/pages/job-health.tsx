@@ -228,6 +228,30 @@ export default function JobHealth() {
           </CardContent>
         </Card>
       </div>
+
+      <AlertDialog open={!!pendingJobTrigger} onOpenChange={(open) => { if (!open) setPendingJobTrigger(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Manually run this job?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to manually run <span className="font-medium">{pendingJobTrigger}</span>?
+              This job is normally scheduled to run automatically. Running it manually will execute it immediately
+              in addition to its regular schedule.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              if (pendingJobTrigger) {
+                triggerJobMutation.mutate(pendingJobTrigger);
+                setPendingJobTrigger(null);
+              }
+            }}>
+              Yes, run it now
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </PageShell>
   );
 }
