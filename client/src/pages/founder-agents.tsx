@@ -61,6 +61,18 @@ export default function FounderAgentsPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/admin/agents/status"] }),
   });
 
+  const handleConfirmToggle = () => {
+    if (pendingToggle) {
+      toggleMutation.mutate(pendingToggle);
+      setPendingToggle(null);
+    }
+  };
+
+  const getPendingMeta = () => {
+    if (!pendingToggle) return { label: "", description: "" };
+    return AGENT_LABELS[pendingToggle.name] || { label: pendingToggle.name, description: "" };
+  };
+
   if (isLoading) return <div className="p-8"><Skeleton className="h-96 w-full" /></div>;
 
   return (
