@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Redis-Backed Rate Limiting (EPIC 10 — Infrastructure Hardening)
  *
@@ -20,8 +19,18 @@
  *   enterprise_api: 500 req/min, unlimited
  */
 
-import type { Request, Response, NextFunction } from "express";
+import type { Response, NextFunction } from "express";
+import type { AuthenticatedRequest } from "../types/request";
 import { logger } from "../utils/logger";
+
+/**
+ * Loosely-typed request used by rate-limit middleware.
+ * These middleware functions may run before the full auth middleware
+ * has attached all properties, so fields are optional.
+ */
+type RateLimitRequest = AuthenticatedRequest & {
+  apiKeyTier?: string;
+};
 
 // ---------------------------------------------------------------------------
 // Sliding window rate limiter using Redis ZRANGEBYSCORE + ZADD
@@ -140,11 +149,11 @@ const API_KEY_TIERS: Record<
  * Uses organization ID + subscription tier as the rate limit key
  */
 export function createOrgRateLimit(redisClient: any) {
-  return async (req: Request, res: Response, next: NextFunction) => {
+  return async (req: RateLimitRequest, res: Response, next: NextFunction) => {
     try {
-      const orgId = req.organizationId || req.user?.organizationId;
-      const tier = req.organization?.subscriptionTier || "free";
-      const isFounder = req.organization?.isFounder;
+      const orgId = req.organizationId || (req.user as any)?.organizationId;
+      const tier = (req.organization as any)?.subscriptionTier || "free";
+      const isFounder = (req.organization as any)?.isFounder;
 
       if (!orgId || isFounder) {
         // Not authenticated or founder bypass — skip rate limiting
