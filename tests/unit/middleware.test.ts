@@ -24,43 +24,43 @@ describe("rateLimit middleware", () => {
     return { req, res, next };
   }
 
-  it("allows requests under the limit", () => {
+  it("allows requests under the limit", async () => {
     const limiter = createRateLimiter({ maxRequests: 5, windowMs: 60000 });
     const { req, res, next } = mockReqRes();
 
-    limiter(req, res, next);
+    await limiter(req, res, next);
     expect(next).toHaveBeenCalled();
   });
 
-  it("blocks requests over the limit", () => {
+  it("blocks requests over the limit", async () => {
     const limiter = createRateLimiter({ maxRequests: 2, windowMs: 60000 });
     const { req, res, next } = mockReqRes();
 
-    limiter(req, res, next); // 1
-    limiter(req, res, next); // 2
-    limiter(req, res, next); // 3 — should block
+    await limiter(req, res, next); // 1
+    await limiter(req, res, next); // 2
+    await limiter(req, res, next); // 3 — should block
 
     expect(res.status).toHaveBeenCalledWith(429);
   });
 
-  it("sets rate limit headers", () => {
+  it("sets rate limit headers", async () => {
     const limiter = createRateLimiter({ maxRequests: 10, windowMs: 60000 });
     const { req, res, next } = mockReqRes();
 
-    limiter(req, res, next);
+    await limiter(req, res, next);
 
     expect(res.setHeader).toHaveBeenCalledWith("X-RateLimit-Limit", "10");
     expect(res.setHeader).toHaveBeenCalledWith("X-RateLimit-Remaining", "9");
   });
 
-  it("isolates rate limits by IP", () => {
+  it("isolates rate limits by IP", async () => {
     const limiter = createRateLimiter({ maxRequests: 1, windowMs: 60000 });
 
     const a = mockReqRes("10.0.0.1");
     const b = mockReqRes("10.0.0.2");
 
-    limiter(a.req, a.res, a.next); // IP A — 1st
-    limiter(b.req, b.res, b.next); // IP B — 1st
+    await limiter(a.req, a.res, a.next); // IP A — 1st
+    await limiter(b.req, b.res, b.next); // IP B — 1st
 
     expect(a.next).toHaveBeenCalled();
     expect(b.next).toHaveBeenCalled();
