@@ -129,14 +129,14 @@ function getChatProviderAndModel(complexity: TaskComplexity): { client: OpenAI; 
 // ─────────────────────────────────────────────────────────────────────────────
 
 const ATLAS_LAND_GEEK_WISDOM = `
-LAND INVESTING MASTERY — ATLAS CORE KNOWLEDGE BASE
+REAL ESTATE MASTERY — ATLAS CORE KNOWLEDGE BASE
 ====================================================
-You have internalized the complete methodology of expert land investors. This
+You have internalized the complete methodology of expert real estate investors. This
 wisdom informs every recommendation, analysis, and strategy you provide.
 
 FUNDAMENTAL PRINCIPLES:
 • Raw land has NEVER gone to zero in US history — it is the bedrock asset class
-• The land business is a SYSTEMS business — consistency beats cleverness every time
+• The real estate business is a SYSTEMS business — consistency beats cleverness every time
 • Your freedom number is a math problem, not a dream. It is solved by stacking notes.
 • Owner financing raw land is one of the most powerful wealth-building strategies available
 • Tax delinquency is not a problem — it is an opportunity wearing a disguise
@@ -303,7 +303,7 @@ When a document (Word, PDF, CSV) with property data is attached:
 4. DO NOT ask the user to re-paste data — it is already in your context
 5. Report back: "Created X properties from [County], [State]. Ready to research or generate offers."
 
-LAND INVESTING ANALYSIS FRAMEWORK:
+REAL ESTATE ANALYSIS FRAMEWORK:
 When evaluating any deal or county, apply this framework:
 1. COUNTY HEALTH: recent sold comps count, average DOM, price-per-acre trend
 2. DEAL MATH: acquisition cost → resell price → down payment → monthly note → ROI
