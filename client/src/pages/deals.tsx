@@ -229,6 +229,23 @@ export default function DealsPage() {
       property: properties?.find(p => p.id === deal.propertyId),
     }));
 
+  // Pagination for deals list view (mobile)
+  const { paginatedItems: paginatedDeals, totalItems: totalDealItems, currentPage: safeDealPage } = usePagination(
+    enrichedDeals,
+    dealCurrentPage,
+    dealPageSize
+  );
+
+  const handleDealPageChange = (page: number) => {
+    setDealCurrentPage(page);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleDealPageSizeChange = (size: number) => {
+    setDealPageSize(size);
+    setDealCurrentPage(1);
+  };
+
   const acquisitions = enrichedDeals.filter(d => d.type === 'acquisition' && d.status !== 'cancelled');
   const dispositions = enrichedDeals.filter(d => d.type === 'disposition' && d.status !== 'cancelled');
   
@@ -641,7 +658,7 @@ export default function DealsPage() {
               {isMobile && mobileViewMode === 'list' ? (
                 <div className="space-y-4">
                   {dealStages.map((stage) => {
-                    const stageDeals = enrichedDeals.filter(d => d.status === stage.value);
+                    const stageDeals = paginatedDeals.filter(d => d.status === stage.value);
                     if (stageDeals.length === 0) return null;
                     return (
                       <div key={stage.value}>
@@ -677,6 +694,15 @@ export default function DealsPage() {
                       </div>
                     );
                   })}
+                  {enrichedDeals.length > dealPageSize && (
+                    <ListPagination
+                      currentPage={safeDealPage}
+                      totalItems={totalDealItems}
+                      pageSize={dealPageSize}
+                      onPageChange={handleDealPageChange}
+                      onPageSizeChange={handleDealPageSizeChange}
+                    />
+                  )}
                 </div>
               ) : isMobile && mobileViewMode === 'kanban' ? (
                 <div className="space-y-2">

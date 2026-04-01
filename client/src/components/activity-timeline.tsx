@@ -1,15 +1,18 @@
 import { useQuery } from "@tanstack/react-query";
 import { formatDistanceToNow, format } from "date-fns";
-import { 
+import {
   Mail, MailOpen, MousePointer, MessageSquare, MessageCircle,
   FileText, Package, PhoneOutgoing, PhoneIncoming, StickyNote,
   ArrowRightCircle, DollarSign, Upload, Filter, ChevronDown, ChevronUp, Loader2,
-  CheckSquare, ListPlus, ListChecks
+  CheckSquare, ListPlus, ListChecks, Clock
 } from "lucide-react";
 import { useState } from "react";
+import { motion } from "framer-motion";
+import { staggerContainer, staggerItem } from "@/lib/animations";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   DropdownMenu,
@@ -20,6 +23,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { EmptyState } from "@/components/empty-state";
 import type { ActivityEvent, ActivityEventType } from "@shared/schema";
 import { ACTIVITY_EVENT_TYPES } from "@shared/schema";
 
@@ -257,24 +261,42 @@ export function ActivityTimeline({ entityType, entityId, className }: ActivityTi
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <div className="flex items-center justify-center py-8" data-testid="timeline-loading">
-            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+          <div className="space-y-4 py-2" data-testid="timeline-loading">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="flex gap-3">
+                <Skeleton className="w-8 h-8 rounded-full shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-3 w-full max-w-[280px]" />
+                  <Skeleton className="h-3 w-20" />
+                </div>
+              </div>
+            ))}
           </div>
         ) : error ? (
           <div className="py-8 text-center text-muted-foreground" data-testid="timeline-error">
             Failed to load timeline
           </div>
         ) : events.length === 0 ? (
-          <div className="py-8 text-center text-muted-foreground" data-testid="timeline-empty">
-            No activity recorded yet
-          </div>
+          <EmptyState
+            icon={Clock}
+            title="No activity yet"
+            description="Phone calls, emails, status changes, and notes will appear here as interactions are logged."
+          />
         ) : (
           <ScrollArea className="h-[400px] pr-4">
-            <div className="space-y-0">
+            <motion.div
+              variants={staggerContainer}
+              initial="hidden"
+              animate="visible"
+              className="space-y-0 relative"
+            >
               {events.map((event) => (
-                <TimelineEvent key={event.id} event={event} />
+                <motion.div key={event.id} variants={staggerItem}>
+                  <TimelineEvent event={event} />
+                </motion.div>
               ))}
-            </div>
+            </motion.div>
           </ScrollArea>
         )}
       </CardContent>

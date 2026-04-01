@@ -639,46 +639,45 @@ export function registerAnalyticsRoutes(app: Express): void {
         .groupBy(sql`cohort`)
         .orderBy(sql`cohort`);
 
-      // 2. Active leads per cohort (leads that have deals or were updated recently)
+      // 2. Retention: leads that are still "active" (status != new and updated within each week bucket)
+      // We measure retention by checking if leads were updated after their cohort start
       const retentionData = await db
         .select({
           cohort: truncExpr.as("cohort"),
           weeksAfter: sql<number>`
-            EXTRACT(EPOCH FROM (${deals.createdAt} - date_trunc(${granularity === "month" ? sql`'month'` : sql`'week'`}, ${leads.createdAt})))
-            / (7 * 86400)
+            FLOOR(EXTRACT(EPOCH FROM (${leads.updatedAt} - ${truncExpr})) / (7 * 86400))
           `.as("weeks_after"),
           activeCount: count().as("active_count"),
         })
         .from(leads)
-        .innerJoin(deals, and(
-          eq(deals.organizationId, org.id),
-          sql`${deals.propertyId} IS NOT NULL`
-        ))
         .where(
           and(
             eq(leads.organizationId, org.id),
-            gte(leads.createdAt, cutoff)
+            gte(leads.createdAt, cutoff),
+            sql`${leads.updatedAt} > ${leads.createdAt}`
           )
         )
         .groupBy(sql`cohort`, sql`weeks_after`)
         .orderBy(sql`cohort`, sql`weeks_after`);
 
-      // 3. Revenue per cohort (closed deals linked to leads in each cohort)
+      // 3. Revenue per cohort: sum deals closed value grouped by the lead cohort period
+      // Since deals don't directly link to leads, we use deal creation date mapped to the same cohort periods
+      const dealTruncExpr = granularity === "month"
+        ? sql`date_trunc('month', ${deals.createdAt})`
+        : sql`date_trunc('week', ${deals.createdAt})`;
+
       const revenueByCohort = await db
         .select({
-          cohort: truncExpr.as("cohort"),
+          cohort: dealTruncExpr.as("cohort"),
           totalRevenue: sql<string>`COALESCE(SUM(CAST(${deals.acceptedAmount} AS numeric)), 0)`.as("total_revenue"),
           closedDeals: count().as("closed_deals"),
         })
-        .from(leads)
-        .innerJoin(deals, and(
-          eq(deals.organizationId, org.id),
-          eq(deals.status, "closed")
-        ))
+        .from(deals)
         .where(
           and(
-            eq(leads.organizationId, org.id),
-            gte(leads.createdAt, cutoff)
+            eq(deals.organizationId, org.id),
+            eq(deals.status, "closed"),
+            gte(deals.createdAt, cutoff)
           )
         )
         .groupBy(sql`cohort`)

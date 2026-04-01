@@ -1234,7 +1234,7 @@ export async function* processChatStream(
           model,
           messages: chatMessages as any,
           max_tokens: 8000,
-          // @ts-ignore — OpenRouter passes thinking param to Anthropic API
+          // OpenRouter passes thinking param to Anthropic API (cast handles type mismatch)
           thinking: { type: "enabled", budget_tokens: 6000 },
         } as any);
         const msgContent = (thinkingResponse as any).choices?.[0]?.message?.content;
