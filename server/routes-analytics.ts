@@ -3,9 +3,13 @@ import { storage } from "./storage";
 import { z } from "zod";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
-import { insertTaskSchema, teamMembers, deals, leads } from "@shared/schema";
+import { insertTaskSchema, teamMembers, deals, leads, organizations } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, gte, count, sql } from "drizzle-orm";
+import { eq, and, gte, lte, count, sql, desc } from "drizzle-orm";
+import type { AuthenticatedRequest } from "./types/request";
+import { getOrganization } from "./types/request";
+import { Errors } from "./utils/errors";
+import { logger } from "./utils/logger";
 
 export function registerAnalyticsRoutes(app: Express): void {
   const api = app;
