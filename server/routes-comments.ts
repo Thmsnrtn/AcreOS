@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 /**
  * Contextual Team Comments Routes
  *
@@ -7,9 +6,12 @@
  * DELETE /api/comments/:id                    — own comments only
  */
 
-import { Router, type Request, type Response } from "express";
+import { Router, type Response } from "express";
+import { z } from "zod";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
+import type { AuthenticatedRequest } from "./types/request";
+import { Errors } from "./utils/errors";
 import { db } from "./db";
 import { entityComments, notifications, teamMembers } from "@shared/schema";
 import { eq, and, lt, desc } from "drizzle-orm";
@@ -17,8 +19,12 @@ import { logger } from "./utils/logger";
 
 const router = Router();
 
-const VALID_ENTITY_TYPES = ["lead", "deal", "property", "note"];
+const VALID_ENTITY_TYPES = ["lead", "deal", "property", "note"] as const;
 const PAGE_SIZE = 20;
+
+const createCommentSchema = z.object({
+  content: z.string().min(1, "content is required").max(10000, "content too long"),
+});
 
 /**
  * Parse @mentions from comment content.
@@ -38,7 +44,7 @@ function parseMentions(content: string): string[] {
 }
 
 // GET /api/comments/:entityType/:entityId — cursor-based pagination
-router.get("/:entityType/:entityId", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
+router.get("/:entityType/:entityId", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const org = req.organization;
     const { entityType, entityId } = req.params;
@@ -84,7 +90,7 @@ router.get("/:entityType/:entityId", isAuthenticated, getOrCreateOrg, async (req
 });
 
 // POST /api/comments/:entityType/:entityId — create comment
-router.post("/:entityType/:entityId", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
+router.post("/:entityType/:entityId", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const org = req.organization;
     const user = req.user as any;
@@ -174,7 +180,7 @@ router.post("/:entityType/:entityId", isAuthenticated, getOrCreateOrg, async (re
 });
 
 // DELETE /api/comments/:id — own comments only
-router.delete("/:id", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
+router.delete("/:id", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const org = req.organization;
     const user = req.user as any;
