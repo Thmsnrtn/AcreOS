@@ -197,10 +197,10 @@ router.delete("/:id", isAuthenticated, getOrCreateOrg, async (req: Authenticated
       .where(and(eq(entityComments.id, commentId), eq(entityComments.organizationId, org.id)))
       .limit(1);
 
-    if (!existing) return res.status(404).json({ error: "comment not found" });
+    if (!existing) return Errors.notFound(res, "Comment");
 
     if (existing.userId !== userId) {
-      return res.status(403).json({ error: "can only delete your own comments" });
+      return Errors.forbidden(res, "can only delete your own comments");
     }
 
     await db.delete(entityComments).where(eq(entityComments.id, commentId));
@@ -208,7 +208,7 @@ router.delete("/:id", isAuthenticated, getOrCreateOrg, async (req: Authenticated
     res.json({ success: true });
   } catch (err) {
     logger.error("failed to delete comment", err instanceof Error ? err : undefined);
-    res.status(500).json({ error: "failed to delete comment" });
+    Errors.internal(res, err);
   }
 });
 
