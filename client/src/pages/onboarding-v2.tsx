@@ -1212,25 +1212,42 @@ export default function OnboardingV2() {
             <div className="space-y-6">
               {[
                 {
-                  group: "Land",
+                  group: "Land & Development",
                   types: [
-                    { value: "land_flipper", icon: MapPin, title: "Land Flipper", desc: "Buy rural land at 25-35%, sell for cash at 70-80%. Fast cycles, high margins." },
-                    { value: "note_investor", icon: TrendingUp, title: "Note Investor", desc: "Buy cheap, sell on terms with monthly payments. Build passive income streams." },
-                    { value: "hybrid", icon: BarChart3, title: "Hybrid", desc: "Cash flips for capital + seller-financed notes for passive income. Best of both worlds." },
+                    { value: "land_flipper", icon: MapPin, title: "Land Flipper", desc: "Buy raw land at wholesale and resell for profit. Fast cycles, high margins." },
+                    { value: "developer", icon: Building, title: "Developer / Subdivider", desc: "Land development, entitlements, subdivisions, and new construction." },
+                    { value: "tax_lien_deed", icon: DollarSign, title: "Tax Lien / Tax Deed", desc: "Purchase tax liens and deeds at county auctions. Research-driven, high ROI." },
                   ],
                 },
                 {
                   group: "Residential",
                   types: [
                     { value: "residential_wholesaler", icon: Zap, title: "Wholesaler", desc: "Find deals, assign contracts. Earn assignment fees with zero rehab risk." },
-                    { value: "fix_and_flip", icon: Home, title: "Fix & Flip", desc: "Buy distressed homes, renovate, sell at market. Higher returns, hands-on approach." },
-                    { value: "buy_and_hold", icon: Building, title: "Buy & Hold", desc: "Acquire rentals for cash flow + appreciation. Long-term wealth building." },
+                    { value: "fix_and_flip", icon: Home, title: "Fix & Flip", desc: "Buy distressed homes, renovate, sell at market. Higher returns, hands-on." },
+                    { value: "buy_and_hold", icon: Key, title: "Buy & Hold", desc: "Build a long-term rental portfolio for cash flow and appreciation." },
+                    { value: "short_term_rental", icon: Star, title: "Short-Term Rental", desc: "Acquire and manage Airbnb, VRBO, and vacation rentals for income." },
                   ],
                 },
                 {
-                  group: "Commercial",
+                  group: "Commercial & Multifamily",
                   types: [
-                    { value: "commercial", icon: Briefcase, title: "Commercial", desc: "Office, retail, industrial, multi-family. Larger deals, longer timelines, bigger returns." },
+                    { value: "commercial", icon: Briefcase, title: "Commercial", desc: "Office, retail, industrial, and mixed-use investments." },
+                    { value: "multifamily", icon: Building, title: "Multifamily", desc: "Apartment buildings and 5+ unit properties. Value-add or stabilized." },
+                    { value: "mobile_home", icon: Home, title: "Mobile Home / MHP", desc: "Mobile home parks and manufactured housing. High cash-on-cash returns." },
+                  ],
+                },
+                {
+                  group: "Notes & Creative",
+                  types: [
+                    { value: "note_investor", icon: TrendingUp, title: "Note Investor", desc: "Buy, sell, and service mortgage notes. Build passive income streams." },
+                    { value: "creative_finance", icon: Brain, title: "Creative Finance", desc: "Subject-to, wraps, lease options, and seller financing strategies." },
+                  ],
+                },
+                {
+                  group: "Multi-Strategy",
+                  types: [
+                    { value: "agent_investor", icon: UserPlus, title: "Agent-Investor", desc: "Licensed agent who also invests. Manage clients and your own deals." },
+                    { value: "hybrid", icon: BarChart3, title: "Hybrid / Multi-Strategy", desc: "Combine multiple strategies — land, notes, rentals, and more." },
                   ],
                 },
               ].map(({ group, types }) => (

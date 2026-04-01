@@ -97,6 +97,11 @@ export default function LandingPage() {
             AcreOS replaces your spreadsheets, disconnected tools, and guesswork with a single platform
             that manages leads, automates outreach, and closes deals — powered by AI.
           </p>
+          <div className="flex flex-wrap justify-center gap-2 pt-2">
+            {["Wholesaling", "Fix & Flip", "Buy & Hold", "STR / Airbnb", "Land", "Multifamily", "Commercial", "Creative Finance", "Notes"].map((t) => (
+              <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>
+            ))}
+          </div>
           <div className="flex gap-3 justify-center pt-4">
             <Button size="lg" asChild>
               <Link href="/auth">

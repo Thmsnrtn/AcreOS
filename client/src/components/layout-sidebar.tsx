@@ -494,10 +494,17 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
 // Main Sidebar component
 // Routes hidden for certain business types
 const BUSINESS_TYPE_HIDDEN_ROUTES: Record<string, string[]> = {
+  // Land-centric routes hidden for non-land investor types
   residential_wholesaler: ["/maps", "/land-credit"],
   fix_and_flip:           ["/maps", "/land-credit"],
   buy_and_hold:           ["/maps", "/land-credit"],
   commercial:             ["/maps", "/land-credit"],
+  short_term_rental:      ["/maps", "/land-credit"],
+  multifamily:            ["/maps", "/land-credit"],
+  mobile_home:            ["/land-credit"],
+  agent_investor:         ["/land-credit"],
+  creative_finance:       ["/land-credit"],
+  // land_flipper, note_investor, hybrid, developer, tax_lien_deed: all routes visible
 };
 
 // ─────────────────────────────────────────────────────────────────────
