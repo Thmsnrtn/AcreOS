@@ -13,19 +13,22 @@ export interface PaginatedLeadsResponse {
   totalPages: number;
 }
 
-export function useLeads(params?: { page?: number; pageSize?: number; sortBy?: string; sortOrder?: string; stage?: string; assignedTo?: string }) {
+/**
+ * Fetch leads with server-side pagination.
+ * Returns { data, total, page, pageSize, totalPages }.
+ */
+export function useLeadsPaginated(params: { page: number; pageSize: number; sortBy?: string; sortOrder?: string; stage?: string; assignedTo?: string }) {
   const queryParams = new URLSearchParams();
-  if (params?.page) queryParams.set("page", String(params.page));
-  if (params?.pageSize) queryParams.set("pageSize", String(params.pageSize));
-  if (params?.sortBy) queryParams.set("sortBy", params.sortBy);
-  if (params?.sortOrder) queryParams.set("sortOrder", params.sortOrder);
-  if (params?.stage) queryParams.set("stage", params.stage);
-  if (params?.assignedTo) queryParams.set("assignedTo", params.assignedTo);
-  const qs = queryParams.toString();
-  const url = qs ? `${api.leads.list.path}?${qs}` : api.leads.list.path;
+  queryParams.set("page", String(params.page));
+  queryParams.set("pageSize", String(params.pageSize));
+  if (params.sortBy) queryParams.set("sortBy", params.sortBy);
+  if (params.sortOrder) queryParams.set("sortOrder", params.sortOrder);
+  if (params.stage) queryParams.set("stage", params.stage);
+  if (params.assignedTo) queryParams.set("assignedTo", params.assignedTo);
+  const url = `${api.leads.list.path}?${queryParams.toString()}`;
 
   return useQuery<PaginatedLeadsResponse>({
-    queryKey: [api.leads.list.path, params?.page ?? 1, params?.pageSize ?? 25, params?.sortBy, params?.sortOrder, params?.stage, params?.assignedTo],
+    queryKey: [api.leads.list.path, "paginated", params.page, params.pageSize, params.sortBy, params.sortOrder, params.stage, params.assignedTo],
     queryFn: async () => {
       const res = await fetch(url, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch leads");
@@ -34,6 +37,24 @@ export function useLeads(params?: { page?: number; pageSize?: number; sortBy?: s
     staleTime: STALE_TIMES.short,
     gcTime: CACHE_TIMES.medium,
     placeholderData: keepPreviousData,
+  });
+}
+
+/**
+ * Legacy hook: returns the flat leads array for backward compatibility.
+ * Fetches page 1 with large pageSize from the paginated endpoint.
+ */
+export function useLeads() {
+  return useQuery({
+    queryKey: [api.leads.list.path],
+    queryFn: async () => {
+      const res = await fetch(`${api.leads.list.path}?page=1&pageSize=1000`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch leads");
+      const json = await res.json();
+      return json.data ?? json;
+    },
+    staleTime: STALE_TIMES.short,
+    gcTime: CACHE_TIMES.medium,
   });
 }
 

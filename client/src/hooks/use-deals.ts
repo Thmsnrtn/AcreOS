@@ -12,17 +12,20 @@ export interface PaginatedDealsResponse {
   totalPages: number;
 }
 
-export function useDeals(params?: { page?: number; pageSize?: number; sortBy?: string; sortOrder?: string }) {
+/**
+ * Fetch deals with server-side pagination.
+ * Returns { data, total, page, pageSize, totalPages }.
+ */
+export function useDealsPaginated(params: { page: number; pageSize: number; sortBy?: string; sortOrder?: string }) {
   const queryParams = new URLSearchParams();
-  if (params?.page) queryParams.set("page", String(params.page));
-  if (params?.pageSize) queryParams.set("pageSize", String(params.pageSize));
-  if (params?.sortBy) queryParams.set("sortBy", params.sortBy);
-  if (params?.sortOrder) queryParams.set("sortOrder", params.sortOrder);
-  const qs = queryParams.toString();
-  const url = qs ? `/api/deals?${qs}` : '/api/deals';
+  queryParams.set("page", String(params.page));
+  queryParams.set("pageSize", String(params.pageSize));
+  if (params.sortBy) queryParams.set("sortBy", params.sortBy);
+  if (params.sortOrder) queryParams.set("sortOrder", params.sortOrder);
+  const url = `/api/deals?${queryParams.toString()}`;
 
   return useQuery<PaginatedDealsResponse>({
-    queryKey: ['/api/deals', params?.page ?? 1, params?.pageSize ?? 25, params?.sortBy, params?.sortOrder],
+    queryKey: ['/api/deals', "paginated", params.page, params.pageSize, params.sortBy, params.sortOrder],
     queryFn: async () => {
       const res = await fetch(url, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch deals");
@@ -31,6 +34,24 @@ export function useDeals(params?: { page?: number; pageSize?: number; sortBy?: s
     staleTime: STALE_TIMES.short,
     gcTime: CACHE_TIMES.medium,
     placeholderData: keepPreviousData,
+  });
+}
+
+/**
+ * Legacy hook: returns the flat deals array for backward compatibility.
+ * Fetches page 1 with large pageSize from the paginated endpoint.
+ */
+export function useDeals() {
+  return useQuery<Deal[]>({
+    queryKey: ['/api/deals'],
+    queryFn: async () => {
+      const res = await fetch('/api/deals?page=1&pageSize=1000', { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch deals");
+      const json = await res.json();
+      return json.data ?? json;
+    },
+    staleTime: STALE_TIMES.short,
+    gcTime: CACHE_TIMES.medium,
   });
 }
 

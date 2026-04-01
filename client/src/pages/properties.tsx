@@ -1,7 +1,7 @@
 import { PageShell } from "@/components/page-shell";
 import { PaxContextButton } from "@/components/pax-context-button";
 import { ListPagination, usePagination } from "@/components/list-pagination";
-import { useProperties, useCreateProperty, useDeleteProperty, useEnrichProperty } from "@/hooks/use-properties";
+import { useProperties, usePropertiesPaginated, useCreateProperty, useDeleteProperty, useEnrichProperty } from "@/hooks/use-properties";
 import { queryClient } from "@/lib/queryClient";
 import { telemetry } from "@/lib/telemetry";
 import { ListSkeleton } from "@/components/list-skeleton";
@@ -134,7 +134,7 @@ import { Bot } from "lucide-react";
 export default function PropertiesPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
-  const propertiesQuery = useProperties({ page: currentPage, pageSize });
+  const propertiesQuery = usePropertiesPaginated({ page: currentPage, pageSize });
   const propertiesResponse = propertiesQuery.data;
   const properties = propertiesResponse?.data;
   const serverTotal = propertiesResponse?.total ?? 0;
