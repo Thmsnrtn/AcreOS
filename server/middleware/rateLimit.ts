@@ -24,11 +24,11 @@ function recordRateLimitHit(key: string, endpoint: string): void {
 
   // Escalating log levels: warn at threshold, error at 2×, critical at 5×
   if (entry.count === ALERT_THRESHOLD) {
-    logger.warn(`Rate limit alert: key=${key} rate-limited ${entry.count} times in 1h`, { key, count: entry.count, endpoint });
+    logger.warn(`Rate limit alert: key=${key} rate-limited ${entry.count} times in 1h`, { metadata: { key, count: entry.count, endpoint } });
   } else if (entry.count === ALERT_THRESHOLD * 2) {
-    logger.error(`Rate limit HIGH: key=${key} rate-limited ${entry.count} times in 1h — possible abuse`, { key, count: entry.count, endpoint });
+    logger.error(`Rate limit HIGH: key=${key} rate-limited ${entry.count} times in 1h — possible abuse`);
   } else if (entry.count >= ALERT_THRESHOLD * 5 && entry.count % (ALERT_THRESHOLD * 5) === 0) {
-    logger.error(`Rate limit CRITICAL: key=${key} rate-limited ${entry.count} times in 1h — likely attack`, { key, count: entry.count, endpoint });
+    logger.error(`Rate limit CRITICAL: key=${key} rate-limited ${entry.count} times in 1h — likely attack`);
   }
 }
 
@@ -157,9 +157,7 @@ async function checkRateLimitRedis(
 
     return { allowed, remaining, resetTime, retryAfterSeconds };
   } catch (err) {
-    logger.error("Redis rate limit check failed — falling back to in-memory", {
-      error: err instanceof Error ? err.message : String(err),
-    });
+    logger.error("Redis rate limit check failed — falling back to in-memory", err instanceof Error ? err : undefined);
     return null; // Signal caller to use in-memory fallback
   }
 }
@@ -244,9 +242,8 @@ export function createRateLimiter(
       next();
     } catch (err) {
       // Fail open — never block requests due to rate limiter errors
-      logger.error("Rate limiter middleware error — allowing request", {
-        error: err instanceof Error ? err.message : String(err),
-        key,
+      logger.error("Rate limiter middleware error — allowing request", err instanceof Error ? err : undefined, {
+        metadata: { key },
       });
       next();
     }
