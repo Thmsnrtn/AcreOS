@@ -118,7 +118,7 @@ export async function initTracing(): Promise<void> {
     instrumentations: [
       new HttpInstrumentation({
         // Ignore noisy health check and static asset requests
-        ignoreIncomingRequestHook: (req) => {
+        ignoreIncomingRequestHook: (req: any) => {
           const url = req.url ?? "";
           return (
             url === "/health" ||
