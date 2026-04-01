@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Deal Feed Enhancements — Items 16-30
  * Map view data, "why not" feedback, email digest, county comparison, etc.

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Onboarding Enhancements — Items 1-15
  * Auto-detect investor type, sample leads, import converters, progressive profile, etc.

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Agent Knowledge Graph — Sovereign Company Protocol v4
  *

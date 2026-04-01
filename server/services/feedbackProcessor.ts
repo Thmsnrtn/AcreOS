@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 /**
  * Feedback Processor — categorizes and extracts actionable insights from user feedback.
  * Uses simple keyword matching (no AI dependency) so it runs reliably without external APIs.

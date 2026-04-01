@@ -496,10 +496,24 @@ export function registerDealRoutes(app: Express): void {
     }
   });
   
+  const createDueDiligenceItemSchema = z.object({
+    title: z.string().min(1, "Title is required"),
+    description: z.string().optional(),
+    category: z.string().optional(),
+    priority: z.string().optional(),
+    completed: z.boolean().optional(),
+    notes: z.string().optional(),
+    dueDate: z.string().optional(),
+  });
+
   api.post("/api/properties/:id/due-diligence", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      const parsed = createDueDiligenceItemSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
       const item = await storage.createDueDiligenceItem({
-        ...req.body,
+        ...parsed.data,
         propertyId: Number(req.params.id),
       });
       res.status(201).json(item);
@@ -511,10 +525,16 @@ export function registerDealRoutes(app: Express): void {
     }
   });
 
+  const updateDueDiligenceItemSchema = createDueDiligenceItemSchema.partial();
+
   api.put("/api/due-diligence/items/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const parsed = updateDueDiligenceItemSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return Errors.validationFailed(res, parsed.error.errors);
+    }
     const user = req.user as any;
     const userId = user?.claims?.sub || user?.id;
-    const updates = { ...req.body };
+    const updates = { ...parsed.data } as any;
     if (updates.completed === true && userId) {
       updates.completedBy = userId;
     }

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Company Seasons — Sovereign Company Protocol v8
  *

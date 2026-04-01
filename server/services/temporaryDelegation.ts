@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Temporary Delegation — Sovereign Company Protocol v5
  *

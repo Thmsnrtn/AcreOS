@@ -65,17 +65,32 @@ const upload = multer({
   },
 });
 
+// Zod schema for pagination query params
+const paginationQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(25),
+  sortBy: z.string().default("createdAt"),
+  sortOrder: z.enum(["asc", "desc"]).default("desc"),
+});
+
 export function registerLeadRoutes(app: Express): void {
   const api = app;
 
   // LEADS (CRM)
   // ============================================
-  
+
   api.get("/api/leads", isAuthenticated, getOrCreateOrg, attachPermissionContext(), async (req, res) => {
     const org = req.organization;
     const context = req.permissionContext as UserPermissionContext | undefined;
     const stage = req.query.stage as string | undefined;
     const assignedToFilter = req.query.assignedTo as string | undefined;
+
+    // Parse pagination params
+    const pagination = paginationQuerySchema.safeParse(req.query);
+    if (!pagination.success) {
+      return Errors.badRequest(res, "Invalid pagination parameters", pagination.error.errors);
+    }
+    const { page, pageSize, sortBy, sortOrder } = pagination.data;
 
     // Build SQL-level assignedTo filter to avoid full-table scan
     let sqlAssignedTo: number | null | undefined;
@@ -90,24 +105,40 @@ export function registerLeadRoutes(app: Express): void {
       }
     }
 
-    const allLeads = await storage.getLeads(org.id, sqlAssignedTo !== undefined ? { assignedTo: sqlAssignedTo } : undefined);
+    const filters = sqlAssignedTo !== undefined ? { assignedTo: sqlAssignedTo } : undefined;
 
-    const leadsWithScores = allLeads.map(lead => {
+    // If stage filter is present, we must compute scores on all leads before filtering (no SQL-level stage)
+    if (stage && ["hot", "warm", "cold", "dead"].includes(stage)) {
+      const allLeads = await storage.getLeads(org.id, filters);
+      const leadsWithScores = allLeads.map(lead => {
+        const { score, factors } = leadNurturerService.calculateLeadScore(lead);
+        const computedStage = leadNurturerService.segmentLead(score);
+        return { ...lead, score, scoreFactors: factors, nurturingStage: computedStage };
+      });
+      const filteredLeads = leadsWithScores.filter(l => l.nurturingStage === stage);
+      const total = filteredLeads.length;
+      const totalPages = Math.max(1, Math.ceil(total / pageSize));
+      const start = (page - 1) * pageSize;
+      const data = filteredLeads.slice(start, start + pageSize);
+      return res.json({ data, total, page, pageSize, totalPages });
+    }
+
+    // Server-side pagination with SQL LIMIT/OFFSET
+    const result = await storage.getLeadsPaginated(org.id, { page, pageSize, sortBy, sortOrder }, filters);
+
+    const leadsWithScores = result.data.map(lead => {
       const { score, factors } = leadNurturerService.calculateLeadScore(lead);
       const computedStage = leadNurturerService.segmentLead(score);
-      return {
-        ...lead,
-        score,
-        scoreFactors: factors,
-        nurturingStage: computedStage,
-      };
+      return { ...lead, score, scoreFactors: factors, nurturingStage: computedStage };
     });
 
-    const filteredLeads = stage && ["hot", "warm", "cold", "dead"].includes(stage)
-      ? leadsWithScores.filter(l => l.nurturingStage === stage)
-      : leadsWithScores;
-
-    res.json(filteredLeads);
+    res.json({
+      data: leadsWithScores,
+      total: result.total,
+      page: result.page,
+      pageSize: result.pageSize,
+      totalPages: result.totalPages,
+    });
   });
   
   // Paginated leads endpoint for infinite scroll
