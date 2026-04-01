@@ -103,8 +103,13 @@ const statusColors: Record<string, string> = {
 };
 
 export default function DealsPage() {
-  const { data: deals, isLoading, isError, error, refetch } = useDeals();
-  const { data: properties } = useProperties();
+  const [dealCurrentPage, setDealCurrentPage] = useState(1);
+  const [dealPageSize, setDealPageSize] = useState(25);
+  const { data: dealsResponse, isLoading, isError, error, refetch } = useDeals({ page: dealCurrentPage, pageSize: dealPageSize });
+  const deals = dealsResponse?.data;
+  const serverDealTotal = dealsResponse?.total ?? 0;
+  const { data: propertiesResponse } = useProperties({ page: 1, pageSize: 100 });
+  const properties = propertiesResponse?.data;
   const searchString = useSearch();
   const urlParams = new URLSearchParams(searchString);
   const actionFromUrl = urlParams.get("action");
@@ -124,8 +129,6 @@ export default function DealsPage() {
   const [selectedStageIndex, setSelectedStageIndex] = useState(0);
   const [activeDragId, setActiveDragId] = useState<number | null>(null);
   const [typeFilter, setTypeFilter] = useState<string>("all");
-  const [dealCurrentPage, setDealCurrentPage] = useState(1);
-  const [dealPageSize, setDealPageSize] = useState(25);
   const { mutate: updateDealStage } = useUpdateDeal();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
@@ -229,12 +232,10 @@ export default function DealsPage() {
       property: properties?.find(p => p.id === deal.propertyId),
     }));
 
-  // Pagination for deals list view (mobile)
-  const { paginatedItems: paginatedDeals, totalItems: totalDealItems, currentPage: safeDealPage } = usePagination(
-    enrichedDeals,
-    dealCurrentPage,
-    dealPageSize
-  );
+  // Server-side pagination: data is already one page
+  const paginatedDeals = enrichedDeals;
+  const totalDealItems = serverDealTotal;
+  const safeDealPage = dealCurrentPage;
 
   const handleDealPageChange = (page: number) => {
     setDealCurrentPage(page);
@@ -694,7 +695,7 @@ export default function DealsPage() {
                       </div>
                     );
                   })}
-                  {enrichedDeals.length > dealPageSize && (
+                  {serverDealTotal > dealPageSize && (
                     <ListPagination
                       currentPage={safeDealPage}
                       totalItems={totalDealItems}
