@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Adaptive Strategy Engine — Sovereign Company Protocol v13
  *

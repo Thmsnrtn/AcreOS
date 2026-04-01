@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Agent Initiative System — Sovereign Company Protocol v9: The Self-Running Company
  *

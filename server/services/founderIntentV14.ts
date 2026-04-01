@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Founder Intent Parser — Sovereign Company Protocol v14: The Self-Running Company
  *

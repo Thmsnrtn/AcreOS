@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * AI Board of Directors — Sovereign Company Protocol Phase 14
  *

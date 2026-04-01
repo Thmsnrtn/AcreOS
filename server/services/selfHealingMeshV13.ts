@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Self-Healing Mesh — Sovereign Company Protocol v13
  *

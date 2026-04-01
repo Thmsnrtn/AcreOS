@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Title Chain Visualization & Closing Coordination Service (EPIC 4)
  *

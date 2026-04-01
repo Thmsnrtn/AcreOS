@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Agent Collaboration Protocol — Sovereign Company Protocol v13
  *

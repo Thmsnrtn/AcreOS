@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * County Opportunity Score & Market Cycle Intelligence (EPIC 6)
  *

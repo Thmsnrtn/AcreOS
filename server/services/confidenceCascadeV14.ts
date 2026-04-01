@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Confidence Cascade — Sovereign Company Protocol v14 — "The Self-Running Company"
  *

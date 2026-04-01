@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Lead Intelligence Engine
  *

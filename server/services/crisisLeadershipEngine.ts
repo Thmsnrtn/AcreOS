@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Crisis Leadership Engine — Sovereign Company Protocol Phase 19
  *
