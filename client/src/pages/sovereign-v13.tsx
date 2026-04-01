@@ -32,6 +32,8 @@ import {
   Flame,
   FileText,
 } from "lucide-react";
+import { InfoTooltip } from "@/components/info-tooltip";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 
 // ─── Types ───────────────────────────────────────────────────────────
 

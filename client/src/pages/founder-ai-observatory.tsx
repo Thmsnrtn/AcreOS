@@ -735,6 +735,14 @@ export default function AiObservatory() {
           </p>
         </div>
 
+        <Alert>
+          <ShieldAlert className="h-4 w-4" />
+          <AlertTitle>Technical details ahead</AlertTitle>
+          <AlertDescription>
+            This page shows technical details about your AI system. Most founders don't need to check this — your system manages itself automatically.
+          </AlertDescription>
+        </Alert>
+
         {/* Stats Row */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
@@ -760,6 +768,7 @@ export default function AiObservatory() {
             value={
               stats ? `${(stats.cacheHitRate * 100).toFixed(1)}%` : "—"
             }
+            sub="Reuses previous answers instead of making new AI calls (saves money)"
             icon={Zap}
             loading={statsLoading}
           />
@@ -837,7 +846,7 @@ export default function AiObservatory() {
                       <TableHead>Model</TableHead>
                       <TableHead>Complexity</TableHead>
                       <TableHead>Tools Called</TableHead>
-                      <TableHead className="text-right">Tokens</TableHead>
+                      <TableHead className="text-right"><InfoTooltip term="Tokens" explanation="Units of text processed by the AI — like words, but smaller.">Tokens</InfoTooltip></TableHead>
                       <TableHead className="text-right">Cost</TableHead>
                       <TableHead>Status</TableHead>
                     </TableRow>
