@@ -6,11 +6,12 @@ import { TeamDashboardContent } from "@/components/team-dashboard-content";
 import { ActivityContent } from "@/components/activity-content";
 import { CohortAnalytics } from "@/components/cohort-analytics";
 import { AttributionAnalytics } from "@/components/attribution-analytics";
-import { BarChart3, Users, Activity, GitBranch, Target } from "lucide-react";
+import { CohortRetentionDashboard } from "@/components/cohort-retention-dashboard";
+import { BarChart3, Users, Activity, GitBranch, Target, TrendingUp } from "lucide-react";
 
-type TabValue = "analytics" | "team" | "activity" | "cohorts" | "attribution";
+type TabValue = "analytics" | "team" | "activity" | "cohorts" | "retention" | "attribution";
 
-const VALID_TABS: TabValue[] = ["analytics", "team", "activity", "cohorts", "attribution"];
+const VALID_TABS: TabValue[] = ["analytics", "team", "activity", "cohorts", "retention", "attribution"];
 
 function getTabFromHash(): TabValue {
   const hash = window.location.hash.replace("#", "") as TabValue;
@@ -84,6 +85,14 @@ export default function AnalyticsPage() {
           >
             <GitBranch className="h-4 w-4" />
             <span>Cohorts</span>
+          </TabsTrigger>
+          <TabsTrigger
+            value="retention"
+            className="flex items-center gap-2 min-w-max"
+            data-testid="tab-retention"
+          >
+            <TrendingUp className="h-4 w-4" />
+            <span>Retention</span>
           </TabsTrigger>
           <TabsTrigger
             value="attribution"
