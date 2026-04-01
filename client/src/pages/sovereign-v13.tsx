@@ -714,6 +714,34 @@ export default function SovereignV13Page() {
           </CardContent>
         </Card>
       </div>
+
+      <AlertDialog open={!!pendingAction} onOpenChange={(open) => { if (!open) setPendingAction(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {pendingAction === "consolidate" ? "Consolidate memory?" : "Clean up expired entries?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingAction === "consolidate"
+                ? "This will reorganize your system's memory records. Old episodes will be archived and key facts will be extracted. This is safe but may take a few minutes."
+                : "This will remove expired entries from working memory. This is safe and helps keep the system running efficiently."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              if (pendingAction === "consolidate") {
+                consolidateMutation.mutate("oracle");
+              } else if (pendingAction === "cleanup") {
+                cleanupMutation.mutate();
+              }
+              setPendingAction(null);
+            }}>
+              Yes, proceed
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
