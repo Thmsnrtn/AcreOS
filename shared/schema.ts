@@ -11325,7 +11325,6 @@ export const entityComments = pgTable("entity_comments", {
   index("ec_org_created_idx").on(t.organizationId, t.createdAt),
 ]);
 export type EntityComment = typeof entityComments.$inferSelect;
-export type NoteReceivable = typeof notesReceivable.$inferSelect;
 
 // ============================================
 // BETA ANALYTICS TABLES
