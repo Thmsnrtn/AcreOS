@@ -312,7 +312,7 @@ async function runWinBackEngine(): Promise<{ sent: number }> {
           <p>This is our last outreach — promise.</p>
           <p>You left AcreOS about two months ago. We've been thinking about what we could have done better for you, and we'd genuinely appreciate knowing.</p>
           <p>If you want to come back, reply to this email and we'll work something out. We're flexible for the right customers.</p>
-          <p>If we're not the right fit, that's okay too. We wish you the best with your land investing journey.</p>
+          <p>If we're not the right fit, that's okay too. We wish you the best with your real estate journey.</p>
           <p style="margin-top:24px;">— The AcreOS Team</p>
         </div>`;
         textBody = `Last note from AcreOS. We'd love to have you back — reply to this email if you want to reconnect.`;
@@ -381,14 +381,14 @@ async function runReferralActivation(): Promise<{ sent: number }> {
           <p>You're one of our most active users — ${user.activityCount}+ actions in the last 30 days. We notice these things.</p>
           <p>We just launched our referral program, and we wanted you to be among the first to know about it.</p>
           <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin:20px 0;">
-            <h3 style="margin:0 0 8px;color:#374151;">Refer a land investor, earn rewards:</h3>
+            <h3 style="margin:0 0 8px;color:#374151;">Refer a real estate professional, earn rewards:</h3>
             <ul style="color:#374151;font-size:14px;line-height:1.8;margin:0;padding-left:20px;">
               <li><strong>1 month free</strong> for every paying referral</li>
               <li>Your referrals get <strong>20% off their first 3 months</strong></li>
               <li>Stack multiple referrals — no limit</li>
             </ul>
           </div>
-          <p>If you know other land investors who'd benefit from AcreOS, we'd love the introduction.</p>
+          <p>If you know other real estate professionals who'd benefit from AcreOS, we'd love the introduction.</p>
           <div style="text-align:center;margin:24px 0;">
             <a href="${CONFIG.APP_URL}/referrals" style="background:#059669;color:white;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;">Get your referral link →</a>
           </div>

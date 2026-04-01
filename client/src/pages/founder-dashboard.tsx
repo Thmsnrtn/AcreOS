@@ -5344,7 +5344,7 @@ function GrowthSection() {
   };
 
   const TEMPLATE_META: Record<string, { icon: React.ComponentType<{ className?: string }>; color: string; tagline: string }> = {
-    land_investors_signup: { icon: Target, color: "text-green-600", tagline: "Cold audience — land investors & RE buyers" },
+    land_investors_signup: { icon: Target, color: "text-green-600", tagline: "Cold audience — real estate professionals & buyers" },
     retargeting_visitors: { icon: RotateCcw, color: "text-orange-600", tagline: "Warm audience — website visitors who didn't convert" },
     lookalike_subscribers: { icon: Users2, color: "text-purple-600", tagline: "Lookalike — similar to your current subscribers" },
   };
@@ -5492,7 +5492,7 @@ function GrowthSection() {
                 <div>
                   <label className="text-sm font-medium mb-1.5 block">Campaign Name</label>
                   <Input
-                    placeholder="e.g. AcreOS – Land Investors – March 2026"
+                    placeholder="e.g. AcreOS – Real Estate Pros – March 2026"
                     value={wizardName}
                     onChange={(e) => setWizardName(e.target.value)}
                   />
@@ -5555,7 +5555,7 @@ function GrowthSection() {
               <div>
                 <h3 className="font-semibold text-lg">AI is crafting your campaign</h3>
                 <p className="text-muted-foreground text-sm mt-1 max-w-sm mx-auto">
-                  Writing 4 persuasion-angle copy variants and generating 3 HD images designed specifically for land investor audiences.
+                  Writing 4 persuasion-angle copy variants and generating 3 HD images designed specifically for real estate professional audiences.
                 </p>
               </div>
               <div className="flex flex-col gap-2 max-w-xs mx-auto text-left">

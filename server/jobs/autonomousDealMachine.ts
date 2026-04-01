@@ -671,7 +671,7 @@ function generateEnhancedBriefingEmail(data: EnhancedBriefingData): string {
 
   <!-- Expert Tip of the Day (rotating wisdom) -->
   <div style="background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
-    <div style="font-size: 11px; color: #0369a1; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">💡 Land Investing Wisdom</div>
+    <div style="font-size: 11px; color: #0369a1; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">💡 Real Estate Wisdom</div>
     <div style="font-size: 13px; color: #0c4a6e; margin-top: 6px; line-height: 1.6;">${getDailyWisdom()}</div>
   </div>
 
@@ -690,7 +690,7 @@ function generateEnhancedBriefingEmail(data: EnhancedBriefingData): string {
 // Rotating expert wisdom — one per day of year
 function getDailyWisdom(): string {
   const wisdomList = [
-    "The #1 mistake new land investors make: sending one letter and giving up. The investor who sends 5 touches gets 4–5× the deals of someone who sends 1.",
+    "The #1 mistake new real estate investors make: sending one letter and giving up. The investor who sends 5 touches gets 4–5× the deals of someone who sends 1.",
     "Out-of-state owner + tax delinquency = the golden combination. These sellers don't know local market value AND they're financially stressed. Offer fast.",
     "Price at 25–35% of market value. Sounds crazy until you realize the seller paid $800 in 1987 and you're offering $3,000. That's found money to them.",
     "Owner financing is where the real money is. Buy cash at 30%, sell on terms at 80%. The monthly payment becomes passive income that never stops.",
@@ -700,7 +700,7 @@ function getDailyWisdom(): string {
     "Due diligence checklist: access road? Utilities available? Flood zone? Zoning? Environmental issues? If any of these are 'no / unknown', price accordingly.",
     "The deals you DON'T do are just as important as the ones you do. Discipline in county selection and pricing prevents 90% of problems.",
     "Passive income from land notes is the most underrated wealth-building strategy in real estate. No toilets, no tenants, no trash.",
-    "Your mailing list IS your business. A high-quality tax delinquent list in a good county is worth more than almost any other asset in land investing.",
+    "Your mailing list IS your business. A high-quality tax delinquent list in a good county is worth more than almost any other asset in real estate investing.",
     "Speed of response matters enormously. A seller who called you after seeing your letter is at peak motivation RIGHT NOW. Call back within the hour.",
     "The best time to raise your offer is after you've already gotten the seller to say yes at the low price. Rarely needed — but it closes the deal faster.",
     "Consistency compounds. 500 letters a month for 12 months beats 6,000 letters in one month. Predictable deal flow requires predictable input.",

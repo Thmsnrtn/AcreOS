@@ -2961,7 +2961,7 @@ export async function executeSupportTool(
             messages: [
               {
                 role: "system",
-                content: `You are a UI/UX analyst for AcreOS, a land investment management platform. 
+                content: `You are a UI/UX analyst for AcreOS, a real estate management platform. 
                 Analyze the screenshot to identify:
                 1. What page/feature is shown
                 2. Any visible errors or issues
@@ -5034,7 +5034,7 @@ export async function executeSupportTool(
       case "geocode_address": {
         const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(args.address)}&countrycodes=us&format=jsonv2&addressdetails=1&limit=5`;
         const res = await fetch(url, {
-          headers: { "User-Agent": "AcreOS Land Investment Platform", "Accept-Language": "en" },
+          headers: { "User-Agent": "AcreOS Real Estate Platform", "Accept-Language": "en" },
           signal: AbortSignal.timeout(10000),
         });
         if (!res.ok) return { success: false, error: `Nominatim error: ${res.status}` };
@@ -5051,7 +5051,7 @@ export async function executeSupportTool(
       case "reverse_geocode": {
         const url = `https://nominatim.openstreetmap.org/reverse?lat=${args.latitude}&lon=${args.longitude}&format=jsonv2&addressdetails=1`;
         const res = await fetch(url, {
-          headers: { "User-Agent": "AcreOS Land Investment Platform", "Accept-Language": "en" },
+          headers: { "User-Agent": "AcreOS Real Estate Platform", "Accept-Language": "en" },
           signal: AbortSignal.timeout(10000),
         });
         if (!res.ok) return { success: false, error: `Nominatim error: ${res.status}` };
@@ -5068,7 +5068,7 @@ export async function executeSupportTool(
   }
 }
 
-const PAX_SYSTEM_PROMPT = `You are Pax, the AcreOS Support Agent. You help customers resolve issues with their AcreOS land investment platform.
+const PAX_SYSTEM_PROMPT = `You are Pax, the AcreOS Support Agent. You help customers resolve issues with their AcreOS real estate management platform.
 
 YOUR PERSONALITY:
 - Friendly, patient, and empathetic

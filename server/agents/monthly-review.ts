@@ -178,7 +178,7 @@ export function renderMonthlyReviewHtml(data: MonthlyReviewData): string {
   <a href="https://app.acreos.com" class="cta">View Full Dashboard →</a>
 
   <div class="footer">
-    <p>AcreOS — Land Investing Intelligence</p>
+    <p>AcreOS — Real Estate Intelligence</p>
     <p><a href="https://app.acreos.com/settings/notifications" style="color: #999;">Unsubscribe</a></p>
   </div>
 </body>

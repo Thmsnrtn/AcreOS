@@ -79,7 +79,7 @@ export function DealsEmptyState({ onAddDeal }: DealsEmptyStateProps) {
               <p className="text-sm font-medium mb-1">Pro tip</p>
               <p className="text-sm text-muted-foreground">
                 Link deals to properties and leads to get a complete picture of 
-                your land investing pipeline from lead to profit.
+                your real estate pipeline from lead to profit.
               </p>
             </div>
           </div>

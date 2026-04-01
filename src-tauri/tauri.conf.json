@@ -35,7 +35,7 @@
       "iconAsTemplate": true,
       "menuOnLeftClick": false,
       "title": "AcreOS",
-      "tooltip": "AcreOS - Land Investment Platform"
+      "tooltip": "AcreOS - Real Estate Platform"
     }
   },
   "plugins": {
@@ -87,8 +87,8 @@
     "externalBin": [],
     "copyright": "© 2024 AcreOS Inc.",
     "category": "Finance",
-    "shortDescription": "Land investment platform for land investors",
-    "longDescription": "AcreOS Desktop is the native desktop application for the AcreOS land investment platform. Manage leads, deals, marketplace listings, and deal rooms from your desktop.",
+    "shortDescription": "Real estate platform for real estate professionals",
+    "longDescription": "AcreOS Desktop is the native desktop application for the AcreOS real estate platform. Manage leads, deals, marketplace listings, and deal rooms from your desktop.",
     "fileAssociations": [
       {
         "ext": ["acreos"],

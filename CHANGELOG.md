@@ -104,5 +104,5 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-*AcreOS is the definitive SaaS platform for land investors.*
+*AcreOS is the definitive SaaS platform for real estate professionals.*
 *Subscription tiers: Free · Starter $99 · Pro $299 · Scale $599 · Enterprise $799*

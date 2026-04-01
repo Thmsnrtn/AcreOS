@@ -2828,7 +2828,7 @@ export function registerAdminRoutes(app: Express): void {
         {
           key: "first_campaign",
           label: "First growth campaign launched",
-          description: "Start driving land investor signups with a pre-built Meta campaign",
+          description: "Start driving real estate professional signups with a pre-built Meta campaign",
           priority: "growth",
           status: Number(campaigns) > 0 ? "complete" : "incomplete",
           section: "section-growth",
@@ -3316,7 +3316,7 @@ export function registerAdminRoutes(app: Express): void {
             model: "gpt-4o",
             messages: [{
               role: "user",
-              content: `You are the AI co-pilot for AcreOS, a SaaS platform for land investors. Write a crisp 2-3 sentence executive briefing for the founder based on these metrics:
+              content: `You are the AI co-pilot for AcreOS, a SaaS platform for real estate professionals. Write a crisp 2-3 sentence executive briefing for the founder based on these metrics:
 
 - Total MRR: $${totalMrr}
 - Paying organizations: ${paidOrgs.length}
@@ -3632,7 +3632,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
         model: "gpt-4o",
         messages: [{
           role: "system",
-          content: `You are the founder of AcreOS writing a personal support reply. AcreOS is a CRM and operating system for land investors. Be helpful, warm, direct, and knowledgeable. The customer is a ${org?.subscriptionTier || 'free'} tier subscriber named from org "${org?.name || 'Unknown'}". Sign off as "– The AcreOS Team". Do not be overly formal. Aim for 2-4 sentences unless the issue requires more.`,
+          content: `You are the founder of AcreOS writing a personal support reply. AcreOS is a CRM and operating system for real estate professionals. Be helpful, warm, direct, and knowledgeable. The customer is a ${org?.subscriptionTier || 'free'} tier subscriber named from org "${org?.name || 'Unknown'}". Sign off as "– The AcreOS Team". Do not be overly formal. Aim for 2-4 sentences unless the issue requires more.`,
         }, {
           role: "user",
           content: `Support ticket: "${ticket.subject}"\n\nConversation:\n${conversation}\n\nWrite a helpful, resolution-focused reply:`,

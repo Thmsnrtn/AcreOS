@@ -1,6 +1,6 @@
 # AcreOS Owner's Manual
 
-## Complete Guide to the Land Investment Management Platform
+## Complete Guide to the Real Estate Management Platform
 
 **Version 1.0**
 
@@ -27,7 +27,7 @@
 
 ## Welcome to AcreOS
 
-AcreOS is a comprehensive platform designed specifically for land investors. Whether you're flipping vacant land, investing in seller-financed notes, or running a hybrid business, AcreOS provides the tools you need to manage your entire operation from a single dashboard.
+AcreOS is a comprehensive platform designed for real estate professionals. Whether you're flipping vacant land, investing in seller-financed notes, or running a hybrid business, AcreOS provides the tools you need to manage your entire operation from a single dashboard.
 
 The platform combines CRM functionality, property management, deal tracking, seller financing, marketing automation, and AI-powered insights into one unified system.
 
@@ -1125,7 +1125,7 @@ Organize templates by purpose:
 
 ## Overview
 
-AcreOS includes four specialized AI agents that help automate and enhance your land investing operations. Access them through the AI Command Center at `/command-center` or `/ai`.
+AcreOS includes four specialized AI agents that help automate and enhance your real estate operations. Access them through the AI Command Center at `/command-center` or `/ai`.
 
 **Important**: AI agents provide analysis and suggestions, not financial, legal, or investment advice. Always verify AI recommendations independently.
 

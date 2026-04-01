@@ -571,7 +571,7 @@ export class DataSourceBroker {
     const url = `${baseUrl}/28/query?geometry=${geometryParam}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&outFields=DFIRM_ID,FLD_ZONE,ZONE_SUBTY,STATIC_BFE&returnGeometry=false&f=json`;
     
     const response = await fetch(url, { 
-      headers: { "User-Agent": "AcreOS Land Investment Platform" },
+      headers: { "User-Agent": "AcreOS Real Estate Platform" },
       signal: AbortSignal.timeout(10000),
     });
     
@@ -603,7 +603,7 @@ export class DataSourceBroker {
     const url = `${baseUrl}/0/query?geometry=${geometryParam}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&outFields=WETLAND_TYPE,ATTRIBUTE,ACRES&returnGeometry=false&f=json`;
     
     const response = await fetch(url, {
-      headers: { "User-Agent": "AcreOS Land Investment Platform" },
+      headers: { "User-Agent": "AcreOS Real Estate Platform" },
       signal: AbortSignal.timeout(10000),
     });
     
@@ -629,7 +629,7 @@ export class DataSourceBroker {
     const basicQuery = `SELECT TOP 1 musym, muname, mukey FROM mapunit WHERE mukey IN (SELECT mukey FROM mupolygon WHERE mupolygonGeometry.STContains(geometry::Point(${lng}, ${lat}, 4326)) = 1)`;
     const response = await fetch(baseUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": "AcreOS Land Investment Platform" },
+      headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": "AcreOS Real Estate Platform" },
       body: `query=${encodeURIComponent(basicQuery)}&format=json`,
       signal: AbortSignal.timeout(15000),
     });
@@ -648,7 +648,7 @@ export class DataSourceBroker {
           WHERE mu.mukey = '${mukey}'`;
         const extRes = await fetch(baseUrl, {
           method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": "AcreOS Land Investment Platform" },
+          headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": "AcreOS Real Estate Platform" },
           body: `query=${encodeURIComponent(extQuery)}&format=json`,
           signal: AbortSignal.timeout(12000),
         });
@@ -696,7 +696,7 @@ export class DataSourceBroker {
     const url = `https://data.epa.gov/efservice/tri_facility/latitude/${lat}/longitude/${lng}/radius/${radiusMiles}/JSON`;
     
     const response = await fetch(url, {
-      headers: { "User-Agent": "AcreOS Land Investment Platform" },
+      headers: { "User-Agent": "AcreOS Real Estate Platform" },
       signal: AbortSignal.timeout(10000),
     });
     
@@ -729,7 +729,7 @@ export class DataSourceBroker {
     const url = `${baseUrl}/0/query?geometry=${geometryParam}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&outFields=*&returnGeometry=false&f=json`;
 
     const response = await fetch(url, {
-      headers: { "User-Agent": "AcreOS Land Investment Platform" },
+      headers: { "User-Agent": "AcreOS Real Estate Platform" },
       signal: AbortSignal.timeout(15000),
     });
 
@@ -770,7 +770,7 @@ export class DataSourceBroker {
     await Promise.all(endpoints.map(async (endpoint) => {
       try {
         const response = await fetch(endpoint.url, {
-          headers: { "User-Agent": "AcreOS Land Investment Platform" },
+          headers: { "User-Agent": "AcreOS Real Estate Platform" },
           signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
         });
         if (response.ok) {
@@ -808,7 +808,7 @@ export class DataSourceBroker {
     try {
       const femaUrl = `https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer/28/query?geometry=${geometryParam}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&outFields=*&returnGeometry=false&f=json`;
       const femaResponse = await fetch(femaUrl, {
-        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        headers: { "User-Agent": "AcreOS Real Estate Platform" },
         signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
       });
       if (femaResponse.ok) {
@@ -822,7 +822,7 @@ export class DataSourceBroker {
     try {
       const quakeUrl = `https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&latitude=${lat}&longitude=${lng}&maxradiuskm=100&minmagnitude=2.5&orderby=time&limit=10`;
       const quakeResponse = await fetch(quakeUrl, {
-        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        headers: { "User-Agent": "AcreOS Real Estate Platform" },
         signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
       });
       if (quakeResponse.ok) {
@@ -841,7 +841,7 @@ export class DataSourceBroker {
     try {
       const wildfireUrl = `https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/WFIGS_Interagency_Perimeters/FeatureServer/0/query?geometry=${geometryParam}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&distance=50000&units=esriSRUnit_Meter&outFields=poly_IncidentName,poly_GISAcres,attr_FireDiscoveryDateTime&returnGeometry=false&f=json`;
       const wildfireResponse = await fetch(wildfireUrl, {
-        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        headers: { "User-Agent": "AcreOS Real Estate Platform" },
         signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
       });
       if (wildfireResponse.ok) {
@@ -864,7 +864,7 @@ export class DataSourceBroker {
     try {
       const firmUrl = `https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer/3/query?geometry=${geometryParam}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&outFields=FIRM_PAN,PANEL,SUFFIX,EFF_DATE,CASE_NO,STATUS,NP_DATE,SOURCE_CIT&returnGeometry=false&f=json`;
       const firmResponse = await fetch(firmUrl, {
-        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        headers: { "User-Agent": "AcreOS Real Estate Platform" },
         signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
       });
       if (firmResponse.ok) {
@@ -908,7 +908,7 @@ export class DataSourceBroker {
     try {
       const geocodeUrl = `https://geocoding.geo.census.gov/geocoder/geographies/coordinates?x=${lng}&y=${lat}&benchmark=Public_AR_Current&vintage=Current_Current&format=json`;
       const geocodeResponse = await fetch(geocodeUrl, {
-        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        headers: { "User-Agent": "AcreOS Real Estate Platform" },
         signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
       });
 
@@ -938,7 +938,7 @@ export class DataSourceBroker {
       const acsUrl = `https://api.census.gov/data/2022/acs/acs5?get=B01003_001E,B19013_001E,B25077_001E,B25001_001E,B23025_002E,B23025_005E,B25002_002E,B25002_003E,B25003_002E,B25003_003E,B08303_001E,B15003_022E&for=tract:${tractCode}&in=state:${stateCode}&in=county:${countyCode}`;
       
       const acsResponse = await fetch(acsUrl, {
-        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        headers: { "User-Agent": "AcreOS Real Estate Platform" },
         signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
       });
 
@@ -1018,7 +1018,7 @@ export class DataSourceBroker {
     try {
       const blmUrl = `https://gis.blm.gov/arcgis/rest/services/lands/BLM_Natl_SMA_Cached_without_PriUnk/MapServer/0/query?geometry=${geometryParam}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&outFields=ADMIN_UNIT_NAME,ADMIN_ST,SMA_CODE&returnGeometry=false&f=json`;
       const blmResponse = await fetch(blmUrl, {
-        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        headers: { "User-Agent": "AcreOS Real Estate Platform" },
         signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
       });
       if (blmResponse.ok) {
@@ -1038,7 +1038,7 @@ export class DataSourceBroker {
     try {
       const npsUrl = `https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/NPS_Land_Resources_Division_Boundary_and_Tract_Data_Service/FeatureServer/2/query?geometry=${geometryParam}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&outFields=UNIT_NAME,UNIT_TYPE,STATE&returnGeometry=false&f=json`;
       const npsResponse = await fetch(npsUrl, {
-        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        headers: { "User-Agent": "AcreOS Real Estate Platform" },
         signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
       });
       if (npsResponse.ok) {
@@ -1058,7 +1058,7 @@ export class DataSourceBroker {
     try {
       const usfsUrl = `https://apps.fs.usda.gov/arcx/rest/services/EDW/EDW_ForestSystemBoundaries_01/MapServer/0/query?geometry=${geometryParam}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&outFields=FORESTNAME,REGION,ADMINFORES&returnGeometry=false&f=json`;
       const usfsResponse = await fetch(usfsUrl, {
-        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        headers: { "User-Agent": "AcreOS Real Estate Platform" },
         signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
       });
       if (usfsResponse.ok) {
@@ -1100,7 +1100,7 @@ export class DataSourceBroker {
     try {
       const highwayUrl = `https://geo.dot.gov/server/rest/services/Hosted/National_Highway_Planning_Network_NHPN/FeatureServer/0/query?geometry=${geometryParam}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&distance=${radiusMeters}&units=esriSRUnit_Meter&outFields=ROUTE_ID,ROUTE_NUMB,ROUTE_NAME,F_SYSTEM&returnGeometry=false&f=json`;
       const highwayResponse = await fetch(highwayUrl, {
-        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        headers: { "User-Agent": "AcreOS Real Estate Platform" },
         signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
       });
       if (highwayResponse.ok) {
@@ -1119,7 +1119,7 @@ export class DataSourceBroker {
     try {
       const bridgeUrl = `https://geo.dot.gov/server/rest/services/Hosted/National_Bridge_Inventory/FeatureServer/0/query?geometry=${geometryParam}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&distance=${radiusMeters}&units=esriSRUnit_Meter&outFields=STRUCTURE_NUMBER_008,FACILITY_CARRIED_007,FEATURES_DESC_006A,YEAR_BUILT_027&returnGeometry=false&f=json`;
       const bridgeResponse = await fetch(bridgeUrl, {
-        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        headers: { "User-Agent": "AcreOS Real Estate Platform" },
         signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
       });
       if (bridgeResponse.ok) {
@@ -1138,7 +1138,7 @@ export class DataSourceBroker {
     try {
       const railUrl = `https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/USA_Railroads/FeatureServer/0/query?geometry=${geometryParam}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&distance=${radiusMeters}&units=esriSRUnit_Meter&outFields=RROWNER1,RROWNER2,STCNTYFIPS,TRACKS&returnGeometry=false&f=json`;
       const railResponse = await fetch(railUrl, {
-        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        headers: { "User-Agent": "AcreOS Real Estate Platform" },
         signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
       });
       if (railResponse.ok) {
@@ -1157,7 +1157,7 @@ export class DataSourceBroker {
     try {
       const tigerUrl = `https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/tigerWMS_Current/MapServer/6/query?geometry=${geometryParam}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&distance=3219&units=esriSRUnit_Meter&outFields=FULLNAME,MTFCC,RTTYP&returnGeometry=false&f=json`;
       const tigerResponse = await fetch(tigerUrl, {
-        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        headers: { "User-Agent": "AcreOS Real Estate Platform" },
         signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
       });
       if (tigerResponse.ok) {
@@ -1205,7 +1205,7 @@ export class DataSourceBroker {
       const bbox = `${lng - 0.1},${lat - 0.1},${lng + 0.1},${lat + 0.1}`;
       const sitesUrl = `https://waterservices.usgs.gov/nwis/site/?format=json&bBox=${bbox}&siteType=ST&siteStatus=active&hasDataTypeCd=iv`;
       const sitesResponse = await fetch(sitesUrl, {
-        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        headers: { "User-Agent": "AcreOS Real Estate Platform" },
         signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
       });
       
@@ -1226,7 +1226,7 @@ export class DataSourceBroker {
     try {
       const ivUrl = `https://waterservices.usgs.gov/nwis/iv/?format=json&bBox=${lng - 0.05},${lat - 0.05},${lng + 0.05},${lat + 0.05}&parameterCd=00060,00065&siteStatus=active`;
       const ivResponse = await fetch(ivUrl, {
-        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        headers: { "User-Agent": "AcreOS Real Estate Platform" },
         signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
       });
       
@@ -1254,7 +1254,7 @@ export class DataSourceBroker {
       }));
       const watershedUrl = `https://hydro.nationalmap.gov/arcgis/rest/services/wbd/MapServer/6/query?geometry=${geometryParam}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&outFields=HUC12,NAME,HUTYPE,STATES&returnGeometry=false&f=json`;
       const watershedResponse = await fetch(watershedUrl, {
-        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        headers: { "User-Agent": "AcreOS Real Estate Platform" },
         signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
       });
       
@@ -1292,7 +1292,7 @@ export class DataSourceBroker {
       // USGS National Map Elevation Point Query Service – completely free, no key
       const url = `https://epqs.nationalmap.gov/v1/json?x=${lng}&y=${lat}&wkid=4326&includeDate=true`;
       const response = await fetch(url, {
-        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        headers: { "User-Agent": "AcreOS Real Estate Platform" },
         signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
       });
       if (!response.ok) throw new Error(`USGS EPQS error: ${response.status}`);
@@ -1312,7 +1312,7 @@ export class DataSourceBroker {
       try {
         const fallbackUrl = `https://api.open-elevation.com/api/v1/lookup?locations=${lat},${lng}`;
         const res = await fetch(fallbackUrl, {
-          headers: { "User-Agent": "AcreOS Land Investment Platform" },
+          headers: { "User-Agent": "AcreOS Real Estate Platform" },
           signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
         });
         if (res.ok) {
@@ -1342,7 +1342,7 @@ export class DataSourceBroker {
       const openMeteoUrl = `https://climate-api.open-meteo.com/v1/climate?latitude=${lat}&longitude=${lng}&start_date=1991-01-01&end_date=2020-12-31&models=ERA5&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&timezone=auto`;
 
       const response = await fetch(openMeteoUrl, {
-        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        headers: { "User-Agent": "AcreOS Real Estate Platform" },
         signal: AbortSignal.timeout(15000),
       });
 
@@ -1387,7 +1387,7 @@ export class DataSourceBroker {
         // Use Census geocoder to get FIPS
         const geoUrl = `https://geocoding.geo.census.gov/geocoder/geographies/coordinates?x=${lng}&y=${lat}&benchmark=Public_AR_Current&vintage=Current_Current&format=json`;
         const geoRes = await fetch(geoUrl, {
-          headers: { "User-Agent": "AcreOS Land Investment Platform" },
+          headers: { "User-Agent": "AcreOS Real Estate Platform" },
           signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
         });
         if (geoRes.ok) {
@@ -1403,7 +1403,7 @@ export class DataSourceBroker {
       // USDA ERS land value reports (public JSON, no key)
       const ersUrl = `https://www.ers.usda.gov/webdocs/DataFiles/47937/landvalues.json`;
       const ersRes = await fetch(ersUrl, {
-        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        headers: { "User-Agent": "AcreOS Real Estate Platform" },
         signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
       });
 
@@ -1434,7 +1434,7 @@ export class DataSourceBroker {
         try {
           const nassUrl = `https://quickstats.nass.usda.gov/api/api_GET/?commodity_desc=FARM+REAL+ESTATE&statisticcat_desc=VALUE&unit_desc=%24+%2F+ACRE&year=2023&state_fips_code=${stateFips}&county_code=${countyFips}&format=JSON`;
           const nassRes = await fetch(nassUrl, {
-            headers: { "User-Agent": "AcreOS Land Investment Platform" },
+            headers: { "User-Agent": "AcreOS Real Estate Platform" },
             signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
           });
           if (nassRes.ok) {
@@ -1471,7 +1471,7 @@ export class DataSourceBroker {
       // Prefer the simpler ESRI identify endpoint
       const identifyUrl = `https://landscape11.arcgis.com/arcgis/rest/services/USA_NLCD_Land_Cover/ImageServer/identify?geometry=${lng},${lat}&geometryType=esriGeometryPoint&mosaicRule={"mosaicMethod":"esriMosaicLockRaster","lockRasterIds":[1]}&returnGeometry=false&f=json`;
       const response = await fetch(identifyUrl, {
-        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        headers: { "User-Agent": "AcreOS Real Estate Platform" },
         signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
       });
 
@@ -1514,7 +1514,7 @@ export class DataSourceBroker {
       // CropScape GetCropValue API – returns NLCD-style crop code + description
       const url = `https://nassgeodata.gmu.edu/CropScape/wms_cdlservice/GetCropValue?year=2023&lon=${lng}&lat=${lat}&format=json`;
       const response = await fetch(url, {
-        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        headers: { "User-Agent": "AcreOS Real Estate Platform" },
         signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
       });
 
@@ -1557,7 +1557,7 @@ export class DataSourceBroker {
       if (cropCode === null) {
         const identifyUrl = `https://nassgeodata.gmu.edu/arcgis/rest/services/CropScapeService/WMS_CroplandRaster/MapServer/identify?geometry=${lng},${lat}&geometryType=esriGeometryPoint&returnGeometry=false&f=json`;
         const r2 = await fetch(identifyUrl, {
-          headers: { "User-Agent": "AcreOS Land Investment Platform" },
+          headers: { "User-Agent": "AcreOS Real Estate Platform" },
           signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
         });
         if (r2.ok) {
@@ -1594,7 +1594,7 @@ export class DataSourceBroker {
       const url = `https://ofmpub.epa.gov/frs_public2/frs_rest_services.get_facilities?latitude83=${lat}&longitude83=${lng}&search_radius=${radiusMiles}&output=JSON&p_act=Y&p_pen=N`;
 
       const response = await fetch(url, {
-        headers: { "User-Agent": "AcreOS Land Investment Platform", "Accept": "application/json" },
+        headers: { "User-Agent": "AcreOS Real Estate Platform", "Accept": "application/json" },
         signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
       });
 
@@ -1660,7 +1660,7 @@ export class DataSourceBroker {
       // Use a county-level approach: find nearest FIPS from Census, then query NOAA
       const geocodeUrl = `https://geo.fcc.gov/api/census/block/find?latitude=${lat}&longitude=${lng}&format=json`;
       const geoRes = await fetch(geocodeUrl, {
-        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        headers: { "User-Agent": "AcreOS Real Estate Platform" },
         signal: AbortSignal.timeout(8000),
       });
 
@@ -1705,7 +1705,7 @@ export class DataSourceBroker {
       // BLM CadNSDI PLSS - Public Land Survey System
       const url = `https://gis.blm.gov/arcgis/rest/services/Cadastral/BLM_Natl_PLSS_CadNSDI/MapServer/0/query?geometry=${lng}%2C${lat}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&outFields=TWNSHPLAB%2CRANGEDIR%2CSECTIONLABEL%2CPLSSID%2CTOWNSHIP%2CRANGE%2CSECTION&f=json`;
       const response = await fetch(url, {
-        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        headers: { "User-Agent": "AcreOS Real Estate Platform" },
         signal: AbortSignal.timeout(12000),
       });
       if (!response.ok) throw new Error(`BLM PLSS API error: ${response.status}`);
@@ -1740,7 +1740,7 @@ export class DataSourceBroker {
       // EPA WATERS NHD Plus - Watershed lookup by point
       const url = `https://ofmpub.epa.gov/waters10/PointIndexing.Service?pGeometry=POINT%28${lng}%20${lat}%29&pLayer=NHDPLUS_HYDROCODE&pOutputFlag=MINIMAL&f=json`;
       const response = await fetch(url, {
-        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        headers: { "User-Agent": "AcreOS Real Estate Platform" },
         signal: AbortSignal.timeout(15000),
       });
       if (!response.ok) throw new Error(`EPA WATERS API error: ${response.status}`);
@@ -1765,7 +1765,7 @@ export class DataSourceBroker {
       if (!huc8 && !huc12) {
         const wbdUrl = `https://hydrowfs.nationalmap.gov/arcgis/rest/services/wbd/MapServer/4/query?geometry=${lng}%2C${lat}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&outFields=huc8%2Cname&f=json`;
         const wbdRes = await fetch(wbdUrl, {
-          headers: { "User-Agent": "AcreOS Land Investment Platform" },
+          headers: { "User-Agent": "AcreOS Real Estate Platform" },
           signal: AbortSignal.timeout(12000),
         });
         if (wbdRes.ok) {
@@ -1795,7 +1795,7 @@ export class DataSourceBroker {
       // FEMA National Risk Index - county-level hazard risk scores
       const url = `https://hazards.fema.gov/nri/rest/services/NRI/MapServer/3/query?geometry=${lng}%2C${lat}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&outFields=RISK_SCORE%2CCFLD_RISKR%2CHWAV_RISKR%2CTRND_RISKR%2CHAIL_RISKR%2CWFIR_RISKR%2CLTNG_RISKR%2CEQK_RISKR%2CDRGT_RISKR%2CCOUNTY%2CSTATE&f=json`;
       const response = await fetch(url, {
-        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        headers: { "User-Agent": "AcreOS Real Estate Platform" },
         signal: AbortSignal.timeout(15000),
       });
       if (!response.ok) throw new Error(`FEMA NRI API error: ${response.status}`);
@@ -1829,7 +1829,7 @@ export class DataSourceBroker {
       // USDA FSA Common Land Units
       const url = `https://gis.sc.egov.usda.gov/arcgis/rest/services/common_land_units/common_land_units/FeatureServer/0/query?geometry=${lng}%2C${lat}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&outFields=clu_identifier%2Cclu_number%2Cfarm_number%2Ctract_number%2Ccalculated_acres&f=json`;
       const response = await fetch(url, {
-        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        headers: { "User-Agent": "AcreOS Real Estate Platform" },
         signal: AbortSignal.timeout(12000),
       });
       if (!response.ok) throw new Error(`USDA CLU API error: ${response.status}`);
@@ -1863,7 +1863,7 @@ export class DataSourceBroker {
     url = url.replace("{longitude}", options.longitude.toString());
 
     const response = await fetch(url, {
-      headers: { "User-Agent": "AcreOS Land Investment Platform" },
+      headers: { "User-Agent": "AcreOS Real Estate Platform" },
       signal: AbortSignal.timeout(15000),
     });
 

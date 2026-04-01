@@ -7,7 +7,7 @@
 
 ## 🎯 Vision
 
-Transform AcreOS from a best-in-class land investment CRM into the definitive industry platform with:
+Transform AcreOS from a best-in-class real estate CRM into the definitive industry platform with:
 - **Predictive Intelligence** (not reactive)
 - **Autonomous Operations** (24/7 deal sourcing)
 - **Network Effects** (marketplace lock-in)
