@@ -674,6 +674,15 @@ export default function PropertiesPage() {
                 </div>
               )}
             </div>
+            {filteredProperties.length > pageSize && (
+              <ListPagination
+                currentPage={safePropertyPage}
+                totalItems={totalPropertyItems}
+                pageSize={pageSize}
+                onPageChange={handlePropertyPageChange}
+                onPageSizeChange={handlePropertyPageSizeChange}
+              />
+            )}
             </>
           ))}
 
