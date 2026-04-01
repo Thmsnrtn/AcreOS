@@ -691,8 +691,6 @@ export default function LeadsPage() {
   const [isBulkUpdating, setIsBulkUpdating] = useState(false);
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(25);
   const { toast } = useToast();
 
   const handleSelectAll = (checked: boolean) => {
@@ -958,13 +956,11 @@ export default function LeadsPage() {
     return result;
   }, [leads, search, stageFilter, assigneeFilter, gisFilters, sortOrder]);
 
-  // Reset to page 1 when filters change
-  const filteredCount = filteredLeads?.length ?? 0;
-  const { paginatedItems: paginatedLeads, totalItems: totalLeadItems, currentPage: safeCurrentPage } = usePagination(
-    filteredLeads ?? [],
-    currentPage,
-    pageSize
-  );
+  // Server-side pagination: the data returned is already one page
+  // Client-side filtering (search, GIS) is applied on the current page
+  const paginatedLeads = filteredLeads;
+  const totalLeadItems = serverTotal;
+  const safeCurrentPage = currentPage;
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
