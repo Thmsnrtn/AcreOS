@@ -578,8 +578,8 @@ router.get("/county-migration-flows/:stateFips/:countyFips", async (req: Request
 
 router.get("/source-health", async (req: Request, res: Response) => {
   try {
-    const { getDataSourceHealth } = await import("./services/dataQualityMonitor");
-    const health = await getDataSourceHealth();
+    const { getLatestHealth } = await import("./services/dataQualityMonitor");
+    const health = getLatestHealth();
     res.json(health);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
