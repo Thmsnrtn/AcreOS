@@ -99,6 +99,7 @@ import {
   CircleX,
   CircleDot as CircleDotIcon,
   Minus,
+  CalendarCheck,
 } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
 import {
@@ -114,6 +115,7 @@ import { SwipeDecisionCard } from "@/components/founder/SwipeDecisionCard";
 import { AgentTeamChat } from "@/components/founder/AgentTeamChat";
 import ActivityTimeline from "@/components/founder/ActivityTimeline";
 import TrendCards from "@/components/founder/TrendCards";
+import { MonthlyCheckin } from "@/components/monthly-checkin";
 import OnboardingWalkthrough from "@/components/founder/OnboardingWalkthrough";
 import ForecastPanel from "@/components/founder/ForecastPanel";
 import CustomerHealthPanel from "@/components/founder/CustomerHealthPanel";
@@ -4650,6 +4652,9 @@ export default function FounderDashboard() {
       <AIModelsSection />
       <SystemApiKeysSection />
 
+      {/* Monthly Check-In Dashboard */}
+      <MonthlyCheckin />
+
       {/* Autopilot Status Bar — fixed at bottom */}
       <AutopilotStatusBar />
     </PageShell>
@@ -6423,6 +6428,7 @@ const NAV_ITEMS = [
   { label: "Users", href: "section-users", icon: Users },
   { label: "Revenue", href: "section-revenue", icon: DollarSign },
   { label: "Config", href: "section-config", icon: Key },
+  { label: "Monthly", href: "section-monthly", icon: CalendarCheck },
 ] as const;
 
 function FounderNavBar() {
