@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction, RequestHandler } from "express";
 import { storage, db } from "./storage";
 import { z } from "zod";
-import { eq, sql, and, desc, lt, inArray, or } from "drizzle-orm";
+import { eq, sql, and, desc, lt, inArray, or, count } from "drizzle-orm";
 import {
   insertFeatureRequestSchema,
   SUBSCRIPTION_TIERS, payments, notes, deals, properties, leads, activityLog, organizations,
@@ -24,6 +24,7 @@ import {
   evolutionCircuitBreaker,
   openrouterModelCatalog,
   aiTelemetryEvents,
+  subscriptionEvents,
 } from "@shared/schema";
 import crypto from "crypto";
 import { isAuthenticated } from "./auth";
@@ -4604,6 +4605,280 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
       const { computeLeadingIndicators } = await import("./services/leadingIndicators");
       const indicators = await computeLeadingIndicators();
       res.json(indicators);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // MONTHLY CHECK-IN DASHBOARD
+  // ============================================
+
+  app.get("/api/founder/monthly-checkin", isAuthenticated, isFounderAdmin, async (_req, res) => {
+    try {
+      const now = new Date();
+      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+
+      // MRR & customer metrics
+      const allOrgs = await db.select().from(organizations);
+      const paidOrgs = allOrgs.filter(o => o.subscriptionTier && o.subscriptionTier !== "free");
+      const tierPricing: Record<string, number> = {
+        sprout: 29, starter: 59, pro: 179, scale: 449, enterprise: 899,
+      };
+      const mrr = paidOrgs.reduce((sum, o) => sum + (tierPricing[o.subscriptionTier || ""] || 0), 0);
+
+      // New signups this month vs last
+      const newThisMonth = allOrgs.filter(o => o.createdAt && new Date(o.createdAt) >= thirtyDaysAgo).length;
+      const newLastMonth = allOrgs.filter(o => o.createdAt && new Date(o.createdAt) >= sixtyDaysAgo && new Date(o.createdAt) < thirtyDaysAgo).length;
+
+      // Churn
+      const cancelledThisMonth = await db.select({ count: count() }).from(subscriptionEvents)
+        .where(and(
+          eq(subscriptionEvents.eventType, "cancel"),
+          sql`${subscriptionEvents.createdAt} >= ${thirtyDaysAgo}`
+        ));
+
+      // Support escalations
+      const escalatedTickets = await db.select({ count: count() }).from(supportTickets)
+        .where(and(
+          sql`${supportTickets.escalatedAt} IS NOT NULL`,
+          sql`${supportTickets.createdAt} >= ${thirtyDaysAgo}`
+        ));
+      const totalTickets = await db.select({ count: count() }).from(supportTickets)
+        .where(sql`${supportTickets.createdAt} >= ${thirtyDaysAgo}`);
+      const aiResolvedTickets = await db.select({ count: count() }).from(supportTickets)
+        .where(and(
+          eq(supportTickets.aiHandled, true),
+          sql`${supportTickets.createdAt} >= ${thirtyDaysAgo}`
+        ));
+
+      // System health
+      const { healthCheckService } = await import("./services/healthCheck");
+      const healthResult = await healthCheckService.checkAll();
+
+      // Alert summary
+      const alertsThisMonth = await db.select().from(systemAlerts)
+        .where(sql`${systemAlerts.createdAt} >= ${thirtyDaysAgo}`)
+        .orderBy(desc(systemAlerts.createdAt));
+      const alertsByPriority: Record<string, number> = { P0: 0, P1: 0, P2: 0, P3: 0 };
+      const { severityToPriority } = await import("./services/alertPolicy");
+      for (const alert of alertsThisMonth) {
+        const p = severityToPriority(alert.severity, alert.alertType || alert.type);
+        alertsByPriority[p]++;
+      }
+
+      // Dunning recovery
+      const { dunningService } = await import("./services/dunning");
+      const dunningSummary = await dunningService.getSummary();
+
+      // Autonomous decisions
+      const { agentEvents } = await import("@shared/schema");
+      const autoDecisions = await db.select({ count: count() }).from(agentEvents)
+        .where(sql`${agentEvents.createdAt} >= ${thirtyDaysAgo}`);
+
+      // Feature requests
+      const topRequests = await db.select().from(featureRequests)
+        .orderBy(desc(featureRequests.createdAt))
+        .limit(5);
+
+      res.json({
+        period: { start: thirtyDaysAgo.toISOString(), end: now.toISOString() },
+        revenue: {
+          mrr,
+          paidCustomers: paidOrgs.length,
+          totalCustomers: allOrgs.length,
+          newSignupsThisMonth: newThisMonth,
+          newSignupsLastMonth: newLastMonth,
+          churnedThisMonth: Number(cancelledThisMonth[0]?.count ?? 0),
+        },
+        support: {
+          totalTickets: Number(totalTickets[0]?.count ?? 0),
+          escalated: Number(escalatedTickets[0]?.count ?? 0),
+          aiResolved: Number(aiResolvedTickets[0]?.count ?? 0),
+        },
+        health: {
+          overall: healthResult.overall,
+          services: healthResult.services.map(s => ({ name: s.name, status: s.status })),
+        },
+        alerts: {
+          total: alertsThisMonth.length,
+          byPriority: alertsByPriority,
+        },
+        dunning: dunningSummary,
+        autonomousDecisions: Number(autoDecisions[0]?.count ?? 0),
+        topFeatureRequests: topRequests.map(r => ({ id: r.id, title: r.title, status: r.status })),
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Run monthly maintenance (health check + data source probe)
+  app.post("/api/founder/run-maintenance", isAuthenticated, isFounderAdmin, async (_req, res) => {
+    try {
+      const results: Record<string, string> = {};
+
+      // 1. Run health checks
+      const { healthCheckService } = await import("./services/healthCheck");
+      const health = await healthCheckService.checkAll();
+      results.healthCheck = health.overall;
+
+      // 2. Run data source probes
+      const { runHealthProbe } = await import("./services/dataQualityMonitor");
+      const dataSourceResults = await runHealthProbe();
+      const downSources = dataSourceResults.filter(r => r.status === "down");
+      results.dataSources = `${dataSourceResults.length - downSources.length}/${dataSourceResults.length} healthy`;
+
+      // 3. Process dunning tasks
+      const { dunningService } = await import("./services/dunning");
+      await dunningService.processScheduledTasks();
+      results.dunning = "processed";
+
+      // 4. Send weekly digest
+      const { alertPolicyService } = await import("./services/alertPolicy");
+      await alertPolicyService.sendWeeklyDigest();
+      results.weeklyDigest = "sent";
+
+      res.json({
+        success: true,
+        timestamp: new Date().toISOString(),
+        results,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // KNOWLEDGE BASE ADMIN (CRUD for founder)
+  // ============================================
+
+  const kbArticleSchema = z.object({
+    title: z.string().min(1),
+    slug: z.string().min(1).optional(),
+    content: z.string().min(1),
+    summary: z.string().optional(),
+    category: z.string().min(1),
+    tags: z.array(z.string()).optional(),
+    keywords: z.array(z.string()).optional(),
+    relatedIssues: z.array(z.string()).optional(),
+    troubleshootingSteps: z.array(z.object({
+      step: z.number(),
+      instruction: z.string(),
+      expectedResult: z.string(),
+    })).optional(),
+    canAutoFix: z.boolean().optional(),
+    autoFixToolName: z.string().optional(),
+    autoFixParameters: z.record(z.any()).optional(),
+    isPublished: z.boolean().optional(),
+  });
+
+  app.get("/api/founder/knowledge-base", isAuthenticated, isFounderAdmin, async (_req, res) => {
+    try {
+      const articles = await db.select().from(knowledgeBaseArticles)
+        .orderBy(desc(knowledgeBaseArticles.updatedAt));
+      res.json({ articles });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/founder/knowledge-base", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const parsed = kbArticleSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(422).json({ error: "Validation failed", details: parsed.error.errors });
+
+      const data = parsed.data;
+      const slug = data.slug || data.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+
+      const [article] = await db.insert(knowledgeBaseArticles).values({
+        title: data.title,
+        slug,
+        content: data.content,
+        summary: data.summary,
+        category: data.category,
+        tags: data.tags || [],
+        keywords: data.keywords || [],
+        relatedIssues: data.relatedIssues || [],
+        troubleshootingSteps: data.troubleshootingSteps,
+        canAutoFix: data.canAutoFix || false,
+        autoFixToolName: data.autoFixToolName,
+        autoFixParameters: data.autoFixParameters,
+        isPublished: data.isPublished ?? true,
+      }).returning();
+
+      res.status(201).json({ article });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.put("/api/founder/knowledge-base/:id", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+
+      const parsed = kbArticleSchema.partial().safeParse(req.body);
+      if (!parsed.success) return res.status(422).json({ error: "Validation failed", details: parsed.error.errors });
+
+      const [updated] = await db.update(knowledgeBaseArticles)
+        .set({ ...parsed.data, updatedAt: new Date() })
+        .where(eq(knowledgeBaseArticles.id, id))
+        .returning();
+
+      if (!updated) return res.status(404).json({ error: "Article not found" });
+      res.json({ article: updated });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/founder/knowledge-base/:id", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+
+      const [deleted] = await db.delete(knowledgeBaseArticles)
+        .where(eq(knowledgeBaseArticles.id, id))
+        .returning();
+
+      if (!deleted) return res.status(404).json({ error: "Article not found" });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Bulk seed knowledge base articles
+  app.post("/api/founder/knowledge-base/seed", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const schema = z.object({ articles: z.array(kbArticleSchema) });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) return res.status(422).json({ error: "Validation failed", details: parsed.error.errors });
+
+      const results = [];
+      for (const data of parsed.data.articles) {
+        const slug = data.slug || data.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+        try {
+          const [article] = await db.insert(knowledgeBaseArticles).values({
+            title: data.title,
+            slug,
+            content: data.content,
+            summary: data.summary,
+            category: data.category,
+            tags: data.tags || [],
+            keywords: data.keywords || [],
+            relatedIssues: data.relatedIssues || [],
+            troubleshootingSteps: data.troubleshootingSteps,
+            canAutoFix: data.canAutoFix || false,
+            isPublished: data.isPublished ?? true,
+          }).onConflictDoNothing().returning();
+          if (article) results.push(article);
+        } catch {}
+      }
+
+      res.json({ created: results.length, articles: results });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
