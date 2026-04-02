@@ -331,6 +331,30 @@ export class WebhookHandlers {
         toTier: null,
       });
 
+      // Send cancellation confirmation email
+      try {
+        const { emailService } = await import('./services/emailService');
+        const { users } = await import('@shared/models/auth');
+        const { eq } = await import('drizzle-orm');
+        const [owner] = await db.select({ email: users.email }).from(users).where(eq(users.clerkUserId, org.ownerId)).limit(1);
+        if (owner?.email) {
+          await emailService.sendEmail({
+            to: owner.email,
+            subject: 'Your AcreOS subscription has been cancelled',
+            html: `
+              <h2>Subscription Cancelled</h2>
+              <p>Your AcreOS ${previousTier} subscription has been cancelled. Your account has been moved to the Free tier.</p>
+              <p>Your data is preserved — you can re-subscribe at any time to pick up where you left off.</p>
+              <p><a href="${process.env.APP_URL || 'https://app.acreos.com'}/settings">Re-subscribe</a></p>
+              <p>— The AcreOS Team</p>
+            `,
+            text: `Your AcreOS ${previousTier} subscription has been cancelled. Your account has been moved to the Free tier.\n\nYour data is preserved — re-subscribe any time: ${process.env.APP_URL || 'https://app.acreos.com'}/settings\n\n— The AcreOS Team`,
+          });
+        }
+      } catch (emailErr) {
+        logger.warn('[webhook] Could not send cancellation confirmation email', emailErr instanceof Error ? emailErr : undefined);
+      }
+
       logger.info(`Subscription cancelled: Org ${org.id}`);
     } catch (err) {
       logger.error('Error processing subscription cancelled', err instanceof Error ? err : undefined);

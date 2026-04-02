@@ -624,6 +624,36 @@ app.use("/api", apiLimiter);
         log(`Failed to import final mile: ${err}`, "autonomy");
       });
 
+      // ─── Weekly Alert Digest (Sundays at 9 AM UTC / 4 AM CT) ──
+      import("./services/alertPolicy").then(({ alertPolicyService }) => {
+        log("Alert policy weekly digest registered (Sundays 9am UTC)", "alert-policy");
+        setInterval(() => {
+          const now = new Date();
+          if (now.getUTCDay() === 0 && now.getUTCHours() === 9 && now.getUTCMinutes() < 5) {
+            withJobLock("weekly_alert_digest", 55 * 60, () => alertPolicyService.sendWeeklyDigest())
+              .catch((err: any) => log(`Weekly digest failed: ${err}`, "alert-policy"));
+          }
+        }, 5 * 60 * 1000);
+      }).catch(err => {
+        log(`Failed to import alert policy: ${err}`, "alert-policy");
+      });
+
+      // ─── Dunning Scheduled Tasks (every 6 hours) ──
+      import("./services/dunning").then(({ dunningService }) => {
+        log("Dunning task processor registered (every 6h)", "dunning");
+        // Run after 2-minute startup delay, then every 6 hours
+        setTimeout(() => {
+          withJobLock("dunning_tasks", 55 * 60, () => dunningService.processScheduledTasks())
+            .catch((err: any) => log(`Dunning tasks failed: ${err}`, "dunning"));
+          setInterval(() => {
+            withJobLock("dunning_tasks", 55 * 60, () => dunningService.processScheduledTasks())
+              .catch((err: any) => log(`Dunning tasks failed: ${err}`, "dunning"));
+          }, 6 * 60 * 60 * 1000);
+        }, 2 * 60 * 1000);
+      }).catch(err => {
+        log(`Failed to import dunning service: ${err}`, "dunning");
+      });
+
       // ─── Autonomy Bootstrap: seed chains, playbooks, modes, memories, strategies ──
       import("./services/autonomyBootstrap").then(({ bootstrapAutonomy }) => {
         // Delay bootstrap by 30s to ensure DB migrations are complete
