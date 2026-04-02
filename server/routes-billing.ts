@@ -1,7 +1,8 @@
 import type { Express } from "express";
 import express from "express";
-import { storage } from "./storage";
-import { SUBSCRIPTION_TIERS } from "@shared/schema";
+import { storage, db } from "./storage";
+import { SUBSCRIPTION_TIERS, cancellationSurveys, refundRequests } from "@shared/schema";
+import { eq, and, desc } from "drizzle-orm";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { getAllUsageLimits, type SubscriptionTier, TIER_LIMITS } from "./services/usageLimits";
@@ -681,6 +682,190 @@ export function registerBillingRoutes(app: Express): void {
         error: err.message,
         stack: err.stack,
       });
+      Errors.internal(res, err);
+    }
+  });
+
+  // ============================================
+  // SELF-SERVE CANCELLATION
+  // ============================================
+
+  // Pre-cancellation: get usage stats for retention offer
+  api.get("/api/subscription/cancellation-context", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const limits = await getAllUsageLimits(org.id, (org.subscriptionTier || "free") as SubscriptionTier);
+
+      res.json({
+        currentTier: org.subscriptionTier,
+        usage: limits,
+        memberSince: org.createdAt,
+      });
+    } catch (err: any) {
+      Errors.internal(res, err);
+    }
+  });
+
+  // Submit cancellation survey + trigger cancellation via Stripe portal
+  api.post("/api/subscription/cancel", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const userId = req.auth?.userId;
+
+      const schema = z.object({
+        reason: z.enum(["too_expensive", "not_using", "missing_features", "switching_competitor", "other"]),
+        feedback: z.string().optional(),
+      });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+
+      // Save survey
+      await db.insert(cancellationSurveys).values({
+        organizationId: org.id,
+        userId,
+        reason: parsed.data.reason,
+        feedback: parsed.data.feedback,
+        previousTier: org.subscriptionTier,
+      });
+
+      // If they have a Stripe subscription, redirect to portal for actual cancellation
+      if (org.stripeCustomerId) {
+        const { stripeService } = await import("./stripeService");
+        const session = await stripeService.createCustomerPortalSession(
+          org.stripeCustomerId,
+          `${req.protocol}://${req.get("host")}/settings?cancelled=true`
+        );
+        return res.json({ portalUrl: session.url });
+      }
+
+      // Free tier — nothing to cancel
+      return Errors.badRequest(res, "No active subscription to cancel");
+    } catch (err: any) {
+      Errors.internal(res, err);
+    }
+  });
+
+  // ============================================
+  // SELF-SERVE REFUND REQUESTS
+  // ============================================
+
+  api.post("/api/subscription/refund-request", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const userId = req.auth?.userId;
+
+      const schema = z.object({
+        reason: z.string().min(1).max(500),
+      });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+
+      if (!org.stripeCustomerId) {
+        return Errors.badRequest(res, "No billing account found");
+      }
+
+      // Find recent charges from Stripe (last 30 days)
+      const { getUncachableStripeClient } = await import("./stripeClient");
+      const stripe = await getUncachableStripeClient();
+
+      const charges = await stripe.charges.list({
+        customer: org.stripeCustomerId,
+        limit: 5,
+        created: { gte: Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60 },
+      });
+
+      if (!charges.data.length) {
+        return Errors.badRequest(res, "No charges found within the last 30 days");
+      }
+
+      const latestCharge = charges.data[0];
+      const amountCents = latestCharge.amount;
+      const autoApproveThreshold = 5000; // $50
+
+      const shouldAutoApprove = amountCents <= autoApproveThreshold;
+
+      const [request] = await db.insert(refundRequests).values({
+        organizationId: org.id,
+        userId,
+        stripeChargeId: latestCharge.id,
+        stripePaymentIntentId: typeof latestCharge.payment_intent === "string" ? latestCharge.payment_intent : latestCharge.payment_intent?.id,
+        amountCents,
+        reason: parsed.data.reason,
+        status: shouldAutoApprove ? "approved" : "pending",
+        autoApproved: shouldAutoApprove,
+      }).returning();
+
+      // Auto-process refunds under $50
+      if (shouldAutoApprove) {
+        try {
+          const refund = await stripe.refunds.create({
+            charge: latestCharge.id,
+          });
+
+          await db.update(refundRequests)
+            .set({
+              status: "processed",
+              processedAt: new Date(),
+              processedBy: "auto",
+              stripeRefundId: refund.id,
+            })
+            .where(eq(refundRequests.id, request.id));
+
+          // Send confirmation email
+          try {
+            const { emailService } = await import("./services/emailService");
+            const { users } = await import("@shared/models/auth");
+            const [owner] = await db.select({ email: users.email }).from(users).where(eq(users.clerkUserId, org.ownerId)).limit(1);
+            if (owner?.email) {
+              await emailService.sendEmail({
+                to: owner.email,
+                subject: "Your AcreOS refund has been processed",
+                html: `<h2>Refund Processed</h2><p>Your refund of <strong>$${(amountCents / 100).toFixed(2)}</strong> has been processed. It should appear on your statement within 5-10 business days.</p><p>— The AcreOS Team</p>`,
+                text: `Your refund of $${(amountCents / 100).toFixed(2)} has been processed. It should appear within 5-10 business days.\n\n— The AcreOS Team`,
+              });
+            }
+          } catch {}
+
+          return res.json({ status: "processed", amountCents, message: "Refund processed automatically" });
+        } catch (refundErr: any) {
+          logger.error("[Refund] Auto-refund failed", refundErr);
+          await db.update(refundRequests).set({ status: "pending", autoApproved: false }).where(eq(refundRequests.id, request.id));
+          return res.json({ status: "pending", amountCents, message: "Refund submitted for manual review" });
+        }
+      }
+
+      // Create system alert for founder to review
+      await storage.createSystemAlert({
+        type: "refund_request",
+        severity: "warning",
+        title: `Refund Request: $${(amountCents / 100).toFixed(2)}`,
+        message: `Org "${org.name}" requested a refund. Reason: ${parsed.data.reason}`,
+        organizationId: org.id,
+        relatedEntityType: "refund_request",
+        relatedEntityId: request.id,
+        status: "new",
+      });
+
+      res.json({ status: "pending", amountCents, message: "Refund submitted for review (over $50 requires manual approval)" });
+    } catch (err: any) {
+      Errors.internal(res, err);
+    }
+  });
+
+  // Get refund request status
+  api.get("/api/subscription/refund-requests", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const requests = await db.select().from(refundRequests)
+        .where(eq(refundRequests.organizationId, org.id))
+        .orderBy(desc(refundRequests.createdAt))
+        .limit(10);
+      res.json({ requests });
+    } catch (err: any) {
       Errors.internal(res, err);
     }
   });
