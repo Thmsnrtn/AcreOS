@@ -5447,6 +5447,44 @@ export type InsertSubscriptionEvent = z.infer<typeof insertSubscriptionEventSche
 export type SubscriptionEvent = typeof subscriptionEvents.$inferSelect;
 
 // ============================================
+// CANCELLATION SURVEYS & REFUND REQUESTS
+// ============================================
+
+export const cancellationSurveys = pgTable("cancellation_surveys", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  userId: text("user_id"),
+  reason: text("reason").notNull(), // too_expensive, not_using, missing_features, switching_competitor, other
+  feedback: text("feedback"), // optional free-text
+  previousTier: text("previous_tier"),
+  offeredDowngrade: boolean("offered_downgrade").default(false),
+  acceptedDowngrade: boolean("accepted_downgrade").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type CancellationSurvey = typeof cancellationSurveys.$inferSelect;
+export type InsertCancellationSurvey = typeof cancellationSurveys.$inferInsert;
+
+export const refundRequests = pgTable("refund_requests", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  userId: text("user_id"),
+  stripeChargeId: text("stripe_charge_id"),
+  stripePaymentIntentId: text("stripe_payment_intent_id"),
+  amountCents: integer("amount_cents").notNull(),
+  reason: text("reason"),
+  status: text("status").notNull().default("pending"), // pending, approved, denied, processed
+  autoApproved: boolean("auto_approved").default(false),
+  processedAt: timestamp("processed_at"),
+  processedBy: text("processed_by"), // 'auto' or founder user id
+  stripeRefundId: text("stripe_refund_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type RefundRequest = typeof refundRequests.$inferSelect;
+export type InsertRefundRequest = typeof refundRequests.$inferInsert;
+
+// ============================================
 // DATA SOURCE CACHE (Cached lookups from free sources)
 // ============================================
 

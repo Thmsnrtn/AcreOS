@@ -52,7 +52,8 @@ import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { UserPlus } from "lucide-react";
+import { UserPlus, XCircle } from "lucide-react";
+import { CancellationDialog } from "@/components/cancellation-dialog";
 import { Input } from "@/components/ui/input";
 
 interface SeatInfo {
@@ -555,6 +556,7 @@ export default function Settings() {
   const searchParams = new URLSearchParams(search);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [showPlanComparison, setShowPlanComparison] = useState(false);
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
 
   const getTabFromHash = (): TabValue => {
     const hash = window.location.hash.replace("#", "");
@@ -857,20 +859,37 @@ export default function Settings() {
                           <span className="text-sm" data-testid="text-subscription-period">
                             {new Date(subscriptionData.subscription.current_period_start * 1000).toLocaleDateString()} - {new Date(subscriptionData.subscription.current_period_end * 1000).toLocaleDateString()}
                           </span>
-                          <Button 
-                            variant="outline" 
-                            onClick={handleManageSubscription}
-                            disabled={portalMutation.isPending}
-                            data-testid="button-manage-subscription"
-                          >
-                            {portalMutation.isPending ? (
-                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            ) : (
-                              <CreditCard className="w-4 h-4 mr-2" />
-                            )}
-                            Manage Subscription
-                            <ExternalLink className="w-3 h-3 ml-2" />
-                          </Button>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              onClick={handleManageSubscription}
+                              disabled={portalMutation.isPending}
+                              data-testid="button-manage-subscription"
+                            >
+                              {portalMutation.isPending ? (
+                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              ) : (
+                                <CreditCard className="w-4 h-4 mr-2" />
+                              )}
+                              Manage Subscription
+                              <ExternalLink className="w-3 h-3 ml-2" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-muted-foreground hover:text-destructive"
+                              onClick={() => setShowCancelDialog(true)}
+                              aria-label="Cancel subscription"
+                            >
+                              <XCircle className="w-4 h-4 mr-1" />
+                              Cancel
+                            </Button>
+                          </div>
+                          <CancellationDialog
+                            open={showCancelDialog}
+                            onOpenChange={setShowCancelDialog}
+                            currentTier={organization.subscriptionTier || "free"}
+                          />
                         </div>
                       ) : organization.subscriptionTier === "free" && (
                         <div className="space-y-3">

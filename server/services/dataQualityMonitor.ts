@@ -152,22 +152,7 @@ export interface SourceHealthRecord {
 
 const healthHistory: Map<string, SourceHealthRecord[]> = new Map();
 
-export function recordSourceSuccess(name: string, latencyMs: number): void {
-  const entry = DATA_SOURCES.find((s) => s.name === name);
-  if (!entry) return;
-  const record: SourceHealthRecord = {
-    name,
-    category: entry.category,
-    status: latencyMs > 3000 ? "degraded" : "up",
-    statusCode: 200,
-    latencyMs,
-    lastChecked: new Date(),
-  };
-  const history = healthHistory.get(name) || [];
-  history.push(record);
-  if (history.length > 100) history.shift();
-  healthHistory.set(name, history);
-}
+const consecutiveDataSourceFailures = new Map<string, number>();
 
 export function recordSourceFailure(name: string, error: string, latencyMs: number): void {
   const entry = DATA_SOURCES.find((s) => s.name === name);
@@ -180,6 +165,44 @@ export function recordSourceFailure(name: string, error: string, latencyMs: numb
     latencyMs,
     lastChecked: new Date(),
     error,
+  };
+  const history = healthHistory.get(name) || [];
+  history.push(record);
+  if (history.length > 100) history.shift();
+  healthHistory.set(name, history);
+
+  // Track consecutive failures and alert after 3
+  const failures = (consecutiveDataSourceFailures.get(name) || 0) + 1;
+  consecutiveDataSourceFailures.set(name, failures);
+  if (failures === 3) {
+    import("../storage").then(({ storage }) => {
+      storage.createSystemAlert({
+        type: "data_source_down",
+        alertType: "data_source_down",
+        severity: "warning",
+        title: `Data source down: ${name}`,
+        message: `${name} has failed 3 consecutive health checks. Last error: ${error}`,
+        status: "new",
+        metadata: { sourceName: name, category: entry.category, error, consecutiveFailures: failures },
+      }).catch(() => {});
+    }).catch(() => {});
+  }
+}
+
+export function recordSourceSuccess(name: string, latencyMs: number): void {
+  const entry = DATA_SOURCES.find((s) => s.name === name);
+  if (!entry) return;
+
+  // Reset consecutive failure count on success
+  consecutiveDataSourceFailures.delete(name);
+
+  const record: SourceHealthRecord = {
+    name,
+    category: entry.category,
+    status: latencyMs > 3000 ? "degraded" : "up",
+    statusCode: 200,
+    latencyMs,
+    lastChecked: new Date(),
   };
   const history = healthHistory.get(name) || [];
   history.push(record);
