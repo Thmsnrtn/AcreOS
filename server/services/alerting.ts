@@ -196,7 +196,7 @@ export class AlertingService {
       return;
     }
 
-    await db.insert(systemAlerts).values({
+    const [created] = await db.insert(systemAlerts).values({
       type: alert.alertType,
       alertType: alert.alertType,
       severity,
@@ -205,9 +205,17 @@ export class AlertingService {
       message: alert.message,
       metadata: alert.metadata,
       status: 'new',
-    });
+    }).returning();
 
     logger.info(`[Alerting] Created ${severity} alert: ${alert.title}`);
+
+    // Route alert through escalation-only policy (P0-P3)
+    try {
+      const { alertPolicyService } = await import("./alertPolicy");
+      await alertPolicyService.routeAlert(created.id);
+    } catch (policyErr) {
+      logger.error("[Alerting] Alert policy routing failed", policyErr);
+    }
 
     // Sovereign Company Protocol — Sentinel broadcasts to incidents channel
     if (severity === "critical" || severity === "high") {

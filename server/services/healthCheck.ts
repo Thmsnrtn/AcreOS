@@ -256,6 +256,11 @@ class HealthCheckService {
 
     const overall = this.calculateOverallStatus(checks);
 
+    // Create system alerts for unhealthy critical services
+    this.alertOnFailures(checks).catch(err => {
+      logger.error('[healthCheck] Failed to create health alerts', err);
+    });
+
     return {
       overall,
       services: checks,
@@ -340,6 +345,41 @@ class HealthCheckService {
       message,
       lastChecked: new Date(),
     };
+  }
+
+  private consecutiveFailures = new Map<string, number>();
+
+  private async alertOnFailures(checks: ServiceHealth[]): Promise<void> {
+    const criticalServices = new Set(["database", "redis", "stripe"]);
+
+    for (const check of checks) {
+      if (check.status === "unavailable") {
+        const failures = (this.consecutiveFailures.get(check.name) || 0) + 1;
+        this.consecutiveFailures.set(check.name, failures);
+
+        // Alert after 5 consecutive failures (~5 minutes at 1-min intervals)
+        if (failures === 5) {
+          try {
+            const { storage } = await import("../storage");
+            const isCritical = criticalServices.has(check.name);
+            await storage.createSystemAlert({
+              type: isCritical ? "health_check_failure" : "data_source_down",
+              alertType: isCritical ? "health_check_failure" : "data_source_down",
+              severity: isCritical ? "critical" : "warning",
+              title: `${check.name} is unavailable`,
+              message: `Health check for ${check.name} has failed for 5 consecutive checks. Error: ${check.message || "Unknown"}`,
+              status: "new",
+              metadata: { service: check.name, consecutiveFailures: failures },
+            });
+          } catch {}
+        }
+      } else {
+        // Reset failure count on success
+        if (this.consecutiveFailures.has(check.name)) {
+          this.consecutiveFailures.delete(check.name);
+        }
+      }
+    }
   }
 
   private calculateOverallStatus(services: ServiceHealth[]): ServiceStatus {
