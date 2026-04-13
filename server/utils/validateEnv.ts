@@ -22,9 +22,10 @@ export function validateEnv(): void {
   }
 
   if (errors.length > 0) {
-    // Separate hard errors (DATABASE_URL, SESSION_SECRET) from soft warnings (optional services)
-    const hardErrors = errors.filter(e => e.includes("DATABASE_URL") || e.includes("SESSION_SECRET"));
-    const warnings = errors.filter(e => !e.includes("DATABASE_URL") && !e.includes("SESSION_SECRET"));
+    // Separate hard errors from soft warnings (optional services)
+    const hardErrorKeys = ["DATABASE_URL", "CLERK_SECRET_KEY"];
+    const hardErrors = errors.filter(e => hardErrorKeys.some(k => e.includes(k)));
+    const warnings = errors.filter(e => !hardErrorKeys.some(k => e.includes(k)));
 
     if (warnings.length > 0) {
       logger.warn("\n[startup] ⚠️  Missing recommended environment variables:\n" +

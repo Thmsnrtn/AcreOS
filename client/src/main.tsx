@@ -32,8 +32,8 @@ createRoot(document.getElementById("root")!).render(
     publishableKey={publishableKey}
     signInUrl="/auth"
     signUpUrl="/auth?mode=register"
-    afterSignInUrl="/today"
-    afterSignUpUrl="/today"
+    signInFallbackRedirectUrl="/today"
+    signUpFallbackRedirectUrl="/today"
   >
     <App />
   </ClerkProvider>
