@@ -13,7 +13,7 @@ export default function AuthPage() {
   const [mode] = useState(getInitialMode);
 
   if (!isLoading && user) {
-    return <Redirect to="/" />;
+    return <Redirect to="/today" />;
   }
 
   return (

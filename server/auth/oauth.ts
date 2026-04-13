@@ -77,6 +77,8 @@ async function findOrCreateOAuthUser(profile: OAuthProfile) {
   }
 
   // 4. Create the user
+  // Note: oauthProvider/oauthProviderId columns were dropped in migration 0020
+  // (Clerk migration). Clerk now manages OAuth identity; we only store the basics.
   const userId = crypto.randomUUID();
   const [newUser] = await db
     .insert(users)
@@ -86,9 +88,7 @@ async function findOrCreateOAuthUser(profile: OAuthProfile) {
       firstName: profile.firstName,
       lastName: profile.lastName,
       profileImageUrl: profile.avatarUrl,
-      oauthProvider: profile.provider,
-      oauthProviderId: profile.providerId,
-    } as any)
+    })
     .returning();
 
   // 5. Add to org as owner if they just created it, else as member
@@ -154,7 +154,7 @@ export function registerOAuthRoutes(app: Express): void {
         });
         const profile = await userRes.json() as any;
 
-        const user = await findOrCreateOAuthUser({
+        await findOrCreateOAuthUser({
           provider: "google",
           providerId: profile.sub,
           email: profile.email,
@@ -163,11 +163,9 @@ export function registerOAuthRoutes(app: Express): void {
           avatarUrl: profile.picture,
         });
 
-        // Establish session
-        (req as any).login(user, (err: Error) => {
-          if (err) return res.redirect("/auth?error=session_failed");
-          res.redirect("/today");
-        });
+        // User DB record is synced. Redirect to Clerk sign-in so Clerk can
+        // establish a proper session (Clerk handles OAuth identity natively).
+        res.redirect("/auth");
       } catch (err) {
         res.redirect("/auth?error=oauth_failed");
       }
@@ -222,7 +220,7 @@ export function registerOAuthRoutes(app: Express): void {
         });
         const profile = await userRes.json() as any;
 
-        const user = await findOrCreateOAuthUser({
+        await findOrCreateOAuthUser({
           provider: "microsoft",
           providerId: profile.id,
           email: profile.mail || profile.userPrincipalName,
@@ -230,10 +228,9 @@ export function registerOAuthRoutes(app: Express): void {
           lastName: profile.surname || "",
         });
 
-        (req as any).login(user, (err: Error) => {
-          if (err) return res.redirect("/auth?error=session_failed");
-          res.redirect("/today");
-        });
+        // User DB record is synced. Redirect to Clerk sign-in so Clerk can
+        // establish a proper session (Clerk handles OAuth identity natively).
+        res.redirect("/auth");
       } catch (err) {
         res.redirect("/auth?error=oauth_failed");
       }
