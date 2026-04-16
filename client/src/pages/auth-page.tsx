@@ -1,77 +1,50 @@
-import { SignIn, SignUp } from "@clerk/react";
+import { SignIn, SignUp, useUser } from "@clerk/react";
 import { Redirect } from "wouter";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
 
-function getInitialMode(): "sign-in" | "sign-up" {
-  const params = new URLSearchParams(window.location.search);
-  if (params.get("mode") === "register") return "sign-up";
-  return "sign-in";
-}
-
-// Prevent redirect loops
-let authPageLoadCount = 0;
-let lastAuthPageLoad = 0;
-
 export default function AuthPage() {
-  const { user, isLoading, authFailCount } = useAuth();
-  const [mode, setMode] = useState(getInitialMode);
+  const { user, isLoading } = useAuth();
+  const { isSignedIn, isLoaded } = useUser();
+  const params = new URLSearchParams(window.location.search);
+  const [mode, setMode] = useState<"sign-in" | "sign-up">(
+    params.get("mode") === "register" ? "sign-up" : "sign-in"
+  );
 
-  const now = Date.now();
-  if (now - lastAuthPageLoad < 3000) {
-    authPageLoadCount++;
-  } else {
-    authPageLoadCount = 1;
-  }
-  lastAuthPageLoad = now;
-
-  const inRedirectLoop = authPageLoadCount >= 3;
-
-  // Watch for Clerk errors and auto-switch modes
-  useEffect(() => {
-    const observer = new MutationObserver(() => {
-      const allText = document.querySelector('.cl-rootBox')?.textContent?.toLowerCase() || '';
-      // "External Account not found" → switch to SignUp
-      if (mode === 'sign-in' && allText.includes('external account')) {
-        setMode('sign-up');
-      }
-      // "already has an account" or "already exists" → switch to SignIn
-      if (mode === 'sign-up' && (allText.includes('already has an account') || allText.includes('already exists') || allText.includes('already been taken'))) {
-        setMode('sign-in');
-      }
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
-    return () => observer.disconnect();
-  }, [mode]);
-
-  if (!isLoading && user && !inRedirectLoop) {
+  // If fully authenticated, go to dashboard
+  if (isLoaded && isSignedIn && user) {
     return <Redirect to="/today" />;
+  }
+
+  // If Clerk says signed in but we don't have app user yet, show loader briefly
+  if (isLoaded && isSignedIn && isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" />
+      </div>
+    );
   }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">
-      <div className="w-full max-w-md">
+      <div className="w-full max-w-md flex flex-col items-center gap-4">
         {mode === "sign-in" ? (
           <SignIn
             routing="hash"
-            forceRedirectUrl="/today"
-            signUpUrl="/auth?mode=register"
+            afterSignInUrl="/today"
           />
         ) : (
           <SignUp
             routing="hash"
-            forceRedirectUrl="/today"
-            signInUrl="/auth"
+            afterSignUpUrl="/today"
           />
         )}
-        <div className="text-center mt-4">
-          <button
-            onClick={() => setMode(mode === "sign-in" ? "sign-up" : "sign-in")}
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            {mode === "sign-in" ? "Need an account? Sign up" : "Already have an account? Sign in"}
-          </button>
-        </div>
+        <button
+          onClick={() => setMode(mode === "sign-in" ? "sign-up" : "sign-in")}
+          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          {mode === "sign-in" ? "Need an account? Sign up" : "Already have an account? Sign in"}
+        </button>
       </div>
     </div>
   );
