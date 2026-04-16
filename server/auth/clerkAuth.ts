@@ -1,4 +1,4 @@
-import { clerkMiddleware, requireAuth, createClerkClient } from "@clerk/express";
+import { clerkMiddleware, createClerkClient } from "@clerk/express";
 import type { RequestHandler } from "express";
 import { db } from "../db";
 import { users } from "@shared/models/auth";
@@ -15,8 +15,6 @@ const clerkClient = createClerkClient({
  * Syncs the Clerk user into our users table on first access.
  * Attaches `req.user` with the DB user record so downstream handlers
  * (getOrCreateOrg, route handlers) can use req.user as before.
- *
- * Must only be called after requireAuth() has confirmed the user is authenticated.
  */
 async function hydrateUser(req: any, res: any, next: any) {
   let userId = req.auth?.userId;
@@ -91,21 +89,25 @@ async function hydrateUser(req: any, res: any, next: any) {
 
 /**
  * Drop-in replacement for the old Passport `isAuthenticated` middleware.
- * Requires a valid Clerk session and populates req.user from our DB.
+ * Checks req.auth.userId (populated by global clerkMiddleware) and
+ * falls back to manual JWT verification. Returns 401 JSON for API
+ * routes — never redirects.
  */
 export const isAuthenticated: RequestHandler = (req: any, res, next) => {
-  requireAuth()(req, res, (err?: any) => {
-    if (err) {
-      // Clerk's requireAuth failed — try JWT fallback before giving up
-      const sessionCookie = req.headers.cookie?.match(/__session=([^;]+)/)?.[1];
-      if (sessionCookie && process.env.CLERK_JWT_KEY) {
-        // Let hydrateUser handle the JWT verification fallback
-        return hydrateUser(req, res, next);
-      }
-      return next(err);
-    }
-    hydrateUser(req, res, next);
-  });
+  // clerkMiddleware already ran globally and populated req.auth
+  // Check if it found a valid session
+  if (req.auth?.userId) {
+    return hydrateUser(req, res, next);
+  }
+
+  // No Clerk session — try JWT fallback from __session cookie
+  const sessionCookie = req.headers.cookie?.match(/__session=([^;]+)/)?.[1];
+  if (sessionCookie && process.env.CLERK_JWT_KEY) {
+    return hydrateUser(req, res, next);
+  }
+
+  // No valid auth at all — return 401 JSON (never redirect)
+  return res.status(401).json({ error: "Unauthorized", message: "No valid session" });
 };
 
 /**
