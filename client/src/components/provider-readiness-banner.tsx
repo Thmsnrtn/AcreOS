@@ -58,7 +58,7 @@ function ChannelStatusBadge({
 /**
  * Shows communication provider readiness status with actionable guidance.
  * 
- * Displays inline when providers need configuration, helping land investors
+ * Displays inline when providers need configuration, helping real estate professionals
  * understand why sending might fail and directing them to Settings.
  */
 export function ProviderReadinessBanner({ 

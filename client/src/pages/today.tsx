@@ -1,3 +1,4 @@
+import React from "react";
 import { PageShell } from "@/components/page-shell";
 import { StatCard } from "@/components/stat-card";
 import { useOrganization, useDashboardStats } from "@/hooks/use-organization";
@@ -174,8 +175,10 @@ const priorityColors: Record<string, string> = {
 export default function TodayPage() {
   const { data: organization } = useOrganization();
   const { data: stats, isLoading: statsLoading } = useDashboardStats();
-  const { data: leads = [] } = useLeads();
-  const { data: properties = [] } = useProperties();
+  const { data: leadsRaw = [] } = useLeads();
+  const leads = Array.isArray(leadsRaw) ? leadsRaw : [];
+  const { data: propertiesRaw = [] } = useProperties();
+  const properties = Array.isArray(propertiesRaw) ? propertiesRaw : [];
   const { data: tasks = [], isLoading: tasksLoading } = useQuery<Task[]>({
     queryKey: ["/api/tasks"],
     staleTime: 2 * 60 * 1000,
@@ -187,7 +190,7 @@ export default function TodayPage() {
   const { data: activeGoals = [] } = useQuery<GoalWithProgress[]>({
     queryKey: ["/api/goals"],
     staleTime: 5 * 60 * 1000,
-    select: (data) => data.filter((g) => g.isActive),
+    select: (data) => Array.isArray(data) ? data.filter((g) => g.isActive) : [],
   });
 
   const { data: intelligence, isLoading: intelligenceLoading } =
@@ -209,19 +212,21 @@ export default function TodayPage() {
     });
 
   // Decision queue: derive pending count from leads + deals already fetched
-  const { data: allDeals = [] } = useQuery<{ id: number; status: string; offerDate?: string; updatedAt?: string }[]>({
+  const { data: allDealsRaw = [] } = useQuery<{ id: number; status: string; offerDate?: string; updatedAt?: string }[]>({
     queryKey: ["/api/deals"],
     staleTime: 5 * 60 * 1000,
   });
+  const allDeals = Array.isArray(allDealsRaw) ? allDealsRaw : [];
 
   // Cash position: upcoming note payments in next 30/60/90 days
-  const { data: allNotes = [], isLoading: notesLoading } = useQuery<{
+  const { data: allNotesRaw = [], isLoading: notesLoading } = useQuery<{
     id: number; status: string; currentBalance: string; monthlyPayment: string;
     nextPaymentDate?: string; borrowerName?: string;
   }[]>({
     queryKey: ["/api/notes"],
     staleTime: 5 * 60 * 1000,
   });
+  const allNotes = Array.isArray(allNotesRaw) ? allNotesRaw : [];
 
   const pendingDecisionCount = (() => {
     const nowTs = new Date();
@@ -386,8 +391,41 @@ export default function TodayPage() {
     return { next3, lateCount, projected30, projected60, projected90, activeCount: activeNotes.length };
   })();
 
+  const onboardingComplete = organization?.onboardingCompleted === true;
+  const [onboardingDismissed, setOnboardingDismissed] = React.useState(() => {
+    return sessionStorage.getItem("onboarding_banner_dismissed") === "true";
+  });
+  const showOnboardingBanner = !onboardingComplete && !onboardingDismissed;
+
   return (
     <PageShell>
+      {/* Onboarding prompt for new users */}
+      {showOnboardingBanner && (
+        <Card className="border-primary/30 bg-primary/5">
+          <CardContent className="p-4 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-primary/10">
+                <Sparkles className="w-5 h-5 text-primary" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-sm">Welcome to AcreOS!</h3>
+                <p className="text-sm text-muted-foreground">Complete a quick setup to personalize your experience for your real estate business.</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Link href="/onboarding-v2">
+                <Button size="sm">
+                  Get Started <ArrowRight className="w-3.5 h-3.5 ml-1" />
+                </Button>
+              </Link>
+              <Button variant="ghost" size="sm" onClick={() => { setOnboardingDismissed(true); sessionStorage.setItem("onboarding_banner_dismissed", "true"); }}>
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Header */}
       <div className="flex flex-col gap-1">
         <div className="flex items-center gap-2">
@@ -539,9 +577,9 @@ export default function TodayPage() {
               AI
             </Badge>
           </div>
-          <Link href="/night-cap">
+          <Link href="/evening-review">
             <Button variant="ghost" size="sm" className="gap-1 text-xs">
-              <Moon className="w-3 h-3" /> Night Cap
+              <Moon className="w-3 h-3" /> Evening Review
             </Button>
           </Link>
         </div>

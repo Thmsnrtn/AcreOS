@@ -135,7 +135,7 @@ export function registerImportExportRoutes(app: Express): void {
     }
   });
 
-  // Notes import (GeekPay-compatible) — supports user-provided field mapping
+  // Notes import (standard CSV) — supports user-provided field mapping
   api.get("/api/import/notes/columns", isAuthenticated, (_req, res) => {
     res.json({
       columns: [
@@ -144,7 +144,7 @@ export function registerImportExportRoutes(app: Express): void {
         "monthlyPayment", "paymentDayOfMonth", "serviceFee", "lateFeeAmount",
         "gracePeriodDays", "status", "propertyAddress", "internalNotes",
       ],
-      geekpayHints: NOTE_COLUMN_MAP,
+      columnHints: NOTE_COLUMN_MAP,
     });
   });
 

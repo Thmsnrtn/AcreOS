@@ -785,7 +785,7 @@ export const notes = pgTable("notes", {
   lateFee: numeric("late_fee").default("0"),
   gracePeriodDays: integer("grace_period_days").default(10),
 
-  // Property Tax Escrow (GeekPay parity)
+  // Property Tax Escrow (Payment processing)
   // Collects pro-rated property taxes monthly from borrower alongside loan payment
   taxEscrowEnabled: boolean("tax_escrow_enabled").default(false),
   annualPropertyTax: numeric("annual_property_tax").default("0"), // Annual tax amount for this property
@@ -816,7 +816,7 @@ export const notes = pgTable("notes", {
   paymentAccountId: text("payment_account_id"), // Reference to stored payment method (primary)
   autoPayEnabled: boolean("auto_pay_enabled").default(false),
 
-  // Fallback payment cascade (GeekPay parity)
+  // Fallback payment cascade (Payment cascade)
   // If primary payment fails, system tries fallback accounts in order
   fallbackPaymentAccounts: jsonb("fallback_payment_accounts").$type<{
     profileId: string;
@@ -2915,14 +2915,14 @@ export const SUBSCRIPTION_TIERS = {
     features: [
       "basic_crm", "basic_inventory", "basic_notes",
       "ai_due_diligence", "email_campaigns",
-      "night_cap_dashboard", "deal_calculator",
+      "evening_review_dashboard", "deal_calculator",
       "tax_delinquent_import", "direct_mail_basic"
     ],
     // Superpowers unlocked at this tier (shown to free users as preview)
     unlocks: [
       "AI-powered due diligence on every parcel",
       "Tax delinquent list import & processing",
-      "Night Cap passive income dashboard",
+      "Evening Review passive income dashboard",
       "Blind offer calculation wizard",
       "Direct mail campaign builder",
       "Deal & ROI calculator",
@@ -2945,7 +2945,7 @@ export const SUBSCRIPTION_TIERS = {
     features: [
       "basic_crm", "basic_inventory", "basic_notes",
       "ai_due_diligence", "email_campaigns",
-      "night_cap_dashboard", "deal_calculator",
+      "evening_review_dashboard", "deal_calculator",
       "tax_delinquent_import", "direct_mail_basic",
       "atlas_ai_assistant", "seller_intent", "comps_analysis",
       "skip_tracing_basic", "avm_basic"

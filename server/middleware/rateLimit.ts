@@ -76,7 +76,7 @@ type KeyFunction = (req: Request) => string;
  * Predefined rate limit configurations
  */
 export const RATE_LIMIT_CONFIGS = {
-  default: { maxRequests: 100, windowMs: 60 * 1000 } as RateLimitConfig, // 100 per minute
+  default: { maxRequests: 1000, windowMs: 60 * 1000 } as RateLimitConfig, // 1000 per minute (SPA loads 5-10 API calls per page)
   strict: { maxRequests: 50, windowMs: 60 * 1000 } as RateLimitConfig, // 50 per minute (AI, Stripe)
   auth: { maxRequests: 10, windowMs: 60 * 1000 } as RateLimitConfig, // 10 per minute
   public: { maxRequests: 50, windowMs: 60 * 1000 } as RateLimitConfig, // 50 per minute

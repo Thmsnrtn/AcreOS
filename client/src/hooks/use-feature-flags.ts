@@ -17,11 +17,14 @@ export function useFeatureFlags() {
     enabledRoutes: data?.enabledRoutes ?? [],
     isLoading,
     isRouteEnabled: (route: string) => {
-      if (!data) return true; // While loading, show everything (avoids flash of hidden items)
+      if (!data) return true; // While loading, show everything
+      // If no routes are configured at all, show everything (no flags = all enabled)
+      if (data.enabledRoutes.length === 0) return true;
       return data.enabledRoutes.includes(route);
     },
     isFlagEnabled: (key: string) => {
       if (!data) return true;
+      if (data.enabledKeys.length === 0) return true;
       return data.enabledKeys.includes(key);
     },
   };

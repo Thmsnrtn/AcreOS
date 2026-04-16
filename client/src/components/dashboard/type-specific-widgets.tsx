@@ -118,7 +118,7 @@ function resolveCategory(businessType: string): BusinessCategory {
 }
 
 function MiniSparkline({ data, color = "hsl(var(--primary))" }: { data: number[]; color?: string }) {
-  if (data.length < 2) return null;
+  if (!data || data.length < 2) return null;
   const max = Math.max(...data);
   const min = Math.min(...data);
   const range = max - min || 1;
@@ -194,6 +194,7 @@ function FunnelBar({ stage, count, maxCount }: { stage: string; count: number; m
 }
 
 function LeaseExpirationTimeline({ data }: { data: { month: string; count: number }[] }) {
+  if (!data || data.length === 0) return null;
   const max = Math.max(...data.map((d) => d.count), 1);
 
   return (
@@ -282,7 +283,7 @@ function LandWidgets() {
 
 function WholesalerWidgets() {
   const data = WHOLESALER_MOCK;
-  const maxFunnel = Math.max(...data.dealFunnel.map((d) => d.count), 1);
+  const maxFunnel = data?.dealFunnel?.length ? Math.max(...data.dealFunnel.map((d) => d.count), 1) : 1;
   const healthPct = Math.round((data.buyerListHealth.active / data.buyerListHealth.total) * 100);
 
   return (

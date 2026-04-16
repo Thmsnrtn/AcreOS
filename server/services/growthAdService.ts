@@ -114,8 +114,8 @@ const CAMPAIGN_TEMPLATES: Record<string, CampaignTemplate> = {
     adCopy: {
       headline: "Run Your Land Business on Autopilot",
       primaryText:
-        "AcreOS is the all-in-one CRM built for land investors. AI-powered lead scoring, automated follow-ups, deal pipelines, and seller financing — all in one place. Try free for 7 days.",
-      description: "The software serious land investors use.",
+        "AcreOS is the all-in-one CRM built for real estate professionals. AI-powered lead scoring, automated follow-ups, deal pipelines, and seller financing — all in one place. Try free for 7 days.",
+      description: "The software serious real estate professionals use.",
       callToAction: "LEARN_MORE",
     },
     landingPagePath: "/",
@@ -154,10 +154,10 @@ const CAMPAIGN_TEMPLATES: Record<string, CampaignTemplate> = {
       custom_audiences: [],
     },
     adCopy: {
-      headline: "The CRM Built for Land Investing",
+      headline: "The CRM Built for Real Estate Professionals",
       primaryText:
-        "Join hundreds of land investors using AcreOS to source more deals, automate follow-ups, and close faster. AI deal scoring. Seller financing tracking. 7-day free trial.",
-      description: "Trusted by active land investors.",
+        "Join hundreds of real estate professionals using AcreOS to source more deals, automate follow-ups, and close faster. AI deal scoring. Seller financing tracking. 7-day free trial.",
+      description: "Trusted by active real estate professionals.",
       callToAction: "LEARN_MORE",
     },
     landingPagePath: "/?utm_source=meta&utm_medium=lookalike",

@@ -210,6 +210,130 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
 
+  // Clerk proxy — Cloudflare blocks clerk.acreos.io (Error 1000)
+  app.use("/__clerk", express.urlencoded({ extended: false }), express.json(), async (req, res) => {
+    try {
+      const clerkPath = req.originalUrl.replace(/^\/__clerk/, "") || "/";
+
+      // Cache Clerk environment/client responses for 60s to reduce proxy latency
+      if (req.method === "GET" && (clerkPath === "/v1/environment" || clerkPath.startsWith("/v1/client"))) {
+        const cacheKey = `clerk:${clerkPath}:${req.headers.cookie?.match(/__client=([^;]{0,20})/)?.[1] || "anon"}`;
+        if ((globalThis as any).__clerkCache?.[cacheKey] && Date.now() - (globalThis as any).__clerkCache[cacheKey].ts < 60000) {
+          const cached = (globalThis as any).__clerkCache[cacheKey];
+          res.setHeader("X-Clerk-Cache", "hit");
+          cached.headers.forEach(([k, v]: [string, string]) => res.setHeader(k, v));
+          res.status(cached.status);
+          return res.end(cached.body);
+        }
+      }
+
+      const targetUrl = `https://possible-emu-83.clerk.accounts.dev${clerkPath}`;
+      const fwdHeaders: Record<string, string> = {
+        "Clerk-Proxy-Url": "https://acreos.io/__clerk",
+        "Clerk-Secret-Key": process.env.CLERK_SECRET_KEY || "",
+      };
+      for (const key of ["content-type", "authorization", "cookie", "accept", "user-agent", "referer", "origin"]) {
+        if (req.headers[key]) fwdHeaders[key] = req.headers[key] as string;
+      }
+      fwdHeaders["x-forwarded-for"] = req.ip || req.socket.remoteAddress || "";
+      fwdHeaders["x-forwarded-proto"] = "https";
+      fwdHeaders["x-forwarded-host"] = "acreos.io";
+      let body: string | undefined;
+      if (!["GET", "HEAD"].includes(req.method)) {
+        const ct = (req.headers["content-type"] || "").toLowerCase();
+        if (ct.includes("application/json")) body = JSON.stringify(req.body);
+        else if (ct.includes("form-urlencoded") && typeof req.body === "object") body = new URLSearchParams(req.body as Record<string, string>).toString();
+        else if (typeof req.body === "string") body = req.body;
+      }
+      const clerkRes = await fetch(targetUrl, { method: req.method, headers: fwdHeaders, body, redirect: "manual" });
+      clerkRes.headers.forEach((value, key) => {
+        const k = key.toLowerCase();
+        if (["transfer-encoding", "connection", "content-encoding", "content-length"].includes(k)) return;
+        if (k === "location") {
+          let loc = value;
+          if (loc.startsWith("/v1/") || loc.startsWith("/npm/")) loc = "/__clerk" + loc;
+          if (loc.includes("possible-emu-83.clerk.accounts.dev")) loc = loc.replace("https://possible-emu-83.clerk.accounts.dev", "/__clerk");
+          if (loc.includes("accounts.acreos.io")) loc = "https://acreos.io/";
+          res.setHeader(key, loc);
+          return;
+        }
+        if (k === "set-cookie") {
+          res.appendHeader(key, value.replace(/domain=[^;]+/gi, "domain=acreos.io"));
+          return;
+        }
+        res.setHeader(key, value);
+      });
+      res.status(clerkRes.status);
+      const responseBody = Buffer.from(await clerkRes.arrayBuffer());
+
+      // Cache successful GET responses for environment/client
+      if (req.method === "GET" && clerkRes.status < 400 && (clerkPath === "/v1/environment" || clerkPath.startsWith("/v1/client"))) {
+        const cacheKey = `clerk:${clerkPath}:${req.headers.cookie?.match(/__client=([^;]{0,20})/)?.[1] || "anon"}`;
+        if (!(globalThis as any).__clerkCache) (globalThis as any).__clerkCache = {};
+        const hdrs: [string, string][] = [];
+        clerkRes.headers.forEach((v, k) => { if (!["transfer-encoding","connection","content-encoding","content-length"].includes(k)) hdrs.push([k,v]); });
+        (globalThis as any).__clerkCache[cacheKey] = { status: clerkRes.status, headers: hdrs, body: responseBody, ts: Date.now() };
+      }
+
+      res.end(responseBody);
+    } catch (err: any) {
+      console.error("[clerk-proxy]", err.message);
+      res.status(502).json({ error: "Clerk proxy error" });
+    }
+  });
+
+
+  // Public feature flags endpoint — needed before Clerk middleware for sidebar rendering
+  app.get("/api/config/features", async (_req, res) => {
+    try {
+      const flags = await storage.getEnabledFeatureFlags();
+      const enabledKeys = flags.map((f: any) => f.key);
+      const enabledRoutes = flags.flatMap((f: any) => (f.controlledRoutes || []) as string[]);
+      res.json({ enabledKeys, enabledRoutes });
+    } catch {
+      // On error, return all routes enabled so sidebar shows everything
+      res.json({ enabledKeys: [], enabledRoutes: [] });
+    }
+  });
+
+  // Public changelog endpoint
+  app.get("/api/changelog", async (_req, res) => {
+    try {
+      const fs = await import("fs/promises");
+      const path = await import("path");
+      const content = await fs.readFile(path.join(process.cwd(), "CHANGELOG.md"), "utf-8");
+      const entries: { version: string; date: string; sections: { title: string; items: string[] }[] }[] = [];
+      let current: typeof entries[0] | null = null;
+      let currentSection: { title: string; items: string[] } | null = null;
+      for (const line of content.split("\n")) {
+        const versionMatch = line.match(/^## \[?([\d.]+)\]?\s*[-–—]?\s*(.+)?/);
+        if (versionMatch) { if (current) entries.push(current); current = { version: versionMatch[1], date: (versionMatch[2] || "").trim(), sections: [] }; currentSection = null; continue; }
+        const sectionMatch = line.match(/^### (.+)/);
+        if (sectionMatch && current) { currentSection = { title: sectionMatch[1], items: [] }; current.sections.push(currentSection); continue; }
+        if (line.startsWith("- ") && currentSection) currentSection.items.push(line.slice(2).trim());
+      }
+      if (current) entries.push(current);
+      res.json({ entries });
+    } catch { res.json({ entries: [] }); }
+  });
+
+  // Public status endpoint for customers
+  app.get("/api/status", async (_req, res) => {
+    try {
+      const { healthCheckService } = await import("./services/healthCheck");
+      const result = healthCheckService.getLastResults() || await healthCheckService.checkAll();
+      const services = (result.services || []).map((s: any) => ({
+        name: s.name,
+        status: s.status === "healthy" ? "operational" : s.status === "degraded" ? "degraded" : s.status === "unconfigured" ? "operational" : "outage",
+      }));
+      const overall = services.every((s: any) => s.status === "operational") ? "operational"
+        : services.some((s: any) => s.status === "outage") ? "outage" : "degraded";
+      res.json({ status: overall, services, lastChecked: result.timestamp });
+    } catch {
+      res.json({ status: "unknown", services: [], lastChecked: new Date() });
+    }
+  });
+
   // ============================================
   // HEALTH CHECK (Public endpoint - no rate limiting, no middleware)
   // Mounted BEFORE WhiteLabel/Clerk middleware so health probes never fail
@@ -247,7 +371,11 @@ export async function registerRoutes(
   // Pass publishableKey explicitly — Fly.io stores it as VITE_CLERK_PUBLISHABLE_KEY
   // but @clerk/express expects CLERK_PUBLISHABLE_KEY by default.
   const clerkPK = process.env.CLERK_PUBLISHABLE_KEY || process.env.VITE_CLERK_PUBLISHABLE_KEY;
-  app.use(clerkMiddleware({ publishableKey: clerkPK }));
+  app.use(clerkMiddleware({
+    publishableKey: clerkPK,
+    jwtKey: process.env.CLERK_JWT_KEY,
+    proxyUrl: process.env.APP_URL ? `${process.env.APP_URL}/__clerk` : undefined,
+  }));
 
   // Register auth routes (/api/auth/user, /api/auth/attribution)
   registerAuthRoutes(app);
@@ -881,7 +1009,7 @@ export async function registerRoutes(
   // Data Intelligence: USDA NASS, Census, Parcel Fusion, Blind Offer Calculator, Freedom Meter
   app.use('/api/data-intel', isAuthenticated, getOrCreateOrg, dataIntelligenceRouter);
 
-  // Epic A: Night Cap Dashboard
+  // Epic A: Evening Review Dashboard
   {
     const nightCapRouter = (await import("./routes-night-cap")).default;
     app.use('/api/night-cap', isAuthenticated, getOrCreateOrg, nightCapRouter);
@@ -1256,9 +1384,17 @@ export async function registerRoutes(
 
       logger.info("[ExecutiveDashboard] Metrics fetched successfully", { mrr, activeOrgs: activeOrgs.length });
       res.json(metrics);
-    } catch (err) {
-      logger.error("[ExecutiveDashboard] Failed to fetch metrics", err instanceof Error ? err : undefined);
-      Errors.internal(res, err instanceof Error ? err : new Error("Failed to fetch executive dashboard metrics"));
+    } catch (err: any) {
+      logger.error("[ExecutiveDashboard] Error", { message: err?.message });
+      // Return empty metrics so page still renders
+      res.json({
+        totalOrgs: 0, activeOrgs: 0, newOrgsLast30: 0,
+        mrr: 0, arr: 0, mrrChange: 0,
+        tierBreakdown: { free: 0, sprout: 0, starter: 0, pro: 0 },
+        totalLeads: 0, totalProperties: 0, totalDeals: 0, totalNotes: 0,
+        newLeadsLast7: 0, newDealsLast7: 0,
+        recentSignups: [],
+      });
     }
   });
 

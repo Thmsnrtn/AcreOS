@@ -35,7 +35,7 @@
  *   - Comparable market analysis
  *   - Recommended next actions
  *
- * Philosophy: Inspired by the Mark Podolsky / Land Geek due diligence methodology,
+ * Philosophy: Inspired by the industry-standard due diligence methodology,
  * this engine automates the 100-step checklist's Phase 1 and Phase 2 checks in under
  * 60 seconds. What once took days of manual research now takes one API call.
  */

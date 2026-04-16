@@ -148,7 +148,7 @@ const SECTIONS: { key: Course['section']; label: string; description: string }[]
   {
     key: 'getting-started',
     label: 'Getting Started',
-    description: 'Core concepts every land investor needs before making their first offer.',
+    description: 'Core concepts every real estate professional needs before making their first offer.',
   },
   {
     key: 'intermediate',
@@ -158,7 +158,7 @@ const SECTIONS: { key: Course['section']; label: string; description: string }[]
   {
     key: 'advanced',
     label: 'Advanced Tactics',
-    description: 'High-leverage tactics used by full-time land investors.',
+    description: 'High-leverage tactics used by full-time real estate professionals.',
   },
 ];
 

@@ -5,7 +5,7 @@
  * across your target counties and surfaces actionable intelligence when
  * opportunity windows open or close.
  *
- * Inspired by the best practices from Art of Passive Income / Land Geek:
+ * Inspired by the best practices from real estate investment:
  *   - "Mail consistently to multiple counties — when one softens, pivot to another"
  *   - "A hot market has 10+ bidders on eBay sold listings"
  *   - "Opportunity windows are narrow — when land appreciates 15%+ in 12 months,
@@ -111,7 +111,7 @@ export interface MarketPulseReport {
 
 // ---------------------------------------------------------------------------
 // The Weekly Wisdom Engine
-// Land Geek / Art of Passive Income-inspired rotating market insights
+// Industry-standard rotating market insights
 // ---------------------------------------------------------------------------
 
 const WEEKLY_WISDOM_POOL = [

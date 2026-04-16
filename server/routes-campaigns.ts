@@ -1567,6 +1567,180 @@ export function registerCampaignRoutes(app: Express): void {
     }
   });
 
+  // POST /api/campaigns/:id/send-email — send email campaign to selected leads
+  api.post("/api/campaigns/:id/send-email", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const campaignId = parseInt(req.params.id);
+      const { leadIds } = req.body as { leadIds: number[] };
+
+      if (!leadIds || leadIds.length === 0) {
+        return Errors.badRequest(res, "No recipients specified");
+      }
+
+      const campaign = await storage.getCampaign(org.id, campaignId);
+      if (!campaign) return Errors.notFound(res, "Campaign");
+      if (campaign.type !== "email") {
+        return Errors.badRequest(res, "Campaign is not an email campaign");
+      }
+
+      // Get leads with email addresses
+      const allLeads = await Promise.all(
+        leadIds.map(id => storage.getLead(org.id, id))
+      );
+      const validLeads = allLeads.filter(l => l && l.email);
+
+      if (validLeads.length === 0) {
+        return Errors.badRequest(res, "No recipients with valid email addresses");
+      }
+
+      // Check credits
+      const { creditService } = await import("./services/credits");
+      const costPerEmail = 1; // 1 cent per email
+      const totalCost = validLeads.length * costPerEmail;
+      const hasCredits = await creditService.hasEnoughCredits(org.id, totalCost);
+      if (!hasCredits && !req.isFounder) {
+        return Errors.limitExceeded(res, { needed: totalCost, action: "email_send" });
+      }
+
+      const { emailService } = await import("./services/emailService");
+
+      const subject = (campaign as any).subject || campaign.name || "Message from AcreOS";
+      const htmlTemplate = (campaign as any).templateContent || (campaign as any).htmlContent || `<p>${(campaign as any).textContent || campaign.name}</p>`;
+
+      // Send emails with rate limiting
+      const results = { sent: 0, failed: 0, errors: [] as string[] };
+      for (const lead of validLeads) {
+        try {
+          // Simple template variable replacement
+          let html = htmlTemplate
+            .replace(/\{\{firstName\}\}/g, lead!.firstName || "")
+            .replace(/\{\{lastName\}\}/g, lead!.lastName || "")
+            .replace(/\{\{email\}\}/g, lead!.email || "")
+            .replace(/\{\{county\}\}/g, (lead as any).county || "")
+            .replace(/\{\{state\}\}/g, (lead as any).state || "");
+
+          await emailService.sendEmail({
+            to: lead!.email!,
+            subject,
+            html,
+            organizationId: org.id,
+            isCampaignEmail: true,
+          });
+          results.sent++;
+        } catch (err: any) {
+          results.failed++;
+          results.errors.push(`${lead!.email}: ${err.message}`);
+        }
+
+        // Rate limit: 5 emails per second
+        if (results.sent % 5 === 0) {
+          await new Promise(r => setTimeout(r, 200));
+        }
+      }
+
+      // Deduct credits
+      if (!req.isFounder && results.sent > 0) {
+        await creditService.deductCredits(org.id, results.sent * costPerEmail, "email_sent", `Campaign: ${campaign.name}`);
+      }
+
+      // Update campaign stats
+      await storage.updateCampaign(org.id, campaignId, {
+        status: "sent",
+        ...(campaign as any).sentCount !== undefined ? { sentCount: ((campaign as any).sentCount || 0) + results.sent } : {},
+      } as any);
+
+      res.json({
+        success: true,
+        sent: results.sent,
+        failed: results.failed,
+        total: validLeads.length,
+        errors: results.errors.slice(0, 10),
+      });
+    } catch (err: any) {
+      Errors.internal(res, err instanceof Error ? err : new Error(err.message || "Email send failed"));
+    }
+  });
+
+  // POST /api/campaigns/:id/send-sms — send SMS campaign to selected leads
+  api.post("/api/campaigns/:id/send-sms", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const campaignId = parseInt(req.params.id);
+      const { leadIds } = req.body as { leadIds: number[] };
+
+      if (!leadIds || leadIds.length === 0) {
+        return Errors.badRequest(res, "No recipients specified");
+      }
+
+      const campaign = await storage.getCampaign(org.id, campaignId);
+      if (!campaign) return Errors.notFound(res, "Campaign");
+
+      // Get leads with phone numbers
+      const allLeads = await Promise.all(
+        leadIds.map(id => storage.getLead(org.id, id))
+      );
+      const validLeads = allLeads.filter(l => l && l.phone);
+
+      if (validLeads.length === 0) {
+        return Errors.badRequest(res, "No recipients with valid phone numbers");
+      }
+
+      // Check Twilio configuration
+      const twilioSid = process.env.TWILIO_ACCOUNT_SID;
+      const twilioToken = process.env.TWILIO_AUTH_TOKEN;
+      const twilioPhone = process.env.TWILIO_PHONE_NUMBER;
+
+      if (!twilioSid || !twilioToken || !twilioPhone) {
+        return Errors.badRequest(res, "SMS not configured. Please add Twilio credentials in Settings → Integrations.");
+      }
+
+      const messageBody = (campaign as any).textContent || (campaign as any).smsBody || campaign.name || "Message from AcreOS";
+
+      // Send SMS messages
+      const results = { sent: 0, failed: 0, errors: [] as string[] };
+      const twilio = (await import("twilio")).default;
+      const client = twilio(twilioSid, twilioToken);
+
+      for (const lead of validLeads) {
+        try {
+          let body = messageBody
+            .replace(/\{\{firstName\}\}/g, lead!.firstName || "")
+            .replace(/\{\{lastName\}\}/g, lead!.lastName || "")
+            .replace(/\{\{county\}\}/g, (lead as any).county || "");
+
+          await client.messages.create({
+            to: lead!.phone!,
+            from: twilioPhone,
+            body,
+          });
+          results.sent++;
+        } catch (err: any) {
+          results.failed++;
+          results.errors.push(`${lead!.phone}: ${err.message}`);
+        }
+
+        // Rate limit: 1 SMS per second (Twilio limit)
+        await new Promise(r => setTimeout(r, 1000));
+      }
+
+      // Update campaign stats
+      await storage.updateCampaign(org.id, campaignId, {
+        status: "sent",
+      } as any);
+
+      res.json({
+        success: true,
+        sent: results.sent,
+        failed: results.failed,
+        total: validLeads.length,
+        errors: results.errors.slice(0, 10),
+      });
+    } catch (err: any) {
+      Errors.internal(res, err instanceof Error ? err : new Error(err.message || "SMS send failed"));
+    }
+  });
+
   // GET /api/campaigns/overlap-report
   api.get("/api/campaigns/overlap-report", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {

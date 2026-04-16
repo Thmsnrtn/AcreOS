@@ -1038,7 +1038,7 @@ export default function OnboardingV2() {
               {
                 path: "active" as InvestorPath,
                 icon: Building,
-                title: "Active Land Investor",
+                title: "Active Real Estate Professional",
                 subtitle: "I'm already doing deals and need better tools",
                 benefits: ["Import existing portfolio", "Configure Deal Hunter for your markets", "Activate Autonomous Deal Machine", "Advanced analytics"],
                 color: "blue",

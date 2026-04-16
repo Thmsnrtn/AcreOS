@@ -38,7 +38,7 @@ const auth = [isAuthenticated, getOrCreateOrg];
 export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
 
   // ============================================
-  // GEEKPAY-PARITY: SCHEDULED vs UNSCHEDULED PAYMENT TYPES
+  // PAYMENT-TYPE: SCHEDULED vs UNSCHEDULED PAYMENT TYPES
   // Scheduled: moves next payment date forward, triggers service fees
   // Unscheduled: early/extra payment, no date change, no service fee trigger
   // ============================================
@@ -75,7 +75,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
       const principalPaid = Math.max(0, paidAmount - interestDue);
       const newBalance = Math.max(0, currentBalance - principalPaid);
 
-      // Service fee only applies to SCHEDULED payments (GeekPay parity)
+      // Service fee only applies to SCHEDULED payments (standard parity)
       const serviceFeeAmount = paymentType === "scheduled"
         ? parseFloat(note.serviceFee || "0")
         : 0;

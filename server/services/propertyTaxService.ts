@@ -1,7 +1,7 @@
 /**
  * Property Tax Tracking & Escrow Service
  *
- * Mirrors GeekPay's property tax escrow feature:
+ * Mirrors third-party note servicing's property tax escrow feature:
  * - Collect pro-rated monthly tax from borrowers alongside loan payment
  * - Track escrow balance per note
  * - Alert investor when county taxes are due

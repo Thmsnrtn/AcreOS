@@ -644,7 +644,8 @@ export default function LeadsPage() {
   const leads = leadsResponse?.data;
   const serverTotal = leadsResponse?.total ?? 0;
   const serverTotalPages = leadsResponse?.totalPages ?? 1;
-  const { data: properties } = useProperties();
+  const { data: propertiesRaw } = useProperties();
+  const properties = Array.isArray(propertiesRaw) ? propertiesRaw : [];
   const [, setLocation] = useLocation();
   const searchString = useSearch();
   const urlParams = new URLSearchParams(searchString);
@@ -997,10 +998,10 @@ export default function LeadsPage() {
     <PageShell>
 
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            {leadsError && (
-              <InlineError 
-                message={(leadsErr as Error)?.message || "Failed to load leads."}
-                onRetry={() => refetchLeads()}
+            {error && (
+              <InlineError
+                message={(error as Error)?.message || "Failed to load leads."}
+                onRetry={() => refetch()}
                 testId="inline-error-leads"
               />
             )}
@@ -1371,7 +1372,7 @@ export default function LeadsPage() {
                   </div>
                 )}
 
-{useDelayedLoading(leadsLoading, 200) ? (
+{useDelayedLoading(isLoading, 200) ? (
                   <div className="p-4" data-testid="skeleton-leads-table">
                     <ListSkeleton count={8} variant="table" />
                   </div>

@@ -421,7 +421,8 @@ export function registerDashboardRoutes(app: Express): void {
 
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      // Return empty goals array so the page still renders
+      res.json([]);
     }
   });
 
@@ -544,7 +545,7 @@ export function registerDashboardRoutes(app: Express): void {
           type: "follow-up",
           priority: staleCount > 10 ? "high" : "medium",
           title: `Follow up with ${Math.min(staleCount, 5)} seller${staleCount > 1 ? "s" : ""} who haven't responded`,
-          description: `${staleCount} lead${staleCount !== 1 ? "s" : ""} haven't been contacted in 28+ days. Consistent follow-up is the Land Geek secret weapon.`,
+          description: `${staleCount} lead${staleCount !== 1 ? "s" : ""} haven't been contacted in 28+ days. Consistent follow-up is the key to conversion.`,
           actionLabel: "View Stale Leads",
           actionUrl: "/leads?filter=stale",
           count: staleCount,
@@ -590,13 +591,13 @@ export function registerDashboardRoutes(app: Express): void {
 
       if (priorities.length < 3) {
         priorities.push({
-          id: "night-cap",
+          id: "evening-review",
           type: "review",
           priority: "low",
           title: "Review your passive income progress tonight",
-          description: "Open the Night Cap dashboard to see today's note payments, freedom meter progress, and tomorrow's one thing.",
-          actionLabel: "Open Night Cap",
-          actionUrl: "/night-cap",
+          description: "Open the Evening Review dashboard to see today's note payments, freedom meter progress, and tomorrow's one thing.",
+          actionLabel: "Open Evening Review",
+          actionUrl: "/evening-review",
         });
       }
 

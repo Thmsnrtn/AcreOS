@@ -215,7 +215,7 @@ const FieldScoutPage = React.lazy(() => import("@/pages/field-scout"));
 const DunningManagerPage = React.lazy(() => import("@/pages/dunning-manager"));
 const FreedomMeterPage = React.lazy(() => import("@/pages/freedom-meter"));
 const BlindOfferWizardPage = React.lazy(() => import("@/pages/blind-offer-wizard"));
-const NightCapPage = React.lazy(() => import("@/pages/night-cap"));
+const EveningReviewPage = React.lazy(() => import("@/pages/night-cap"));
 
 // ─── Page loading fallback ──────────────────────────────────────────────────
 function PageLoader() {
@@ -228,13 +228,22 @@ function PageLoader() {
 
 // ─── Route wrappers ─────────────────────────────────────────────────────────
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, authFailCount } = useAuth();
 
   if (isLoading) {
     return <PageLoader />;
   }
 
+  // Check if session cookie exists — if so, user was recently authenticated
+  // and the session might just be refreshing. Show a loader instead of redirecting.
+  const hasSessionCookie = typeof document !== "undefined" && document.cookie.includes("__session=");
+
   if (!user) {
+    // If there's a session cookie but auth failed, the JWT might have expired
+    // while Clerk tries to refresh. Show a brief loader instead of bouncing to /auth
+    if (hasSessionCookie && authFailCount < 3) {
+      return <PageLoader />;
+    }
     return <Redirect to="/auth" />;
   }
 
@@ -278,26 +287,6 @@ function FlaggedRoute({ route, component: Component }: { route: string; componen
 }
 
 
-// Redirect to onboarding-v2 if onboarding hasn't been completed yet
-function OnboardingGuardRoute({ component: Component }: { component: React.ComponentType }) {
-  const { user, isLoading: authLoading } = useAuth();
-  const [orgData, setOrgData] = React.useState<{ onboardingCompleted?: boolean } | null>(null);
-  const [orgLoading, setOrgLoading] = React.useState(true);
-
-  React.useEffect(() => {
-    if (!user) { setOrgLoading(false); return; }
-    fetch("/api/organization", { credentials: "include" })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => setOrgData(data))
-      .catch(() => setOrgData(null))
-      .finally(() => setOrgLoading(false));
-  }, [user]);
-
-  if (authLoading || orgLoading) return <PageLoader />;
-  if (!user) return <Redirect to="/auth" />;
-  if (orgData && orgData.onboardingCompleted === false) return <Redirect to="/onboarding-v2" />;
-  return <Component />;
-}
 
 function HomeRoute() {
   const { user, isLoading } = useAuth();
@@ -323,10 +312,10 @@ function Router() {
       <Route path="/privacy" component={PrivacyPolicy} />
 
         {/* Competitor comparison pages (public, SEO-targeted) */}
-        <Route path="/compare/lg-pass">{() => <ProtectedRoute component={React.lazy(() => import("@/pages/compare-lgpass"))} />}</Route>
-        <Route path="/compare/geekpay">{() => <ProtectedRoute component={React.lazy(() => import("@/pages/compare-geekpay"))} />}</Route>
 
       <Route path="/pricing" component={PricingPage} />
+      <Route path="/status">{() => { const C = React.lazy(() => import("@/pages/status")); return <React.Suspense fallback={<PageLoader />}><C /></React.Suspense>; }}</Route>
+      <Route path="/changelog">{() => { const C = React.lazy(() => import("@/pages/changelog")); return <React.Suspense fallback={<PageLoader />}><C /></React.Suspense>; }}</Route>
 
       {/* Public Borrower Portal */}
       <Route path="/portal" component={BorrowerPortal} />
@@ -340,7 +329,10 @@ function Router() {
       {/* Home: landing page (unauth) or today hub (auth) */}
       <Route path="/" component={HomeRoute} />
       <Route path="/today">
-        {() => <OnboardingGuardRoute component={TodayPage} />}
+        {() => <ProtectedRoute component={TodayPage} />}
+      </Route>
+      <Route path="/dashboard">
+        {() => <ProtectedRoute component={TodayPage} />}
       </Route>
       <Route path="/pipeline">
         {() => <ProtectedRoute component={PipelinePage} />}
@@ -370,6 +362,9 @@ function Router() {
         {() => <ProtectedRoute component={TeamDashboardPage} />}
       </Route>
       <Route path="/team">
+        {() => <ProtectedRoute component={TeamInboxPage} />}
+      </Route>
+      <Route path="/team-inbox">
         {() => <ProtectedRoute component={TeamInboxPage} />}
       </Route>
       <Route path="/automation">
@@ -444,11 +439,14 @@ function Router() {
       <Route path="/admin/support">
         {() => <ProtectedRoute component={AdminSupportPage} />}
       </Route>
+      <Route path="/founder-dashboard">
+        {() => <FounderProtectedRoute component={FounderDashboard} />}
+      </Route>
       <Route path="/founder-home">
-        {() => <FounderProtectedRoute component={FounderHomePage} />}
+        {() => <Redirect to="/founder-dashboard" />}
       </Route>
       <Route path="/founder">
-        {() => <Redirect to="/founder-home" />}
+        {() => <Redirect to="/founder-dashboard" />}
       </Route>
       <Route path="/founder/ai-observatory">
         {() => <FounderProtectedRoute component={FounderAiObservatory} />}
@@ -629,7 +627,8 @@ function Router() {
         <Route path="/dunning">{() => <ProtectedRoute component={DunningManagerPage} />}</Route>
         <Route path="/freedom-meter">{() => <ProtectedRoute component={FreedomMeterPage} />}</Route>
         <Route path="/blind-offer-wizard">{() => <ProtectedRoute component={BlindOfferWizardPage} />}</Route>
-        <Route path="/night-cap">{() => <ProtectedRoute component={NightCapPage} />}</Route>
+        <Route path="/night-cap">{() => <ProtectedRoute component={EveningReviewPage} />}</Route>
+        <Route path="/evening-review">{() => <ProtectedRoute component={EveningReviewPage} />}</Route>
 
         {/* Support */}
         <Route path="/help">{() => <ProtectedRoute component={HelpPage} />}</Route>

@@ -1,7 +1,7 @@
 /**
  * Persona 1 — "First Timer Fiona"
  *
- * Brand new land investor, Sprout tier, beginner onboarding path.
+ * Brand new real estate professional, Sprout tier, beginner onboarding path.
  * Tests: signup → onboarding (beginner) → explore dashboard → first lead →
  *        first deal → pipeline → Pax chat → settings.
  *

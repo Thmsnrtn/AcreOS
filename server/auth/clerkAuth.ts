@@ -19,7 +19,37 @@ const clerkClient = createClerkClient({
  * Must only be called after requireAuth() has confirmed the user is authenticated.
  */
 async function hydrateUser(req: any, res: any, next: any) {
-  const { userId } = req.auth;
+  let userId = req.auth?.userId;
+
+  // Fallback: if clerkMiddleware couldn't verify (e.g., proxy/Cloudflare issues),
+  // manually decode the __session JWT using CLERK_JWT_KEY
+  if (!userId) {
+    try {
+      const sessionCookie = req.headers.cookie?.match(/__session=([^;]+)/)?.[1];
+      if (sessionCookie && process.env.CLERK_JWT_KEY) {
+        const crypto = await import("crypto");
+        const [headerB64, payloadB64, sigB64] = sessionCookie.split(".");
+        const payload = JSON.parse(Buffer.from(payloadB64, "base64url").toString());
+
+        // Verify signature with the public key
+        const verifier = crypto.createVerify("RSA-SHA256");
+        verifier.update(headerB64 + "." + payloadB64);
+        const isValid = verifier.verify(process.env.CLERK_JWT_KEY, sigB64, "base64url");
+
+        // Accept tokens up to 5 minutes past expiry to handle Clerk session refresh lag
+        const GRACE_PERIOD_MS = 5 * 60 * 1000;
+        if (isValid && payload.sub && payload.exp * 1000 > Date.now() - GRACE_PERIOD_MS) {
+          userId = payload.sub;
+        }
+      }
+    } catch (jwtErr: any) {
+      console.warn("[hydrateUser] JWT fallback failed:", jwtErr.message);
+    }
+  }
+
+  if (!userId) {
+    return res.status(401).json({ error: "Unauthorized", message: "No valid session" });
+  }
 
   try {
     let [user] = await db
@@ -49,6 +79,10 @@ async function hydrateUser(req: any, res: any, next: any) {
     }
 
     req.user = user;
+    // Set isFounder flag for founder-only routes
+    if (user.email && isFounderEmail(user.email)) {
+      req.isFounder = true;
+    }
     next();
   } catch (err) {
     next(err);
@@ -59,9 +93,17 @@ async function hydrateUser(req: any, res: any, next: any) {
  * Drop-in replacement for the old Passport `isAuthenticated` middleware.
  * Requires a valid Clerk session and populates req.user from our DB.
  */
-export const isAuthenticated: RequestHandler = (req, res, next) => {
+export const isAuthenticated: RequestHandler = (req: any, res, next) => {
   requireAuth()(req, res, (err?: any) => {
-    if (err) return next(err);
+    if (err) {
+      // Clerk's requireAuth failed — try JWT fallback before giving up
+      const sessionCookie = req.headers.cookie?.match(/__session=([^;]+)/)?.[1];
+      if (sessionCookie && process.env.CLERK_JWT_KEY) {
+        // Let hydrateUser handle the JWT verification fallback
+        return hydrateUser(req, res, next);
+      }
+      return next(err);
+    }
     hydrateUser(req, res, next);
   });
 };

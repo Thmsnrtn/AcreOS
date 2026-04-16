@@ -192,9 +192,10 @@ app.disable("x-powered-by");
 // actual client IP (for rate limiting and audit logging), not the Fly proxy.
 app.set("trust proxy", 1);
 
-// compressionMiddleware disabled — custom res.write/end override causes ERR_HTTP_HEADERS_SENT
-// TODO: replace with the standard 'compression' npm package
-// app.use(compressionMiddleware);
+// Enable gzip/brotli compression for all responses
+import compression from "compression";
+app.use(compression({ threshold: 1024 })); // Compress responses > 1KB
+
 app.use(telemetryMiddleware); // Task #74: OpenTelemetry span recording per request
 app.use(securityHeaders);
 app.use(metricsMiddleware); // Prometheus request metrics collection

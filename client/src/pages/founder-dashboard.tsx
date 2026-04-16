@@ -946,9 +946,9 @@ function PaxEyesPanel() {
 
   const confidenceBadge = (score: number) => {
     const pct = score > 1 ? score : score * 100;
-    if (pct >= 80) return <Badge className="text-xs bg-green-100 text-green-800 border-green-200">High</Badge>;
-    if (pct >= 50) return <Badge className="text-xs bg-yellow-100 text-yellow-800 border-yellow-200">Medium</Badge>;
-    return <Badge className="text-xs bg-zinc-100 text-zinc-600 border-zinc-200">Low</Badge>;
+    if (pct >= 80) return <Badge className="text-xs bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20">High</Badge>;
+    if (pct >= 50) return <Badge className="text-xs bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 border-yellow-500/20">Medium</Badge>;
+    return <Badge className="text-xs bg-muted text-muted-foreground border-border">Low</Badge>;
   };
 
   const severityColor = (s: string) => {
@@ -6755,28 +6755,28 @@ const AGENT_ICONS: Record<string, React.ElementType> = {
 };
 
 const AGENT_COLORS: Record<string, string> = {
-  atlas_cto: "text-blue-600",
-  sophie_csm: "text-pink-500",
-  forge_revenue: "text-green-600",
-  beacon_marketing: "text-orange-500",
-  sentinel_devops: "text-slate-600",
-  ledger_finance: "text-emerald-600",
-  shield_legal: "text-red-500",
-  oracle_analytics: "text-purple-600",
-  compass_pm: "text-cyan-600",
-  crucible_qa: "text-amber-600",
+  atlas_cto: "text-blue-600 dark:text-blue-400",
+  sophie_csm: "text-pink-500 dark:text-pink-400",
+  forge_revenue: "text-green-600 dark:text-green-400",
+  beacon_marketing: "text-orange-500 dark:text-orange-400",
+  sentinel_devops: "text-slate-600 dark:text-slate-400",
+  ledger_finance: "text-emerald-600 dark:text-emerald-400",
+  shield_legal: "text-red-500 dark:text-red-400",
+  oracle_analytics: "text-purple-600 dark:text-purple-400",
+  compass_pm: "text-cyan-600 dark:text-cyan-400",
+  crucible_qa: "text-amber-600 dark:text-amber-400",
 };
 
 const WING_BADGES: Record<string, { label: string; className: string }> = {
-  product: { label: "Product", className: "bg-blue-500/10 text-blue-700 border-blue-500/20" },
-  growth: { label: "Growth", className: "bg-green-500/10 text-green-700 border-green-500/20" },
-  ops: { label: "Ops", className: "bg-slate-500/10 text-slate-700 border-slate-500/20" },
+  product: { label: "Product", className: "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/20" },
+  growth: { label: "Growth", className: "bg-green-500/10 text-green-700 dark:text-green-300 border-green-500/20" },
+  ops: { label: "Ops", className: "bg-slate-500/10 text-slate-700 dark:text-slate-300 border-slate-500/20" },
 };
 
 const MOOD_STYLES: Record<string, { bg: string; border: string; text: string; dot: string }> = {
-  green: { bg: "bg-green-500/5", border: "border-green-500/20", text: "text-green-700", dot: "bg-green-500" },
-  yellow: { bg: "bg-amber-500/5", border: "border-amber-500/20", text: "text-amber-700", dot: "bg-amber-500" },
-  red: { bg: "bg-red-500/5", border: "border-red-500/20", text: "text-red-700", dot: "bg-red-500" },
+  green: { bg: "bg-green-500/5", border: "border-green-500/20", text: "text-green-700 dark:text-green-400", dot: "bg-green-500" },
+  yellow: { bg: "bg-amber-500/5", border: "border-amber-500/20", text: "text-amber-700 dark:text-amber-400", dot: "bg-amber-500" },
+  red: { bg: "bg-red-500/5", border: "border-red-500/20", text: "text-red-700 dark:text-red-400", dot: "bg-red-500" },
 };
 
 function CompanyBriefingPanel() {

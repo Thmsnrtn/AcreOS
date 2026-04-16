@@ -969,13 +969,13 @@ export async function createBackupZip(organizationId: number): Promise<{
 }
 
 // ============================================================
-// NOTES (seller-financed) IMPORT — GeekPay CSV compatible
+// NOTES (seller-financed) IMPORT — standard CSV compatible
 // ============================================================
 
-// Maps GeekPay column headers AND generic variants to AcreOS note fields.
+// Maps common note servicing column headers AND generic variants to AcreOS note fields.
 // A user-provided fieldMap (from the UI's field-mapping step) takes precedence.
 export const NOTE_COLUMN_MAP: Record<string, string> = {
-  // GeekPay-style headers
+  // Common headers
   "Borrower First Name": "borrowerFirstName",
   "borrower first name": "borrowerFirstName",
   borrowerFirstName: "borrowerFirstName",
@@ -1073,7 +1073,7 @@ export const NOTE_COLUMN_MAP: Record<string, string> = {
   comments: "internalNotes",
 };
 
-// Note status mapping: normalize GeekPay status strings to AcreOS enum values
+// Note status mapping: normalize external status strings to AcreOS enum values
 function normalizeNoteStatus(raw: string): string {
   const lower = (raw || "").toLowerCase().trim();
   if (lower === "active" || lower === "current") return "active";

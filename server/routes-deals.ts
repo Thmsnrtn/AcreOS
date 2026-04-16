@@ -178,10 +178,10 @@ export function registerDealRoutes(app: Express): void {
 
       res.status(201).json(deal);
     } catch (err) {
-      if (err instanceof z.ZodError) {
-        return Errors.badRequest(res, "Validation failed", err.errors.map(e => ({ field: e.path.join('.'), message: e.message })));
+      if (err instanceof z.ZodError || (err as any)?.errors) {
+        return Errors.badRequest(res, "Validation failed", ((err as any).errors || []).map((e: any) => ({ field: e.path?.join?.('.') || '', message: e.message || String(e) })));
       }
-      throw err;
+      return Errors.internal(res, err as Error);
     }
   });
 

@@ -1,10 +1,10 @@
 /**
  * Blind Offer Calculator
  *
- * Implements the Mark Podolsky / Land Geek blind offer pricing methodology — the
+ * Implements the Mark Podolsky / industry standard blind offer pricing methodology — the
  * #1 acquisition strategy for raw land investing.
  *
- * The Core Formula (from Art of Passive Income / The Land Geek):
+ * The Core Formula (from Art of Passive Income / The industry standard):
  *   Offer = Lowest Comparable Sale (last 12-18 months) ÷ 4
  *
  * This gives a 300% margin of safety — buying at 25 cents on the dollar creates
@@ -402,7 +402,7 @@ function buildOfferTiers(
       offerPerAcre: Math.round(lowestCompPerAcre * 0.25),
       offerTotal: Math.round(lowestCompPerAcre * 0.25 * acres),
       pctOfLowestComp: 25,
-      description: "25 cents on the dollar — the proven Land Geek formula",
+      description: "25 cents on the dollar — the proven industry standard formula",
       bestFor: "Most counties, mixed seller motivation profiles, balanced markets",
       acceptanceRateForecast: "~3 in 5 sellers (Podolsky's reported rate in validated counties)",
     },
@@ -550,7 +550,7 @@ function buildHybridRecommendation(
   preferOwnerFinance?: boolean
 ): string {
   if (preferOwnerFinance || ownerFinance.roi > cashFlip.roi * 1.5) {
-    return `Owner Finance (Recommended): ${ownerFinance.roi}% ROI over 7 years vs. ${cashFlip.roi}% ROI from a cash flip. Down payment of $${ownerFinance.downPayment.toLocaleString()} recoups your entire acquisition cost on day 1. Then collect $${ownerFinance.monthlyPayment.toLocaleString()}/month for 84 months — pure passive income. This is how the Land Geek model builds wealth compoundingly.`;
+    return `Owner Finance (Recommended): ${ownerFinance.roi}% ROI over 7 years vs. ${cashFlip.roi}% ROI from a cash flip. Down payment of $${ownerFinance.downPayment.toLocaleString()} recoups your entire acquisition cost on day 1. Then collect $${ownerFinance.monthlyPayment.toLocaleString()}/month for 84 months — pure passive income. This is how the industry standard model builds wealth compoundingly.`;
   }
   return `Cash Flip (Recommended for capital recycling): ${cashFlip.roi}% ROI in ~45 days. Deploy capital immediately into the next deal. Once you have 10-20 successful flips and understand the market, transition to owner financing to build the note portfolio that generates true passive income.`;
 }
