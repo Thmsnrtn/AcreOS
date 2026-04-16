@@ -14,13 +14,13 @@
  *   - Year-over-year appreciation trends per county
  *   - Agricultural income per county (proxy for rural wealth/demand)
  *
- * Why this is a data moat for land investors:
+ * Why this is a data moat for real estate professionals:
  *   The USDA publishes authoritative land values surveyed from actual farmers and
  *   landowners — not Zillow estimates. This is used by lenders, appraisers, and
  *   institutional investors. Integrating this gives AcreOS users a pricing anchor
  *   that is genuinely more reliable than any automated estimate.
  *
- * Mark Podolsky's formula: Blind Offer = Lowest Comp ÷ 4
+ * Industry standard formula: Blind Offer = Lowest Comp ÷ 4
  * The USDA NASS "state-level" published values bracket county comps and provide a
  * floor/ceiling validation for the formula.
  */
@@ -62,7 +62,7 @@ export interface CountyAgSnapshot {
   year: number;
   farmRealEstatePerAcre: number;
   croplandPerAcre: number;
-  pasturePerAcre: number; // most relevant for raw land investors
+  pasturePerAcre: number; // most relevant for real estate investors
   cashRentCroplandPerAcre: number;
   cashRentPasturePerAcre: number;
   interpretations: {
@@ -167,7 +167,7 @@ export async function fetchCountyLandValues(
 }
 
 /**
- * Fetch pastureland values — the most relevant category for raw land investors.
+ * Fetch pastureland values — the most relevant category for real estate investors.
  * Pastureland ≈ raw, undeveloped land with no structures.
  */
 export async function fetchCountyPastureLandValues(

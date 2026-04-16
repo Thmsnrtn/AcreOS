@@ -667,7 +667,7 @@ export function getOptimalOutreachTiming(
     recommendedSendDate: sendDate,
     recommendedCallWindow: "10:00 AM – 2:00 PM local time",
     seasonalMultiplier,
-    dayOfWeekRecommendation: `${dayRec} — optimal for land investor outreach`,
+    dayOfWeekRecommendation: `${dayRec} — optimal for real estate professional outreach`,
     expectedResponseRate,
   };
 }

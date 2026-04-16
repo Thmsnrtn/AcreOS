@@ -462,7 +462,7 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
         config: {
           to: "{{ownerEmail}}",
           subject: "You've closed 10 deals with AcreOS!",
-          body: "Congratulations on closing 10 deals! Know another land investor who could benefit? Refer them and earn credits...",
+          body: "Congratulations on closing 10 deals! Know another real estate professional who could benefit? Refer them and earn credits...",
         },
       },
       {

@@ -1,19 +1,19 @@
 /**
  * Financial Operating System (EPIC 7 — Land's QuickBooks)
  *
- * Land investors have zero good tools for their financial back office.
+ * Real estate professionals have zero good tools for their financial back office.
  * AcreOS should own this entirely.
  *
  * Expert land investing financial wisdom:
  *
- * THE FINANCIAL SYSTEMS EVERY LAND INVESTOR NEEDS:
+ * THE FINANCIAL SYSTEMS EVERY REAL ESTATE PROFESSIONAL NEEDS:
  *
  * 1. DEAL TRACKING (what you paid, what you sold for, what your net was)
  *    - Purchase price + closing costs = total acquisition cost
  *    - Sale price - closing costs - direct mail costs = gross profit
  *    - Net profit = gross profit - G&A overhead allocation
  *    - ROI = net profit / acquisition cost
- *    Expert insight: Most land investors don't track their true cost per deal.
+ *    Expert insight: Most real estate professionals don't track their true cost per deal.
  *    They forget to include: mailing cost, due diligence, holding costs, closing fees.
  *
  * 2. 1031 EXCHANGE MANAGEMENT
@@ -37,7 +37,7 @@
  *    - Land held > 1 year = long-term capital gains (lower rate)
  *    - Dealer vs. investor classification matters enormously
  *    - Schedule D vs. Schedule C treatment
- *    Expert insight: Many active land investors are classified as "dealers"
+ *    Expert insight: Many active real estate professionals are classified as "dealers"
  *    by the IRS — this means ordinary income rates (up to 37%) on ALL gains.
  *    1031 exchanges and note income can help restructure this.
  */
@@ -423,7 +423,7 @@ export function calculateDealPnL(input: DealPnLInput): {
 
 // ---------------------------------------------------------------------------
 // Schedule E / Schedule D Tax Report Generator
-// Helps land investors prepare for tax season
+// Helps real estate professionals prepare for tax season
 // ---------------------------------------------------------------------------
 
 export interface TaxableTransaction {
@@ -544,7 +544,7 @@ Tax Year ${taxYear} Land Investing Summary for Organization ${organizationId}:
 
 IMPORTANT: This report is for informational purposes only.
 Consult a licensed CPA or tax professional for official tax advice.
-Land investors with high transaction volume may be classified as "dealers"
+Real estate professionals with high transaction volume may be classified as "dealers"
 by the IRS, which changes the tax treatment significantly.
   `.trim();
 

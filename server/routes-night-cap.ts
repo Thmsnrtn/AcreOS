@@ -12,7 +12,7 @@
  *   - Top AcreScore leads
  *   - Win of the day (latest closed deal or note)
  *   - Tomorrow's one thing (AI-suggested highest-impact action)
- *   - Rotating Nite Cap wisdom quote
+ *   - Rotating Evening Review wisdom quote
  *
  * Reuses existing finance, pipeline, campaign, and lead data endpoints.
  * No new DB tables — pure aggregation.
@@ -30,8 +30,8 @@ import { logger } from "./utils/logger";
 const router = Router();
 
 // ============================================
-// NITE CAP WISDOM QUOTES
-// 30 curated quotes from Podolsky / Nite Cap methodology
+// EVENING REVIEW WISDOM QUOTES
+// 30 curated quotes for Evening Review methodology
 // ============================================
 
 const EVENING_REVIEW_QUOTES = [

@@ -2132,7 +2132,7 @@ export const adPostings = pgTable("ad_postings", {
   title: text("title").notNull(),
   description: text("description").notNull(),
   headline: text("headline"),
-  storyContent: text("story_content"), // Mark Podolsky story-style ad copy
+  storyContent: text("story_content"), // Narrative story-style ad copy
   
   // Pricing
   listingPrice: numeric("listing_price").notNull(),

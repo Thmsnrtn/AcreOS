@@ -1,7 +1,7 @@
 /**
  * Virtual Assistant (VA) Management Service
  *
- * Enables land investors to manage their VA team:
+ * Enables real estate professionals to manage their VA team:
  * - Assign tasks to specific VAs from lead/property/deal context
  * - VA task queue: focused view showing only assigned work
  * - Daily standup digest: what each VA did yesterday

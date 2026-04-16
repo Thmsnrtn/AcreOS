@@ -1,5 +1,5 @@
 /**
- * Lead Scoring Service - Betty-style lead scoring for land investors
+ * Lead Scoring Service - Betty-style lead scoring for real estate professionals
  * 
  * Uses public data enrichment and configurable weights to score leads
  * based on likelihood to sell at a discount.

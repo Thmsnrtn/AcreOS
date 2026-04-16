@@ -592,7 +592,7 @@ export function generateClosingChecklist(
         category: "legal",
         dueWhen: "before_closing",
         expertTip:
-          "Land investors selling on terms may be subject to Dodd-Frank if the property has a dwelling. Raw vacant land is generally exempt but verify with counsel.",
+          "Real estate professionals selling on terms may be subject to Dodd-Frank if the property has a dwelling. Raw vacant land is generally exempt but verify with counsel.",
       }
     );
   }

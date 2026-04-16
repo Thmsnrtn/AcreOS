@@ -141,7 +141,7 @@ class ProductEvolutionEngine {
     // Generate user stories from request descriptions
     const userStories = [
       {
-        story: `As a land investor, I want ${featureName} so that I can improve my workflow efficiency.`,
+        story: `As a real estate professional, I want ${featureName} so that I can improve my workflow efficiency.`,
         acceptanceCriteria: [
           "Feature is accessible from the main dashboard",
           "Performance does not degrade with large datasets",

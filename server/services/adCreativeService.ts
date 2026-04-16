@@ -51,7 +51,7 @@ const TEMPLATE_CONTEXT: Record<string, {
   painPoints: string[];
 }> = {
   land_investors_signup: {
-    audience: "real estate investors, land investors, rural property buyers, and real estate professionals aged 30–65 in the US",
+    audience: "real estate investors, rural property buyers, and real estate professionals aged 30–65 in the US",
     product: "AcreOS — an all-in-one CRM built exclusively for real estate investors with AI-powered lead scoring, automated follow-up sequences, visual deal pipelines, seller financing note tracking, and parcel data integration",
     benefits: [
       "AI lead scoring that predicts which motivated sellers will close",
@@ -84,7 +84,7 @@ const TEMPLATE_CONTEXT: Record<string, {
     ],
   },
   lookalike_subscribers: {
-    audience: "people who look like current AcreOS subscribers — real estate investors, land investors, rural property buyers, and real estate professionals",
+    audience: "people who look like current AcreOS subscribers — real estate investors, rural property buyers, and real estate professionals",
     product: "AcreOS — the operating system serious real estate investors use to systematize and scale their acquisitions",
     benefits: [
       "Join hundreds of real estate investors already closing more deals with AI automation",
@@ -159,7 +159,7 @@ class AdCreativeService {
 
     const ctx = TEMPLATE_CONTEXT[templateKey] || TEMPLATE_CONTEXT.land_investors_signup;
 
-    const systemPrompt = `You are a world-class direct response copywriter. You have written high-converting Facebook and Instagram ads for SaaS, real estate, and investment products. You deeply understand land investors — their language, daily frustrations, aspirations, and decision triggers.
+    const systemPrompt = `You are a world-class direct response copywriter. You have written high-converting Facebook and Instagram ads for SaaS, real estate, and investment products. You deeply understand real estate professionals — their language, daily frustrations, aspirations, and decision triggers.
 
 PRODUCT BRIEF:
 - Product: ${ctx.product}
@@ -172,7 +172,7 @@ RULES:
 - Primary text: ≤125 characters, emotionally resonant + clear value + action signal
 - Description: ≤30 characters, punchy one-liner
 - Hook: Just the first sentence/opening line that would stop the scroll
-- Use land investor language naturally: deals, closes, motivated sellers, follow-ups, parcels, pipelines
+- Use real estate professional language naturally: deals, closes, motivated sellers, follow-ups, parcels, pipelines
 - Be concrete and specific — numbers beat vague claims
 - No exclamation points unless truly warranted
 - callToAction must be exactly one of: SIGN_UP, LEARN_MORE, GET_OFFER`;
