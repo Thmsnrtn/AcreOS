@@ -187,7 +187,7 @@ export function NotesImportDialog({ open, onOpenChange }: Props) {
             Import Notes from CSV
           </DialogTitle>
           <DialogDescription>
-            Import seller-financed notes from GeekPay or any CSV file. We'll auto-detect your
+            Import seller-financed notes from any CSV file. We'll auto-detect your
             columns — review the mapping before importing.
           </DialogDescription>
         </DialogHeader>
@@ -208,7 +208,7 @@ export function NotesImportDialog({ open, onOpenChange }: Props) {
               <FileText className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
               <p className="font-medium mb-1">Drop your CSV here or click to browse</p>
               <p className="text-sm text-muted-foreground">
-                Supports GeekPay exports and any CSV with note data
+                Supports any CSV with note data
               </p>
               <input
                 id="notes-csv-input"
@@ -219,8 +219,8 @@ export function NotesImportDialog({ open, onOpenChange }: Props) {
               />
             </div>
             <div className="text-xs text-muted-foreground bg-muted/40 rounded-lg p-3 space-y-1">
-              <p className="font-medium text-foreground">GeekPay export instructions:</p>
-              <p>1. Log in to GeekPay → Notes → Export CSV</p>
+              <p className="font-medium text-foreground">CSV import tips:</p>
+              <p>1. Export notes from your current platform as CSV</p>
               <p>2. Upload the downloaded file here</p>
               <p>3. Review the field mapping in the next step</p>
             </div>

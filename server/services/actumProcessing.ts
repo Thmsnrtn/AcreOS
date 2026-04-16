@@ -1,7 +1,7 @@
 /**
  * Actum Processing Service — Stable ACH for Real Estate Professionals
  *
- * Actum is the preferred ACH processor for real estate professionals using GeekPay.
+ * Actum is the preferred ACH processor for real estate professionals in the industry.
  * It exclusively supports ACH payments and is optimized for recurring
  * monthly land contract payments — more stable and cheaper than Stripe
  * for this use case.
@@ -285,7 +285,7 @@ export async function runMonthlyActumPaymentBatch(orgId: number): Promise<BatchP
       orgId,
     });
 
-    // If primary fails, cascade through fallback payment accounts (GeekPay parity)
+    // If primary fails, cascade through fallback payment accounts (industry parity)
     if (!result.success && note.fallbackPaymentAccounts?.length) {
       const fallbacks = [...note.fallbackPaymentAccounts]
         .filter((f) => f.isActive && f.method.startsWith("ach"))

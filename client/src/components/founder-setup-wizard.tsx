@@ -475,7 +475,7 @@ export function FounderSetupWizard({ open, onClose }: Props) {
                     <h2 className="text-xl font-bold">
                       {score >= 70 ? "You're nearly ready to launch!" :
                        score >= 40 ? "Getting there — let's finish setup" :
-                       "Let's get AcreOS ready for land investors"}
+                       "Let's get AcreOS ready for real estate professionals"}
                     </h2>
                     <p className="text-muted-foreground text-sm mt-2 max-w-md mx-auto">
                       This wizard will walk you through every credential needed to run the platform.
@@ -757,7 +757,7 @@ export function FounderSetupWizard({ open, onClose }: Props) {
                     </h2>
                     <p className="text-muted-foreground text-sm mt-1">
                       {isLaunchReady
-                        ? "All required services are configured. Your platform is ready for land investors."
+                        ? "All required services are configured. Your platform is ready for real estate professionals."
                         : "Some required credentials are still missing. Complete them to unlock full functionality."}
                     </p>
                   </div>

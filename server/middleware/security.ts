@@ -8,6 +8,9 @@ import type { Request, Response, NextFunction } from "express";
 // The nonce is stored in res.locals.cspNonce for use by the static file server.
 
 export function securityHeaders(req: Request, res: Response, next: NextFunction) {
+  // Skip CSP for Clerk proxy — Clerk manages its own headers
+  if (req.path.startsWith("/__clerk")) return next();
+
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
   res.setHeader("X-XSS-Protection", "1; mode=block");
@@ -25,6 +28,7 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
     "https://js.stripe.com",
     "https://api.mapbox.com",
     "https://*.clerk.accounts.dev",
+    "https://challenges.cloudflare.com",
   ];
 
   // unsafe-eval is only needed in development (Vite HMR / source maps)
@@ -39,7 +43,7 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
     "img-src 'self' data: blob: https: http:",
     "font-src 'self' data: https://fonts.gstatic.com",
     "connect-src 'self' https://api.stripe.com https://api.mapbox.com https://events.mapbox.com https://*.clerk.accounts.dev https://*.clerk.dev wss: ws:",
-    "frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://*.clerk.accounts.dev",
+    "frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://*.clerk.accounts.dev https://challenges.cloudflare.com",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",

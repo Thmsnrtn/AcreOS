@@ -378,42 +378,7 @@ const NAV_MODULES: NavModule[] = [
     ],
   },
 
-  // ── My Business (Founder only) ────────────────────────────────────
-  {
-    id: "founder-business",
-    label: "My Business",
-    icon: Crown,
-    href: "/founder-home",
-    description: "Your business at a glance",
-    founderOnly: true,
-    children: [
-      { label: "Home", icon: Home, href: "/founder-home", description: "Morning briefing and action items" },
-      { label: "Revenue", icon: DollarSign, href: "/executive-dashboard", description: "Monthly revenue, customers, and growth" },
-      { label: "Daily Digest", icon: Newspaper, href: "/founder/daily-digest", description: "Daily summary of your business" },
-      { label: "My Agents", icon: Bot, href: "/founder/agents", description: "Your automated team members" },
-    ],
-  },
-
-  // ── Advanced (Founder only, collapsed by default) ────────────────
-  {
-    id: "founder-advanced",
-    label: "Advanced",
-    icon: Settings2,
-    href: "/sovereign",
-    description: "System monitoring and technical details",
-    founderOnly: true,
-    children: [
-      { label: "System Health", icon: Activity, href: "/sovereign", description: "Overall system status" },
-      { label: "Agent Performance", icon: TrendingUp, href: "/agent-performance", description: "How well your agents are performing" },
-      { label: "Feature Flags", icon: ToggleLeft, href: "/founder/feature-flags", description: "Enable or disable platform features" },
-      { label: "Board of Directors", icon: Shield, href: "/board-of-directors", description: "Review agent decisions" },
-      { label: "Job Health", icon: Activity, href: "/job-health", description: "Background task monitoring" },
-      { label: "Collaboration", icon: Users, href: "/agent-collaboration", description: "Communicate with your agents" },
-      { label: "Memory Browser", icon: Brain, href: "/memory-browser", description: "Browse system memory" },
-      { label: "Event Log", icon: Zap, href: "/event-log", description: "System activity log" },
-      { label: "AI Costs", icon: Receipt, href: "/founder/ai-observatory", description: "AI usage and costs" },
-    ],
-  },
+  // All founder/advanced tools are accessed from inside the Founder Dashboard page
 
   // ── Settings ──────────────────────────────────────────────────────
   {
@@ -481,7 +446,7 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
 // Main Sidebar component
 // Routes hidden for certain business types
 const BUSINESS_TYPE_HIDDEN_ROUTES: Record<string, string[]> = {
-  // Land-centric routes hidden for non-land investor types
+  // Land-centric routes hidden for specific business types
   residential_wholesaler: ["/maps", "/land-credit"],
   fix_and_flip:           ["/maps", "/land-credit"],
   buy_and_hold:           ["/maps", "/land-credit"],
@@ -637,18 +602,18 @@ export function Sidebar() {
         {/* Founder link */}
         {isFounder && (
           <DesktopNavItem
-            href="/founder-home"
+            href="/founder-dashboard"
             icon={Crown}
             label="Founder Dashboard"
-            isActive={location === "/founder-home"}
+            isActive={location === "/founder-dashboard" || location === "/founder-home"}
             isCollapsed={isCollapsed}
             accentClass={
-              location === "/founder-home"
+              location === "/founder-dashboard" || location === "/founder-home"
                 ? "bg-amber-500 text-white shadow-md"
                 : "bg-amber-500/10 text-amber-600 hover:bg-amber-500/20"
             }
             iconClass={
-              location === "/founder-home" ? "text-white" : "text-amber-500"
+              location === "/founder-dashboard" || location === "/founder-home" ? "text-white" : "text-amber-500"
             }
             testId="link-founder-dashboard"
             onMouseEnter={() => {}}
@@ -905,11 +870,11 @@ export function Sidebar() {
       <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
         {isFounder && (
           <Link
-            href="/founder-home"
+            href="/founder-dashboard"
             onClick={onNavClick}
             className={cn(
               "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-150 group mb-2 min-h-[44px]",
-              location === "/founder-home"
+              location === "/founder-dashboard" || location === "/founder-home"
                 ? "bg-amber-500 text-white shadow-md"
                 : "bg-amber-500/10 text-amber-600 hover:bg-amber-500/20"
             )}
@@ -918,7 +883,7 @@ export function Sidebar() {
             <Crown
               className={cn(
                 "w-5 h-5",
-                location === "/founder-home" ? "text-white" : "text-amber-500"
+                location === "/founder-dashboard" || location === "/founder-home" ? "text-white" : "text-amber-500"
               )}
             />
             <span className="font-medium text-sm">Founder Dashboard</span>

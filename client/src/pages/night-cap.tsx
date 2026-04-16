@@ -1,8 +1,8 @@
 /**
- * Night Cap Dashboard — Passive Income Command Center
+ * Evening Review Dashboard — Passive Income Command Center
  *
  * Epic A: End-of-day review of passive income progress.
- * Dark/dusk glassmorphism theme inspired by Mark Podolsky's Nite Cap series.
+ * Dark/dusk glassmorphism theme for end-of-day reflection.
  */
 
 import { useQuery } from "@tanstack/react-query";
@@ -81,7 +81,7 @@ export default function NightCapPage() {
   });
 
   const hour = new Date().getHours();
-  const greeting = hour < 20 ? "Winding Down" : "Nite Cap";
+  const greeting = hour < 20 ? "Winding Down" : "Evening Review";
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 text-white">
@@ -109,7 +109,7 @@ export default function NightCapPage() {
 
         {error && (
           <GlassCard>
-            <p className="text-red-400 text-sm">Failed to load Night Cap data. Please try again.</p>
+            <p className="text-red-400 text-sm">Failed to load Evening Review data. Please try again.</p>
           </GlassCard>
         )}
 
@@ -309,7 +309,7 @@ export default function NightCapPage() {
           </GlassCard>
         )}
 
-        {/* Nite Cap Wisdom */}
+        {/* Evening Wisdom */}
         {isLoading ? <CardSkeleton /> : (
           <GlassCard className="border-slate-600/30">
             <div className="flex items-start gap-3">
@@ -326,7 +326,7 @@ export default function NightCapPage() {
 
         {/* Footer */}
         <div className="text-center text-slate-600 text-xs pb-4">
-          Night Cap by AcreOS · {data?.generatedAt ? format(new Date(data.generatedAt), "h:mm a") : ""}
+          Evening Review by AcreOS · {data?.generatedAt ? format(new Date(data.generatedAt), "h:mm a") : ""}
         </div>
       </div>
     </div>

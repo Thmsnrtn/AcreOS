@@ -108,7 +108,8 @@ export default function DealsPage() {
   const { data: dealsResponse, isLoading, isError, error, refetch } = useDealsPaginated({ page: dealCurrentPage, pageSize: dealPageSize });
   const deals = dealsResponse?.data;
   const serverDealTotal = dealsResponse?.total ?? 0;
-  const { data: properties } = useProperties();
+  const { data: propertiesRaw } = useProperties();
+  const properties = Array.isArray(propertiesRaw) ? propertiesRaw : [];
   const searchString = useSearch();
   const urlParams = new URLSearchParams(searchString);
   const actionFromUrl = urlParams.get("action");
@@ -228,7 +229,7 @@ export default function DealsPage() {
     .filter(deal => typeFilter === "all" || deal.type === typeFilter)
     .map(deal => ({
       ...deal,
-      property: properties?.find(p => p.id === deal.propertyId),
+      property: Array.isArray(properties) ? properties.find(p => p.id === deal.propertyId) : undefined,
     }));
 
   // Server-side pagination: data is already one page

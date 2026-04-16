@@ -813,7 +813,7 @@ export async function buildNormalizedListing(
     zoning: property.zoning,
     photos: property.photos?.map((p: any) => p.url || p) || [],
     sellerFinancingAvailable: true,
-    contactName: org?.name || "Land Investor",
+    contactName: org?.name || "Real Estate Professional",
     contactPhone: org?.phone,
     contactEmail: org?.email,
     listingUrl: `${process.env.APP_URL || "https://app.acreos.io"}/properties/${property.id}`,

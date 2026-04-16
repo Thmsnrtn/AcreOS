@@ -1,10 +1,10 @@
 /**
- * Night Cap Snapshot API
+ * Evening Review Snapshot API
  *
- * Epic A: Nite Cap Dashboard — Passive Income Command Center
+ * Epic A: Evening Review Dashboard — Passive Income Command Center
  *
  * GET /api/night-cap/snapshot
- *   Aggregates tonight's passive income data for the Nite Cap end-of-day review:
+ *   Aggregates tonight's passive income data for the Evening Review:
  *   - Today's note payments received
  *   - Freedom meter snapshot (passive income vs expenses)
  *   - Pipeline velocity by stage
@@ -34,61 +34,60 @@ const router = Router();
 // 30 curated quotes from Podolsky / Nite Cap methodology
 // ============================================
 
-const NITE_CAP_QUOTES = [
-  { quote: "The land business isn't about buying land. It's about building a system that buys land for you.", author: "Mark Podolsky" },
-  { quote: "Every note payment that hits your account is a vote of confidence in your system.", author: "Land Geek" },
-  { quote: "The freedom number isn't a dream — it's a math problem. And math problems have solutions.", author: "Mark Podolsky" },
-  { quote: "Raw land is the one asset that has never gone to zero in the history of the United States.", author: "Land Geek" },
-  { quote: "Your best deal is always the next one. Keep your pipeline full.", author: "Mark Podolsky" },
-  { quote: "The mailer that goes out today is the passive income that arrives next quarter.", author: "Land Geek" },
-  { quote: "Owner financing raw land is the closest thing to a legal money printing machine.", author: "Mark Podolsky" },
-  { quote: "Consistency beats intensity. Mail every month, score every lead, close every deal.", author: "Land Geek" },
-  { quote: "Your freedom number is the finish line. Every note payment is a step toward it.", author: "Mark Podolsky" },
-  { quote: "The best time to mail was last month. The second best time is right now.", author: "Land Geek" },
-  { quote: "Tax delinquency is not a problem. It's an opportunity wearing a disguise.", author: "Mark Podolsky" },
-  { quote: "A motivated seller plus a great county equals a great deal. Every time.", author: "Land Geek" },
-  { quote: "The land business rewards the consistent, not the clever.", author: "Mark Podolsky" },
-  { quote: "Your note portfolio is your moat. Each note is a brick in your financial fortress.", author: "Land Geek" },
-  { quote: "The out-of-state owner with a delinquent tax bill is your ideal seller. They're practically begging you to buy.", author: "Mark Podolsky" },
-  { quote: "Due diligence isn't optional — it's the difference between a deal and a disaster.", author: "Land Geek" },
-  { quote: "Buy low, sell owner-financed. Repeat until free.", author: "Mark Podolsky" },
-  { quote: "The land investor who mails the most, wins the most. Volume is the variable you control.", author: "Land Geek" },
-  { quote: "One great county can fund your freedom number. Know your counties.", author: "Mark Podolsky" },
-  { quote: "Passive income isn't passive at first. It's active work building a passive system.", author: "Land Geek" },
-  { quote: "The seller who says no today is the seller who calls you back in 6 months.", author: "Mark Podolsky" },
-  { quote: "Your AcreScore is your edge. Data beats gut feel every single time.", author: "Land Geek" },
-  { quote: "Solar, recreation, agriculture — great land serves many masters and many buyers.", author: "Mark Podolsky" },
-  { quote: "When you stop trading time for money, you start trading systems for freedom.", author: "Land Geek" },
-  { quote: "Every rejected offer is market data. Learn from it.", author: "Mark Podolsky" },
-  { quote: "The difference between a deal and a great deal is your offer price. Do the math.", author: "Land Geek" },
-  { quote: "Nite Cap moment: If your passive income exceeded your expenses today, you won.", author: "Mark Podolsky" },
-  { quote: "The land investor's superpower: turning unwanted land into cash flow machines.", author: "Land Geek" },
-  { quote: "Build systems, not jobs. Your land business should run whether you're watching or not.", author: "Mark Podolsky" },
-  { quote: "Tonight's note payment is tomorrow's freedom. Stack them up.", author: "Land Geek" },
-  // Extended Land Geek wisdom — Art of Passive Income methodology
-  { quote: "The best land investors aren't the cleverest — they're the most consistent. Mail. Score. Offer. Repeat.", author: "Land Geek" },
-  { quote: "Your county is your moat. Deep knowledge of one county beats shallow knowledge of ten.", author: "Mark Podolsky" },
-  { quote: "Subdivision is the multiplier. One parcel becomes four. Four deals become passive income.", author: "Land Geek" },
-  { quote: "Owner financing isn't just a payment plan — it's your passive income engine. Every note is a tiny salary.", author: "Mark Podolsky" },
-  { quote: "The seller doesn't need to like the offer. They just need to be more motivated to sell than to hold.", author: "Land Geek" },
-  { quote: "Know your redemption period better than your seller does. Time creates leverage.", author: "Mark Podolsky" },
-  { quote: "Price for the payment, not the total. $199/mo closes more deals than $9,500 cash.", author: "Land Geek" },
-  { quote: "Your buyer list is worth more than your property list. Build it with every single sale.", author: "Mark Podolsky" },
-  { quote: "A deal that doesn't close is just tuition. What did you learn?", author: "Land Geek" },
-  { quote: "The freedom number is not a destination. It's the moment the system takes over.", author: "Mark Podolsky" },
-  { quote: "Out of state + tax delinquent + no mortgage + long ownership = the holy grail of sellers.", author: "Land Geek" },
-  { quote: "You are not in the land business. You are in the marketing business that happens to sell land.", author: "Mark Podolsky" },
-  { quote: "Every failed follow-up is a future deal waiting for the right moment. Keep the sequence running.", author: "Land Geek" },
-  { quote: "The Nite Cap habit: review what came in, plan what goes out, sleep knowing the system is working.", author: "Mark Podolsky" },
-  { quote: "Don't negotiate against yourself. Make the offer. Let the seller negotiate back.", author: "Land Geek" },
-  { quote: "Recreational land buyers are everywhere. They're on Facebook groups, YouTube channels, dreams of escape.", author: "Mark Podolsky" },
-  { quote: "A VA doing your data entry is time arbitrage. Your highest value work is offer strategy and county selection.", author: "Land Geek" },
-  { quote: "The land business scales beautifully because land doesn't call you at 2am with a broken toilet.", author: "Mark Podolsky" },
+const EVENING_REVIEW_QUOTES = [
+  { quote: "The real estate business isn't about buying property. It's about building a system that buys property for you.", author: "AcreOS" },
+  { quote: "Every note payment that hits your account is a vote of confidence in your system.", author: "AcreOS" },
+  { quote: "The freedom number isn't a dream — it's a math problem. And math problems have solutions.", author: "AcreOS" },
+  { quote: "Raw land is the one asset that has never gone to zero in the history of the United States.", author: "AcreOS" },
+  { quote: "Your best deal is always the next one. Keep your pipeline full.", author: "AcreOS" },
+  { quote: "The mailer that goes out today is the passive income that arrives next quarter.", author: "AcreOS" },
+  { quote: "Owner financing raw land is the closest thing to a legal money printing machine.", author: "AcreOS" },
+  { quote: "Consistency beats intensity. Mail every month, score every lead, close every deal.", author: "AcreOS" },
+  { quote: "Your freedom number is the finish line. Every note payment is a step toward it.", author: "AcreOS" },
+  { quote: "The best time to mail was last month. The second best time is right now.", author: "AcreOS" },
+  { quote: "Tax delinquency is not a problem. It's an opportunity wearing a disguise.", author: "AcreOS" },
+  { quote: "A motivated seller plus a great county equals a great deal. Every time.", author: "AcreOS" },
+  { quote: "The real estate business rewards the consistent, not the clever.", author: "AcreOS" },
+  { quote: "Your note portfolio is your moat. Each note is a brick in your financial fortress.", author: "AcreOS" },
+  { quote: "The out-of-state owner with a delinquent tax bill is your ideal seller.", author: "AcreOS" },
+  { quote: "Due diligence isn't optional — it's the difference between a deal and a disaster.", author: "AcreOS" },
+  { quote: "Buy low, sell owner-financed. Repeat until free.", author: "AcreOS" },
+  { quote: "The professional who mails the most, wins the most. Volume is the variable you control.", author: "AcreOS" },
+  { quote: "One great county can fund your freedom number. Know your counties.", author: "AcreOS" },
+  { quote: "Passive income isn't passive at first. It's active work building a passive system.", author: "AcreOS" },
+  { quote: "The seller who says no today is the seller who calls you back in 6 months.", author: "AcreOS" },
+  { quote: "Your AcreScore is your edge. Data beats gut feel every single time.", author: "AcreOS" },
+  { quote: "Solar, recreation, agriculture — great land serves many masters and many buyers.", author: "AcreOS" },
+  { quote: "When you stop trading time for money, you start trading systems for freedom.", author: "AcreOS" },
+  { quote: "Every rejected offer is market data. Learn from it.", author: "AcreOS" },
+  { quote: "The difference between a deal and a great deal is your offer price. Do the math.", author: "AcreOS" },
+  { quote: "If your passive income exceeded your expenses today, you won.", author: "AcreOS" },
+  { quote: "The real estate professional's superpower: turning unwanted land into cash flow machines.", author: "AcreOS" },
+  { quote: "Build systems, not jobs. Your business should run whether you're watching or not.", author: "AcreOS" },
+  { quote: "Tonight's note payment is tomorrow's freedom. Stack them up.", author: "AcreOS" },
+  { quote: "The best professionals aren't the cleverest — they're the most consistent. Mail. Score. Offer. Repeat.", author: "AcreOS" },
+  { quote: "Your county is your moat. Deep knowledge of one county beats shallow knowledge of ten.", author: "AcreOS" },
+  { quote: "Subdivision is the multiplier. One parcel becomes four. Four deals become passive income.", author: "AcreOS" },
+  { quote: "Owner financing isn't just a payment plan — it's your passive income engine. Every note is a tiny salary.", author: "AcreOS" },
+  { quote: "The seller doesn't need to like the offer. They just need to be more motivated to sell than to hold.", author: "AcreOS" },
+  { quote: "Know your redemption period better than your seller does. Time creates leverage.", author: "AcreOS" },
+  { quote: "Price for the payment, not the total. $199/mo closes more deals than $9,500 cash.", author: "AcreOS" },
+  { quote: "Your buyer list is worth more than your property list. Build it with every single sale.", author: "AcreOS" },
+  { quote: "A deal that doesn't close is just tuition. What did you learn?", author: "AcreOS" },
+  { quote: "The freedom number is not a destination. It's the moment the system takes over.", author: "AcreOS" },
+  { quote: "Out of state + tax delinquent + no mortgage + long ownership = the holy grail of sellers.", author: "AcreOS" },
+  { quote: "You are not in the land business. You are in the marketing business that happens to sell land.", author: "AcreOS" },
+  { quote: "Every failed follow-up is a future deal waiting for the right moment. Keep the sequence running.", author: "AcreOS" },
+  { quote: "The evening habit: review what came in, plan what goes out, sleep knowing the system is working.", author: "AcreOS" },
+  { quote: "Don't negotiate against yourself. Make the offer. Let the seller negotiate back.", author: "AcreOS" },
+  { quote: "Recreational land buyers are everywhere. They're on Facebook groups, YouTube channels, dreams of escape.", author: "AcreOS" },
+  { quote: "A VA doing your data entry is time arbitrage. Your highest value work is offer strategy and county selection.", author: "AcreOS" },
+  { quote: "The land business scales beautifully because land doesn't call you at 2am with a broken toilet.", author: "AcreOS" },
 ];
 
 function getTodaysQuote(): { quote: string; author: string } {
   const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / 86400000);
-  return NITE_CAP_QUOTES[dayOfYear % NITE_CAP_QUOTES.length];
+  return EVENING_REVIEW_QUOTES[dayOfYear % EVENING_REVIEW_QUOTES.length];
 }
 
 // ============================================
@@ -255,8 +254,8 @@ router.get("/snapshot", async (req: Request, res: Response) => {
       nitecapWisdom: getTodaysQuote(),
     });
   } catch (err: any) {
-    logger.error("[NightCap] Snapshot error", err);
-    res.status(500).json({ error: err.message || "Failed to load Night Cap snapshot" });
+    logger.error("[EveningReview] Snapshot error", err);
+    res.status(500).json({ error: err.message || "Failed to load Evening Review snapshot" });
   }
 });
 

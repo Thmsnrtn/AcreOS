@@ -97,24 +97,41 @@ export default function DocumentsPage() {
   const [packagePropertyId, setPackagePropertyId] = useState<number | undefined>();
   const [selectedTemplatesForPackage, setSelectedTemplatesForPackage] = useState<number[]>([]);
 
-  const { data: templates, isLoading: templatesLoading } = useQuery<DocumentTemplate[]>({
+  const safeFetch = async (path: string) => {
+    const res = await fetch(path, { credentials: "include" });
+    if (!res.ok) return [];
+    const json = await res.json();
+    return Array.isArray(json) ? json : Array.isArray(json.data) ? json.data : [];
+  };
+
+  const { data: templates = [], isLoading: templatesLoading } = useQuery<DocumentTemplate[]>({
     queryKey: ["/api/document-templates"],
+    queryFn: () => safeFetch("/api/document-templates"),
+    retry: false,
   });
 
-  const { data: documents, isLoading: documentsLoading } = useQuery<GeneratedDocument[]>({
+  const { data: documents = [], isLoading: documentsLoading } = useQuery<GeneratedDocument[]>({
     queryKey: ["/api/generated-documents"],
+    queryFn: () => safeFetch("/api/generated-documents"),
+    retry: false,
   });
 
-  const { data: deals } = useQuery<Deal[]>({
+  const { data: deals = [] } = useQuery<Deal[]>({
     queryKey: ["/api/deals"],
+    queryFn: () => safeFetch("/api/deals?page=1&pageSize=100"),
+    retry: false,
   });
 
-  const { data: properties } = useQuery<Property[]>({
+  const { data: properties = [] } = useQuery<Property[]>({
     queryKey: ["/api/properties"],
+    queryFn: () => safeFetch("/api/properties?page=1&pageSize=100"),
+    retry: false,
   });
 
-  const { data: packages, isLoading: packagesLoading } = useQuery<DocumentPackage[]>({
+  const { data: packages = [], isLoading: packagesLoading } = useQuery<DocumentPackage[]>({
     queryKey: ["/api/document-packages"],
+    queryFn: () => safeFetch("/api/document-packages"),
+    retry: false,
   });
 
   const { data: versions, isLoading: versionsLoading, refetch: refetchVersions } = useQuery<DocumentVersion[]>({

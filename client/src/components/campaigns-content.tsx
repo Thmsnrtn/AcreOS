@@ -59,7 +59,7 @@ const campaignTemplates = {
       subject: 'Interested in Your Property',
       content: `Dear {{firstName}} {{lastName}},
 
-My name is [Your Name] and I am a land investor interested in purchasing property in {{county}} County, {{state}}.
+My name is [Your Name] and I am a real estate professional interested in purchasing property in {{county}} County, {{state}}.
 
 I recently came across your parcel (APN: {{apn}}) and wanted to reach out to see if you might be interested in selling.
 
@@ -124,7 +124,7 @@ Best regards,
 
 I came across your property in {{county}} County and wanted to reach out to see if you might be interested in selling.
 
-I'm a land investor and I purchase properties for cash with quick, hassle-free closings.
+I'm a real estate professional and I purchase properties for cash with quick, hassle-free closings.
 
 Would you be open to a brief conversation? I'd be happy to answer any questions you might have.
 

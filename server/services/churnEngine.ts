@@ -207,7 +207,7 @@ async function sendMilestoneReferralNudge(
       subject: `🎉 Congrats on reaching ${label} with AcreOS!`,
       preheader: "You're building something real.",
       headline: `You just hit a milestone: ${label}!`,
-      body: `That's a big deal. It means your land business is actually moving forward with AcreOS.\n\nIf you know another land investor who could use this kind of traction — share AcreOS with them. You'll both benefit.\n\nHere's how to find your referral link: Settings → Refer & Earn.`,
+      body: `That's a big deal. It means your real estate business is actually moving forward with AcreOS.\n\nIf you know another real estate professional who could use this kind of traction — share AcreOS with them. You'll both benefit.\n\nHere's how to find your referral link: Settings → Refer & Earn.`,
       ctaText: "Get your referral link",
       ctaUrl: `${process.env.APP_URL ?? "https://app.acreos.io"}/settings#referral`,
     },

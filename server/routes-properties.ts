@@ -171,11 +171,11 @@ export function registerPropertyRoutes(app: Express): void {
       }
 
       res.status(201).json(property);
-    } catch (err) {
-      if (err instanceof z.ZodError) {
-        return Errors.badRequest(res, "Validation failed", err.errors.map(e => ({ field: e.path.join('.'), message: e.message })));
+    } catch (err: any) {
+      if (err instanceof z.ZodError || err?.errors) {
+        return Errors.badRequest(res, "Validation failed", (err.errors || []).map((e: any) => ({ field: e.path?.join?.('.') || '', message: e.message || String(e) })));
       }
-      throw err;
+      return Errors.internal(res, err);
     }
   });
 
@@ -237,11 +237,11 @@ export function registerPropertyRoutes(app: Express): void {
       }
 
       res.json(property);
-    } catch (err) {
-      if (err instanceof z.ZodError) {
-        return Errors.badRequest(res, "Validation failed", err.errors.map(e => ({ field: e.path.join('.'), message: e.message })));
+    } catch (err: any) {
+      if (err instanceof z.ZodError || err?.errors) {
+        return Errors.badRequest(res, "Validation failed", (err.errors || []).map((e: any) => ({ field: e.path?.join?.('.') || '', message: e.message || String(e) })));
       }
-      throw err;
+      return Errors.internal(res, err);
     }
   });
 

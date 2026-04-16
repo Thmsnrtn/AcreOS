@@ -763,14 +763,29 @@ export default function MapsPage() {
   const [showBuyerDemandHeatmap, setShowBuyerDemandHeatmap] = useState(false);
   const [showPredictionHeatmap, setShowPredictionHeatmap] = useState(false);
 
-  const { data: properties = [], isLoading } = useQuery<Property[]>({
+  const { data: propertiesRaw = [], isLoading } = useQuery<Property[]>({
     queryKey: ["/api/properties"],
+    queryFn: async () => {
+      const res = await fetch("/api/properties?page=1&pageSize=100", { credentials: "include" });
+      if (!res.ok) return [];
+      const json = await res.json();
+      return Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : [];
+    },
+    retry: false,
   });
+  const properties = Array.isArray(propertiesRaw) ? propertiesRaw : [];
 
-  const { data: deals = [] } = useQuery<DealWithProperty[]>({
+  const { data: dealsRaw = [] } = useQuery<DealWithProperty[]>({
     queryKey: ["/api/deals"],
-    queryFn: () => fetch("/api/deals").then((r) => r.json()),
+    queryFn: async () => {
+      const res = await fetch("/api/deals?page=1&pageSize=100", { credentials: "include" });
+      if (!res.ok) return [];
+      const json = await res.json();
+      return Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : [];
+    },
+    retry: false,
   });
+  const deals = Array.isArray(dealsRaw) ? dealsRaw : [];
 
   const dealByPropertyId = useMemo(() => {
     const map: Record<number, DealWithProperty> = {};

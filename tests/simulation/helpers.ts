@@ -168,7 +168,7 @@ const LAST_NAMES = [
 ];
 
 /**
- * Generate a CSV string with realistic land investor lead data.
+ * Generate a CSV string with realistic real estate professional lead data.
  */
 export function generateCSV(
   rows: number,

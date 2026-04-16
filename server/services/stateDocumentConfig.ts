@@ -1,7 +1,7 @@
 /**
  * State-Specific Document Configuration
  *
- * LGPass parity: county-specific deeds at the click of a button.
+ * Industry parity: county-specific deeds at the click of a button.
  * Each state has different requirements for:
  * - Deed type (Warranty, Special Warranty, Quitclaim, Grant, Bargain & Sale)
  * - Recording instrument (Deed of Trust vs. Mortgage)

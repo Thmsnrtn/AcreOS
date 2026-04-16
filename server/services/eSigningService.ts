@@ -381,7 +381,7 @@ export async function sendPromissoryNoteForSignature(
     ? `${note.lead.firstName || ""} ${note.lead.lastName || ""}`.trim()
     : "Borrower";
   const borrowerEmail = note.lead?.email;
-  const orgName = org?.name || "Land Investor";
+  const orgName = org?.name || "Real Estate Professional";
 
   if (!borrowerEmail) throw new Error("Borrower email required for e-signing");
 

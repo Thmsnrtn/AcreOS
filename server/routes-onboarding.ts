@@ -10,6 +10,7 @@
 
 import { Router, type Request, type Response } from "express";
 import { onboardingService } from "./services/onboarding";
+import { storage } from "./storage";
 import { logger } from "./utils/logger";
 
 const router = Router();
@@ -20,18 +21,37 @@ router.post("/complete", async (req: Request, res: Response) => {
   try {
     const user = getUser(req);
     const org = req.organization;
-    const { orgName, inviteEmails = [], goals = [], targetAcreage, targetBudgetCents } = req.body;
 
-    const result = await onboardingService.completeOnboarding({
-      userId: user.id,
-      organizationId: org.id,
+    // Support both v1 (flat fields) and v2 (formData wrapper) formats
+    const body = req.body || {};
+    const formData = body.formData || body;
+    const businessType = formData.businessType || formData.investorType || body.businessType;
+    const orgName = formData.orgName || body.orgName;
+    const inviteEmails = formData.inviteEmails || body.inviteEmails || [];
+    const goals = formData.goals || body.goals || [];
+
+    // Store onboarding preferences before completing
+    const onboardingData = {
+      ...(org.onboardingData as any || {}),
+      businessType,
       orgName,
-      inviteEmails,
-      goals,
-      targetAcreage,
-      targetBudgetCents,
-    });
-    res.json(result);
+      inviteEmails: Array.isArray(inviteEmails) ? inviteEmails : [],
+      goals: Array.isArray(goals) ? goals : [],
+      path: body.path,
+      userName: user?.firstName || user?.email,
+    };
+
+    try {
+      await storage.updateOrganization(org.id, {
+        onboardingData,
+        ...(businessType ? { businessType } : {}),
+      });
+    } catch (updateErr: any) {
+      logger.warn("Non-fatal: failed to save onboarding data", { error: updateErr.message });
+    }
+
+    await onboardingService.completeOnboarding(org.id);
+    res.json({ success: true });
   } catch (err: any) {
     res.status(400).json({ error: err.message });
   }
@@ -41,7 +61,7 @@ router.get("/status", async (req: Request, res: Response) => {
   try {
     const user = getUser(req);
     const org = req.organization;
-    const status = await onboardingService.getStatus(user.id, org.id);
+    const status = await onboardingService.getOnboardingStatus(org.id);
     res.json(status);
   } catch (err: any) {
     res.status(500).json({ error: err.message });

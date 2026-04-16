@@ -68,15 +68,15 @@ interface FreedomSnapshot {
 
 // ─── Wisdom Engine ───────────────────────────────────────────────────────────
 
-const LAND_GEEK_WISDOM = [
-  "\"The goal isn't to flip more land — it's to collect enough notes that work feels optional.\" — Land Geek philosophy",
-  "\"One deal financed at 9% for 84 months turns a $10K buy into $40K+ collected over time. That's the compounding power of the land note model.\"",
+const FREEDOM_WISDOM = [
+  "\"The goal isn't to flip more properties — it's to collect enough notes that work feels optional.\"",
+  "\"One deal financed at 9% for 84 months turns a $10K buy into $40K+ collected over time. That's the compounding power of the note model.\"",
   "\"Your down payment recoups your acquisition cost on day one. Every monthly payment after that is pure passive income.\"",
   "\"When your note income exceeds your fixed expenses, you've achieved financial freedom. Not when you have a million dollars in the bank — when you have cash flowing every month.\"",
-  "\"The beauty of land notes is the default: if the buyer stops paying, you keep the down payment, the payments made, AND get the land back. Defaults are almost painless.\"",
-  "\"Diversify across counties and states. A drought in Texas doesn't affect your Arizona notes. Geographic diversification is risk management.\"",
-  "\"The most dangerous thing a land investor can do is sell everything for cash and spend it. Let the notes compound. Reinvest the cash flips into more acquisitions.\"",
-  "\"Land notes are the closest thing to a subscription business in real estate: one acquisition, then monthly recurring revenue for 84 months with zero tenant calls.\"",
+  "\"The beauty of seller-financed notes is the default protection: if the buyer stops paying, you keep the down payment, the payments made, AND get the property back.\"",
+  "\"Diversify across counties and states. A drought in one region doesn't affect your notes elsewhere. Geographic diversification is risk management.\"",
+  "\"The most important thing a real estate professional can do is let the notes compound. Reinvest the cash flips into more acquisitions.\"",
+  "\"Seller-financed notes are the closest thing to a subscription business in real estate: one acquisition, then monthly recurring revenue with zero tenant calls.\"",
 ];
 
 // ─── Components ──────────────────────────────────────────────────────────────
@@ -238,7 +238,7 @@ function buildMockSnapshot(monthlyExpenses: number): FreedomSnapshot {
     };
   });
 
-  const wisdom = LAND_GEEK_WISDOM[Math.floor(Date.now() / 86400000) % LAND_GEEK_WISDOM.length];
+  const wisdom = FREEDOM_WISDOM[Math.floor(Date.now() / 86400000) % FREEDOM_WISDOM.length];
 
   return {
     totalMonthlyNoteIncome,

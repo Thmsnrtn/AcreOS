@@ -322,9 +322,9 @@ router.get("/freedom-snapshot", async (req: Request, res: Response) => {
       };
     });
 
-    // Land Geek wisdom for today
+    // Daily wisdom for today
     const wisdomList = [
-      "\"The goal isn't to flip more land — it's to collect enough notes that work feels optional.\" — Land Geek philosophy",
+      "\"The goal isn't to flip more properties — it's to collect enough notes that work feels optional.\" ",
       "\"One deal financed at 9% for 84 months turns a $10K buy into $40K+ collected over time. That's the compounding power of the land note model.\"",
       "\"Your down payment recoups your acquisition cost on day one. Every monthly payment after that is pure passive income.\"",
       "\"When your note income exceeds your fixed expenses, you've achieved financial freedom.\"",

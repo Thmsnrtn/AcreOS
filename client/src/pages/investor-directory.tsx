@@ -247,7 +247,7 @@ export default function InvestorDirectoryPage() {
                   Verified Only
                 </Badge>
               </div>
-              <CardDescription className="text-xs">Land investors with verified identities in the AcreOS network</CardDescription>
+              <CardDescription className="text-xs">Real estate professionals with verified identities in the AcreOS network</CardDescription>
             </CardHeader>
             <CardContent>
               {dirLoading ? (

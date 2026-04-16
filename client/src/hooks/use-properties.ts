@@ -46,11 +46,11 @@ export function useProperties() {
   return useQuery({
     queryKey: [api.properties.list.path],
     queryFn: async () => {
-      const res = await fetch(`${api.properties.list.path}?page=1&pageSize=1000`, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to fetch properties");
+      const res = await fetch(`${api.properties.list.path}?page=1&pageSize=100`, { credentials: "include" });
+      if (!res.ok) return [];
       const json = await res.json();
       // Return the data array for backward compatibility
-      return json.data ?? json;
+      return Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : [];
     },
     staleTime: STALE_TIMES.short,
     gcTime: CACHE_TIMES.medium,

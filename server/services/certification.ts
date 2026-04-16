@@ -157,7 +157,7 @@ class CertificationService {
       userId,
       courseId,
       courseTitle: course?.title || 'Land Investment Course',
-      userName: user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() : 'Land Investor',
+      userName: user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() : 'Real Estate Professional',
       issuedAt: new Date().toISOString(),
       verificationCode: crypto.randomBytes(8).toString('hex').toUpperCase(),
       score: avgScore,

@@ -47,7 +47,7 @@ export default function TermsOfService() {
             <section className="space-y-4" data-testid="section-description">
               <h2 className="text-xl font-semibold">2. Service Description</h2>
               <p className="text-muted-foreground leading-relaxed">
-                AcreOS provides a comprehensive platform for land investors, including but not limited to:
+                AcreOS provides a comprehensive platform for real estate professionals, including but not limited to:
               </p>
               <ul className="list-disc list-inside text-muted-foreground space-y-2 ml-4">
                 <li>Lead management and tracking</li>
@@ -59,7 +59,7 @@ export default function TermsOfService() {
                 <li>Integration with third-party services (Stripe, Lob, Regrid, OpenAI)</li>
               </ul>
               <p className="text-muted-foreground leading-relaxed">
-                The Service is designed for professional land investors and real estate professionals. 
+                The Service is designed for real estate professionals. 
                 We do not provide legal, financial, or investment advice.
               </p>
             </section>

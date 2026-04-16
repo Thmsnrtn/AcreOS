@@ -374,7 +374,7 @@ export function PaxCopilotRail() {
     staleTime: 30_000,
   });
 
-  const observations = [...sseObservations, ...(observationsData ?? [])].filter(
+  const observations = [...(Array.isArray(sseObservations) ? sseObservations : []), ...(Array.isArray(observationsData) ? observationsData : [])].filter(
     (obs, idx, arr) => arr.findIndex((o) => o.id === obs.id) === idx
   );
 

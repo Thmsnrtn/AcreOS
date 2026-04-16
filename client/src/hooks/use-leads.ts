@@ -48,10 +48,10 @@ export function useLeads() {
   return useQuery({
     queryKey: [api.leads.list.path],
     queryFn: async () => {
-      const res = await fetch(`${api.leads.list.path}?page=1&pageSize=1000`, { credentials: "include" });
+      const res = await fetch(`${api.leads.list.path}?page=1&pageSize=100`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch leads");
       const json = await res.json();
-      return json.data ?? json;
+      return Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : [];
     },
     staleTime: STALE_TIMES.short,
     gcTime: CACHE_TIMES.medium,
