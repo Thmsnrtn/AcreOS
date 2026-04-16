@@ -31,10 +31,8 @@ createRoot(document.getElementById("root")!).render(
   <ClerkProvider
     publishableKey={publishableKey}
     proxyUrl="/__clerk"
-    signInUrl="/auth"
-    signUpUrl="/auth?mode=register"
-    signInFallbackRedirectUrl="/today"
-    signUpFallbackRedirectUrl="/today"
+    afterSignInUrl="/today"
+    afterSignUpUrl="/today"
   >
     <App />
   </ClerkProvider>
