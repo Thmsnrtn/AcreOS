@@ -13,8 +13,7 @@
  *
  * Output: solarLeaseEstimate ($/acre/year), solarViabilityScore (0-100)
  *
- * Inspired by Nite Cap episode featuring Dakota Malone on solar leases
- * as a passive income overlay on raw land.
+ * Explores solar leases as a passive income overlay on raw land.
  */
 
 export interface SolarPotentialInput {

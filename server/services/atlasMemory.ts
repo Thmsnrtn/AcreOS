@@ -161,7 +161,7 @@ export async function extractMemoriesFromConversation(
     .map(m => `${m.role.toUpperCase()}: ${m.content.slice(0, 500)}`)
     .join('\n');
 
-  const extractionPrompt = `You are analyzing a conversation between a land investor and their AI assistant (Atlas).
+  const extractionPrompt = `You are analyzing a conversation between a real estate professional and their AI assistant (Atlas).
 
 Extract any persistent facts, preferences, goals, patterns, or warnings that would be valuable to remember for FUTURE conversations.
 

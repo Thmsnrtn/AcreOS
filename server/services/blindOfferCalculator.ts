@@ -1,10 +1,10 @@
 /**
  * Blind Offer Calculator
  *
- * Implements the Mark Podolsky / industry standard blind offer pricing methodology — the
+ * Implements the industry standard blind offer pricing methodology — the
  * #1 acquisition strategy for raw land investing.
  *
- * The Core Formula (from Art of Passive Income / The industry standard):
+ * The Core Formula (industry standard):
  *   Offer = Lowest Comparable Sale (last 12-18 months) ÷ 4
  *
  * This gives a 300% margin of safety — buying at 25 cents on the dollar creates

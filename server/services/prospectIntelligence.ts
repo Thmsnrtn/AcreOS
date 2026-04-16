@@ -401,7 +401,7 @@ export function getCampaignIntelligence(
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FREEDOM NUMBER CALCULATOR
-// The North Star metric for every land investor
+// The North Star metric for every real estate professional
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface FreedomNumberAnalysis {

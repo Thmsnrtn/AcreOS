@@ -1,7 +1,7 @@
 /**
  * Tax Optimization Engine
  *
- * Comprehensive year-end tax planning for land investors:
+ * Comprehensive year-end tax planning for real estate professionals:
  * - Capital gains analysis (short-term vs long-term)
  * - Depreciation optimization (cost segregation opportunities)
  * - 1031 exchange candidate identification
@@ -591,7 +591,7 @@ class TaxOptimizerService {
 - Number of transactions: ${position.transactions.length}
 - Top recommendations: ${position.recommendations.slice(0, 3).map(r => r.title).join(", ")}
 
-Write a 3-paragraph tax planning summary with specific action items for this land investor. Be specific about dollar amounts and timing.`,
+Write a 3-paragraph tax planning summary with specific action items for this real estate professional. Be specific about dollar amounts and timing.`,
         },
       ],
       max_tokens: 600,

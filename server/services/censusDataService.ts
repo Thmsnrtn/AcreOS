@@ -189,7 +189,7 @@ export async function fetchCountyDemographics(
 /**
  * Estimate rural population percent based on county population.
  * Counties < 50,000 population are typically rural/semi-rural.
- * This is the target sweet spot for land investors.
+ * This is the target sweet spot for real estate professionals.
  */
 function estimateRuralPercent(population: number): number {
   if (population < 10000) return 85;
@@ -348,7 +348,7 @@ export function computeMigrationSignal(
  * demographics, migration, building permits, and market signals.
  *
  * This is the engine behind the "Is this a good county to invest in?" question
- * that every land investor asks before running a direct mail campaign.
+ * that every real estate professional asks before running a direct mail campaign.
  */
 export async function buildCountyOpportunityProfile(
   state: string,

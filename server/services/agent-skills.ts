@@ -932,7 +932,7 @@ const generateAdCopyInputSchema = z.object({
 const generateAdCopySkill: Skill = {
   id: "generateAdCopy",
   name: "Generate Ad Copy",
-  description: "Generates compelling property ad copy in Mark Podolsky story style or other formats",
+  description: "Generates compelling property ad copy in narrative story style or other formats",
   agentTypes: ["communications"],
   inputSchema: generateAdCopyInputSchema,
   costEstimate: "low",
@@ -2591,7 +2591,7 @@ const marketAnalysisSkill: Skill = {
       const OpenAI = (await import("openai")).default;
       const openai = new OpenAI();
 
-      const prompt = `You are an expert land investor and market analyst. Provide a concise market analysis for land investing in ${county} County, ${state}.
+      const prompt = `You are an expert real estate professional and market analyst. Provide a concise market analysis for land investing in ${county} County, ${state}.
 
 Internal data: ${countyProperties.length} properties tracked in this county${avgMarketValue ? `, average market value $${Math.round(avgMarketValue).toLocaleString()}` : ""}.
 ${existing?.marketNotes ? `Previous research notes: ${existing.marketNotes}` : ""}

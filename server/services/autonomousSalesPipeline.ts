@@ -347,7 +347,7 @@ class AutonomousRevenueEngine {
   /**
    * Beacon creates a content brief.
    */
-  async generateContentIdea(topic: string, format: string, targetAudience: string = "land investors"): Promise<ContentBrief> {
+  async generateContentIdea(topic: string, format: string, targetAudience: string = "real estate professionals"): Promise<ContentBrief> {
     const contentId = `content-${crypto.randomUUID().slice(0, 8)}`;
 
     const brief: ContentBrief = {

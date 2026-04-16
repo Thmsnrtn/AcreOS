@@ -350,7 +350,7 @@ function identifyDealKillers(
       type: "landlocked",
       severity: "dealbreaker",
       description: "Property appears to have no direct road access. Landlocked parcels are nearly impossible to sell and require expensive legal easement acquisition.",
-      action: "Verify access with county GIS. If truly landlocked, pass on this deal — the legal and cost burden to establish access exceeds typical land investor margins.",
+      action: "Verify access with county GIS. If truly landlocked, pass on this deal — the legal and cost burden to establish access exceeds typical investor margins.",
     });
   }
 
@@ -360,7 +360,7 @@ function identifyDealKillers(
       type: "flood_zone_ae",
       severity: "dealbreaker",
       description: `FEMA Special Flood Hazard Area (Zone ${dd.checks.floodZone.zone}). Mandatory flood insurance required for any structure, often $1,500-$4,000/year.`,
-      action: "Obtain FEMA LOMA (Letter of Map Amendment) to verify if structures could be built. Most raw land investors pass on Zone AE parcels due to restricted development potential.",
+      action: "Obtain FEMA LOMA (Letter of Map Amendment) to verify if structures could be built. Most investors pass on Zone AE parcels due to restricted development potential.",
     });
   }
 
@@ -695,7 +695,7 @@ function buildWarningFlags(dd: any, input: ParcelIntelligenceInput, nassData: an
   }
 
   if (dd?.checks.soil.farmlandClassification === "Prime Farmland") {
-    warnings.push("Prime farmland classification — agricultural buyers may pay premium. Consider marketing to farmers in addition to land investors.");
+    warnings.push("Prime farmland classification — agricultural buyers may pay premium. Consider marketing to farmers in addition to real estate investors.");
   }
 
   return warnings;

@@ -44,7 +44,7 @@ const BRAND_VOICE: BrandVoiceGuidelines = {
     "Direct and action-oriented",
   ],
   vocabulary: {
-    preferred: ["land investors", "portfolio", "due diligence", "returns", "opportunity", "streamline", "automate"],
+    preferred: ["real estate professionals", "portfolio", "due diligence", "returns", "opportunity", "streamline", "automate"],
     avoid: ["guaranteed returns", "get rich", "no risk", "limited time", "act now", "crypto"],
   },
   principles: [
@@ -173,7 +173,7 @@ The team continues to execute on our strategic priorities. The autonomous agent 
   /**
    * Draft a blog post on a topic.
    */
-  async draftBlogPost(topic: string, targetAudience: string = "land investors"): Promise<Communication> {
+  async draftBlogPost(topic: string, targetAudience: string = "real estate professionals"): Promise<Communication> {
     const id = `comm-${crypto.randomUUID().slice(0, 8)}`;
 
     const comm: Communication = {
@@ -440,7 +440,7 @@ The team continues to execute on our strategic priorities. The autonomous agent 
    */
   getApprovedMessaging(topic: string): string | null {
     const approvedTopics: Record<string, string> = {
-      pricing: "AcreOS offers flexible pricing tiers designed for land investors at every stage. Visit our pricing page for current plans.",
+      pricing: "AcreOS offers flexible pricing tiers designed for real estate professionals at every stage. Visit our pricing page for current plans.",
       security: "AcreOS uses industry-standard encryption, SOC 2 compliant practices, and regular security audits to protect your data.",
       uptime: "AcreOS maintains 99.9%+ uptime with redundant infrastructure and automated failover systems.",
       support: "Our support team is available via in-app chat, email, and phone during business hours. Premium plans include priority support.",

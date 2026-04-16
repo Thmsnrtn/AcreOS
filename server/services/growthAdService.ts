@@ -7,7 +7,7 @@
  * Uses founder-owned Meta ad account credentials stored in founder_ad_accounts table.
  *
  * Templates:
- *   - land_investors_signup   → Targets land investors / RE investors to sign up for AcreOS
+ *   - land_investors_signup   → Targets real estate professionals / RE investors to sign up for AcreOS
  *   - retargeting_visitors    → Retargets landing page visitors who didn't convert
  *   - lookalike_subscribers   → Custom audience of current subscribers + lookalike
  */
