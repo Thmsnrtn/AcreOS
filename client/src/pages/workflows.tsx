@@ -31,6 +31,7 @@ import {
 import { format } from "date-fns";
 import type { Workflow as WorkflowType, WorkflowRun, WorkflowTrigger, WorkflowAction } from "@shared/schema";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { QueryErrorState } from "@/components/query-error-state";
 
 type WorkflowTemplate = {
   id: string;
@@ -72,7 +73,7 @@ export default function WorkflowsPage() {
   const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowType | null>(null);
   const [workflowToDelete, setWorkflowToDelete] = useState<WorkflowType | null>(null);
 
-  const { data: workflows, isLoading } = useQuery<WorkflowType[]>({
+  const { data: workflows, isLoading, isError, error, refetch, isRefetching } = useQuery<WorkflowType[]>({
     queryKey: ["/api/workflows"],
   });
 
@@ -228,6 +229,8 @@ export default function WorkflowsPage() {
               </Card>
             ))}
           </div>
+        ) : isError ? (
+          <QueryErrorState error={error as Error} onRetry={refetch} isRetrying={isRefetching} />
         ) : workflows && workflows.length > 0 ? (
           <div className="grid gap-4">
             {workflows.map((workflow) => (

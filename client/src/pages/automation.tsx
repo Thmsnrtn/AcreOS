@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import type { AutomationRule, AutomationExecution } from "@shared/schema";
+import { QueryErrorState } from "@/components/query-error-state";
 
 const TRIGGERS = [
   { value: "lead_created", label: "Lead Created", description: "When a new lead is added" },
@@ -97,7 +98,7 @@ export default function AutomationPage() {
     isEnabled: true,
   });
 
-  const { data: rules, isLoading } = useQuery<AutomationRule[]>({
+  const { data: rules, isLoading, isError, error, refetch, isRefetching } = useQuery<AutomationRule[]>({
     queryKey: ["/api/automation-rules"],
   });
 
@@ -506,9 +507,11 @@ export default function AutomationPage() {
             {isLoading ? (
               <Card>
                 <CardContent className="flex items-center justify-center py-12">
-                  <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+                  <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" aria-label="Loading automation rules" />
                 </CardContent>
               </Card>
+            ) : isError ? (
+              <QueryErrorState error={error as Error} onRetry={refetch} isRetrying={isRefetching} />
             ) : rules && rules.length > 0 ? (
               <div className="grid gap-4">
                 {rules.map((rule) => (

@@ -27,6 +27,7 @@ import {
 import { Download, Filter, Search, RefreshCw, User, FileText, DollarSign, Home, Handshake } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useAuth } from "@/hooks/use-auth";
+import { QueryErrorState } from "@/components/query-error-state";
 
 interface AuditEntry {
   id: number;
@@ -85,7 +86,7 @@ export default function AuditLog() {
     ...(search && { search }),
   });
 
-  const { data, isLoading, refetch } = useQuery<AuditResponse>({
+  const { data, isLoading, isError, error, refetch, isRefetching } = useQuery<AuditResponse>({
     queryKey: [`/api/activity?${params}`],
     staleTime: 30_000,
   });
@@ -192,6 +193,12 @@ export default function AuditLog() {
                       ))}
                     </TableRow>
                   ))
+                ) : isError ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="p-0">
+                      <QueryErrorState error={error as Error} onRetry={refetch} isRetrying={isRefetching} compact />
+                    </TableCell>
+                  </TableRow>
                 ) : (data?.entries ?? []).length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={5} className="text-center py-12 text-muted-foreground">

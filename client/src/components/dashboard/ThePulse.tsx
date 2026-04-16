@@ -25,7 +25,7 @@ interface ThePulseProps {
 const lights = [
   { key: "revenueHealth" as const, title: "Revenue Health" },
   { key: "systemHealth" as const, title: "System Health" },
-  { key: "sophieHealth" as const, title: "Sophie Health" },
+  { key: "sophieHealth" as const, title: "Support Health" },
   { key: "churnRisk" as const, title: "Churn Risk" },
 ];
 

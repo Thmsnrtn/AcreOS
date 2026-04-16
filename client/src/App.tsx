@@ -229,8 +229,17 @@ function PageLoader() {
 // ─── Route wrappers ─────────────────────────────────────────────────────────
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading, authFailCount } = useAuth();
+  const [mountedAt] = React.useState(() => Date.now());
+  const [, forceUpdate] = React.useReducer((x: number) => x + 1, 0);
 
-  if (isLoading) {
+  // Safety net: never leave users stuck on a spinner > 10s.
+  React.useEffect(() => {
+    if (!isLoading && user) return;
+    const t = setTimeout(forceUpdate, 10_000);
+    return () => clearTimeout(t);
+  }, [isLoading, user]);
+
+  if (isLoading && Date.now() - mountedAt < 10_000) {
     return <PageLoader />;
   }
 
@@ -241,10 +250,14 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
   if (!user) {
     // If there's a session cookie but auth failed, the JWT might have expired
     // while Clerk tries to refresh. Show a brief loader instead of bouncing to /auth
-    if (hasSessionCookie && authFailCount < 3) {
+    // — but only within the 10s window to avoid trapping the user.
+    if (hasSessionCookie && authFailCount < 3 && Date.now() - mountedAt < 10_000) {
       return <PageLoader />;
     }
-    return <Redirect to="/auth" />;
+    // Preserve the user's intended destination so they return to it after sign-in.
+    const next = typeof window !== "undefined" ? window.location.pathname + window.location.search : "";
+    const target = next && next !== "/" && next !== "/auth" ? `/auth?next=${encodeURIComponent(next)}` : "/auth";
+    return <Redirect to={target} />;
   }
 
   return <Component />;

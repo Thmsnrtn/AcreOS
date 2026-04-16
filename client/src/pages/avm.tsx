@@ -39,6 +39,7 @@ import {
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { QueryErrorState } from '@/components/query-error-state';
 
 function formatDollar(n: number) {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
@@ -267,7 +268,7 @@ export default function AVMPage() {
     },
   });
 
-  const { data: historyData, isLoading: historyLoading } = useQuery({
+  const { data: historyData, isLoading: historyLoading, isError: historyError, error: historyErrorObj, refetch: refetchHistory, isRefetching: historyRefetching } = useQuery({
     queryKey: ['avm', 'history', selectedPropertyId],
     queryFn: async () => {
       const res = await fetch(`/api/avm/history/${selectedPropertyId}`, { credentials: 'include' });
@@ -415,7 +416,16 @@ export default function AVMPage() {
       </div>
 
       {historyLoading && (
-        <div className="text-center py-16 text-muted-foreground">Loading valuation history…</div>
+        <div className="text-center py-16 text-muted-foreground" aria-live="polite">Loading valuation history…</div>
+      )}
+
+      {historyError && (
+        <QueryErrorState
+          error={historyErrorObj as Error}
+          onRetry={refetchHistory}
+          isRetrying={historyRefetching}
+          title="Couldn't load valuation history"
+        />
       )}
 
       {latest && (
