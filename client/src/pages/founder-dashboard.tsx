@@ -455,7 +455,7 @@ function SwipeDecisionsSection() {
   const qc = useQueryClient();
   const { data } = useQuery<{ items: any[]; totalPending: number }>({
     queryKey: ["/api/founder/intelligence/decisions-inbox"],
-    refetchInterval: 30000,
+    refetchInterval: 5 * 60_000, // 5 min — use manual refresh for urgency
   });
 
   const items = data?.items ?? [];
@@ -601,7 +601,7 @@ function GreetingHeader({ onRefresh, onGenerateDigest, digestPending, onShowShor
 function SophieActivityPreview() {
   const { data, isLoading } = useQuery<{ autoResolutions: any[]; count: number }>({
     queryKey: ["/api/founder/intelligence/sophie-activity"],
-    refetchInterval: 30000,
+    refetchInterval: 5 * 60_000,
     refetchIntervalInBackground: false,
   });
 
@@ -713,7 +713,7 @@ function SystemActivityPanel() {
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["/api/admin/system-activity"],
     queryFn: () => apiRequest("GET", "/api/admin/system-activity?hours=48&limit=80").then(r => r.json()),
-    refetchInterval: 30_000,
+    refetchInterval: 5 * 60_000,
   });
 
   const rows: any[] = data?.rows ?? [];
@@ -772,7 +772,7 @@ function JobHealthPanel() {
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["/api/admin/job-health"],
     queryFn: () => apiRequest("GET", "/api/admin/job-health").then(r => r.json()),
-    refetchInterval: 60_000,
+    refetchInterval: 5 * 60_000,
   });
 
   const jobs: any[] = data?.jobs ?? [];
@@ -928,7 +928,7 @@ function PaxEyesPanel() {
   const { data, isLoading } = useQuery({
     queryKey: ["/api/admin/pax-observations"],
     queryFn: () => apiRequest("GET", "/api/admin/pax-observations?limit=25").then(r => r.json()),
-    refetchInterval: 2 * 60_000,
+    refetchInterval: 10 * 60_000,
   });
 
   const executeMutation = useMutation({
@@ -1062,8 +1062,21 @@ function FounderBriefingTrigger() {
   );
 }
 
+type DashboardTab = "overview" | "agents" | "operations" | "growth" | "infrastructure";
+
+const DASHBOARD_TABS: { id: DashboardTab; label: string; icon: React.ReactNode }[] = [
+  { id: "overview", label: "Overview", icon: <Crown className="w-4 h-4" /> },
+  { id: "agents", label: "Agents & AI", icon: <Bot className="w-4 h-4" /> },
+  { id: "operations", label: "Operations", icon: <Activity className="w-4 h-4" /> },
+  { id: "growth", label: "Growth", icon: <TrendingUp className="w-4 h-4" /> },
+  { id: "infrastructure", label: "Infrastructure", icon: <Server className="w-4 h-4" /> },
+];
+
 export default function FounderDashboard() {
   const { toast } = useToast();
+  const [activeTab, setActiveTab] = useState<DashboardTab>(() => {
+    try { return (localStorage.getItem("founder_dashboard_tab") as DashboardTab) || "overview"; } catch { return "overview"; }
+  });
   const [notesModalOpen, setNotesModalOpen] = useState(false);
   const [selectedFeatureRequest, setSelectedFeatureRequest] = useState<FeatureRequest | null>(null);
   const [notesValue, setNotesValue] = useState("");
@@ -1099,6 +1112,11 @@ export default function FounderDashboard() {
   const [goalInputValue, setGoalInputValue] = useState("");
   const [setupWizardOpen, setSetupWizardOpen] = useState(false);
   const briefingRef = useRef<HTMLDivElement>(null);
+
+  const handleTabChange = useCallback((tab: DashboardTab) => {
+    setActiveTab(tab);
+    try { localStorage.setItem("founder_dashboard_tab", tab); } catch {}
+  }, []);
 
   const handleRefreshAll = useCallback(() => {
     queryClient.invalidateQueries();
@@ -1143,10 +1161,9 @@ export default function FounderDashboard() {
     queryKey: ['/api/admin/dashboard'],
   });
 
-  // Passive command center queries (30s polling)
   const { data: decisionsInboxData } = useQuery<{ totalPending: number }>({
     queryKey: ['/api/founder/intelligence/decisions-inbox'],
-    refetchInterval: 30000,
+    refetchInterval: 5 * 60_000,
     refetchIntervalInBackground: false,
   });
 
@@ -1930,19 +1947,25 @@ export default function FounderDashboard() {
             </div>
           )}
 
-          {/* Quick Actions Bar */}
-          <div className="flex items-center gap-2 mb-6 flex-wrap">
-            <Button size="sm" variant={focusMode ? "default" : "outline"} onClick={() => setFocusMode(!focusMode)} aria-label="Toggle focus mode">
-              {focusMode ? "Exit Focus" : "Focus Mode (F)"}
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => briefingRef?.current?.scrollIntoView({ behavior: "smooth" })} aria-label="View briefing">
-              Run Briefing
-            </Button>
-            <Button size="sm" variant="outline" asChild>
-              <a href="#decisions">View Decisions</a>
-            </Button>
-            <Button size="sm" variant="outline" asChild>
-              <a href="#agents">Check Agents</a>
+          {/* Tab Navigation */}
+          <div className="flex items-center gap-1 border-b mb-6 overflow-x-auto pb-px">
+            {DASHBOARD_TABS.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => handleTabChange(tab.id)}
+                className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
+                  activeTab === tab.id
+                    ? "border-primary text-primary"
+                    : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
+                }`}
+              >
+                {tab.icon}
+                {tab.label}
+              </button>
+            ))}
+            <div className="flex-1" />
+            <Button size="sm" variant="ghost" onClick={handleRefreshAll} className="ml-2 shrink-0" aria-label="Refresh all">
+              <RefreshCw className="w-3.5 h-3.5" />
             </Button>
           </div>
 
@@ -1983,255 +2006,157 @@ export default function FounderDashboard() {
             </div>
           )}
 
-          {/* ── ZONE 1: v3 Conversational CEO Experience ─────────── */}
-          <div className="space-y-6">
-            {/* Morning Briefing — one-screen summary, Apple Health style */}
-            <div ref={briefingRef}>
-              <MorningBriefing />
-            </div>
-
-            {/* v4: Trend Cards — CEO trend context before decisions */}
-            <TrendCards />
-
-            {/* Swipeable Decisions — Tinder for business decisions */}
-            <Suspense fallback={<div className="animate-pulse h-32 rounded-xl bg-muted" />}>
-              <SwipeDecisionsSection />
-            </Suspense>
-
-            {/* Chat with your team — iMessage style */}
-            <Card className="overflow-hidden">
-              <CardHeader className="pb-2 border-b">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <MessageSquare className="h-4 w-4" />
-                  Talk to Your Team
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0 h-[360px]">
-                <AgentTeamChat />
-              </CardContent>
-            </Card>
-
-            {/* Activity Timeline — what agents did */}
-            <Card className="overflow-hidden">
-              <CardHeader className="pb-2 border-b">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Clock className="h-4 w-4" />
-                  Agent Activity
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0 max-h-[400px] overflow-y-auto">
-                <ActivityTimeline />
-              </CardContent>
-            </Card>
-
-            {/* Financial Forecast */}
-            <Card className="overflow-hidden">
-              <CardHeader className="pb-2 border-b">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <TrendingUp className="h-4 w-4" />
-                  Financial Forecast
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                <ForecastPanel />
-              </CardContent>
-            </Card>
-
-            {/* Customer Health */}
-            <Card className="overflow-hidden">
-              <CardHeader className="pb-2 border-b">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Heart className="h-4 w-4" />
-                  Customer Health
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                <CustomerHealthPanel />
-              </CardContent>
-            </Card>
-
-            {/* Outcome Feedback */}
-            <Card className="overflow-hidden">
-              <CardHeader className="pb-2 border-b">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <BarChart3 className="h-4 w-4" />
-                  Decision Outcomes
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                <OutcomeFeedback />
-              </CardContent>
-            </Card>
-
-            {/* Delegation Manager */}
-            <DelegationManager />
-
-            {/* ─── v6: Self-Running Company ─────────────────────────────── */}
-
-            {/* Absence Mode — always visible at top of v6 section */}
-            <AbsenceMode />
-
-            {/* War Rooms — auto-convened critical event threads */}
-            <WarRoom />
-
-            {/* Agent Pipelines — multi-step workflow monitoring */}
-            <WorkflowMonitor />
-
-            {/* Initiative Board — agent strategic proposals */}
-            <InitiativeBoard />
-
-            {/* Playbook Manager — approve agent SOPs */}
-            <PlaybookManager />
-
-            {/* Performance Reviews — weekly agent evaluations */}
-            <PerformanceReviews />
-
-            {/* Decision Quality — track decision-making effectiveness */}
-            <DecisionQuality />
-
-            {/* ─── v7: The Learning Company ──────────────────────────────── */}
-
-            {/* Focus Card — "here's where you matter today" */}
-            <FocusCard />
-
-            {/* Decision Autopilot — learn and automate founder's judgment */}
-            <DecisionAutopilot />
-
-            {/* Scenario Engine — "what if?" multi-agent simulations */}
-            <ScenarioEngine />
-
-            {/* Agent Growth — self-improvement plans + skill requests */}
-            <AgentGrowth />
-
-            {/* Founder Digital Twin — draft comms in your voice */}
-            <FounderTwin />
-
-            {/* Institutional Memory — compound pattern library */}
-            <InstitutionalMemory />
-
-            {/* ─── v8: The Living Organization ───────────────────────────── */}
-
-            {/* Strategic Compass — living strategy, mode switching */}
-            <StrategicCompass />
-
-            {/* Founder Wellbeing — energy, stress signals, celebrations */}
-            <FounderWellbeingCard />
-
-            {/* Agent Debates — structured disagreement before big decisions */}
-            <AgentDebatePanel />
-
-            {/* Synergy Map — which agent pairs work best */}
-            <SynergyMap />
-
-            {/* Company Chronicle — narrative history */}
-            <CompanyChronicle />
-
-            {/* Classic Pulse (collapsed) for deep-dive users */}
-            <details className="group">
-              <summary className="cursor-pointer list-none py-2 flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
-                <span className="group-open:rotate-90 inline-block transition-transform">▶</span>
-                System Pulse (detailed view)
-              </summary>
-              <div className="mt-3 space-y-4">
-                <ThePulse decisionsInboxCount={decisionsInboxData?.totalPending} />
-                <DecisionsInbox />
+          {/* ═══ TAB: OVERVIEW ═══ */}
+          {activeTab === "overview" && (
+            <div className="space-y-6">
+              <div ref={briefingRef}>
+                <MorningBriefing />
               </div>
-            </details>
-          </div>
+              <TrendCards />
+              <Suspense fallback={<div className="animate-pulse h-32 rounded-xl bg-muted" />}>
+                <SwipeDecisionsSection />
+              </Suspense>
+              <FocusCard />
+            </div>
+          )}
 
-          {/* ── Revenue Trajectory Chart (full-width) ────────────────── */}
-          <div className={focusMode ? "hidden" : ""}>
-            <MRRTrajectory goalCents={goalCents > 0 ? goalCents : undefined} />
-          </div>
+          {/* ═══ TAB: AGENTS & AI ═══ */}
+          {activeTab === "agents" && (
+            <div className="space-y-6">
+              <Card className="overflow-hidden">
+                <CardHeader className="pb-2 border-b">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <MessageSquare className="h-4 w-4" />
+                    Talk to Your Team
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0 h-[360px]">
+                  <AgentTeamChat />
+                </CardContent>
+              </Card>
+              <Card className="overflow-hidden">
+                <CardHeader className="pb-2 border-b">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Clock className="h-4 w-4" />
+                    Agent Activity
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0 max-h-[400px] overflow-y-auto">
+                  <ActivityTimeline />
+                </CardContent>
+              </Card>
+              <CompanyBriefingPanel />
+              <AgentTeamPanel />
+              <DecisionAutopilot />
+              <AgentGrowth />
+              <FounderTwin />
+              <AgentDebatePanel />
+              <PerformanceReviews />
+              <SynergyMap />
+              <InstitutionalMemory />
+            </div>
+          )}
 
-          {/* ── Churn Intelligence + Growth Engine (2-col) ───────────── */}
-          <div className={`grid grid-cols-1 md:grid-cols-2 gap-6 ${focusMode ? "hidden" : ""}`}>
-            <ChurnIntelligence />
-            <GrowthEngine />
-          </div>
+          {/* ═══ TAB: OPERATIONS ═══ */}
+          {activeTab === "operations" && (
+            <div className="space-y-6">
+              <ActionQueuePanel />
+              <Card className="overflow-hidden">
+                <CardHeader className="pb-2 border-b">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Heart className="h-4 w-4" />
+                    Customer Health
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <CustomerHealthPanel />
+                </CardContent>
+              </Card>
+              <Card className="overflow-hidden">
+                <CardHeader className="pb-2 border-b">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <BarChart3 className="h-4 w-4" />
+                    Decision Outcomes
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <OutcomeFeedback />
+                </CardContent>
+              </Card>
+              <DelegationManager />
+              <AbsenceMode />
+              <WarRoom />
+              <WorkflowMonitor />
+              <InitiativeBoard />
+              <PlaybookManager />
+              <DecisionQuality />
+              <ScenarioEngine />
+              <StrategicCompass />
+              <FounderWellbeingCard />
+              <CompanyChronicle />
+            </div>
+          )}
 
-          {/* ── Business Intelligence — SaaS KPIs ────────────────────── */}
-          <div className={focusMode ? "hidden" : ""}>
-            <BusinessIntelligence />
-          </div>
+          {/* ═══ TAB: GROWTH ═══ */}
+          {activeTab === "growth" && (
+            <div className="space-y-6">
+              <MRRTrajectory goalCents={goalCents > 0 ? goalCents : undefined} />
+              <Card className="overflow-hidden">
+                <CardHeader className="pb-2 border-b">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <TrendingUp className="h-4 w-4" />
+                    Financial Forecast
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <ForecastPanel />
+                </CardContent>
+              </Card>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <ChurnIntelligence />
+                <GrowthEngine />
+              </div>
+              <BusinessIntelligence />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <PlatformPassiveScore />
+                <SophieActivityPreview />
+              </div>
+              <NewSubscriberFeed alerts={alerts} />
+              <TodaysBriefing />
+            </div>
+          )}
 
-          {/* ── Platform Passive Score + Sophie AI (2-col) ───────────── */}
-          <div className={`grid grid-cols-1 md:grid-cols-2 gap-6 ${focusMode ? "hidden" : ""}`}>
-            <PlatformPassiveScore />
-            <SophieActivityPreview />
-          </div>
-
-          {/* ── Infrastructure (collapsible — on demand) ─────────────── */}
-          <details className={`group ${focusMode ? "hidden" : ""}`}>
-            <summary className="cursor-pointer list-none py-3 border-t flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
-              <span className="group-open:rotate-90 inline-block transition-transform">▶</span>
-              Infrastructure &amp; Job Queues
-            </summary>
-            <div className="mt-4">
+          {/* ═══ TAB: INFRASTRUCTURE ═══ */}
+          {activeTab === "infrastructure" && (
+            <div className="space-y-6">
+              <LaunchReadinessSection />
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-lg font-semibold flex items-center gap-2">
+                      <Cpu className="w-5 h-5 text-blue-500" />
+                      Autonomous Observatory
+                    </h2>
+                    <p className="text-sm text-muted-foreground">Watch the system work in real time</p>
+                  </div>
+                  <FounderBriefingTrigger />
+                </div>
+                <SystemActivityPanel />
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <JobHealthPanel />
+                  <ChurnRiskPanel />
+                  <PaxEyesPanel />
+                </div>
+              </div>
               <JobQueueHealth />
+              <SystemHealth />
+              <ThePulse decisionsInboxCount={decisionsInboxData?.totalPending} />
+              <DecisionsInbox />
             </div>
-          </details>
+          )}
 
-          {/* ── ZONE 3: Operational panels ───────────────────────────── */}
-          <div className={`space-y-4 ${focusMode ? "hidden" : ""}`}>
-            <h2 className="text-lg font-semibold text-foreground border-t pt-4">Operational Panels</h2>
-          </div>
-
-          {/* ── Sticky nav ── */}
-          <FounderNavBar />
-
-          {/* ── CEO Company Briefing (Sovereign Company Protocol) ── */}
-          <div id="section-company-briefing">
-            <CompanyBriefingPanel />
-          </div>
-
-          {/* ── AI Agent Team ── */}
-          <div id="section-agent-team">
-            <AgentTeamPanel />
-          </div>
-
-          {/* ── AI Briefing ── */}
-          <div id="section-briefing">
-            <TodaysBriefing />
-          </div>
-
-          {/* ── Action Queue ── */}
-          <div id="section-actions">
-            <ActionQueuePanel />
-          </div>
-
-          {/* ── Autonomous Observatory ── */}
-          <div id="section-observatory" className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-semibold flex items-center gap-2">
-                  <Cpu className="w-5 h-5 text-blue-500" />
-                  Autonomous Observatory
-                </h2>
-                <p className="text-sm text-muted-foreground">Watch the system work in real time</p>
-              </div>
-              <FounderBriefingTrigger />
-            </div>
-            {/* Activity stream spans full width */}
-            <SystemActivityPanel />
-            {/* Job health + churn risk + Pax in a responsive grid */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <JobHealthPanel />
-              <ChurnRiskPanel />
-              <PaxEyesPanel />
-            </div>
-          </div>
-
-          {/* ── Launch Readiness Onboarding ── */}
-          <div id="section-readiness">
-            <LaunchReadinessSection />
-          </div>
-
-          {/* ── New subscriber live feed ── */}
-          <NewSubscriberFeed alerts={alerts} />
-
-          {/* ── Overview / Operational Panels ── */}
-          <div id="section-overview" className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 ${focusMode ? "hidden" : ""}`}>
+          {/* ── Overview KPI Cards (visible on overview + growth tabs) ── */}
+          <div id="section-overview" className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 ${activeTab !== "overview" && activeTab !== "growth" ? "hidden" : ""}`}>
             <Card data-testid="card-revenue-analytics">
               <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
                 <CardTitle
@@ -2712,12 +2637,12 @@ export default function FounderDashboard() {
             </Card>
           </div>
 
-          {/* External Services Health */}
-          <SystemHealth />
+          {/* External Services Health (infrastructure tab only) */}
+          {activeTab === "infrastructure" && <SystemHealth />}
 
-          {/* Feature Requests Section */}
-          <div id="section-users" className="scroll-mt-16" />
-          <Card data-testid="card-feature-requests">
+          {/* Feature Requests + Support + Escalations (operations tab only) */}
+          <div id="section-users" className={`scroll-mt-16 ${activeTab !== "operations" ? "hidden" : ""}`} />
+          <Card data-testid="card-feature-requests" className={activeTab !== "operations" ? "hidden" : ""}>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Lightbulb className="w-5 h-5 text-amber-500" />
@@ -2834,7 +2759,7 @@ export default function FounderDashboard() {
           </Card>
 
           {/* Support Analytics Section */}
-          <Card data-testid="card-support-analytics">
+          <Card data-testid="card-support-analytics" className={activeTab !== "operations" ? "hidden" : ""}>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <MessageSquare className="w-5 h-5 text-purple-500" />
@@ -2865,7 +2790,7 @@ export default function FounderDashboard() {
           </Card>
 
           {/* Escalation Queue Section */}
-          <Card data-testid="card-escalation-queue">
+          <Card data-testid="card-escalation-queue" className={activeTab !== "operations" ? "hidden" : ""}>
             <CardHeader className="flex flex-row items-start justify-between gap-2 space-y-0">
               <div>
                 <CardTitle className="flex items-center gap-2">
@@ -6548,7 +6473,7 @@ function LaunchReadinessSection() {
 
   const { data, isLoading, refetch } = useQuery<LaunchReadiness>({
     queryKey: ["/api/founder/launch-readiness"],
-    refetchInterval: 60_000, // re-check every minute
+    refetchInterval: 10 * 60_000,
   });
 
   const scrollToSection = (sectionId: string) => {
