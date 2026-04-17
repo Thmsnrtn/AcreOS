@@ -69,6 +69,9 @@ export function serveStatic(app: Express) {
         html = html.replace(/data-csp-nonce/g, `nonce="${nonce}" data-csp-nonce`);
       }
       res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+      res.setHeader("Pragma", "no-cache");
+      res.setHeader("Expires", "0");
       res.send(html);
     } catch {
       res.sendFile(indexPath);
