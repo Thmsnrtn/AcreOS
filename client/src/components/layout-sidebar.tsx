@@ -568,23 +568,23 @@ export function Sidebar() {
             </div>
           </div>
         ) : (
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+          <div className="flex items-center justify-between gap-1 min-w-0">
+            <div className="flex items-center gap-1.5 min-w-0 shrink">
+              <h1 className="text-lg font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent shrink-0">
                 AcreOS
               </h1>
               {isFounder && (
                 <Badge
                   variant="outline"
-                  className="bg-amber-500/10 text-amber-600 border-amber-500/30 text-xs"
+                  className="bg-amber-500/10 text-amber-600 border-amber-500/30 text-[10px] px-1.5 py-0 shrink-0"
                   data-testid="badge-founder"
                 >
-                  <Crown className="w-3 h-3 mr-1" />
+                  <Crown className="w-2.5 h-2.5 mr-0.5" />
                   Founder
                 </Badge>
               )}
             </div>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-0.5 shrink-0">
               <PaxNotificationBadge />
               <NotificationCenter />
             </div>
@@ -647,7 +647,7 @@ export function Sidebar() {
               {/* Module row */}
               <div
                 className={cn(
-                  "flex items-center gap-2 px-3 py-2 rounded-lg transition-all duration-150 group cursor-pointer min-h-[40px]",
+                  "flex items-center gap-2 px-3 py-2 rounded-lg transition-colors duration-150 group cursor-pointer min-h-[40px]",
                   active && !hasChildren
                     ? "nav-item-active"
                     : active
@@ -738,7 +738,7 @@ export function Sidebar() {
                         key={child.href}
                         href={child.href}
                         className={cn(
-                          "flex items-center gap-2 px-3 py-1.5 rounded-md transition-all duration-150 group min-h-[34px] text-xs",
+                          "flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors duration-150 group min-h-[34px] text-xs",
                           childActive
                             ? "nav-item-active"
                             : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
@@ -873,7 +873,7 @@ export function Sidebar() {
             href="/founder-dashboard"
             onClick={onNavClick}
             className={cn(
-              "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-150 group mb-2 min-h-[44px]",
+              "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors duration-150 group mb-2 min-h-[44px]",
               location === "/founder-dashboard" || location === "/founder-home"
                 ? "bg-amber-500 text-white shadow-md"
                 : "bg-amber-500/10 text-amber-600 hover:bg-amber-500/20"
@@ -900,7 +900,7 @@ export function Sidebar() {
             <div key={module.id}>
               <div
                 className={cn(
-                  "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-150 group cursor-pointer min-h-[44px]",
+                  "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors duration-150 group cursor-pointer min-h-[44px]",
                   active && !hasChildren
                     ? "nav-item-active"
                     : active
@@ -976,7 +976,7 @@ export function Sidebar() {
                         href={child.href}
                         onClick={onNavClick}
                         className={cn(
-                          "flex items-center gap-3 px-3 py-2 rounded-md transition-all duration-150 min-h-[40px]",
+                          "flex items-center gap-3 px-3 py-2 rounded-md transition-colors duration-150 min-h-[40px]",
                           childActive
                             ? "nav-item-active"
                             : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
@@ -1083,7 +1083,7 @@ function CollapsedModuleItem({
           <Link
             href={module.href}
             className={cn(
-              "flex items-center justify-center w-full p-2.5 rounded-lg transition-all duration-150 min-h-[40px] relative",
+              "flex items-center justify-center w-full p-2.5 rounded-lg transition-colors duration-150 min-h-[40px] relative",
               isActive
                 ? "nav-item-active"
                 : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
@@ -1119,7 +1119,7 @@ function CollapsedModuleItem({
           <PopoverTrigger asChild>
             <button
               className={cn(
-                "flex items-center justify-center w-full p-2.5 rounded-lg transition-all duration-150 min-h-[40px] relative",
+                "flex items-center justify-center w-full p-2.5 rounded-lg transition-colors duration-150 min-h-[40px] relative",
                 isActive
                   ? "nav-item-active"
                   : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
@@ -1154,7 +1154,7 @@ function CollapsedModuleItem({
               key={child.href}
               href={child.href}
               className={cn(
-                "flex items-center gap-2 px-2 py-1.5 rounded-md transition-all duration-150 text-sm",
+                "flex items-center gap-2 px-2 py-1.5 rounded-md transition-colors duration-150 text-sm",
                 childActive
                   ? "nav-item-active"
                   : "text-foreground hover:bg-accent"
