@@ -1157,26 +1157,32 @@ export default function FounderDashboard() {
     return () => window.removeEventListener("keydown", handler);
   }, [handleRefreshAll, focusMode, toast]);
 
+  // Only load dashboard data for overview + growth tabs
   const { data: dashboardData, isLoading } = useQuery<AdminDashboardData>({
     queryKey: ['/api/admin/dashboard'],
+    enabled: activeTab === "overview" || activeTab === "growth",
   });
 
+  // Only poll decisions on overview tab
   const { data: decisionsInboxData } = useQuery<{ totalPending: number }>({
     queryKey: ['/api/founder/intelligence/decisions-inbox'],
-    refetchInterval: 5 * 60_000,
-    refetchIntervalInBackground: false,
+    refetchInterval: activeTab === "overview" ? 5 * 60_000 : false,
+    enabled: activeTab === "overview" || activeTab === "infrastructure",
   });
 
   const { data: alerts } = useQuery<SystemAlert[]>({
     queryKey: ['/api/admin/alerts'],
+    enabled: activeTab === "overview" || activeTab === "infrastructure",
   });
 
   const { data: apiUsageData } = useQuery<ApiUsageStats>({
     queryKey: ['/api/founder/api-usage'],
+    enabled: activeTab === "overview" || activeTab === "growth",
   });
 
   const { data: featureRequests, isLoading: featureRequestsLoading } = useQuery<FeatureRequest[]>({
     queryKey: ['/api/founder/feature-requests'],
+    enabled: activeTab === "operations",
   });
 
   const { data: supportAnalytics } = useQuery<{
@@ -1197,10 +1203,12 @@ export default function FounderDashboard() {
     }>;
   }>({
     queryKey: ['/api/founder/support/analytics'],
+    enabled: activeTab === "operations",
   });
 
   const { data: escalations, isLoading: escalationsLoading } = useQuery<EscalatedTicket[]>({
     queryKey: ['/api/founder/escalations'],
+    enabled: activeTab === "operations",
   });
 
   const generatePromptMutation = useMutation({
@@ -1385,26 +1393,32 @@ export default function FounderDashboard() {
 
   const { data: countyGisEndpoints, isLoading: gisEndpointsLoading } = useQuery<CountyGisEndpoint[]>({
     queryKey: ['/api/county-gis-endpoints'],
+    enabled: activeTab === "infrastructure",
   });
 
   const { data: dataSources, isLoading: dataSourcesLoading } = useQuery<DataSource[]>({
     queryKey: ['/api/data-sources'],
+    enabled: activeTab === "infrastructure",
   });
 
   const { data: dataSourceStats } = useQuery<DataSourceStats>({
     queryKey: ['/api/data-sources/stats'],
+    enabled: activeTab === "infrastructure",
   });
 
   const { data: userOrganizations, isLoading: usersLoading } = useQuery<UserOrganization[]>({
     queryKey: ['/api/admin/users'],
+    enabled: activeTab === "operations" || activeTab === "growth",
   });
 
   const { data: subscriptionStats } = useQuery<SubscriptionStats>({
     queryKey: ['/api/admin/subscription-stats'],
+    enabled: activeTab === "overview" || activeTab === "growth",
   });
 
   const { data: subscriptionEvents } = useQuery<SubscriptionEvent[]>({
     queryKey: ['/api/admin/subscription-events'],
+    enabled: activeTab === "growth",
   });
 
   const toggleDataSourceMutation = useMutation({
