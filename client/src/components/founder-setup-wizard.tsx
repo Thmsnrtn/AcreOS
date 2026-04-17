@@ -415,6 +415,23 @@ export function FounderSetupWizard({ open, onClose }: Props) {
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col p-0">
+        {/* Loading state */}
+        {isLoading && (
+          <div className="flex items-center justify-center p-12">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            <span className="ml-3 text-sm text-muted-foreground">Loading platform configuration...</span>
+          </div>
+        )}
+        {!isLoading && !status && (
+          <div className="flex flex-col items-center justify-center p-12 gap-3">
+            <AlertCircle className="w-8 h-8 text-amber-500" />
+            <p className="text-sm text-muted-foreground text-center">
+              Could not load platform configuration. You can set API keys directly in the System API Keys section below.
+            </p>
+            <Button variant="outline" size="sm" onClick={onClose}>Close</Button>
+          </div>
+        )}
+        {!isLoading && status && (<>
         {/* Header */}
         <DialogHeader className="px-6 pt-6 pb-4 border-b">
           <div className="flex items-center justify-between">
@@ -836,6 +853,7 @@ export function FounderSetupWizard({ open, onClose }: Props) {
             )}
           </div>
         </div>
+        </>)}
       </DialogContent>
     </Dialog>
   );
