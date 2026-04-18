@@ -6898,20 +6898,20 @@ Notary Public</p>
   async getAllOrganizationsWithDetails(): Promise<Array<{
     id: number;
     name: string;
-    ownerEmail: string | null;
-    tier: string | null;
-    subscriptionStatus: string | null;
+    ownerId: string;
+    tier: string;
+    subscriptionStatus: string;
     createdAt: Date | null;
-    lastActiveAt: Date | null;
+    updatedAt: Date | null;
   }>> {
     const orgs = await db.select({
       id: organizations.id,
       name: organizations.name,
-      ownerEmail: organizations.ownerEmail,
-      tier: organizations.tier,
+      ownerId: organizations.ownerId,
+      tier: organizations.subscriptionTier,
       subscriptionStatus: organizations.subscriptionStatus,
       createdAt: organizations.createdAt,
-      lastActiveAt: organizations.lastActiveAt,
+      updatedAt: organizations.updatedAt,
     })
     .from(organizations)
     .orderBy(desc(organizations.createdAt))
