@@ -3,16 +3,9 @@ import { eq } from "drizzle-orm";
 import { campaigns, type Campaign, type InsertCampaignOptimization } from "@shared/schema";
 import { storage } from "../storage";
 import { usageMeteringService } from "./credits";
-import OpenAI from "openai";
 import { voiceLearningService } from "./voiceLearning";
+import { getOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
-
-function getOpenAIClient(): OpenAI | null {
-  if (!process.env.OPENAI_API_KEY) {
-    return null;
-  }
-  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-}
 
 export interface CampaignMetrics {
   openRate: number;

@@ -4,12 +4,10 @@ import {
   revenueProtectionInterventions,
 } from "@shared/schema";
 import { eq, and, desc, gte, count, sql } from "drizzle-orm";
-import OpenAI from "openai";
 import { emailService } from "./emailService";
 import { decisionsInboxService } from "./decisionsInbox";
+import { requireOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
-
-const openai = new OpenAI();
 
 /** Compute a 0-100 churn risk score for a single org. Returns score + component breakdown. */
 async function scoreOrganization(orgId: number) {
@@ -102,7 +100,7 @@ async function generateRetentionEmail(
   riskBand: string,
   context: { daysSinceLastActive: number; dunningStage: string; ticketsLast30d: number }
 ): Promise<{ subject: string; html: string }> {
-  const response = await openai.chat.completions.create({
+  const response = await requireOpenAIClient().chat.completions.create({
     model: "gpt-4o-mini",
     response_format: { type: "json_object" },
     messages: [{

@@ -5,9 +5,7 @@ import {
   courses,
 } from "@shared/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
-import OpenAI from "openai";
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+import { requireOpenAIClient } from "../utils/openaiClient";
 
 // In-memory quiz attempt log (no dedicated table in schema — use courseEnrollments metadata)
 const quizAttemptLog: Array<{
@@ -206,7 +204,7 @@ export class QuizGradingService {
       : "Grade on accuracy, completeness, and clarity.";
 
     try {
-      const completion = await openai.chat.completions.create({
+      const completion = await requireOpenAIClient().chat.completions.create({
         model: "gpt-4o-mini",
         messages: [
           {
@@ -269,7 +267,7 @@ export class QuizGradingService {
     const areas = weakAreas.slice(0, 3).join("; ");
 
     try {
-      const completion = await openai.chat.completions.create({
+      const completion = await requireOpenAIClient().chat.completions.create({
         model: "gpt-4o-mini",
         messages: [
           {

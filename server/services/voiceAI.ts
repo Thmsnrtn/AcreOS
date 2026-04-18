@@ -1,11 +1,9 @@
 import { db } from '../db';
 import { voiceCalls, callTranscripts, properties, leads, activityLog } from '../../shared/schema';
 import { eq, and, desc, sql } from 'drizzle-orm';
-import OpenAI from 'openai';
 import { logActivity } from './systemActivityLogger';
+import { requireOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 interface CallIntent {
   type: string;
@@ -97,7 +95,7 @@ class VoiceAI {
       const audioBuffer = Buffer.from(await audioResponse.arrayBuffer());
       const audioFile = new File([audioBuffer], 'recording.wav', { type: 'audio/wav' });
 
-      const transcription = await openai.audio.transcriptions.create({
+      const transcription = await requireOpenAIClient().audio.transcriptions.create({
         model: 'whisper-1',
         file: audioFile,
       });
@@ -144,7 +142,7 @@ Respond with JSON in this format:
   }
 }`;
 
-      const completion = await openai.chat.completions.create({
+      const completion = await requireOpenAIClient().chat.completions.create({
         model: 'gpt-4-turbo-preview',
         messages: [{ role: 'user', content: prompt }],
         max_tokens: 500,
@@ -190,7 +188,7 @@ Format:
   "label": "positive|neutral|negative"
 }`;
 
-      const completion = await openai.chat.completions.create({
+      const completion = await requireOpenAIClient().chat.completions.create({
         model: 'gpt-4-turbo-preview',
         messages: [{ role: 'user', content: prompt }],
         max_tokens: 100,
@@ -229,7 +227,7 @@ Format:
 Transcript:
 ${transcript.fullTranscript}`;
 
-      const completion = await openai.chat.completions.create({
+      const completion = await requireOpenAIClient().chat.completions.create({
         model: 'gpt-4-turbo-preview',
         messages: [{ role: 'user', content: prompt }],
         max_tokens: 200,
@@ -508,7 +506,7 @@ ${transcript.fullTranscript}
 
 Format: ["Action item 1", "Action item 2", ...]`;
 
-      const completion = await openai.chat.completions.create({
+      const completion = await requireOpenAIClient().chat.completions.create({
         model: 'gpt-4-turbo-preview',
         messages: [{ role: 'user', content: prompt }],
         max_tokens: 300,

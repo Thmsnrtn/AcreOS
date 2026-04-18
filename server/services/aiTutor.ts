@@ -1,10 +1,8 @@
 import { db } from '../db';
 import { tutorSessions, courseModules } from '../../shared/schema';
 import { eq, and, desc } from 'drizzle-orm';
-import OpenAI from 'openai';
+import { requireOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 interface TutorMessage {
   role: 'user' | 'assistant';
@@ -91,7 +89,7 @@ ${moduleContext}
 Be conversational, supportive, and focus on practical knowledge that students can apply immediately.`;
 
       // Call OpenAI for response
-      const completion = await openai.chat.completions.create({
+      const completion = await requireOpenAIClient().chat.completions.create({
         model: 'gpt-4-turbo-preview',
         messages: [
           { role: 'system', content: systemPrompt },
@@ -222,7 +220,7 @@ Format the response as JSON array with this structure:
   }
 ]`;
 
-      const completion = await openai.chat.completions.create({
+      const completion = await requireOpenAIClient().chat.completions.create({
         model: 'gpt-4-turbo-preview',
         messages: [{ role: 'user', content: prompt }],
         max_tokens: 1500,
@@ -277,7 +275,7 @@ The study plan should:
 
 Keep it concise and actionable.`;
 
-      const completion = await openai.chat.completions.create({
+      const completion = await requireOpenAIClient().chat.completions.create({
         model: 'gpt-4-turbo-preview',
         messages: [{ role: 'user', content: prompt }],
         max_tokens: 1000,

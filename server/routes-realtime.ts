@@ -2,11 +2,9 @@ import { Router, type Request, type Response } from 'express';
 import { realtimeAlertsService } from './services/realtimeAlerts';
 import { certificationService } from './services/certification';
 import { wsServer } from './websocket';
-import OpenAI from 'openai';
 import { CreditService } from './services/credits';
+import { requireOpenAIClient } from './utils/openaiClient';
 import { logger } from './utils/logger';
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const creditService = new CreditService();
 
 const router = Router();
@@ -70,7 +68,7 @@ Available app paths:
 
 Respond with JSON: { "reply": "...", "actionPath": "/path or null", "actionLabel": "Button label or null" }`;
 
-    const completion = await openai.chat.completions.create({
+    const completion = await requireOpenAIClient().chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: systemPrompt },

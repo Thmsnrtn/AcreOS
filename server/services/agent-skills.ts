@@ -2330,8 +2330,8 @@ const draftOfferLetterSkill: Skill = {
           ? "professional but time-sensitive, highlighting that the offer window is limited"
           : "professional and formal";
 
-      const OpenAI = (await import("openai")).default;
-      const openai = new OpenAI();
+      const { requireOpenAIClient } = await import("../utils/openaiClient");
+      const openai = requireOpenAIClient();
 
       const prompt = `Write a land purchase offer letter. Be ${toneGuide}.
 
@@ -2498,8 +2498,8 @@ const suggestFollowUpSkill: Skill = {
         new Date(a.createdAt) > new Date(Date.now() - 30 * 86_400_000)
       );
 
-      const OpenAI = (await import("openai")).default;
-      const openai = new OpenAI();
+      const { requireOpenAIClient } = await import("../utils/openaiClient");
+      const openai = requireOpenAIClient();
 
       const prompt = `You are a land investing expert. Recommend the best next follow-up action for this lead.
 
@@ -2588,8 +2588,8 @@ const marketAnalysisSkill: Skill = {
             countyProperties.filter(p => p.marketValue).length
           : null;
 
-      const OpenAI = (await import("openai")).default;
-      const openai = new OpenAI();
+      const { requireOpenAIClient } = await import("../utils/openaiClient");
+      const openai = requireOpenAIClient();
 
       const prompt = `You are an expert real estate professional and market analyst. Provide a concise market analysis for land investing in ${county} County, ${state}.
 

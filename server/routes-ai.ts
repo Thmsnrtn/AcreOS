@@ -1639,8 +1639,8 @@ export function registerAIRoutes(app: Express): void {
     try {
       const file = req.file;
       if (!file) return Errors.badRequest(res, "No audio file provided");
-      const { default: OpenAI } = await import("openai");
-      const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      const { requireOpenAIClient } = await import("./utils/openaiClient");
+      const client = requireOpenAIClient();
       const { Readable } = await import("stream");
       const audioStream = Readable.from(file.buffer);
       (audioStream as any).name = file.originalname || "audio.webm";

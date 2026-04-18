@@ -4,15 +4,8 @@ import { leads, type Lead, type NurturingStage, type InsertLeadActivity } from "
 import { storage } from "../storage";
 import { usageMeteringService } from "./credits";
 import { alertingService } from "./alerting";
-import OpenAI from "openai";
+import { getOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
-
-function getOpenAIClient(): OpenAI | null {
-  if (!process.env.OPENAI_API_KEY) {
-    return null;
-  }
-  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-}
 
 export type ScoreFactors = {
   responseRecency?: number;

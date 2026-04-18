@@ -59,24 +59,22 @@ class HealthCheckService {
   }
 
   /**
-   * Check if OpenAI is configured and accessible
+   * Check if the AI client (OpenRouter or OpenAI) is configured and accessible
    */
   async checkOpenAI(): Promise<ServiceHealth> {
     const name = 'openai';
     const start = Date.now();
-    
+
     try {
-      const openaiKey = process.env.OPENAI_API_KEY;
-      if (!openaiKey) {
-        return this.createHealth(name, 'unconfigured', undefined, 'OPENAI_API_KEY not configured');
+      const { getOpenAIClient } = await import('../utils/openaiClient');
+      const client = getOpenAIClient();
+      if (!client) {
+        return this.createHealth(name, 'unconfigured', undefined, 'No AI API key configured (set AI_INTEGRATIONS_OPENROUTER_API_KEY or OPENAI_API_KEY)');
       }
 
-      const OpenAI = (await import('openai')).default;
-      const openai = new OpenAI({ apiKey: openaiKey });
-      
-      await openai.models.list();
+      await client.models.list();
       const latency = Date.now() - start;
-      
+
       return this.createHealth(name, 'healthy', latency);
     } catch (error: any) {
       const latency = Date.now() - start;
