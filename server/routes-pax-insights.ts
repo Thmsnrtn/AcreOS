@@ -6,11 +6,6 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { logger } from "./utils/logger";
 
-const logger = {
-  error: (msg: string, meta?: Record<string, any>) =>
-    logger.error(JSON.stringify({ level: "ERROR", timestamp: new Date().toISOString(), message: msg, ...meta })),
-};
-
 const router = Router();
 
 // GET /api/pax/greeting

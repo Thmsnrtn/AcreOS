@@ -9,12 +9,6 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { runPortfolioHealthJob, getActiveAlerts, dismissAlert } from "./services/portfolioHealth";
 import { logger } from "./utils/logger";
 
-const logger = {
-  info: (msg: string, meta?: Record<string, any>) => logger.info(JSON.stringify({ level: 'INFO', timestamp: new Date().toISOString(), message: msg, ...meta })),
-  warn: (msg: string, meta?: Record<string, any>) => logger.warn(JSON.stringify({ level: 'WARN', timestamp: new Date().toISOString(), message: msg, ...meta })),
-  error: (msg: string, meta?: Record<string, any>) => logger.error(JSON.stringify({ level: 'ERROR', timestamp: new Date().toISOString(), message: msg, ...meta })),
-};
-
 const serverStartTime = Date.now();
 
 export function registerDashboardRoutes(app: Express): void {
