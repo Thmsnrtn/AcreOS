@@ -38,8 +38,8 @@ router.get('/listings', asyncHandler(async (req: Request, res: Response) => {
       minPrice: minPrice ? parseFloat(minPrice as string) : undefined,
       maxPrice: maxPrice ? parseFloat(maxPrice as string) : undefined,
       states: state ? [state as string] : undefined,
-      limit: parseInt(limit as string),
-      offset: parseInt(offset as string),
+      limit: Math.min(parseInt(limit as string) || 20, 100), // Cap at 100 to prevent data scraping
+      offset: parseInt(offset as string) || 0,
     });
 
     res.json({ listings });
