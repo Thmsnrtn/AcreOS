@@ -50,6 +50,7 @@ function TaskItem({ task, onComplete, isCompleting }: {
           className="h-7 w-7 shrink-0"
           onClick={() => onComplete(task.id)}
           disabled={isCompleting}
+          aria-label="Complete task"
           data-testid={`complete-task-${task.id}`}
         >
           {isCompleting ? (
@@ -83,7 +84,7 @@ function TaskItem({ task, onComplete, isCompleting }: {
         </Badge>
         {task.entityType && task.entityType !== "none" && task.entityId && (
           <Link href={`/${task.entityType}s/${task.entityId}`}>
-            <Button size="icon" variant="ghost" className="h-7 w-7">
+            <Button size="icon" variant="ghost" className="h-7 w-7" aria-label="View linked item">
               <ArrowRight className="w-4 h-4" />
             </Button>
           </Link>

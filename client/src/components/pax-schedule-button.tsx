@@ -61,6 +61,7 @@ export function PaxScheduleButton({ currentPrompt, disabled }: PaxScheduleButton
             className="h-8 w-8 flex-shrink-0"
             onClick={() => setOpen(true)}
             disabled={disabled || !currentPrompt.trim()}
+            aria-label="Schedule task"
           >
             <Clock className="w-3.5 h-3.5" />
           </Button>

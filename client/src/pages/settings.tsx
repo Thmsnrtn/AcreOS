@@ -2070,6 +2070,7 @@ function GoalsSettings() {
                           className="h-7 w-7 text-muted-foreground hover:text-destructive"
                           onClick={() => deleteGoal.mutate(goal.id)}
                           disabled={deleteGoal.isPending}
+                          aria-label="Delete goal"
                         >
                           <X className="w-3.5 h-3.5" />
                         </Button>

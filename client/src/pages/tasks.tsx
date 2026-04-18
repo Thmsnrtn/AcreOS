@@ -555,6 +555,7 @@ export default function TasksPage() {
                           className={isCompleted ? "text-green-600" : "text-muted-foreground"}
                           onClick={() => !isCompleted && completeMutation.mutate(task.id)}
                           disabled={isCompleted || completeMutation.isPending}
+                          aria-label={isCompleted ? "Task completed" : "Complete task"}
                           data-testid={`button-complete-task-${task.id}`}
                         >
                           <CheckCircle2 className="w-5 h-5" />
@@ -614,6 +615,7 @@ export default function TasksPage() {
                             variant="ghost"
                             size="icon"
                             onClick={() => openEditDialog(task)}
+                            aria-label="Edit task"
                             data-testid={`button-edit-task-${task.id}`}
                           >
                             <Edit className="w-4 h-4" />
@@ -623,6 +625,7 @@ export default function TasksPage() {
                             size="icon"
                             onClick={() => deleteMutation.mutate(task.id)}
                             disabled={deleteMutation.isPending}
+                            aria-label="Delete task"
                             data-testid={`button-delete-task-${task.id}`}
                           >
                             <Trash2 className="w-4 h-4 text-destructive" />

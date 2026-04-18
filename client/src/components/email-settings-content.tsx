@@ -647,6 +647,7 @@ export function EmailSettingsContent() {
                         variant="ghost"
                         onClick={() => deleteIdentityMutation.mutate(identity.id)}
                         disabled={deleteIdentityMutation.isPending}
+                        aria-label="Delete email identity"
                         data-testid={`button-delete-identity-${identity.id}`}
                       >
                         <Trash2 className="w-4 h-4 text-destructive" />
@@ -705,6 +706,7 @@ export function EmailSettingsContent() {
                                     size="icon"
                                     variant="ghost"
                                     onClick={() => copyToClipboard(record.data)}
+                                    aria-label="Copy DNS record"
                                     data-testid={`button-copy-dns-${identity.id}-${idx}`}
                                   >
                                     <Copy className="w-3 h-3" />
@@ -829,6 +831,7 @@ export function EmailSettingsContent() {
                       variant="ghost"
                       onClick={() => deleteIdentityMutation.mutate(identity.id)}
                       disabled={deleteIdentityMutation.isPending}
+                      aria-label="Delete email identity"
                       data-testid={`button-delete-all-${identity.id}`}
                     >
                       <Trash2 className="w-4 h-4 text-destructive" />

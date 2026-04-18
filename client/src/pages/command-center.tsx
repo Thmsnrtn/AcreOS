@@ -1858,7 +1858,7 @@ export default function CommandCenterPage() {
             </Tabs>
             <Dialog>
               <DialogTrigger asChild>
-                <Button variant="ghost" size="icon" data-testid="button-ai-settings">
+                <Button variant="ghost" size="icon" aria-label="AI settings" data-testid="button-ai-settings">
                   <Settings className="w-4 h-4" />
                 </Button>
               </DialogTrigger>
@@ -1932,6 +1932,7 @@ export default function CommandCenterPage() {
                               size="icon"
                               className="opacity-0 group-hover:opacity-100 shrink-0"
                               onClick={(e) => handleDeleteConversation(e, conv.id)}
+                              aria-label="Delete conversation"
                               data-testid={`button-delete-conversation-${conv.id}`}
                             >
                               <Trash2 className="w-4 h-4 text-destructive" />
@@ -2178,6 +2179,7 @@ export default function CommandCenterPage() {
                           onClick={handleAttachClick}
                           disabled={isStreaming || attachments.length >= MAX_ATTACHMENTS}
                           className="h-10 w-10"
+                          aria-label="Attach file"
                           data-testid="button-attach-file"
                         >
                           <Paperclip className="w-4 h-4" />
@@ -2189,6 +2191,7 @@ export default function CommandCenterPage() {
                           onClick={() => setIsImageMode(!isImageMode)}
                           disabled={isStreaming}
                           className="h-10 w-10"
+                          aria-label={isImageMode ? "Disable image mode" : "Enable image mode"}
                           data-testid="button-image-mode"
                         >
                           <ImageIcon className="w-4 h-4" />

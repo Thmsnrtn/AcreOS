@@ -725,6 +725,7 @@ export function OnboardingWizard() {
           size="icon"
           className="absolute top-4 right-4"
           onClick={() => handleDismiss(false)}
+          aria-label="Close wizard"
           data-testid="button-close-wizard"
         >
           <X className="w-4 h-4" />

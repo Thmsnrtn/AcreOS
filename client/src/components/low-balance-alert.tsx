@@ -78,6 +78,7 @@ export function LowBalanceAlert() {
             variant="ghost"
             onClick={handleDismiss}
             className="text-amber-700 dark:text-amber-300"
+            aria-label="Dismiss"
             data-testid="button-dismiss-low-balance"
           >
             <X className="w-4 h-4" />

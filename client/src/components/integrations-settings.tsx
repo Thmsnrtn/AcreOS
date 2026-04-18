@@ -298,6 +298,7 @@ function ConfigureDialog({
                 size="icon"
                 className="absolute right-0 top-0 h-full"
                 onClick={() => setShowKey(!showKey)}
+                aria-label={showKey ? "Hide API key" : "Show API key"}
               >
                 {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </Button>

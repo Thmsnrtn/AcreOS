@@ -517,29 +517,32 @@ export default function DocumentsPage() {
               <Plus className="w-3 h-3 mr-1" />
               Generate
             </Button>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               size="icon"
               onClick={() => handleOpenVersionHistory(template.id, "template", template.name)}
+              aria-label="Version history"
               data-testid={`button-version-history-template-${template.id}`}
             >
               <History className="w-4 h-4" />
             </Button>
             {!isSystem && (
               <>
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   size="icon"
                   onClick={() => handleEditTemplate(template)}
+                  aria-label="Edit template"
                   data-testid={`button-edit-template-${template.id}`}
                 >
                   <Edit className="w-4 h-4" />
                 </Button>
-                <Button 
-                  variant="ghost" 
+                <Button
+                  variant="ghost"
                   size="icon"
                   onClick={() => deleteTemplateMutation.mutate(template.id)}
                   disabled={deleteTemplateMutation.isPending}
+                  aria-label="Delete template"
                   data-testid={`button-delete-template-${template.id}`}
                 >
                   <Trash2 className="w-4 h-4 text-destructive" />
@@ -660,10 +663,11 @@ export default function DocumentsPage() {
                     <Eye className="w-3 h-3 mr-1" />
                     View
                   </Button>
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     size="icon"
                     onClick={() => handleOpenVersionHistory(doc.id, "generated", doc.name)}
+                    aria-label="Version history"
                     data-testid={`button-version-history-document-${doc.id}`}
                   >
                     <History className="w-4 h-4" />

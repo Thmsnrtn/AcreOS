@@ -137,6 +137,7 @@ export default function TerritoryManagerPage() {
                     size="icon"
                     className="h-7 w-7 text-muted-foreground hover:text-destructive"
                     onClick={() => deleteMutation.mutate(t.id)}
+                    aria-label="Delete territory"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </Button>

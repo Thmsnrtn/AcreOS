@@ -1011,6 +1011,7 @@ export default function MarketplacePage() {
                               className="text-destructive hover:text-destructive h-8 w-8"
                               disabled={removeMutation.isPending || listing.status === 'sold'}
                               onClick={() => removeMutation.mutate(listing.id)}
+                              aria-label="Remove listing"
                             >
                               {removeMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                             </Button>

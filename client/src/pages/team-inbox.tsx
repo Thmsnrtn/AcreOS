@@ -460,6 +460,7 @@ export default function TeamInboxPage() {
                   size="icon"
                   onClick={handleSend}
                   disabled={!draft.trim() || sendMessage.isPending}
+                  aria-label="Send message"
                 >
                   {sendMessage.isPending
                     ? <Loader2 className="w-4 h-4 animate-spin" />

@@ -226,7 +226,7 @@ export function SavedViewsSelector({
       {selectedView && selectedView.id > 0 && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" data-testid="button-view-actions">
+            <Button variant="ghost" size="icon" aria-label="View actions" data-testid="button-view-actions">
               <Settings className="w-4 h-4" />
             </Button>
           </DropdownMenuTrigger>

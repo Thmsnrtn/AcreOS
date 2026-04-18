@@ -121,6 +121,7 @@ function TimelineEvent({ event }: TimelineEventProps) {
                 <Button 
                   variant="ghost" 
                   size="icon"
+                  aria-label="Toggle event details"
                   data-testid={`timeline-event-expand-${event.id}`}
                 >
                   {isExpanded ? (

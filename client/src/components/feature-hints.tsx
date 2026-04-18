@@ -286,6 +286,7 @@ export function FeatureHint({
                   e.stopPropagation();
                   handleDismiss();
                 }}
+                aria-label="Dismiss hint"
                 data-testid={`button-dismiss-hint-${hint.id}`}
               >
                 <X className="w-3 h-3" />
@@ -311,10 +312,11 @@ export function HelpHint({
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <Button 
-          variant="ghost" 
-          size="icon" 
+        <Button
+          variant="ghost"
+          size="icon"
           className="h-5 w-5"
+          aria-label="Help"
           data-testid="button-help-hint"
         >
           <HelpCircle className="w-3.5 h-3.5 text-muted-foreground" />

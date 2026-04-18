@@ -129,6 +129,7 @@ export function NotificationCenter() {
           variant="ghost" 
           size="icon" 
           className="relative"
+          aria-label="Notifications"
           data-testid="button-notifications"
         >
           <Bell className="w-5 h-5" />
