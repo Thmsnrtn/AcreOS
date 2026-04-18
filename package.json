@@ -106,6 +106,7 @@
     "express": "^5.2.1",
     "framer-motion": "^12.38.0",
     "input-otp": "^1.4.2",
+    "ioredis": "5.10.1",
     "isomorphic-dompurify": "^3.7.1",
     "jspdf": "^4.2.1",
     "lob": "^7.1.0",
