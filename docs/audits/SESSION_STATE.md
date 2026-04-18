@@ -1,49 +1,45 @@
 # AcreOS Transformation — Session State
-Last updated: 2026-04-18T16:30:00Z
-Last commit: e66bd00
+Last updated: 2026-04-18T17:30:00Z
+Last commit: f8c476d
 
 ## Current Position
-Phase: 2 (150-Lens Audit — expanding from 50 to 150)
-Sub-task: Begin Tier 2 + Tier 3 lens audits (lenses 51-150)
-Sweep number (if in §9 loop): N/A
+Phase: 9 (Convergence Loop — fixing P0 defects from registry)
+Sub-task: Fix remaining open P0s, then begin convergence sweeps
+Sweep number (if in §9 loop): 0
 Consecutive clean sweeps: 0
-Red team personas completed: 3/10 (Malicious Borrower, Competitor Scraper, Ex-Employee)
+Red team personas completed: 3/10
 Simulations completed: 0/5
 
 ## Lens Progress
-Initial audits complete: 50/150
-Most recent sweep: 0 (v4 convergence not yet started)
-Defect registry entries: 0 (registry not yet built)
+Initial audits complete: 150/150
+Most recent sweep: 0
+Defect registry entries: 66 total (9 P0 open at build time, fixing now)
 
 ## Open Counts
-P0: 0   P1: ~80   Blockers unresolved: 0 (Fly token received)
+P0: ~4 remaining   P1: ~26   Blockers unresolved: 0
 
-## Active Subagents
-Deploy to Fly.io (background)
+## Deployment
+Production deployed: 2026-04-18 — acreos.fly.dev/acreos.io
+All commits deployed including:
+- 70+ P0/P1 fixes
+- 150-lens audit docs
+- Defect registry
+- P0 race condition fixes (DEFECT-0005/0006/0007)
+- P0 SSRF + tool loop fixes (DEFECT-0009/0010)
 
-## Completed Phases (v4 framework)
-- Phase 0: Orientation (00-orientation.md exists)
-- Phase 1: Competitive Intelligence (8 competitors, 3 differentiators)
-- Phase 2: PARTIAL — 50/150 lenses complete, 70+ fixes committed
+## Active Work
+- P0 fix agents: DEFECT-0001 (founder auth), DEFECT-0002 (SQL injection), DEFECT-0011 (dispute webhooks)
+- DEFECT-0008 (webhook signatures): FIXED
+- DEFECT-0012 (migration safety): FIXED
 
-## Prior Work Summary (carries forward)
-- 50 Tier 1 lens audits complete
-- 70+ P0/P1 fixes committed across all categories
-- Client TS errors: 0
-- Phase 4 hardening: DB timeouts, pool drain, Stripe retries, CSRF, error boundaries
-- Phase 5-8: Autonomy wiring, background job cleanup, reliability patterns
-- Red team: 3 personas tested, 3 critical findings fixed
-- Migrations: 0023 (payment race), 0024 (FK cascades)
-
-## v4 Remaining Work
-1. 100 new lens audits (Tier 2: 51-100, Tier 3: 101-150)
-2. Defect Deduplication Registry v1
-3. 7 more red team personas
-4. 5 pre-launch simulations
-5. Machine-verifiable gate script
-6. Evidence ledger
-7. Full 150-lens convergence sweeps (3 clean required)
-8. Deploy pending commits
+## Completed Phases
+- Phase 0: Orientation
+- Phase 1: Competitive Intelligence (8 competitors)
+- Phase 2: 150-Lens Audit (150/150 complete + defect registry)
+- Phase 3: P0/P1 Fixes (70+ committed)
+- Phase 4: Hardening (DB timeouts, pool drain, retries, CSRF, error boundaries)
+- Phase 5-8: SCP wiring, reliability, ops
+- Phase 9: IN PROGRESS — fixing registry P0s
 
 ## Next Action
-Deploy to production (in progress), then begin Tier 2 lens audit wave (lenses 51-65)
+Wait for P0 fix agents to complete, commit remaining fixes, then begin convergence sweep 1
