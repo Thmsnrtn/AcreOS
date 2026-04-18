@@ -48,7 +48,7 @@ async function triggerDealEnrichmentAsync(
 ): Promise<void> {
   Promise.resolve().then(async () => {
     try {
-      await storage.updateDeal(dealId, { enrichmentStatus: "pending" });
+      await storage.updateDeal(dealId, { enrichmentStatus: "pending" }, undefined, organizationId);
       const enrichmentResult = await propertyEnrichmentService.enrichProperty(organizationId, propertyId);
       const enrichmentPayload = {
         enrichedAt: enrichmentResult.enrichedAt.toISOString(),
@@ -68,12 +68,12 @@ async function triggerDealEnrichmentAsync(
         enrichmentStatus: "completed",
         enrichedAt: new Date(),
         enrichmentData: enrichmentPayload as any,
-      });
+      }, undefined, organizationId);
       logger.info("Deal and property enrichment completed", { dealId, propertyId, organizationId, lookupTimeMs: enrichmentResult.lookupTimeMs });
     } catch (err) {
       logger.error("Deal enrichment failed", { dealId, propertyId, organizationId, error: String(err) });
       try {
-        await storage.updateDeal(dealId, { enrichmentStatus: "failed", enrichmentData: { errors: { enrichment: String(err) } } as any });
+        await storage.updateDeal(dealId, { enrichmentStatus: "failed", enrichmentData: { errors: { enrichment: String(err) } } as any }, undefined, organizationId);
       } catch (updateErr) {
         logger.error("Failed to update deal enrichment status", { dealId, error: String(updateErr) });
       }
@@ -238,7 +238,7 @@ export function registerDealRoutes(app: Express): void {
         }
       }
 
-      const deal = await storage.updateDeal(dealId, validated);
+      const deal = await storage.updateDeal(dealId, validated, undefined, org.id);
 
       const user = req.user as any;
       const userId = user?.claims?.sub || user?.id;
@@ -381,8 +381,8 @@ export function registerDealRoutes(app: Express): void {
       }
       
       // Mark as pending
-      await storage.updateDeal(dealId, { enrichmentStatus: "pending" });
-      
+      await storage.updateDeal(dealId, { enrichmentStatus: "pending" }, undefined, org.id);
+
       // Perform enrichment synchronously for manual trigger (so user can see result)
       const enrichmentResult = await propertyEnrichmentService.enrichByCoordinates(lat, lng, {
         propertyId: deal.propertyId,
@@ -420,8 +420,8 @@ export function registerDealRoutes(app: Express): void {
           scores: enrichmentResult.scores,
           errors: enrichmentResult.errors,
         } as any,
-      });
-      
+      }, undefined, org.id);
+
       logger.info("Manual deal enrichment completed", { dealId, propertyId: deal.propertyId, lookupTimeMs: enrichmentResult.lookupTimeMs });
       
       res.json({
@@ -1363,7 +1363,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
         }
       }
 
-      const deal = await storage.updateDeal(dealId, { status: stage });
+      const deal = await storage.updateDeal(dealId, { status: stage }, undefined, org.id);
       if (!deal) return Errors.notFound(res, "Deal");
       res.json(deal);
     } catch (err: any) {

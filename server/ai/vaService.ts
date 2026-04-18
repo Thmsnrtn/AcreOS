@@ -984,7 +984,7 @@ Keep it concise and actionable.`;
       throw new Error(`Lead ${leadId} not found`);
     }
     
-    await storage.updateLead(leadId, { status: newStatus });
+    await storage.updateLead(leadId, { status: newStatus }, action.organizationId);
     
     return { 
       message: `Updated lead ${lead.firstName} ${lead.lastName} status to ${newStatus}`,

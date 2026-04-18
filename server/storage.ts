@@ -290,8 +290,8 @@ export interface IStorage {
   getLead(orgId: number, id: number): Promise<Lead | undefined>;
   createLead(lead: InsertLead): Promise<Lead>;
   createLeadsBatch(leadsData: InsertLead[]): Promise<Lead[]>;
-  updateLead(id: number, updates: Partial<InsertLead>): Promise<Lead>;
-  deleteLead(id: number): Promise<void>;
+  updateLead(id: number, updates: Partial<InsertLead>, organizationId?: number): Promise<Lead>;
+  deleteLead(id: number, organizationId?: number): Promise<void>;
   getLeadCount(orgId: number): Promise<number>;
   bulkDeleteLeads(orgId: number, ids: number[], userId?: string): Promise<number>;
   bulkUpdateLeads(orgId: number, ids: number[], updates: Partial<InsertLead>): Promise<number>;
@@ -326,8 +326,8 @@ export interface IStorage {
   getProperties(orgId: number): Promise<Property[]>;
   getProperty(orgId: number, id: number): Promise<Property | undefined>;
   createProperty(property: InsertProperty): Promise<Property>;
-  updateProperty(id: number, updates: Partial<InsertProperty>): Promise<Property>;
-  deleteProperty(id: number): Promise<void>;
+  updateProperty(id: number, updates: Partial<InsertProperty>, organizationId?: number): Promise<Property>;
+  deleteProperty(id: number, organizationId?: number): Promise<void>;
   getPropertyCount(orgId: number): Promise<number>;
   bulkDeleteProperties(orgId: number, ids: number[]): Promise<number>;
   bulkUpdateProperties(orgId: number, ids: number[], updates: Partial<InsertProperty>): Promise<number>;
@@ -352,8 +352,8 @@ export interface IStorage {
   getNote(orgId: number, id: number): Promise<Note | undefined>;
   getNoteByAccessToken(accessToken: string): Promise<Note | undefined>;
   createNote(note: InsertNote): Promise<Note>;
-  updateNote(id: number, updates: Partial<InsertNote>): Promise<Note>;
-  deleteNote(id: number): Promise<void>;
+  updateNote(id: number, updates: Partial<InsertNote>, organizationId?: number): Promise<Note>;
+  deleteNote(id: number, organizationId?: number): Promise<void>;
   getNoteCount(orgId: number): Promise<number>;
   getActiveNotesValue(orgId: number): Promise<number>;
   
@@ -435,14 +435,14 @@ export interface IStorage {
   // AI Memory
   getAiMemory(orgId: number): Promise<AiMemory[]>;
   createAiMemory(memory: InsertAiMemory): Promise<AiMemory>;
-  deleteAiMemory(id: number): Promise<void>;
+  deleteAiMemory(id: number, organizationId?: number): Promise<void>;
 
   // AI Conversations (Command Center)
   getAiConversations(orgId: number): Promise<any[]>;
   getAiConversation(id: number): Promise<any | undefined>;
   createAiConversation(conv: any): Promise<any>;
-  updateAiConversation(id: number, updates: any): Promise<any>;
-  deleteAiConversation(id: number): Promise<void>;
+  updateAiConversation(id: number, updates: any, organizationId?: number): Promise<any>;
+  deleteAiConversation(id: number, organizationId?: number): Promise<void>;
   getAiMessages(conversationId: number): Promise<any[]>;
   createAiMessage(message: any): Promise<any>;
 
@@ -1252,8 +1252,10 @@ export class DatabaseStorage implements IStorage {
     return newMember;
   }
   
-  async updateTeamMember(id: number, updates: Partial<InsertTeamMember>) {
-    const [updated] = await db.update(teamMembers).set(updates).where(eq(teamMembers.id, id)).returning();
+  async updateTeamMember(id: number, updates: Partial<InsertTeamMember>, organizationId?: number) {
+    const conditions = [eq(teamMembers.id, id)];
+    if (organizationId) conditions.push(eq(teamMembers.organizationId, organizationId));
+    const [updated] = await db.update(teamMembers).set(updates).where(and(...conditions)).returning();
     return updated;
   }
   
@@ -1332,20 +1334,24 @@ export class DatabaseStorage implements IStorage {
     return newLeads;
   }
 
-  async updateLead(id: number, updates: Partial<InsertLead>) {
+  async updateLead(id: number, updates: Partial<InsertLead>, organizationId?: number) {
+    const conditions = [eq(leads.id, id)];
+    if (organizationId) conditions.push(eq(leads.organizationId, organizationId));
     const [updated] = await db.update(leads)
       .set({ ...updates, updatedAt: new Date() })
-      .where(eq(leads.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
-  
-  async deleteLead(id: number) {
+
+  async deleteLead(id: number, organizationId?: number) {
     // Task 223: Soft delete — set status='deleted' instead of hard-deleting so the
     // record is preserved for audit purposes.
+    const conditions = [eq(leads.id, id)];
+    if (organizationId) conditions.push(eq(leads.organizationId, organizationId));
     await db.update(leads)
       .set({ status: "deleted", updatedAt: new Date() })
-      .where(eq(leads.id, id));
+      .where(and(...conditions));
   }
   
   async getLeadCount(orgId: number) {
@@ -1556,7 +1562,9 @@ export class DatabaseStorage implements IStorage {
       .limit(limit);
   }
   
-  async updateLeadScore(leadId: number, score: number, scoreFactors: Lead["scoreFactors"]): Promise<Lead> {
+  async updateLeadScore(leadId: number, score: number, scoreFactors: Lead["scoreFactors"], organizationId?: number): Promise<Lead> {
+    const conditions = [eq(leads.id, leadId)];
+    if (organizationId) conditions.push(eq(leads.organizationId, organizationId));
     const [updated] = await db.update(leads)
       .set({
         score,
@@ -1564,7 +1572,7 @@ export class DatabaseStorage implements IStorage {
         lastScoreAt: new Date(),
         updatedAt: new Date(),
       })
-      .where(eq(leads.id, leadId))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
@@ -1615,24 +1623,30 @@ export class DatabaseStorage implements IStorage {
     return newProperty;
   }
   
-  async updateProperty(id: number, updates: Partial<InsertProperty>) {
+  async updateProperty(id: number, updates: Partial<InsertProperty>, organizationId?: number) {
+    const conditions = [eq(properties.id, id)];
+    if (organizationId) conditions.push(eq(properties.organizationId, organizationId));
     const [updated] = await db.update(properties)
       .set({ ...updates, updatedAt: new Date() })
-      .where(eq(properties.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
-  
-  async deleteProperty(id: number) {
+
+  async deleteProperty(id: number, organizationId?: number) {
     // Task 223: Soft delete — set status='deleted' on the property (and cascade soft-delete
     // dependent deals) so records are preserved for audit purposes.
+    const conditions = [eq(properties.id, id)];
+    if (organizationId) conditions.push(eq(properties.organizationId, organizationId));
     await db.update(properties)
       .set({ status: "deleted", updatedAt: new Date() })
-      .where(eq(properties.id, id));
+      .where(and(...conditions));
     // Soft-delete any deals tied to this property so they also disappear from list views
+    const dealConditions: any[] = [eq(deals.propertyId, id)];
+    if (organizationId) dealConditions.push(eq(deals.organizationId, organizationId));
     await db.update(deals)
       .set({ status: "deleted", updatedAt: new Date() })
-      .where(eq(deals.propertyId, id));
+      .where(and(...dealConditions));
   }
   
   async getPropertyCount(orgId: number) {
@@ -1703,13 +1717,14 @@ export class DatabaseStorage implements IStorage {
     return newDeal;
   }
   
-  async updateDeal(id: number, updates: Partial<InsertDeal>, expectedUpdatedAt?: Date) {
+  async updateDeal(id: number, updates: Partial<InsertDeal>, expectedUpdatedAt?: Date, organizationId?: number) {
     // Task 219: Optimistic locking — if the caller provides an expectedUpdatedAt timestamp,
     // only apply the update when the row still has that timestamp (prevents lost-update
     // races between concurrent requests).
-    const whereClause = expectedUpdatedAt
-      ? and(eq(deals.id, id), eq(deals.updatedAt, expectedUpdatedAt))
-      : eq(deals.id, id);
+    const conditions = [eq(deals.id, id)];
+    if (organizationId) conditions.push(eq(deals.organizationId, organizationId));
+    if (expectedUpdatedAt) conditions.push(eq(deals.updatedAt, expectedUpdatedAt));
+    const whereClause = and(...conditions);
 
     const [updated] = await db.update(deals)
       .set({ ...updates, updatedAt: new Date() })
@@ -1805,16 +1820,20 @@ export class DatabaseStorage implements IStorage {
     return newNote;
   }
   
-  async updateNote(id: number, updates: Partial<InsertNote>) {
+  async updateNote(id: number, updates: Partial<InsertNote>, organizationId?: number) {
+    const conditions = [eq(notes.id, id)];
+    if (organizationId) conditions.push(eq(notes.organizationId, organizationId));
     const [updated] = await db.update(notes)
       .set({ ...updates, updatedAt: new Date() })
-      .where(eq(notes.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
-  
-  async deleteNote(id: number) {
-    await db.delete(notes).where(eq(notes.id, id));
+
+  async deleteNote(id: number, organizationId?: number) {
+    const conditions = [eq(notes.id, id)];
+    if (organizationId) conditions.push(eq(notes.organizationId, organizationId));
+    await db.delete(notes).where(and(...conditions));
   }
   
   async getNoteCount(orgId: number) {
@@ -1880,8 +1899,10 @@ export class DatabaseStorage implements IStorage {
     });
   }
   
-  async updatePayment(id: number, updates: Partial<InsertPayment>) {
-    const [updated] = await db.update(payments).set(updates).where(eq(payments.id, id)).returning();
+  async updatePayment(id: number, updates: Partial<InsertPayment>, organizationId?: number) {
+    const conditions = [eq(payments.id, id)];
+    if (organizationId) conditions.push(eq(payments.organizationId, organizationId));
+    const [updated] = await db.update(payments).set(updates).where(and(...conditions)).returning();
     return updated;
   }
   
@@ -1903,10 +1924,12 @@ export class DatabaseStorage implements IStorage {
     return newCampaign;
   }
   
-  async updateCampaign(id: number, updates: Partial<InsertCampaign>) {
+  async updateCampaign(id: number, updates: Partial<InsertCampaign>, organizationId?: number) {
+    const conditions = [eq(campaigns.id, id)];
+    if (organizationId) conditions.push(eq(campaigns.organizationId, organizationId));
     const [updated] = await db.update(campaigns)
       .set({ ...updates, updatedAt: new Date() })
-      .where(eq(campaigns.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
@@ -1967,10 +1990,12 @@ export class DatabaseStorage implements IStorage {
     return newConfig;
   }
   
-  async updateAgentConfig(id: number, updates: Partial<InsertAgentConfig>) {
+  async updateAgentConfig(id: number, updates: Partial<InsertAgentConfig>, organizationId?: number) {
+    const conditions = [eq(agentConfigs.id, id)];
+    if (organizationId) conditions.push(eq(agentConfigs.organizationId, organizationId));
     const [updated] = await db.update(agentConfigs)
       .set({ ...updates, updatedAt: new Date() })
-      .where(eq(agentConfigs.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
@@ -1994,8 +2019,10 @@ export class DatabaseStorage implements IStorage {
     return newTask;
   }
   
-  async updateAgentTask(id: number, updates: Partial<InsertAgentTask>) {
-    const [updated] = await db.update(agentTasks).set(updates).where(eq(agentTasks.id, id)).returning();
+  async updateAgentTask(id: number, updates: Partial<InsertAgentTask>, organizationId?: number) {
+    const conditions = [eq(agentTasks.id, id)];
+    if (organizationId) conditions.push(eq(agentTasks.organizationId, organizationId));
+    const [updated] = await db.update(agentTasks).set(updates).where(and(...conditions)).returning();
     return updated;
   }
   
@@ -2132,10 +2159,12 @@ export class DatabaseStorage implements IStorage {
     return newRun;
   }
   
-  async updateAiExecutionRun(id: number, updates: Partial<AiExecutionRun>) {
+  async updateAiExecutionRun(id: number, updates: Partial<AiExecutionRun>, organizationId?: number) {
+    const conditions = [eq(aiExecutionRuns.id, id)];
+    if (organizationId) conditions.push(eq(aiExecutionRuns.organizationId, organizationId));
     const [updated] = await db.update(aiExecutionRuns)
       .set(updates)
-      .where(eq(aiExecutionRuns.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
@@ -2152,8 +2181,10 @@ export class DatabaseStorage implements IStorage {
     return newMemory;
   }
   
-  async deleteAiMemory(id: number) {
-    await db.delete(aiMemory).where(eq(aiMemory.id, id));
+  async deleteAiMemory(id: number, organizationId?: number) {
+    const conditions = [eq(aiMemory.id, id)];
+    if (organizationId) conditions.push(eq(aiMemory.organizationId, organizationId));
+    await db.delete(aiMemory).where(and(...conditions));
   }
 
   // AI Conversations (Command Center)
@@ -2173,17 +2204,27 @@ export class DatabaseStorage implements IStorage {
     return newConv;
   }
 
-  async updateAiConversation(id: number, updates: { title?: string }) {
+  async updateAiConversation(id: number, updates: { title?: string }, organizationId?: number) {
+    const conditions = [eq(aiConversations.id, id)];
+    if (organizationId) conditions.push(eq(aiConversations.organizationId, organizationId));
     const [updated] = await db.update(aiConversations)
       .set({ ...updates, updatedAt: new Date() })
-      .where(eq(aiConversations.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
 
-  async deleteAiConversation(id: number) {
+  async deleteAiConversation(id: number, organizationId?: number) {
+    // First verify conversation belongs to org before deleting messages
+    if (organizationId) {
+      const [conv] = await db.select().from(aiConversations)
+        .where(and(eq(aiConversations.id, id), eq(aiConversations.organizationId, organizationId)));
+      if (!conv) return;
+    }
     await db.delete(aiMessages).where(eq(aiMessages.conversationId, id));
-    await db.delete(aiConversations).where(eq(aiConversations.id, id));
+    const conditions = [eq(aiConversations.id, id)];
+    if (organizationId) conditions.push(eq(aiConversations.organizationId, organizationId));
+    await db.delete(aiConversations).where(and(...conditions));
   }
 
   async getAiMessages(conversationId: number) {
@@ -2218,12 +2259,16 @@ export class DatabaseStorage implements IStorage {
     return row;
   }
 
-  async updateKnowledgeFile(id: number, updates: { isActive?: boolean; description?: string }): Promise<void> {
-    await db.update(paxKnowledgeFiles).set(updates).where(eq(paxKnowledgeFiles.id, id));
+  async updateKnowledgeFile(id: number, updates: { isActive?: boolean; description?: string }, organizationId?: number): Promise<void> {
+    const conditions = [eq(paxKnowledgeFiles.id, id)];
+    if (organizationId) conditions.push(eq(paxKnowledgeFiles.organizationId, organizationId));
+    await db.update(paxKnowledgeFiles).set(updates).where(and(...conditions));
   }
 
-  async deleteKnowledgeFile(id: number): Promise<void> {
-    await db.delete(paxKnowledgeFiles).where(eq(paxKnowledgeFiles.id, id));
+  async deleteKnowledgeFile(id: number, organizationId?: number): Promise<void> {
+    const conditions = [eq(paxKnowledgeFiles.id, id)];
+    if (organizationId) conditions.push(eq(paxKnowledgeFiles.organizationId, organizationId));
+    await db.delete(paxKnowledgeFiles).where(and(...conditions));
   }
 
   async incrementKnowledgeFileUsage(orgId: number): Promise<void> {
@@ -2252,13 +2297,23 @@ export class DatabaseStorage implements IStorage {
     return row;
   }
 
-  async updatePaxProject(id: number, updates: { name?: string; description?: string; isActive?: boolean }): Promise<void> {
-    await db.update(paxProjects).set(updates).where(eq(paxProjects.id, id));
+  async updatePaxProject(id: number, updates: { name?: string; description?: string; isActive?: boolean }, organizationId?: number): Promise<void> {
+    const conditions = [eq(paxProjects.id, id)];
+    if (organizationId) conditions.push(eq(paxProjects.organizationId, organizationId));
+    await db.update(paxProjects).set(updates).where(and(...conditions));
   }
 
-  async deletePaxProject(id: number): Promise<void> {
+  async deletePaxProject(id: number, organizationId?: number): Promise<void> {
+    // Verify project belongs to org before deleting child records
+    if (organizationId) {
+      const [project] = await db.select().from(paxProjects)
+        .where(and(eq(paxProjects.id, id), eq(paxProjects.organizationId, organizationId)));
+      if (!project) return;
+    }
     await db.delete(paxProjectFiles).where(eq(paxProjectFiles.projectId, id));
-    await db.delete(paxProjects).where(eq(paxProjects.id, id));
+    const conditions = [eq(paxProjects.id, id)];
+    if (organizationId) conditions.push(eq(paxProjects.organizationId, organizationId));
+    await db.delete(paxProjects).where(and(...conditions));
   }
 
   async getPaxProjectFiles(projectId: number): Promise<PaxProjectFile[]> {
@@ -2314,12 +2369,16 @@ export class DatabaseStorage implements IStorage {
     return row;
   }
 
-  async updatePaxScheduledTask(id: number, updates: { isActive?: boolean; schedule?: string; lastRunAt?: Date; nextRunAt?: Date; lastRunConversationId?: number; lastRunStatus?: string; lastRunSummary?: string; runCount?: number; updatedAt?: Date }): Promise<void> {
-    await db.update(paxScheduledTasks).set({ ...updates, updatedAt: new Date() }).where(eq(paxScheduledTasks.id, id));
+  async updatePaxScheduledTask(id: number, updates: { isActive?: boolean; schedule?: string; lastRunAt?: Date; nextRunAt?: Date; lastRunConversationId?: number; lastRunStatus?: string; lastRunSummary?: string; runCount?: number; updatedAt?: Date }, organizationId?: number): Promise<void> {
+    const conditions = [eq(paxScheduledTasks.id, id)];
+    if (organizationId) conditions.push(eq(paxScheduledTasks.organizationId, organizationId));
+    await db.update(paxScheduledTasks).set({ ...updates, updatedAt: new Date() }).where(and(...conditions));
   }
 
-  async deletePaxScheduledTask(id: number): Promise<void> {
-    await db.delete(paxScheduledTasks).where(eq(paxScheduledTasks.id, id));
+  async deletePaxScheduledTask(id: number, organizationId?: number): Promise<void> {
+    const conditions = [eq(paxScheduledTasks.id, id)];
+    if (organizationId) conditions.push(eq(paxScheduledTasks.organizationId, organizationId));
+    await db.delete(paxScheduledTasks).where(and(...conditions));
   }
 
   async getPaxPendingTaskResults(orgId: number, since: Date): Promise<PaxScheduledTask[]> {
@@ -2454,10 +2513,12 @@ export class DatabaseStorage implements IStorage {
     return newAgent;
   }
 
-  async updateVaAgent(id: number, updates: Partial<InsertVaAgent>) {
+  async updateVaAgent(id: number, updates: Partial<InsertVaAgent>, organizationId?: number) {
+    const conditions = [eq(vaAgents.id, id)];
+    if (organizationId) conditions.push(eq(vaAgents.organizationId, organizationId));
     const [updated] = await db.update(vaAgents)
       .set({ ...updates, updatedAt: new Date() })
-      .where(eq(vaAgents.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
@@ -2591,23 +2652,27 @@ export class DatabaseStorage implements IStorage {
     return newAction;
   }
 
-  async updateVaAction(id: number, updates: Partial<VaAction>) {
+  async updateVaAction(id: number, updates: Partial<VaAction>, organizationId?: number) {
     // Remove immutable fields from updates to prevent accidental modification
-    const { 
-      id: _id, 
-      createdAt: _createdAt, 
+    const {
+      id: _id,
+      createdAt: _createdAt,
       organizationId: _orgId,
       agentId: _agentId,
-      ...safeUpdates 
+      ...safeUpdates
     } = updates as any;
+    const conditions = [eq(vaActions.id, id)];
+    if (organizationId) conditions.push(eq(vaActions.organizationId, organizationId));
     const [updated] = await db.update(vaActions)
       .set({ ...safeUpdates, updatedAt: new Date() })
-      .where(eq(vaActions.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
 
-  async approveVaAction(id: number, userId: string) {
+  async approveVaAction(id: number, userId: string, organizationId?: number) {
+    const conditions = [eq(vaActions.id, id)];
+    if (organizationId) conditions.push(eq(vaActions.organizationId, organizationId));
     const [updated] = await db.update(vaActions)
       .set({
         status: "approved",
@@ -2615,19 +2680,21 @@ export class DatabaseStorage implements IStorage {
         approvedAt: new Date(),
         updatedAt: new Date(),
       })
-      .where(eq(vaActions.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
 
-  async rejectVaAction(id: number, reason: string) {
+  async rejectVaAction(id: number, reason: string, organizationId?: number) {
+    const conditions = [eq(vaActions.id, id)];
+    if (organizationId) conditions.push(eq(vaActions.organizationId, organizationId));
     const [updated] = await db.update(vaActions)
       .set({
         status: "rejected",
         rejectionReason: reason,
         updatedAt: new Date(),
       })
-      .where(eq(vaActions.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
@@ -2662,10 +2729,12 @@ export class DatabaseStorage implements IStorage {
     return newBriefing;
   }
 
-  async markBriefingRead(id: number) {
+  async markBriefingRead(id: number, organizationId?: number) {
+    const conditions = [eq(vaBriefings.id, id)];
+    if (organizationId) conditions.push(eq(vaBriefings.organizationId, organizationId));
     const [updated] = await db.update(vaBriefings)
       .set({ readAt: new Date() })
-      .where(eq(vaBriefings.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
@@ -2691,16 +2760,20 @@ export class DatabaseStorage implements IStorage {
     return newEvent;
   }
 
-  async updateVaCalendarEvent(id: number, updates: Partial<InsertVaCalendarEvent>) {
+  async updateVaCalendarEvent(id: number, updates: Partial<InsertVaCalendarEvent>, organizationId?: number) {
+    const conditions = [eq(vaCalendarEvents.id, id)];
+    if (organizationId) conditions.push(eq(vaCalendarEvents.organizationId, organizationId));
     const [updated] = await db.update(vaCalendarEvents)
       .set({ ...updates, updatedAt: new Date() })
-      .where(eq(vaCalendarEvents.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
 
-  async deleteVaCalendarEvent(id: number) {
-    await db.delete(vaCalendarEvents).where(eq(vaCalendarEvents.id, id));
+  async deleteVaCalendarEvent(id: number, organizationId?: number) {
+    const conditions = [eq(vaCalendarEvents.id, id)];
+    if (organizationId) conditions.push(eq(vaCalendarEvents.organizationId, organizationId));
+    await db.delete(vaCalendarEvents).where(and(...conditions));
   }
 
   // VA Templates
@@ -2720,16 +2793,20 @@ export class DatabaseStorage implements IStorage {
     return newTemplate;
   }
 
-  async updateVaTemplate(id: number, updates: Partial<InsertVaTemplate>) {
+  async updateVaTemplate(id: number, updates: Partial<InsertVaTemplate>, organizationId?: number) {
+    const conditions = [eq(vaTemplates.id, id)];
+    if (organizationId) conditions.push(eq(vaTemplates.organizationId, organizationId));
     const [updated] = await db.update(vaTemplates)
       .set({ ...updates, updatedAt: new Date() })
-      .where(eq(vaTemplates.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
 
-  async deleteVaTemplate(id: number) {
-    await db.delete(vaTemplates).where(eq(vaTemplates.id, id));
+  async deleteVaTemplate(id: number, organizationId?: number) {
+    const conditions = [eq(vaTemplates.id, id)];
+    if (organizationId) conditions.push(eq(vaTemplates.organizationId, organizationId));
+    await db.delete(vaTemplates).where(and(...conditions));
   }
 
   // Due Diligence Templates
@@ -2750,16 +2827,20 @@ export class DatabaseStorage implements IStorage {
     return newTemplate;
   }
 
-  async updateDueDiligenceTemplate(id: number, updates: Partial<InsertDueDiligenceTemplate>) {
+  async updateDueDiligenceTemplate(id: number, updates: Partial<InsertDueDiligenceTemplate>, organizationId?: number) {
+    const conditions = [eq(dueDiligenceTemplates.id, id)];
+    if (organizationId) conditions.push(eq(dueDiligenceTemplates.organizationId, organizationId));
     const [updated] = await db.update(dueDiligenceTemplates)
       .set(updates)
-      .where(eq(dueDiligenceTemplates.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
 
-  async deleteDueDiligenceTemplate(id: number) {
-    await db.delete(dueDiligenceTemplates).where(eq(dueDiligenceTemplates.id, id));
+  async deleteDueDiligenceTemplate(id: number, organizationId?: number) {
+    const conditions = [eq(dueDiligenceTemplates.id, id)];
+    if (organizationId) conditions.push(eq(dueDiligenceTemplates.organizationId, organizationId));
+    await db.delete(dueDiligenceTemplates).where(and(...conditions));
   }
 
   async initializeDefaultTemplates(orgId: number) {
@@ -2854,16 +2935,20 @@ export class DatabaseStorage implements IStorage {
     return newTemplate;
   }
 
-  async updateChecklistTemplate(id: number, updates: Partial<InsertChecklistTemplate>) {
+  async updateChecklistTemplate(id: number, updates: Partial<InsertChecklistTemplate>, organizationId?: number) {
+    const conditions = [eq(checklistTemplates.id, id)];
+    if (organizationId) conditions.push(eq(checklistTemplates.organizationId, organizationId));
     const [updated] = await db.update(checklistTemplates)
       .set({ ...updates, updatedAt: new Date() })
-      .where(eq(checklistTemplates.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
 
-  async deleteChecklistTemplate(id: number) {
-    await db.delete(checklistTemplates).where(eq(checklistTemplates.id, id));
+  async deleteChecklistTemplate(id: number, organizationId?: number) {
+    const conditions = [eq(checklistTemplates.id, id)];
+    if (organizationId) conditions.push(eq(checklistTemplates.organizationId, organizationId));
+    await db.delete(checklistTemplates).where(and(...conditions));
   }
 
   async initializeDefaultChecklistTemplates(orgId: number) {
@@ -3048,10 +3133,12 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(supportCases.createdAt));
   }
 
-  async updateSupportCase(id: number, data: Partial<InsertSupportCase>) {
+  async updateSupportCase(id: number, data: Partial<InsertSupportCase>, organizationId?: number) {
+    const conditions = [eq(supportCases.id, id)];
+    if (organizationId) conditions.push(eq(supportCases.organizationId, organizationId));
     const [updated] = await db.update(supportCases)
       .set({ ...data, updatedAt: new Date() })
-      .where(eq(supportCases.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
@@ -3160,10 +3247,12 @@ export class DatabaseStorage implements IStorage {
     return event;
   }
 
-  async updateDunningEvent(id: number, updates: Partial<InsertDunningEvent>) {
+  async updateDunningEvent(id: number, updates: Partial<InsertDunningEvent>, organizationId?: number) {
+    const conditions = [eq(dunningEvents.id, id)];
+    if (organizationId) conditions.push(eq(dunningEvents.organizationId, organizationId));
     const [updated] = await db.update(dunningEvents)
       .set({ ...updates, updatedAt: new Date() })
-      .where(eq(dunningEvents.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
@@ -3410,18 +3499,22 @@ export class DatabaseStorage implements IStorage {
     return newReminder;
   }
 
-  async updatePaymentReminder(id: number, updates: Partial<InsertPaymentReminder>) {
+  async updatePaymentReminder(id: number, updates: Partial<InsertPaymentReminder>, organizationId?: number) {
+    const conditions = [eq(paymentReminders.id, id)];
+    if (organizationId) conditions.push(eq(paymentReminders.organizationId, organizationId));
     const [updated] = await db.update(paymentReminders)
       .set(updates)
-      .where(eq(paymentReminders.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
 
-  async markReminderSent(id: number) {
+  async markReminderSent(id: number, organizationId?: number) {
+    const conditions = [eq(paymentReminders.id, id)];
+    if (organizationId) conditions.push(eq(paymentReminders.organizationId, organizationId));
     const [updated] = await db.update(paymentReminders)
       .set({ status: "sent", sentAt: new Date() })
-      .where(eq(paymentReminders.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
@@ -3601,16 +3694,20 @@ export class DatabaseStorage implements IStorage {
     return domain;
   }
 
-  async updateVerifiedEmailDomain(id: number, data: Partial<InsertVerifiedEmailDomain>): Promise<VerifiedEmailDomain> {
+  async updateVerifiedEmailDomain(id: number, data: Partial<InsertVerifiedEmailDomain>, organizationId?: number): Promise<VerifiedEmailDomain> {
+    const conditions = [eq(verifiedEmailDomains.id, id)];
+    if (organizationId) conditions.push(eq(verifiedEmailDomains.organizationId, organizationId));
     const [domain] = await db.update(verifiedEmailDomains)
       .set({ ...data, updatedAt: new Date() })
-      .where(eq(verifiedEmailDomains.id, id))
+      .where(and(...conditions))
       .returning();
     return domain;
   }
 
-  async deleteVerifiedEmailDomain(id: number): Promise<void> {
-    await db.delete(verifiedEmailDomains).where(eq(verifiedEmailDomains.id, id));
+  async deleteVerifiedEmailDomain(id: number, organizationId?: number): Promise<void> {
+    const conditions = [eq(verifiedEmailDomains.id, id)];
+    if (organizationId) conditions.push(eq(verifiedEmailDomains.organizationId, organizationId));
+    await db.delete(verifiedEmailDomains).where(and(...conditions));
   }
 
   // Provisioned Phone Numbers CRUD
@@ -3631,16 +3728,20 @@ export class DatabaseStorage implements IStorage {
     return phone;
   }
 
-  async updateProvisionedPhoneNumber(id: number, data: Partial<InsertProvisionedPhoneNumber>): Promise<ProvisionedPhoneNumber> {
+  async updateProvisionedPhoneNumber(id: number, data: Partial<InsertProvisionedPhoneNumber>, organizationId?: number): Promise<ProvisionedPhoneNumber> {
+    const conditions = [eq(provisionedPhoneNumbers.id, id)];
+    if (organizationId) conditions.push(eq(provisionedPhoneNumbers.organizationId, organizationId));
     const [phone] = await db.update(provisionedPhoneNumbers)
       .set({ ...data, updatedAt: new Date() })
-      .where(eq(provisionedPhoneNumbers.id, id))
+      .where(and(...conditions))
       .returning();
     return phone;
   }
 
-  async deleteProvisionedPhoneNumber(id: number): Promise<void> {
-    await db.delete(provisionedPhoneNumbers).where(eq(provisionedPhoneNumbers.id, id));
+  async deleteProvisionedPhoneNumber(id: number, organizationId?: number): Promise<void> {
+    const conditions = [eq(provisionedPhoneNumbers.id, id)];
+    if (organizationId) conditions.push(eq(provisionedPhoneNumbers.organizationId, organizationId));
+    await db.delete(provisionedPhoneNumbers).where(and(...conditions));
   }
 
   // Campaign Responses CRUD
@@ -3665,16 +3766,20 @@ export class DatabaseStorage implements IStorage {
     return response;
   }
 
-  async updateCampaignResponse(id: number, data: Partial<InsertCampaignResponse>): Promise<CampaignResponse> {
+  async updateCampaignResponse(id: number, data: Partial<InsertCampaignResponse>, organizationId?: number): Promise<CampaignResponse> {
+    const conditions = [eq(campaignResponses.id, id)];
+    if (organizationId) conditions.push(eq(campaignResponses.organizationId, organizationId));
     const [response] = await db.update(campaignResponses)
       .set({ ...data, updatedAt: new Date() })
-      .where(eq(campaignResponses.id, id))
+      .where(and(...conditions))
       .returning();
     return response;
   }
 
-  async deleteCampaignResponse(id: number): Promise<void> {
-    await db.delete(campaignResponses).where(eq(campaignResponses.id, id));
+  async deleteCampaignResponse(id: number, organizationId?: number): Promise<void> {
+    const conditions = [eq(campaignResponses.id, id)];
+    if (organizationId) conditions.push(eq(campaignResponses.organizationId, organizationId));
+    await db.delete(campaignResponses).where(and(...conditions));
   }
 
   async getCampaignByTrackingCode(trackingCode: string): Promise<Campaign | undefined> {
@@ -3781,18 +3886,28 @@ export class DatabaseStorage implements IStorage {
     return newSequence;
   }
 
-  async updateSequence(id: number, updates: Partial<InsertCampaignSequence>): Promise<CampaignSequence> {
+  async updateSequence(id: number, updates: Partial<InsertCampaignSequence>, organizationId?: number): Promise<CampaignSequence> {
+    const conditions = [eq(campaignSequences.id, id)];
+    if (organizationId) conditions.push(eq(campaignSequences.organizationId, organizationId));
     const [updated] = await db.update(campaignSequences)
       .set({ ...updates, updatedAt: new Date() })
-      .where(eq(campaignSequences.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
 
-  async deleteSequence(id: number): Promise<void> {
+  async deleteSequence(id: number, organizationId?: number): Promise<void> {
+    // Verify sequence belongs to org before deleting child records
+    if (organizationId) {
+      const [seq] = await db.select().from(campaignSequences)
+        .where(and(eq(campaignSequences.id, id), eq(campaignSequences.organizationId, organizationId)));
+      if (!seq) return;
+    }
     await db.delete(sequenceEnrollments).where(eq(sequenceEnrollments.sequenceId, id));
     await db.delete(sequenceSteps).where(eq(sequenceSteps.sequenceId, id));
-    await db.delete(campaignSequences).where(eq(campaignSequences.id, id));
+    const conditions = [eq(campaignSequences.id, id)];
+    if (organizationId) conditions.push(eq(campaignSequences.organizationId, organizationId));
+    await db.delete(campaignSequences).where(and(...conditions));
   }
 
   // Sequence Steps
@@ -3884,6 +3999,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateSequenceEnrollment(id: number, updates: Partial<InsertSequenceEnrollment>): Promise<SequenceEnrollment> {
+    // Note: sequenceEnrollments table doesn't have organizationId column;
+    // tenant isolation is enforced via the parent sequence's organizationId.
     const [updated] = await db.update(sequenceEnrollments)
       .set({ ...updates, updatedAt: new Date() })
       .where(eq(sequenceEnrollments.id, id))
@@ -3949,17 +4066,27 @@ export class DatabaseStorage implements IStorage {
     return newTest;
   }
 
-  async updateAbTest(id: number, updates: Partial<InsertAbTest>): Promise<AbTest> {
+  async updateAbTest(id: number, updates: Partial<InsertAbTest>, organizationId?: number): Promise<AbTest> {
+    const conditions = [eq(abTests.id, id)];
+    if (organizationId) conditions.push(eq(abTests.organizationId, organizationId));
     const [updated] = await db.update(abTests)
       .set({ ...updates, updatedAt: new Date() })
-      .where(eq(abTests.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
 
-  async deleteAbTest(id: number): Promise<void> {
+  async deleteAbTest(id: number, organizationId?: number): Promise<void> {
+    // Verify test belongs to org before deleting child records
+    if (organizationId) {
+      const [test] = await db.select().from(abTests)
+        .where(and(eq(abTests.id, id), eq(abTests.organizationId, organizationId)));
+      if (!test) return;
+    }
     await db.delete(abTestVariants).where(eq(abTestVariants.testId, id));
-    await db.delete(abTests).where(eq(abTests.id, id));
+    const conditions = [eq(abTests.id, id)];
+    if (organizationId) conditions.push(eq(abTests.organizationId, organizationId));
+    await db.delete(abTests).where(and(...conditions));
   }
 
   // A/B Test Variants
@@ -4019,17 +4146,27 @@ export class DatabaseStorage implements IStorage {
     return newDefinition;
   }
 
-  async updateCustomFieldDefinition(id: number, updates: Partial<InsertCustomFieldDefinition>): Promise<CustomFieldDefinition> {
+  async updateCustomFieldDefinition(id: number, updates: Partial<InsertCustomFieldDefinition>, organizationId?: number): Promise<CustomFieldDefinition> {
+    const conditions = [eq(customFieldDefinitions.id, id)];
+    if (organizationId) conditions.push(eq(customFieldDefinitions.organizationId, organizationId));
     const [updated] = await db.update(customFieldDefinitions)
       .set({ ...updates, updatedAt: new Date() })
-      .where(eq(customFieldDefinitions.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
 
-  async deleteCustomFieldDefinition(id: number): Promise<void> {
+  async deleteCustomFieldDefinition(id: number, organizationId?: number): Promise<void> {
+    // Verify definition belongs to org before deleting child records
+    if (organizationId) {
+      const [def] = await db.select().from(customFieldDefinitions)
+        .where(and(eq(customFieldDefinitions.id, id), eq(customFieldDefinitions.organizationId, organizationId)));
+      if (!def) return;
+    }
     await db.delete(customFieldValues).where(eq(customFieldValues.definitionId, id));
-    await db.delete(customFieldDefinitions).where(eq(customFieldDefinitions.id, id));
+    const conditions = [eq(customFieldDefinitions.id, id)];
+    if (organizationId) conditions.push(eq(customFieldDefinitions.organizationId, organizationId));
+    await db.delete(customFieldDefinitions).where(and(...conditions));
   }
 
   // Custom Field Values
@@ -4108,16 +4245,20 @@ export class DatabaseStorage implements IStorage {
     return newView;
   }
 
-  async updateSavedView(id: number, updates: Partial<InsertSavedView>): Promise<SavedView> {
+  async updateSavedView(id: number, updates: Partial<InsertSavedView>, organizationId?: number): Promise<SavedView> {
+    const conditions = [eq(savedViews.id, id)];
+    if (organizationId) conditions.push(eq(savedViews.organizationId, organizationId));
     const [updated] = await db.update(savedViews)
       .set({ ...updates, updatedAt: new Date() })
-      .where(eq(savedViews.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
 
-  async deleteSavedView(id: number): Promise<void> {
-    await db.delete(savedViews).where(eq(savedViews.id, id));
+  async deleteSavedView(id: number, organizationId?: number): Promise<void> {
+    const conditions = [eq(savedViews.id, id)];
+    if (organizationId) conditions.push(eq(savedViews.organizationId, organizationId));
+    await db.delete(savedViews).where(and(...conditions));
   }
 
   async setDefaultView(orgId: number, entityType: string, viewId: number): Promise<SavedView> {
@@ -4161,16 +4302,20 @@ export class DatabaseStorage implements IStorage {
     return newPreset;
   }
 
-  async updateWorkspacePreset(id: number, updates: Partial<InsertWorkspacePreset>): Promise<WorkspacePreset> {
+  async updateWorkspacePreset(id: number, updates: Partial<InsertWorkspacePreset>, organizationId?: number): Promise<WorkspacePreset> {
+    const conditions = [eq(workspacePresets.id, id)];
+    if (organizationId) conditions.push(eq(workspacePresets.organizationId, organizationId));
     const [updated] = await db.update(workspacePresets)
       .set({ ...updates, updatedAt: new Date() })
-      .where(eq(workspacePresets.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
 
-  async deleteWorkspacePreset(id: number): Promise<void> {
-    await db.delete(workspacePresets).where(eq(workspacePresets.id, id));
+  async deleteWorkspacePreset(id: number, organizationId?: number): Promise<void> {
+    const conditions = [eq(workspacePresets.id, id)];
+    if (organizationId) conditions.push(eq(workspacePresets.organizationId, organizationId));
+    await db.delete(workspacePresets).where(and(...conditions));
   }
 
   // Notification Preferences
@@ -4203,10 +4348,12 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
-  async updateNotificationPreference(id: number, updates: Partial<InsertNotificationPreference>): Promise<NotificationPreference> {
+  async updateNotificationPreference(id: number, updates: Partial<InsertNotificationPreference>, organizationId?: number): Promise<NotificationPreference> {
+    const conditions = [eq(notificationPreferences.id, id)];
+    if (organizationId) conditions.push(eq(notificationPreferences.organizationId, organizationId));
     const [updated] = await db.update(notificationPreferences)
       .set({ ...updates, updatedAt: new Date() })
-      .where(eq(notificationPreferences.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
@@ -4254,26 +4401,32 @@ export class DatabaseStorage implements IStorage {
     return newTask;
   }
 
-  async updateTask(id: number, updates: Partial<InsertTask>): Promise<Task> {
+  async updateTask(id: number, updates: Partial<InsertTask>, organizationId?: number): Promise<Task> {
+    const conditions = [eq(tasks.id, id)];
+    if (organizationId) conditions.push(eq(tasks.organizationId, organizationId));
     const [updated] = await db.update(tasks)
       .set({ ...updates, updatedAt: new Date() })
-      .where(eq(tasks.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
 
-  async deleteTask(id: number): Promise<void> {
-    await db.delete(tasks).where(eq(tasks.id, id));
+  async deleteTask(id: number, organizationId?: number): Promise<void> {
+    const conditions = [eq(tasks.id, id)];
+    if (organizationId) conditions.push(eq(tasks.organizationId, organizationId));
+    await db.delete(tasks).where(and(...conditions));
   }
 
-  async completeTask(id: number): Promise<Task> {
+  async completeTask(id: number, organizationId?: number): Promise<Task> {
+    const conditions = [eq(tasks.id, id)];
+    if (organizationId) conditions.push(eq(tasks.organizationId, organizationId));
     const [completed] = await db.update(tasks)
-      .set({ 
-        status: "completed", 
+      .set({
+        status: "completed",
         completedAt: new Date(),
-        updatedAt: new Date() 
+        updatedAt: new Date()
       })
-      .where(eq(tasks.id, id))
+      .where(and(...conditions))
       .returning();
     
     await this.logActivity({
@@ -4492,16 +4645,16 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(leads.optOutDate));
   }
 
-  async updateLeadConsent(leadId: number, consent: { 
-    tcpaConsent: boolean; 
+  async updateLeadConsent(leadId: number, consent: {
+    tcpaConsent: boolean;
     consentSource?: string;
     optOutReason?: string;
-  }): Promise<Lead> {
+  }, organizationId?: number): Promise<Lead> {
     const updates: Partial<Lead> = {
       tcpaConsent: consent.tcpaConsent,
       updatedAt: new Date(),
     };
-    
+
     if (consent.tcpaConsent) {
       updates.consentDate = new Date();
       updates.consentSource = consent.consentSource || "manual";
@@ -4513,10 +4666,12 @@ export class DatabaseStorage implements IStorage {
       updates.optOutReason = consent.optOutReason;
       updates.doNotContact = true;
     }
-    
+
+    const conditions = [eq(leads.id, leadId)];
+    if (organizationId) conditions.push(eq(leads.organizationId, organizationId));
     const [updated] = await db.update(leads)
       .set(updates)
-      .where(eq(leads.id, leadId))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
@@ -4703,13 +4858,17 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
-  async updateTargetCounty(id: number, updates: Partial<InsertTargetCounty>) {
-    const [updated] = await db.update(targetCounties).set({ ...updates, updatedAt: new Date() }).where(eq(targetCounties.id, id)).returning();
+  async updateTargetCounty(id: number, updates: Partial<InsertTargetCounty>, organizationId?: number) {
+    const conditions = [eq(targetCounties.id, id)];
+    if (organizationId) conditions.push(eq(targetCounties.organizationId, organizationId));
+    const [updated] = await db.update(targetCounties).set({ ...updates, updatedAt: new Date() }).where(and(...conditions)).returning();
     return updated;
   }
 
-  async deleteTargetCounty(id: number) {
-    await db.delete(targetCounties).where(eq(targetCounties.id, id));
+  async deleteTargetCounty(id: number, organizationId?: number) {
+    const conditions = [eq(targetCounties.id, id)];
+    if (organizationId) conditions.push(eq(targetCounties.organizationId, organizationId));
+    await db.delete(targetCounties).where(and(...conditions));
   }
 
   // Offer Letters
@@ -4743,16 +4902,20 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
-  async updateOfferLetter(id: number, updates: Partial<InsertOfferLetter>) {
+  async updateOfferLetter(id: number, updates: Partial<InsertOfferLetter>, organizationId?: number) {
+    const conditions = [eq(offerLetters.id, id)];
+    if (organizationId) conditions.push(eq(offerLetters.organizationId, organizationId));
     const [updated] = await db.update(offerLetters)
       .set({ ...updates, updatedAt: new Date() })
-      .where(eq(offerLetters.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
 
-  async deleteOfferLetter(id: number) {
-    await db.delete(offerLetters).where(eq(offerLetters.id, id));
+  async deleteOfferLetter(id: number, organizationId?: number) {
+    const conditions = [eq(offerLetters.id, id)];
+    if (organizationId) conditions.push(eq(offerLetters.organizationId, organizationId));
+    await db.delete(offerLetters).where(and(...conditions));
   }
 
   // Offer Templates
@@ -4773,16 +4936,20 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
-  async updateOfferTemplate(id: number, updates: Partial<InsertOfferTemplate>) {
+  async updateOfferTemplate(id: number, updates: Partial<InsertOfferTemplate>, organizationId?: number) {
+    const conditions = [eq(offerTemplates.id, id)];
+    if (organizationId) conditions.push(eq(offerTemplates.organizationId, organizationId));
     const [updated] = await db.update(offerTemplates)
       .set({ ...updates, updatedAt: new Date() })
-      .where(eq(offerTemplates.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
 
-  async deleteOfferTemplate(id: number) {
-    await db.delete(offerTemplates).where(eq(offerTemplates.id, id));
+  async deleteOfferTemplate(id: number, organizationId?: number) {
+    const conditions = [eq(offerTemplates.id, id)];
+    if (organizationId) conditions.push(eq(offerTemplates.organizationId, organizationId));
+    await db.delete(offerTemplates).where(and(...conditions));
   }
 
   // Due Diligence Checklists (Enhanced)
@@ -4826,7 +4993,7 @@ export class DatabaseStorage implements IStorage {
     return checklist;
   }
 
-  async updateDueDiligenceChecklist(id: number, updates: Partial<InsertDueDiligenceChecklist>) {
+  async updateDueDiligenceChecklist(id: number, updates: Partial<InsertDueDiligenceChecklist>, organizationId?: number) {
     if (updates.items) {
       const items = updates.items as any[];
       const completedCount = items.filter(i => i.status === "passed" || i.status === "failed" || i.status === "skipped").length;
@@ -4836,9 +5003,11 @@ export class DatabaseStorage implements IStorage {
         updates.completedAt = new Date();
       }
     }
+    const conditions = [eq(dueDiligenceChecklists.id, id)];
+    if (organizationId) conditions.push(eq(dueDiligenceChecklists.organizationId, organizationId));
     const [updated] = await db.update(dueDiligenceChecklists)
       .set({ ...updates, updatedAt: new Date() })
-      .where(eq(dueDiligenceChecklists.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
@@ -4868,10 +5037,12 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
-  async updateSkipTrace(id: number, updates: Partial<InsertSkipTrace>) {
+  async updateSkipTrace(id: number, updates: Partial<InsertSkipTrace>, organizationId?: number) {
+    const conditions = [eq(skipTraces.id, id)];
+    if (organizationId) conditions.push(eq(skipTraces.organizationId, organizationId));
     const [updated] = await db.update(skipTraces)
       .set(updates)
-      .where(eq(skipTraces.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
@@ -4905,16 +5076,20 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
-  async updatePropertyListing(id: number, updates: Partial<InsertPropertyListing>) {
+  async updatePropertyListing(id: number, updates: Partial<InsertPropertyListing>, organizationId?: number) {
+    const conditions = [eq(propertyListings.id, id)];
+    if (organizationId) conditions.push(eq(propertyListings.organizationId, organizationId));
     const [updated] = await db.update(propertyListings)
       .set({ ...updates, updatedAt: new Date() })
-      .where(eq(propertyListings.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
 
-  async deletePropertyListing(id: number) {
-    await db.delete(propertyListings).where(eq(propertyListings.id, id));
+  async deletePropertyListing(id: number, organizationId?: number) {
+    const conditions = [eq(propertyListings.id, id)];
+    if (organizationId) conditions.push(eq(propertyListings.organizationId, organizationId));
+    await db.delete(propertyListings).where(and(...conditions));
   }
 
   // Document Templates
@@ -4941,25 +5116,29 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
-  async updateDocumentTemplate(id: number, updates: Partial<InsertDocumentTemplate>) {
+  async updateDocumentTemplate(id: number, updates: Partial<InsertDocumentTemplate>, organizationId?: number) {
     const existing = await this.getDocumentTemplate(id);
     const currentVersion = existing?.version || 1;
-    
+
+    const conditions = [eq(documentTemplates.id, id)];
+    if (organizationId) conditions.push(eq(documentTemplates.organizationId, organizationId));
     const [updated] = await db.update(documentTemplates)
-      .set({ 
-        ...updates, 
+      .set({
+        ...updates,
         version: currentVersion + 1,
-        updatedAt: new Date() 
+        updatedAt: new Date()
       })
-      .where(eq(documentTemplates.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
 
-  async deleteDocumentTemplate(id: number): Promise<void> {
+  async deleteDocumentTemplate(id: number, organizationId?: number): Promise<void> {
+    const conditions = [eq(documentTemplates.id, id)];
+    if (organizationId) conditions.push(eq(documentTemplates.organizationId, organizationId));
     await db.update(documentTemplates)
       .set({ isActive: false, updatedAt: new Date() })
-      .where(eq(documentTemplates.id, id));
+      .where(and(...conditions));
   }
 
   async seedSystemTemplates() {
@@ -5404,10 +5583,12 @@ Notary Public</p>
     return created;
   }
 
-  async updateGeneratedDocument(id: number, updates: Partial<InsertGeneratedDocument>) {
+  async updateGeneratedDocument(id: number, updates: Partial<InsertGeneratedDocument>, organizationId?: number) {
+    const conditions = [eq(generatedDocuments.id, id)];
+    if (organizationId) conditions.push(eq(generatedDocuments.organizationId, organizationId));
     const [updated] = await db.update(generatedDocuments)
       .set({ ...updates, updatedAt: new Date() })
-      .where(eq(generatedDocuments.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
@@ -5555,10 +5736,12 @@ Notary Public</p>
     return created;
   }
 
-  async updateDocumentPackage(id: number, updates: Partial<InsertDocumentPackage>) {
+  async updateDocumentPackage(id: number, updates: Partial<InsertDocumentPackage>, organizationId?: number) {
+    const conditions = [eq(documentPackages.id, id)];
+    if (organizationId) conditions.push(eq(documentPackages.organizationId, organizationId));
     const [updated] = await db.update(documentPackages)
       .set({ ...updates, updatedAt: new Date() })
-      .where(eq(documentPackages.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
@@ -5944,22 +6127,28 @@ Notary Public</p>
     return newRule;
   }
   
-  async updateAutomationRule(id: number, updates: Partial<InsertAutomationRule>): Promise<AutomationRule> {
+  async updateAutomationRule(id: number, updates: Partial<InsertAutomationRule>, organizationId?: number): Promise<AutomationRule> {
+    const conditions = [eq(automationRules.id, id)];
+    if (organizationId) conditions.push(eq(automationRules.organizationId, organizationId));
     const [updated] = await db.update(automationRules)
       .set({ ...updates, updatedAt: new Date() })
-      .where(eq(automationRules.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
-  
-  async deleteAutomationRule(id: number): Promise<void> {
-    await db.delete(automationRules).where(eq(automationRules.id, id));
+
+  async deleteAutomationRule(id: number, organizationId?: number): Promise<void> {
+    const conditions = [eq(automationRules.id, id)];
+    if (organizationId) conditions.push(eq(automationRules.organizationId, organizationId));
+    await db.delete(automationRules).where(and(...conditions));
   }
-  
-  async toggleAutomationRule(id: number, enabled: boolean): Promise<AutomationRule> {
+
+  async toggleAutomationRule(id: number, enabled: boolean, organizationId?: number): Promise<AutomationRule> {
+    const conditions = [eq(automationRules.id, id)];
+    if (organizationId) conditions.push(eq(automationRules.organizationId, organizationId));
     const [updated] = await db.update(automationRules)
       .set({ isEnabled: enabled, updatedAt: new Date() })
-      .where(eq(automationRules.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
@@ -6203,10 +6392,12 @@ Notary Public</p>
     return identity;
   }
 
-  async updateEmailSenderIdentity(id: number, updates: Partial<InsertEmailSenderIdentity>): Promise<EmailSenderIdentity> {
+  async updateEmailSenderIdentity(id: number, updates: Partial<InsertEmailSenderIdentity>, organizationId?: number): Promise<EmailSenderIdentity> {
+    const conditions = [eq(emailSenderIdentities.id, id)];
+    if (organizationId) conditions.push(eq(emailSenderIdentities.organizationId, organizationId));
     const [updated] = await db.update(emailSenderIdentities)
       .set({ ...updates, updatedAt: new Date() })
-      .where(eq(emailSenderIdentities.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
@@ -6221,8 +6412,10 @@ Notary Public</p>
       .where(eq(emailSenderIdentities.id, identityId));
   }
 
-  async deleteEmailSenderIdentity(id: number): Promise<void> {
-    await db.delete(emailSenderIdentities).where(eq(emailSenderIdentities.id, id));
+  async deleteEmailSenderIdentity(id: number, organizationId?: number): Promise<void> {
+    const conditions = [eq(emailSenderIdentities.id, id)];
+    if (organizationId) conditions.push(eq(emailSenderIdentities.organizationId, organizationId));
+    await db.delete(emailSenderIdentities).where(and(...conditions));
   }
 
   // ============================================
@@ -6286,42 +6479,52 @@ Notary Public</p>
     return result[0]?.count || 0;
   }
 
-  async markInboxMessageRead(id: number, userId: string): Promise<InboxMessage> {
+  async markInboxMessageRead(id: number, userId: string, organizationId?: number): Promise<InboxMessage> {
+    const conditions = [eq(inboxMessages.id, id)];
+    if (organizationId) conditions.push(eq(inboxMessages.organizationId, organizationId));
     const [updated] = await db.update(inboxMessages)
       .set({ isRead: true, readAt: new Date(), readBy: userId })
-      .where(eq(inboxMessages.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
 
-  async markInboxMessageUnread(id: number): Promise<InboxMessage> {
+  async markInboxMessageUnread(id: number, organizationId?: number): Promise<InboxMessage> {
+    const conditions = [eq(inboxMessages.id, id)];
+    if (organizationId) conditions.push(eq(inboxMessages.organizationId, organizationId));
     const [updated] = await db.update(inboxMessages)
       .set({ isRead: false, readAt: null, readBy: null })
-      .where(eq(inboxMessages.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
 
-  async archiveInboxMessage(id: number): Promise<InboxMessage> {
+  async archiveInboxMessage(id: number, organizationId?: number): Promise<InboxMessage> {
+    const conditions = [eq(inboxMessages.id, id)];
+    if (organizationId) conditions.push(eq(inboxMessages.organizationId, organizationId));
     const [updated] = await db.update(inboxMessages)
       .set({ isArchived: true })
-      .where(eq(inboxMessages.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
 
-  async starInboxMessage(id: number, starred: boolean): Promise<InboxMessage> {
+  async starInboxMessage(id: number, starred: boolean, organizationId?: number): Promise<InboxMessage> {
+    const conditions = [eq(inboxMessages.id, id)];
+    if (organizationId) conditions.push(eq(inboxMessages.organizationId, organizationId));
     const [updated] = await db.update(inboxMessages)
       .set({ isStarred: starred })
-      .where(eq(inboxMessages.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
 
-  async updateInboxMessage(id: number, updates: Partial<InsertInboxMessage>): Promise<InboxMessage> {
+  async updateInboxMessage(id: number, updates: Partial<InsertInboxMessage>, organizationId?: number): Promise<InboxMessage> {
+    const conditions = [eq(inboxMessages.id, id)];
+    if (organizationId) conditions.push(eq(inboxMessages.organizationId, organizationId));
     const [updated] = await db.update(inboxMessages)
       .set(updates)
-      .where(eq(inboxMessages.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
@@ -6358,10 +6561,12 @@ Notary Public</p>
     return identity;
   }
 
-  async updateMailSenderIdentity(id: number, data: Partial<MailSenderIdentity>): Promise<MailSenderIdentity> {
+  async updateMailSenderIdentity(id: number, data: Partial<MailSenderIdentity>, organizationId?: number): Promise<MailSenderIdentity> {
+    const conditions = [eq(mailSenderIdentities.id, id)];
+    if (organizationId) conditions.push(eq(mailSenderIdentities.organizationId, organizationId));
     const [updated] = await db.update(mailSenderIdentities)
       .set({ ...data, updatedAt: new Date() })
-      .where(eq(mailSenderIdentities.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
@@ -6376,9 +6581,11 @@ Notary Public</p>
       .where(eq(mailSenderIdentities.id, id));
   }
 
-  async deleteMailSenderIdentity(id: number): Promise<void> {
+  async deleteMailSenderIdentity(id: number, organizationId?: number): Promise<void> {
+    const conditions = [eq(mailSenderIdentities.id, id)];
+    if (organizationId) conditions.push(eq(mailSenderIdentities.organizationId, organizationId));
     await db.delete(mailSenderIdentities)
-      .where(eq(mailSenderIdentities.id, id));
+      .where(and(...conditions));
   }
 
   // Mailing Orders
@@ -6412,10 +6619,12 @@ Notary Public</p>
     return order;
   }
 
-  async updateMailingOrder(id: number, data: Partial<MailingOrder>): Promise<MailingOrder> {
+  async updateMailingOrder(id: number, data: Partial<MailingOrder>, organizationId?: number): Promise<MailingOrder> {
+    const conditions = [eq(mailingOrders.id, id)];
+    if (organizationId) conditions.push(eq(mailingOrders.organizationId, organizationId));
     const [updated] = await db.update(mailingOrders)
       .set({ ...data, updatedAt: new Date() })
-      .where(eq(mailingOrders.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
@@ -6481,10 +6690,12 @@ Notary Public</p>
     return newRequest;
   }
 
-  async updateFeatureRequest(id: number, updates: Partial<FeatureRequest>): Promise<FeatureRequest> {
+  async updateFeatureRequest(id: number, updates: Partial<FeatureRequest>, organizationId?: number): Promise<FeatureRequest> {
+    const conditions = [eq(featureRequests.id, id)];
+    if (organizationId) conditions.push(eq(featureRequests.organizationId, organizationId));
     const [updated] = await db.update(featureRequests)
       .set({ ...updates, updatedAt: new Date() })
-      .where(eq(featureRequests.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
@@ -7139,19 +7350,23 @@ Notary Public</p>
     return await query.orderBy(desc(agentMemory.usageCount)).limit(limit);
   }
 
-  async updateAgentMemoryUsage(id: number): Promise<AgentMemory> {
+  async updateAgentMemoryUsage(id: number, organizationId?: number): Promise<AgentMemory> {
+    const conditions = [eq(agentMemory.id, id)];
+    if (organizationId) conditions.push(eq(agentMemory.organizationId, organizationId));
     const [updated] = await db.update(agentMemory)
       .set({
         usageCount: sql`${agentMemory.usageCount} + 1`,
         lastUsedAt: new Date(),
       })
-      .where(eq(agentMemory.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
 
-  async deleteAgentMemory(id: number): Promise<void> {
-    await db.delete(agentMemory).where(eq(agentMemory.id, id));
+  async deleteAgentMemory(id: number, organizationId?: number): Promise<void> {
+    const conditions = [eq(agentMemory.id, id)];
+    if (organizationId) conditions.push(eq(agentMemory.organizationId, organizationId));
+    await db.delete(agentMemory).where(and(...conditions));
   }
 
   // Agent Feedback
@@ -7235,16 +7450,20 @@ Notary Public</p>
     return created;
   }
 
-  async updateWorkflow(id: number, updates: Partial<InsertWorkflow>): Promise<Workflow> {
+  async updateWorkflow(id: number, updates: Partial<InsertWorkflow>, organizationId?: number): Promise<Workflow> {
+    const conditions = [eq(workflows.id, id)];
+    if (organizationId) conditions.push(eq(workflows.organizationId, organizationId));
     const [updated] = await db.update(workflows)
       .set({ ...updates, updatedAt: new Date() })
-      .where(eq(workflows.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
 
-  async deleteWorkflow(id: number): Promise<void> {
-    await db.delete(workflows).where(eq(workflows.id, id));
+  async deleteWorkflow(id: number, organizationId?: number): Promise<void> {
+    const conditions = [eq(workflows.id, id)];
+    if (organizationId) conditions.push(eq(workflows.organizationId, organizationId));
+    await db.delete(workflows).where(and(...conditions));
   }
 
   async toggleWorkflow(orgId: number, id: number, isActive: boolean): Promise<Workflow> {
@@ -7314,16 +7533,20 @@ Notary Public</p>
     return created;
   }
 
-  async updateScheduledTask(id: number, updates: Partial<InsertScheduledTask>): Promise<ScheduledTask | undefined> {
+  async updateScheduledTask(id: number, updates: Partial<InsertScheduledTask>, organizationId?: number): Promise<ScheduledTask | undefined> {
+    const conditions = [eq(scheduledTasks.id, id)];
+    if (organizationId) conditions.push(eq(scheduledTasks.organizationId, organizationId));
     const [updated] = await db.update(scheduledTasks)
       .set({ ...updates, updatedAt: new Date() } as any)
-      .where(eq(scheduledTasks.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
 
-  async deleteScheduledTask(id: number): Promise<void> {
-    await db.delete(scheduledTasks).where(eq(scheduledTasks.id, id));
+  async deleteScheduledTask(id: number, organizationId?: number): Promise<void> {
+    const conditions = [eq(scheduledTasks.id, id)];
+    if (organizationId) conditions.push(eq(scheduledTasks.organizationId, organizationId));
+    await db.delete(scheduledTasks).where(and(...conditions));
   }
 
   // ============================================
@@ -7446,10 +7669,12 @@ Notary Public</p>
     return created;
   }
 
-  async updateSellerCommunication(id: number, updates: Partial<InsertSellerCommunication>): Promise<SellerCommunication> {
+  async updateSellerCommunication(id: number, updates: Partial<InsertSellerCommunication>, organizationId?: number): Promise<SellerCommunication> {
+    const conditions = [eq(sellerCommunications.id, id)];
+    if (organizationId) conditions.push(eq(sellerCommunications.organizationId, organizationId));
     const [updated] = await db.update(sellerCommunications)
       .set(updates)
-      .where(eq(sellerCommunications.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }

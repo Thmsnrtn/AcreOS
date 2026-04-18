@@ -66,7 +66,7 @@ export class FinanceAgentService {
       await storage.updateNote(note.id, {
         daysDelinquent,
         delinquencyStatus: newStatus,
-      });
+      }, note.organizationId);
     }
 
     return { daysDelinquent, status: newStatus, statusChanged };
@@ -262,11 +262,11 @@ export class FinanceAgentService {
           }
         }
         
-        await storage.markReminderSent(reminder.id);
+        await storage.markReminderSent(reminder.id, note.organizationId);
         await storage.updateNote(note.id, {
           lastReminderSentAt: new Date(),
           reminderCount: (note.reminderCount || 0) + 1,
-        });
+        }, note.organizationId);
         
         sent++;
         maxProcessedId = Math.max(maxProcessedId, reminder.id);
@@ -463,7 +463,7 @@ export class FinanceAgentService {
       await storage.updateNote(noteId, {
         lastReminderSentAt: new Date(),
         reminderCount: (note.reminderCount || 0) + 1,
-      });
+      }, note.organizationId);
 
       return { success: true, reminderId: created.id };
     } catch (error) {

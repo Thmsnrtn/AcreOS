@@ -383,7 +383,7 @@ export function registerLeadRoutes(app: Express): void {
       if (!existingLead) return Errors.notFound(res, "Lead");
 
       const validated = updateLeadSchema.parse(req.body);
-      const lead = await storage.updateLead(leadId, validated);
+      const lead = await storage.updateLead(leadId, validated, org.id);
       
       const user = req.user as any;
       const userId = user?.claims?.sub || user?.id;

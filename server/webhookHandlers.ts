@@ -667,7 +667,7 @@ export class WebhookHandlers {
         amortizationSchedule: updatedSchedule,
         nextPaymentDate: nextPaymentDate,
         pendingCheckoutSessionId: null, // Clear after successful payment
-      });
+      }, note.organizationId);
 
       logger.info(`Borrower portal payment processed: Note ${note.id}, Amount: $${amount}, New Balance: $${newBalance}`);
 

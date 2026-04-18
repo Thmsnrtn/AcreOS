@@ -1388,13 +1388,13 @@ Generate 3 helpful tips for this step.`,
 
     // Delete sample leads
     for (const lead of sampleLeads) {
-      await storage.deleteLead(lead.id);
+      await storage.deleteLead(lead.id, orgId);
       leadsDeleted++;
     }
 
     // Delete sample properties (cascade should handle deals and notes)
     for (const prop of sampleProperties) {
-      await storage.deleteProperty(prop.id);
+      await storage.deleteProperty(prop.id, orgId);
       propertiesDeleted++;
     }
 

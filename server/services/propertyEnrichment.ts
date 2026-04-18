@@ -695,7 +695,7 @@ export class PropertyEnrichmentService {
         } as any,
         enrichmentStatus: "complete",
         enrichedAt: new Date(),
-      });
+      }, organizationId);
 
       const categoriesEnriched = Object.keys(enrichment).filter(
         k => enrichment[k as keyof EnrichmentResult] !== undefined &&
@@ -722,7 +722,7 @@ export class PropertyEnrichmentService {
       
       await storage.updateLead(leadId, {
         scoreFactors: mergedScoreFactors as any,
-      });
+      }, lead?.organizationId);
       
       const categoriesEnriched = Object.keys(enrichment).filter(
         k => enrichment[k as keyof EnrichmentResult] !== undefined && 

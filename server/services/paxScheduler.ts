@@ -153,7 +153,7 @@ export async function executeTask(task: PaxScheduledTask, org: Organization): Pr
     // Rename the conversation to make it identifiable
     await storage.updateAiConversation(result.conversationId, {
       title: `[Scheduled] ${task.name} — ${date}`,
-    });
+    }, org.id);
 
     // Log run history
     await db.insert(paxScheduledTaskRuns as any).values({

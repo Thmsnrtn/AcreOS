@@ -203,7 +203,7 @@ export function registerCampaignRoutes(app: Express): void {
           
           await storage.updateCampaign(campaign.id, {
             totalResponded: (campaign.totalResponded || 0) + 1
-          });
+          }, org.id);
         }
       }
       
@@ -228,7 +228,7 @@ export function registerCampaignRoutes(app: Express): void {
         await storage.updateLead(leadId, {
           sourceCampaignId: campaignId,
           sourceTrackingCode: trackingCode,
-        });
+        }, org.id);
       }
       
       res.status(201).json(response);
