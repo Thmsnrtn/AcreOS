@@ -1568,6 +1568,7 @@ export function registerCampaignRoutes(app: Express): void {
   });
 
   // POST /api/campaigns/:id/send-email — send email campaign to selected leads
+  // DEFECT-0047: Upfront atomic credit deduction + per-recipient dedup
   api.post("/api/campaigns/:id/send-email", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
@@ -1577,7 +1578,6 @@ export function registerCampaignRoutes(app: Express): void {
       if (!leadIds || leadIds.length === 0) {
         return Errors.badRequest(res, "No recipients specified");
       }
-
 
       const campaign = await storage.getCampaign(org.id, campaignId);
       if (!campaign) return Errors.notFound(res, "Campaign");
@@ -1595,13 +1595,37 @@ export function registerCampaignRoutes(app: Express): void {
         return Errors.badRequest(res, "No recipients with valid email addresses");
       }
 
-      // Check credits
-      const { creditService } = await import("./services/credits");
+      // DEFECT-0047: Per-recipient dedup — check which leads already received
+      // this campaign (via campaign_delivery_events) and skip them
+      const existingDeliveries = await db
+        .select({ leadId: campaignDeliveryEvents.leadId })
+        .from(campaignDeliveryEvents)
+        .where(
+          and(
+            eq(campaignDeliveryEvents.campaignId, campaignId),
+            eq(campaignDeliveryEvents.channel, "email")
+          )
+        );
+      const alreadySentLeadIds = new Set(existingDeliveries.map(d => d.leadId));
+      const dedupedLeads = validLeads.filter(l => !alreadySentLeadIds.has(l!.id));
+      const skippedDuplicates = validLeads.length - dedupedLeads.length;
+
+      if (dedupedLeads.length === 0) {
+        return Errors.badRequest(res, "All recipients have already been sent this campaign");
+      }
+
+      // DEFECT-0047: Deduct credits UPFRONT atomically to prevent TOCTOU race.
+      // deductCredits uses WHERE balance >= amount, so it's atomic check+deduct.
       const costPerEmail = 1; // 1 cent per email
-      const totalCost = validLeads.length * costPerEmail;
-      const hasCredits = await creditService.hasEnoughCredits(org.id, totalCost);
-      if (!hasCredits && !req.isFounder) {
-        return Errors.limitExceeded(res, { needed: totalCost, action: "email_send" });
+      const totalCost = dedupedLeads.length * costPerEmail;
+
+      if (!req.isFounder) {
+        const deductResult = await creditService.deductCredits(
+          org.id, totalCost, `Campaign email send: ${campaign.name} (${dedupedLeads.length} recipients)`
+        );
+        if (!deductResult) {
+          return Errors.limitExceeded(res, { needed: totalCost, action: "email_send" });
+        }
       }
 
       const { emailService } = await import("./services/emailService");
@@ -1609,9 +1633,15 @@ export function registerCampaignRoutes(app: Express): void {
       const subject = (campaign as any).subject || campaign.name || "Message from AcreOS";
       const htmlTemplate = (campaign as any).templateContent || (campaign as any).htmlContent || `<p>${(campaign as any).textContent || campaign.name}</p>`;
 
-      // Send emails with rate limiting
+      // Send emails with rate limiting. Track in-memory to catch any
+      // within-execution duplicates (e.g. duplicate leadIds in input).
+      const sentInExecution = new Set<number>();
       const results = { sent: 0, failed: 0, errors: [] as string[] };
-      for (const lead of validLeads) {
+
+      for (const lead of dedupedLeads) {
+        // In-memory dedup for this execution
+        if (sentInExecution.has(lead!.id)) continue;
+
         try {
           // Simple template variable replacement
           let html = htmlTemplate
@@ -1629,6 +1659,15 @@ export function registerCampaignRoutes(app: Express): void {
             isCampaignEmail: true,
           });
           results.sent++;
+          sentInExecution.add(lead!.id);
+
+          // Record delivery event for future dedup
+          await db.insert(campaignDeliveryEvents).values({
+            campaignId,
+            leadId: lead!.id,
+            channel: "email",
+            status: "sent",
+          });
         } catch (err: any) {
           results.failed++;
           results.errors.push(`${lead!.email}: ${err.message}`);
@@ -1640,9 +1679,14 @@ export function registerCampaignRoutes(app: Express): void {
         }
       }
 
-      // Deduct credits
-      if (!req.isFounder && results.sent > 0) {
-        await creditService.deductCredits(org.id, results.sent * costPerEmail, "email_sent", `Campaign: ${campaign.name}`);
+      // DEFECT-0047: Refund credits for failed sends
+      if (!req.isFounder && results.failed > 0) {
+        const refundAmount = results.failed * costPerEmail;
+        await creditService.addCredits(
+          org.id, refundAmount, "refund",
+          `Refund for ${results.failed} failed email(s) in campaign: ${campaign.name}`
+        );
+        logger.info(`[campaigns] Refunded ${refundAmount}¢ for ${results.failed} failed email sends in campaign ${campaignId}`);
       }
 
       // Update campaign stats
@@ -1655,6 +1699,7 @@ export function registerCampaignRoutes(app: Express): void {
         success: true,
         sent: results.sent,
         failed: results.failed,
+        skippedDuplicates,
         total: validLeads.length,
         errors: results.errors.slice(0, 10),
       });
@@ -1664,6 +1709,7 @@ export function registerCampaignRoutes(app: Express): void {
   });
 
   // POST /api/campaigns/:id/send-sms — send SMS campaign to selected leads
+  // DEFECT-0047: Upfront atomic credit deduction + per-recipient dedup
   api.post("/api/campaigns/:id/send-sms", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
@@ -1672,16 +1718,6 @@ export function registerCampaignRoutes(app: Express): void {
 
       if (!leadIds || leadIds.length === 0) {
         return Errors.badRequest(res, "No recipients specified");
-      }
-
-      // Credit check: 3 cents per SMS
-      const smsCost = leadIds.length * 3;
-      const hasCredits = await creditService.hasEnoughCredits(org.id, smsCost);
-      if (!hasCredits) {
-        return res.status(402).json({
-          error: "Insufficient credits",
-          message: `Sending ${leadIds.length} SMS messages requires ${smsCost} credits.`,
-        });
       }
 
       const campaign = await storage.getCampaign(org.id, campaignId);
@@ -1697,23 +1733,66 @@ export function registerCampaignRoutes(app: Express): void {
         return Errors.badRequest(res, "No recipients with valid phone numbers");
       }
 
+      // DEFECT-0047: Per-recipient dedup — check which leads already received
+      // this campaign via SMS and skip them
+      const existingDeliveries = await db
+        .select({ leadId: campaignDeliveryEvents.leadId })
+        .from(campaignDeliveryEvents)
+        .where(
+          and(
+            eq(campaignDeliveryEvents.campaignId, campaignId),
+            eq(campaignDeliveryEvents.channel, "sms")
+          )
+        );
+      const alreadySentLeadIds = new Set(existingDeliveries.map(d => d.leadId));
+      const dedupedLeads = validLeads.filter(l => !alreadySentLeadIds.has(l!.id));
+      const skippedDuplicates = validLeads.length - dedupedLeads.length;
+
+      if (dedupedLeads.length === 0) {
+        return Errors.badRequest(res, "All recipients have already been sent this campaign via SMS");
+      }
+
+      // DEFECT-0047: Deduct credits UPFRONT atomically to prevent TOCTOU race.
+      const costPerSms = 3; // 3 cents per SMS
+      const totalCost = dedupedLeads.length * costPerSms;
+
+      if (!req.isFounder) {
+        const deductResult = await creditService.deductCredits(
+          org.id, totalCost, `Campaign SMS send: ${campaign.name} (${dedupedLeads.length} recipients)`
+        );
+        if (!deductResult) {
+          return Errors.limitExceeded(res, { needed: totalCost, action: "sms_send" });
+        }
+      }
+
       // Check Twilio configuration
       const twilioSid = process.env.TWILIO_ACCOUNT_SID;
       const twilioToken = process.env.TWILIO_AUTH_TOKEN;
       const twilioPhone = process.env.TWILIO_PHONE_NUMBER;
 
       if (!twilioSid || !twilioToken || !twilioPhone) {
+        // Refund all credits since we can't send without Twilio
+        if (!req.isFounder) {
+          await creditService.addCredits(
+            org.id, totalCost, "refund",
+            `Refund: SMS not configured for campaign: ${campaign.name}`
+          );
+        }
         return Errors.badRequest(res, "SMS not configured. Please add Twilio credentials in Settings → Integrations.");
       }
 
       const messageBody = (campaign as any).textContent || (campaign as any).smsBody || campaign.name || "Message from AcreOS";
 
-      // Send SMS messages
+      // Send SMS messages with in-memory dedup for this execution
+      const sentInExecution = new Set<number>();
       const results = { sent: 0, failed: 0, errors: [] as string[] };
       const twilio = (await import("twilio")).default;
       const client = twilio(twilioSid, twilioToken);
 
-      for (const lead of validLeads) {
+      for (const lead of dedupedLeads) {
+        // In-memory dedup for this execution
+        if (sentInExecution.has(lead!.id)) continue;
+
         try {
           let body = messageBody
             .replace(/\{\{firstName\}\}/g, lead!.firstName || "")
@@ -1726,6 +1805,15 @@ export function registerCampaignRoutes(app: Express): void {
             body,
           });
           results.sent++;
+          sentInExecution.add(lead!.id);
+
+          // Record delivery event for future dedup
+          await db.insert(campaignDeliveryEvents).values({
+            campaignId,
+            leadId: lead!.id,
+            channel: "sms",
+            status: "sent",
+          });
         } catch (err: any) {
           results.failed++;
           results.errors.push(`${lead!.phone}: ${err.message}`);
@@ -1733,6 +1821,16 @@ export function registerCampaignRoutes(app: Express): void {
 
         // Rate limit: 1 SMS per second (Twilio limit)
         await new Promise(r => setTimeout(r, 1000));
+      }
+
+      // DEFECT-0047: Refund credits for failed sends
+      if (!req.isFounder && results.failed > 0) {
+        const refundAmount = results.failed * costPerSms;
+        await creditService.addCredits(
+          org.id, refundAmount, "refund",
+          `Refund for ${results.failed} failed SMS(es) in campaign: ${campaign.name}`
+        );
+        logger.info(`[campaigns] Refunded ${refundAmount}¢ for ${results.failed} failed SMS sends in campaign ${campaignId}`);
       }
 
       // Update campaign stats
@@ -1744,6 +1842,7 @@ export function registerCampaignRoutes(app: Express): void {
         success: true,
         sent: results.sent,
         failed: results.failed,
+        skippedDuplicates,
         total: validLeads.length,
         errors: results.errors.slice(0, 10),
       });
