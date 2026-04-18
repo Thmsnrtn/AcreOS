@@ -1,14 +1,5 @@
-import OpenAI from "openai";
+import { getOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
-
-let openaiClient: OpenAI | null = null;
-
-function getOpenAI(): OpenAI | null {
-  if (!openaiClient && process.env.OPENAI_API_KEY) {
-    openaiClient = new OpenAI();
-  }
-  return openaiClient;
-}
 
 export type CoreAgentType = "research" | "deals" | "communications" | "operations";
 
@@ -169,7 +160,7 @@ export async function classifyIntentWithAI(userMessage: string): Promise<IntentC
     return simpleResult;
   }
 
-  const openai = getOpenAI();
+  const openai = getOpenAIClient();
   if (!openai) {
     return simpleResult;
   }

@@ -619,8 +619,8 @@ export function registerDealRoutes(app: Express): void {
       }
 
       const { ResearchIntelligenceAgent, DealsAcquisitionAgent, skillRegistry } = await import('./services/core-agents');
-      const OpenAI = (await import('openai')).default;
-      const openai = new OpenAI();
+      const { requireOpenAIClient } = await import('./utils/openaiClient');
+      const openai = requireOpenAIClient();
       
       const researchAgent = new ResearchIntelligenceAgent();
       const dealsAgent = new DealsAcquisitionAgent();

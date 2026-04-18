@@ -20,7 +20,7 @@ import { sql, count, gte, eq, desc } from "drizzle-orm";
 import { emailService } from "./emailService";
 import { jobSupervisor } from "./jobSupervisor";
 import { logActivity } from "./systemActivityLogger";
-import OpenAI from "openai";
+import { getOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
 
 const FOUNDER_EMAILS: string[] = [
@@ -29,12 +29,6 @@ const FOUNDER_EMAILS: string[] = [
     ? process.env.FOUNDER_EMAILS.split(",").map((e) => e.trim()).filter(Boolean)
     : []),
 ].filter((v, i, arr) => arr.indexOf(v) === i); // dedupe
-
-function getOpenAI(): OpenAI | null {
-  return process.env.OPENAI_API_KEY
-    ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
-    : null;
-}
 
 async function alreadySentToday(): Promise<boolean> {
   const [row] = await db
@@ -132,7 +126,7 @@ async function writeBriefingWithAI(
   topActions: string[],
   jobHealthSummary: ReturnType<typeof jobSupervisor.getSummary>
 ): Promise<string[]> {
-  const openai = getOpenAI();
+  const openai = getOpenAIClient();
   if (!openai) {
     // Fallback without AI
     const { healthy, degraded, failed } = jobHealthSummary;

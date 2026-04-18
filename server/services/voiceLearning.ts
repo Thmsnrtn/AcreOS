@@ -24,14 +24,8 @@ import {
   organizations,
 } from '../../shared/schema';
 import { eq, desc, and, isNotNull, not } from 'drizzle-orm';
-import OpenAI from 'openai';
+import { requireOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
-
-let _openai: OpenAI | null = null;
-function getOpenAI() {
-  if (!_openai) _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || '' });
-  return _openai;
-}
 
 export interface VoiceProfile {
   organizationId: number;
@@ -148,7 +142,7 @@ Return ONLY a valid JSON object (no markdown, no explanation) with these exact f
 }`;
 
     try {
-      const completion = await getOpenAI().chat.completions.create({
+      const completion = await requireOpenAIClient().chat.completions.create({
         model: 'gpt-4o',
         messages: [{ role: 'user', content: prompt }],
         max_tokens: 800,
@@ -297,7 +291,7 @@ Return ONLY a valid JSON object (no markdown, no explanation) with these exact f
     const styleInstruction = this.buildStyleInstruction(profile);
 
     try {
-      const completion = await getOpenAI().chat.completions.create({
+      const completion = await requireOpenAIClient().chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [
           {

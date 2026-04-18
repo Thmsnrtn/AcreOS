@@ -5,10 +5,8 @@ import {
   fixAttempts, paxCrossOrgLearnings, knowledgeBaseArticles
 } from "@shared/schema";
 import { eq, and, desc, gte, sql, count, like, or } from "drizzle-orm";
-import OpenAI from "openai";
+import { requireOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
-
-const openai = new OpenAI();
 
 const MAX_RETRY_ATTEMPTS = 3;
 const BASE_BACKOFF_MS = 1000;
@@ -43,7 +41,7 @@ export const paxLearningService = {
         return { learned: false, error: "Already learned from this ticket" };
       }
       
-      const response = await openai.chat.completions.create({
+      const response = await requireOpenAIClient().chat.completions.create({
         model: "gpt-4o",
         messages: [
           {

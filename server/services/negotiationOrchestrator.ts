@@ -7,10 +7,8 @@ import {
   properties 
 } from '../../shared/schema';
 import { eq, and, desc, sql } from 'drizzle-orm';
-import OpenAI from 'openai';
+import { requireOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 interface SellerProfile {
   motivation: 'distressed' | 'motivated' | 'neutral' | 'passive';
@@ -78,7 +76,7 @@ ${sellerCommunication.join('\n\n')}
 
 Respond in JSON format.`;
 
-      const completion = await openai.chat.completions.create({
+      const completion = await requireOpenAIClient().chat.completions.create({
         model: 'gpt-4-turbo-preview',
         messages: [{ role: 'user', content: analysisPrompt }],
         response_format: { type: 'json_object' },
@@ -192,7 +190,7 @@ Provide:
 
 Respond in JSON format.`;
 
-      const reasoning = await openai.chat.completions.create({
+      const reasoning = await requireOpenAIClient().chat.completions.create({
         model: 'gpt-4-turbo-preview',
         messages: [{ role: 'user', content: reasoningPrompt }],
         response_format: { type: 'json_object' },
@@ -537,7 +535,7 @@ Create a professional, persuasive script (200-300 words) that:
 
 Tone should match the ${sellerProfile.communicationStyle} communication style.`;
 
-      const completion = await openai.chat.completions.create({
+      const completion = await requireOpenAIClient().chat.completions.create({
         model: 'gpt-4-turbo-preview',
         messages: [{ role: 'user', content: prompt }],
       });
@@ -854,7 +852,7 @@ build_negotiation_plan as your final tool to produce the structured output.`,
     try {
       // Agentic loop: let the model call tools until it's done
       for (let round = 0; round < 6; round++) {
-        const response = await openai.chat.completions.create({
+        const response = await requireOpenAIClient().chat.completions.create({
           model: 'gpt-4-turbo-preview',
           messages,
           tools,

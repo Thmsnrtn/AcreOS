@@ -148,8 +148,8 @@ router.post('/tutor/message', async (req: Request, res: Response) => {
     }
 
     // Simple AI tutor response via OpenAI (reuse existing AI infrastructure)
-    const { default: OpenAI } = await import('openai');
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const { requireOpenAIClient } = await import('./utils/openaiClient');
+    const openai = requireOpenAIClient();
 
     const systemPrompt = `You are an expert real estate educator for AcreOS Academy.
 You help investors learn about land acquisition, seller financing, tax liens, due diligence,

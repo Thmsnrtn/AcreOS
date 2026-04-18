@@ -5,10 +5,8 @@ import {
   properties 
 } from '../../shared/schema';
 import { eq, and, desc, gte } from 'drizzle-orm';
-import OpenAI from 'openai';
+import { requireOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 interface RegulatoryChange {
   changeType: string;
@@ -357,7 +355,7 @@ Include:
 Format as a professional report.`;
       }
 
-      const completion = await openai.chat.completions.create({
+      const completion = await requireOpenAIClient().chat.completions.create({
         model: 'gpt-4-turbo-preview',
         messages: [{ role: 'user', content: prompt }],
         max_tokens: 2000,

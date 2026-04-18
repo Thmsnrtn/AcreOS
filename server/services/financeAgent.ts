@@ -2,15 +2,8 @@ import { storage } from "../storage";
 import { usageMeteringService } from "./credits";
 import { type Note, type Lead, type InsertPaymentReminder, type InsertSystemAlert } from "@shared/schema";
 import { logActivity } from "./systemActivityLogger";
-import OpenAI from "openai";
+import { getOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
-
-function getOpenAIClient(): OpenAI | null {
-  if (!process.env.OPENAI_API_KEY) {
-    return null;
-  }
-  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-}
 
 export type DelinquencyStatus = 
   | "current" 

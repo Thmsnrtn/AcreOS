@@ -6,12 +6,10 @@ import {
   transactions 
 } from '../../shared/schema';
 import { eq, and, desc, gte, sql, between } from 'drizzle-orm';
-import OpenAI from 'openai';
 import { GradientBoostingRegressor, extractLandFeatures, type LandFeatureInput } from './gradientBoosting';
+import { requireOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
 import { addMonths } from "../utils/dateUtils";
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // ---------------------------------------------------------------------------
 // Singleton GBM model — loaded once, reused per request.
@@ -363,7 +361,7 @@ Return ONLY a JSON object with this exact format (no markdown, no explanation):
 
 Base your estimate on typical rural land market conditions in ${county} County, ${state}. Be conservative.`;
 
-        const completion = await openai.chat.completions.create({
+        const completion = await requireOpenAIClient().chat.completions.create({
           model: 'gpt-4o-mini',
           messages: [{ role: 'user', content: prompt }],
           temperature: 0.2,
@@ -679,7 +677,7 @@ Consider factors like:
 
 Respond in JSON format: { "adjustment": number, "reasoning": string }`;
 
-      const completion = await openai.chat.completions.create({
+      const completion = await requireOpenAIClient().chat.completions.create({
         model: 'gpt-4-turbo-preview',
         messages: [{ role: 'user', content: prompt }],
         response_format: { type: 'json_object' },

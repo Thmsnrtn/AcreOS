@@ -3,16 +3,9 @@ import { eq } from "drizzle-orm";
 import { organizations, campaigns, type Organization } from "@shared/schema";
 import { storage } from "../storage";
 import type { InsertLead, InsertProperty, InsertDeal } from "@shared/schema";
-import OpenAI from "openai";
+import { getOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
 import { addMonths } from "../utils/dateUtils";
-
-function getOpenAIClient(): OpenAI | null {
-  if (!process.env.OPENAI_API_KEY) {
-    return null;
-  }
-  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-}
 
 export type BusinessType =
   | "land_flipper"

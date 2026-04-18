@@ -152,8 +152,8 @@ export class ApiQueueService {
     
     switch (job.type) {
       case 'openai':
-        const OpenAI = (await import('openai')).default;
-        const openai = new OpenAI();
+        const { requireOpenAIClient } = await import('../utils/openaiClient');
+        const openai = requireOpenAIClient();
         if (job.operation === 'chat') {
           const response = await openai.chat.completions.create({
             model: payload.model || 'gpt-4o-mini',

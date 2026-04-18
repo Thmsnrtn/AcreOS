@@ -6,10 +6,8 @@ import {
   properties 
 } from '../../shared/schema';
 import { eq, and, desc } from 'drizzle-orm';
-import OpenAI from 'openai';
+import { requireOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 interface PhotoAnalysisResult {
   detectedFeatures: string[];
@@ -66,7 +64,7 @@ class VisualIntelligence {
 
 Respond in JSON format with keys: features (array), landscapeType, buildingDetected (boolean), roadDetected (boolean), waterDetected (boolean), photoQuality, isUsableForMarketing (boolean), description, estimatedAcres (number or null), vegetationDensity (number 0-100)`;
 
-      const completion = await openai.chat.completions.create({
+      const completion = await requireOpenAIClient().chat.completions.create({
         model: 'gpt-4-vision-preview',
         messages: [
           {
@@ -272,7 +270,7 @@ ${descriptions.join('\n\n')}
 
 Create a flowing description that highlights the best features without repeating information.`;
 
-      const completion = await openai.chat.completions.create({
+      const completion = await requireOpenAIClient().chat.completions.create({
         model: 'gpt-4-turbo-preview',
         messages: [{ role: 'user', content: prompt }],
         max_tokens: 300,
@@ -349,7 +347,7 @@ Create a flowing description that highlights the best features without repeating
 
 Respond in JSON format with keys: changeDetected (boolean), changeType, changeSeverity, description`;
 
-      const completion = await openai.chat.completions.create({
+      const completion = await requireOpenAIClient().chat.completions.create({
         model: 'gpt-4-vision-preview',
         messages: [
           {

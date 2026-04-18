@@ -5,10 +5,8 @@ import {
   properties,
 } from '../../shared/schema';
 import { eq, and, desc, gte, sql } from 'drizzle-orm';
-import OpenAI from 'openai';
+import { requireOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 interface PropertyHolding {
   propertyId: string;
@@ -512,7 +510,7 @@ Provide 3 additional strategic recommendations for portfolio optimization. Consi
 
 Respond in JSON format with array of recommendations.`;
 
-      const completion = await openai.chat.completions.create({
+      const completion = await requireOpenAIClient().chat.completions.create({
         model: 'gpt-4-turbo-preview',
         messages: [{ role: 'user', content: prompt }],
         response_format: { type: 'json_object' },

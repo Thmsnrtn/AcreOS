@@ -4,11 +4,9 @@ import {
   organizations,
 } from "@shared/schema";
 import { eq, and, desc, isNull, or, lt } from "drizzle-orm";
-import OpenAI from "openai";
 import { executeAction, hasExecutor } from "./agentActionExecutors";
 import { customerSupportAutoResolver } from "./customerSupportAutoResolver";
-
-const openai = new OpenAI();
+import { requireOpenAIClient } from "../utils/openaiClient";
 
 export const decisionsInboxService = {
 
@@ -162,7 +160,7 @@ export const decisionsInboxService = {
     if (!request) return null;
 
     // Use OpenAI to evaluate impact and duplicates
-    const response = await openai.chat.completions.create({
+    const response = await requireOpenAIClient().chat.completions.create({
       model: "gpt-4o-mini",
       response_format: { type: "json_object" },
       messages: [{

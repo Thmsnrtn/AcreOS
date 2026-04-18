@@ -8,7 +8,7 @@ import { properties, parcelSnapshots } from "@shared/schema";
 import { eq, and, isNull, or, sql } from "drizzle-orm";
 import { lookupParcelByAPN, type ParcelLookupResult } from "./parcel";
 import { getComparableProperties, calculateOfferPrices, type ComparableProperty, type OfferPrices } from "./comps";
-import OpenAI from "openai";
+import { requireOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
 
 // Cache freshness: 30 days
@@ -180,7 +180,7 @@ function assessRisks(property: typeof properties.$inferSelect): RiskAssessment {
 
 async function generateAISummary(report: Omit<DueDiligenceReport, "aiSummary">): Promise<string | undefined> {
   try {
-    const openai = new OpenAI();
+    const openai = requireOpenAIClient();
     
     const prompt = `You are a real estate due diligence expert. Analyze the following property data and provide a concise executive summary (2-3 paragraphs) highlighting key investment considerations, potential issues, and overall assessment.
 

@@ -4,12 +4,10 @@ import {
   supportTicketMessages, supportTickets, churnRiskScores,
 } from "@shared/schema";
 import { eq, and, desc, gte, count, sql, lt } from "drizzle-orm";
-import OpenAI from "openai";
 import { emailService } from "./emailService";
 import { getFounderEmails } from "./founder";
+import { requireOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
-
-const openai = new OpenAI();
 
 interface DigestData {
   mrrCents: number;
@@ -124,7 +122,7 @@ async function generateDigestBullets(data: DigestData): Promise<{
   topAtRiskBullet: string;
   recommendedActionBullet: string;
 }> {
-  const response = await openai.chat.completions.create({
+  const response = await requireOpenAIClient().chat.completions.create({
     model: "gpt-4o-mini",
     response_format: { type: "json_object" },
     messages: [{
