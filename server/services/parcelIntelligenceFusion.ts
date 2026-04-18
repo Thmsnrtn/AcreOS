@@ -507,7 +507,9 @@ function buildOfferAnalysis(
   const flipMultiple = nassData?.interpretations?.impliedFlipPrice
     ? nassData.interpretations.impliedFlipPrice / nassData.interpretations.rawLandProxyValue
     : 2;
-  const flipPriceTotal = offerTotal * (flipMultiple > 0 ? flipMultiple : 2) * 4; // 4× offer = 2× market
+  // Flip price = offer × multiple (typically 2-4x). Previous bug: was offerTotal * flipMultiple * 4 = 8x
+  const effectiveMultiple = Math.min(flipMultiple > 0 ? flipMultiple : 2, 6);
+  const flipPriceTotal = offerTotal * effectiveMultiple;
   const flipROI = offerTotal > 0 ? ((flipPriceTotal - offerTotal) / offerTotal) * 100 : 300;
 
   // Owner finance structure
