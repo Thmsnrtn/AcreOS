@@ -988,7 +988,15 @@ export async function processChat(
   // Read-only tool prefixes — safe to parallelize
   const READ_ONLY_PREFIXES = ["get_", "search_", "calculate_", "list_", "recall_", "browse_"];
 
+  const MAX_TOOL_ITERATIONS = 10; // Prevent unbounded cost from runaway tool loops
+  let toolIterationCount = 0;
+
   while (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
+    toolIterationCount++;
+    if (toolIterationCount > MAX_TOOL_ITERATIONS) {
+      logger.warn("[processChat] Tool iteration limit reached", { iterations: toolIterationCount });
+      break;
+    }
     const validToolCalls = assistantMessage.tool_calls.filter((tc): tc is typeof tc & { id: string; function: { name: string; arguments: string } } => 'function' in tc);
     const allReadOnly = validToolCalls.every(tc => READ_ONLY_PREFIXES.some(p => tc.function.name.startsWith(p)));
 
