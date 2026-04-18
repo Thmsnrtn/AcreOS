@@ -2,8 +2,8 @@ import { Router, type Request, type Response } from 'express';
 import { storage, db } from './storage';
 import { fieldScoutVisits, fieldScoutPhotos, leads, properties } from '@shared/schema';
 import { eq, and, desc, inArray } from 'drizzle-orm';
-import multer from 'multer';
 import { logger } from "./utils/logger";
+import { createUploadMiddleware, validateFileMiddleware } from "./middleware/fileUploadSecurity";
 
 const fieldScoutRouter = Router();
 
@@ -16,17 +16,12 @@ function getUser(req: Request) {
   return req.user;
 }
 
-// Multer for voice memos (single audio file, up to 25MB for Whisper)
-const voiceUpload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 25 * 1024 * 1024 },
-});
+// Secure multer for voice memos (single audio file, up to 25MB for Whisper)
+const voiceUpload = createUploadMiddleware({ maxSizeMB: 25 });
 
-// Multer for photo uploads (up to 10 files, 10MB each)
-const photoUpload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 },
-});
+// Secure multer for photo uploads (up to 10 files, 10MB each)
+const photoUpload = createUploadMiddleware({ maxSizeMB: 10, allowedTypes: ["image"] });
+const validatePhotos = validateFileMiddleware(["image"]);
 
 // ============================================================
 // GET /parcel-lookup — Reverse geocode GPS to parcel data
@@ -150,7 +145,7 @@ fieldScoutRouter.post('/voice/transcribe', voiceUpload.single('audio'), async (r
 // POST /leads/:id/photos — Upload geotagged photos to a lead
 // ============================================================
 
-fieldScoutRouter.post('/leads/:id/photos', photoUpload.array('photos', 10), async (req: Request, res: Response) => {
+fieldScoutRouter.post('/leads/:id/photos', photoUpload.array('photos', 10), validatePhotos, async (req: Request, res: Response) => {
   try {
     const org = req.organization;
     const leadId = parseInt(req.params.id);
