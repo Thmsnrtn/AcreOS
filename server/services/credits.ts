@@ -122,6 +122,17 @@ export class CreditService {
       })
       .returning();
 
+    // Check if auto-top-up should trigger after deduction
+    this.checkAutoTopUp(organizationId).then(({ shouldTopUp, amountCents: topUpAmount }) => {
+      if (shouldTopUp) {
+        logger.info(`[credits] Auto-top-up triggered for org ${organizationId}: ${topUpAmount}¢`);
+        // Auto-top-up would create a Stripe charge here — log for now
+        // TODO: Wire to Stripe PaymentIntent when billing is fully configured
+      }
+    }).catch((err) => {
+      logger.error("[credits] Auto-top-up check failed", err instanceof Error ? err : undefined);
+    });
+
     return transaction;
   }
 

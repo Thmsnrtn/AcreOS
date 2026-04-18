@@ -74,7 +74,7 @@ async function gbmEstimatePricePerAcre(
 
   const input: LandFeatureInput = {
     acres,
-    pricePerAcreComps: compsMedianPricePerAcre || 1000,
+    pricePerAcreComps: compsMedianPricePerAcre || 1000, // National median vacant land baseline when no comps available
     daysOnMarket: 0,
     distanceToHighwayMiles: 5,   // default — enriched post-GIS lookup
     distanceToCityMiles: 20,
