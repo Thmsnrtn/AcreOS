@@ -154,6 +154,7 @@ function CountyCard({ county, onEdit, onDelete }: {
             size="icon"
             variant="ghost"
             onClick={onEdit}
+            aria-label="Edit county"
             data-testid={`button-edit-county-${county.id}`}
           >
             <Pencil className="w-4 h-4" />
@@ -162,6 +163,7 @@ function CountyCard({ county, onEdit, onDelete }: {
             size="icon"
             variant="ghost"
             onClick={onDelete}
+            aria-label="Delete county"
             data-testid={`button-delete-county-${county.id}`}
           >
             <Trash2 className="w-4 h-4" />

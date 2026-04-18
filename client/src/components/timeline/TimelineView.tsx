@@ -176,6 +176,7 @@ export function TimelineView({ deals = [], milestones: externalMilestones = [], 
                 size="icon"
                 onClick={handleZoomIn}
                 disabled={zoomLevel === 0}
+                aria-label="Zoom in"
                 data-testid="button-timeline-zoom-in"
               >
                 <ZoomIn className="w-4 h-4" />
@@ -188,6 +189,7 @@ export function TimelineView({ deals = [], milestones: externalMilestones = [], 
                 size="icon"
                 onClick={handleZoomOut}
                 disabled={zoomLevel === ZOOM_LEVELS.length - 1}
+                aria-label="Zoom out"
                 data-testid="button-timeline-zoom-out"
               >
                 <ZoomOut className="w-4 h-4" />

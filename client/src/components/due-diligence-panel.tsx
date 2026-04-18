@@ -291,6 +291,7 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
         variant="ghost"
         size="icon"
         className="shrink-0"
+        aria-label="Cycle status"
         onClick={() => {
           const statusOrder: ItemStatus[] = ["pending", "passed", "warning", "failed", "skipped"];
           const nextIndex = (statusOrder.indexOf(status) + 1) % statusOrder.length;

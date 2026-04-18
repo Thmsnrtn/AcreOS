@@ -194,6 +194,7 @@ function AuditLogViewer() {
             size="icon"
             onClick={() => refetch()}
             disabled={isFetching}
+            aria-label="Refresh audit"
             data-testid="button-refresh-audit"
           >
             <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />

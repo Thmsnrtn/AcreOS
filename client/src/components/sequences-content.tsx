@@ -436,6 +436,7 @@ export function SequencesContent() {
                                 variant="ghost"
                                 size="icon"
                                 onClick={() => pauseEnrollmentMutation.mutate(enrollment.id)}
+                                aria-label="Pause enrollment"
                                 data-testid={`button-pause-enrollment-${enrollment.id}`}
                               >
                                 <Pause className="w-4 h-4" />
@@ -445,6 +446,7 @@ export function SequencesContent() {
                                 variant="ghost"
                                 size="icon"
                                 onClick={() => resumeEnrollmentMutation.mutate(enrollment.id)}
+                                aria-label="Resume enrollment"
                                 data-testid={`button-resume-enrollment-${enrollment.id}`}
                               >
                                 <Play className="w-4 h-4" />
@@ -454,6 +456,7 @@ export function SequencesContent() {
                               variant="ghost"
                               size="icon"
                               onClick={() => cancelEnrollmentMutation.mutate(enrollment.id)}
+                              aria-label="Cancel enrollment"
                               data-testid={`button-cancel-enrollment-${enrollment.id}`}
                             >
                               <StopCircle className="w-4 h-4" />

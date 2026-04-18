@@ -485,6 +485,7 @@ export default function PortfolioPage() {
                               variant="ghost"
                               onClick={() => dismissMutation.mutate(alert.id)}
                               disabled={dismissMutation.isPending}
+                              aria-label="Dismiss alert"
                               data-testid={`button-dismiss-alert-${alert.id}`}
                             >
                               <X className="w-4 h-4" />

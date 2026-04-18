@@ -629,6 +629,7 @@ export default function ListingsPage() {
                           size="icon"
                           onClick={() => deleteMutation.mutate(listing.id)}
                           disabled={deleteMutation.isPending}
+                          aria-label="Delete listing"
                           data-testid={`button-delete-${listing.id}`}
                         >
                           <Trash2 className="h-4 w-4" />

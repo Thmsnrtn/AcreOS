@@ -297,6 +297,7 @@ export function EmailDomainsSettings() {
                         size="icon"
                         variant="ghost"
                         onClick={() => deleteDomainMutation.mutate(domain.id)}
+                        aria-label="Delete domain"
                         data-testid={`button-delete-domain-${domain.id}`}
                       >
                         <Trash2 className="w-4 h-4 text-destructive" />
@@ -341,6 +342,7 @@ export function EmailDomainsSettings() {
                                     size="icon"
                                     variant="ghost"
                                     onClick={() => copyToClipboard(record.data)}
+                                    aria-label="Copy DNS record"
                                   >
                                     <Copy className="w-3 h-3" />
                                   </Button>

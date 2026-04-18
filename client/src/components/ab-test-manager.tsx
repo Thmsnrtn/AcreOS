@@ -549,6 +549,7 @@ function AbTestCard({
           <Button
             variant="outline"
             size="icon"
+            aria-label="Delete test"
             data-testid="button-delete-test"
             onClick={(e) => { e.stopPropagation(); onDelete(); }}
             disabled={isDeletePending}

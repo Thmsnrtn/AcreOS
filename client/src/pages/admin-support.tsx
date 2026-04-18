@@ -369,6 +369,7 @@ export default function AdminSupportPage() {
                             size="icon"
                             className="lg:hidden"
                             onClick={() => setSelectedCaseId(null)}
+                            aria-label="Back to cases"
                             data-testid="button-back"
                           >
                             <ArrowLeft className="w-4 h-4" />

@@ -171,6 +171,7 @@ function EmailMessageRow({
           starMutation.mutate();
         }}
         className={message.isStarred ? "text-yellow-500" : "text-muted-foreground"}
+        aria-label={message.isStarred ? "Unstar email" : "Star email"}
       >
         <Star className={`h-4 w-4 ${message.isStarred ? "fill-current" : ""}`} />
       </Button>
@@ -324,11 +325,12 @@ function EmailMessageDetail({
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-2 p-4 border-b flex-wrap">
-        <Button 
-          size="icon" 
-          variant="ghost" 
+        <Button
+          size="icon"
+          variant="ghost"
           onClick={onBack}
           className="md:hidden"
+          aria-label="Back to inbox"
           data-testid="button-back-to-list"
         >
           <ArrowLeft className="h-4 w-4" />
@@ -540,11 +542,12 @@ function SMSConversationDetail({
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-2 p-4 border-b flex-wrap">
-        <Button 
-          size="icon" 
-          variant="ghost" 
+        <Button
+          size="icon"
+          variant="ghost"
           onClick={onBack}
           className="md:hidden"
+          aria-label="Back to inbox"
           data-testid="button-back-to-list-sms"
         >
           <ArrowLeft className="h-4 w-4" />

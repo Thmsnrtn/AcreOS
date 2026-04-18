@@ -52,6 +52,7 @@ export function DisclaimerBanner({ type, className }: DisclaimerBannerProps) {
         size="icon"
         className="h-6 w-6 flex-shrink-0 -mr-1 -mt-1"
         onClick={handleDismiss}
+        aria-label="Dismiss"
         data-testid={`button-dismiss-disclaimer-${type}`}
       >
         <X className="w-3 h-3" />

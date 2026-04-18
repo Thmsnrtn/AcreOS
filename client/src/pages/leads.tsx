@@ -1475,6 +1475,7 @@ export default function LeadsPage() {
                                           size="icon"
                                           className="h-8 w-8 text-muted-foreground hover:text-foreground"
                                           asChild
+                                          aria-label="Call lead"
                                           data-testid={`button-call-lead-${lead.id}`}
                                         >
                                           <a href={`tel:${lead.phone}`}>
@@ -1493,6 +1494,7 @@ export default function LeadsPage() {
                                           size="icon"
                                           className="h-8 w-8 text-muted-foreground hover:text-foreground"
                                           asChild
+                                          aria-label="Email lead"
                                           data-testid={`button-email-lead-${lead.id}`}
                                         >
                                           <a href={`mailto:${lead.email}`}>
@@ -1510,6 +1512,7 @@ export default function LeadsPage() {
                                         size="icon"
                                         className="h-8 w-8 text-muted-foreground hover:text-foreground"
                                         onClick={() => setViewingLead(lead)}
+                                        aria-label="View notes and timeline"
                                         data-testid={`button-note-lead-${lead.id}`}
                                       >
                                         <StickyNote className="w-4 h-4" />

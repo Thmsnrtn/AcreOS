@@ -140,7 +140,7 @@ export function DashboardSettings({ settings, onSettingsChange }: DashboardSetti
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="icon" variant="ghost" data-testid="button-dashboard-settings">
+        <Button size="icon" variant="ghost" aria-label="Dashboard settings" data-testid="button-dashboard-settings">
           <Settings className="w-4 h-4" />
         </Button>
       </DialogTrigger>
@@ -179,6 +179,7 @@ export function DashboardSettings({ settings, onSettingsChange }: DashboardSetti
                       className="h-5 w-5"
                       disabled={index === 0}
                       onClick={() => moveWidget(widgetId, "up")}
+                      aria-label="Move widget up"
                       data-testid={`button-move-up-${widgetId}`}
                     >
                       <ChevronUp className="w-3 h-3" />
@@ -189,6 +190,7 @@ export function DashboardSettings({ settings, onSettingsChange }: DashboardSetti
                       className="h-5 w-5"
                       disabled={index === localSettings.order.length - 1}
                       onClick={() => moveWidget(widgetId, "down")}
+                      aria-label="Move widget down"
                       data-testid={`button-move-down-${widgetId}`}
                     >
                       <ChevronDown className="w-3 h-3" />
