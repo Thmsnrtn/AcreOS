@@ -1,4 +1,4 @@
-import { db } from "../db";
+import { db, withTransaction } from "../db";
 import { eq, desc, sql, and } from "drizzle-orm";
 import {
   organizations,
@@ -43,29 +43,33 @@ export class CreditService {
     description: string,
     metadata?: InsertCreditTransaction["metadata"]
   ): Promise<CreditTransaction> {
-    const [updated] = await db
-      .update(organizations)
-      .set({ 
-        creditBalance: sql`COALESCE(${organizations.creditBalance}, '0')::numeric + ${amountCents}` 
-      })
-      .where(eq(organizations.id, organizationId))
-      .returning({ newBalance: sql<number>`(COALESCE(${organizations.creditBalance}, '0')::numeric)::int` });
+    // Wrap balance update + transaction log in a single DB transaction
+    // to prevent ledger desync on crash (P0 fix DI-001)
+    return await withTransaction(async (tx) => {
+      const [updated] = await tx
+        .update(organizations)
+        .set({
+          creditBalance: sql`COALESCE(${organizations.creditBalance}, '0')::numeric + ${amountCents}`
+        })
+        .where(eq(organizations.id, organizationId))
+        .returning({ newBalance: sql<number>`(COALESCE(${organizations.creditBalance}, '0')::numeric)::int` });
 
-    const newBalance = updated?.newBalance || amountCents;
+      const newBalance = updated?.newBalance || amountCents;
 
-    const [transaction] = await db
-      .insert(creditTransactions)
-      .values({
-        organizationId,
-        type,
-        amountCents,
-        balanceAfterCents: newBalance,
-        description,
-        metadata,
-      })
-      .returning();
+      const [transaction] = await tx
+        .insert(creditTransactions)
+        .values({
+          organizationId,
+          type,
+          amountCents,
+          balanceAfterCents: newBalance,
+          description,
+          metadata,
+        })
+        .returning();
 
-    return transaction;
+      return transaction;
+    });
   }
 
   async deductCredits(
