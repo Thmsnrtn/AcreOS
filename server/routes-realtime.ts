@@ -3,8 +3,11 @@ import { realtimeAlertsService } from './services/realtimeAlerts';
 import { certificationService } from './services/certification';
 import { wsServer } from './websocket';
 import OpenAI from 'openai';
+import { CreditService } from './services/credits';
+import { logger } from './utils/logger';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const creditService = new CreditService();
 
 const router = Router();
 
@@ -30,6 +33,21 @@ router.post('/ask', async (req: Request, res: Response) => {
     const { message } = req.body;
     if (!message || typeof message !== 'string') {
       return res.status(400).json({ error: 'message is required' });
+    }
+
+    // Credit check — block if org can't afford the AI call
+    const org = (req as any).organization;
+    if (org) {
+      const hasCredits = await creditService.hasEnoughCredits(org.id, 2);
+      if (!hasCredits) {
+        return res.status(402).json({ error: 'Insufficient credits for AI request' });
+      }
+      // Deduct after response (fire-and-forget)
+      res.on('finish', () => {
+        creditService.deductCredits(org.id, 2, 'Command palette AI query').catch((err) =>
+          logger.error('[realtime] credit deduction failed', err instanceof Error ? err : undefined)
+        );
+      });
     }
 
     const systemPrompt = `You are an expert AI assistant built into AcreOS, a real estate management platform.

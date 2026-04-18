@@ -1,5 +1,9 @@
 import { Router, type Request, type Response } from 'express';
 import { education } from './services/education';
+import { CreditService } from './services/credits';
+import { logger } from './utils/logger';
+
+const creditService = new CreditService();
 
 const router = Router();
 
@@ -133,6 +137,16 @@ router.get('/recommended', async (req: Request, res: Response) => {
 router.post('/tutor/message', async (req: Request, res: Response) => {
   try {
     const { message, courseId, history } = req.body;
+
+    // Credit check for AI tutor
+    const org = (req as any).organization;
+    if (org) {
+      const hasCredits = await creditService.hasEnoughCredits(org.id, 2);
+      if (!hasCredits) {
+        return res.status(402).json({ error: 'Insufficient credits for AI tutor' });
+      }
+    }
+
     // Simple AI tutor response via OpenAI (reuse existing AI infrastructure)
     const { default: OpenAI } = await import('openai');
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -158,6 +172,14 @@ ${courseId ? `The student is currently studying course ID: ${courseId}.` : ''}`;
     });
 
     const reply = completion.choices[0]?.message?.content || 'I could not generate a response.';
+
+    // Deduct credits after successful AI call
+    if (org) {
+      creditService.deductCredits(org.id, 2, 'AI tutor chat').catch((err) =>
+        logger.error('[academy] credit deduction failed', err instanceof Error ? err : undefined)
+      );
+    }
+
     res.json({ reply });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
