@@ -42,6 +42,15 @@ function getUser(req: AuthenticatedRequest) {
 }
 
 
+function parseId(value: string, res: Response, label = "ID"): number | null {
+  const id = parseInt(value, 10);
+  if (isNaN(id)) {
+    Errors.badRequest(res, `Invalid ${label}`);
+    return null;
+  }
+  return id;
+}
+
 async function getDealRoomOrFail(id: number, req: AuthenticatedRequest, res: Response) {
   const organizationId = getOrganizationId(req);
   const results = await db.select().from(dealRooms).where(eq(dealRooms.id, id)).limit(1);
