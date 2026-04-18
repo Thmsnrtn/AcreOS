@@ -1011,11 +1011,11 @@ export interface IStorage {
   getAllOrganizationsWithDetails(): Promise<Array<{
     id: number;
     name: string;
-    ownerEmail: string | null;
-    tier: string | null;
-    subscriptionStatus: string | null;
+    ownerId: string;
+    tier: string;
+    subscriptionStatus: string;
     createdAt: Date | null;
-    lastActiveAt: Date | null;
+    updatedAt: Date | null;
   }>>;
 
   // Parcel Snapshots (Cache)
