@@ -9,8 +9,8 @@
  *   'supervised' — Pax can send within daily limits with consent checks
  *   'autonomous' — Pax can send freely within guardrails (future)
  *
- * When organizations.paxAutonomyLevel is added to the schema, getOrgAutonomyLevel()
- * will read from it. Until then it always returns 'assisted'.
+ * organizations.paxAutonomyLevel is read from the DB by getOrgAutonomyLevel().
+ * Circuit breaker can downgrade to 'assisted' if override rate exceeds 5%.
  */
 
 import { db } from "../db";
@@ -327,8 +327,11 @@ export async function generateAutonomousAuditSummary(
 export async function getOrgAutonomyLevel(
   orgId: number
 ): Promise<AutonomyLevel> {
-  // TODO: Read paxAutonomyLevel from organizations table once the column is added.
-  return "assisted";
+  const org = await db.query.organizations.findFirst({
+    where: eq(organizations.id, orgId),
+    columns: { paxAutonomyLevel: true },
+  });
+  return (org?.paxAutonomyLevel as AutonomyLevel) ?? "assisted";
 }
 
 // ── Graduated Autonomy Ramp ──────────────────────────────────────────────────
@@ -592,10 +595,10 @@ export async function checkCircuitBreaker(
       confidence: "1.0",
     });
 
-    // TODO: When organizations.paxAutonomyLevel column exists, update it here:
-    // await db.update(organizations)
-    //   .set({ paxAutonomyLevel: "assisted", updatedAt: new Date() })
-    //   .where(eq(organizations.id, organizationId));
+    // Downgrade autonomy level in the database
+    await db.update(organizations)
+      .set({ paxAutonomyLevel: "assisted", updatedAt: new Date() })
+      .where(eq(organizations.id, organizationId));
 
     // Notify founder via email
     const { emailService } = await import("./emailService");
