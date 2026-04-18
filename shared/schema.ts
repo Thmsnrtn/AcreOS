@@ -11551,7 +11551,7 @@ export const countyReviews = pgTable("county_reviews", {
   verifiedDeals: integer("verified_deals"),
   createdAt: timestamp("created_at").defaultNow(),
 });
-export const insertNoteReceivableSchema = createInsertSchema(notesReceivable).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertNoteReceivableSchema = createInsertSchema(notesReceivable).omit({ id: true, createdAt: true });
 export type NoteReceivable = typeof notesReceivable.$inferSelect;
 export type InsertNoteReceivable = z.infer<typeof insertNoteReceivableSchema>;
 
