@@ -339,9 +339,9 @@ function RevenueTrendChart({ data, loading }: { data: RevenueTrendPoint[]; loadi
               <XAxis dataKey="month" tick={{ fontSize: 11 }} />
               <YAxis yAxisId="rev" tickFormatter={v => `$${(v / 1000).toFixed(0)}K`} tick={{ fontSize: 11 }} width={60} />
               <YAxis yAxisId="ten" orientation="right" tick={{ fontSize: 11 }} width={40} />
-              <Tooltip formatter={(val: number, name: string) =>
+              <Tooltip formatter={((val: number, name: string) =>
                 name === "Revenue" ? fmtCurrency(val) : val
-              } />
+              ) as any} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
               <Line yAxisId="rev" type="monotone" dataKey="revenue" name="Revenue" stroke="#6366f1" strokeWidth={2} dot={{ r: 3 }} />
               <Line yAxisId="ten" type="monotone" dataKey="newTenants" name="New Tenants" stroke="#22c55e" strokeWidth={2} dot={{ r: 3 }} />
@@ -377,7 +377,7 @@ function UsageBreakdown({ tenants }: { tenants: Tenant[] }) {
             <CartesianGrid strokeDasharray="3 3" className="opacity-30" horizontal={false} />
             <XAxis type="number" tick={{ fontSize: 11 }} />
             <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={120} />
-            <Tooltip formatter={(val: number) => [val.toLocaleString(), "Credits"]} />
+            <Tooltip formatter={((val: number) => [val.toLocaleString(), "Credits"]) as any} />
             <Bar dataKey="credits" name="AI Credits" fill="#f59e0b" radius={[0, 4, 4, 0]} />
           </BarChart>
         </ResponsiveContainer>

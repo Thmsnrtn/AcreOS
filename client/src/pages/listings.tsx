@@ -39,7 +39,7 @@ const SYNDICATION_TARGETS = [
 ];
 
 const listingFormSchema = z.object({
-  propertyId: z.number({ required_error: "Please select a property" }),
+  propertyId: z.number({ error: "Please select a property" }),
   title: z.string().min(1, "Title is required"),
   description: z.string().optional(),
   askingPrice: z.string().min(1, "Asking price is required"),
@@ -150,7 +150,7 @@ export default function ListingsPage() {
   });
 
   const form = useForm<ListingFormValues>({
-    resolver: zodResolver(listingFormSchema),
+    resolver: zodResolver(listingFormSchema) as any,
     defaultValues: {
       title: "",
       description: "",

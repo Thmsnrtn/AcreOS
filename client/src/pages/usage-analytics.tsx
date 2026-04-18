@@ -61,7 +61,7 @@ export default function UsageAnalyticsPage() {
   }, 0) || 1;
 
   return (
-    <PageShell title="Usage Analytics" subtitle="Track your platform usage and costs">
+    <PageShell>
       {/* Period selector */}
       <div className="flex gap-2">
         {PERIODS.map((p) => (

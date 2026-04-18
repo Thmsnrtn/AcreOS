@@ -65,7 +65,7 @@ const templateFormSchema = z.object({
 type TemplateFormValues = z.infer<typeof templateFormSchema>;
 
 const generateDocFormSchema = z.object({
-  templateId: z.number({ required_error: "Please select a template" }),
+  templateId: z.number({ error: "Please select a template" }),
   dealId: z.number().optional(),
   propertyId: z.number().optional(),
   name: z.string().optional(),
@@ -339,7 +339,7 @@ export default function DocumentsPage() {
   };
 
   const templateForm = useForm<TemplateFormValues>({
-    resolver: zodResolver(templateFormSchema),
+    resolver: zodResolver(templateFormSchema) as any,
     defaultValues: {
       name: "",
       type: "custom",
@@ -349,12 +349,12 @@ export default function DocumentsPage() {
   });
 
   const generateDocForm = useForm<GenerateDocFormValues>({
-    resolver: zodResolver(generateDocFormSchema),
+    resolver: zodResolver(generateDocFormSchema) as any,
     defaultValues: {},
   });
 
   const editTemplateForm = useForm<TemplateFormValues>({
-    resolver: zodResolver(templateFormSchema),
+    resolver: zodResolver(templateFormSchema) as any,
     defaultValues: {
       name: "",
       type: "custom",

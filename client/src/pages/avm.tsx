@@ -173,7 +173,7 @@ function PricePerAcreTrendChart({ history }: { history: any[] }) {
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="date" tick={{ fontSize: 10 }} />
             <YAxis tickFormatter={v => `$${(v / 1000).toFixed(0)}K`} tick={{ fontSize: 10 }} />
-            <Tooltip formatter={(v: any, name: string) => [`$${Number(v).toLocaleString()}/acre`, name === 'pricePerAcre' ? 'Price/Acre' : name === 'high' ? 'CI High' : 'CI Low']} />
+            <Tooltip formatter={((v: any, name: string) => [`$${Number(v).toLocaleString()}/acre`, name === 'pricePerAcre' ? 'Price/Acre' : name === 'high' ? 'CI High' : 'CI Low']) as any} />
             <Area type="monotone" dataKey="high" stroke="transparent" fill="url(#ciGrad)" />
             <Area type="monotone" dataKey="low" stroke="transparent" fill="white" />
             <Line type="monotone" dataKey="pricePerAcre" stroke="#4f8ef7" strokeWidth={2} dot={{ r: 3 }} />
@@ -544,10 +544,10 @@ export default function AVMPage() {
                         <XAxis dataKey="label" />
                         <YAxis tickFormatter={(v) => `$${(v / 1000).toFixed(0)}K`} />
                         <Tooltip
-                          formatter={(v: any, name: string) => [
+                          formatter={((v: any, name: string) => [
                             name === 'pricePerAcre' ? `$${v.toLocaleString()}/acre` : `${v}%`,
                             name === 'pricePerAcre' ? 'Price/Acre' : 'Similarity',
-                          ]}
+                          ]) as any}
                         />
                         <ReferenceLine y={latest.pricePerAcre} stroke="#d97541" strokeDasharray="5 5" label="Subject" />
                         <Bar dataKey="pricePerAcre" fill="#4f8ef7" radius={[4, 4, 0, 0]} name="pricePerAcre" />

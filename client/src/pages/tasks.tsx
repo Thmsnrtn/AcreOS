@@ -95,7 +95,7 @@ export default function TasksPage() {
   });
 
   const createForm = useForm<TaskFormValues>({
-    resolver: zodResolver(taskFormSchema),
+    resolver: zodResolver(taskFormSchema) as any,
     defaultValues: {
       title: "",
       description: "",
@@ -107,7 +107,7 @@ export default function TasksPage() {
   });
 
   const editForm = useForm<TaskFormValues>({
-    resolver: zodResolver(taskFormSchema),
+    resolver: zodResolver(taskFormSchema) as any,
     defaultValues: {
       title: "",
       description: "",

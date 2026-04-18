@@ -542,7 +542,7 @@ export default function PortfolioOptimizerPage() {
                           <XAxis dataKey="year" />
                           <YAxis tickFormatter={(v) => formatDollar(v)} width={80} />
                           <Tooltip
-                            formatter={(v: any, name: string) => [formatDollar(v), name.replace('p', 'P').replace(/(\d+)/, '$1th %ile')]}
+                            formatter={((v: any, name: string) => [formatDollar(v), name.replace('p', 'P').replace(/(\d+)/, '$1th %ile')]) as any}
                           />
                           <Legend />
                           <Area type="monotone" dataKey="p90" stackId="a" stroke="#10b981" fill="#10b98120" name="p90" />

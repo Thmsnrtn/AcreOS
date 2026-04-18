@@ -153,7 +153,7 @@ export function PipelineVelocity() {
                 <XAxis dataKey="name" tick={{ fontSize: 10 }} />
                 <YAxis tick={{ fontSize: 10 }} unit="d" />
                 <Tooltip
-                  formatter={(v: number) => [`${v} days`, "Avg Days"]}
+                  formatter={((v: number) => [`${v} days`, "Avg Days"]) as any}
                 />
                 <Bar dataKey="avgDays" radius={[2, 2, 0, 0]}>
                   {chartData.map((entry, i) => (

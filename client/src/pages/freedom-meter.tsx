@@ -468,7 +468,7 @@ export default function FreedomMeterPage() {
                 <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                 <XAxis dataKey="month" tick={{ fontSize: 12 }} />
                 <YAxis tick={{ fontSize: 12 }} tickFormatter={v => `$${(v/1000).toFixed(1)}K`} />
-                <Tooltip formatter={(v: number) => [`$${Math.round(v).toLocaleString()}`, ""]} />
+                <Tooltip formatter={((v: number) => [`$${Math.round(v).toLocaleString()}`, ""]) as any} />
                 <ReferenceLine y={data.totalMonthlyExpenses} stroke="#ef4444" strokeDasharray="4 4" label={{ value: "Freedom Line", position: "right", fontSize: 11, fill: "#ef4444" }} />
                 <Area type="monotone" dataKey="noteIncome" stroke="#10b981" fill="#10b981" fillOpacity={0.2} name="Note Income" strokeWidth={2} />
               </AreaChart>
@@ -546,7 +546,7 @@ export default function FreedomMeterPage() {
                 <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                 <XAxis dataKey="month" tick={{ fontSize: 11 }} interval={5} />
                 <YAxis tick={{ fontSize: 12 }} tickFormatter={v => `$${(v/1000).toFixed(1)}K`} />
-                <Tooltip formatter={(v: number) => [`$${Math.round(v).toLocaleString()}`, ""]} />
+                <Tooltip formatter={((v: number) => [`$${Math.round(v).toLocaleString()}`, ""]) as any} />
                 <ReferenceLine y={data.totalMonthlyExpenses} stroke="#ef4444" strokeDasharray="4 4" label={{ value: "Freedom Line", position: "right", fontSize: 11, fill: "#ef4444" }} />
                 {freedomMonth && (
                   <ReferenceLine x={freedomMonth.month} stroke="#10b981" strokeDasharray="4 4" label={{ value: "Freedom!", position: "top", fontSize: 11, fill: "#10b981" }} />

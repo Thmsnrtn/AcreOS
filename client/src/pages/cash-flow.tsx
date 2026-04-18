@@ -323,15 +323,15 @@ export default function CashFlowPage() {
                       <XAxis dataKey="month" tick={{ fontSize: 10 }} interval={2} />
                       <YAxis tickFormatter={(v) => formatDollar(v)} width={80} />
                       <Tooltip
-                        formatter={(v: any, name: string) => [
+                        formatter={((v: any, name: string) => [
                           formatDollar(v),
                           name === 'incomeLow' ? 'Low estimate' :
                           name === 'incomeHigh' ? 'High estimate' : 'Expected income',
-                        ]}
-                        labelFormatter={(label: string) => {
+                        ]) as any}
+                        labelFormatter={((label: string) => {
                           const row = portfolioTimelineData.timeline.find((r: any) => r.month === label);
                           return row?.isBalloon ? `${label} 🎈 Balloon payment due` : label;
-                        }}
+                        }) as any}
                       />
                       <Area
                         type="monotone"
@@ -383,7 +383,7 @@ export default function CashFlowPage() {
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="month" tick={{ fontSize: 11 }} />
                     <YAxis tickFormatter={(v) => formatDollar(v)} width={80} />
-                    <Tooltip formatter={(v: any, name: string) => [formatDollar(v), name]} />
+                    <Tooltip formatter={((v: any, name: string) => [formatDollar(v), name]) as any} />
                     <Legend />
                     <ReferenceLine y={0} stroke="#888" />
                     <Bar dataKey="Income" fill="#10b981" radius={[4, 4, 0, 0]} />

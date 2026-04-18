@@ -305,7 +305,7 @@ export default function AcquisitionRadarPage() {
                     <XAxis type="number" domain={[0, 100]} />
                     <YAxis type="category" dataKey="market" width={120} tick={{ fontSize: 11 }} />
                     <Tooltip
-                      formatter={(v: any, name: string) => [name === 'avgScore' ? `${v}/100` : v, name === 'avgScore' ? 'Avg Score' : 'Count']}
+                      formatter={((v: any, name: string) => [name === 'avgScore' ? `${v}/100` : v, name === 'avgScore' ? 'Avg Score' : 'Count']) as any}
                     />
                     <Bar dataKey="avgScore" name="Avg Score" radius={[0, 4, 4, 0]}>
                       {marketChartData.map((entry, i) => (

@@ -31,7 +31,7 @@ const TYPE_COLORS: Record<IslandType, string> = {
 };
 
 /* ── Spring variants ───────────────────────────────────────────────── */
-const islandVariants = {
+const islandVariants: any = {
   hidden: {
     opacity: 0,
     scale: 0.6,
@@ -59,7 +59,7 @@ const islandVariants = {
   },
 };
 
-const contentVariants = {
+const contentVariants: any = {
   hidden: { opacity: 0, width: 0, x: -4 },
   visible: {
     opacity: 1,

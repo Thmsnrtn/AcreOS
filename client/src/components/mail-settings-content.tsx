@@ -150,7 +150,7 @@ export function MailSettingsContent() {
   const [identityToDelete, setIdentityToDelete] = useState<MailIdentity | null>(null);
 
   const form = useForm<MailIdentityFormValues>({
-    resolver: zodResolver(mailIdentityFormSchema),
+    resolver: zodResolver(mailIdentityFormSchema) as any,
     defaultValues: {
       name: "",
       companyName: "",
