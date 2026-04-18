@@ -1,7 +1,8 @@
 import type { Request, Response, NextFunction } from "express";
 import { storage, db } from "../storage";
+import { withTransaction } from "../db";
 import { eq } from "drizzle-orm";
-import { organizations } from "@shared/schema";
+import { organizations, teamMembers } from "@shared/schema";
 import { logger } from "../utils/logger";
 
 /**
@@ -46,35 +47,40 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
   let org = await storage.getOrganizationByOwner(userId);
 
   if (!org) {
-    // Create default organization for new user with 7-day free trial
+    // DEFECT-0021: Wrap org creation + team member creation in a transaction
+    // so we never end up with an org that has no owner team member.
     const displayName = user.firstName || user.email || "User";
     const slug = `org-${userId}-${Date.now()}`;
     const now = new Date();
     const trialEnds = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-    org = await storage.createOrganization({
-      name: `${displayName}'s Organization`,
-      slug,
-      ownerId: userId,
-      subscriptionTier: isFounder ? "enterprise" : "free",
-      subscriptionStatus: "active",
-      trialStartedAt: isFounder ? null : now,
-      trialEndsAt: isFounder ? null : trialEnds,
-      trialUsed: isFounder ? true : false,
-      isFounder,
-      utmSource: null,
-      utmMedium: null,
-      utmCampaign: null,
-      utmContent: null,
-    });
+    org = await withTransaction(async (tx) => {
+      const [newOrg] = await tx.insert(organizations).values({
+        name: `${displayName}'s Organization`,
+        slug,
+        ownerId: userId,
+        subscriptionTier: isFounder ? "enterprise" : "free",
+        subscriptionStatus: "active",
+        trialStartedAt: isFounder ? null : now,
+        trialEndsAt: isFounder ? null : trialEnds,
+        trialUsed: isFounder ? true : false,
+        isFounder,
+        utmSource: null,
+        utmMedium: null,
+        utmCampaign: null,
+        utmContent: null,
+      }).returning();
 
-    // Add user as owner team member
-    await storage.createTeamMember({
-      organizationId: org.id,
-      userId,
-      displayName,
-      role: "owner",
-      isActive: true,
+      // Add user as owner team member
+      await tx.insert(teamMembers).values({
+        organizationId: newOrg.id,
+        userId,
+        displayName,
+        role: "owner",
+        isActive: true,
+      });
+
+      return newOrg;
     });
 
     if (isFounder) {

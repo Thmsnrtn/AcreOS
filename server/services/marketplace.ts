@@ -1,4 +1,4 @@
-import { db } from "../db";
+import { db, withTransaction } from "../db";
 import { storage } from "../storage";
 import {
   marketplaceListings,
@@ -354,27 +354,46 @@ export class MarketplaceService {
       throw new Error("Bid is no longer pending");
     }
     
-    // Update bid
-    await db.update(marketplaceBids)
-      .set({
-        status: action === "accept" ? "accepted" : action === "reject" ? "rejected" : "countered",
-        sellerResponse: data?.sellerResponse,
-        counterOffer: data?.counterOffer?.toString(),
-        respondedAt: new Date(),
-      })
-      .where(eq(marketplaceBids.id, bidId));
-    
-    // If accepted, update listing status and create deal room
-    if (action === "accept") {
-      await db.update(marketplaceListings)
-        .set({ status: "under_offer" })
-        .where(eq(marketplaceListings.id, listing.id));
-      
-      // Create deal room
-      await this.createDealRoom(listing.id, bid.bidderOrganizationId, listing.sellerOrganizationId);
-    }
-    
-    // Notify bidder of seller response
+    // DEFECT-0021: Wrap bid update + listing update + deal room creation in a
+    // single transaction so all 3 tables are committed or rolled back atomically.
+    await withTransaction(async (tx) => {
+      // Update bid
+      await tx.update(marketplaceBids)
+        .set({
+          status: action === "accept" ? "accepted" : action === "reject" ? "rejected" : "countered",
+          sellerResponse: data?.sellerResponse,
+          counterOffer: data?.counterOffer?.toString(),
+          respondedAt: new Date(),
+        })
+        .where(eq(marketplaceBids.id, bidId));
+
+      // If accepted, update listing status and create deal room
+      if (action === "accept") {
+        await tx.update(marketplaceListings)
+          .set({ status: "under_offer" })
+          .where(eq(marketplaceListings.id, listing.id));
+
+        // Create deal room inside the same transaction
+        await tx.insert(dealRooms).values({
+          listingId: listing.id,
+          participants: [
+            {
+              organizationId: listing.sellerOrganizationId,
+              role: "seller",
+              joinedAt: new Date().toISOString(),
+            },
+            {
+              organizationId: bid.bidderOrganizationId,
+              role: "buyer",
+              joinedAt: new Date().toISOString(),
+            },
+          ],
+          status: "active",
+        });
+      }
+    });
+
+    // Notify bidder of seller response (non-critical, outside transaction)
     try {
       const actionLabels: Record<string, string> = {
         accept: 'accepted',
@@ -394,7 +413,7 @@ export class MarketplaceService {
     } catch (err) {
       logger.error('Failed to create bid response notification', err);
     }
-    
+
     return { success: true, action };
   }
   
@@ -446,38 +465,44 @@ export class MarketplaceService {
     const platformFeePercent = 1.5;
     const platformFeeCents = Math.round(salePrice * (platformFeePercent / 100) * 100);
     const sellerPayoutAmount = salePrice - (platformFeeCents / 100);
-    
-    const [transaction] = await db.insert(marketplaceTransactions).values({
-      listingId,
-      sellerOrganizationId: listing[0].sellerOrganizationId,
-      buyerOrganizationId: buyerOrgId,
-      transactionType: listing[0].listingType,
-      salePrice: salePrice.toString(),
-      platformFeePercent: platformFeePercent.toString(),
-      platformFeeCents,
-      sellerPayoutAmount: sellerPayoutAmount.toString(),
-      sellerPayoutStatus: "pending",
-      status: "pending",
-      closingDate: new Date(),
-    }).returning();
-    
-    // Update listing
-    await db.update(marketplaceListings)
-      .set({
-        status: "sold",
-        soldAt: new Date(),
-      })
-      .where(eq(marketplaceListings.id, listingId));
-    
-    // Close deal room
-    await db.update(dealRooms)
-      .set({
-        status: "closed",
-        closedAt: new Date(),
-      })
-      .where(eq(dealRooms.listingId, listingId));
-    
-    // Create Stripe PaymentIntent for the buyer
+
+    // DEFECT-0021: Wrap transaction insert + listing update + deal room close
+    // in a single DB transaction so all tables stay consistent.
+    const transaction = await withTransaction(async (tx) => {
+      const [txn] = await tx.insert(marketplaceTransactions).values({
+        listingId,
+        sellerOrganizationId: listing[0].sellerOrganizationId,
+        buyerOrganizationId: buyerOrgId,
+        transactionType: listing[0].listingType,
+        salePrice: salePrice.toString(),
+        platformFeePercent: platformFeePercent.toString(),
+        platformFeeCents,
+        sellerPayoutAmount: sellerPayoutAmount.toString(),
+        sellerPayoutStatus: "pending",
+        status: "pending",
+        closingDate: new Date(),
+      }).returning();
+
+      // Update listing
+      await tx.update(marketplaceListings)
+        .set({
+          status: "sold",
+          soldAt: new Date(),
+        })
+        .where(eq(marketplaceListings.id, listingId));
+
+      // Close deal room
+      await tx.update(dealRooms)
+        .set({
+          status: "closed",
+          closedAt: new Date(),
+        })
+        .where(eq(dealRooms.listingId, listingId));
+
+      return txn;
+    });
+
+    // Create Stripe PaymentIntent for the buyer (external API call, outside transaction)
     try {
       const { getUncachableStripeClient } = await import('../stripeClient');
       const stripe = await getUncachableStripeClient();
@@ -507,7 +532,7 @@ export class MarketplaceService {
     } catch (err) {
       logger.error('Marketplace Stripe payment creation failed (non-blocking)', err);
     }
-    
+
     return transaction;
   }
   
