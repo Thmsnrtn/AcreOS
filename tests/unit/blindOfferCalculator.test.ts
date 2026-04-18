@@ -1,8 +1,8 @@
 /**
- * Unit Tests: Blind Offer Calculator (Podolsky Formula)
+ * Unit Tests: Blind Offer Calculator
  * Core business logic for the land investing acquisition strategy.
  *
- * Tests the Podolsky blind offer methodology:
+ * Tests the blind offer methodology:
  * - The 25% formula (lowest comp ÷ 4)
  * - Offer tier calculations (20%, 25%, 33% of lowest comp)
  * - Comp data quality classification
@@ -140,7 +140,7 @@ function buildOwnerFinanceScenario(
 
 // ── Tests ──────────────────────────────────────────────────────────────────────
 
-describe("Podolsky Formula — Core Offer Tiers", () => {
+describe("Blind Offer Formula — Core Offer Tiers", () => {
   it("standard tier is 25% of lowest comp (÷4 rule)", () => {
     const lowestComp = 4000; // $4,000/acre
     const acres = 10;
@@ -231,7 +231,7 @@ describe("Comp Analysis — Data Quality Classification", () => {
     expect(result.isCountyValidated).toBe(false);
   });
 
-  it("10+ comps → excellent quality + county validated (Podolsky threshold)", () => {
+  it("10+ comps → excellent quality + county validated (validation threshold)", () => {
     const comps = Array.from({ length: 10 }, (_, i) => makeComp(3000 + i * 100));
     const result = analyzeComps(comps);
     expect(result.dataQuality).toBe("excellent");
@@ -330,7 +330,7 @@ describe("Campaign Sizing — The 3-of-5 Rule", () => {
   });
 });
 
-describe("Owner Finance Scenario — Podolsky Note Building", () => {
+describe("Owner Finance Scenario — Note Building", () => {
   it("builds correct monthly payment for 9% rate, 84-month note", () => {
     // Buy at $10K, sell at $40K, 0% down, 9%, 84 months
     const scenario = buildOwnerFinanceScenario(10000, 40000, 0, 9, 84);

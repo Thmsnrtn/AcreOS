@@ -108,7 +108,7 @@ export interface LeadIntelligenceProfile {
   nextBestAction: string;
 
   // Offer intelligence
-  estimatedOfferPrice: number; // Podolsky formula applied
+  estimatedOfferPrice: number; // Blind offer formula applied
   estimatedFlipPrice: number;
   estimatedOwnerFinanceMonthly: number;
 
@@ -279,7 +279,7 @@ function generateMessageHook(
 function selectRecommendedChannel(signals: LeadIntelligenceProfile["signals"]): OutreachChannel {
   // Already responded → follow up by phone
   if (signals.hasResponded) return "phone";
-  // Never contacted → start with direct mail (Podolsky's primary channel)
+  // Never contacted → start with direct mail (primary channel)
   if (signals.touchCount === 0) return "direct_mail";
   // 1-2 touches with no response → add phone layer
   if (signals.touchCount <= 2) return "direct_mail";
@@ -314,7 +314,7 @@ function computeOfferIntelligence(
   const acres = parseFloat(lead.acres || lead.acreage || "5");
   const usdaPerAcre = nassData?.pasturePerAcre || 1000;
 
-  // Podolsky formula
+  // Blind offer formula
   const lowestCompPerAcre = usdaPerAcre;
   const offerPerAcre = lowestCompPerAcre * 0.25;
   const offerTotal = offerPerAcre * acres;

@@ -60,7 +60,7 @@ class ValuationResponse(BaseModel):
     estimatedValue: float  # $ total
     estimatedValuePerAcre: float  # $/acre
     confidenceScore: float  # 0-1
-    podolskyOfferPrice: float  # estimatedValue / 4
+    blindOfferPrice: float  # estimatedValue / 4
     ownerFinanceListPrice: float  # estimatedValue * 2-3
     cashFlipListPrice: float  # estimatedValue * 1.5-2
     methodology: str
@@ -100,7 +100,7 @@ class DealProbabilityResponse(BaseModel):
 async def predict_valuation(req: ValuationRequest) -> ValuationResponse:
     """
     ML-powered land valuation using USDA data, parcel characteristics,
-    and the Podolsky formula as a baseline.
+    and the AcreOS offer formula as a baseline.
     """
     try:
         # Try to use the valuation_model.py if available
@@ -112,7 +112,7 @@ async def predict_valuation(req: ValuationRequest) -> ValuationResponse:
         except (ImportError, Exception):
             pass  # Fall back to rule-based
 
-        # Rule-based valuation (Podolsky formula + USDA data)
+        # Rule-based valuation (AcreOS offer formula + USDA data)
         acres = req.acres
         usda_per_acre = req.usdaPricePerAcre or estimate_usda_price(req.state)
         nccpi = req.nccpiScore or 0.3
@@ -159,8 +159,8 @@ async def predict_valuation(req: ValuationRequest) -> ValuationResponse:
         adjusted_per_acre = base_per_acre * multiplier
         total_value = adjusted_per_acre * acres
 
-        # Podolsky offer = lowest comp / 4 → use adjusted value / 4
-        podolsky_offer = total_value / 4
+        # Standard offer = lowest comp / 4 → use adjusted value / 4
+        blind_offer = total_value / 4
         owner_finance_list = total_value * 2.5  # typical owner-finance listing
         cash_flip_list = total_value * 1.75  # typical cash flip listing
 
@@ -170,10 +170,10 @@ async def predict_valuation(req: ValuationRequest) -> ValuationResponse:
             estimatedValue=round(total_value, 2),
             estimatedValuePerAcre=round(adjusted_per_acre, 2),
             confidenceScore=round(min(0.95, confidence), 2),
-            podolskyOfferPrice=round(podolsky_offer, 2),
+            blindOfferPrice=round(blind_offer, 2),
             ownerFinanceListPrice=round(owner_finance_list, 2),
             cashFlipListPrice=round(cash_flip_list, 2),
-            methodology="rule-based-podolsky-usda",
+            methodology="rule-based-blind-offer-usda",
             factors={
                 "basePricePerAcre": usda_per_acre,
                 "multiplier": round(multiplier, 3),

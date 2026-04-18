@@ -26,7 +26,7 @@
  *   seller profile, approximately 3 out of 5 offers get accepted. Lower acceptance
  *   rate = wrong county, wrong price, or wrong seller criteria.
  *
- * Extended Podolsky Wisdom:
+ * Industry Best Practices:
  *   - "Don't negotiate. Find sellers who want to sell at your price."
  *   - "The money is made at acquisition, not at sale."
  *   - "Your offer should solve the seller's problem, not meet the market price."
@@ -76,7 +76,7 @@ export interface CompAnalysis {
   compCount: number;
   dataQuality: "excellent" | "good" | "limited" | "insufficient";
   dataQualityNotes: string[];
-  isCountyValidated: boolean; // True if 10+ comps (Podolsky's eBay validation threshold)
+  isCountyValidated: boolean; // True if 10+ comps (eBay validation threshold)
 }
 
 export interface OfferTier {
@@ -93,7 +93,7 @@ export interface OwnerFinanceScenario {
   salePrice: number; // What you list it for
   downPayment: number; // Down = acquisition cost (capital recovery day 1)
   loanAmount: number; // What the buyer finances
-  interestRate: number; // 9% per Podolsky methodology
+  interestRate: number; // 9% per industry-standard methodology
   termMonths: number; // 84 months (7 years) standard
   monthlyPayment: number;
   totalCollected: number; // Down + all monthly payments
@@ -128,15 +128,15 @@ export interface BlindOfferReport {
   // Comp analysis
   compAnalysis: CompAnalysis;
 
-  // Core Podolsky formula output
+  // Core offer formula output
   lowestCompPerAcre: number;
-  podolskyOfferPerAcre: number; // lowestComp ÷ 4
-  podolskyOfferTotal: number; // × acres
+  baseOfferPerAcre: number; // lowestComp ÷ 4
+  baseOfferTotal: number; // × acres
 
   // Three offer tiers (for flexibility)
   offerTiers: {
     aggressive: OfferTier; // 20% of lowest comp (ultra-motivated sellers)
-    standard: OfferTier; // 25% of lowest comp (Podolsky standard)
+    standard: OfferTier; // 25% of lowest comp (industry standard)
     competitive: OfferTier; // 33% of lowest comp (hot markets, less competition)
   };
 
@@ -148,7 +148,7 @@ export interface BlindOfferReport {
   // Exit strategy modeling
   cashFlipScenario: CashFlipScenario;
   ownerFinanceScenario: OwnerFinanceScenario;
-  hybridRecommendation: string; // Podolsky's preferred hybrid approach
+  hybridRecommendation: string; // Preferred hybrid approach
 
   // Letter generation inputs
   letterVariables: {
@@ -199,8 +199,8 @@ export async function calculateBlindOffer(input: BlindOfferInput): Promise<Blind
 
   // Core pricing
   const lowestCompPerAcre = compAnalysis.lowestSalePerAcre;
-  const podolskyPerAcre = lowestCompPerAcre / 4;
-  const podolskyTotal = podolskyPerAcre * targetAcres;
+  const basePerAcre = lowestCompPerAcre / 4;
+  const baseTotal = basePerAcre * targetAcres;
 
   // Three tiers
   const offerTiers = buildOfferTiers(lowestCompPerAcre, targetAcres, effectiveMarketCondition);
@@ -250,8 +250,8 @@ export async function calculateBlindOffer(input: BlindOfferInput): Promise<Blind
     generatedAt: new Date().toISOString(),
     compAnalysis,
     lowestCompPerAcre: Math.round(lowestCompPerAcre),
-    podolskyOfferPerAcre: Math.round(podolskyPerAcre),
-    podolskyOfferTotal: Math.round(podolskyTotal),
+    baseOfferPerAcre: Math.round(basePerAcre),
+    baseOfferTotal: Math.round(baseTotal),
     offerTiers,
     recommendedTier,
     recommendedOfferTotal: Math.round(recommendedOfferTotal),
@@ -341,7 +341,7 @@ function analyzeComps(comps: CompData[]): CompAnalysis {
   }
 
   const compCount = comps.length;
-  const isCountyValidated = compCount >= 10; // Podolsky's threshold
+  const isCountyValidated = compCount >= 10; // Validation threshold
 
   let dataQuality: CompAnalysis["dataQuality"];
   const notes: string[] = [];
@@ -398,13 +398,13 @@ function buildOfferTiers(
       acceptanceRateForecast: "~1 in 5 sellers (higher volume campaigns needed)",
     },
     standard: {
-      name: "Podolsky Standard (25%)",
+      name: "Standard (25%)",
       offerPerAcre: Math.round(lowestCompPerAcre * 0.25),
       offerTotal: Math.round(lowestCompPerAcre * 0.25 * acres),
       pctOfLowestComp: 25,
       description: "25 cents on the dollar — the proven industry standard formula",
       bestFor: "Most counties, mixed seller motivation profiles, balanced markets",
-      acceptanceRateForecast: "~3 in 5 sellers (Podolsky's reported rate in validated counties)",
+      acceptanceRateForecast: "~3 in 5 sellers (reported rate in validated counties)",
     },
     competitive: {
       name: "Competitive Market (33%)",
@@ -463,7 +463,7 @@ function recommendTier(
 
   return {
     tier: "standard",
-    reason: "Standard market conditions — using the proven Podolsky formula of 25 cents on the dollar. This targets the right seller profile and delivers ~3 of 5 acceptance rate in validated counties.",
+    reason: "Standard market conditions — using the proven formula of 25 cents on the dollar. This targets the right seller profile and delivers ~3 of 5 acceptance rate in validated counties.",
   };
 }
 
@@ -481,7 +481,7 @@ function buildCashFlipScenario(
   const dispositionCosts = salePrice * 0.08; // 8% closing/marketing (no agent on buyer side = lower)
   const netProfit = salePrice - acquisition - holdingCosts - dispositionCosts;
   const roi = acquisition > 0 ? (netProfit / acquisition) * 100 : 0;
-  const holdingPeriodDays = 45; // Podolsky's 30-day target + buffer
+  const holdingPeriodDays = 45; // 30-day target + buffer
   const annualizedROI = roi * (365 / holdingPeriodDays);
 
   return {
@@ -501,7 +501,7 @@ function buildOwnerFinanceScenario(
   medianMarketPerAcre: number,
   acres: number
 ): OwnerFinanceScenario {
-  // Podolsky standard: list at 2-3× acquisition price; down = acquisition cost
+  // Industry standard: list at 2-3x acquisition price; down = acquisition cost
   const salePrice = Math.max(medianMarketPerAcre * acres * 1.1, acquisition * 3);
   const downPayment = acquisition; // Down payment recovers acquisition cost day 1
   const loanAmount = salePrice - downPayment;
@@ -631,7 +631,7 @@ function buildWarnings(
   }
 
   if (!compAnalysis.isCountyValidated) {
-    warnings.push(`County not yet validated (only ${compAnalysis.compCount} comps). Podolsky recommends validating with eBay sold listings — look for 10+ bidders on similar parcels before running a campaign.`);
+    warnings.push(`County not yet validated (only ${compAnalysis.compCount} comps). We recommend validating with eBay sold listings — look for 10+ bidders on similar parcels before running a campaign.`);
   }
 
   if (marketCondition === "hot") {

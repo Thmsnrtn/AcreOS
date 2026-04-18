@@ -30,7 +30,7 @@
  * Output: A comprehensive LandIntelligenceReport with:
  *   - Deal killer flags (flood, wetlands, landlocked, contamination)
  *   - Opportunity signals (soil quality, road access, county growth)
- *   - Pricing intelligence (Podolsky formula + USDA data-backed)
+ *   - Pricing intelligence (AcreOS offer formula + USDA data-backed)
  *   - Owner finance viability score
  *   - Comparable market analysis
  *   - Recommended next actions
@@ -83,15 +83,15 @@ export interface OpportunitySignal {
   description: string;
 }
 
-export interface PodolskyOfferAnalysis {
-  // The core Podolsky formula: lowest comp ÷ 4
+export interface BlindOfferAnalysis {
+  // The core offer formula: lowest comp ÷ 4
   lowestComparableSale: number | null; // $/acre from county data
   usdaLandValuePerAcre: number; // USDA NASS baseline
   recommendedOfferPerAcre: number; // Minimum of (lowest comp ÷ 4, USDA ÷ 4)
   recommendedOfferTotal: number; // × acres
   targetFlipPriceTotal: number; // 2-4× offer (for cash sale)
   targetFlipROI: number; // %
-  // Owner finance structure (Podolsky optimal terms)
+  // Owner finance structure (optimal terms)
   ownerFinance: {
     downPayment: number; // = acquisition cost (recoups capital day 1)
     loanAmount: number; // listing price - down payment
@@ -127,7 +127,7 @@ export interface LandIntelligenceReport {
   opportunityStrength: "very_strong" | "strong" | "moderate" | "weak";
 
   // Pricing intelligence
-  offerAnalysis: PodolskyOfferAnalysis;
+  offerAnalysis: BlindOfferAnalysis;
 
   // Due diligence checks
   dueDiligence: {
@@ -238,7 +238,7 @@ export async function generateLandIntelligenceReport(
   // Identify opportunity signals
   const opportunitySignals = identifyOpportunitySignals(input, nassData, trend, census, countyScore);
 
-  // Build Podolsky offer analysis
+  // Build offer analysis
   const offerAnalysis = buildOfferAnalysis(input, nassData, trend);
 
   // Compute composite Land Intelligence Score
@@ -410,7 +410,7 @@ function identifyOpportunitySignals(
 ): OpportunitySignal[] {
   const signals: OpportunitySignal[] = [];
 
-  // Tax delinquency — #1 motivator per Podolsky research
+  // Tax delinquency — #1 motivation signal in land investing
   if (input.taxDelinquent) {
     signals.push({
       type: "tax_delinquent",
@@ -419,7 +419,7 @@ function identifyOpportunitySignals(
     });
   }
 
-  // Out-of-state owner — Podolsky's #2 signal
+  // Out-of-state owner — #2 motivation signal
   if (input.ownerState && input.ownerState.toUpperCase() !== input.state.toUpperCase()) {
     signals.push({
       type: "out_of_state_owner",
@@ -487,17 +487,17 @@ function identifyOpportunitySignals(
 }
 
 // ---------------------------------------------------------------------------
-// Podolsky Offer Analysis
+// Blind Offer Analysis
 // ---------------------------------------------------------------------------
 
 function buildOfferAnalysis(
   input: ParcelIntelligenceInput,
   nassData: any,
   trend: any
-): PodolskyOfferAnalysis {
+): BlindOfferAnalysis {
   const usdaPerAcre = nassData?.pasturePerAcre || (nassData?.farmRealEstatePerAcre * 0.6) || 1000;
 
-  // Podolsky formula: lowest comp ÷ 4
+  // Offer formula: lowest comp ÷ 4
   // Use USDA NASS pastureland value as the "lowest comp" baseline
   const lowestCompPerAcre = usdaPerAcre;
   const offerPerAcre = lowestCompPerAcre * 0.25; // 25 cents on the dollar
@@ -570,7 +570,7 @@ function buildOfferAnalysis(
 function computeLandIntelligenceScore(
   dealKillers: DealKillerFlag[],
   signals: OpportunitySignal[],
-  offer: PodolskyOfferAnalysis,
+  offer: BlindOfferAnalysis,
   dd: any,
   countyScore: any,
   census: any
@@ -626,7 +626,7 @@ function getOpportunityStrength(
 function determineRecommendation(
   dealKillers: DealKillerFlag[],
   lis: number,
-  offer: PodolskyOfferAnalysis
+  offer: BlindOfferAnalysis
 ): LandIntelligenceReport["recommendation"] {
   if (dealKillers.some(d => d.severity === "dealbreaker")) return "dealbreaker";
   if (dealKillers.some(d => d.severity === "major_risk")) return "pass";

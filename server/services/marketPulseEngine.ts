@@ -296,7 +296,7 @@ function detectCompStalenessAlerts(county: string, state: string, lastCompDate?:
       urgency: "this_month",
       impact: "medium",
       headline: `${county} County comps are ${daysOld} days old — recalibrate before mailing`,
-      details: `Your comparable sales data for ${county} County is ${daysOld > 90 ? "more than 90 days" : `${daysOld} days`} old. In the current market, stale comps can cause you to offer too low (missing motivated sellers) or too high (destroying your margin). The Podolsky methodology requires fresh comps for accurate blind offer pricing.`,
+      details: `Your comparable sales data for ${county} County is ${daysOld > 90 ? "more than 90 days" : `${daysOld} days`} old. In the current market, stale comps can cause you to offer too low (missing motivated sellers) or too high (destroying your margin). Accurate blind offer pricing requires fresh comps.`,
       recommendedAction: `Pull fresh comps from LandWatch, Land and Farm, and county assessor records. Look for sales within the last 60-90 days only. Recalculate your offer price before the next campaign.`,
       estimatedROIImpact: "Accurate comps = accurate offers = higher acceptance rate",
       dataPoints: {

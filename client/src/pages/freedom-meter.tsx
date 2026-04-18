@@ -63,7 +63,7 @@ interface FreedomSnapshot {
     expenses: number;
     freedomScore: number;
   }[];
-  podolskyInsight: string; // Rotating wisdom
+  dailyInsight: string; // Rotating wisdom
 }
 
 // ─── Wisdom Engine ───────────────────────────────────────────────────────────
@@ -261,7 +261,7 @@ function buildMockSnapshot(monthlyExpenses: number): FreedomSnapshot {
       { label: "2× Monthly Expenses", targetMonthly: monthlyExpenses * 2, achieved: totalMonthlyNoteIncome >= monthlyExpenses * 2 },
     ],
     historicalProgress: historical,
-    podolskyInsight: wisdom,
+    dailyInsight: wisdom,
   };
 }
 
@@ -319,7 +319,7 @@ export default function FreedomMeterPage() {
       <div className="rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-900/50 dark:bg-amber-900/10 p-4 mb-6">
         <div className="flex gap-3 items-start">
           <Star className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" />
-          <p className="text-sm text-amber-800 dark:text-amber-300 italic">{data.podolskyInsight}</p>
+          <p className="text-sm text-amber-800 dark:text-amber-300 italic">{data.dailyInsight}</p>
         </div>
       </div>
 
