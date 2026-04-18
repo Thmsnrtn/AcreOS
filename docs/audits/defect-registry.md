@@ -699,52 +699,52 @@ Resolving commits: eb3846e
 ### DEFECT-0069
 Title: GDPR data export silently truncates at 1,000 records per entity
 Severity: P1
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: Red team — Angry Enterprise Buyer
 Description: `server/services/gdprService.ts:76-81` applies `LIMIT 1000` to every entity query in the data export. Organizations with more than 1,000 leads, properties, or deals receive an incomplete Article 15 response without any indication of truncation.
 Evidence: `server/services/gdprService.ts` lines 76-81.
 Remediation plan: Remove the LIMIT or use streaming/pagination to export all records. Add record count metadata to the export.
-Resolving commits: pending
+Resolving commits: 2f66e89
 
 ### DEFECT-0070
 Title: Billing routes expose financial data to all team members without permission check
 Severity: P1
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: Red team — Angry Enterprise Buyer
 Description: `server/routes-billing.ts` uses only `isAuthenticated` + `getOrCreateOrg` but never checks `canManageBilling` permission. Credit balances, transaction history, and subscription details are visible to all team members regardless of role.
 Evidence: `server/routes-billing.ts` lines 21-66.
 Remediation plan: Add `requirePermission('canManageBilling')` middleware to billing endpoints.
-Resolving commits: pending
+Resolving commits: 0c7d2ba
 
 ### DEFECT-0071
 Title: Deal room endpoints lack organization-scoped access control
 Severity: P1
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: Red team — Security Researcher
 Description: `getDealRoomOrFail()` in `server/routes-deal-rooms.ts:43-50` queries by `id` only, with no `organizationId` filter. Any authenticated user can access, modify, and upload documents to other organizations' deal rooms by ID enumeration.
 Evidence: `server/routes-deal-rooms.ts` lines 43-50.
 Remediation plan: Add `organizationId` filter to `getDealRoomOrFail()`.
-Resolving commits: pending
+Resolving commits: b6f27e4
 
 ### DEFECT-0072
 Title: Browser automation job endpoints lack org-scoping
 Severity: P1
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: Red team — Security Researcher
 Description: `server/routes-misc.ts:153-165` and `:186-195` call `getJobById()` and `cancelJob()` without checking `job.organizationId === req.organization.id`. Users can view other orgs' automation results or cancel their jobs.
 Evidence: `server/routes-misc.ts` lines 153-195.
 Remediation plan: Add org ownership verification before returning job data or allowing cancellation.
-Resolving commits: pending
+Resolving commits: 158e2f1
 
 ### DEFECT-0073
 Title: Competitor name references ("Podolsky") still present in codebase
 Severity: P1
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: Red team — Confused First-Timer
 Description: 6 references to "Podolsky" (Mark Podolsky / Land Geek) exist in blind offer wizard and sidebar components, violating the project directive to remove all competitor references.
 Evidence: Search for "Podolsky" in client source files.
 Remediation plan: Replace all instances with generic or AcreOS-branded alternatives.
-Resolving commits: pending
+Resolving commits: 23225e2
 
 ---
 
@@ -752,12 +752,12 @@ Resolving commits: pending
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 5   | 19  | 24    |
-| FIXED  | 12  | 31  | 0   | 43    |
+| OPEN   | 0   | 0   | 19  | 19    |
+| FIXED  | 12  | 36  | 0   | 48    |
 | DEFERRED | 0 | 3   | 0   | 3     |
 | **Total** | **12** | **39** | **19** | **70** |
 
-Note: 5 new P1s (DEFECT-0069 through 0073) surfaced by red team reviews.
+All P0 and P1 defects resolved (fixed or justified deferral). 19 P2s remain open (not blocking launch).
 
 ### Fixed Defects Summary
 
