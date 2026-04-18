@@ -1128,6 +1128,7 @@ export function FloatingAssistant() {
                     variant="ghost"
                     className="h-7 w-7"
                     onClick={handleNewChat}
+                    aria-label="New chat"
                     data-testid="button-new-chat"
                   >
                     <Plus className="w-4 h-4" />
@@ -1146,6 +1147,7 @@ export function FloatingAssistant() {
                     )}
                     onClick={() => setExecutionMode(executionMode === "live" ? "background" : "live")}
                     disabled={isExecutingActions}
+                    aria-label={executionMode === "live" ? "Switch to background mode" : "Switch to live demo mode"}
                     data-testid="button-toggle-execution-mode"
                   >
                     {executionMode === "live" ? (
@@ -1173,6 +1175,7 @@ export function FloatingAssistant() {
                       setExecutionSpeed(speeds[(currentIdx + 1) % speeds.length]);
                     }}
                     disabled={isExecutingActions}
+                    aria-label={`Execution speed: ${executionSpeed}x`}
                     data-testid="button-execution-speed"
                   >
                     <span className="text-[10px] font-medium">{executionSpeed}x</span>
@@ -1203,6 +1206,7 @@ export function FloatingAssistant() {
                 variant="ghost"
                 className="h-7 w-7"
                 onClick={handleMinimize}
+                aria-label="Minimize assistant"
                 data-testid="button-minimize-assistant"
               >
                 <Minus className="w-4 h-4" />
@@ -1212,6 +1216,7 @@ export function FloatingAssistant() {
                 variant="ghost"
                 className="h-7 w-7"
                 onClick={handleClose}
+                aria-label="Close assistant"
                 data-testid="button-close-assistant"
               >
                 <X className="w-4 h-4" />
@@ -1477,6 +1482,7 @@ export function FloatingAssistant() {
                     onClick={handleAttachClick}
                     disabled={attachments.length >= MAX_ATTACHMENTS || isImageMode}
                     className="h-[44px] w-[44px] rounded-xl shrink-0"
+                    aria-label="Attach file"
                     data-testid="button-attach-file"
                   >
                     <Paperclip className="w-4 h-4" />
@@ -1501,6 +1507,7 @@ export function FloatingAssistant() {
                       "h-[44px] w-[44px] rounded-xl shrink-0",
                       isImageMode && "bg-primary text-primary-foreground"
                     )}
+                    aria-label={isImageMode ? "Disable image mode" : "Enable image mode"}
                     data-testid="button-toggle-image-mode"
                   >
                     <Palette className="w-4 h-4" />
@@ -1532,6 +1539,7 @@ export function FloatingAssistant() {
                     onClick={startVoiceInput}
                     disabled={isLoading || isStreaming || isGeneratingImage}
                     className="h-[44px] w-[44px] rounded-xl shrink-0"
+                    aria-label={isListening ? "Stop listening" : "Voice input"}
                     data-testid="button-voice-input"
                     title="Voice input"
                   >
@@ -1551,6 +1559,7 @@ export function FloatingAssistant() {
                 onClick={handleSendMessage}
                 disabled={(!inputValue.trim() && attachments.length === 0) || isLoading || isStreaming || isGeneratingImage}
                 className="h-[44px] w-[44px] rounded-xl shrink-0"
+                aria-label="Send message"
                 data-testid="button-send-assistant-message"
               >
                 {isLoading || isStreaming || isGeneratingImage ? (
@@ -1598,6 +1607,7 @@ export function FloatingAssistant() {
             size="icon"
             variant="ghost"
             className="h-6 w-6"
+            aria-label="Close assistant"
             onClick={(e) => {
               e.stopPropagation();
               handleClose();

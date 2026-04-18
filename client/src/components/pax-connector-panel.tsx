@@ -274,6 +274,7 @@ export function PaxConnectorPanel({ open, onOpenChange }: PaxConnectorPanelProps
                                   className="h-7 w-7 text-destructive hover:text-destructive"
                                   onClick={() => disconnectMutation.mutate(connector.id)}
                                   title="Disconnect"
+                                  aria-label="Disconnect integration"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </Button>

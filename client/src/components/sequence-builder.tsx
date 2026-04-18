@@ -92,6 +92,7 @@ function StepCard({
                 variant="ghost"
                 size="icon"
                 onClick={onDelete}
+                aria-label="Delete step"
                 data-testid={`button-delete-step-${index}`}
               >
                 <Trash2 className="w-4 h-4" />

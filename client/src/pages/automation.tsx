@@ -348,7 +348,7 @@ export default function AutomationPage() {
                     onChange={(e) => updateCondition(index, { value: e.target.value })}
                     className="flex-1"
                   />
-                  <Button type="button" variant="ghost" size="icon" onClick={() => removeCondition(index)}>
+                  <Button type="button" variant="ghost" size="icon" onClick={() => removeCondition(index)} aria-label="Remove condition">
                     <Trash2 className="w-4 h-4" />
                   </Button>
                 </div>
@@ -384,7 +384,7 @@ export default function AutomationPage() {
                         ))}
                       </SelectContent>
                     </Select>
-                    <Button type="button" variant="ghost" size="icon" onClick={() => removeAction(index)}>
+                    <Button type="button" variant="ghost" size="icon" onClick={() => removeAction(index)} aria-label="Remove action">
                       <Trash2 className="w-4 h-4" />
                     </Button>
                   </div>
@@ -551,14 +551,15 @@ export default function AutomationPage() {
                             onCheckedChange={(checked) => toggleMutation.mutate({ id: rule.id, enabled: checked })}
                             data-testid={`switch-rule-${rule.id}`}
                           />
-                          <Button variant="ghost" size="icon" onClick={() => openEditDialog(rule)}>
+                          <Button variant="ghost" size="icon" onClick={() => openEditDialog(rule)} aria-label="Edit rule">
                             <Edit className="w-4 h-4" />
                           </Button>
-                          <Button 
-                            variant="ghost" 
-                            size="icon" 
+                          <Button
+                            variant="ghost"
+                            size="icon"
                             onClick={() => setDeleteRuleId(rule.id)}
                             disabled={deleteMutation.isPending}
+                            aria-label="Delete rule"
                           >
                             <Trash2 className="w-4 h-4" />
                           </Button>

@@ -264,6 +264,7 @@ export function PaxMemoryPanel({ isOpen, open, onClose, orgId }: PaxMemoryPanelP
             size="icon"
             className="h-7 w-7 -mt-0.5 -mr-1 text-muted-foreground hover:text-foreground"
             onClick={onClose}
+            aria-label="Close memory panel"
           >
             <X className="w-4 h-4" />
           </Button>

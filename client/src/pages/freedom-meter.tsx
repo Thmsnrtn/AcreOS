@@ -347,7 +347,7 @@ export default function FreedomMeterPage() {
               ) : (
                 <div className="flex items-center gap-3">
                   <span className="text-2xl font-bold">{fmt(monthlyExpenses)}/mo</span>
-                  <Button variant="ghost" size="icon" onClick={() => { setEditingExpenses(true); setExpenseInput(String(monthlyExpenses)); }}>
+                  <Button variant="ghost" size="icon" aria-label="Edit expenses" onClick={() => { setEditingExpenses(true); setExpenseInput(String(monthlyExpenses)); }}>
                     <Edit3 className="w-4 h-4" />
                   </Button>
                 </div>

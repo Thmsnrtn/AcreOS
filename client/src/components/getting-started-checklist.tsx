@@ -120,6 +120,7 @@ export function GettingStartedChecklist() {
           size="icon"
           className="absolute top-3 right-3"
           onClick={handleDismiss}
+          aria-label="Dismiss checklist"
           data-testid="button-dismiss-checklist"
         >
           <X className="w-4 h-4" />

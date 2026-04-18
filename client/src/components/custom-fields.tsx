@@ -419,7 +419,7 @@ export function CustomFieldsManager() {
                           <TableCell>
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" data-testid={`button-field-actions-${field.id}`}>
+                                <Button variant="ghost" size="icon" aria-label="Field actions" data-testid={`button-field-actions-${field.id}`}>
                                   <MoreVertical className="w-4 h-4" />
                                 </Button>
                               </DropdownMenuTrigger>

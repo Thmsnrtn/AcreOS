@@ -149,7 +149,7 @@ export default function DocumentVersionsPage() {
                       </div>
                       <div className="flex gap-1">
                         {v.downloadUrl && (
-                          <Button size="icon" variant="ghost" className="h-7 w-7" asChild>
+                          <Button size="icon" variant="ghost" className="h-7 w-7" aria-label="Download version" asChild>
                             <a href={v.downloadUrl} download>
                               <Download className="w-3.5 h-3.5" />
                             </a>

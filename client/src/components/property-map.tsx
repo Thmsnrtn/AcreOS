@@ -2114,6 +2114,7 @@ export function PropertyMap({
                 variant={currentStyle === "satellite" ? "default" : "ghost"}
                 onClick={() => changeMapStyle("satellite")}
                 title="Satellite View"
+                aria-label="Satellite view"
                 data-testid="button-map-satellite"
               >
                 <Satellite className="h-4 w-4" />
@@ -2123,6 +2124,7 @@ export function PropertyMap({
                 variant={currentStyle === "terrain" ? "default" : "ghost"}
                 onClick={() => changeMapStyle("terrain")}
                 title="Terrain View"
+                aria-label="Terrain view"
                 data-testid="button-map-terrain"
               >
                 <Mountain className="h-4 w-4" />
@@ -2132,6 +2134,7 @@ export function PropertyMap({
                 variant={currentStyle === "streets" ? "default" : "ghost"}
                 onClick={() => changeMapStyle("streets")}
                 title="Street View"
+                aria-label="Street view"
                 data-testid="button-map-streets"
               >
                 <MapIcon className="h-4 w-4" />
@@ -2144,6 +2147,7 @@ export function PropertyMap({
                 variant={is3DExtrudeMode ? "default" : "ghost"}
                 onClick={toggle3DExtrude}
                 title={is3DExtrudeMode ? "Exit 3D View" : "3D Parcel View"}
+                aria-label={is3DExtrudeMode ? "Exit 3D view" : "3D parcel view"}
                 data-testid="button-3d-extrude"
               >
                 <Box className="h-4 w-4" />
@@ -2153,6 +2157,7 @@ export function PropertyMap({
                 variant={isFlyoverActive ? "default" : "ghost"}
                 onClick={isFlyoverActive ? stopFlyover : startFlyover}
                 title={isFlyoverActive ? "Stop Cinematic Flyover" : "Cinematic Property Tour"}
+                aria-label={isFlyoverActive ? "Stop flyover" : "Start flyover"}
                 data-testid="button-map-flyover"
               >
                 {isFlyoverActive ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
@@ -2162,6 +2167,7 @@ export function PropertyMap({
                 variant={showSunPanel ? "default" : "ghost"}
                 onClick={() => setShowSunPanel((v) => !v)}
                 title="Solar Simulation"
+                aria-label="Solar simulation"
                 data-testid="button-sun-panel"
               >
                 <Sun className="h-4 w-4" />
@@ -2171,6 +2177,7 @@ export function PropertyMap({
                 variant="ghost"
                 onClick={toggleFullscreen}
                 title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+                aria-label={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
                 data-testid="button-map-fullscreen"
               >
                 {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
@@ -2184,6 +2191,7 @@ export function PropertyMap({
                     size="icon"
                     variant={measurementMode !== "none" ? "default" : "ghost"}
                     title="Measure"
+                    aria-label="Measure"
                     data-testid="button-measure"
                   >
                     <Ruler className="h-4 w-4" />
@@ -2213,6 +2221,7 @@ export function PropertyMap({
                     size="icon"
                     variant="ghost"
                     title="Export Map"
+                    aria-label="Export map"
                     disabled={isExporting}
                     data-testid="button-export"
                   >
@@ -2248,6 +2257,7 @@ export function PropertyMap({
                   onClick={fetchNearbyParcels}
                   disabled={nearbyLoading}
                   title="Find Nearby Parcels"
+                  aria-label="Find nearby parcels"
                   data-testid="button-find-nearby"
                 >
                   {nearbyLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <MapPinned className="h-4 w-4" />}
@@ -2258,6 +2268,7 @@ export function PropertyMap({
                   onClick={fetchComps}
                   disabled={compsLoading}
                   title="Show Comparables"
+                  aria-label="Show comparables"
                   data-testid="button-show-comps"
                 >
                   {compsLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <BarChart3 className="h-4 w-4" />}
@@ -2747,6 +2758,7 @@ export function PropertyMap({
           variant="outline"
           onClick={toggleFullscreen}
           className="absolute top-3 right-3 z-10 bg-background/80 backdrop-blur-sm"
+          aria-label="Exit fullscreen"
           data-testid="button-exit-fullscreen"
         >
           <Minimize2 className="h-4 w-4" />
@@ -2775,6 +2787,7 @@ export function PropertyMap({
               onClick={exitMeasurementMode}
               className="h-6 w-6"
               title="Close (Esc)"
+              aria-label="Close measurement"
               data-testid="button-close-measurement"
             >
               <X className="h-3 w-3" />

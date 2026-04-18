@@ -403,6 +403,7 @@ export function FocusList() {
                           className="h-8 w-8"
                           onClick={() => handleCall(lead)}
                           disabled={isPending}
+                          aria-label="Call lead"
                           data-testid={`button-call-${lead.id}`}
                         >
                           <Phone className="w-4 h-4" />
@@ -418,6 +419,7 @@ export function FocusList() {
                           className="h-8 w-8"
                           onClick={() => handleSMS(lead)}
                           disabled={isPending}
+                          aria-label="Send SMS"
                           data-testid={`button-sms-${lead.id}`}
                         >
                           <MessageSquare className="w-4 h-4" />
@@ -436,6 +438,7 @@ export function FocusList() {
                         className="h-8 w-8"
                         onClick={() => handleEmail(lead)}
                         disabled={isPending}
+                        aria-label="Email lead"
                         data-testid={`button-email-${lead.id}`}
                       >
                         <Mail className="w-4 h-4" />
@@ -452,6 +455,7 @@ export function FocusList() {
                       className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-900/30"
                       onClick={() => handleMarkContacted ? handleMarkContacted(lead, "manual") : markContactedMutation.mutate(lead.id)}
                       disabled={isPending || markContactedMutation?.isPending}
+                      aria-label="Mark as contacted"
                       data-testid={`button-mark-contacted-${lead.id}`}
                     >
                       {isPending || markContactedMutation?.isPending ? (

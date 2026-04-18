@@ -1057,7 +1057,7 @@ export function PaxCopilotRail() {
                 {/* Knowledge base button */}
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setShowKnowledge(true)}>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setShowKnowledge(true)} aria-label="Knowledge base">
                       <BookOpen className="w-3.5 h-3.5" />
                     </Button>
                   </TooltipTrigger>
@@ -1066,7 +1066,7 @@ export function PaxCopilotRail() {
                 {/* Connectors button */}
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setShowConnectors(true)}>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setShowConnectors(true)} aria-label="Integrations">
                       <Plug className="w-3.5 h-3.5" />
                     </Button>
                   </TooltipTrigger>
@@ -1080,6 +1080,7 @@ export function PaxCopilotRail() {
                       size="icon"
                       className={cn("h-7 w-7", activeProjectId && "text-primary")}
                       onClick={() => setShowProjects(true)}
+                      aria-label="Projects"
                     >
                       <FolderOpen className="w-3.5 h-3.5" />
                     </Button>
@@ -1089,7 +1090,7 @@ export function PaxCopilotRail() {
                 {/* Memory panel button */}
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setShowMemory(true)}>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setShowMemory(true)} aria-label="Pax memory">
                       <BrainCircuit className="w-3.5 h-3.5" />
                     </Button>
                   </TooltipTrigger>
@@ -1130,6 +1131,7 @@ export function PaxCopilotRail() {
                       size="icon"
                       className="h-7 w-7"
                       onClick={() => setShowConvSwitcher((v) => !v)}
+                      aria-label="Switch conversation"
                     >
                       <MessageSquare className="w-3.5 h-3.5" />
                     </Button>
@@ -1140,7 +1142,7 @@ export function PaxCopilotRail() {
                   <>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleNewChat}>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleNewChat} aria-label="New chat">
                           <RefreshCw className="w-3.5 h-3.5" />
                         </Button>
                       </TooltipTrigger>
@@ -1153,6 +1155,7 @@ export function PaxCopilotRail() {
                           size="icon"
                           className="h-7 w-7"
                           onClick={() => handleExport("pdf")}
+                          aria-label="Export conversation"
                         >
                           <Download className="w-3.5 h-3.5" />
                         </Button>
@@ -1163,7 +1166,7 @@ export function PaxCopilotRail() {
                 )}
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setOpen(false)}>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setOpen(false)} aria-label="Collapse panel">
                       <ChevronRight className="w-3.5 h-3.5" />
                     </Button>
                   </TooltipTrigger>
@@ -1634,6 +1637,7 @@ export function PaxCopilotRail() {
                         className="h-8 w-8 flex-shrink-0"
                         onClick={() => fileInputRef.current?.click()}
                         disabled={isStreaming || attachedFiles.length >= MAX_FILES}
+                        aria-label="Attach file"
                       >
                         <Paperclip className="w-3.5 h-3.5" />
                       </Button>
@@ -1652,6 +1656,7 @@ export function PaxCopilotRail() {
                         )}
                         onClick={handleMicToggle}
                         disabled={isStreaming || micState === "transcribing"}
+                        aria-label={micState === "recording" ? "Stop recording" : "Voice input"}
                       >
                         {micState === "recording" ? (
                           <MicOff className="w-3.5 h-3.5" />
@@ -1667,7 +1672,7 @@ export function PaxCopilotRail() {
                     </TooltipContent>
                   </Tooltip>
                   {isStreaming ? (
-                    <Button size="icon" variant="destructive" className="h-8 w-8 flex-shrink-0" onClick={handleStop}>
+                    <Button size="icon" variant="destructive" className="h-8 w-8 flex-shrink-0" onClick={handleStop} aria-label="Stop generating">
                       <X className="w-3.5 h-3.5" />
                     </Button>
                   ) : (
@@ -1676,6 +1681,7 @@ export function PaxCopilotRail() {
                       className="h-8 w-8 flex-shrink-0"
                       onClick={handleSubmit}
                       disabled={!inputValue.trim() && attachedFiles.length === 0}
+                      aria-label="Send message"
                       data-testid="pax-rail-send"
                     >
                       <Send className="w-3.5 h-3.5" />

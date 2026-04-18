@@ -335,6 +335,7 @@ export function PhoneNumbersSettings() {
                       size="icon"
                       variant="ghost"
                       onClick={() => deleteMutation.mutate(phone.id)}
+                      aria-label="Delete phone number"
                       data-testid={`button-delete-phone-${phone.id}`}
                     >
                       <Trash2 className="w-4 h-4 text-destructive" />

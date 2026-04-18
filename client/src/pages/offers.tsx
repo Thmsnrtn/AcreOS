@@ -416,6 +416,7 @@ export default function OffersPage() {
                                     variant="ghost"
                                     onClick={() => sendOfferMutation.mutate(offer.id)}
                                     disabled={sendOfferMutation.isPending}
+                                    aria-label="Send offer"
                                     data-testid={`button-send-${offer.id}`}
                                   >
                                     <Send className="w-4 h-4" />
@@ -426,6 +427,7 @@ export default function OffersPage() {
                                   variant="ghost"
                                   onClick={() => deleteOfferMutation.mutate(offer.id)}
                                   disabled={deleteOfferMutation.isPending}
+                                  aria-label="Delete offer"
                                   data-testid={`button-delete-${offer.id}`}
                                 >
                                   <Trash2 className="w-4 h-4" />

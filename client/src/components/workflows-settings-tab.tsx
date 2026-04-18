@@ -170,6 +170,7 @@ export function WorkflowsSettingsTab() {
                       variant="ghost"
                       className="h-7 w-7"
                       onClick={() => { setEditingWorkflow(wf); setBuilderOpen(true); }}
+                      aria-label="Edit workflow"
                     >
                       <Edit2 className="w-3.5 h-3.5" />
                     </Button>
@@ -178,6 +179,7 @@ export function WorkflowsSettingsTab() {
                       variant="ghost"
                       className="h-7 w-7 text-muted-foreground hover:text-destructive"
                       onClick={() => deleteMut.mutate(wf.id)}
+                      aria-label="Delete workflow"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </Button>

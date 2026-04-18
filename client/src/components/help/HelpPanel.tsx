@@ -1035,6 +1035,7 @@ export function HelpPanel() {
                     type="submit"
                     size="icon"
                     disabled={!newMessage.trim() || sendMessageMutation.isPending}
+                    aria-label="Send support message"
                     data-testid="button-send-support-message"
                   >
                     <Send className="h-4 w-4" />

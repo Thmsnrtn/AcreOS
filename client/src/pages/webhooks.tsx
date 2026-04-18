@@ -218,6 +218,7 @@ export default function WebhooksPage() {
                       size="icon"
                       className="h-8 w-8"
                       onClick={() => removeEndpoint(ep.url)}
+                      aria-label="Remove endpoint"
                     >
                       <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
                     </Button>

@@ -538,7 +538,7 @@ export default function DealsPage() {
               <div className="flex items-center gap-2">
                 <CheckSquare className="w-4 h-4" />
                 <span className="text-sm font-medium">{selectedDealIds.size} deal{selectedDealIds.size !== 1 ? "s" : ""} selected</span>
-                <Button variant="ghost" size="icon" className="md:hidden min-h-[44px] min-w-[44px] ml-auto" onClick={() => setSelectedDealIds(new Set())}>
+                <Button variant="ghost" size="icon" className="md:hidden min-h-[44px] min-w-[44px] ml-auto" onClick={() => setSelectedDealIds(new Set())} aria-label="Clear selection">
                   <X className="w-4 h-4" />
                 </Button>
               </div>
@@ -1166,10 +1166,10 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
               </h2>
             </div>
             <div className="flex items-center gap-1 flex-shrink-0">
-              <Button size="icon" variant="ghost" onClick={onDelete} className="min-h-[44px] min-w-[44px]" data-testid="button-delete-deal">
+              <Button size="icon" variant="ghost" onClick={onDelete} className="min-h-[44px] min-w-[44px]" aria-label="Delete deal" data-testid="button-delete-deal">
                 <Trash2 className="w-5 h-5 text-destructive" />
               </Button>
-              <Button size="icon" variant="ghost" onClick={onClose} className="min-h-[44px] min-w-[44px]">
+              <Button size="icon" variant="ghost" onClick={onClose} className="min-h-[44px] min-w-[44px]" aria-label="Close drawer">
                 <X className="w-5 h-5" />
               </Button>
             </div>
@@ -1732,11 +1732,12 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                               )}
                             </div>
                             {item.documentRequired && (
-                              <Button 
-                                size="icon" 
+                              <Button
+                                size="icon"
                                 variant="ghost"
                                 disabled={isUpdatingItem}
                                 className="min-h-[44px] min-w-[44px] flex-shrink-0"
+                                aria-label="Upload document"
                                 data-testid={`button-upload-doc-${item.id}`}
                               >
                                 <Upload className="w-4 h-4" />
