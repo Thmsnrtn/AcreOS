@@ -748,6 +748,12 @@ app.use("/api", apiLimiter);
           } else {
             log("HTTP server closed — all connections drained", "shutdown");
           }
+          // Drain database connection pools before exiting
+          const { pool, replicaPool } = require("./db");
+          Promise.allSettled([pool.end(), replicaPool.end()]).then(() => {
+            log("Database pools drained", "shutdown");
+          }).catch(() => {});
+
           // Give in-flight work 5 seconds to complete
           setTimeout(() => {
             log("Graceful shutdown complete", "shutdown");

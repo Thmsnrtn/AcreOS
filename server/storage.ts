@@ -4956,12 +4956,10 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async deleteDocumentTemplate(id: number) {
-    const [updated] = await db.update(documentTemplates)
+  async deleteDocumentTemplate(id: number): Promise<void> {
+    await db.update(documentTemplates)
       .set({ isActive: false, updatedAt: new Date() })
-      .where(eq(documentTemplates.id, id))
-      .returning();
-    return updated;
+      .where(eq(documentTemplates.id, id));
   }
 
   async seedSystemTemplates() {
