@@ -11,22 +11,22 @@ Method: Every finding extracted, deduplicated by underlying code defect, severit
 ### DEFECT-0001
 Title: 381 founder/SCP route handlers have zero authentication middleware
 Severity: P0
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: 1 (ARCH-006), 3 (BE-01), 7 (SEC-001), 51 (RACE-005 related), 96 (cross-org tool risk)
 Description: Ten route files (routes-founder-v6 through v14, routes-scp-v2, routes-sovereign-integration) register 381 endpoints with no `isAuthenticated`, `getOrCreateOrg`, or `requireFounder` middleware. Any anonymous HTTP client can invoke agent orchestration, manipulate trust scores, trigger autonomous decision engines, and operate on arbitrary organizations via `req.body.orgId`.
 Evidence: `server/routes-founder-v6.ts` through `server/routes-founder-v14.ts`, `server/routes-scp-v2.ts`, `server/routes-sovereign-integration.ts` -- all registered in `server/routes.ts:1253-1303` without auth wrappers. Grep for `isAuthenticated` in these files returns zero.
 Remediation plan: Wrap each registration call with `app.use('/api/founder', isAuthenticated, requireFounder)` before the v* routes, or add auth middleware to every handler. Replace all `req.body.orgId` with `req.organizationId` from the auth chain.
-Resolving commits: pending
+Resolving commits: 377c4db
 
 ### DEFECT-0002
 Title: SQL injection via sql.raw() in maintenance routes and support agent
 Severity: P0
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: 7 (SEC-002), 60 (060-1), 7 (SEC-003)
 Description: `routes-maintenance.ts:78-86` string-interpolates `req.body.status`, `req.body.cost`, and `req.body.priority` into `sql.raw()`. `supportAgent.ts:4507` interpolates `types` array values into `sql.raw()` via string concatenation to build an `ANY(ARRAY[...])` clause. Both are textbook SQL injection vectors.
 Evidence: `server/routes-maintenance.ts` lines 75-89: `updates.push(\`status = '${status}'\`)` followed by `sql.raw(updates.join(", "))`. `server/ai/supportAgent.ts:4507`: `sql.raw(types.map(t => \`'${t}'\`).join(','))`.
 Remediation plan: Replace `sql.raw()` in maintenance routes with Drizzle `.update().set()`. Replace `sql.raw()` in support agent with Drizzle `inArray()` operator.
-Resolving commits: pending
+Resolving commits: 377c4db
 
 ### DEFECT-0003
 Title: TypeScript type-checking is a no-op -- tsconfig.check.json uses noResolve
@@ -61,72 +61,72 @@ Resolving commits: 53d38f5, 1a73fea
 ### DEFECT-0006
 Title: Stripe webhook idempotency has TOCTOU gap allowing double-processing
 Severity: P0
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: 51 (RACE-003), 63 (WH-002)
 Description: `processWebhook()` checks `isDuplicate(event.id)` then processes then calls `markProcessed()`. Between check and mark, a duplicate delivery on both Fly.io instances can pass the check simultaneously, leading to double credit grants or double subscription activations. Should use `INSERT ... ON CONFLICT DO NOTHING RETURNING` as an atomic claim.
 Evidence: `server/webhookHandlers.ts` lines 30-86. Two Fly.io machines = true concurrent processing.
 Remediation plan: Replace SELECT-based `isDuplicate` with `INSERT INTO stripe_processed_events ... ON CONFLICT DO NOTHING RETURNING id` as an atomic claim before dispatching.
-Resolving commits: pending
+Resolving commits: 377c4db
 
 ### DEFECT-0007
 Title: Monthly credit allowance has TOCTOU race for double-granting
 Severity: P0
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: 51 (RACE-004)
 Description: Both `applyMonthlyAllowance` methods check for existing credit transaction, then if none found, insert the allowance. Concurrent invocations on two instances can both pass the check and double-grant monthly credits. No unique constraint on `(organizationId, type, month)`.
 Evidence: `server/services/credits.ts` lines 236-264 and 462-505.
 Remediation plan: Add a `UNIQUE` constraint on `(organization_id, type, metadata->>'month')` for credit transactions, or use `INSERT ... ON CONFLICT DO NOTHING`.
-Resolving commits: pending
+Resolving commits: 377c4db
 
 ### DEFECT-0008
 Title: Webhook handlers for Dropbox Sign, Meta Lead Ads, Actum ACH, and inbound email lack signature verification
 Severity: P0
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: 3 (BE-03), 63 (WH-008, WH-011, WH-014, WH-016)
 Description: Four webhook endpoints process business-critical data without verifying the sender's cryptographic signature. Dropbox Sign handler has a comment claiming verification but no code. Meta Lead Ads POST handler does not check `X-Hub-Signature-256`. Actum ACH handler has zero authentication on financial status updates. Inbound email handler does not verify SNS signature. Any party can forge payloads.
 Evidence: `server/routes-elite-features.ts:270-278` (Dropbox Sign), `:314-345` (Meta), `:418-425` (Actum). `server/routes-inbound-email.ts:32-48` (SNS).
 Remediation plan: Add signature verification to all four handlers. Actum is highest priority due to financial data exposure.
-Resolving commits: pending
+Resolving commits: 377c4db
 
 ### DEFECT-0009
 Title: SSRF check in deal-rooms is broken by missing await
 Severity: P0
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: 61 (061-1)
 Description: `validateUrl()` is `async` but called without `await`. The result is checked for `.safe` property which does not exist on a Promise. The truthiness check on a Promise always passes, completely bypassing SSRF protection.
 Evidence: `server/routes-deal-rooms.ts:182-185`.
 Remediation plan: Add `await` to the `validateUrl()` call and handle thrown errors.
-Resolving commits: pending
+Resolving commits: f8c476d
 
 ### DEFECT-0010
 Title: Unbounded tool-calling loops in vaService.ts and supportAgent.ts can cause unlimited LLM spend
 Severity: P0
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: 98 (098-F1), 100 (RUNAWAY-001, RUNAWAY-002)
 Description: Two services have `while (assistantMessage.tool_calls)` loops with no iteration limit. `executive.ts` has `MAX_TOOL_ITERATIONS = 10` but `vaService.ts` and `supportAgent.ts` lack any cap. The streaming path in `executive.ts` (`processChatStream`) also has no iteration limit and no client-disconnect handling. A single user action could generate unlimited LLM calls costing $50-$500+.
 Evidence: `server/ai/vaService.ts:648`, `server/ai/supportAgent.ts:5243`, `server/ai/executive.ts` processChatStream.
 Remediation plan: Add `MAX_TOOL_ITERATIONS` (10) to both loops. Add disconnect detection to streaming path.
-Resolving commits: 19e942c (executive.ts non-streaming only -- vaService and supportAgent still open)
+Resolving commits: 19e942c, f8c476d
 
 ### DEFECT-0011
 Title: Charge dispute webhook events silently dropped -- chargebacks invisible
 Severity: P0
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: 87 (F087-1)
 Description: The Stripe webhook handler does not handle `charge.dispute.created`, `charge.dispute.updated`, or `charge.dispute.closed` events. When a customer files a chargeback, the event is logged as "Unhandled Stripe event type" at info level. The org continues with full access while Stripe holds disputed funds. No alert reaches the founder.
 Evidence: `server/webhookHandlers.ts:88-160` -- switch statement has no dispute case.
 Remediation plan: Add handlers for `charge.dispute.*` events. At minimum create system alert for founder. Consider suspending org access on active dispute.
-Resolving commits: pending
+Resolving commits: 377c4db
 
 ### DEFECT-0012
 Title: Destructive migration (TRUNCATE CASCADE) with no rollback path
 Severity: P0
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: 53 (053-F01)
 Description: `migrations/0020_clerk_migration.sql` performs `ALTER TABLE users DROP COLUMN password_hash`, `DROP TABLE sessions/password_reset_tokens`, and `TRUNCATE TABLE users CASCADE`. No down migration exists. Running against an environment with existing users would destroy all user data and cascade to every FK-referencing table.
 Evidence: `migrations/0020_clerk_migration.sql`.
 Remediation plan: Add IF EXISTS guards. Ensure migration is marked as applied in all environments. Add a backup step before any future destructive migration.
-Resolving commits: pending
+Resolving commits: 377c4db
 
 ---
 
@@ -195,12 +195,12 @@ Resolving commits: 53d38f5 (12 routes, 14 patterns)
 ### DEFECT-0019
 Title: Multi-tenant isolation broken in 30+ storage update/delete methods
 Severity: P1
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: 4 (DB-002), 4 (DB-013), 3 (BE-19)
 Description: Numerous mutation methods in `storage.ts` filter only on `id` without `organizationId` in the WHERE clause. `updateLead`, `updateProperty`, `updateNote`, `deleteNote`, `updatePayment`, and 30+ `delete*` methods allow cross-tenant data modification by guessing IDs.
 Evidence: `server/storage.ts:1334` (updateLead), `:1616` (updateProperty), `:1806` (updateNote), `:1813` (deleteNote), `:2161-2163` (deleteAiConversation).
 Remediation plan: Add `organizationId` as required parameter to all mutation methods. Filter at SQL level. Add lint rule to enforce.
-Resolving commits: pending
+Resolving commits: 5cfbf6e
 
 ### DEFECT-0020
 Title: Twilio SMS webhook endpoints missing signature verification
@@ -215,12 +215,12 @@ Resolving commits: Twilio signature middleware was added per lens 63 analysis sh
 ### DEFECT-0021
 Title: Only 3 files use database transactions despite hundreds of multi-step writes
 Severity: P1
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: 3 (BE-06), 51 (RACE-006 through RACE-009)
 Description: `withTransaction()` is used in only `routes-deals.ts` (2), `db.ts` (definition), and `routes-billing.ts` (3). Marketplace bid acceptance, campaign sends, org creation + team member, and virtually all "create entity + log activity" patterns lack transactions.
 Evidence: Marketplace `respondToBid` (3 tables without tx), `completeTransaction` (5 operations without tx), `getOrCreateOrg` (org + team member without tx), campaign email send (credit check-then-deduct gap).
 Remediation plan: Wrap all multi-step write operations in `withTransaction()`. Prioritize billing, marketplace, campaign execution, and organization setup.
-Resolving commits: pending
+Resolving commits: 2571108
 
 ### DEFECT-0022
 Title: WebSocket channel authorization allows cross-org subscriptions
@@ -265,122 +265,122 @@ Resolving commits: 2d50235 (intervals), c0b1459 (pool drain), 515ca76 (all 43 in
 ### DEFECT-0026
 Title: Redis/ioredis not in package.json -- health check crashes, rate limiting per-instance only
 Severity: P1
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: 5 (SRE-05, SRE-13), 6 (REL-05), 56 (056-F03), 62 (P0-I)
 Description: `ioredis` is used by 14 server files but is only available as a transitive dep of `bullmq`. `redis` package imported by health check does not exist. Without Redis in production: rate limiting is per-instance (doubled limits), idempotency is per-instance, BullMQ jobs silently degrade to no-ops, and the health check always reports degraded.
 Evidence: `package.json` -- neither `redis` nor `ioredis` in deps. `server/services/healthCheck.ts:222` imports `redis`.
 Remediation plan: Add `ioredis` as explicit production dependency. Rewrite health check to use `ioredis`. Provision Redis via Fly.io Upstash.
-Resolving commits: pending
+Resolving commits: d7b855b
 
 ### DEFECT-0027
 Title: 477 KB schema chunk shipped to client bundle
 Severity: P1
-Status: OPEN
+Status: DEFERRED
 Surfaced by lenses: 5 (SRE-06)
 Description: The 14,883-line `shared/schema.ts` is imported by 20+ client files for types AND runtime Zod validators. Vite tree-shakes types but bundles all Zod schemas, producing a 477 KB chunk -- the 3rd largest in the build.
 Evidence: `dist/public/assets/schema-BijKS9R_.js` -- 477,350 bytes.
 Remediation plan: Split into type-only and runtime-validation modules. Move only needed Zod schemas to a lightweight `@shared/validators.ts`.
-Resolving commits: pending
+Resolving commits: DEFERRED — splitting 14,883-line schema.ts into modules is a high-risk refactor touching 200+ import sites. Requires dedicated session with full test coverage verification.
 
 ### DEFECT-0028
 Title: Stripe Connect handler never advances nextPaymentDate after payment
 Severity: P1
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: 58 (F-058-02)
 Description: When a Stripe Connect `payment_intent.succeeded` is processed, the handler updates `currentBalance` and `status` but never advances `nextPaymentDate` or updates `amortizationSchedule`. This causes false delinquency flags, incorrect reminder emails, and wrong borrower portal display for notes paid via Connect.
 Evidence: `server/services/stripeConnect.ts:441-444` vs `server/webhookHandlers.ts:671-677` (which correctly advances).
 Remediation plan: Replicate the schedule-advance logic from `webhookHandlers.ts` into `stripeConnect.ts:handleSuccessfulPayment`.
-Resolving commits: pending
+Resolving commits: a6e509e
 
 ### DEFECT-0029
 Title: Refund auto-approval does not cancel subscription or downgrade tier
 Severity: P1
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: 87 (F087-2, F087-3)
 Description: The self-serve refund endpoint auto-approves refunds under $50 with no rate limiting. After processing, the Stripe refund is created and confirmation email sent, but the subscription is NOT cancelled. User retains full paid-tier access despite receiving money back.
 Evidence: `server/routes-billing.ts:830-866`.
 Remediation plan: After refund, trigger subscription cancellation or flag for manual review. Add rate limit: max 1 refund per org per 30 days.
-Resolving commits: pending
+Resolving commits: 664d569
 
 ### DEFECT-0030
 Title: Support agent has cross-org `apply_bulk_fix` tool without org validation
 Severity: P1
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: 96 (CRITICAL in supportAgent.ts)
 Description: The LLM-driven support agent can call `apply_bulk_fix` with arbitrary `affected_org_ids`. No validation ensures these org IDs belong to the requesting user's organization. If the LLM is manipulated via injection in a support message, it could apply cache clearing, data resync, or retry operations across other organizations.
 Evidence: `server/ai/supportAgent.ts:2901-2917`.
 Remediation plan: Validate that all `affected_org_ids` match the authenticated user's organization. Add approval gate for destructive support tools.
-Resolving commits: pending
+Resolving commits: 646489a
 
 ### DEFECT-0031
 Title: LLM output validator module exists but is entirely unused (dead code)
 Severity: P1
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: 97 (097-F1)
 Description: `server/ai/validators.ts` exports `validateAtlasOutput` with Zod-based validation for offers, amortization schedules, ROI analyses. It includes cross-checks (amortization math within 2% tolerance). However, no file imports or calls these functions. LLM-generated financial outputs flow directly to clients without schema validation.
 Evidence: Codebase-wide search for `validateAtlasOutput` returns zero imports.
 Remediation plan: Wire `validateAtlasOutput` into every code path that generates financial data before returning to client.
-Resolving commits: pending
+Resolving commits: 894b463
 
 ### DEFECT-0032
 Title: provider_cache table exists in schema but is never queried -- external lookups never cached
 Severity: P1
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: 1 (ARCH-018), 56 (056-F01)
 Description: `shared/schema.ts` defines `providerCache` table with indexes. CLAUDE.md documents "Response caching via provider_cache table." But provider registry makes fresh API calls on every lookup with no cache check. Repeated lookups for the same parcel/address are charged multiple times.
 Evidence: `server/services/providers/provider-registry.ts` -- no reference to `providerCache`.
 Remediation plan: Implement cache-first in `providerRegistry.lookup()`. Check `provider_cache` before calling external providers. Write results on cache miss.
-Resolving commits: pending
+Resolving commits: 4c27079
 
 ### DEFECT-0033
 Title: 25 Google Font families loaded in a single render-blocking CSS request
 Severity: P1
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: 73 (073-A), 74 (074-A), 116 (116-A), 9 (MOB performance)
 Description: `client/index.html` loads 25 distinct font families in a single Google Fonts CSS URL. This is render-blocking and directly degrades LCP/FCP by 200-500ms+ for every user on every page load. Most fonts are for the theme customizer and are never used simultaneously.
 Evidence: `client/index.html:28` -- single URL with 25 `family=` params.
 Remediation plan: Replace with only the fonts actually used (Inter + 1 mono font). Load others dynamically via theme customizer when selected.
-Resolving commits: pending
+Resolving commits: 3161de2
 
 ### DEFECT-0034
 Title: Hardcoded fallback secrets in production-facing cryptographic code
 Severity: P1
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: 65 (F065-02)
 Description: Several services use hardcoded string fallbacks for cryptographic secrets: `"dev-secret"` for document signing, `"acreos-cert"` for certificate hashes, `"acreos-inbound-default"` for inbound email HMAC, and `"acreos-dev-config-key-insecure"` for config encryption. If env vars are not set, these predictable values are used in production.
 Evidence: `server/routes-deal-rooms.ts:266`, `server/jobs/courseCompletionCheck.ts:41`, `server/services/inboundEmailService.ts:8`, `server/services/configManager.ts:28`.
 Remediation plan: Refuse to start in production if any cryptographic secret is missing. Extend `validateSecrets` to cover all these keys.
-Resolving commits: pending
+Resolving commits: 4c4fc7f
 
 ### DEFECT-0035
 Title: handleQueryError defined in queryClient.ts but never wired -- 145+ pages silently swallow query errors
 Severity: P1
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: 69 (finding 2 and 3), 76 (EM-02), 2 (FE-06), 71 (071-B)
 Description: `handleQueryError` function is defined in `queryClient.ts` but never referenced -- not exported, not passed to QueryClient defaults. Only 9-11 of 156 pages use `QueryErrorState`. Failed queries enter error state silently. Users see blank/loading-forever screens with no feedback on 145+ pages.
 Evidence: `client/src/lib/queryClient.ts:59-87` -- defined, never wired. Only 9 pages import `QueryErrorState`.
 Remediation plan: Wire `handleQueryError` into `QueryCache.onError` for instant safety net. Adopt `PageShell`-level error boundary or wrapper for remaining pages.
-Resolving commits: pending
+Resolving commits: de6e0d1
 
 ### DEFECT-0036
 Title: Duplicate route declarations in App.tsx -- 47 paths declared twice with conflicting auth guards
 Severity: P1
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: 2 (FE-01)
 Description: `App.tsx` defines 187 routes, of which 47 paths are declared twice. The `<Switch>` renders only the first match, making the second block dead code. Worse, some duplicates use different guard components (FlaggedRoute vs ProtectedRoute), meaning feature flags are silently bypassed.
 Evidence: `client/src/App.tsx` lines 309-672. `/avm` uses FlaggedRoute on line 471 but ProtectedRoute on line 568. `/founder` redirects to different targets.
 Remediation plan: Delete the duplicate route block (lines ~544-671). Audit surviving routes for correct guard usage.
-Resolving commits: pending
+Resolving commits: 636afc5
 
 ### DEFECT-0037
 Title: 173 of 199 icon-only buttons lack aria-label -- screen readers unusable
 Severity: P1
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: 8 (A11Y-02, A11Y-08, A11Y-12, A11Y-13)
 Description: 87% of `<Button size="icon">` instances have no `aria-label`. Screen reader users hear only "button" with no indication of purpose. The Pax Copilot Rail alone has 12 unlabeled buttons. The floating action button lacks aria-label and aria-expanded.
 Evidence: 173 unlabeled instances across 85 files. Key concentrations: `founder-dashboard.tsx` (10), `pax-copilot-rail.tsx` (12), `conversation-tray.tsx` (7).
 Remediation plan: Add `aria-label` to every `size="icon"` Button. Add ESLint rule `button-has-accessible-name`.
-Resolving commits: pending
+Resolving commits: 234f113, b0acdac
 
 ### DEFECT-0038
 Title: Skip link target #main-content does not exist -- skip link non-functional
@@ -415,72 +415,72 @@ Resolving commits: e7de9e8
 ### DEFECT-0041
 Title: CI pipeline references non-existent job targets -- build job never runs
 Severity: P1
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: 1 (ARCH-002), 10 (DO-01)
 Description: `.github/workflows/ci.yml` build job specifies `needs: [unit-tests, integration-tests, e2e-tests]` but no such jobs exist. The build verification never executes. Combined with no functional type-checking, there is zero CI quality gate.
 Evidence: `.github/workflows/ci.yml` line 94.
 Remediation plan: Fix `needs` to reference actual jobs. Add test jobs or remove the dependency.
-Resolving commits: pending
+Resolving commits: 4688f7c
 
 ### DEFECT-0042
 Title: Dockerfile deletes lockfile -- non-deterministic production builds
 Severity: P1
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: 1 (ARCH-014), 5 (SRE-22), 10 (DO-03)
 Description: `Dockerfile:23` runs `rm -f package-lock.json && npm install` instead of `npm ci`. Builds are non-reproducible and can pull in breaking dependency changes.
 Evidence: `Dockerfile` line 23.
 Remediation plan: Use `npm ci --legacy-peer-deps`.
-Resolving commits: pending
+Resolving commits: 4c3d8ec
 
 ### DEFECT-0043
 Title: Node.js version mismatch -- Dockerfile 22 vs CI 20
 Severity: P1
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: 10 (DO-02)
 Description: Dockerfile uses Node 22.21.1 but all CI workflows use Node 20. No `.nvmrc` or `engines` field exists. Code passing CI tests may behave differently in production.
 Evidence: `Dockerfile:7` vs `.github/workflows/deploy.yml:42`.
 Remediation plan: Pin all environments to same Node version. Add `engines` field and `.nvmrc`.
-Resolving commits: pending
+Resolving commits: 4c3d8ec
 
 ### DEFECT-0044
 Title: DNS resolution check disabled in browser automation SSRF protection
 Severity: P1
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: 120 (120-A)
 Description: `browseWeb` has extensive SSRF protections but the DNS resolution check is explicitly disabled with a comment "temporarily for debugging." This allows DNS rebinding attacks where a domain initially resolves to a public IP but then resolves to `169.254.169.254` (cloud metadata) during connection.
 Evidence: `server/services/browserAutomation.ts:818-819`.
 Remediation plan: Re-enable DNS resolution check. Remove the "temporarily for debugging" bypass.
-Resolving commits: pending
+Resolving commits: 48bb9a4
 
 ### DEFECT-0045
 Title: File upload security middleware is dead code -- never imported by any route
 Severity: P1
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: 61 (061-2)
 Description: `createUploadMiddleware` and `validateFileMiddleware` (magic-byte validation, EXIF stripping, dangerous extension blocking) are defined in `server/middleware/fileUploadSecurity.ts` but never imported. Every upload route creates ad-hoc multer instances without content validation.
 Evidence: Zero imports of `createUploadMiddleware` or `validateFileMiddleware` outside the definition file.
 Remediation plan: Wire the security middleware into all upload routes.
-Resolving commits: pending
+Resolving commits: 8642682
 
 ### DEFECT-0046
 Title: No file storage backend -- photo and voice uploads accepted then discarded
 Severity: P1
-Status: OPEN
+Status: DEFERRED
 Surfaced by lenses: 61 (061-3, 061-4)
 Description: All uploads use `multer.memoryStorage()`. There is no S3, GCS, or persistent storage integration. Photo uploads save metadata to DB but the actual `file.buffer` is never stored. Voice uploads are similarly discarded.
 Evidence: `server/routes-field-scout.ts:191-200` -- saves metadata, discards buffer.
 Remediation plan: Add S3 or equivalent storage backend. Store file URLs in DB. Wire upload security middleware.
-Resolving commits: pending
+Resolving commits: DEFERRED — requires infrastructure provisioning (S3/R2 bucket, IAM credentials). Upload security middleware is now wired (DEFECT-0045). Storage integration requires a dedicated session with founder to select provider and configure credentials.
 
 ### DEFECT-0047
 Title: Campaign email/SMS send has TOCTOU on credit check and no per-recipient dedup
 Severity: P1
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: 51 (RACE-009)
 Description: Credit check at line 1583 verifies balance, then the send loop takes seconds/minutes. Between check and deduction: another request could deplete credits, process crash means emails sent but credits not deducted, and no per-recipient send tracking means retries cause duplicate emails.
 Evidence: `server/routes-campaigns.ts:1571-1672`.
 Remediation plan: Deduct credits upfront before send loop. Refund partial on failure. Add per-recipient `campaign_sends` table for dedup.
-Resolving commits: pending (campaign credit checks added in 29462e0 but TOCTOU gap remains)
+Resolving commits: 69e2bae
 
 ---
 
@@ -676,45 +676,96 @@ Evidence: `client/src/pages/properties.tsx:613` -- generates rectangle fallback.
 Remediation plan: Render synthetic boundaries with distinct style (dashed, lower opacity) and warning label.
 Resolving commits: pending
 
+### DEFECT-0067
+Title: 3,089 TypeScript errors across 50+ files — type safety is structurally non-functional
+Severity: P1
+Status: DEFERRED
+Surfaced by lenses: v4 session analysis
+Description: `npx tsc --noEmit` reports 3,089 errors. 1,500 are TS18048 (`possibly undefined`) from auth middleware request types, 827 are TS2339 (property not found) from schema/code mismatches, and the rest are type assertion issues. The esbuild bundler ignores types so the app runs, but type safety provides no guarantee.
+Evidence: `npx tsc --noEmit 2>&1 | grep -c "): error TS"` → 3089
+Remediation plan: Fix structurally: (1) properly type auth middleware request as non-optional, (2) fix schema column mismatches in job files, (3) clean up remaining type errors file-by-file. Requires dedicated multi-session effort.
+Resolving commits: DEFERRED — pre-existing structural debt. Pre-commit hook (eb3846e) now blocks new errors in staged files, preventing regression while the backlog is worked down.
+
+### DEFECT-0068
+Title: Pre-commit hook ran TypeScript in warning-only mode
+Severity: P1
+Status: FIXED
+Surfaced by lenses: v4 session analysis
+Description: `.githooks/pre-commit` ran `npx tsc --noEmit` but piped output to `tail -3` in a non-blocking `|| { warn }` block. Type errors never failed the commit. Combined with 3,089 existing errors, this was non-functional.
+Evidence: `.githooks/pre-commit` lines 14-18.
+Remediation plan: Rewrite hook to check only staged files. Fail if errors exist in files being committed.
+Resolving commits: eb3846e
+
 ---
 
 ## Summary Statistics
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 9   | 26  | 19  | 54    |
-| FIXED  | 3   | 9   | 0   | 12    |
-| **Total** | **12** | **35** | **19** | **66** |
+| OPEN   | 0   | 0   | 19  | 19    |
+| FIXED  | 12  | 31  | 0   | 43    |
+| DEFERRED | 0 | 3   | 0   | 3     |
+| **Total** | **12** | **34+2** | **19** | **68** |
 
 ### Fixed Defects Summary
 
 | ID | Title | Resolving Commits |
 |----|-------|-------------------|
+| DEFECT-0001 | Unauthenticated founder endpoints | 377c4db |
+| DEFECT-0002 | SQL injection via sql.raw() | 377c4db |
 | DEFECT-0003 | tsconfig.check.json noResolve | 1c49712 |
 | DEFECT-0004 | Recursive logger shadow | 9354168 |
 | DEFECT-0005 | Payment race condition | 53d38f5, 1a73fea |
+| DEFECT-0006 | Stripe webhook TOCTOU | 377c4db |
+| DEFECT-0007 | Credit allowance TOCTOU | 377c4db |
+| DEFECT-0008 | Unsigned webhooks | 377c4db |
+| DEFECT-0009 | SSRF missing await | f8c476d |
+| DEFECT-0010 | Unbounded LLM tool loops | 19e942c, f8c476d |
+| DEFECT-0011 | Chargebacks silently dropped | 377c4db |
+| DEFECT-0012 | Destructive migration | 377c4db |
 | DEFECT-0013 | CSRF middleware not applied | 5e79639 |
 | DEFECT-0014 | JWT grace period 5 min | 5e79639 |
 | DEFECT-0015 | FK cascades missing | eb25351 |
 | DEFECT-0016 | Unbounded SELECT queries | 53d38f5 |
 | DEFECT-0017 | AI credit checks unwired | a763756 |
 | DEFECT-0018 | Prompt injection on 12 routes | 53d38f5 |
+| DEFECT-0019 | Multi-tenant isolation broken | 5cfbf6e |
+| DEFECT-0021 | Missing database transactions | 2571108 |
 | DEFECT-0022 | WebSocket cross-org channels | 29462e0 |
 | DEFECT-0023 | statement_timeout missing | c0b1459 |
 | DEFECT-0024 | DB pool error handler missing | b945fb5 |
 | DEFECT-0025 | Graceful shutdown incomplete | 2d50235, c0b1459, 515ca76 |
+| DEFECT-0026 | Redis not in package.json | d7b855b |
+| DEFECT-0028 | Stripe Connect nextPaymentDate | a6e509e |
+| DEFECT-0029 | Refund no subscription cancel | 664d569 |
+| DEFECT-0030 | Support agent cross-org | 646489a |
+| DEFECT-0031 | LLM validators unused | 894b463 |
+| DEFECT-0032 | provider_cache unused | 4c27079 |
+| DEFECT-0033 | Render-blocking fonts | 3161de2 |
+| DEFECT-0034 | Hardcoded fallback secrets | 4c4fc7f |
+| DEFECT-0035 | handleQueryError never wired | de6e0d1 |
+| DEFECT-0036 | Duplicate routes in App.tsx | 636afc5 |
+| DEFECT-0037 | Icon buttons missing aria-label | 234f113, b0acdac |
 | DEFECT-0038 | Skip link target missing | 11f64ce |
 | DEFECT-0039 | Reduced motion not respected | 300ee16, d48b6a6 |
 | DEFECT-0040 | Viewport blocks zoom | e7de9e8 |
+| DEFECT-0041 | CI pipeline broken needs | 4688f7c |
+| DEFECT-0042 | Dockerfile deletes lockfile | 4c3d8ec |
+| DEFECT-0043 | Node version mismatch | 4c3d8ec |
+| DEFECT-0044 | DNS check disabled in SSRF | 48bb9a4 |
+| DEFECT-0045 | File upload security dead code | 8642682 |
+| DEFECT-0047 | Campaign TOCTOU + no dedup | 69e2bae |
+| DEFECT-0068 | Pre-commit warning-only | eb3846e |
 
-### Top Priority Open Defects (P0)
+### Deferred Defects (3)
 
-1. **DEFECT-0001** -- 381 unauthenticated founder endpoints
-2. **DEFECT-0002** -- SQL injection in maintenance routes and support agent
-3. **DEFECT-0006** -- Stripe webhook TOCTOU double-processing
-4. **DEFECT-0007** -- Monthly credit allowance double-granting
-5. **DEFECT-0008** -- Unsigned webhook handlers (Dropbox Sign, Meta, Actum, SNS)
-6. **DEFECT-0009** -- SSRF bypass from missing await
-7. **DEFECT-0010** -- Unbounded LLM tool loops (vaService, supportAgent)
-8. **DEFECT-0011** -- Chargeback events silently dropped
+| ID | Title | Justification |
+|----|-------|---------------|
+| DEFECT-0027 | 477 KB schema bundle | Splitting 14,883-line schema.ts touches 200+ imports; requires dedicated session |
+| DEFECT-0046 | No file storage backend | Requires infrastructure provisioning (S3/R2); upload security now wired |
+| DEFECT-0067 | 3,089 TypeScript errors | Pre-existing structural debt; pre-commit blocks regressions in staged files |
+
+### All P0 Defects: RESOLVED
+
+All 12 P0 defects are fixed and deployed to production (acreos.fly.dev).
 9. **DEFECT-0012** -- Destructive migration without rollback
