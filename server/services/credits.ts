@@ -138,21 +138,48 @@ export class CreditService {
 
   async hasEnoughCredits(organizationId: number, requiredCents: number): Promise<boolean> {
     if (await this.isFounder(organizationId)) return true;
-    
+
     // Check if user is in trial period - allow basic AI chat during trial
     const org = await db.query.organizations.findFirst({
       where: eq(organizations.id, organizationId),
       columns: { trialEndsAt: true, subscriptionTier: true }
     });
-    
-    // Users in active trial period get free basic AI chat
+
+    // Users in active trial period get free basic AI chat, but capped at 500 cents ($5)
+    // to prevent abuse (FRAUD-011)
     if (org?.trialEndsAt && new Date(org.trialEndsAt) > new Date()) {
+      const TRIAL_SPENDING_CAP_CENTS = 500;
+
+      // Sum all debit transactions during this trial period
+      const [result] = await db
+        .select({
+          totalDebits: sql<number>`COALESCE(SUM(ABS(${creditTransactions.amountCents})), 0)::int`
+        })
+        .from(creditTransactions)
+        .where(
+          and(
+            eq(creditTransactions.organizationId, organizationId),
+            eq(creditTransactions.type, "debit"),
+            sql`${creditTransactions.createdAt} >= (
+              SELECT ${organizations.trialEndsAt} - INTERVAL '14 days'
+              FROM ${organizations}
+              WHERE ${organizations.id} = ${organizationId}
+            )`
+          )
+        );
+
+      const totalDebits = result?.totalDebits || 0;
+      if (totalDebits + requiredCents > TRIAL_SPENDING_CAP_CENTS) {
+        logger.info(`[credits] Trial spending cap reached for org ${organizationId}: ${totalDebits}¢ spent of ${TRIAL_SPENDING_CAP_CENTS}¢ cap`);
+        return false;
+      }
+
       return true;
     }
-    
+
     // Note: Trial tokens are for premium skills only, not basic AI chat
     // They are consumed via storage.consumeTrialToken() in skill permission checks
-    
+
     const balance = await this.getBalance(organizationId);
     return balance >= requiredCents;
   }

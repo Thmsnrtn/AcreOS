@@ -101,5 +101,5 @@ export const NAV_ITEM_MAP = new Map<string, MasterNavItem>(
   ALL_NAV_ITEMS.map((item) => [item.id, item])
 );
 
-export const DEFAULT_SIDEBAR_ITEMS = ["today", "pipeline", "money", "pax", "settings"];
-export const DEFAULT_MOBILE_ITEMS  = ["today", "pipeline", "money", "pax"];
+export const DEFAULT_SIDEBAR_ITEMS = ["today", "pipeline", "money", "ai-hub", "settings"];
+export const DEFAULT_MOBILE_ITEMS  = ["today", "pipeline", "money", "ai-hub"];
