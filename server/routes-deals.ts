@@ -605,6 +605,14 @@ export function registerDealRoutes(app: Express): void {
         return Errors.limitExceeded(res, "AI request limit reached. Upgrade to continue.");
       }
 
+      // Credit check for deal AI chat
+      const { CreditService } = await import('./services/credits');
+      const dealCreditService = new CreditService();
+      const hasCredits = await dealCreditService.hasEnoughCredits(org.id, 2);
+      if (!hasCredits) {
+        return res.status(402).json({ error: "Insufficient credits", message: "Purchase credits to use AI deal analysis." });
+      }
+
       const property = await storage.getProperty(org.id, propertyId);
       if (!property) {
         return Errors.notFound(res, "Property");
@@ -670,9 +678,12 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       });
 
       const aiResponse = response.choices[0]?.message?.content || "I couldn't generate a response. Please try again.";
-      
+
+      // Deduct credits after successful AI call
+      dealCreditService.deductCredits(org.id, 2, 'Deal AI analysis').catch(() => {});
+
       const suggestions = generateSuggestions(message, property);
-      
+
       res.json({
         response: aiResponse,
         suggestions,
