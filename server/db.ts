@@ -29,6 +29,8 @@ export const pool = new Pool({
   max: 20,
   idleTimeoutMillis: 60_000,
   connectionTimeoutMillis: 10_000, // increased from 3s — cloud DBs can be slow to acquire
+  statement_timeout: 30_000, // Kill runaway queries after 30s (SRE-03)
+  idle_in_transaction_session_timeout: 60_000, // Kill idle-in-transaction after 60s
 });
 
 // Prevent unhandled pool errors from crashing the process (P0 fix SRE-04)
