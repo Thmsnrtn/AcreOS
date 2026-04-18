@@ -2,6 +2,8 @@ import OpenAI from "openai";
 import { storage } from "../storage";
 import { toolDefinitions, executeTool, type ToolName } from "./tools";
 import type { Organization, VaAgent, VaAction, InsertVaAction, InsertVaBriefing } from "@shared/schema";
+import { validateAtlasOutput, AtlasOutputType } from "./validators";
+import { logger } from "../utils/logger";
 
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
@@ -1065,7 +1067,19 @@ Keep it concise and actionable.`;
       offerPercentage: "30%",
       draftedAt: new Date().toISOString()
     };
-    
+
+    const offerValidation = validateAtlasOutput(AtlasOutputType.OFFER_AMOUNT, {
+      amount: suggestedOffer,
+      rationale: `30% of market value ($${marketValue.toLocaleString()})`,
+    });
+    if (!offerValidation.valid) {
+      logger.warn("[VA:executeDraftOffer] Offer validation failed", { metadata: { errors: offerValidation.errors, propertyId } });
+      throw new Error(`Offer validation failed: ${offerValidation.errors.join("; ")}`);
+    }
+    if (offerValidation.warnings.length > 0) {
+      logger.warn("[VA:executeDraftOffer] Offer validation warnings", { metadata: { warnings: offerValidation.warnings, propertyId } });
+    }
+
     return {
       message: `Offer drafted for ${property.apn} at $${suggestedOffer.toLocaleString()}`,
       propertyId,
