@@ -134,6 +134,7 @@ export function SystemHealth() {
             variant="ghost" 
             onClick={handleRefresh}
             disabled={isRefreshing}
+            aria-label="Refresh health status"
             data-testid="button-refresh-health"
           >
             {isRefreshing ? (
