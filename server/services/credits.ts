@@ -93,36 +93,47 @@ export class CreditService {
       return transaction;
     }
 
-    const [updated] = await db
-      .update(organizations)
-      .set({ 
-        creditBalance: sql`COALESCE(${organizations.creditBalance}, '0')::numeric - ${amountCents}` 
-      })
-      .where(
-        and(
-          eq(organizations.id, organizationId),
-          sql`COALESCE(${organizations.creditBalance}, '0')::numeric >= ${amountCents}`
+    // Wrap balance update + transaction log in a single DB transaction
+    // to prevent ledger desync on crash (P1-SWEEP3-001)
+    const result = await withTransaction(async (tx) => {
+      const [updated] = await tx
+        .update(organizations)
+        .set({
+          creditBalance: sql`COALESCE(${organizations.creditBalance}, '0')::numeric - ${amountCents}`
+        })
+        .where(
+          and(
+            eq(organizations.id, organizationId),
+            sql`COALESCE(${organizations.creditBalance}, '0')::numeric >= ${amountCents}`
+          )
         )
-      )
-      .returning({ newBalance: sql<number>`(COALESCE(${organizations.creditBalance}, '0')::numeric)::int` });
+        .returning({ newBalance: sql<number>`(COALESCE(${organizations.creditBalance}, '0')::numeric)::int` });
 
-    if (!updated) {
+      if (!updated) {
+        return null;
+      }
+
+      const [transaction] = await tx
+        .insert(creditTransactions)
+        .values({
+          organizationId,
+          type: "debit",
+          amountCents: -amountCents,
+          balanceAfterCents: updated.newBalance,
+          description,
+          metadata,
+        })
+        .returning();
+
+      return transaction;
+    });
+
+    if (!result) {
       return null;
     }
 
-    const [transaction] = await db
-      .insert(creditTransactions)
-      .values({
-        organizationId,
-        type: "debit",
-        amountCents: -amountCents,
-        balanceAfterCents: updated.newBalance,
-        description,
-        metadata,
-      })
-      .returning();
-
-    // Check if auto-top-up should trigger after deduction
+    // Check if auto-top-up should trigger after deduction (outside transaction,
+    // non-critical side effect that should not roll back the deduction)
     this.checkAutoTopUp(organizationId).then(({ shouldTopUp, amountCents: topUpAmount }) => {
       if (shouldTopUp) {
         logger.info(`[credits] Auto-top-up triggered for org ${organizationId}: ${topUpAmount}¢`);
@@ -133,7 +144,7 @@ export class CreditService {
       logger.error("[credits] Auto-top-up check failed", err instanceof Error ? err : undefined);
     });
 
-    return transaction;
+    return result;
   }
 
   async hasEnoughCredits(organizationId: number, requiredCents: number): Promise<boolean> {
@@ -206,31 +217,35 @@ export class CreditService {
       throw new Error(`Invalid credit pack: ${packId}`);
     }
 
-    const [updated] = await db
-      .update(organizations)
-      .set({ 
-        creditBalance: sql`COALESCE(${organizations.creditBalance}, '0')::numeric + ${pack.amountCents}` 
-      })
-      .where(eq(organizations.id, organizationId))
-      .returning({ newBalance: sql<number>`(COALESCE(${organizations.creditBalance}, '0')::numeric)::int` });
+    // Wrap balance update + transaction log in a single DB transaction
+    // to prevent ledger desync on crash (P1-SWEEP3-002)
+    return await withTransaction(async (tx) => {
+      const [updated] = await tx
+        .update(organizations)
+        .set({
+          creditBalance: sql`COALESCE(${organizations.creditBalance}, '0')::numeric + ${pack.amountCents}`
+        })
+        .where(eq(organizations.id, organizationId))
+        .returning({ newBalance: sql<number>`(COALESCE(${organizations.creditBalance}, '0')::numeric)::int` });
 
-    const newBalance = updated?.newBalance || pack.amountCents;
+      const newBalance = updated?.newBalance || pack.amountCents;
 
-    const [transaction] = await db
-      .insert(creditTransactions)
-      .values({
-        organizationId,
-        type: "purchase",
-        amountCents: pack.amountCents,
-        balanceAfterCents: newBalance,
-        description: `Purchased ${pack.name}`,
-        stripeCheckoutSessionId: stripeSessionId,
-        stripePaymentIntentId,
-        metadata: { creditPackId: packId },
-      })
-      .returning();
+      const [transaction] = await tx
+        .insert(creditTransactions)
+        .values({
+          organizationId,
+          type: "purchase",
+          amountCents: pack.amountCents,
+          balanceAfterCents: newBalance,
+          description: `Purchased ${pack.name}`,
+          stripeCheckoutSessionId: stripeSessionId,
+          stripePaymentIntentId,
+          metadata: { creditPackId: packId },
+        })
+        .returning();
 
-    return transaction;
+      return transaction;
+    });
   }
 
   async applyMonthlyAllowance(organizationId: number, tier: SubscriptionTier): Promise<CreditTransaction | null> {
