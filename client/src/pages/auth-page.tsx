@@ -11,13 +11,18 @@ export default function AuthPage() {
     params.get("mode") === "register" ? "sign-up" : "sign-in"
   );
 
-  // If fully authenticated, go to dashboard
-  if (isLoaded && isSignedIn && user) {
+  // Don't redirect while Clerk is processing an SSO callback —
+  // premature redirect unmounts <SignIn> and kills the OAuth flow
+  const isHandlingCallback = window.location.hash.includes("sso-callback") ||
+                             window.location.hash.includes("verify");
+
+  // If fully authenticated AND not mid-callback, go to dashboard
+  if (isLoaded && isSignedIn && user && !isHandlingCallback) {
     return <Redirect to="/today" />;
   }
 
   // If Clerk says signed in but we don't have app user yet, show loader briefly
-  if (isLoaded && isSignedIn && isLoading) {
+  if (isLoaded && isSignedIn && isLoading && !isHandlingCallback) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" />
@@ -31,12 +36,12 @@ export default function AuthPage() {
         {mode === "sign-in" ? (
           <SignIn
             routing="hash"
-            afterSignInUrl="/today"
+            fallbackRedirectUrl="/today"
           />
         ) : (
           <SignUp
             routing="hash"
-            afterSignUpUrl="/today"
+            fallbackRedirectUrl="/today"
           />
         )}
         <button

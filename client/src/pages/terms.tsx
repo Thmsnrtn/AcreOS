@@ -203,7 +203,7 @@ export default function TermsOfService() {
               </p>
               <p className="text-muted-foreground">
                 Email: legal@acreos.com<br />
-                Address: [Company Address]
+                Address: Marlborough, MA
               </p>
             </section>
 
