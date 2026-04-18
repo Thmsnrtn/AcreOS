@@ -113,7 +113,7 @@ export const organizations = pgTable("organizations", {
 // Team members within an organization
 export const teamMembers = pgTable("team_members", {
   id: serial("id").primaryKey(),
-  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
   userId: text("user_id").notNull(), // Replit user ID
   email: text("email"),
   displayName: text("display_name"),
@@ -307,7 +307,7 @@ export type BorrowerPaymentProfile = typeof borrowerPaymentProfiles.$inferSelect
 // Leads (sellers and buyers)
 export const leads = pgTable("leads", {
   id: serial("id").primaryKey(),
-  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
   type: text("type").notNull().default("seller"), // seller, buyer
   firstName: text("first_name").notNull(),
   lastName: text("last_name").notNull(),
@@ -377,7 +377,7 @@ export const leads = pgTable("leads", {
 // Lead activity/interactions log
 export const leadActivities = pgTable("lead_activities", {
   id: serial("id").primaryKey(),
-  leadId: integer("lead_id").references(() => leads.id).notNull(),
+  leadId: integer("lead_id").references(() => leads.id, { onDelete: "cascade" }).notNull(),
   organizationId: integer("organization_id").references(() => organizations.id).notNull(),
   type: text("type").notNull(), // email_sent, sms_sent, call_made, note_added, status_changed, offer_sent
   description: text("description"),
@@ -540,7 +540,7 @@ export type InsertLeadConversion = z.infer<typeof insertLeadConversionSchema>;
 // Properties in inventory
 export const properties = pgTable("properties", {
   id: serial("id").primaryKey(),
-  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
   
   // Core property info
   apn: text("apn").notNull(), // Assessor's Parcel Number
@@ -662,8 +662,8 @@ export const properties = pgTable("properties", {
 // Deals/Transactions (acquisition or disposition)
 export const deals = pgTable("deals", {
   id: serial("id").primaryKey(),
-  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
-  propertyId: integer("property_id").references(() => properties.id).notNull(),
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  propertyId: integer("property_id").references(() => properties.id, { onDelete: "restrict" }).notNull(),
   type: text("type").notNull(), // acquisition, disposition
   status: text("status").notNull().default("negotiating"),
   // negotiating, offer_sent, countered, accepted, in_escrow, closed, cancelled
@@ -769,9 +769,9 @@ export const deals = pgTable("deals", {
 // Seller-financed notes
 export const notes = pgTable("notes", {
   id: serial("id").primaryKey(),
-  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
-  propertyId: integer("property_id").references(() => properties.id),
-  borrowerId: integer("borrower_id").references(() => leads.id),
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  propertyId: integer("property_id").references(() => properties.id, { onDelete: "set null" }),
+  borrowerId: integer("borrower_id").references(() => leads.id, { onDelete: "set null" }),
   
   // Note terms
   originalPrincipal: numeric("original_principal").notNull(),
@@ -871,7 +871,7 @@ export const notes = pgTable("notes", {
 export const payments = pgTable("payments", {
   id: serial("id").primaryKey(),
   organizationId: integer("organization_id").references(() => organizations.id).notNull(),
-  noteId: integer("note_id").references(() => notes.id).notNull(),
+  noteId: integer("note_id").references(() => notes.id, { onDelete: "cascade" }).notNull(),
   
   // Payment details
   amount: numeric("amount").notNull(),
@@ -962,7 +962,7 @@ export type PaymentReminder = typeof paymentReminders.$inferSelect;
 // Marketing campaigns (direct mail, email, SMS)
 export const campaigns = pgTable("campaigns", {
   id: serial("id").primaryKey(),
-  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
   name: text("name").notNull(),
   type: text("type").notNull(), // direct_mail, email, sms, multi_channel
   status: text("status").notNull().default("draft"), // draft, scheduled, active, paused, completed
@@ -1050,7 +1050,7 @@ export const campaignResponses = pgTable("campaign_responses", {
   id: serial("id").primaryKey(),
   organizationId: integer("organization_id").references(() => organizations.id).notNull(),
   leadId: integer("lead_id").references(() => leads.id),
-  campaignId: integer("campaign_id").references(() => campaigns.id),
+  campaignId: integer("campaign_id").references(() => campaigns.id, { onDelete: "cascade" }),
   
   // Response details
   channel: text("channel").notNull(), // call, text, email, webform
@@ -1418,7 +1418,7 @@ export const conversations = pgTable("conversations", {
 // Messages within conversations
 export const messages = pgTable("messages", {
   id: serial("id").primaryKey(),
-  conversationId: integer("conversation_id").references(() => conversations.id).notNull(),
+  conversationId: integer("conversation_id").references(() => conversations.id, { onDelete: "cascade" }).notNull(),
   organizationId: integer("organization_id").references(() => organizations.id).notNull(),
   
   direction: text("direction").notNull(), // inbound, outbound
@@ -1502,7 +1502,7 @@ export const usageRecords = pgTable("usage_records", {
 // Credit Transactions - tracks credit purchases/debits
 export const creditTransactions = pgTable("credit_transactions", {
   id: serial("id").primaryKey(),
-  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
   type: text("type").notNull(), // purchase, debit, refund, bonus, monthly_allowance
   amountCents: integer("amount_cents").notNull(), // positive for credits, negative for debits
   balanceAfterCents: integer("balance_after_cents").notNull(),
@@ -1737,7 +1737,7 @@ export const aiConversations = pgTable("ai_conversations", {
 // AI Messages - individual messages in conversations
 export const aiMessages = pgTable("ai_messages", {
   id: serial("id").primaryKey(),
-  conversationId: integer("conversation_id").notNull(),
+  conversationId: integer("conversation_id").references(() => aiConversations.id, { onDelete: "cascade" }).notNull(),
   role: text("role").notNull(), // user, assistant, system
   content: text("content").notNull(),
   toolCalls: jsonb("tool_calls").$type<any[]>(),
