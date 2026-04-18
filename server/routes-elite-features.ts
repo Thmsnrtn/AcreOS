@@ -266,9 +266,25 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
     }
   });
 
-  // Webhook from Dropbox Sign (no auth — signature verified by HMAC header)
+  // Webhook from Dropbox Sign — verify HMAC signature (DEFECT-0008)
   app.post("/api/webhooks/dropbox-sign", async (req: Request, res: Response) => {
     try {
+      // Verify Dropbox Sign webhook signature
+      const signature = req.headers["x-dropbox-sign-signature"] as string;
+      const webhookKey = process.env.DROPBOX_SIGN_WEBHOOK_KEY;
+      if (webhookKey && signature) {
+        const crypto = await import("crypto");
+        const expected = crypto.createHmac("sha256", webhookKey)
+          .update(JSON.stringify(req.body))
+          .digest("hex");
+        if (signature !== expected) {
+          logger.warn("[dropbox-sign] Webhook signature mismatch — rejecting");
+          return res.status(401).json({ message: "Invalid signature" });
+        }
+      } else if (webhookKey) {
+        logger.warn("[dropbox-sign] Webhook received without signature header");
+        return res.status(401).json({ message: "Missing signature" });
+      }
       await eSigningService.processDropboxSignWebhook(req.body);
       res.json({ success: true });
     } catch (err: any) {
@@ -321,9 +337,22 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
     res.status(403).send("Forbidden");
   });
 
-  // Lead Ad submission webhook
+  // Lead Ad submission webhook — verify X-Hub-Signature-256 (DEFECT-0008)
   app.post("/api/webhooks/meta-lead-ads", async (req: Request, res: Response) => {
     try {
+      // Verify Meta webhook signature
+      const signature = req.headers["x-hub-signature-256"] as string;
+      const appSecret = process.env.META_APP_SECRET;
+      if (appSecret && signature) {
+        const crypto = await import("crypto");
+        const body = typeof req.body === "string" ? req.body : JSON.stringify(req.body);
+        const expected = "sha256=" + crypto.createHmac("sha256", appSecret).update(body).digest("hex");
+        if (signature !== expected) {
+          logger.warn("[meta-leads] Webhook signature mismatch — rejecting");
+          return res.status(401).json({ message: "Invalid signature" });
+        }
+      }
+
       const entries = req.body?.entry || [];
       for (const entry of entries) {
         for (const change of entry.changes || []) {
@@ -414,9 +443,18 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
     res.json(actumProcessing.ACH_RETURN_CODES);
   });
 
-  // Actum webhook
+  // Actum webhook — verify shared secret (DEFECT-0008)
   app.post("/api/webhooks/actum", async (req: Request, res: Response) => {
     try {
+      // Verify Actum webhook authenticity via shared secret header
+      const actumSecret = process.env.ACTUM_WEBHOOK_SECRET;
+      if (actumSecret) {
+        const providedSecret = req.headers["x-actum-secret"] || req.headers["authorization"];
+        if (!providedSecret || providedSecret !== `Bearer ${actumSecret}`) {
+          logger.warn("[actum] Webhook received without valid authentication — rejecting");
+          return res.status(401).json({ message: "Unauthorized" });
+        }
+      }
       await actumProcessing.processActumWebhook(req.body);
       res.json({ success: true });
     } catch (err: any) {

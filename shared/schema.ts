@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, numeric, varchar, jsonb, index, date, real } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, numeric, varchar, jsonb, index, uniqueIndex, date, real } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -1509,13 +1509,19 @@ export const creditTransactions = pgTable("credit_transactions", {
   description: text("description").notNull(),
   stripePaymentIntentId: text("stripe_payment_intent_id"), // for purchases
   stripeCheckoutSessionId: text("stripe_checkout_session_id"),
+  // Populated only for allowance-type transactions (e.g. "2025-01").
+  // Used with unique index to prevent double-granting via ON CONFLICT DO NOTHING (DEFECT-0007).
+  allowanceMonth: text("allowance_month"),
   metadata: jsonb("metadata").$type<{
     creditPackId?: string;
     usageRecordIds?: number[];
     [key: string]: unknown;
   }>(),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  // Prevents double-granting monthly allowances under concurrent execution (DEFECT-0007)
+  uniqueIndex("credit_txn_allowance_month_org_uniq").on(table.organizationId, table.allowanceMonth),
+]);
 
 // Usage Rates - configurable pricing per action type
 export const usageRates = pgTable("usage_rates", {

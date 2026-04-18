@@ -242,25 +242,53 @@ export class CreditService {
     const allowance = tierConfig.limits.monthlyCredits;
     const currentMonth = new Date().toISOString().slice(0, 7);
 
-    const existingAllowance = await db.query.creditTransactions.findFirst({
-      where: and(
-        eq(creditTransactions.organizationId, organizationId),
-        eq(creditTransactions.type, "monthly_allowance"),
-        sql`metadata->>'month' = ${currentMonth}`
-      ),
+    // DEFECT-0007: Use atomic INSERT ... ON CONFLICT DO NOTHING on the
+    // (organization_id, allowance_month) unique index to prevent double-granting
+    // when concurrent instances both attempt to apply the same month's allowance.
+    return await withTransaction(async (tx) => {
+      // Atomically update credit balance
+      const [updated] = await tx
+        .update(organizations)
+        .set({
+          creditBalance: sql`COALESCE(${organizations.creditBalance}, '0')::numeric + ${allowance}`
+        })
+        .where(eq(organizations.id, organizationId))
+        .returning({ newBalance: sql<number>`(COALESCE(${organizations.creditBalance}, '0')::numeric)::int` });
+
+      const newBalance = updated?.newBalance || allowance;
+
+      // Try to insert the allowance record — if the unique constraint on
+      // (organization_id, allowance_month) conflicts, no row is returned
+      // and we know another instance already granted this month's allowance.
+      const result = await tx
+        .insert(creditTransactions)
+        .values({
+          organizationId,
+          type: "monthly_allowance",
+          amountCents: allowance,
+          balanceAfterCents: newBalance,
+          description: `Monthly credit allowance for ${tierConfig.name} plan`,
+          allowanceMonth: currentMonth,
+          metadata: { month: currentMonth },
+        })
+        .onConflictDoNothing()
+        .returning();
+
+      if (result.length === 0) {
+        // Conflict — allowance already granted this month. Roll back the balance
+        // update by reversing it (the entire transaction will handle this correctly
+        // since we're in a withTransaction block, but we explicitly undo to be safe).
+        await tx
+          .update(organizations)
+          .set({
+            creditBalance: sql`COALESCE(${organizations.creditBalance}, '0')::numeric - ${allowance}`
+          })
+          .where(eq(organizations.id, organizationId));
+        return null;
+      }
+
+      return result[0];
     });
-
-    if (existingAllowance) {
-      return null;
-    }
-
-    return this.addCredits(
-      organizationId,
-      allowance,
-      "monthly_allowance",
-      `Monthly credit allowance for ${tierConfig.name} plan`,
-      { month: currentMonth }
-    );
   }
 }
 
@@ -446,6 +474,8 @@ export class UsageMeteringService {
   }
 
   // Apply monthly tier allowance to organization
+  // DEFECT-0007: Uses atomic INSERT ... ON CONFLICT DO NOTHING on the
+  // (organization_id, allowance_month) unique index to prevent double-granting.
   async applyMonthlyAllowance(organizationId: number): Promise<CreditTransaction | null> {
     const org = await db.query.organizations.findFirst({
       where: eq(organizations.id, organizationId),
@@ -461,47 +491,52 @@ export class UsageMeteringService {
       return null;
     }
 
-    // Idempotency: check if allowance was already applied this month
     const currentMonth = new Date().toISOString().slice(0, 7);
-    const existing = await db.query.creditTransactions.findFirst({
-      where: and(
-        eq(creditTransactions.organizationId, organizationId),
-        eq(creditTransactions.type, 'allowance' as any),
-        sql`${creditTransactions.metadata}->>'month' = ${currentMonth}`,
-      ),
+
+    return await withTransaction(async (tx) => {
+      // Update credit balance first
+      const [updated] = await tx
+        .update(organizations)
+        .set({
+          creditBalance: sql`COALESCE(${organizations.creditBalance}, '0')::numeric + ${monthlyCredits}`
+        })
+        .where(eq(organizations.id, organizationId))
+        .returning({ newBalance: sql<number>`(COALESCE(${organizations.creditBalance}, '0')::numeric)::int` });
+
+      // Atomically try to insert the allowance record.
+      // The unique index on (organization_id, allowance_month) prevents duplicates.
+      const result = await tx
+        .insert(creditTransactions)
+        .values({
+          organizationId,
+          type: 'allowance',
+          amountCents: monthlyCredits,
+          balanceAfterCents: updated?.newBalance || monthlyCredits,
+          description: `Monthly ${tierInfo.name} tier allowance`,
+          allowanceMonth: currentMonth,
+          metadata: {
+            tier,
+            month: currentMonth,
+          },
+        })
+        .onConflictDoNothing()
+        .returning();
+
+      if (result.length === 0) {
+        // Conflict — allowance already granted this month. Reverse balance update.
+        await tx
+          .update(organizations)
+          .set({
+            creditBalance: sql`COALESCE(${organizations.creditBalance}, '0')::numeric - ${monthlyCredits}`
+          })
+          .where(eq(organizations.id, organizationId));
+        logger.info(`Monthly allowance already applied for org ${organizationId} in ${currentMonth}, skipping`);
+        return null;
+      }
+
+      logger.info(`Applied monthly allowance: Org ${organizationId}, Tier ${tier}, Amount: $${(monthlyCredits / 100).toFixed(2)}`);
+      return result[0];
     });
-
-    if (existing) {
-      logger.info(`Monthly allowance already applied for org ${organizationId} in ${currentMonth}, skipping`);
-      return null;
-    }
-
-    // Add monthly allowance
-    const [updated] = await db
-      .update(organizations)
-      .set({
-        creditBalance: sql`COALESCE(${organizations.creditBalance}, '0')::numeric + ${monthlyCredits}`
-      })
-      .where(eq(organizations.id, organizationId))
-      .returning({ newBalance: sql<number>`(COALESCE(${organizations.creditBalance}, '0')::numeric)::int` });
-
-    const [transaction] = await db
-      .insert(creditTransactions)
-      .values({
-        organizationId,
-        type: 'allowance',
-        amountCents: monthlyCredits,
-        balanceAfterCents: updated?.newBalance || monthlyCredits,
-        description: `Monthly ${tierInfo.name} tier allowance`,
-        metadata: {
-          tier,
-          month: currentMonth,
-        },
-      })
-      .returning();
-
-    logger.info(`Applied monthly allowance: Org ${organizationId}, Tier ${tier}, Amount: $${(monthlyCredits / 100).toFixed(2)}`);
-    return transaction;
   }
 
   // Process all organizations for monthly allowance (called at billing cycle)

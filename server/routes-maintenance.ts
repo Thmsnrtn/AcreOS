@@ -5,7 +5,8 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
-import { sql } from "drizzle-orm";
+import { sql, eq, and } from "drizzle-orm";
+import { maintenanceRequests } from "@shared/schema";
 
 const maintenanceSchema = z.object({
   propertyId: z.number().int().positive(),
@@ -74,29 +75,29 @@ export function registerMaintenanceRoutes(app: Express): void {
       const id = Number(req.params.id);
       const { status, cost, priority } = req.body;
 
-      // Validate inputs to prevent SQL injection (was previously using sql.raw with user input)
       const allowedStatuses = ["pending", "in_progress", "resolved", "cancelled"];
       const allowedPriorities = ["low", "medium", "high", "urgent"];
       if (status && !allowedStatuses.includes(status)) return Errors.badRequest(res, "Invalid status");
       if (priority && !allowedPriorities.includes(priority)) return Errors.badRequest(res, "Invalid priority");
 
-      const setClauses: any[] = [];
-      if (status) setClauses.push(sql`status = ${status}`);
-      if (cost !== undefined) setClauses.push(sql`cost = ${Number(cost)}`);
-      if (priority) setClauses.push(sql`priority = ${priority}`);
-      if (status === "resolved") setClauses.push(sql`resolved_at = NOW()`);
+      const updates: Record<string, unknown> = {};
+      if (status) updates.status = status;
+      if (cost !== undefined) updates.cost = String(cost);
+      if (priority) updates.priority = priority;
+      if (status === "resolved") updates.resolvedAt = new Date();
 
-      if (setClauses.length === 0) return Errors.badRequest(res, "No fields to update");
+      if (Object.keys(updates).length === 0) return Errors.badRequest(res, "No fields to update");
 
-      const setClause = sql.join(setClauses, sql`, `);
-      const result = await db.execute(sql`
-        UPDATE maintenance_requests SET ${setClause}
-        WHERE id = ${id} AND organization_id = ${org.id}
-        RETURNING *
-      `);
+      const result = await db.update(maintenanceRequests)
+        .set(updates)
+        .where(and(
+          eq(maintenanceRequests.id, id),
+          eq(maintenanceRequests.organizationId, org.id)
+        ))
+        .returning();
 
-      if (!result.rows?.length) return Errors.notFound(res, "Maintenance request");
-      res.json(result.rows[0]);
+      if (!result.length) return Errors.notFound(res, "Maintenance request");
+      res.json(result[0]);
     } catch (error) {
       Errors.internal(res, error);
     }
