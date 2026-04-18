@@ -1,20 +1,62 @@
 #!/bin/sh
-# Pre-commit hook: type-check only
-# ESLint and Prettier checks disabled until config is migrated to flat config
+# Pre-commit hook: TypeScript type-check on staged files only
 #
-# NOTE: tsc --noEmit temporarily disabled due to TS6 + recharts/react-hook-form
-# peer-dependency type regressions from dependabot bumps. The esbuild bundler
-# still validates the code — this just skips the strict tsc pass.
-# TODO: Re-enable once type errors from dependency upgrades are resolved.
+# The full codebase has legacy type errors (~3000) that cannot all be fixed at
+# once. Instead of running tsc in warning-only mode (which catches nothing),
+# this hook runs tsc on the full project but filters output to only report
+# errors in files that are staged for commit. This prevents NEW type errors
+# from being committed while not blocking on pre-existing ones.
 
 set -e
 
 echo "Running pre-commit checks..."
 
-# 1. TypeScript type-check (temporarily warning-only)
-echo "→ Type checking (warning-only)..."
-npx tsc --noEmit 2>&1 | tail -3 || {
-  echo "⚠ TypeScript warnings present (non-blocking — see TODO in .githooks/pre-commit)"
-}
+# ── 1. TypeScript type-check (staged files only) ─────────────────────────────
 
-echo "✓ Pre-commit checks passed."
+# Collect staged .ts / .tsx files (Added, Copied, Modified)
+STAGED_TS_FILES=$(git diff --cached --name-only --diff-filter=ACM -- '*.ts' '*.tsx')
+
+if [ -z "$STAGED_TS_FILES" ]; then
+  echo "  No staged TypeScript files — skipping type check."
+else
+  echo "  Type checking staged files..."
+
+  # Run tsc on the full project (required for correct resolution) but capture
+  # all output. We then grep for errors only in staged files.
+  TSC_OUTPUT=$(npx tsc --noEmit --pretty false 2>&1 || true)
+
+  if [ -z "$TSC_OUTPUT" ]; then
+    echo "  No TypeScript errors found."
+  else
+    # Build a grep pattern that matches any of the staged file paths.
+    # tsc outputs errors as "path/to/file.ts(line,col): error TS..."
+    PATTERN=""
+    for f in $STAGED_TS_FILES; do
+      if [ -z "$PATTERN" ]; then
+        PATTERN="^${f}"
+      else
+        PATTERN="${PATTERN}|^${f}"
+      fi
+    done
+
+    # Filter tsc output to only lines starting with a staged file path
+    STAGED_ERRORS=$(echo "$TSC_OUTPUT" | grep -E "$PATTERN" || true)
+
+    if [ -n "$STAGED_ERRORS" ]; then
+      echo ""
+      echo "  TypeScript errors in staged files:"
+      echo "  ──────────────────────────────────────"
+      echo "$STAGED_ERRORS"
+      echo "  ──────────────────────────────────────"
+      ERROR_COUNT=$(echo "$STAGED_ERRORS" | wc -l | tr -d ' ')
+      echo "  Found $ERROR_COUNT error(s) in staged files. Commit blocked."
+      echo ""
+      echo "  Fix the errors above, or use --no-verify to bypass (not recommended)."
+      exit 1
+    else
+      echo "  No TypeScript errors in staged files (existing errors in other files ignored)."
+    fi
+  fi
+fi
+
+echo "  Pre-commit checks passed."
