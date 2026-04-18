@@ -27,6 +27,7 @@ import { eq, desc, and, asc } from 'drizzle-orm';
 import crypto from 'crypto';
 import { asyncHandler } from './middleware/asyncHandler';
 import { validateUrl } from './middleware/fileUploadSecurity';
+import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 
 const router = Router();
@@ -39,6 +40,11 @@ function getUser(req: AuthenticatedRequest) {
   return user;
 }
 
+
+/** Parse a route param as an integer, returning NaN if non-numeric. */
+function parseIntParam(value: string): number {
+  return parseInt(value, 10);
+}
 
 async function getDealRoomOrFail(id: number, res: Response) {
   const results = await db.select().from(dealRooms).where(eq(dealRooms.id, id)).limit(1);
@@ -70,7 +76,9 @@ function broadcastToDealRoom(req: Request | AuthenticatedRequest, dealRoomId: nu
 
 router.get('/:id', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const dealRoom = await getDealRoomOrFail(parseInt(req.params.id), res);
+    const id = parseIntParam(req.params.id);
+    if (isNaN(id)) return Errors.badRequest(res, "Invalid deal room ID");
+    const dealRoom = await getDealRoomOrFail(id, res);
     if (!dealRoom) return;
     res.json({ dealRoom });
   } catch (error: any) {
@@ -82,7 +90,8 @@ router.get('/:id', asyncHandler(async (req: AuthenticatedRequest, res: Response)
 
 router.get('/:id/messages', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const dealRoomId = parseInt(req.params.id);
+    const dealRoomId = parseIntParam(req.params.id);
+    if (isNaN(dealRoomId)) return Errors.badRequest(res, "Invalid deal room ID");
     const limit = Math.min(100, parseInt(String(req.query.limit ?? '50')));
     const offset = parseInt(String(req.query.offset ?? '0'));
 
@@ -104,7 +113,8 @@ router.get('/:id/messages', asyncHandler(async (req: AuthenticatedRequest, res: 
 
 router.post('/:id/messages', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const dealRoomId = parseInt(req.params.id);
+    const dealRoomId = parseIntParam(req.params.id);
+    if (isNaN(dealRoomId)) return Errors.badRequest(res, "Invalid deal room ID");
     const user = getUser(req);
     const { content, messageType = 'text', attachmentUrl } = req.body;
 
@@ -138,7 +148,8 @@ router.post('/:id/messages', asyncHandler(async (req: AuthenticatedRequest, res:
 
 router.get('/:id/documents', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const dealRoomId = parseInt(req.params.id);
+    const dealRoomId = parseIntParam(req.params.id);
+    if (isNaN(dealRoomId)) return Errors.badRequest(res, "Invalid deal room ID");
 
     const documents = await db
       .select()
@@ -170,7 +181,8 @@ router.get('/:id/documents', asyncHandler(async (req: AuthenticatedRequest, res:
 
 router.post('/:id/documents', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const dealRoomId = parseInt(req.params.id);
+    const dealRoomId = parseIntParam(req.params.id);
+    if (isNaN(dealRoomId)) return Errors.badRequest(res, "Invalid deal room ID");
     const user = getUser(req);
     const { fileName, fileUrl, fileSize, mimeType, allowedUserIds } = req.body;
 
@@ -244,8 +256,9 @@ router.post('/:id/documents', asyncHandler(async (req: AuthenticatedRequest, res
 
 router.get('/:id/documents/:docId/download', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const dealRoomId = parseInt(req.params.id);
-    const docId = parseInt(req.params.docId);
+    const dealRoomId = parseIntParam(req.params.id);
+    const docId = parseIntParam(req.params.docId);
+    if (isNaN(dealRoomId) || isNaN(docId)) return Errors.badRequest(res, "Invalid ID");
 
     const results = await db
       .select()
@@ -279,7 +292,8 @@ router.get('/:id/documents/:docId/download', asyncHandler(async (req: Authentica
 
 router.post('/:id/participants', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const dealRoomId = parseInt(req.params.id);
+    const dealRoomId = parseIntParam(req.params.id);
+    if (isNaN(dealRoomId)) return Errors.badRequest(res, "Invalid deal room ID");
     const dealRoom = await getDealRoomOrFail(dealRoomId, res);
     if (!dealRoom) return;
 
@@ -343,7 +357,8 @@ router.post('/:id/participants', asyncHandler(async (req: AuthenticatedRequest, 
 
 router.patch('/:id/participants/:userId', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const dealRoomId = parseInt(req.params.id);
+    const dealRoomId = parseIntParam(req.params.id);
+    if (isNaN(dealRoomId)) return Errors.badRequest(res, "Invalid deal room ID");
     const { userId } = req.params;
     const { role } = req.body;
 
@@ -372,7 +387,8 @@ router.patch('/:id/participants/:userId', asyncHandler(async (req: Authenticated
 
 router.delete('/:id/participants/:userId', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const dealRoomId = parseInt(req.params.id);
+    const dealRoomId = parseIntParam(req.params.id);
+    if (isNaN(dealRoomId)) return Errors.badRequest(res, "Invalid deal room ID");
     const { userId } = req.params;
 
     const dealRoom = await getDealRoomOrFail(dealRoomId, res);
@@ -405,7 +421,8 @@ router.delete('/:id/participants/:userId', asyncHandler(async (req: Authenticate
 
 router.get('/:id/activity', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const dealRoomId = parseInt(req.params.id);
+    const dealRoomId = parseIntParam(req.params.id);
+    if (isNaN(dealRoomId)) return Errors.badRequest(res, "Invalid deal room ID");
     const limit = Math.min(100, parseInt(String(req.query.limit ?? '50')));
 
     // Combine messages and documents as an activity timeline
@@ -455,7 +472,8 @@ router.get('/:id/activity', asyncHandler(async (req: AuthenticatedRequest, res: 
 
 router.post('/:id/nda', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const dealRoomId = parseInt(req.params.id);
+    const dealRoomId = parseIntParam(req.params.id);
+    if (isNaN(dealRoomId)) return Errors.badRequest(res, "Invalid deal room ID");
     const user = getUser(req);
     const dealRoom = await getDealRoomOrFail(dealRoomId, res);
     if (!dealRoom) return;
@@ -530,7 +548,8 @@ Verification Code: ${crypto.randomBytes(8).toString('hex').toUpperCase()}
 
 router.post('/:id/notifications', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const dealRoomId = parseInt(req.params.id);
+    const dealRoomId = parseIntParam(req.params.id);
+    if (isNaN(dealRoomId)) return Errors.badRequest(res, "Invalid deal room ID");
     const user = getUser(req);
     const dealRoom = await getDealRoomOrFail(dealRoomId, res);
     if (!dealRoom) return;
