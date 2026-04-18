@@ -319,11 +319,15 @@ router.post("/validate/:service", requireFounder, async (req: Request, res: Resp
         const url = process.env.REDIS_URL;
         if (!url) return res.json({ status: "warn", message: "REDIS_URL not configured — background jobs will run in-process" });
         try {
-          const { createClient } = await import("redis");
-          const client = createClient({ url });
+          const IORedis = (await import("ioredis")).default;
+          const client = new IORedis(url, {
+            maxRetriesPerRequest: 1,
+            connectTimeout: 5000,
+            lazyConnect: true,
+          });
           await client.connect();
           await client.ping();
-          await client.disconnect();
+          client.disconnect();
           await markValidated("REDIS_URL", "ok", "Redis ping OK");
           return res.json({ status: "ok", message: "Redis connected" });
         } catch (e: any) {
