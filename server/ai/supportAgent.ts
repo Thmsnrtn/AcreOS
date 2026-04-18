@@ -2900,6 +2900,21 @@ export async function executeSupportTool(
       
       case "apply_bulk_fix": {
         const { issue_type, fix_action, affected_org_ids } = args;
+
+        // DEFECT-0030: Validate that affected_org_ids only contains the authenticated user's org
+        const unauthorizedOrgIds = (affected_org_ids as number[]).filter((id: number) => id !== org.id);
+        if (unauthorizedOrgIds.length > 0) {
+          logger.warn("apply_bulk_fix rejected: cross-org access attempt", {
+            requestedOrgIds: affected_org_ids,
+            authenticatedOrgId: org.id,
+            unauthorizedOrgIds,
+          });
+          return {
+            success: false,
+            error: `Bulk fix rejected: cannot apply fixes to organizations outside your own (org ${org.id}). Unauthorized org IDs: ${unauthorizedOrgIds.join(", ")}`
+          };
+        }
+
         const { paxLearningService } = await import("../services/paxLearning");
         const result = await paxLearningService.applyBulkFix(issue_type, fix_action, affected_org_ids);
         
