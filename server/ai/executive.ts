@@ -1016,6 +1016,13 @@ export async function processChat(
       toolResults = [];
       for (const toolCall of validToolCalls) {
         const args = JSON.parse(toolCall.function.arguments);
+        // Block approval-required tools in non-streaming path (same gate as streaming)
+        if (APPROVAL_REQUIRED_TOOLS.has(toolCall.function.name)) {
+          const blockedResult = { success: false, error: `Tool "${toolCall.function.name}" requires user approval. Use the chat interface to approve this action.` };
+          toolCallsExecuted.push({ name: toolCall.function.name, arguments: args, result: blockedResult });
+          toolResults.push({ role: "tool", tool_call_id: toolCall.id, content: JSON.stringify(blockedResult) });
+          continue;
+        }
         const result = await executeTool(toolCall.function.name, args, org);
         toolCallsExecuted.push({ name: toolCall.function.name, arguments: args, result });
         toolResults.push({ role: "tool", tool_call_id: toolCall.id, content: JSON.stringify(result) });
