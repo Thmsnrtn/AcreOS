@@ -1095,7 +1095,7 @@ function PropertyForm({ onSuccess }: { onSuccess: () => void }) {
   const [showLandDetails, setShowLandDetails] = useState(isLandType);
 
   const form = useForm<z.infer<typeof propertyFormSchema>>({
-    resolver: zodResolver(propertyFormSchema),
+    resolver: zodResolver(propertyFormSchema) as any,
     defaultValues: {
       apn: isLandType ? "" : "N/A",
       sizeAcres: "",

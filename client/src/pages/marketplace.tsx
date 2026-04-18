@@ -608,7 +608,7 @@ export default function MarketplacePage() {
       description: createDescription,
     });
     if (!result.success) {
-      const firstError = result.error.errors[0];
+      const firstError = result.error.issues[0];
       toast({ title: "Validation error", description: firstError.message, variant: "destructive" });
       return;
     }

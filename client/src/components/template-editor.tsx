@@ -157,7 +157,7 @@ export function TemplateEditor({ template, onSave, onCancel, mode = "create" }: 
   const [cursorPosition, setCursorPosition] = useState<number>(0);
 
   const form = useForm<TemplateFormValues>({
-    resolver: zodResolver(templateFormSchema),
+    resolver: zodResolver(templateFormSchema) as any,
     defaultValues: {
       name: template?.name || "",
       type: template?.type || "custom",

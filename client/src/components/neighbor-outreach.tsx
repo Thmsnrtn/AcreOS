@@ -83,9 +83,9 @@ export function NeighborOutreach({ propertyId, isOwned }: NeighborOutreachProps)
           <div className="text-sm text-muted-foreground">
             <p>Neighbor data requires parcel boundary information.</p>
             <Button
-              variant="link"
+              variant="ghost"
               size="sm"
-              className="px-0 mt-1"
+              className="px-0 mt-1 underline"
               onClick={() => window.location.href = `/properties/${propertyId}?action=enrich`}
             >
               Enrich This Property

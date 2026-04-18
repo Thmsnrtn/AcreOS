@@ -135,10 +135,10 @@ export function UsageDashboard() {
                       border: "1px solid hsl(var(--border))",
                       borderRadius: "8px",
                     }}
-                    formatter={(value: number, name: string) => {
+                    formatter={((value: number, name: string) => {
                       if (name === "cost") return [`$${value.toFixed(2)}`, "Cost"];
                       return [value, "Count"];
-                    }}
+                    }) as any}
                     labelStyle={{ color: "hsl(var(--foreground))" }}
                   />
                   <Bar dataKey="cost" radius={[4, 4, 0, 0]}>

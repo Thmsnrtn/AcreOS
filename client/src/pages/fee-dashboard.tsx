@@ -149,7 +149,7 @@ function AnalyticsChart({ analytics }: { analytics: FeeAnalytics | null }) {
               <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
               <XAxis dataKey="name" tick={{ fontSize: 12 }} />
               <YAxis tickFormatter={v => `$${(v / 1000).toFixed(0)}K`} tick={{ fontSize: 11 }} width={60} />
-              <Tooltip formatter={(val: number) => fmtCurrency(val)} />
+              <Tooltip formatter={((val: number) => fmtCurrency(val)) as any} />
               <Bar dataKey="value" fill="#6366f1" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>

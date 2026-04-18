@@ -356,7 +356,7 @@ export default function PredictionsPage() {
                     <XAxis dataKey="label" tick={{ fontSize: 11 }} />
                     <YAxis tickFormatter={formatPrice} tick={{ fontSize: 11 }} width={70} />
                     <Tooltip
-                      formatter={(val: number, name: string) => [formatPrice(val), name]}
+                      formatter={((val: number, name: string) => [formatPrice(val), name]) as any}
                       labelClassName="text-xs font-medium"
                     />
                     <Legend wrapperStyle={{ fontSize: 12 }} />

@@ -88,7 +88,7 @@ function generatePriceTrendData(
   marketTrend: "up" | "down" | "flat",
   marketTrendPct: number
 ): { month: string; value: number }[] {
-  const base = listPrice ?? acres * 5000 ?? 50000;
+  const base = listPrice ?? (acres * 5000 || 50000);
   if (!base || base <= 0) return [];
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const now = new Date();

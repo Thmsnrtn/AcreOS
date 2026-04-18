@@ -164,7 +164,7 @@ export default function FinancePage() {
                       </defs>
                       <XAxis dataKey="month" fontSize={10} tickLine={false} axisLine={false} />
                       <YAxis fontSize={10} tickLine={false} axisLine={false} tickFormatter={(v: number) => `$${v.toLocaleString()}`} />
-                      <Tooltip formatter={(value: number) => [`$${value.toLocaleString()}`, "Cash Flow"]} />
+                      <Tooltip formatter={((value: number) => [`$${value.toLocaleString()}`, "Cash Flow"]) as any} />
                       <Area type="monotone" dataKey="amount" stroke="hsl(var(--primary))" fill="url(#cashFlowGrad)" strokeWidth={2} />
                     </AreaChart>
                   </ResponsiveContainer>

@@ -1001,7 +1001,7 @@ export default function LeadsPage() {
             {error && (
               <InlineError
                 message={(error as Error)?.message || "Failed to load leads."}
-                onRetry={() => refetch()}
+                onRetry={() => (refetch as any)()}
                 testId="inline-error-leads"
               />
             )}
@@ -1992,7 +1992,7 @@ function LeadForm({ lead, onSuccess }: { lead?: Lead; onSuccess: () => void }) {
   const isPending = isCreating || isUpdating;
 
   const form = useForm<z.infer<typeof leadFormSchema>>({
-    resolver: zodResolver(leadFormSchema),
+    resolver: zodResolver(leadFormSchema) as any,
     defaultValues: {
       firstName: lead?.firstName || "",
       lastName: lead?.lastName || "",

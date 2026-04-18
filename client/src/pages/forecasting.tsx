@@ -199,7 +199,7 @@ export default function ForecastingPage() {
                       axisLine={false}
                     />
                     <Tooltip
-                      formatter={(value: number, name: string) => [fmt(value), name]}
+                      formatter={((value: number, name: string) => [fmt(value), name]) as any}
                     />
                     <Bar
                       dataKey="income"

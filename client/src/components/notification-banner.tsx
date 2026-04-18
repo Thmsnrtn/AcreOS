@@ -106,9 +106,9 @@ export function NotificationBanner() {
               </p>
               {latestNotif.actionUrl && (
                 <Button
-                  variant="link"
+                  variant="ghost"
                   size="sm"
-                  className="h-auto p-0 text-xs mt-1"
+                  className="h-auto p-0 text-xs mt-1 underline"
                   onClick={() => handleNotifClick(latestNotif)}
                 >
                   View details <ChevronRight className="w-3 h-3 ml-0.5" />

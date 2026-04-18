@@ -345,7 +345,7 @@ export function TeamDashboardContent() {
                             className="text-xs"
                           />
                           <Tooltip 
-                            formatter={(value: number) => [formatCurrency(value), "Revenue"]}
+                            formatter={((value: number) => [formatCurrency(value), "Revenue"]) as any}
                             contentStyle={{ 
                               backgroundColor: 'hsl(var(--card))',
                               borderColor: 'hsl(var(--border))',
@@ -374,10 +374,10 @@ export function TeamDashboardContent() {
                             className="text-xs"
                           />
                           <Tooltip 
-                            formatter={(value: number, name: string) => [
+                            formatter={((value: number, name: string) => [
                               name === 'rate' ? `${value}%` : value,
                               name === 'rate' ? 'Conversion Rate' : 'Total Leads'
-                            ]}
+                            ]) as any}
                             contentStyle={{ 
                               backgroundColor: 'hsl(var(--card))',
                               borderColor: 'hsl(var(--border))',

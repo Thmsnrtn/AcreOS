@@ -95,21 +95,17 @@ export default function ExecutiveDashboard() {
 
   if (isError) {
     return (
-      <PageShell title="Executive Dashboard" description="Revenue and growth metrics">
+      <PageShell>
         <QueryErrorState
           error={error}
           onRetry={() => refetch()}
-          entityName="executive dashboard"
         />
       </PageShell>
     );
   }
 
   return (
-    <PageShell
-      title="Executive Dashboard"
-      description="Founder-only revenue and growth metrics"
-    >
+    <PageShell>
       {isLoading ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {Array.from({ length: 8 }).map((_, i) => (

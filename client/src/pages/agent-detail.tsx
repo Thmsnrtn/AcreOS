@@ -83,11 +83,11 @@ export default function AgentDetailPage() {
   };
 
   if (isLoading) {
-    return <PageShell title="Agent Detail"><Skeleton className="h-96" /></PageShell>;
+    return <PageShell><Skeleton className="h-96" /></PageShell>;
   }
 
   if (!data?.agent) {
-    return <PageShell title="Agent Not Found"><p>No agent found with codename: {codename}</p></PageShell>;
+    return <PageShell><p>No agent found with codename: {codename}</p></PageShell>;
   }
 
   const { agent, liveData, recentActions, goals, trustHistory, decisions } = data;
@@ -97,7 +97,7 @@ export default function AgentDetailPage() {
   const trustPct = agent.trustScore || 50;
 
   return (
-    <PageShell title={`${agent.title} — ${codename}`}>
+    <PageShell>
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-start justify-between">
