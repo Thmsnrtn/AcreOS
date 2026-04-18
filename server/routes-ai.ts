@@ -277,7 +277,11 @@ export function registerAIRoutes(app: Express): void {
       name: z.string().optional(),
     })).optional(),
     activeProjectId: z.number().int().optional(),
-    modelOverride: z.string().optional(),
+    modelOverride: z.enum([
+      "gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo",
+      "claude-3-5-sonnet-20241022", "claude-3-haiku-20240307",
+      "deepseek/deepseek-chat",
+    ]).optional(),
   });
 
   api.post("/api/ai/chat/stream", isAuthenticated, getOrCreateOrg, aiLimiter, usageLimitGate("ai_requests"), async (req, res) => {

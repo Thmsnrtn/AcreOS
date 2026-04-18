@@ -95,7 +95,7 @@ export function registerReferralRoutes(app: Express): void {
    *
    * Body: { code: string, refereeId: string }
    */
-  app.post("/api/referral/apply", async (req, res) => {
+  app.post("/api/referral/apply", isAuthenticated, async (req, res) => {
     try {
       const { code, refereeId } = req.body as { code?: string; refereeId?: string };
       if (!code || !refereeId) return res.status(400).json({ message: "code and refereeId required" });

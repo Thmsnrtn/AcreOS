@@ -1578,6 +1578,16 @@ export function registerCampaignRoutes(app: Express): void {
         return Errors.badRequest(res, "No recipients specified");
       }
 
+      // Credit check: 1 cent per email
+      const emailCost = leadIds.length * 1;
+      const hasCredits = await creditService.hasEnoughCredits(org.id, emailCost);
+      if (!hasCredits) {
+        return res.status(402).json({
+          error: "Insufficient credits",
+          message: `Sending ${leadIds.length} emails requires ${emailCost} credits.`,
+        });
+      }
+
       const campaign = await storage.getCampaign(org.id, campaignId);
       if (!campaign) return Errors.notFound(res, "Campaign");
       if (campaign.type !== "email") {
@@ -1671,6 +1681,16 @@ export function registerCampaignRoutes(app: Express): void {
 
       if (!leadIds || leadIds.length === 0) {
         return Errors.badRequest(res, "No recipients specified");
+      }
+
+      // Credit check: 3 cents per SMS
+      const smsCost = leadIds.length * 3;
+      const hasCredits = await creditService.hasEnoughCredits(org.id, smsCost);
+      if (!hasCredits) {
+        return res.status(402).json({
+          error: "Insufficient credits",
+          message: `Sending ${leadIds.length} SMS messages requires ${smsCost} credits.`,
+        });
       }
 
       const campaign = await storage.getCampaign(org.id, campaignId);
