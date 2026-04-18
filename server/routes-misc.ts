@@ -10,6 +10,7 @@ import { organizationIntegrations, callTranscripts } from "@shared/schema";
 import { requireAdminOrAbove } from "./utils/permissions";
 import { registerAIOperationsRoutes } from "./routes-ai-operations";
 import { logger } from "./utils/logger";
+import { Errors } from "./utils/errors";
 import { verifyTwilioSignature } from "./middleware/twilioSignature";
 
 export async function registerMiscRoutes(app: Express): Promise<void> {
@@ -152,15 +153,19 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
 
   api.get("/api/browser-automation/jobs/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const job = await browserAutomationService.getJobById(id);
       if (!job) {
-        return res.status(404).json({ message: "Job not found" });
+        return Errors.notFound(res, "Job");
+      }
+      if (job.organizationId !== org.id) {
+        return Errors.notFound(res, "Job");
       }
       res.json(job);
     } catch (error: any) {
       logger.error("Get automation job error", error);
-      res.status(500).json({ message: error.message || "Failed to fetch job" });
+      Errors.internal(res, error);
     }
   });
 
@@ -185,12 +190,20 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
 
   api.post("/api/browser-automation/jobs/:id/cancel", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      const org = req.organization;
       const id = parseInt(req.params.id);
+      const job = await browserAutomationService.getJobById(id);
+      if (!job) {
+        return Errors.notFound(res, "Job");
+      }
+      if (job.organizationId !== org.id) {
+        return Errors.notFound(res, "Job");
+      }
       await browserAutomationService.cancelJob(id);
       res.json({ success: true });
     } catch (error: any) {
       logger.error("Cancel automation job error", error);
-      res.status(400).json({ message: error.message || "Failed to cancel job" });
+      Errors.badRequest(res, error.message || "Failed to cancel job");
     }
   });
 

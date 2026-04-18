@@ -274,7 +274,7 @@ function computeTomorrowOneThing(
   const newLeads = pipeline.new || pipeline.prospect || 0;
   const offersSent = pipeline.offer_sent || pipeline.offers || 0;
   if (newLeads > 10 && offersSent === 0) {
-    return { action: `Send blind offers to your top ${Math.min(newLeads, 20)} scored leads`, reason: `You have ${newLeads} leads in your pipeline but no offers sent. The Podolsky formula: offers out = passive income in.`, priority: "high" };
+    return { action: `Send blind offers to your top ${Math.min(newLeads, 20)} scored leads`, reason: `You have ${newLeads} leads in your pipeline but no offers sent. The proven formula: offers out = passive income in.`, priority: "high" };
   }
 
   // Rule 3: If close to freedom number
