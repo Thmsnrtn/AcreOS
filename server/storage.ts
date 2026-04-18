@@ -7271,13 +7271,13 @@ Notary Public</p>
   }
 
   async createWorkflowRun(run: InsertWorkflowRun): Promise<WorkflowRun> {
-    const [created] = await db.insert(workflowRuns).values(run).returning();
+    const [created] = await db.insert(workflowRuns).values(run as any).returning();
     return created;
   }
 
   async updateWorkflowRun(id: number, updates: Partial<InsertWorkflowRun>): Promise<WorkflowRun> {
     const [updated] = await db.update(workflowRuns)
-      .set(updates)
+      .set(updates as any)
       .where(eq(workflowRuns.id, id))
       .returning();
     return updated;
@@ -7312,13 +7312,13 @@ Notary Public</p>
   }
 
   async createScheduledTask(task: InsertScheduledTask): Promise<ScheduledTask> {
-    const [created] = await db.insert(scheduledTasks).values(task).returning();
+    const [created] = await db.insert(scheduledTasks).values(task as any).returning();
     return created;
   }
 
   async updateScheduledTask(id: number, updates: Partial<InsertScheduledTask>): Promise<ScheduledTask | undefined> {
     const [updated] = await db.update(scheduledTasks)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...updates, updatedAt: new Date() } as any)
       .where(eq(scheduledTasks.id, id))
       .returning();
     return updated;
