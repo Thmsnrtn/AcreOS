@@ -1,4 +1,4 @@
-import { QueryClient, QueryFunction } from "@tanstack/react-query";
+import { QueryClient, QueryCache, MutationCache, QueryFunction } from "@tanstack/react-query";
 import { toast } from "@/hooks/use-toast";
 import React from "react";
 import { ToastAction } from "@/components/ui/toast";
@@ -174,6 +174,12 @@ export const STALE_TIMES = {
 };
 
 export const queryClient = new QueryClient({
+  queryCache: new QueryCache({
+    onError: handleQueryError,
+  }),
+  mutationCache: new MutationCache({
+    onError: handleMutationError,
+  }),
   defaultOptions: {
     queries: {
       queryFn: getQueryFn({ on401: "throw" }),
@@ -200,7 +206,6 @@ export const queryClient = new QueryClient({
         return shouldRetry(err, failureCount);
       },
       retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
-      onError: handleMutationError,
     },
   },
 });
