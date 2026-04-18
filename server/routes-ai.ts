@@ -384,7 +384,7 @@ export function registerAIRoutes(app: Express): void {
       return Errors.notFound(res, "Conversation");
     }
     
-    await storage.deleteAiConversation(conversationId);
+    await storage.deleteAiConversation(conversationId, org.id);
     res.json({ success: true });
   });
 

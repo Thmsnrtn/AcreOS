@@ -751,7 +751,7 @@ export async function registerRoutes(
       }
       
       const now = new Date();
-      const lead = await storage.updateLead(leadId, { lastContactedAt: now });
+      const lead = await storage.updateLead(leadId, { lastContactedAt: now }, org.id);
       
       // Log the action
       const user = req.user as any;
@@ -827,7 +827,7 @@ export async function registerRoutes(
       // Update last contacted timestamp
       const updated = await storage.updateLead(leadId, {
         lastContactedAt: now,
-      });
+      }, org.id);
       
       // Record activity event
       await storage.createActivityEvent({
@@ -1201,7 +1201,7 @@ export async function registerRoutes(
             errors.push({ id: state.id, error: "Deal not found" });
             continue;
           }
-          await storage.updateDeal(state.id, { status: state.previousStage });
+          await storage.updateDeal(state.id, { status: state.previousStage }, undefined, org.id);
           restoredCount++;
         } catch (err: any) {
           errors.push({ id: state.id, error: err.message || "Unknown error" });

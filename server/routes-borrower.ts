@@ -271,15 +271,15 @@ export function registerBorrowerRoutes(app: Express): void {
       });
       
       // Store the checkout session ID on the note for webhook verification
-      await storage.updateNote(note.id, { pendingCheckoutSessionId: stripeSession.id });
-      
+      await storage.updateNote(note.id, { pendingCheckoutSessionId: stripeSession.id }, note.organizationId);
+
       res.json({ url: stripeSession.url, sessionId: stripeSession.id });
     } catch (err: any) {
       logger.error("Session-based portal payment error", err);
       res.status(500).json({ message: err.message });
     }
   });
-  
+
   // Create Stripe checkout session for borrower portal payment
   // DEPRECATED: Use session-based auth at /api/borrower/payment instead
   // Rate limited: 2 requests per minute per IP (stricter than session-based)
@@ -355,8 +355,8 @@ export function registerBorrowerRoutes(app: Express): void {
       });
       
       // Store the checkout session ID on the note for webhook verification
-      await storage.updateNote(note.id, { pendingCheckoutSessionId: session.id });
-      
+      await storage.updateNote(note.id, { pendingCheckoutSessionId: session.id }, note.organizationId);
+
       res.json({ url: session.url, sessionId: session.id });
     } catch (err: any) {
       logger.error("Portal payment error", err);
@@ -452,7 +452,7 @@ export function registerBorrowerRoutes(app: Express): void {
       await storage.updateNote(note.id, {
         amortizationSchedule: updatedSchedule,
         nextPaymentDate: nextPaymentDate,
-      });
+      }, note.organizationId);
 
       res.json({
         success: true,
@@ -492,7 +492,7 @@ export function registerBorrowerRoutes(app: Express): void {
       
       await storage.updateNote(note.id, {
         autoPayEnabled: enabled === true,
-      });
+      }, note.organizationId);
       
       res.json({ 
         success: true, 

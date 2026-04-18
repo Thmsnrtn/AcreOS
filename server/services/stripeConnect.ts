@@ -441,7 +441,7 @@ export class StripeConnectService {
         await storage.updateNote(Number(noteId), {
           currentBalance: String(newBalance),
           status: noteStatus,
-        });
+        }, organizationId);
       }
     }
 

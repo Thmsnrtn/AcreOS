@@ -219,7 +219,7 @@ export function registerFinanceRoutes(app: Express): void {
       }
     }
 
-    const note = await storage.updateNote(noteId, validated);
+    const note = await storage.updateNote(noteId, validated, org.id);
 
     const user = req.user as any;
     const userId = user?.claims?.sub || user?.id;
@@ -248,7 +248,7 @@ export function registerFinanceRoutes(app: Express): void {
       return Errors.notFound(res, "Note");
     }
 
-    await storage.deleteNote(noteId);
+    await storage.deleteNote(noteId, org.id);
 
     const user = req.user as any;
     const userId = user?.claims?.sub || user?.id;
@@ -399,7 +399,7 @@ export function registerFinanceRoutes(app: Express): void {
         });
       }
       
-      const updatedNote = await storage.updateNote(noteId, { amortizationSchedule: schedule });
+      const updatedNote = await storage.updateNote(noteId, { amortizationSchedule: schedule }, org.id);
       
       const totalInterest = schedule.reduce((sum, s) => sum + s.interest, 0);
       

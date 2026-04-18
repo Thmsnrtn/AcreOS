@@ -1023,13 +1023,13 @@ class WorkflowEngine {
 
     switch (entityType) {
       case "lead":
-        await storage.updateLead(entityId, updates);
+        await storage.updateLead(entityId, updates, context.organizationId);
         break;
       case "property":
-        await storage.updateProperty(entityId, updates);
+        await storage.updateProperty(entityId, updates, context.organizationId);
         break;
       case "deal":
-        await storage.updateDeal(entityId, updates);
+        await storage.updateDeal(entityId, updates, undefined, context.organizationId);
         break;
       default:
         throw new Error(`Unknown entity type: ${entityType}`);

@@ -951,7 +951,7 @@ export async function executeTool(
         const updated = await storage.updateLead(args.lead_id, {
           status: args.status,
           notes: args.notes
-        });
+        }, org.id);
         // Log activity for auditability
         if (leadBeforeUpdate) {
           await storage.logActivity({
@@ -1134,7 +1134,7 @@ export async function executeTool(
                 parcelData: parcelResult.parcel.data,
                 latitude: String(parcelResult.parcel.centroid.lat),
                 longitude: String(parcelResult.parcel.centroid.lng),
-              });
+              }, org.id);
               hasBoundary = true;
               logger.info(`[CreateProperty] Parcel found from ${parcelResult.source}`);
             }
@@ -1162,7 +1162,7 @@ export async function executeTool(
           after[key] = updates[key];
         }
 
-        const property = await storage.updateProperty(args.property_id, updates);
+        const property = await storage.updateProperty(args.property_id, updates, org.id);
         invalidateContextCache(org.id);
         return { success: true, data: { message: "Property updated successfully", property, before, after } };
       }
@@ -1211,7 +1211,7 @@ export async function executeTool(
           dealAfter[key] = dealUpdates[key];
         }
 
-        const deal = await storage.updateDeal(args.deal_id, dealUpdates);
+        const deal = await storage.updateDeal(args.deal_id, dealUpdates, undefined, org.id);
         invalidateContextCache(org.id);
         return { success: true, data: { message: "Deal updated successfully", deal, before: dealBefore, after: dealAfter } };
       }
@@ -1393,7 +1393,7 @@ export async function executeTool(
                     parcelData: parcelResult.parcel.data,
                     latitude: String(parcelResult.parcel.centroid.lat),
                     longitude: String(parcelResult.parcel.centroid.lng),
-                  });
+                  }, org.id);
                   hasBoundary = true;
                   logger.info(`[Batch] Parcel found for ${prop.apn} from ${parcelResult.source}`);
                 } else {

@@ -200,7 +200,7 @@ export function registerPropertyRoutes(app: Express): void {
       }
       
       const validated = updatePropertySchema.parse(sanitizedBody);
-      const property = await storage.updateProperty(propertyId, validated);
+      const property = await storage.updateProperty(propertyId, validated, org.id);
 
       const user = req.user as any;
       const userId = user?.claims?.sub || user?.id;
@@ -260,7 +260,7 @@ export function registerPropertyRoutes(app: Express): void {
         return Errors.notFound(res, "Property");
       }
 
-      await storage.deleteProperty(propertyId);
+      await storage.deleteProperty(propertyId, org.id);
       
       const user = req.user as any;
       const userId = user?.claims?.sub || user?.id;
@@ -729,8 +729,8 @@ export function registerPropertyRoutes(app: Express): void {
         parcelData: result.parcel.data,
         latitude: String(result.parcel.centroid.lat),
         longitude: String(result.parcel.centroid.lng),
-      });
-      
+      }, org.id);
+
       res.json(updated);
     } catch (err) {
       logger.error("Fetch parcel error", err instanceof Error ? err : undefined);
@@ -774,7 +774,7 @@ export function registerPropertyRoutes(app: Express): void {
               parcelData: result.parcel.data,
               latitude: String(result.parcel.centroid.lat),
               longitude: String(result.parcel.centroid.lng),
-            });
+            }, org.id);
             results.push({ propertyId: property.id, apn: property.apn, success: true, source: result.source });
             logger.info(`[BulkParcel] Found parcel for ${property.apn} from ${result.source}`);
           } else {
