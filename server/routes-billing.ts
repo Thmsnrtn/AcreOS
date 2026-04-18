@@ -2,7 +2,7 @@ import type { Express } from "express";
 import express from "express";
 import { storage, db } from "./storage";
 import { SUBSCRIPTION_TIERS, cancellationSurveys, refundRequests } from "@shared/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, gte } from "drizzle-orm";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { getAllUsageLimits, type SubscriptionTier, TIER_LIMITS } from "./services/usageLimits";
@@ -768,6 +768,21 @@ export function registerBillingRoutes(app: Express): void {
         return Errors.badRequest(res, "No billing account found");
       }
 
+      // Rate limit: reject if org already had a refund in the last 30 days
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const recentRefunds = await db.select({ id: refundRequests.id })
+        .from(refundRequests)
+        .where(and(
+          eq(refundRequests.organizationId, org.id),
+          eq(refundRequests.status, "processed"),
+          gte(refundRequests.createdAt, thirtyDaysAgo),
+        ))
+        .limit(1);
+
+      if (recentRefunds.length > 0) {
+        return Errors.limitExceeded(res, "A refund was already processed for this account within the last 30 days. Please contact support for further assistance.");
+      }
+
       // Find recent charges from Stripe (last 30 days)
       const { getUncachableStripeClient } = await import("./stripeClient");
       const stripe = await getUncachableStripeClient();
@@ -814,6 +829,33 @@ export function registerBillingRoutes(app: Express): void {
               stripeRefundId: refund.id,
             })
             .where(eq(refundRequests.id, request.id));
+
+          // Cancel subscription and downgrade to free tier
+          const previousTier = org.subscriptionTier || "free";
+          if (org.stripeSubscriptionId) {
+            try {
+              await stripe.subscriptions.cancel(org.stripeSubscriptionId);
+              logger.info(`[Refund] Cancelled Stripe subscription ${org.stripeSubscriptionId} for org ${org.id}`);
+            } catch (cancelErr: any) {
+              // Subscription may already be cancelled — log but continue
+              logger.warn(`[Refund] Could not cancel Stripe subscription ${org.stripeSubscriptionId}`, cancelErr);
+            }
+          }
+
+          await storage.updateOrganization(org.id, {
+            subscriptionTier: "free",
+            subscriptionStatus: "cancelled",
+            stripeSubscriptionId: null,
+          });
+
+          await storage.logSubscriptionEvent({
+            organizationId: org.id,
+            eventType: "cancel",
+            fromTier: previousTier,
+            toTier: null,
+          });
+
+          logger.info(`[Refund] Downgraded org ${org.id} from ${previousTier} to free after refund`);
 
           // Send confirmation email
           try {
