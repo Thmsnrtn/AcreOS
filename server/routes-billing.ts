@@ -640,10 +640,11 @@ export function registerBillingRoutes(app: Express): void {
       
       const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
       const sig = req.headers["stripe-signature"] as string;
-      const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-      
+      // Connect webhooks use a separate endpoint secret from standard webhooks
+      const webhookSecret = process.env.STRIPE_CONNECT_WEBHOOK_SECRET || process.env.STRIPE_WEBHOOK_SECRET;
+
       if (!webhookSecret) {
-        logger.warn("Stripe webhook secret not configured", {});
+        logger.warn("Stripe Connect webhook secret not configured (set STRIPE_CONNECT_WEBHOOK_SECRET)", {});
         return Errors.badRequest(res, "Webhook secret not configured");
       }
       
