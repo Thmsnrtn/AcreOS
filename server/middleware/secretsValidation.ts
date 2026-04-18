@@ -61,6 +61,11 @@ const SECRETS: SecretSpec[] = [
 
   // Redis
   { key: "REDIS_URL", required: false, description: "Redis URL for BullMQ + caching (required in production for job durability)", productionOnly: true },
+
+  // Cryptographic secrets — DEFECT-0034: must not use hardcoded fallbacks in production
+  { key: "DOCUMENT_SIGNING_SECRET", required: false, minLength: 32, description: "HMAC secret for deal-room document signed URLs", productionOnly: true },
+  { key: "CERT_SECRET", required: false, minLength: 32, description: "Secret for course-completion certificate verification hashes", productionOnly: true },
+  { key: "INBOUND_EMAIL_HMAC_SECRET", required: false, minLength: 32, description: "HMAC secret for inbound email reply-to address verification", productionOnly: true },
 ];
 
 export function validateSecrets(): void {

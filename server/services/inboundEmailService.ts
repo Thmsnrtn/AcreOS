@@ -5,7 +5,11 @@ import { eq, and } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { activityLogger } from "./activityLogger";
 
-const HMAC_SECRET = process.env.INBOUND_EMAIL_HMAC_SECRET || process.env.SESSION_SECRET || "acreos-inbound-default";
+const HMAC_SECRET = process.env.INBOUND_EMAIL_HMAC_SECRET
+  || process.env.SESSION_SECRET
+  || (process.env.NODE_ENV === 'production'
+    ? (() => { throw new Error('Missing required secret: INBOUND_EMAIL_HMAC_SECRET (or SESSION_SECRET)'); })()
+    : 'dev-fallback-not-for-production');
 
 /**
  * Generate a reply-to address for a specific lead.

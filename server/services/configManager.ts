@@ -25,7 +25,10 @@ function getEncryptionKey(): Buffer {
     return Buffer.from(raw.slice(0, 64), "hex");
   }
   // Fallback: derive from SESSION_SECRET (not ideal but functional for dev)
-  const fallback = process.env.SESSION_SECRET || "acreos-dev-config-key-insecure";
+  const fallback = process.env.SESSION_SECRET
+    || (process.env.NODE_ENV === 'production'
+      ? (() => { throw new Error('Missing required secret: FIELD_ENCRYPTION_KEY (or SESSION_SECRET)'); })()
+      : 'dev-fallback-not-for-production');
   return crypto.createHash("sha256").update(fallback).digest();
 }
 
