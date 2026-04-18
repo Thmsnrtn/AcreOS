@@ -1,6 +1,7 @@
 import Stripe from "stripe";
 import { storage } from "../storage";
 import { logger } from "../utils/logger";
+import { addMonths } from "../utils/dateUtils";
 
 function isStripeConfigured(): boolean {
   return !!process.env.STRIPE_SECRET_KEY;
@@ -429,6 +430,20 @@ export class StripeConnectService {
           status: "completed",
         });
 
+        const schedule = note.amortizationSchedule || [];
+        const nextPendingPayment = schedule.find((s: any) => s.status === "pending");
+
+        let updatedSchedule = schedule;
+        if (nextPendingPayment) {
+          updatedSchedule = schedule.map((s: any) =>
+            s.paymentNumber === nextPendingPayment.paymentNumber
+              ? { ...s, status: "paid" }
+              : s
+          );
+        }
+
+        const nextPaymentDate = addMonths(new Date(note.nextPaymentDate || new Date()), 1);
+
         let noteStatus = note.status;
         if (newBalance <= 0) {
           noteStatus = "paid_off";
@@ -438,6 +453,8 @@ export class StripeConnectService {
 
         await storage.updateNote(Number(noteId), {
           currentBalance: String(newBalance),
+          amortizationSchedule: updatedSchedule,
+          nextPaymentDate: nextPaymentDate,
           status: noteStatus,
         });
       }
