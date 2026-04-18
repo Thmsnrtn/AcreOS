@@ -102,8 +102,8 @@ export default function FinancePage() {
 
   const enrichedNotes: NoteWithDetails[] = (notes || []).map(note => ({
     ...note,
-    borrower: leads?.find(l => l.id === note.borrowerId),
-    property: properties?.find(p => p.id === note.propertyId),
+    borrower: leads?.find((l: any) => l.id === note.borrowerId),
+    property: properties?.find((p: any) => p.id === note.propertyId),
   }));
 
   const activeNotes = enrichedNotes.filter(n => n.status === 'active');
@@ -1318,9 +1318,9 @@ function NoteForm({ onSuccess }: { onSuccess: () => void }) {
   const { data: leads } = useLeads();
   const { data: properties } = useProperties();
 
-  const availableProperties = properties?.filter(p => p.status !== 'sold') || [];
+  const availableProperties = properties?.filter((p: any) => p.status !== 'sold') || [];
   // Show buyers first, but fall back to all leads if no buyer-type leads exist
-  const buyerLeads = leads?.filter(l => l.type === 'buyer') || [];
+  const buyerLeads = leads?.filter((l: any) => l.type === 'buyer') || [];
   const buyers = buyerLeads.length > 0 ? buyerLeads : (leads || []);
 
   const form = useForm<z.infer<typeof noteFormSchema>>({
@@ -1379,7 +1379,7 @@ function NoteForm({ onSuccess }: { onSuccess: () => void }) {
                     {buyers.length === 0 ? (
                       <SelectItem value="none" disabled>No buyers available</SelectItem>
                     ) : (
-                      buyers.map(lead => (
+                      buyers.map((lead: any) => (
                         <SelectItem key={lead.id} value={lead.id.toString()}>
                           {lead.firstName} {lead.lastName}
                         </SelectItem>
@@ -1408,7 +1408,7 @@ function NoteForm({ onSuccess }: { onSuccess: () => void }) {
                     {availableProperties.length === 0 ? (
                       <SelectItem value="none" disabled>No properties available</SelectItem>
                     ) : (
-                      availableProperties.map(prop => (
+                      availableProperties.map((prop: any) => (
                         <SelectItem key={prop.id} value={prop.id.toString()}>
                           {prop.county}, {prop.state} ({prop.sizeAcres} ac)
                         </SelectItem>

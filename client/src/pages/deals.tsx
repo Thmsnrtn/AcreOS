@@ -1849,7 +1849,7 @@ function DealForm({ onSuccess }: { onSuccess: () => void }) {
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    {properties?.map(prop => (
+                    {properties?.map((prop: any) => (
                       <SelectItem key={prop.id} value={prop.id.toString()}>
                         {prop.county}, {prop.state} ({prop.sizeAcres} ac)
                       </SelectItem>

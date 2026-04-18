@@ -126,15 +126,15 @@ export default function Dashboard() {
   const isLoading = orgLoading || statsLoading;
 
   const pipelineValue = properties
-    .filter(p => p.status === "under_contract" || p.status === "listed")
-    .reduce((acc, p) => acc + Number(p.listPrice || 0), 0);
+    .filter((p: any) => p.status === "under_contract" || p.status === "listed")
+    .reduce((acc: any, p: any) => acc + Number(p.listPrice || 0), 0);
 
   // Build micro-sparkline data from properties added over last 6 months
   const propertySparkline = useMemo(() => {
     const now = Date.now();
     const buckets = Array.from({ length: 6 }, (_, i) => {
       const cutoff = now - (5 - i) * 30 * 24 * 60 * 60 * 1000;
-      return properties.filter(p => {
+      return properties.filter((p: any) => {
         const d = p.createdAt ? new Date(p.createdAt).getTime() : 0;
         return d <= cutoff;
       }).length;
@@ -146,7 +146,7 @@ export default function Dashboard() {
     const now = Date.now();
     return Array.from({ length: 6 }, (_, i) => {
       const cutoff = now - (5 - i) * 30 * 24 * 60 * 60 * 1000;
-      return leads.filter(l => {
+      return leads.filter((l: any) => {
         const d = l.createdAt ? new Date(l.createdAt).getTime() : 0;
         return d <= cutoff;
       }).length;
@@ -170,16 +170,16 @@ export default function Dashboard() {
   }, [pipelineValue]);
 
   const statusData = [
-    { name: 'Available', value: properties.filter(p => p.status === 'available' || p.status === 'listed').length, color: 'hsl(16, 70%, 50%)' },
-    { name: 'Sold', value: properties.filter(p => p.status === 'sold').length, color: 'hsl(85, 25%, 45%)' },
-    { name: 'Contract', value: properties.filter(p => p.status === 'under_contract').length, color: 'hsl(35, 60%, 50%)' },
+    { name: 'Available', value: properties.filter((p: any) => p.status === 'available' || p.status === 'listed').length, color: 'hsl(16, 70%, 50%)' },
+    { name: 'Sold', value: properties.filter((p: any) => p.status === 'sold').length, color: 'hsl(85, 25%, 45%)' },
+    { name: 'Contract', value: properties.filter((p: any) => p.status === 'under_contract').length, color: 'hsl(35, 60%, 50%)' },
   ];
 
   const leadStatusData = [
-    { name: 'New', value: leads.filter(l => l.status === 'new').length },
-    { name: 'Contacting', value: leads.filter(l => l.status === 'contacting' || l.status === 'mailed').length },
-    { name: 'Negotiation', value: leads.filter(l => l.status === 'negotiation' || l.status === 'negotiating').length },
-    { name: 'Closed', value: leads.filter(l => l.status === 'closed').length },
+    { name: 'New', value: leads.filter((l: any) => l.status === 'new').length },
+    { name: 'Contacting', value: leads.filter((l: any) => l.status === 'contacting' || l.status === 'mailed').length },
+    { name: 'Negotiation', value: leads.filter((l: any) => l.status === 'negotiation' || l.status === 'negotiating').length },
+    { name: 'Closed', value: leads.filter((l: any) => l.status === 'closed').length },
   ];
 
   const container = staggerContainer;
@@ -241,7 +241,7 @@ export default function Dashboard() {
                 title="Total Properties"
                 value={isLoading ? "-" : stats?.activeProperties ?? properties.length}
                 icon={Map}
-                trend={`${properties.filter(p => p.status === 'owned').length} owned`}
+                trend={`${properties.filter((p: any) => p.status === 'owned').length} owned`}
                 color="terracotta"
                 data-testid="stat-total-properties"
                 sparklineData={propertySparkline}

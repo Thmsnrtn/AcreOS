@@ -20,7 +20,7 @@ export function SkeletonTable({
       data-testid="skeleton-table"
       className={cn("rounded-xl border bg-card border-card-border overflow-hidden", className)}
       initial={{ opacity: 0.5 }}
-      animate={pulseAnimation}
+      animate={pulseAnimation as any}
     >
       {showHeader && (
         <div className="border-b bg-muted/30 px-4 py-3 flex gap-4">

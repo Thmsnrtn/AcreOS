@@ -23,7 +23,7 @@ export function SkeletonCard({
         className
       )}
       initial={{ opacity: 0.5 }}
-      animate={pulseAnimation}
+      animate={pulseAnimation as any}
     >
       {showHeader && (
         <div className="space-y-2">

@@ -176,7 +176,7 @@ function ProjectedMRRCard({ revenueOverTime, loading }: ProjectedMRRCardProps) {
                 <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
                 <XAxis dataKey="label" fontSize={10} tick={false} />
                 <YAxis tickFormatter={(v) => formatCurrency(v)} fontSize={10} width={55} />
-                <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                <Tooltip formatter={((value: number) => formatCurrency(value)) as any} />
                 <ReferenceLine x={forecast.chartData[forecast.chartData.length - 4]?.label} stroke="#888" strokeDasharray="4 2" label={{ value: "now", fontSize: 10, fill: "#888" }} />
                 <Line type="monotone" dataKey="revenue" stroke="#0088FE" strokeWidth={2} dot={false} name="Actual" />
                 <Line type="monotone" dataKey="projected" stroke="#00C49F" strokeWidth={2} strokeDasharray="5 3" dot={false} name="Projected" />
@@ -368,9 +368,9 @@ export function AnalyticsContent() {
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="date" fontSize={12} />
                   <YAxis tickFormatter={(v) => formatCurrency(v)} fontSize={12} />
-                  <Tooltip formatter={(value: number) => formatCurrency(value)} />
-                  <Line 
-                    type="monotone" 
+                  <Tooltip formatter={((value: number) => formatCurrency(value)) as any} />
+                  <Line
+                    type="monotone"
                     dataKey="revenue" 
                     stroke="#0088FE" 
                     strokeWidth={2}
@@ -402,7 +402,7 @@ export function AnalyticsContent() {
                     cx="50%"
                     cy="50%"
                     outerRadius={80}
-                    label={({ source, count }) => `${source}: ${count}`}
+                    label={(props: any) => `${props.source}: ${props.count}`}
                   >
                     {leadSourceData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.fill} />
@@ -439,7 +439,7 @@ export function AnalyticsContent() {
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="stageName" fontSize={12} />
                   <YAxis tickFormatter={(v) => formatCurrency(v)} fontSize={12} />
-                  <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                  <Tooltip formatter={((value: number) => formatCurrency(value)) as any} />
                   <Bar dataKey="value" fill="#00C49F" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>

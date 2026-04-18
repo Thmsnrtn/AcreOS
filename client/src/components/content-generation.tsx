@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Share2, Copy, Check, Download, Sparkles, Facebook, Globe, MessageCircle } from "lucide-react";
+import { Share2, Copy, Check, Download, Sparkles, Globe, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -78,7 +78,7 @@ export function SharePropertySheet({ property }: SharePropertyProps) {
         <Tabs defaultValue="facebook" className="mt-4">
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="facebook">
-              <Facebook className="h-3 w-3 mr-1" />
+              <Share2 className="h-3 w-3 mr-1" />
               Facebook
             </TabsTrigger>
             <TabsTrigger value="craigslist">

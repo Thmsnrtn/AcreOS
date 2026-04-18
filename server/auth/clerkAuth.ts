@@ -4,6 +4,7 @@ import { db } from "../db";
 import { users } from "@shared/models/auth";
 import { eq } from "drizzle-orm";
 import { isFounderEmail } from "../services/founder";
+import { logger } from "../utils/logger";
 
 export { clerkMiddleware };
 
@@ -41,7 +42,7 @@ async function hydrateUser(req: any, res: any, next: any) {
         }
       }
     } catch (jwtErr: any) {
-      console.warn("[hydrateUser] JWT fallback failed:", jwtErr.message);
+      logger.warn("[hydrateUser] JWT fallback failed: " + jwtErr.message);
     }
   }
 

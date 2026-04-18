@@ -91,7 +91,7 @@ export function CashFlowWaterfall() {
               tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`}
             />
             <Tooltip
-              formatter={(value: number, name: string) => [fmt$(value), name]}
+              formatter={((value: number, name: string) => [fmt$(value), name]) as any}
               contentStyle={{
                 backgroundColor: "hsl(var(--popover))",
                 border: "1px solid hsl(var(--border))",

@@ -173,7 +173,7 @@ export function CohortAnalytics() {
                     <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                     <YAxis tick={{ fontSize: 11 }} unit="%" domain={[0, 100]} />
                     <Tooltip
-                      formatter={(v: number) => `${v}%`}
+                      formatter={((v: number) => `${v}%`) as any}
                       labelFormatter={(label, payload) => payload?.[0]?.payload?.fullName ?? label}
                     />
                     <Legend wrapperStyle={{ fontSize: 11 }} />
