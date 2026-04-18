@@ -956,6 +956,6 @@ textarea:focus-visible,
   .glass-panel::after {
     animation: none !important;
     transition: none !important;
-    opacity: 0 !important;
+    opacity: 1 !important;
   }
 }
