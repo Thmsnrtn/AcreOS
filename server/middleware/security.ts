@@ -121,15 +121,27 @@ export function corsMiddleware(req: Request, res: Response, next: NextFunction) 
 const REQUEST_TIMEOUT_MS = 30000;
 
 export function requestTimeout(req: Request, res: Response, next: NextFunction) {
+  const startTime = Date.now();
   const timeout = setTimeout(() => {
     if (!res.headersSent) {
-      res.status(408).json({ message: "Request timeout" });
+      const { logger } = require("../utils/logger");
+      logger.warn("Request timeout exceeded", {
+        method: req.method,
+        path: req.originalUrl || req.path,
+        duration: Date.now() - startTime,
+        timeoutMs: REQUEST_TIMEOUT_MS,
+      });
+      res.status(504).json({
+        error: "Gateway Timeout",
+        message: "Request took too long to process",
+        statusCode: 504,
+      });
     }
   }, REQUEST_TIMEOUT_MS);
-  
+
   res.on("finish", () => clearTimeout(timeout));
   res.on("close", () => clearTimeout(timeout));
-  
+
   next();
 }
 

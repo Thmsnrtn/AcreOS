@@ -119,6 +119,8 @@ import { insertTaskSchema } from "@shared/schema";
 import { promptInjectionMiddleware } from "./middleware/promptInjection";
 // SEC-004: CSRF protection for state-changing requests
 import { csrfProtection } from "./middleware/csrf";
+// Phase 4: Request timeout middleware (30s timeout → 504)
+import { requestTimeout } from "./middleware/security";
 // F-A07-1: 2FA enforcement for admin routes
 import { require2FA } from "./middleware/require2FA";
 
@@ -345,9 +347,21 @@ export async function registerRoutes(
     try {
       const { healthCheckService } = await import("./services/healthCheck");
       const result = await healthCheckService.checkAll();
-      res.json(result);
+      const statusCode = result.overall === "unavailable" ? 503 : 200;
+      res.status(statusCode).json({
+        ...result,
+        version: process.env.npm_package_version || "1.0.0",
+        uptime: process.uptime(),
+      });
     } catch (err: any) {
-      res.json({ overall: "degraded", services: [], timestamp: new Date(), error: err?.message || "health check failed" });
+      res.status(503).json({
+        overall: "degraded",
+        services: [],
+        timestamp: new Date(),
+        version: process.env.npm_package_version || "1.0.0",
+        uptime: process.uptime(),
+        error: err?.message || "health check failed",
+      });
     }
   });
 
@@ -355,13 +369,22 @@ export async function registerRoutes(
     try {
       const { healthCheckService } = await import("./services/healthCheck");
       const result = healthCheckService.getLastResults();
-      if (!result) {
-        const freshResult = await healthCheckService.checkAll();
-        return res.json(freshResult);
-      }
-      res.json(result);
+      const data = result || await healthCheckService.checkAll();
+      const statusCode = data.overall === "unavailable" ? 503 : 200;
+      res.status(statusCode).json({
+        ...data,
+        version: process.env.npm_package_version || "1.0.0",
+        uptime: process.uptime(),
+      });
     } catch (err: any) {
-      res.json({ overall: "degraded", services: [], timestamp: new Date(), error: err?.message || "health check failed" });
+      res.status(503).json({
+        overall: "degraded",
+        services: [],
+        timestamp: new Date(),
+        version: process.env.npm_package_version || "1.0.0",
+        uptime: process.uptime(),
+        error: err?.message || "health check failed",
+      });
     }
   });
 
@@ -614,6 +637,17 @@ export async function registerRoutes(
       return next();
     }
     return apiRateLimit(req, res, next);
+  });
+
+  // ============================================
+  // REQUEST TIMEOUT MIDDLEWARE (30s → 504 Gateway Timeout)
+  // Applied to all /api routes except health checks
+  // ============================================
+  app.use("/api", (req: Request, res: Response, next: NextFunction) => {
+    if (req.path.startsWith("/health")) {
+      return next();
+    }
+    return requestTimeout(req, res, next);
   });
 
   // ============================================

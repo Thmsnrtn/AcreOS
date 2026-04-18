@@ -30,6 +30,8 @@
  *   of metros absorbing in-migration are the sweet spot for the land investing model.
  */
 
+import { logger } from "../utils/logger";
+
 const CENSUS_KEY = process.env.CENSUS_API_KEY || "";
 const CENSUS_BASE = "https://api.census.gov/data";
 
@@ -181,7 +183,12 @@ export async function fetchCountyDemographics(
       povertyRate: povertyUniverse > 0 ? (poverty / povertyUniverse) * 100 : 0,
       bachelorsDegreeRate: 0, // Available with additional variable
     };
-  } catch {
+  } catch (err) {
+    logger.error("[censusData] fetchCountyDemographics failed", {
+      stateFips,
+      countyFips,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return null;
   }
 }
@@ -230,7 +237,12 @@ export async function fetchCountyPopulationChange(
       change,
       changePercent: pop2022 > 0 ? (change / pop2022) * 100 : 0,
     };
-  } catch {
+  } catch (err) {
+    logger.error("[censusData] fetchCountyPopulationChange failed", {
+      stateFips,
+      countyFips,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return null;
   }
 }
@@ -269,7 +281,12 @@ export async function fetchBuildingPermits(
       permitsTrend: getPermitsTrend(permits),
       permitsPerCapita: 0, // Would need population for ratio
     };
-  } catch {
+  } catch (err) {
+    logger.error("[censusData] fetchBuildingPermits failed", {
+      stateFips,
+      countyFips,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return null;
   }
 }
@@ -599,7 +616,12 @@ export async function getCountyDisasterHistory(
       floodDeclarations10yr: floodCount,
       riskSignal,
     };
-  } catch {
+  } catch (err) {
+    logger.error("[censusData] getCountyDisasterHistory failed", {
+      state,
+      county,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return null;
   }
 }
@@ -665,7 +687,12 @@ export async function getCountyMigrationFlows(
       inMigrationSignal,
       topOriginCounties: origins.slice(0, 5),
     };
-  } catch {
+  } catch (err) {
+    logger.error("[censusData] getCountyMigrationFlows failed", {
+      stateFips,
+      countyFips,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return null;
   }
 }
