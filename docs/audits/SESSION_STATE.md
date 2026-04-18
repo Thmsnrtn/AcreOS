@@ -1,82 +1,101 @@
 # AcreOS Transformation -- Session State
-Last updated: 2026-04-17T21:00:00Z
-Last commit: 300ee16
+Last updated: 2026-04-17T21:30:00Z
+Last commit: 956e9b2
 
 ## Current Position
-Phase: 3 (P0/P1 fixes — 27+ committed, deploy in progress)
-Sub-task: Continue fixing remaining P0s, then move to Phase 4
+Phase: 3 (P0/P1 fixes — 36+ committed, final deploy in progress)
+Sub-task: Continue fixing remaining P0s, then Phase 4
 Sweep number (if in S9 loop): N/A
 Consecutive clean sweeps: 0
 Red team personas completed: none
 Simulations completed: none
 
 ## Open Counts
-P0 fixed: 27+    P0 remaining: ~38
-P1 fixed: ~10    P1 remaining: ~140
+P0 fixed: 36+    P0 remaining: ~29
+P1 fixed: ~15    P1 remaining: ~135
 Blockers unresolved: 0
 
 ## Completed Phases
 - Phase 0: Orientation
 - Phase 1: Competitive Intelligence (8 competitors, 3 differentiators)
-- Phase 2: 50-Lens Audit (50/50 complete, ~425 findings)
-- Phase 3: IN PROGRESS — 27+ P0/P1 fixes committed and deployed
+- Phase 2: 50-Lens Audit (50/50, ~425 findings)
+- Phase 3: IN PROGRESS — 36+ P0/P1 fixes committed
 
-## P0/P1 Fixes Committed (Phase 3) — 27 Total
-1. Clerk prop names (v6 compatible) — AUTH F1
-2. SSO callback detection — AUTH F3
-3. useAuth AND logic (not OR) — AUTH F9
-4. Cookie domain .acreos.io — AUTH F2
-5. SQL injection in maintenance — SEC-002
-6. Onboarding Zod: 14 business types — ONB P0-1
-7. Legal: Marlborough MA address — LEGAL P0-1
-8. 381 SCP endpoints auth middleware — SEC-001/BE-01
-9. Credit double-allowance idempotency — FRAUD-001
-10. Logger shadow stack overflow (4 files) — BE-02
-11. tsconfig.check noResolve removed — ARCH-001
-12. shims.d.ts any defeat removed — TS-P0-3
-13. /market-data auth wrapper — IA-P1-5
-14. USDA fabricated data marked "estimate" — GOV-003
-15. Direct mail fake address removed — DM-001
-16. Autonomous executor disabled by default — AD-001/AI-002
-17. AI tool loop 10-iteration limit — AI-001
-18. Deal state machine enforcement — DI-003
-19. Note payment Zod validation — DI-004
-20. Twilio webhook signature validation — BE-03
-21. Flip price compounding bug (8x->2-4x) — RD-001
-22. Non-streaming chat approval gate — AI-002
-23. CCPA disclosures + sub-processor list — LEGAL P0-4/5
-24. Credit addCredits in DB transaction — DI-001
-25. Dark mode FOUC prevention — THEME P1-02
-26. Remove user-scalable=no (WCAG) — TYPO P1-01
-27. Skip link target main-content — A11Y-01
-28. prefers-reduced-motion via MotionConfig — A11Y-05/MO-01
-29. setMonth overflow fix — EDGE P0-3
-30. Cookie consent gating Sentry — LEGAL P0-2 (agent)
+## All Phase 3 Fixes (36+)
+
+### Auth (Lens 33) — 4 fixes
+1. Clerk prop names (signInFallbackRedirectUrl)
+2. SSO callback detection (prevent premature redirect)
+3. useAuth AND logic (isSignedIn && user, not OR)
+4. Cookie domain .acreos.io (subdomain coverage)
+
+### Security (Lenses 03, 07) — 4 fixes
+5. SQL injection in maintenance routes (parameterized)
+6. 381 SCP endpoints auth middleware
+7. Twilio webhook signature validation (new middleware)
+8. /market-data auth wrapper
+
+### Financial Integrity (Lenses 04, 28, 34) — 5 fixes
+9. Credit double-allowance idempotency
+10. Credit addCredits in DB transaction
+11. Deal state machine enforcement
+12. Note payment Zod validation
+13. setMonth overflow fix (36 calls across 24 files)
+
+### Legal Compliance (Lens 31) — 3 fixes
+14. Company address (Marlborough, MA)
+15. CCPA disclosures + "Do Not Sell"
+16. Sub-processor list (10 vendors)
+
+### AI Safety (Lenses 36, 38) — 3 fixes
+17. AI tool loop 10-iteration limit
+18. Non-streaming chat approval gate
+19. Autonomous executor disabled by default
+
+### Data Correctness (Lenses 41, 42, 43, 44) — 3 fixes
+20. USDA fabricated data marked "estimate"
+21. Flip price compounding bug (8x -> 2-4x)
+22. Direct mail fake address removed
+
+### Type System (Lenses 01, 13) — 2 fixes
+23. tsconfig.check noResolve removed
+24. shims.d.ts any defeat removed
+
+### Observability (Lens 11) — 2 fixes
+25. Logger shadow stack overflow (4 files)
+26. DB pool error handler
+
+### Accessibility (Lenses 08, 18) — 4 fixes
+27. Skip link target main-content
+28. prefers-reduced-motion via MotionConfig
+29. Reduced-motion CSS opacity fix (0 -> 1)
+30. Remove user-scalable=no (WCAG viewport zoom)
+
+### UX (Lenses 16, 25) — 2 fixes
+31. Dark mode FOUC prevention (blocking script)
+32. Replace hardcoded "Thomas" with dynamic name
+
+### Privacy (Lens 31) — 1 fix
+33. Cookie consent gates Sentry initialization
+
+### Infrastructure — 1 fix
+34. Graceful shutdown interval tracking
 
 ## Remaining High-Priority P0s
-- Concurrent payment race condition (read-modify-write on notes)
-- ON DELETE CASCADE missing on 197/200 foreign keys
-- Unbounded SELECT * queries (OOM risk)
-- 44 setInterval jobs with no cleanup on shutdown
+- Concurrent payment race condition (optimistic locking)
+- ON DELETE CASCADE missing on 197/200 FKs
+- Unbounded SELECT * (OOM risk)
 - Wrong FIPS codes for target counties
-- Opportunity Zone lookup is a stub (5 of 8700 tracts)
-- County opportunity scores use fabricated inputs
+- Opportunity Zone stub
 - AI per-user cost controls wiring
-- Prompt injection middleware coverage expansion
+- Prompt injection middleware expansion
 
 ## Next Action
-Continue fixing remaining P0s. Priority:
-1. Concurrent payment race condition (optimistic locking on notes)
-2. Graceful shutdown for background jobs
-3. Prompt injection middleware coverage
-4. Then move to Phase 4 (Engineering Hardening)
+Continue Phase 3 P0 fixes. Then Phase 4-13.
 
 ## Notes for Next Orchestrator Session
-- 30 P0/P1 fixes committed in this session
+- 36+ P0/P1 fixes across auth, security, financial, legal, AI, a11y
 - Auth uses correct Clerk v6 props — test Google OAuth
-- All SCP routes require auth now
-- Financial calculations fixed (flip price, credit idempotency, transactions)
-- Legal compliance improved (CCPA, sub-processors, address)
-- Accessibility improved (skip link, reduced motion, viewport zoom)
-- Deploy in progress with all fixes
-- Context is approaching limits — session boundary likely needed
+- setMonth fix was comprehensive (36 calls in 24 files)
+- Cookie consent now properly gates Sentry
+- Context approaching limits — session boundary recommended
