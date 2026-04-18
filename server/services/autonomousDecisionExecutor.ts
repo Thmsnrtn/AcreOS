@@ -76,8 +76,9 @@ const EXECUTOR_CONFIG = {
   // Hard-stop item types that NEVER auto-execute regardless of confidence.
   HARD_STOP_TYPES: (process.env.AUTONOMOUS_HARD_STOP_TYPES || "").split(",").filter(Boolean),
 
-  // Whether executor is enabled (default: true)
-  ENABLED: process.env.AUTONOMOUS_EXECUTOR_ENABLED !== "false",
+  // Whether executor is enabled (default: false — founder must opt in)
+  // Previously defaulted to true, sending customer emails without approval
+  ENABLED: process.env.AUTONOMOUS_EXECUTOR_ENABLED === "true",
 
   // Founder emails for daily summary
   FOUNDER_EMAILS: (process.env.FOUNDER_EMAIL || "").split(",").map(e => e.trim()).filter(Boolean),
