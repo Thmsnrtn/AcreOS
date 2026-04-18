@@ -20,10 +20,5 @@ declare namespace GeoJSON {
   interface MultiPolygon extends Geometry {}
 }
 
-// Express Request augmentation for org/context fields sometimes attached at runtime
-declare namespace Express {
-  interface Request {
-    org?: any;
-    organization?: any;
-  }
-}
+// Express Request augmentation removed — use AuthenticatedRequest from server/types/request.ts
+// The previous `organization?: any` declaration here defeated the proper typing.
