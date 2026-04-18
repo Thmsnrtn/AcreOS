@@ -814,14 +814,36 @@ async function resolveAndCheckHost(hostname: string): Promise<{ allowed: boolean
       }
       return { allowed: true };
     }
-    
-    // DNS resolution check disabled temporarily for debugging
-    // Will use URL pattern matching only for SSRF protection
-    
+
+    // Resolve hostname via DNS and validate all resolved IPs
+    try {
+      const ipv4Addresses = await dnsResolve4(host);
+      for (const addr of ipv4Addresses) {
+        if (isPrivateIpv4(addr)) {
+          logger.warn(`[SSRF] DNS resolved ${host} to private IPv4 ${addr}`);
+          return { allowed: false, reason: `DNS resolved to private/internal IPv4 address: ${addr}` };
+        }
+      }
+    } catch {
+      // No IPv4 records is fine — check IPv6 next
+    }
+
+    try {
+      const ipv6Addresses = await dnsResolve6(host);
+      for (const addr of ipv6Addresses) {
+        if (isPrivateIpv6(addr)) {
+          logger.warn(`[SSRF] DNS resolved ${host} to private IPv6 ${addr}`);
+          return { allowed: false, reason: `DNS resolved to private/internal IPv6 address: ${addr}` };
+        }
+      }
+    } catch {
+      // No IPv6 records is fine
+    }
+
     return { allowed: true };
   } catch (err) {
-    logger.info(`[SSRF] DNS check error for ${hostname}`, { metadata: { detail: err } });
-    return { allowed: true };
+    logger.warn(`[SSRF] DNS check error for ${hostname}`, { metadata: { detail: err } });
+    return { allowed: false, reason: "DNS resolution failed — blocking as a precaution" };
   }
 }
 
