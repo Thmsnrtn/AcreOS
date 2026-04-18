@@ -10,6 +10,7 @@ import { organizationIntegrations, callTranscripts } from "@shared/schema";
 import { requireAdminOrAbove } from "./utils/permissions";
 import { registerAIOperationsRoutes } from "./routes-ai-operations";
 import { logger } from "./utils/logger";
+import { verifyTwilioSignature } from "./middleware/twilioSignature";
 
 export async function registerMiscRoutes(app: Express): Promise<void> {
   const api = app;
@@ -283,7 +284,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
     }
   });
 
-  api.post("/api/webhooks/twilio/sms", async (req, res) => {
+  api.post("/api/webhooks/twilio/sms", verifyTwilioSignature, async (req, res) => {
     try {
       const { From, To, Body, MessageSid, AccountSid } = req.body;
       
@@ -362,7 +363,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
 
   // POST /api/webhooks/twilio/sms-status
   // Twilio posts delivery status updates for outbound messages here.
-  api.post("/api/webhooks/twilio/sms-status", async (req, res) => {
+  api.post("/api/webhooks/twilio/sms-status", verifyTwilioSignature, async (req, res) => {
     res.status(200).send("OK");
     const { MessageSid, MessageStatus, ErrorCode, ErrorMessage } = req.body;
     if (!MessageSid || !MessageStatus) return;
@@ -393,7 +394,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
   // POST /api/webhooks/twilio/recording-status
   // Twilio posts here when a call recording is ready.
   // Looks up the pending transcript by CallSid, then triggers Whisper transcription.
-  api.post("/api/webhooks/twilio/recording-status", async (req, res) => {
+  api.post("/api/webhooks/twilio/recording-status", verifyTwilioSignature, async (req, res) => {
     // Always respond 200 immediately so Twilio doesn't retry
     res.status(200).send("OK");
 

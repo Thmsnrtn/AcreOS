@@ -37,12 +37,6 @@ async function validateBorrowerSession(req: Request, res: Response, next: NextFu
   }
 }
 
-const logger = {
-  info: (msg: string, meta?: Record<string, any>) => logger.info(JSON.stringify({ level: 'INFO', timestamp: new Date().toISOString(), message: msg, ...meta })),
-  warn: (msg: string, meta?: Record<string, any>) => logger.warn(JSON.stringify({ level: 'WARN', timestamp: new Date().toISOString(), message: msg, ...meta })),
-  error: (msg: string, meta?: Record<string, any>) => logger.error(JSON.stringify({ level: 'ERROR', timestamp: new Date().toISOString(), message: msg, ...meta })),
-};
-
 export function registerBorrowerRoutes(app: Express): void {
   const api = app;
 

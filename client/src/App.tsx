@@ -535,7 +535,7 @@ function Router() {
         {() => <ProtectedRoute component={DealFeedPage} />}
       </Route>
       <Route path="/market-data">
-        {() => <MarketDataPage />}
+        {() => <ProtectedRoute component={MarketDataPage} />}
       </Route>
       <Route path="/team-kpi">
         {() => <ProtectedRoute component={TeamKPIPage} />}

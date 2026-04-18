@@ -3,8 +3,8 @@ import { db } from './db';
 import { voiceCalls, callTranscripts, agentEvents } from '../shared/schema';
 import { eq, and, desc, like, or } from 'drizzle-orm';
 import { voiceAI } from './services/voiceAI';
-import crypto from 'crypto';
 import { logger } from "./utils/logger";
+import { verifyTwilioSignature } from './middleware/twilioSignature';
 
 const voiceRouter = Router();
 
@@ -76,55 +76,11 @@ async function extractMotivationSignals(callId: number): Promise<{
 (voiceAI as any).extractMotivationSignals = extractMotivationSignals;
 
 // ============================================================
-// TWILIO SIGNATURE VERIFICATION MIDDLEWARE
-// ============================================================
-
-function verifyTwilioSignature(req: Request, res: Response, next: Function) {
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
-  if (!authToken) {
-    // Skip verification in dev if no auth token configured
-    return next();
-  }
-
-  const twilioSignature = req.headers['x-twilio-signature'] as string;
-  if (!twilioSignature) {
-    return res.status(403).json({ error: 'Missing Twilio signature' });
-  }
-
-  // Build the URL to validate against
-  const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-  const host = req.headers['x-forwarded-host'] || req.headers.host;
-  const url = `${protocol}://${host}${req.originalUrl}`;
-
-  // Build the string to sign: URL + sorted POST params
-  const body = req.body || {};
-  const sortedKeys = Object.keys(body).sort();
-  const paramString = sortedKeys.reduce((s: string, key: string) => s + key + body[key], '');
-  const toSign = url + paramString;
-
-  const expectedSignature = crypto
-    .createHmac('sha1', authToken)
-    .update(Buffer.from(toSign, 'utf-8'))
-    .digest('base64');
-
-  const valid = crypto.timingSafeEqual(
-    Buffer.from(expectedSignature, 'base64'),
-    Buffer.from(twilioSignature, 'base64')
-  );
-
-  if (!valid) {
-    return res.status(403).json({ error: 'Invalid Twilio signature' });
-  }
-
-  next();
-}
-
-// ============================================================
 // WEBHOOK: POST /webhook/twilio/recording-complete
-// (No auth — Twilio posts here after a call recording is ready)
+// (Twilio posts here after a call recording is ready — signature verified)
 // ============================================================
 
-voiceRouter.post('/webhook/twilio/recording-complete', async (req: Request, res: Response) => {
+voiceRouter.post('/webhook/twilio/recording-complete', verifyTwilioSignature, async (req: Request, res: Response) => {
   try {
     const {
       RecordingSid,
