@@ -5,7 +5,6 @@ import { eq, and, desc, sql } from "drizzle-orm";
 import { leads } from "@shared/schema";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
-import multer from "multer";
 import {
   parseCSV, previewImport, importLeads, importProperties, importDeals,
   importNotesFromCSV, NOTE_COLUMN_MAP,
@@ -14,20 +13,12 @@ import {
   createBackupZip, getExpectedColumns, type ExportFilters,
 } from "./services/importExport";
 import { logger } from "./utils/logger";
+import { createUploadMiddleware, validateFileMiddleware } from "./middleware/fileUploadSecurity";
 
 const MAX_CSV_IMPORT_ROWS = 500;
 
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype === "text/csv" || file.originalname.endsWith(".csv")) {
-      cb(null, true);
-    } else {
-      cb(new Error("Only CSV files are allowed"));
-    }
-  },
-});
+const upload = createUploadMiddleware({ maxSizeMB: 5, allowedTypes: ["text"] });
+const validateCSV = validateFileMiddleware(["text"]);
 
 export function registerImportExportRoutes(app: Express): void {
   const api = app;
@@ -48,7 +39,7 @@ export function registerImportExportRoutes(app: Express): void {
     }
   });
 
-  api.post("/api/import/:entityType/preview", isAuthenticated, getOrCreateOrg, upload.single("file"), async (req, res) => {
+  api.post("/api/import/:entityType/preview", isAuthenticated, getOrCreateOrg, upload.single("file"), validateCSV, async (req, res) => {
     try {
       const entityType = req.params.entityType as "leads" | "properties" | "deals";
       if (!["leads", "properties", "deals"].includes(entityType)) {
@@ -76,7 +67,7 @@ export function registerImportExportRoutes(app: Express): void {
     }
   });
 
-  api.post("/api/import/:entityType", isAuthenticated, getOrCreateOrg, upload.single("file"), async (req, res) => {
+  api.post("/api/import/:entityType", isAuthenticated, getOrCreateOrg, upload.single("file"), validateCSV, async (req, res) => {
     try {
       const org = req.organization;
       const entityType = req.params.entityType as "leads" | "properties" | "deals";
@@ -148,7 +139,7 @@ export function registerImportExportRoutes(app: Express): void {
     });
   });
 
-  api.post("/api/import/notes", isAuthenticated, getOrCreateOrg, upload.single("file"), async (req, res) => {
+  api.post("/api/import/notes", isAuthenticated, getOrCreateOrg, upload.single("file"), validateCSV, async (req, res) => {
     try {
       const org = req.organization;
 

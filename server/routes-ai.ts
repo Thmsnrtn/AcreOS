@@ -13,6 +13,7 @@ import type { SubscriptionTier } from "./services/usageLimits";
 import { aiLimiter } from "./middleware/rateLimit";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { createUploadMiddleware } from "./middleware/fileUploadSecurity";
 
 export function registerAIRoutes(app: Express): void {
   const api = app;
@@ -1632,30 +1633,23 @@ export function registerAIRoutes(app: Express): void {
   // VOICE TRANSCRIPTION (Whisper mic input)
   // ============================================
 
-  api.post("/api/ai/voice/transcribe", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  const audioUpload = createUploadMiddleware({ maxSizeMB: 25 });
+
+  api.post("/api/ai/voice/transcribe", isAuthenticated, getOrCreateOrg, audioUpload.single("audio"), async (req, res) => {
     try {
-      const multer = (await import("multer")).default;
-      const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
-      upload.single("audio")(req as any, res as any, async (err: any) => {
-        if (err) return Errors.badRequest(res, err.message);
-        const file = (req as any).file;
-        if (!file) return Errors.badRequest(res, "No audio file provided");
-        try {
-          const { default: OpenAI } = await import("openai");
-          const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-          const { Readable } = await import("stream");
-          const audioStream = Readable.from(file.buffer);
-          (audioStream as any).name = file.originalname || "audio.webm";
-          const transcription = await client.audio.transcriptions.create({
-            file: audioStream as any,
-            model: "whisper-1",
-            response_format: "text",
-          });
-          res.json({ transcript: transcription });
-        } catch (transcribeErr: any) {
-          Errors.internal(res, transcribeErr);
-        }
+      const file = req.file;
+      if (!file) return Errors.badRequest(res, "No audio file provided");
+      const { default: OpenAI } = await import("openai");
+      const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      const { Readable } = await import("stream");
+      const audioStream = Readable.from(file.buffer);
+      (audioStream as any).name = file.originalname || "audio.webm";
+      const transcription = await client.audio.transcriptions.create({
+        file: audioStream as any,
+        model: "whisper-1",
+        response_format: "text",
       });
+      res.json({ transcript: transcription });
     } catch (err: any) {
       Errors.internal(res, err);
     }

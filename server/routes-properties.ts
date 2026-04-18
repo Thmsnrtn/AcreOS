@@ -6,11 +6,11 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { checkUsageLimit } from "./services/usageLimits";
 import { usageMeteringService, creditService } from "./services/credits";
-import multer from "multer";
 import { parseCSV, importProperties, exportPropertiesToCSV, getExpectedColumns, type ExportFilters } from "./services/importExport";
 import { propertyEnrichmentService } from "./services/propertyEnrichment";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { createUploadMiddleware, validateFileMiddleware } from "./middleware/fileUploadSecurity";
 
 // Partial update schema for PUT endpoints
 const updatePropertySchema = insertPropertySchema.partial().omit({ organizationId: true });
@@ -66,17 +66,8 @@ function calculateDistanceMiles(lat1: number, lng1: number, lat2: number, lng2: 
 
 const MAX_CSV_IMPORT_ROWS = 500;
 
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype === "text/csv" || file.originalname.endsWith(".csv")) {
-      cb(null, true);
-    } else {
-      cb(new Error("Only CSV files are allowed"));
-    }
-  },
-});
+const upload = createUploadMiddleware({ maxSizeMB: 5, allowedTypes: ["text"] });
+const validateCSV = validateFileMiddleware(["text"]);
 
 // Zod schema for pagination query params
 const paginationQuerySchema = z.object({
@@ -353,7 +344,7 @@ export function registerPropertyRoutes(app: Express): void {
     res.send(csv);
   });
   
-  api.post("/api/properties/import", isAuthenticated, getOrCreateOrg, upload.single("file"), async (req, res) => {
+  api.post("/api/properties/import", isAuthenticated, getOrCreateOrg, upload.single("file"), validateCSV, async (req, res) => {
     try {
       const org = req.organization;
       const file = req.file;
@@ -400,7 +391,7 @@ export function registerPropertyRoutes(app: Express): void {
     }
   });
   
-  api.post("/api/properties/import/preview", isAuthenticated, getOrCreateOrg, upload.single("file"), async (req, res) => {
+  api.post("/api/properties/import/preview", isAuthenticated, getOrCreateOrg, upload.single("file"), validateCSV, async (req, res) => {
     try {
       const file = req.file;
       
