@@ -13,6 +13,7 @@ import { buildConnectorContextBlock } from "../services/connectors/registry";
 import mammoth from "mammoth";
 import { storage } from "../storage";
 import { logger } from "../utils/logger";
+import { sanitizePrompt } from "../middleware/promptInjection";
 
 // ── Quality Feedback Loop ────────────────────────────────────────────────────
 // Fire-and-forget: scores each Pax response quality via DeepSeek and writes
@@ -718,7 +719,7 @@ async function loadOrgKnowledgeContext(orgId: number): Promise<string> {
     const files = await storage.getActiveKnowledgeFiles(orgId);
     if (files.length === 0) return "";
     const sections = files.map(f =>
-      `--- KNOWLEDGE: ${f.name} ---\n${f.extractedContent}\n--- END: ${f.name} ---`
+      `--- KNOWLEDGE: ${f.name} ---\n${sanitizePrompt(f.extractedContent ?? "")}\n--- END: ${f.name} ---`
     ).join("\n\n");
     // Non-blocking usage tracking
     process.nextTick(() => storage.incrementKnowledgeFileUsage(orgId).catch(() => {}));
@@ -734,7 +735,7 @@ async function loadProjectContext(projectId: number): Promise<string> {
     if (!project) return "";
     const files = await storage.getPaxProjectFiles(projectId);
     const sections = files
-      .map(f => `--- File: ${f.fileName} ---\n${f.extractedContent}\n--- End: ${f.fileName} ---`)
+      .map(f => `--- File: ${f.fileName} ---\n${sanitizePrompt(f.extractedContent ?? "")}\n--- End: ${f.fileName} ---`)
       .join("\n\n");
     return `\n\n=== PROJECT: ${project.name} ===\n${project.description ? `Description: ${project.description}\n` : ""}${sections}\n=== END PROJECT ===`;
   } catch {

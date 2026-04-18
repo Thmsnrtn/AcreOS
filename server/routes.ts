@@ -616,7 +616,10 @@ export async function registerRoutes(
   app.use("/api/founder/v10", promptInjectionMiddleware);
   app.use("/api/founder/v12", promptInjectionMiddleware);
   app.use("/api/founder/v13", promptInjectionMiddleware);
+  app.use("/api/founder/v14", promptInjectionMiddleware);
+  app.use("/api/founder/v11", promptInjectionMiddleware);
   app.use("/api/founder/agent-collaboration", promptInjectionMiddleware);
+  app.use("/api/support", promptInjectionMiddleware);
 
   // ============================================
   // SEC-004: CSRF protection for state-changing requests
