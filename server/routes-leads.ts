@@ -14,10 +14,10 @@ import { alertingService } from "./services/alerting";
 import { propertyEnrichmentService } from "./services/propertyEnrichment";
 import { requirePermission } from "./utils/permissions";
 import { usageMeteringService, creditService } from "./services/credits";
-import multer from "multer";
 import { parseCSV, importLeads, exportLeadsToCSV, getExpectedColumns, type ExportFilters } from "./services/importExport";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
+import { createUploadMiddleware, validateFileMiddleware } from "./middleware/fileUploadSecurity";
 
 // Partial update schema for PUT endpoints
 const updateLeadSchema = insertLeadSchema.partial().omit({ organizationId: true });
@@ -53,17 +53,8 @@ const mergeLeadsSchema = z.object({
 
 const MAX_CSV_IMPORT_ROWS = 500;
 
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype === "text/csv" || file.originalname.endsWith(".csv")) {
-      cb(null, true);
-    } else {
-      cb(new Error("Only CSV files are allowed"));
-    }
-  },
-});
+const upload = createUploadMiddleware({ maxSizeMB: 5, allowedTypes: ["text"] });
+const validateCSV = validateFileMiddleware(["text"]);
 
 // Zod schema for pagination query params
 const paginationQuerySchema = z.object({
@@ -866,7 +857,7 @@ export function registerLeadRoutes(app: Express): void {
     res.send(csv);
   });
   
-  api.post("/api/leads/import", isAuthenticated, getOrCreateOrg, upload.single("file"), async (req, res) => {
+  api.post("/api/leads/import", isAuthenticated, getOrCreateOrg, upload.single("file"), validateCSV, async (req, res) => {
     try {
       const org = req.organization;
       const file = req.file;
@@ -910,7 +901,7 @@ export function registerLeadRoutes(app: Express): void {
     }
   });
   
-  api.post("/api/leads/import/preview", isAuthenticated, getOrCreateOrg, upload.single("file"), async (req, res) => {
+  api.post("/api/leads/import/preview", isAuthenticated, getOrCreateOrg, upload.single("file"), validateCSV, async (req, res) => {
     try {
       const file = req.file;
       
