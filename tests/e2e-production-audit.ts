@@ -114,8 +114,11 @@ async function testPublicPages(page: Page) {
       await page.goto(`${BASE}${path}`);
       await page.waitForTimeout(1000);
       const text = await page.textContent("body");
-      if (text?.includes("LG Pass") || text?.includes("GeekPay"))
-        throw new Error(`Competitor name found on ${path}`);
+      const competitors = ["LG Pass", "GeekPay", "Land Geek", "Podolsky", "Mark Podolsky"];
+      for (const name of competitors) {
+        if (text?.includes(name))
+          throw new Error(`Competitor name "${name}" found on ${path}`);
+      }
     }
   });
 }

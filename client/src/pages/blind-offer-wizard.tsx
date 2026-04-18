@@ -47,8 +47,8 @@ interface OfferReport {
     dataQualityNotes: string[];
     isCountyValidated: boolean;
   };
-  podolskyOfferPerAcre: number;
-  podolskyOfferTotal: number;
+  baseOfferPerAcre: number;
+  baseOfferTotal: number;
   offerTiers: {
     aggressive: { offerTotal: number; pctOfLowestComp: number; acceptanceRateForecast: string };
     standard: { offerTotal: number; pctOfLowestComp: number; acceptanceRateForecast: string };
@@ -296,7 +296,7 @@ function StepComps({ state, county, comps, setComps, onNext, onBack }: any) {
           <div className="flex items-center justify-between">
             <h3 className="font-semibold text-sm">{comps.length} comp(s) entered</h3>
             {lowestComp > 0 && (
-              <p className="text-sm text-muted-foreground">Lowest: <span className="font-bold">{fmt(lowestComp)}/acre</span> → Podolsky offer: <span className="font-bold text-green-600">{fmt(lowestComp * 0.25)}/acre</span></p>
+              <p className="text-sm text-muted-foreground">Lowest: <span className="font-bold">{fmt(lowestComp)}/acre</span> → Target offer: <span className="font-bold text-green-600">{fmt(lowestComp * 0.25)}/acre</span></p>
             )}
           </div>
           {sortedComps.map((comp, i) => (
@@ -335,7 +335,7 @@ function StepCalculate({ report, isLoading, onNext, onBack }: any) {
       <div className="flex flex-col items-center justify-center py-20 gap-4">
         <Loader2 className="w-12 h-12 animate-spin text-primary" />
         <p className="font-semibold">Calculating your offer...</p>
-        <p className="text-sm text-muted-foreground">Pulling USDA land values, analyzing comps, running Podolsky formula</p>
+        <p className="text-sm text-muted-foreground">Pulling USDA land values, analyzing comps, running offer formula</p>
       </div>
     );
   }
@@ -352,7 +352,7 @@ function StepCalculate({ report, isLoading, onNext, onBack }: any) {
 
   const tiers = [
     { key: "aggressive", label: "Ultra-Motivated (20%)", color: "border-orange-300 bg-orange-50 dark:border-orange-900 dark:bg-orange-900/10" },
-    { key: "standard", label: "Podolsky Standard (25%)", color: "border-blue-300 bg-blue-50 dark:border-blue-900 dark:bg-blue-900/10" },
+    { key: "standard", label: "Standard (25%)", color: "border-blue-300 bg-blue-50 dark:border-blue-900 dark:bg-blue-900/10" },
     { key: "competitive", label: "Hot Market (33%)", color: "border-purple-300 bg-purple-50 dark:border-purple-900 dark:bg-purple-900/10" },
   ] as const;
 
@@ -387,7 +387,7 @@ function StepCalculate({ report, isLoading, onNext, onBack }: any) {
             <div>
               <p className="text-xs text-muted-foreground">Lowest Comp</p>
               <p className="text-xl font-bold">{fmt(report.compAnalysis.lowestSalePerAcre)}/ac</p>
-              <p className="text-xs text-muted-foreground">Podolsky anchor</p>
+              <p className="text-xs text-muted-foreground">Comp anchor</p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">5-Yr Appreciation</p>
@@ -729,7 +729,7 @@ export default function BlindOfferWizardPage() {
     <PageShell>
       <div className="mb-6">
         <h1 className="text-2xl md:text-3xl font-bold">Blind Offer Wizard</h1>
-        <p className="text-muted-foreground text-sm md:text-base">Calculate your offer using the Podolsky formula — the proven system behind thousands of profitable land deals</p>
+        <p className="text-muted-foreground text-sm md:text-base">Calculate your offer using a proven methodology — the trusted system behind thousands of profitable land deals</p>
       </div>
 
       {/* Step progress */}

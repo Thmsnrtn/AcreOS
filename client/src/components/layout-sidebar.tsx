@@ -287,7 +287,7 @@ const NAV_MODULES: NavModule[] = [
     description: "Manage your leads and sellers",
     children: [
       { label: "All Leads", icon: Users, href: "/leads", description: "All your leads" },
-      { label: "Blind Offer Wizard", icon: Wand2, href: "/blind-offer-wizard", description: "Calculate Podolsky-formula offers step-by-step" },
+      { label: "Blind Offer Wizard", icon: Wand2, href: "/blind-offer-wizard", description: "Calculate blind offers step-by-step" },
     ],
   },
   {

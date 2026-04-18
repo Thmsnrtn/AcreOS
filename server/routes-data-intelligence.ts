@@ -11,7 +11,7 @@
  *        — USDA NASS 5-year land value trend with CAGR calculation
  *
  *   POST /api/data-intel/blind-offer
- *        — Calculate a Podolsky-formula blind offer for a specific parcel
+ *        — Calculate a blind offer for a specific parcel
  *          Body: { state, county, targetAcres, comps?, sellerProfile? }
  *
  *   POST /api/data-intel/parcel-intelligence
@@ -332,7 +332,7 @@ router.get("/freedom-snapshot", async (req: Request, res: Response) => {
       "\"Diversify across counties and states. Geographic diversification is risk management.\"",
       "\"Land notes are the closest thing to a subscription business in real estate: one acquisition, then monthly recurring revenue for 84 months.\"",
     ];
-    const podolskyInsight = wisdomList[Math.floor(Date.now() / 86400000) % wisdomList.length];
+    const dailyInsight = wisdomList[Math.floor(Date.now() / 86400000) % wisdomList.length];
 
     res.json({
       totalMonthlyNoteIncome,
@@ -355,7 +355,7 @@ router.get("/freedom-snapshot", async (req: Request, res: Response) => {
         { label: "2× Monthly Expenses", targetMonthly: monthlyExpenses * 2, achieved: totalMonthlyNoteIncome >= monthlyExpenses * 2 },
       ],
       historicalProgress: historical,
-      podolskyInsight,
+      dailyInsight,
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
