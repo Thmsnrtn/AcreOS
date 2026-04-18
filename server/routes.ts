@@ -1248,58 +1248,34 @@ export async function registerRoutes(
     }
   });
 
-  // Sovereign Company Protocol v6 — Self-Running Company
+  // Sovereign Company Protocol routes — ALL require authentication + founder check
+  // Previously these had ZERO auth middleware (P0 security finding SEC-001/BE-01)
   {
+    // Create a sub-app that enforces auth on all SCP routes
+    const scpApp = express.Router();
+    scpApp.use(isAuthenticated);
+    scpApp.use(getOrCreateOrg);
+
     const { registerFounderV6Routes } = await import("./routes-founder-v6");
-    registerFounderV6Routes(app);
-  }
-
-  // Sovereign Company Protocol v7 — The Learning Company
-  {
+    registerFounderV6Routes(scpApp as any);
     const { registerFounderV7Routes } = await import("./routes-founder-v7");
-    registerFounderV7Routes(app);
-  }
-
-  // Sovereign Company Protocol v8 — The Living Organization
-  {
+    registerFounderV7Routes(scpApp as any);
     const { registerFounderV8Routes } = await import("./routes-founder-v8");
-    registerFounderV8Routes(app);
-  }
-
-  // Sovereign Company Protocol v10 — The Conscious Organization
-  {
+    registerFounderV8Routes(scpApp as any);
     const { registerFounderV10Routes } = await import("./routes-founder-v10");
-    registerFounderV10Routes(app);
-  }
-
-  // Sovereign Company Protocol v11 — The Anticipatory Enterprise
-  {
+    registerFounderV10Routes(scpApp as any);
     const { registerFounderV11Routes } = await import("./routes-founder-v11");
-    registerFounderV11Routes(app);
-  }
-
-  // Sovereign Company Protocol v12 — The Real Runtime
-  {
+    registerFounderV11Routes(scpApp as any);
     const { registerFounderV12Routes } = await import("./routes-founder-v12");
-    registerFounderV12Routes(app);
-  }
-
-  // Sovereign Company Protocol v13 — The Sentient Enterprise
-  {
+    registerFounderV12Routes(scpApp as any);
     const { registerFounderV13Routes } = await import("./routes-founder-v13");
-    registerFounderV13Routes(app);
-  }
-
-  // Sovereign Company Protocol v14 — The Self-Running Company
-  {
+    registerFounderV13Routes(scpApp as any);
     const { registerFounderV14Routes } = await import("./routes-founder-v14");
-    registerFounderV14Routes(app);
-  }
-
-  // Sovereign Protocol Integration — Phases A-E (job health, event mesh drain, notifications, collaboration)
-  {
+    registerFounderV14Routes(scpApp as any);
     const { registerSovereignIntegrationRoutes } = await import("./routes-sovereign-integration");
-    registerSovereignIntegrationRoutes(app);
+    registerSovereignIntegrationRoutes(scpApp as any);
+
+    app.use(scpApp);
   }
 
   // Executive Revenue Dashboard — Founder-only aggregate metrics
