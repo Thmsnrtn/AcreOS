@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { loadGoogleFont } from "@/lib/font-loader";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -407,6 +408,13 @@ function WhiteLabelPanel() {
   });
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [preview, setPreview] = useState(false);
+
+  // Dynamically load Google Fonts for the white-label font picker
+  useEffect(() => {
+    for (const opt of FONT_OPTIONS) {
+      loadGoogleFont(opt.label);
+    }
+  }, []);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
