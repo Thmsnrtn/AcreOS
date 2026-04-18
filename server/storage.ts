@@ -5815,10 +5815,10 @@ Notary Public</p>
     const campaignData = allCampaigns.map(c => ({
       id: c.id,
       name: c.name,
-      sent: c.sentCount || 0,
-      responses: c.responseCount || 0,
-      responseRate: (c.sentCount && c.sentCount > 0) 
-        ? Number((((c.responseCount || 0) / c.sentCount) * 100).toFixed(1)) 
+      sent: c.totalSent || 0,
+      responses: c.totalResponded || 0,
+      responseRate: (c.totalSent && c.totalSent > 0)
+        ? Number((((c.totalResponded || 0) / c.totalSent) * 100).toFixed(1))
         : 0,
       roi: 0,
     }));
