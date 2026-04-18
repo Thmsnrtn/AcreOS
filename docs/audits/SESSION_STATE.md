@@ -1,6 +1,6 @@
 # AcreOS Transformation -- Session State
-Last updated: 2026-04-18T15:00:00Z
-Last commit: 29462e0
+Last updated: 2026-04-18T15:30:00Z
+Last commit: 39373a2
 
 ## Current Position
 Phase: 3 (P0s complete, P1 fixes in progress)
@@ -12,7 +12,7 @@ Simulations completed: none
 
 ## Open Counts
 P0 fixed: 43+    P0 remaining: 0
-P1 fixed: ~40    P1 remaining: ~110
+P1 fixed: ~50    P1 remaining: ~100
 Client TS errors: 0 (was 173)
 Blockers unresolved: 1 (Fly.io token expired — cannot deploy)
 
