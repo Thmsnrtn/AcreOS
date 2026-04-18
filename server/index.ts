@@ -95,6 +95,18 @@ export function log(message: string, source = "express") {
 
 const instanceId = crypto.randomUUID();
 
+// ── Background interval tracking for graceful shutdown ──────────────────────
+// All setInterval calls for background jobs MUST use trackInterval() so they are
+// cleared during SIGTERM/SIGINT shutdown. Using bare setInterval() will leak timers
+// and prevent graceful shutdown from completing.
+(globalThis as any).__bgIntervals = (globalThis as any).__bgIntervals || [];
+
+function trackInterval(fn: () => void, ms: number): ReturnType<typeof setInterval> {
+  const handle = setInterval(fn, ms);
+  (globalThis as any).__bgIntervals.push(handle);
+  return handle;
+}
+
 // Track last success log time per job to implement "1 success log per hour per job" sampling
 const _jobLastSuccessLog: Record<string, number> = {};
 
@@ -577,7 +589,7 @@ app.use("/api", apiLimiter);
         // Initialize subscribers first, then start drain loop
         eventMeshDrain.initialize().then(() => {
           log("Event mesh drain initialized — draining every 10s", "event-mesh");
-          setInterval(() => {
+          trackInterval(() => {
             eventMeshDrain.drain().catch((err: any) => {
               log(`Event mesh drain error: ${err}`, "event-mesh");
             });
@@ -597,7 +609,7 @@ app.use("/api", apiLimiter);
         executeResolvedConsensus,
       }) => {
         // Daily autonomous summary at 7 AM UTC (2 AM CT)
-        setInterval(() => {
+        trackInterval(() => {
           const now = new Date();
           if (now.getUTCHours() === 7 && now.getUTCMinutes() < 5) {
             withJobLock("daily_autonomous_summary", 55 * 60, generateDailyAutonomousSummary)
@@ -606,17 +618,17 @@ app.use("/api", apiLimiter);
         }, 5 * 60 * 1000);
 
         // Delegation auto-completion check (every 15 minutes)
-        setInterval(() => {
+        trackInterval(() => {
           checkDelegationCompletions().catch(() => {});
         }, 15 * 60 * 1000);
 
         // Retry failed actions (every 30 minutes)
-        setInterval(() => {
+        trackInterval(() => {
           retryFailedActions().catch(() => {});
         }, 30 * 60 * 1000);
 
         // Consensus auto-execution (every 5 minutes)
-        setInterval(() => {
+        trackInterval(() => {
           executeResolvedConsensus().catch(() => {});
         }, 5 * 60 * 1000);
 
@@ -628,7 +640,7 @@ app.use("/api", apiLimiter);
       // ─── Weekly Alert Digest (Sundays at 9 AM UTC / 4 AM CT) ──
       import("./services/alertPolicy").then(({ alertPolicyService }) => {
         log("Alert policy weekly digest registered (Sundays 9am UTC)", "alert-policy");
-        setInterval(() => {
+        trackInterval(() => {
           const now = new Date();
           if (now.getUTCDay() === 0 && now.getUTCHours() === 9 && now.getUTCMinutes() < 5) {
             withJobLock("weekly_alert_digest", 55 * 60, () => alertPolicyService.sendWeeklyDigest())
@@ -646,7 +658,7 @@ app.use("/api", apiLimiter);
         setTimeout(() => {
           withJobLock("dunning_tasks", 55 * 60, () => dunningService.processScheduledTasks())
             .catch((err: any) => log(`Dunning tasks failed: ${err}`, "dunning"));
-          setInterval(() => {
+          trackInterval(() => {
             withJobLock("dunning_tasks", 55 * 60, () => dunningService.processScheduledTasks())
               .catch((err: any) => log(`Dunning tasks failed: ${err}`, "dunning"));
           }, 6 * 60 * 60 * 1000);
@@ -674,7 +686,7 @@ app.use("/api", apiLimiter);
         setTimeout(() => {
           // Get any org for initiative scanning (use org 1 as default)
           agentInitiativeEngine.runInitiativeCycle(1).catch(() => {});
-          setInterval(() => {
+          trackInterval(() => {
             agentInitiativeEngine.runInitiativeCycle(1).catch((err: any) => {
               log(`Initiative cycle failed: ${err}`, "initiative");
             });
@@ -687,7 +699,7 @@ app.use("/api", apiLimiter);
       // ─── Outcome Verification Loop (daily at 2 AM UTC) ──
       import("./services/outcomeVerificationLoop").then(({ outcomeVerificationLoop }) => {
         log("Outcome verification loop registered (daily 2am UTC)", "outcome-verify");
-        setInterval(() => {
+        trackInterval(() => {
           const now = new Date();
           if (now.getUTCHours() === 2 && now.getUTCMinutes() < 5) {
             withJobLock("outcome_verification", 55 * 60, async () => {
@@ -712,7 +724,7 @@ app.use("/api", apiLimiter);
       };
       // Run once at startup, then daily
       runJobHealthCleanup();
-      setInterval(runJobHealthCleanup, 24 * 60 * 60 * 1000);
+      trackInterval(runJobHealthCleanup, 24 * 60 * 60 * 1000);
 
       // Task #data-retention: Agent events log cleanup (delete rows older than 90 days)
       // agent_events accumulates AI action logs — keep 90 days for audit, discard older rows.
@@ -725,7 +737,7 @@ app.use("/api", apiLimiter);
         }
       };
       runAgentEventsCleanup();
-      setInterval(runAgentEventsCleanup, 24 * 60 * 60 * 1000);
+      trackInterval(runAgentEventsCleanup, 24 * 60 * 60 * 1000);
 
       } // end DISABLE_BACKGROUND_JOBS gate
 
@@ -771,13 +783,7 @@ app.use("/api", apiLimiter);
       process.once("SIGTERM", () => gracefulShutdown("SIGTERM"));
       process.once("SIGINT", () => gracefulShutdown("SIGINT"));
 
-      // Track all background intervals for graceful shutdown cleanup
-      (globalThis as any).__bgIntervals = (globalThis as any).__bgIntervals || [];
-      const trackInterval = (fn: () => void, ms: number) => {
-        const handle = setInterval(fn, ms);
-        (globalThis as any).__bgIntervals.push(handle);
-        return handle;
-      };
+      // trackInterval is defined at module scope — all jobs already use it
 
       if (process.env.DISABLE_BACKGROUND_JOBS !== "1") {
         // Job supervisor: check every 2 minutes for stalled jobs
@@ -881,7 +887,7 @@ function startLeadNurturingJob() {
   }, 30000); // Wait 30 seconds after startup
   
   // Then run every 15 minutes
-  setInterval(() => {
+  trackInterval(() => {
     withJobLock('lead_nurturing', TTL_SECONDS, processLeadNurturing).catch(err => {
       log(`Scheduled lead nurturing run failed: ${err}`, 'nurturing');
     });
@@ -934,7 +940,7 @@ function startCampaignOptimizationJob() {
   }, 60000); // Wait 1 minute after startup
   
   // Then run every hour
-  setInterval(() => {
+  trackInterval(() => {
     withJobLock('campaign_optimizer', TTL_SECONDS, processCampaignOptimizations).catch(err => {
       log(`Scheduled campaign optimization run failed: ${err}`, 'optimizer');
     });
@@ -972,7 +978,7 @@ function startFinanceAgentJob() {
   }, 45000); // Wait 45 seconds after startup
   
   // Then run every 30 minutes
-  setInterval(() => {
+  trackInterval(() => {
     withJobLock('finance_agent', TTL_SECONDS, processFinanceAgent).catch(err => {
       log(`Scheduled finance agent run failed: ${err}`, 'finance');
     });
@@ -1004,7 +1010,7 @@ function startApiQueueJob() {
   
   log('Starting API queue background job (every 10 seconds)', 'queue');
   
-  setInterval(() => {
+  trackInterval(() => {
     withJobLock('api_queue', TTL_SECONDS, processApiQueue).catch(err => {
       log(`API queue run failed: ${err}`, 'queue');
     });
@@ -1038,7 +1044,7 @@ function startAlertingJob() {
     });
   }, 120000); // Wait 2 minutes after startup
   
-  setInterval(() => {
+  trackInterval(() => {
     withJobLock('alerting', TTL_SECONDS, processAlerts).catch(err => {
       log(`Scheduled alerting run failed: ${err}`, 'alerting');
     });
@@ -1066,7 +1072,7 @@ function startDigestJob() {
   log('Starting digest background job (every 6 hours)', 'digest');
   
   // Check every 6 hours (will only send on scheduled days)
-  setInterval(() => {
+  trackInterval(() => {
     withJobLock('digest', TTL_SECONDS, processDigests).catch(err => {
       log(`Scheduled digest run failed: ${err}`, 'digest');
     });
@@ -1111,7 +1117,7 @@ function startScheduledTaskRunnerJob() {
     });
   }, 60000); // Wait 1 minute after startup
   
-  setInterval(() => {
+  trackInterval(() => {
     withJobLock('scheduled_tasks', TTL_SECONDS, processScheduledTasks).catch(err => {
       log(`Scheduled task runner run failed: ${err}`, 'task-runner');
     });
@@ -1137,7 +1143,7 @@ function startPaxSchedulerJob() {
     });
   }, 90000); // 90s after startup
 
-  setInterval(() => {
+  trackInterval(() => {
     withJobLock('pax_scheduler', PAX_SCHEDULER_TTL_SECONDS, runPaxScheduledTasks).catch(err => {
       log(`Pax scheduler run failed: ${err}`, 'pax-scheduler');
     });
@@ -1163,7 +1169,7 @@ function startPaxNudgesJob() {
       log(`Pax nudges job failed: ${err}`, 'pax_nudges');
     });
   }, 5 * 60 * 1000);
-  setInterval(() => {
+  trackInterval(() => {
     withJobLock('pax_nudges', PAX_NUDGE_TTL_SECONDS, runPaxNudges).catch((err: unknown) => {
       log(`Pax nudges job failed: ${err}`, 'pax_nudges');
     });
@@ -1221,7 +1227,7 @@ function startDealHunterScrapingJob() {
     });
     
     // Then run daily
-    setInterval(() => {
+    trackInterval(() => {
       withJobLock('deal_hunter_scraping', TTL_SECONDS, processDealHunterScraping).catch(err => {
         log(`Scheduled deal hunter scraping run failed: ${err}`, 'deal-hunter');
       });
@@ -1259,7 +1265,7 @@ function startDistressRecalculationJob() {
   }, 5 * 60 * 1000);
   
   // Then run every hour
-  setInterval(() => {
+  trackInterval(() => {
     withJobLock('distress_recalculation', TTL_SECONDS, processDistressRecalculation).catch(err => {
       log(`Scheduled distress recalculation run failed: ${err}`, 'deal-hunter');
     });
@@ -1392,7 +1398,7 @@ function startVoiceLearningRefreshJob() {
     });
   }, 10 * 60 * 1000);
 
-  setInterval(() => {
+  trackInterval(() => {
     withJobLock('voice_learning_refresh', TTL_SECONDS, processVoiceLearningRefresh).catch(err => {
       log(`Scheduled voice learning refresh failed: ${err}`, 'voice-learning');
     });
@@ -1405,7 +1411,7 @@ function startRealtimeAlertSyncJob() {
 
   log('Starting real-time alert sync job (every 5 minutes)', 'realtime');
 
-  setInterval(async () => {
+  trackInterval(async () => {
     try {
       const pushed = await realtimeAlertsService.syncDealAlertsToWebSocket();
       if (pushed > 0) {
@@ -1452,7 +1458,7 @@ function startCountyAssessorIngestJob() {
       log(`County assessor ingest run failed: ${err}`, 'county-assessor');
     });
 
-    setInterval(() => {
+    trackInterval(() => {
       withJobLock('county_assessor_ingest', TTL_SECONDS, processCountyAssessorIngest).catch(err => {
         log(`Scheduled county assessor ingest failed: ${err}`, 'county-assessor');
       });
@@ -1490,7 +1496,7 @@ function startAutonomousDealMachineJob() {
   log('Registering autonomous deal machine job (hourly check, nightly at 1 AM + morning at 7 AM CT)', 'deal-machine');
 
   // Run every hour and check if it's time for the main run or morning briefing
-  setInterval(() => {
+  trackInterval(() => {
     withJobLock('autonomous_deal_machine', TTL_SECONDS, processAutonomousDealMachine).catch(err => {
       log(`Autonomous deal machine run failed: ${err}`, 'deal-machine');
     });
@@ -1516,7 +1522,7 @@ function startAutonomousHealthMonitorJob() {
   }, 30000); // 30s after startup
 
   // Then run every hour
-  setInterval(() => {
+  trackInterval(() => {
     import('./jobs/autonomousHealthMonitor').then(({ runAutonomousHealthMonitor }) => {
       withJobLock('autonomous_health_monitor', TTL_SECONDS, runAutonomousHealthMonitor).catch(err => {
         log(`Health monitor run failed: ${err}`, 'health-monitor');
@@ -1534,7 +1540,7 @@ function startFounderWeeklyDigestJob() {
 
   log('Registering founder weekly digest job (Mondays 8 AM CT)', 'founder-digest');
 
-  setInterval(() => {
+  trackInterval(() => {
     const now = new Date();
     const utcHour = now.getUTCHours();
     const dayOfWeek = now.getUTCDay(); // 0=Sun, 1=Mon
@@ -1571,7 +1577,7 @@ function startAutonomousDecisionExecutorJob() {
   }, 2 * 60 * 1000);
 
   // Then every 30 minutes
-  setInterval(() => {
+  trackInterval(() => {
     import('./services/autonomousDecisionExecutor').then(({ runAutonomousDecisionExecutor }) => {
       withJobLock('autonomous_decision_executor', TTL_SECONDS, runAutonomousDecisionExecutor).catch(err => {
         log(`Autonomous decision executor run failed: ${err}`, 'decision-executor');
@@ -1600,7 +1606,7 @@ function startGrowthAutomationJob() {
     }).catch(err => log(`Growth automation import failed: ${err}`, 'growth-automation'));
 
     // Then repeat every 6 hours
-    setInterval(() => {
+    trackInterval(() => {
       import('./jobs/growthAutomation').then(({ runGrowthAutomation }) => {
         withJobLock('growth_automation', TTL_SECONDS, runGrowthAutomation).catch(err => {
           log(`Growth automation run failed: ${err}`, 'growth-automation');
@@ -1626,7 +1632,7 @@ function startChurnEngineJob() {
   log('Starting churn risk engine (daily at 6am)', 'churn');
   // Run once 2 minutes after startup, then check every 5 minutes whether it's 6am
   setTimeout(() => { processChurnEngine(); }, 2 * 60 * 1000);
-  setInterval(() => {
+  trackInterval(() => {
     const now = new Date();
     if (now.getHours() === 6 && now.getMinutes() < 5) {
       processChurnEngine();
@@ -1648,7 +1654,7 @@ async function processFounderBriefing() {
 
 function startFounderBriefingJob() {
   log('Starting founder daily briefing job (daily at 7am)', 'briefing');
-  setInterval(() => {
+  trackInterval(() => {
     const now = new Date();
     if (now.getHours() === 7 && now.getMinutes() < 5) {
       processFounderBriefing();
@@ -1672,7 +1678,7 @@ function startOutcomeAnalyzerJob() {
   log('Starting outcome analyzer job (nightly at 2am)', 'outcome-analyzer');
   // Run once 3 minutes after startup (first pass, likely few data points)
   setTimeout(() => { processOutcomeAnalyzerJob(); }, 3 * 60 * 1000);
-  setInterval(() => {
+  trackInterval(() => {
     const now = new Date();
     if (now.getHours() === 2 && now.getMinutes() < 5) {
       withJobLock('outcome_analyzer', 23 * 60 * 60, processOutcomeAnalyzerJob).catch(err => {
@@ -1697,7 +1703,7 @@ async function processTelemetryOptimizerJob() {
 
 function startTelemetryOptimizerJob() {
   log('Starting telemetry optimizer job (nightly at 3am)', 'telemetry-optimizer');
-  setInterval(() => {
+  trackInterval(() => {
     const now = new Date();
     if (now.getHours() === 3 && now.getMinutes() < 5) {
       withJobLock('telemetry_optimizer', 23 * 60 * 60, processTelemetryOptimizerJob).catch(err => {
@@ -1722,7 +1728,7 @@ async function processModelIntelligenceJob() {
 
 function startModelIntelligenceJob() {
   log('Starting model intelligence job (weekly Sunday 4am)', 'model-intelligence');
-  setInterval(() => {
+  trackInterval(() => {
     const now = new Date();
     // Sunday = 0, 4am
     if (now.getDay() === 0 && now.getHours() === 4 && now.getMinutes() < 5) {
@@ -1748,7 +1754,7 @@ async function processSelfAssessmentJob() {
 
 function startSelfAssessmentJob() {
   log('Starting self-assessment agent job (weekly Sunday 3am)', 'self-assessment');
-  setInterval(() => {
+  trackInterval(() => {
     const now = new Date();
     // Sunday = 0, 3am
     if (now.getDay() === 0 && now.getHours() === 3 && now.getMinutes() < 5) {
@@ -1780,7 +1786,7 @@ async function processEvolutionPipelineJob() {
 
 function startEvolutionPipelineJob() {
   log('Starting evolution pipeline job (every 6 hours, deploys 3-5am only)', 'evolution-pipeline');
-  setInterval(() => {
+  trackInterval(() => {
     withJobLock('evolution_pipeline', 5 * 60 * 60, processEvolutionPipelineJob).catch(err => {
       log(`Evolution pipeline lock error: ${err}`, 'evolution-pipeline');
     });
@@ -1802,7 +1808,7 @@ async function processDataRetentionJob() {
 
 function startDataRetentionJob() {
   log('Starting data retention job (nightly at 3:30am UTC)', 'data-retention');
-  setInterval(() => {
+  trackInterval(() => {
     const now = new Date();
     if (now.getUTCHours() === 3 && now.getUTCMinutes() >= 30 && now.getUTCMinutes() < 35) {
       withJobLock('data_retention', 23 * 60 * 60, processDataRetentionJob).catch(err => {
@@ -1841,7 +1847,7 @@ function startCompanyBriefingJob() {
 
   log('Registering company briefing pre-generation job (daily 6:45am CT)', 'sovereign');
 
-  setInterval(() => {
+  trackInterval(() => {
     const now = new Date();
     const utcHour = now.getUTCHours();
     const utcMin = now.getUTCMinutes();
@@ -1875,7 +1881,7 @@ function startTrustEvolutionJob() {
 
   log('Registering trust evolution job (weekly, Sunday midnight UTC)', 'sovereign');
 
-  setInterval(() => {
+  trackInterval(() => {
     const now = new Date();
     const dayOfWeek = now.getUTCDay(); // 0 = Sunday
     const utcHour = now.getUTCHours();
@@ -1900,7 +1906,7 @@ function startAgentReactionProcessorJob() {
 
   log('Registering agent reaction processor (every 2 minutes)', 'sovereign');
 
-  setInterval(() => {
+  trackInterval(() => {
     import('./services/agentReactionEngine').then(({ processAgentReactions }) => {
       processAgentReactions().catch(err => {
         log(`Agent reaction processor failed: ${err}`, 'sovereign');
@@ -1927,7 +1933,7 @@ function startAgentProactiveEngineJob() {
     }).catch(err => log(`Proactive engine import failed: ${err}`, 'sovereign'));
   }, 3 * 60 * 1000);
 
-  setInterval(() => {
+  trackInterval(() => {
     import('./services/agentProactiveEngine').then(({ runProactiveEngine }) => {
       runProactiveEngine().catch(err => {
         log(`Proactive engine run failed: ${err}`, 'sovereign');
@@ -1945,7 +1951,7 @@ function startV5MaintenanceJob() {
 
   log('Registering v5 maintenance job (every 15 minutes)', 'sovereign');
 
-  setInterval(() => {
+  trackInterval(() => {
     import('./jobs/v5MaintenanceJob').then(({ runV5Maintenance }) => {
       runV5Maintenance().catch(err => {
         log(`v5 maintenance run failed: ${err}`, 'sovereign');
