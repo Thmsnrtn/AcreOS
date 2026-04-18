@@ -67,7 +67,7 @@ export interface CountyAgSnapshot {
   cashRentPasturePerAcre: number;
   interpretations: {
     rawLandProxyValue: number; // best estimate for raw/vacant land
-    podolskyOfferTarget: number; // 25% of rawLandProxyValue (lowest comp ÷ 4)
+    blindOfferTarget: number; // 25% of rawLandProxyValue (lowest comp ÷ 4)
     ownerFinanceMonthlyPayment: number; // 84-month note at 9% if sold at 2× proxy
     impliedFlipPrice: number; // 2× raw land proxy (typical retail markup)
     impliedFlipROI: number; // 300% = (2× - 0.25×) / 0.25×
@@ -268,9 +268,9 @@ function buildTrendFromValues(
 // ---------------------------------------------------------------------------
 
 /**
- * Build a complete ag snapshot for a county, including Podolsky formula outputs.
+ * Build a complete ag snapshot for a county, including blind offer formula outputs.
  *
- * The Podolsky Blind Offer Formula:
+ * The Blind Offer Formula:
  *   - Take the LOWEST comparable sale in the past 12-18 months
  *   - Divide by 4 (25 cents on the dollar)
  *   - This is your maximum offer
@@ -300,16 +300,16 @@ export async function buildCountyAgSnapshot(
   // Raw land proxy: pastureland is the best comp for raw/vacant land
   const rawLandProxyValue = latestPasture;
 
-  // Podolsky formula outputs
-  const podolskyOfferTarget = rawLandProxyValue * 0.25; // 25% of market
+  // Blind offer formula outputs
+  const blindOfferTarget = rawLandProxyValue * 0.25; // 25% of market
   const impliedFlipPrice = rawLandProxyValue * 2; // 2× markup for cash sale
-  const impliedFlipROI = podolskyOfferTarget > 0
-    ? ((impliedFlipPrice - podolskyOfferTarget) / podolskyOfferTarget) * 100
+  const impliedFlipROI = blindOfferTarget > 0
+    ? ((impliedFlipPrice - blindOfferTarget) / blindOfferTarget) * 100
     : 0;
 
   // Owner finance: Down = acquisition cost (recoups capital day 1), 84 months at 9%
   // Monthly payment formula: P * r * (1+r)^n / ((1+r)^n - 1)
-  const noteAmount = impliedFlipPrice - podolskyOfferTarget; // loan amount (down = acquisition)
+  const noteAmount = impliedFlipPrice - blindOfferTarget; // loan amount (down = acquisition)
   const monthlyRate = 0.09 / 12;
   const n = 84;
   const ownerFinanceMonthlyPayment = noteAmount > 0
@@ -327,7 +327,7 @@ export async function buildCountyAgSnapshot(
     cashRentPasturePerAcre: Math.round(cashRentPasture),
     interpretations: {
       rawLandProxyValue: Math.round(rawLandProxyValue),
-      podolskyOfferTarget: Math.round(podolskyOfferTarget),
+      blindOfferTarget: Math.round(blindOfferTarget),
       ownerFinanceMonthlyPayment: Math.round(ownerFinanceMonthlyPayment),
       impliedFlipPrice: Math.round(impliedFlipPrice),
       impliedFlipROI: Math.round(impliedFlipROI),
