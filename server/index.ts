@@ -735,13 +735,20 @@ app.use("/api", apiLimiter);
       // to complete before exiting.
       const gracefulShutdown = (signal: string) => {
         log(`Received ${signal} — beginning graceful shutdown`, "shutdown");
+
+        // Clear all background job intervals to stop new work
+        for (const handle of (globalThis as any).__bgIntervals || []) {
+          clearInterval(handle);
+        }
+        log(`Cleared ${((globalThis as any).__bgIntervals || []).length} background intervals`, "shutdown");
+
         httpServer.close((err) => {
           if (err) {
             log(`HTTP server close error: ${err}`, "shutdown");
           } else {
             log("HTTP server closed — all connections drained", "shutdown");
           }
-          // Give background jobs 5 seconds to checkpoint
+          // Give in-flight work 5 seconds to complete
           setTimeout(() => {
             log("Graceful shutdown complete", "shutdown");
             process.exit(0);
@@ -758,9 +765,17 @@ app.use("/api", apiLimiter);
       process.once("SIGTERM", () => gracefulShutdown("SIGTERM"));
       process.once("SIGINT", () => gracefulShutdown("SIGINT"));
 
+      // Track all background intervals for graceful shutdown cleanup
+      (globalThis as any).__bgIntervals = (globalThis as any).__bgIntervals || [];
+      const trackInterval = (fn: () => void, ms: number) => {
+        const handle = setInterval(fn, ms);
+        (globalThis as any).__bgIntervals.push(handle);
+        return handle;
+      };
+
       if (process.env.DISABLE_BACKGROUND_JOBS !== "1") {
         // Job supervisor: check every 2 minutes for stalled jobs
-        setInterval(() => { jobSupervisor.checkHealth(); }, 2 * 60 * 1000);
+        trackInterval(() => { jobSupervisor.checkHealth(); }, 2 * 60 * 1000);
         log("Job supervisor health monitoring started (every 2 minutes)", "supervisor");
 
         // Churn risk engine: score all paying orgs daily at 6am
