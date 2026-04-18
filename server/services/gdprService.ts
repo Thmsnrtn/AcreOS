@@ -32,8 +32,11 @@ import {
   properties,
   tasks,
 } from "@shared/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, count } from "drizzle-orm";
 import crypto from "crypto";
+
+/** Safety limit to prevent unbounded memory usage on very large accounts */
+const MAX_EXPORT_RECORDS = 100_000;
 
 type GdprExportData = {
   exportedAt: string;
@@ -44,6 +47,14 @@ type GdprExportData = {
   tasks: any[];
   messages: any[];
   supportTickets: any[];
+  totalRecords: {
+    leads: number;
+    deals: number;
+    properties: number;
+    tasks: number;
+    messages: number;
+    supportTickets: number;
+  };
 };
 
 type DeletionReport = {
@@ -72,13 +83,23 @@ export async function exportUserData(userId: number): Promise<GdprExportData> {
   // Redact sensitive internal fields before export
   const { password, ...safeUser } = user as any;
 
-  const [userLeads, userDeals, userProperties, userTasks, userMessages, userTickets] = await Promise.all([
-    db.select().from(leads).where(eq(leads.assignedTo, userId)).limit(1000),
-    db.select().from(deals).where(eq(deals.assignedTo, userId)).limit(1000),
-    db.select().from(properties).where(eq(properties.assignedTo, userId)).limit(1000),
-    db.select().from(tasks).where(eq(tasks.assignedTo, userId)).limit(1000),
-    db.select().from(teamMessages).where(eq(teamMessages.senderId, userId)).limit(1000),
-    db.select().from(supportTickets).where(eq(supportTickets.userId, userId)).limit(500),
+  // Fetch all records (with safety cap) and total counts in parallel
+  const [
+    userLeads, userDeals, userProperties, userTasks, userMessages, userTickets,
+    leadCount, dealCount, propertyCount, taskCount, messageCount, ticketCount,
+  ] = await Promise.all([
+    db.select().from(leads).where(eq(leads.assignedTo, userId)).limit(MAX_EXPORT_RECORDS),
+    db.select().from(deals).where(eq(deals.assignedTo, userId)).limit(MAX_EXPORT_RECORDS),
+    db.select().from(properties).where(eq(properties.assignedTo, userId)).limit(MAX_EXPORT_RECORDS),
+    db.select().from(tasks).where(eq(tasks.assignedTo, userId)).limit(MAX_EXPORT_RECORDS),
+    db.select().from(teamMessages).where(eq(teamMessages.senderId, userId)).limit(MAX_EXPORT_RECORDS),
+    db.select().from(supportTickets).where(eq(supportTickets.userId, userId)).limit(MAX_EXPORT_RECORDS),
+    db.select({ count: count() }).from(leads).where(eq(leads.assignedTo, userId)),
+    db.select({ count: count() }).from(deals).where(eq(deals.assignedTo, userId)),
+    db.select({ count: count() }).from(properties).where(eq(properties.assignedTo, userId)),
+    db.select({ count: count() }).from(tasks).where(eq(tasks.assignedTo, userId)),
+    db.select({ count: count() }).from(teamMessages).where(eq(teamMessages.senderId, userId)),
+    db.select({ count: count() }).from(supportTickets).where(eq(supportTickets.userId, userId)),
   ]);
 
   return {
@@ -90,6 +111,14 @@ export async function exportUserData(userId: number): Promise<GdprExportData> {
     tasks: userTasks,
     messages: userMessages,
     supportTickets: userTickets,
+    totalRecords: {
+      leads: leadCount[0]?.count ?? 0,
+      deals: dealCount[0]?.count ?? 0,
+      properties: propertyCount[0]?.count ?? 0,
+      tasks: taskCount[0]?.count ?? 0,
+      messages: messageCount[0]?.count ?? 0,
+      supportTickets: ticketCount[0]?.count ?? 0,
+    },
   };
 }
 
