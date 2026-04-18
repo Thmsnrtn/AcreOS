@@ -6,6 +6,7 @@ import {
   whitelabelTenants,
 } from "@shared/schema";
 import { eq, and, desc, gte, lte, sql } from "drizzle-orm";
+import { addMonths } from "../utils/dateUtils";
 
 // Credit rate map for quick lookup (cents per unit)
 const DEFAULT_RATES: Record<string, number> = {
@@ -273,8 +274,7 @@ export class TenantMeteringService {
     const results: any[] = [];
 
     for (let i = 0; i < months; i++) {
-      const date = new Date();
-      date.setMonth(date.getMonth() - i);
+      const date = addMonths(new Date(), -i);
       const billingMonth = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 
       const records = await db.select()

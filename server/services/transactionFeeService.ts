@@ -5,6 +5,7 @@ import {
   feeAuditLog,
 } from "@shared/schema";
 import { eq, and, desc, gte, lte, sql } from "drizzle-orm";
+import { addMonths } from "../utils/dateUtils";
 
 export interface FeeStructure {
   platformFeePercent: number;   // e.g. 1.5 for 1.5%
@@ -201,9 +202,11 @@ export class TransactionFeeService {
       case "biweekly":
         now.setDate(now.getDate() + 14);
         break;
-      case "monthly":
-        now.setMonth(now.getMonth() + 1);
+      case "monthly": {
+        const monthly = addMonths(now, 1);
+        now.setTime(monthly.getTime());
         break;
+      }
     }
     return now;
   }

@@ -19,6 +19,7 @@ import { eq, and, gte, lte, desc, asc, sql } from "drizzle-orm";
 import { DataSourceBroker } from "./data-source-broker";
 import { getCountyNetworkIntelligence } from "./marketNetworkContributor";
 import { logger } from "../utils/logger";
+import { addMonths } from "../utils/dateUtils";
 
 const dataSourceBroker = new DataSourceBroker();
 
@@ -763,8 +764,7 @@ class MarketIntelligenceService {
   // Private helper methods
   
   private async getHistoricalMetrics(county: string, state: string, months: number): Promise<MarketMetric[]> {
-    const startDate = new Date();
-    startDate.setMonth(startDate.getMonth() - months);
+    const startDate = addMonths(new Date(), -months);
     
     return db.select()
       .from(marketMetrics)
@@ -997,8 +997,7 @@ class MarketIntelligenceService {
     }
     
     const hasRecentData = metrics.some(m => {
-      const oneMonthAgo = new Date();
-      oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+      const oneMonthAgo = addMonths(new Date(), -1);
       return m.metricDate >= oneMonthAgo;
     });
     

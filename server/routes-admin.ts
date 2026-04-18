@@ -31,6 +31,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { alertingService } from "./services/alerting";
 import { logger } from "./utils/logger";
+import { addMonths } from "./utils/dateUtils";
 
 // ── Zod validation schemas for admin endpoints ────────────────────────────────
 const createSupportCaseSchema = z.object({
@@ -553,10 +554,8 @@ export function registerAdminRoutes(app: Express): void {
       }
       
       // Sample notes (seller financing)
-      const startDate = new Date();
-      startDate.setMonth(startDate.getMonth() - 3);
-      const firstPaymentDate = new Date(startDate);
-      firstPaymentDate.setMonth(firstPaymentDate.getMonth() + 1);
+      const startDate = addMonths(new Date(), -3);
+      const firstPaymentDate = addMonths(new Date(startDate), 1);
       
       const demoNotes = [
         { 

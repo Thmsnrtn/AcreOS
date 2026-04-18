@@ -13,6 +13,7 @@
 import { db } from "../db";
 import { systemMeta } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { addMonths } from "../utils/dateUtils";
 import { logger } from "../utils/logger";
 
 interface CEOReminder {
@@ -287,7 +288,8 @@ function computeNextOccurrence(
     }
 
     case "monthly": {
-      d.setMonth(d.getMonth() + 1);
+      const monthly = addMonths(d, 1);
+      d.setTime(monthly.getTime());
       if (rec.dayOfMonth !== undefined) {
         // Clamp to valid day for the target month
         const maxDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();

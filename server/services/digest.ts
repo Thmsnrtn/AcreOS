@@ -3,6 +3,7 @@ import { digestSubscriptions, organizations, leads, campaigns, notes, payments, 
 import { eq, and, gte, lte, sql, isNull, or, lt } from 'drizzle-orm';
 import { storage } from '../storage';
 import { logger } from "../utils/logger";
+import { addMonths } from "../utils/dateUtils";
 
 export interface DigestData {
   organizationId: number;
@@ -75,7 +76,8 @@ export class DigestService {
     } else if (frequency === 'weekly') {
       cutoff.setDate(cutoff.getDate() - 7);
     } else if (frequency === 'monthly') {
-      cutoff.setMonth(cutoff.getMonth() - 1);
+      const adjusted = addMonths(cutoff, -1);
+      cutoff.setTime(adjusted.getTime());
     }
 
     const subs = await db

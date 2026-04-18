@@ -9,6 +9,7 @@ import { eq, and, desc, gte, sql, between } from 'drizzle-orm';
 import OpenAI from 'openai';
 import { GradientBoostingRegressor, extractLandFeatures, type LandFeatureInput } from './gradientBoosting';
 import { logger } from "../utils/logger";
+import { addMonths } from "../utils/dateUtils";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -428,8 +429,7 @@ Base your estimate on typical rural land market conditions in ${county} County, 
   ): Promise<ValuationResult['comparables']> {
     try {
       // Get transactions within past 24 months
-      const cutoffDate = new Date();
-      cutoffDate.setMonth(cutoffDate.getMonth() - 24);
+      const cutoffDate = addMonths(new Date(), -24);
 
       const transactions = await db.query.transactionTraining.findMany({
         where: and(

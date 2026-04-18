@@ -41,6 +41,7 @@ import { getQuietHoursConfig, setQuietHours } from "./services/quietHours";
 import { learnFromOverride } from "./services/overrideLearner";
 import { generateBriefingUpdates, generateHeadlineInsight } from "./services/aiBriefingWriter";
 import { logger } from "./utils/logger";
+import { addMonths } from "./utils/dateUtils";
 
 const router = Router();
 
@@ -517,13 +518,11 @@ router.get("/mrr", requireFounder, async (req: Request, res: Response) => {
     const mrrByMonth: Array<{ month: string; revenueCents: number; newOrgs: number; churned: number; net: number }> = [];
 
     for (let i = months - 1; i >= 0; i--) {
-      const start = new Date();
-      start.setMonth(start.getMonth() - i);
+      const start = addMonths(new Date(), -i);
       start.setDate(1);
       start.setHours(0, 0, 0, 0);
 
-      const end = new Date(start);
-      end.setMonth(end.getMonth() + 1);
+      const end = addMonths(new Date(start), 1);
 
       const [revResult, newOrgsResult, churnResult] = await Promise.all([
         db.select({ total: sum(payments.amount) })
@@ -1034,8 +1033,7 @@ function forecastLinear(values: number[], periods: number): number[] {
 }
 
 function getFutureMonth(offset: number): string {
-  const d = new Date();
-  d.setMonth(d.getMonth() + offset);
+  const d = addMonths(new Date(), offset);
   return d.toISOString().slice(0, 7);
 }
 

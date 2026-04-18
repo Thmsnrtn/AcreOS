@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { addMonths } from "./utils/dateUtils";
 export { db };
 import { eq, and, desc, asc, sql, count, sum, arrayContains, gte, lte, lt, or, inArray, ne, ilike, type SQL } from "drizzle-orm";
 
@@ -237,9 +238,8 @@ function calculateAmortizationSchedule(
     const principalPayment = Math.min(monthlyPayment - interestPayment, balance);
     balance = Math.max(0, balance - principalPayment);
     
-    const dueDate = new Date(startDate);
-    dueDate.setMonth(dueDate.getMonth() + i);
-    
+    const dueDate = addMonths(new Date(startDate), i);
+
     schedule.push({
       paymentNumber: i,
       dueDate: dueDate.toISOString(),
@@ -1776,8 +1776,7 @@ export class DatabaseStorage implements IStorage {
     }
     
     // Calculate maturity date
-    const maturityDate = new Date(noteData.startDate);
-    maturityDate.setMonth(maturityDate.getMonth() + noteData.termMonths);
+    const maturityDate = addMonths(new Date(noteData.startDate), noteData.termMonths);
     
     // Generate access token for borrower portal
     const accessToken = noteData.accessToken || `note_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
@@ -4313,9 +4312,11 @@ export class DatabaseStorage implements IStorage {
       case "weekly":
         nextDate.setDate(nextDate.getDate() + 7);
         break;
-      case "monthly":
-        nextDate.setMonth(nextDate.getMonth() + 1);
+      case "monthly": {
+        const monthly = addMonths(nextDate, 1);
+        nextDate.setTime(monthly.getTime());
         break;
+      }
       case "yearly":
         nextDate.setFullYear(nextDate.getFullYear() + 1);
         break;

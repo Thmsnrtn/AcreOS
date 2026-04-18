@@ -10,6 +10,7 @@ import type { AuthenticatedRequest } from "./types/request";
 import { getOrganization } from "./types/request";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { addMonths } from "./utils/dateUtils";
 
 export function registerAnalyticsRoutes(app: Express): void {
   const api = app;
@@ -613,7 +614,8 @@ export function registerAnalyticsRoutes(app: Express): void {
       const now = new Date();
       const cutoff = new Date(now);
       if (granularity === "month") {
-        cutoff.setMonth(cutoff.getMonth() - weeksBack);
+        const adjusted = addMonths(cutoff, -weeksBack);
+        cutoff.setTime(adjusted.getTime());
       } else {
         cutoff.setDate(cutoff.getDate() - weeksBack * 7);
       }

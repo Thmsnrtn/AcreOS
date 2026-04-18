@@ -7,6 +7,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { createRateLimiter, RATE_LIMIT_CONFIGS } from "./middleware/rateLimit";
 import { logger } from "./utils/logger";
+import { addMonths } from "./utils/dateUtils";
 
 const portalPaymentRateLimiter = createRateLimiter(RATE_LIMIT_CONFIGS.public, (req) => req.ip || req.socket.remoteAddress || 'unknown');
 const deprecatedPaymentRateLimiter = createRateLimiter({ maxRequests: 2, windowMs: 60 * 1000 }, (req) => req.ip || req.socket.remoteAddress || 'unknown');
@@ -447,8 +448,7 @@ export function registerBorrowerRoutes(app: Express): void {
       }
       
       // Calculate next payment date
-      const nextPaymentDate = new Date(note.nextPaymentDate || new Date());
-      nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 1);
+      const nextPaymentDate = addMonths(new Date(note.nextPaymentDate || new Date()), 1);
       
       await storage.updateNote(note.id, {
         currentBalance: newBalance.toString(),
