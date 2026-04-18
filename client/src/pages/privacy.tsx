@@ -220,7 +220,7 @@ export default function PrivacyPolicy() {
               </p>
               <p className="text-muted-foreground">
                 Email: privacy@acreos.com<br />
-                Address: [Company Address]<br />
+                Address: Marlborough, MA<br />
                 Data Protection Officer: dpo@acreos.com
               </p>
             </section>

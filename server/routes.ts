@@ -258,7 +258,7 @@ export async function registerRoutes(
           return;
         }
         if (k === "set-cookie") {
-          res.appendHeader(key, value.replace(/domain=[^;]+/gi, "domain=acreos.io"));
+          res.appendHeader(key, value.replace(/domain=[^;]+/gi, "domain=.acreos.io"));
           return;
         }
         res.setHeader(key, value);

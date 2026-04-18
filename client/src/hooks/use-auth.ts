@@ -1,6 +1,5 @@
 import { useUser, useClerk } from "@clerk/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRef } from "react";
 import type { User } from "@shared/models/auth";
 
 // Extended user type with founder status (added by server)
@@ -34,35 +33,30 @@ export function useAuth() {
   const { signOut } = useClerk();
   const queryClient = useQueryClient();
 
-  // Check for session cookie as a fallback when Clerk client-side
-  // can't reach the FAPI (e.g., Cloudflare proxy issues)
-  const hasSessionCookie = typeof document !== "undefined" && document.cookie.includes("__session=");
-
-  // If we've had a successful auth recently, keep the user data cached longer
-  // to prevent flicker during session refresh
-  const recentlyAuthed = Date.now() - lastAuthSuccess < 5 * 60 * 1000; // 5 min
-
+  // Only fetch app user when Clerk confirms the user is signed in.
+  // Don't use cookie fallback for the enabled check — it causes stale
+  // cache to keep isAuthed true after session death.
   const { data: user, isLoading: userLoading } = useQuery<AuthUser | null>({
     queryKey: ["/api/auth/user"],
     queryFn: fetchAppUser,
-    enabled: isSignedIn === true || (isLoaded && hasSessionCookie),
-    staleTime: recentlyAuthed ? 1000 * 60 * 5 : 1000 * 30, // 5min if recently authed, 30s otherwise
-    gcTime: 1000 * 60 * 10, // Keep cached data for 10 min even if stale
-    retry: (failureCount) => {
-      // Don't retry if we've failed too many times (prevents spam)
-      return failureCount < 2;
-    },
-    retryDelay: 5000,
+    enabled: isSignedIn === true,
+    staleTime: 1000 * 30,
+    gcTime: 1000 * 60 * 2, // 2 min GC — short enough to not persist stale sessions
+    retry: (failureCount) => failureCount < 2,
+    retryDelay: 3000,
   });
 
-  const isAuthed = !!(isSignedIn || user);
+  // Auth state: require BOTH Clerk session AND app user.
+  // Previous OR logic (isSignedIn || user) kept isAuthed true from stale cache.
+  const isAuthed = !!(isSignedIn && user);
 
   const logout = () => {
     authFailCount = 0;
     lastAuthSuccess = 0;
     queryClient.setQueryData(["/api/auth/user"], null);
-    // Clear session cookies manually
-    document.cookie = "__session=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=acreos.io";
+    queryClient.removeQueries({ queryKey: ["/api/auth/user"] });
+    // Clear session cookies — use .acreos.io (with dot) for subdomain coverage
+    document.cookie = "__session=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=.acreos.io";
     document.cookie = "__session=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/";
     document.cookie = "__client_uat=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=.acreos.io";
     document.cookie = "__client_uat=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/";
@@ -71,10 +65,9 @@ export function useAuth() {
 
   return {
     user: isAuthed ? (user ?? null) : null,
-    isLoading: !isLoaded || ((isSignedIn === true || hasSessionCookie) && userLoading),
+    isLoading: !isLoaded || (isSignedIn === true && userLoading),
     isAuthenticated: isAuthed,
     isFounder: user?.isFounder ?? false,
-    // Expose failure count so components can detect redirect loops
     authFailCount,
     logout,
   };

@@ -74,16 +74,23 @@ export function registerMaintenanceRoutes(app: Express): void {
       const id = Number(req.params.id);
       const { status, cost, priority } = req.body;
 
-      const updates: string[] = [];
-      if (status) updates.push(`status = '${status}'`);
-      if (cost !== undefined) updates.push(`cost = '${cost}'`);
-      if (priority) updates.push(`priority = '${priority}'`);
-      if (status === "resolved") updates.push(`resolved_at = NOW()`);
+      // Validate inputs to prevent SQL injection (was previously using sql.raw with user input)
+      const allowedStatuses = ["pending", "in_progress", "resolved", "cancelled"];
+      const allowedPriorities = ["low", "medium", "high", "urgent"];
+      if (status && !allowedStatuses.includes(status)) return Errors.badRequest(res, "Invalid status");
+      if (priority && !allowedPriorities.includes(priority)) return Errors.badRequest(res, "Invalid priority");
 
-      if (updates.length === 0) return Errors.badRequest(res, "No fields to update");
+      const setClauses: any[] = [];
+      if (status) setClauses.push(sql`status = ${status}`);
+      if (cost !== undefined) setClauses.push(sql`cost = ${Number(cost)}`);
+      if (priority) setClauses.push(sql`priority = ${priority}`);
+      if (status === "resolved") setClauses.push(sql`resolved_at = NOW()`);
 
+      if (setClauses.length === 0) return Errors.badRequest(res, "No fields to update");
+
+      const setClause = sql.join(setClauses, sql`, `);
       const result = await db.execute(sql`
-        UPDATE maintenance_requests SET ${sql.raw(updates.join(", "))}
+        UPDATE maintenance_requests SET ${setClause}
         WHERE id = ${id} AND organization_id = ${org.id}
         RETURNING *
       `);

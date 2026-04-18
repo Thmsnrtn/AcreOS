@@ -651,7 +651,13 @@ export function registerOrganizationRoutes(app: Express): void {
   });
   
   const provisionSchema = z.object({
-    businessType: z.enum(["land_flipper", "note_investor", "hybrid"]),
+    businessType: z.enum([
+      "land_flipper", "note_investor", "hybrid",
+      "residential_wholesaler", "fix_and_flip", "buy_and_hold",
+      "commercial", "short_term_rental", "creative_finance",
+      "developer", "tax_lien_deed", "multifamily",
+      "mobile_home", "vacation_rental",
+    ]),
   });
 
   api.post("/api/onboarding/provision", isAuthenticated, getOrCreateOrg, async (req, res) => {
