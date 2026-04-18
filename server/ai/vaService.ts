@@ -2,11 +2,14 @@ import OpenAI from "openai";
 import { storage } from "../storage";
 import { toolDefinitions, executeTool, type ToolName } from "./tools";
 import type { Organization, VaAgent, VaAction, InsertVaAction, InsertVaBriefing } from "@shared/schema";
+import { logger } from "../utils/logger";
 
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
   baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
 });
+
+const MAX_TOOL_ITERATIONS = 10;
 
 export type VaAgentType = "executive" | "sales" | "acquisitions" | "marketing" | "collections" | "research";
 
@@ -645,7 +648,13 @@ RECOMMENDATION: [Your recommendation]`;
 
     let assistantMessage = response.choices[0].message;
 
+    let toolIterations = 0;
     while (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
+      if (++toolIterations > MAX_TOOL_ITERATIONS) {
+        logger.warn(`[va] Tool-calling loop exceeded ${MAX_TOOL_ITERATIONS} iterations — breaking`);
+        break;
+      }
+
       const toolResults: OpenAI.ChatCompletionToolMessageParam[] = [];
 
       for (const toolCall of assistantMessage.tool_calls) {

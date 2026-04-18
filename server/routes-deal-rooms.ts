@@ -179,9 +179,10 @@ router.post('/:id/documents', asyncHandler(async (req: AuthenticatedRequest, res
     }
 
     // Validate file URL to prevent SSRF
-    const urlValidation = validateUrl(fileUrl);
-    if (!urlValidation.safe) {
-      return res.status(400).json({ error: `Invalid file URL: ${urlValidation.reason}` });
+    try {
+      await validateUrl(fileUrl);
+    } catch (urlError: any) {
+      return res.status(400).json({ error: `Invalid file URL: ${urlError.message}` });
     }
 
     // Block dangerous file extensions
