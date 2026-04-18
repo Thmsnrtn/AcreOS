@@ -30,6 +30,12 @@ export const pool = new Pool({
   idleTimeoutMillis: 60_000,
   connectionTimeoutMillis: 10_000, // increased from 3s — cloud DBs can be slow to acquire
 });
+
+// Prevent unhandled pool errors from crashing the process (P0 fix SRE-04)
+pool.on("error", (err) => {
+  logger.error("Unexpected database pool error", err);
+});
+
 export const db = drizzle(pool, { schema });
 
 // ─── T8: Read Replica Routing ─────────────────────────────────────────────────
