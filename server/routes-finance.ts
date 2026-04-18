@@ -14,6 +14,70 @@ import { exportNotesToCSV, type ExportFilters } from "./services/importExport";
 import { checkUsury } from "./services/usury";
 import { logger } from "./utils/logger";
 
+// Zod schema for note updates — only user-editable fields are allowed.
+// Sensitive fields (organizationId, currentBalance, interestRate, accessToken,
+// amortizationSchedule, id, createdAt, updatedAt, deletedAt, deletedBy,
+// pendingCheckoutSessionId, daysDelinquent, delinquencyStatus, reminderCount,
+// lastReminderSentAt, taxEscrowBalance) are excluded to prevent field injection.
+const updateNoteSchema = z.object({
+  propertyId: z.number().nullable().optional(),
+  borrowerId: z.number().nullable().optional(),
+
+  // Note terms — originalPrincipal and termMonths can be corrected, but
+  // interestRate is excluded (checked separately via usury logic) and
+  // currentBalance is system-calculated from payments.
+  originalPrincipal: z.string().optional(),
+  termMonths: z.number().optional(),
+  monthlyPayment: z.string().optional(),
+
+  // Additional fees
+  serviceFee: z.string().optional(),
+  lateFee: z.string().optional(),
+  gracePeriodDays: z.number().optional(),
+
+  // Property Tax Escrow — enable/disable and tax amount config
+  taxEscrowEnabled: z.boolean().optional(),
+  annualPropertyTax: z.string().optional(),
+  monthlyTaxEscrow: z.string().optional(),
+  taxEscrowAccountId: z.string().nullable().optional(),
+  lastTaxPaymentDate: z.coerce.date().nullable().optional(),
+  nextTaxDueDate: z.coerce.date().nullable().optional(),
+  taxPaymentYear: z.number().nullable().optional(),
+  countyTaxPortalUrl: z.string().nullable().optional(),
+
+  // Dates
+  startDate: z.coerce.date().optional(),
+  firstPaymentDate: z.coerce.date().optional(),
+  nextPaymentDate: z.coerce.date().nullable().optional(),
+  maturityDate: z.coerce.date().nullable().optional(),
+
+  // Status (only valid transitions)
+  status: z.enum(["pending", "active", "paid_off", "defaulted", "foreclosed"]).optional(),
+
+  // Down payment
+  downPayment: z.string().optional(),
+  downPaymentReceived: z.boolean().optional(),
+
+  // Payment method (user-facing configuration)
+  paymentMethod: z.string().nullable().optional(),
+  paymentAccountId: z.string().nullable().optional(),
+  autoPayEnabled: z.boolean().optional(),
+  fallbackPaymentAccounts: z.array(z.object({
+    profileId: z.string(),
+    method: z.enum(["ach_actum", "ach_authorize", "card_stripe", "card_authorize"]),
+    last4: z.string().optional(),
+    bankName: z.string().optional(),
+    order: z.number(),
+    isActive: z.boolean(),
+  })).nullable().optional(),
+
+  // Entity ownership
+  owningEntity: z.string().nullable().optional(),
+
+  // Free-text notes
+  notes: z.string().nullable().optional(),
+}).strict();
+
 export function registerFinanceRoutes(app: Express): void {
   const api = app;
 
@@ -118,12 +182,26 @@ export function registerFinanceRoutes(app: Express): void {
   api.put("/api/notes/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
     const noteId = Number(req.params.id);
+    if (isNaN(noteId)) {
+      return Errors.badRequest(res, "Invalid note ID");
+    }
     const existingNote = await storage.getNote(org.id, noteId);
     if (!existingNote) return Errors.notFound(res, "Note");
 
+    // Validate and whitelist fields — rejects any unexpected / sensitive keys
+    let validated: z.infer<typeof updateNoteSchema>;
+    try {
+      validated = updateNoteSchema.parse(req.body);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return Errors.validationFailed(res, err.errors);
+      }
+      throw err;
+    }
+
     // Usury hard block: check updated interest rate against state law before saving
-    const rateToCheck = req.body.interestRate ?? existingNote.interestRate;
-    const propertyId = req.body.propertyId ?? existingNote.propertyId;
+    const rateToCheck = existingNote.interestRate;
+    const propertyId = validated.propertyId ?? existingNote.propertyId;
     if (rateToCheck && propertyId) {
       const property = await storage.getProperty(org.id, Number(propertyId));
       if (property?.state) {
@@ -140,8 +218,8 @@ export function registerFinanceRoutes(app: Express): void {
       }
     }
 
-    const note = await storage.updateNote(noteId, req.body);
-    
+    const note = await storage.updateNote(noteId, validated);
+
     const user = req.user as any;
     const userId = user?.claims?.sub || user?.id;
     await storage.createAuditLogEntry({
@@ -150,11 +228,11 @@ export function registerFinanceRoutes(app: Express): void {
       action: "update",
       entityType: "note",
       entityId: noteId,
-      changes: { before: existingNote, after: note, fields: Object.keys(req.body) },
+      changes: { before: existingNote, after: note, fields: Object.keys(validated) },
       ipAddress: req.ip || req.socket?.remoteAddress,
       userAgent: req.headers["user-agent"],
     });
-    
+
     res.json(note);
   });
   
