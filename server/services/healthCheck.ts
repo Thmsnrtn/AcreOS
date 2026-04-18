@@ -218,13 +218,16 @@ class HealthCheckService {
         return this.createHealth(name, 'unconfigured', undefined, 'REDIS_URL not configured');
       }
 
-      // redis types may not be installed; `as any` cast handles the mismatch
-      const { createClient } = await import('redis') as any;
-      const client = createClient({ url: redisUrl });
+      const IORedis = (await import('ioredis')).default;
+      const client = new IORedis(redisUrl, {
+        maxRetriesPerRequest: 1,
+        connectTimeout: 5000,
+        lazyConnect: true,
+      });
       await client.connect();
       await client.ping();
       const latency = Date.now() - start;
-      await client.disconnect();
+      client.disconnect();
 
       return this.createHealth(name, 'healthy', latency);
     } catch (error: any) {
