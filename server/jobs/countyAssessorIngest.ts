@@ -99,7 +99,7 @@ export const TOP_LAND_COUNTIES: Array<{
 
   // North Carolina
   { state: "NC", county: "Graham", fips: "37075", priority: 2, avgAcreage: 10, medianSalePrice: 18000, competitionLevel: "medium" },
-  { state: "NC", county: "Clay", fips: "37389", priority: 3, avgAcreage: 5, medianSalePrice: 22000, competitionLevel: "high" },
+  { state: "NC", county: "Clay", fips: "37043", priority: 3, avgAcreage: 5, medianSalePrice: 22000, competitionLevel: "high" },
 
   // California — desert lots (Mojave, 29 Palms area)
   { state: "CA", county: "San Bernardino", fips: "06071", priority: 1, avgAcreage: 5, medianSalePrice: 8000, competitionLevel: "high" },

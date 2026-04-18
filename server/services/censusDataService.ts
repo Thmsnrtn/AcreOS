@@ -296,7 +296,7 @@ const COUNTY_FIPS_MAP: Record<string, { stateFips: string; countyFips: string }>
   "NM:CATRON": { stateFips: "35", countyFips: "003" },
   "NM:LINCOLN": { stateFips: "35", countyFips: "027" },
   "NM:TORRANCE": { stateFips: "35", countyFips: "057" },
-  "TX:PRESIDIO": { stateFips: "48", countyFips: "383" },
+  "TX:PRESIDIO": { stateFips: "48", countyFips: "377" },
   "TX:HUDSPETH": { stateFips: "48", countyFips: "229" },
   "TX:TERRELL": { stateFips: "48", countyFips: "443" },
   "TX:BREWSTER": { stateFips: "48", countyFips: "043" },
