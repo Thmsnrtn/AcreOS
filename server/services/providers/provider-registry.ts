@@ -2,6 +2,9 @@
  * Provider Registry — orchestrates multi-provider lookups with
  * tier filtering, credit deduction, circuit breaking, and caching.
  */
+import { eq, and, gt } from "drizzle-orm";
+import { db } from "../../db";
+import { providerCache } from "@shared/schema";
 import { logger } from "../../utils/logger";
 import type {
   DataCategory,
@@ -12,6 +15,41 @@ import type {
   CircuitBreakerState,
   ProviderHealthStatus,
 } from "./types";
+
+// ── Cache TTL (24 hours default) ─────────────────────────────
+
+const DEFAULT_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Build a deterministic cache key from provider + category + input.
+ * The key is a stable string that uniquely identifies the lookup.
+ */
+function buildCacheKey(providerName: string, category: DataCategory, input: LookupInput): string {
+  const parts = [providerName, category];
+
+  switch (input.type) {
+    case "coordinates":
+      // Round to 6 decimal places for stability
+      parts.push("coord", String(input.latitude), String(input.longitude));
+      if (input.state) parts.push(input.state);
+      if (input.county) parts.push(input.county);
+      break;
+    case "address":
+      parts.push("addr", input.street, input.city, input.state, input.zip);
+      break;
+    case "apn":
+      parts.push("apn", input.apn, input.state, input.county);
+      break;
+    case "owner":
+      parts.push("owner", input.firstName, input.lastName);
+      if (input.state) parts.push(input.state);
+      if (input.city) parts.push(input.city);
+      if (input.zip) parts.push(input.zip);
+      break;
+  }
+
+  return parts.map((p) => p.toLowerCase().trim()).join("::");
+}
 
 // ── Tier ordering (lower index = tried first) ─────────────────
 
@@ -57,7 +95,8 @@ class ProviderRegistry {
 
   /**
    * Single-category lookup with tier filtering, cost-aware ordering,
-   * credit deduction, and circuit breaking.
+   * credit deduction, circuit breaking, and **response caching via
+   * the provider_cache table** (DEFECT-0032 fix).
    */
   async lookup(
     category: DataCategory,
@@ -79,7 +118,7 @@ class ProviderRegistry {
       const { provider } = reg;
       const costCents = provider.costPerLookupCents(category);
 
-      // Skip if org can't afford this provider
+      // Skip if org can't afford this provider (free lookups always pass)
       if (costCents > 0 && creditBalance < costCents) {
         logger.info(`Skipping ${provider.name}: insufficient credits (need ${costCents}, have ${creditBalance})`, {
           source: "ProviderRegistry",
@@ -95,6 +134,27 @@ class ProviderRegistry {
         continue;
       }
 
+      // ── Cache check ────────────────────────────────────────
+      const cacheKey = buildCacheKey(provider.name, category, input);
+
+      try {
+        const cached = await this.readCache(cacheKey);
+        if (cached) {
+          logger.info(`Provider cache hit`, {
+            source: "ProviderRegistry",
+            metadata: { provider: provider.name, category, cacheKey },
+          });
+          return cached;
+        }
+      } catch (cacheErr) {
+        // Cache read failures are non-fatal — fall through to live lookup
+        logger.warn(`Cache read error (non-fatal)`, {
+          source: "ProviderRegistry",
+          metadata: { error: cacheErr instanceof Error ? cacheErr.message : String(cacheErr) },
+        });
+      }
+
+      // ── Live lookup ────────────────────────────────────────
       try {
         const start = Date.now();
         const result = await provider.lookup(category, input);
@@ -102,19 +162,29 @@ class ProviderRegistry {
 
         this.recordSuccess(provider.name);
 
+        const finalResult: LookupResult = { ...result, latencyMs: result.latencyMs || latencyMs };
+
         logger.info(`Provider lookup succeeded`, {
           source: "ProviderRegistry",
           metadata: {
             provider: provider.name,
             category,
             costCents,
-            latencyMs,
-            cached: result.cached,
+            latencyMs: finalResult.latencyMs,
+            cached: false,
             confidence: result.confidence,
           },
         });
 
-        return { ...result, latencyMs: result.latencyMs || latencyMs };
+        // ── Write result to cache (fire-and-forget) ──────────
+        this.writeCache(cacheKey, provider.name, category, finalResult).catch((writeErr) => {
+          logger.warn(`Cache write error (non-fatal)`, {
+            source: "ProviderRegistry",
+            metadata: { error: writeErr instanceof Error ? writeErr.message : String(writeErr) },
+          });
+        });
+
+        return finalResult;
       } catch (error) {
         this.recordFailure(provider.name);
         logger.warn(`Provider lookup failed: ${provider.name}`, {
@@ -269,6 +339,74 @@ class ProviderRegistry {
         source: "ProviderRegistry",
       });
     }
+  }
+
+  // ── Cache helpers (provider_cache table) ─────────────────────
+
+  /**
+   * Read a non-expired entry from provider_cache.
+   * Returns a fully-hydrated LookupResult or null on miss.
+   */
+  private async readCache(cacheKey: string): Promise<LookupResult | null> {
+    const now = new Date();
+
+    const [row] = await db
+      .select()
+      .from(providerCache)
+      .where(
+        and(
+          eq(providerCache.cacheKey, cacheKey),
+          gt(providerCache.expiresAt, now),
+        ),
+      )
+      .limit(1);
+
+    if (!row) return null;
+
+    const data = row.responseData as Record<string, unknown>;
+
+    return {
+      provider: row.provider,
+      category: row.category as DataCategory,
+      confidence: (data.confidence as number) ?? 80,
+      costCents: 0, // cached lookups are free — no credit deduction
+      fetchedAt: row.createdAt ?? now,
+      cached: true,
+      latencyMs: 0,
+      data: data.data ?? data,
+    };
+  }
+
+  /**
+   * Upsert a lookup result into provider_cache with a TTL.
+   */
+  private async writeCache(
+    cacheKey: string,
+    providerName: string,
+    category: DataCategory,
+    result: LookupResult,
+  ): Promise<void> {
+    const expiresAt = new Date(Date.now() + DEFAULT_CACHE_TTL_MS);
+
+    await db
+      .insert(providerCache)
+      .values({
+        provider: providerName,
+        category,
+        cacheKey,
+        responseData: { data: result.data, confidence: result.confidence },
+        costCents: result.costCents,
+        expiresAt,
+      })
+      .onConflictDoUpdate({
+        target: providerCache.cacheKey,
+        set: {
+          responseData: { data: result.data, confidence: result.confidence },
+          costCents: result.costCents,
+          expiresAt,
+          createdAt: new Date(),
+        },
+      });
   }
 }
 
