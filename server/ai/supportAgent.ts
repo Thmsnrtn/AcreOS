@@ -15,6 +15,8 @@ import {
 import { gte, lte } from "drizzle-orm";
 import { logger } from "../utils/logger";
 
+const MAX_TOOL_ITERATIONS = 10;
+
 function getOpenAIClient(): OpenAI {
   const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
   const baseURL = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
@@ -4504,7 +4506,7 @@ export async function executeSupportTool(
             eq(paxMemory.organizationId, org.id),
             eq(paxMemory.userId, org.ownerId),
             sql`(${paxMemory.expiresAt} IS NULL OR ${paxMemory.expiresAt} > NOW())`,
-            sql`${paxMemory.memoryType} = ANY(ARRAY[${sql.raw(types.map((t: string) => `'${t}'`).join(','))}])`
+            inArray(paxMemory.memoryType, types)
           ))
           .orderBy(desc(paxMemory.importance), desc(paxMemory.createdAt))
           .limit(limit);
@@ -5240,14 +5242,20 @@ export async function processSupportChat(
   
   let assistantMessage = response.choices[0].message;
   
+  let toolIterations = 0;
   while (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
+    if (++toolIterations > MAX_TOOL_ITERATIONS) {
+      logger.warn(`[support-agent] Tool-calling loop exceeded ${MAX_TOOL_ITERATIONS} iterations — breaking`);
+      break;
+    }
+
     const toolResults: OpenAI.ChatCompletionToolMessageParam[] = [];
-    
+
     for (const toolCall of assistantMessage.tool_calls) {
       if ('function' in toolCall) {
         const args = JSON.parse(toolCall.function.arguments);
         const result = await executeSupportTool(toolCall.function.name, args, org, ticketId);
-        
+
         toolsUsed.push(toolCall.function.name);
         actionsPerformed.push({
           action: toolCall.function.name,
@@ -5255,7 +5263,7 @@ export async function processSupportChat(
           result: result.data || result.error,
           success: result.success
         });
-        
+
         toolResults.push({
           role: "tool",
           tool_call_id: toolCall.id,
@@ -5263,17 +5271,17 @@ export async function processSupportChat(
         });
       }
     }
-    
+
     chatMessages.push(assistantMessage as any);
     chatMessages.push(...toolResults);
-    
+
     response = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: chatMessages,
       tools,
       tool_choice: "auto"
     });
-    
+
     assistantMessage = response.choices[0].message;
   }
   

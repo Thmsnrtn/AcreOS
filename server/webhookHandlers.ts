@@ -24,35 +24,23 @@ export class WebhookHandlers {
   }
 
   /**
-   * Check if this event has already been processed (idempotency).
-   * Returns true if already processed.
+   * Atomically claim an event for processing using INSERT ... ON CONFLICT DO NOTHING.
+   * Returns true if this instance successfully claimed the event (i.e., the row was inserted).
+   * Returns false if the event was already claimed by another instance (conflict, no row returned).
+   * This eliminates the TOCTOU race between isDuplicate() and markProcessed() (DEFECT-0006).
    */
-  private static async isDuplicate(eventId: string): Promise<boolean> {
+  private static async claimEvent(eventId: string, eventType: string): Promise<boolean> {
     try {
-      const [existing] = await db
-        .select({ id: stripeProcessedEvents.id })
-        .from(stripeProcessedEvents)
-        .where(eq(stripeProcessedEvents.stripeEventId, eventId))
-        .limit(1);
-      return !!existing;
-    } catch {
-      // Table may not exist yet during migration — allow processing
-      return false;
-    }
-  }
-
-  /**
-   * Record that an event has been processed.
-   */
-  private static async markProcessed(eventId: string, eventType: string): Promise<void> {
-    try {
-      await db.insert(stripeProcessedEvents).values({
+      const result = await db.insert(stripeProcessedEvents).values({
         stripeEventId: eventId,
         eventType,
-      }).onConflictDoNothing();
+      }).onConflictDoNothing().returning({ id: stripeProcessedEvents.id });
+      // If a row was returned, we claimed it; if empty array, it was already claimed
+      return result.length > 0;
     } catch (err) {
-      // Non-fatal — log and continue
-      logger.warn(`[webhook] Failed to record processed event ${eventId}`, err instanceof Error ? err : undefined);
+      // Table may not exist yet during migration — allow processing
+      logger.warn(`[webhook] Failed to claim event ${eventId}, allowing processing`, err instanceof Error ? err : undefined);
+      return true;
     }
   }
 
@@ -69,19 +57,21 @@ export class WebhookHandlers {
     // Verify signature cryptographically
     const event = await WebhookHandlers.verifyAndParseEvent(payload, signature);
 
-    // Idempotency: skip already-processed events
-    if (await WebhookHandlers.isDuplicate(event.id)) {
+    // Idempotency: atomically claim the event before processing (DEFECT-0006).
+    // INSERT ... ON CONFLICT DO NOTHING RETURNING id ensures only one instance
+    // processes each event, even under concurrent webhook delivery.
+    const claimed = await WebhookHandlers.claimEvent(event.id, event.type);
+    if (!claimed) {
       logger.info(`[webhook] Skipping duplicate event: ${event.id} (${event.type})`);
       return;
     }
 
-    // Dispatch and always mark processed to prevent infinite Stripe retries
+    // Event claimed — dispatch. Errors are logged but don't re-throw,
+    // preventing infinite Stripe retries on unrecoverable failures.
     try {
       await WebhookHandlers.dispatchEvent(event);
     } catch (err: any) {
       logger.error(`[webhook] Unrecoverable error processing ${event.type} (${event.id})`, err);
-    } finally {
-      await WebhookHandlers.markProcessed(event.id, event.type);
     }
   }
 
@@ -99,7 +89,6 @@ export class WebhookHandlers {
       // is updated even if customer.subscription.updated fires before we process it.
       if (session.mode === 'subscription' && session.subscription) {
         await WebhookHandlers.processSubscriptionCheckoutCompleted(session);
-        await WebhookHandlers.markProcessed(event.id, event.type);
         return;
       }
       return;
@@ -122,7 +111,6 @@ export class WebhookHandlers {
     if (event.type === 'customer.subscription.created') {
       const subscription = event.data.object as Stripe.Subscription;
       await WebhookHandlers.processSubscriptionUpdated(subscription);
-      await WebhookHandlers.markProcessed(event.id, event.type);
       return;
     }
 
@@ -133,21 +121,18 @@ export class WebhookHandlers {
     if (event.type === 'customer.subscription.paused') {
       const subscription = event.data.object as Stripe.Subscription;
       await WebhookHandlers.processSubscriptionPaused(subscription);
-      await WebhookHandlers.markProcessed(event.id, event.type);
       return;
     }
 
     if (event.type === 'customer.subscription.resumed') {
       const subscription = event.data.object as Stripe.Subscription;
       await WebhookHandlers.processSubscriptionResumed(subscription);
-      await WebhookHandlers.markProcessed(event.id, event.type);
       return;
     }
 
     if (event.type === 'invoice.paid') {
       const invoice = event.data.object as Stripe.Invoice;
       await WebhookHandlers.processInvoicePaid(invoice);
-      await WebhookHandlers.markProcessed(event.id, event.type);
       return;
     }
 
@@ -155,9 +140,17 @@ export class WebhookHandlers {
       return WebhookHandlers.processTrialWillEnd(event.data.object as Stripe.Subscription);
     }
 
+    if (
+      event.type === 'charge.dispute.created' ||
+      event.type === 'charge.dispute.updated' ||
+      event.type === 'charge.dispute.closed'
+    ) {
+      await WebhookHandlers.processChargeDispute(event.type, event.data.object as Stripe.Dispute);
+      return;
+    }
+
     // Unhandled event type — log and acknowledge
     logger.info(`[webhook] Unhandled Stripe event type: ${event.type}`);
-    await WebhookHandlers.markProcessed(event.id, event.type);
   }
 
   /**
@@ -709,6 +702,51 @@ export class WebhookHandlers {
     } catch (err) {
       logger.error('Error processing borrower portal payment', err instanceof Error ? err : undefined);
       throw err;
+    }
+  }
+
+  /**
+   * Handle charge dispute events (created, updated, closed).
+   * Logs dispute details and creates a system alert for the founder.
+   */
+  static async processChargeDispute(eventType: string, dispute: Stripe.Dispute): Promise<void> {
+    try {
+      const amount = dispute.amount ? (dispute.amount / 100).toFixed(2) : 'unknown';
+      const reason = dispute.reason || 'unknown';
+      const status = dispute.status || 'unknown';
+      const chargeId = typeof dispute.charge === 'string' ? dispute.charge : dispute.charge?.id || 'unknown';
+
+      logger.warn(`[webhook] Charge dispute ${eventType}: dispute=${dispute.id}, charge=${chargeId}, amount=$${amount}, reason=${reason}, status=${status}`);
+
+      const severityMap: Record<string, 'critical' | 'warning' | 'info'> = {
+        'charge.dispute.created': 'critical',
+        'charge.dispute.updated': 'warning',
+        'charge.dispute.closed': 'info',
+      };
+
+      const titleMap: Record<string, string> = {
+        'charge.dispute.created': `New charge dispute: $${amount}`,
+        'charge.dispute.updated': `Charge dispute updated: $${amount}`,
+        'charge.dispute.closed': `Charge dispute closed: $${amount}`,
+      };
+
+      await storage.createSystemAlert({
+        organizationId: null as any, // Platform-wide alert for founder
+        type: 'charge_dispute',
+        severity: severityMap[eventType] || 'warning',
+        title: titleMap[eventType] || `Charge dispute event: ${eventType}`,
+        message: `Dispute ${dispute.id} on charge ${chargeId} for $${amount}. Reason: ${reason}. Status: ${status}.`,
+        metadata: {
+          disputeId: dispute.id,
+          chargeId,
+          amount: dispute.amount,
+          reason,
+          status,
+          eventType,
+        },
+      });
+    } catch (err) {
+      logger.error(`Error processing charge dispute event (${eventType})`, err instanceof Error ? err : undefined);
     }
   }
 }

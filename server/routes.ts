@@ -1298,34 +1298,41 @@ export async function registerRoutes(
     }
   });
 
-  // Sovereign Company Protocol routes — ALL require authentication + founder check
-  // Previously these had ZERO auth middleware (P0 security finding SEC-001/BE-01)
+  // Sovereign Company Protocol routes — ALL require authentication + org context
+  // DEFECT-0001: Previously used Router() with `as any` casting which silently
+  // bypassed auth middleware. Now each path prefix explicitly enforces auth.
   {
-    // Create a sub-app that enforces auth on all SCP routes
-    const scpApp = express.Router();
-    scpApp.use(isAuthenticated);
-    scpApp.use(getOrCreateOrg);
+    // Apply auth middleware to every SCP path prefix
+    app.use('/api/founder/v6', isAuthenticated, getOrCreateOrg);
+    app.use('/api/founder/v7', isAuthenticated, getOrCreateOrg);
+    app.use('/api/founder/v8', isAuthenticated, getOrCreateOrg);
+    app.use('/api/founder/v10', isAuthenticated, getOrCreateOrg);
+    app.use('/api/founder/v11', isAuthenticated, getOrCreateOrg);
+    app.use('/api/founder/v12', isAuthenticated, getOrCreateOrg);
+    app.use('/api/founder/v13', isAuthenticated, getOrCreateOrg);
+    app.use('/api/founder/v14', isAuthenticated, getOrCreateOrg);
+    app.use('/api/founder/job-health', isAuthenticated, getOrCreateOrg);
+    app.use('/api/founder/agent-collaboration', isAuthenticated, getOrCreateOrg);
+    app.use('/api/notifications', isAuthenticated, getOrCreateOrg);
 
     const { registerFounderV6Routes } = await import("./routes-founder-v6");
-    registerFounderV6Routes(scpApp as any);
+    registerFounderV6Routes(app);
     const { registerFounderV7Routes } = await import("./routes-founder-v7");
-    registerFounderV7Routes(scpApp as any);
+    registerFounderV7Routes(app);
     const { registerFounderV8Routes } = await import("./routes-founder-v8");
-    registerFounderV8Routes(scpApp as any);
+    registerFounderV8Routes(app);
     const { registerFounderV10Routes } = await import("./routes-founder-v10");
-    registerFounderV10Routes(scpApp as any);
+    registerFounderV10Routes(app);
     const { registerFounderV11Routes } = await import("./routes-founder-v11");
-    registerFounderV11Routes(scpApp as any);
+    registerFounderV11Routes(app);
     const { registerFounderV12Routes } = await import("./routes-founder-v12");
-    registerFounderV12Routes(scpApp as any);
+    registerFounderV12Routes(app);
     const { registerFounderV13Routes } = await import("./routes-founder-v13");
-    registerFounderV13Routes(scpApp as any);
+    registerFounderV13Routes(app);
     const { registerFounderV14Routes } = await import("./routes-founder-v14");
-    registerFounderV14Routes(scpApp as any);
+    registerFounderV14Routes(app);
     const { registerSovereignIntegrationRoutes } = await import("./routes-sovereign-integration");
-    registerSovereignIntegrationRoutes(scpApp as any);
-
-    app.use(scpApp);
+    registerSovereignIntegrationRoutes(app);
   }
 
   // Executive Revenue Dashboard — Founder-only aggregate metrics

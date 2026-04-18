@@ -13,5 +13,11 @@ ALTER TABLE users DROP COLUMN IF EXISTS oauth_provider_id;
 DROP TABLE IF EXISTS password_reset_tokens;
 DROP TABLE IF EXISTS sessions;
 
--- Truncate users (starting fresh with Clerk — no existing users to migrate)
-TRUNCATE TABLE users CASCADE;
+-- Safety: Only truncate if no Clerk users exist yet (prevents data loss on re-run)
+-- Original migration truncated to start fresh with Clerk auth
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM users WHERE clerk_user_id IS NOT NULL LIMIT 1) THEN
+    TRUNCATE TABLE users CASCADE;
+  END IF;
+END $$;
