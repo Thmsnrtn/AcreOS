@@ -5,6 +5,7 @@ import { CreditPackId, stripeProcessedEvents } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import Stripe from 'stripe';
 import { logger } from './utils/logger';
+import { addMonths } from './utils/dateUtils';
 
 export class WebhookHandlers {
   /**
@@ -664,8 +665,7 @@ export class WebhookHandlers {
         );
       }
 
-      const nextPaymentDate = new Date(note.nextPaymentDate || new Date());
-      nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 1);
+      const nextPaymentDate = addMonths(new Date(note.nextPaymentDate || new Date()), 1);
 
       await storage.updateNote(note.id, {
         currentBalance: newBalance.toString(),

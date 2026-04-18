@@ -11,6 +11,7 @@ import {
 } from "@shared/schema";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { addMonths } from "./utils/dateUtils";
 
 const router = Router();
 
@@ -52,8 +53,7 @@ router.get("/benchmarks/:state/:propertyType", requireApiKey, async (req: Reques
   try {
     const { state, propertyType } = req.params;
     const { months = "12" } = req.query;
-    const since = new Date();
-    since.setMonth(since.getMonth() - parseInt(months as string));
+    const since = addMonths(new Date(), -parseInt(months as string));
 
     // Anonymized aggregate benchmark data from transactionTraining
     const benchmarks = await db.select({

@@ -32,6 +32,7 @@ import {
 import { eq, and, sql, desc, gte } from "drizzle-orm";
 import { createHash } from "crypto";
 import { logger } from "../utils/logger";
+import { addMonths } from "../utils/dateUtils";
 
 export const COUNTY_ASSESSOR_QUEUE_NAME = "county-assessor-ingest";
 
@@ -151,8 +152,7 @@ async function fetchAttomComparables(
   }
 
   try {
-    const cutoffDate = new Date();
-    cutoffDate.setMonth(cutoffDate.getMonth() - monthsBack);
+    const cutoffDate = addMonths(new Date(), -monthsBack);
     const dateStr = cutoffDate.toISOString().split("T")[0];
 
     const url = new URL("https://api.gateway.attomdata.com/propertyapi/v1.0.0/saleshistory/detail");

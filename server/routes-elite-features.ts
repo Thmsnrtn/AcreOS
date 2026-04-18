@@ -17,6 +17,7 @@ import type { Express, Request, Response } from "express";
 import { z } from "zod";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
+import { addMonths } from "./utils/dateUtils";
 
 // Services
 import * as propertyTaxService from "./services/propertyTaxService";
@@ -107,8 +108,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
 
       // Only advance next payment date for SCHEDULED payments
       if (paymentType === "scheduled" && note.nextPaymentDate) {
-        const nextDate = new Date(note.nextPaymentDate);
-        nextDate.setMonth(nextDate.getMonth() + 1);
+        const nextDate = addMonths(new Date(note.nextPaymentDate), 1);
         updateData.nextPaymentDate = nextDate;
       }
 

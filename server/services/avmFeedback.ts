@@ -15,6 +15,7 @@
 import { db } from "../db";
 import { valuationPredictions, deals, properties } from "@shared/schema";
 import { eq, and, gte, lte, sql, avg, count } from "drizzle-orm";
+import { addMonths } from "../utils/dateUtils";
 
 export interface AvmOutcomeInput {
   orgId: number;
@@ -78,8 +79,7 @@ export async function getAvmAccuracyReport(
   orgId: number | null, // null = platform-wide (founder view)
   months = 6
 ): Promise<AvmAccuracyReport[]> {
-  const fromDate = new Date();
-  fromDate.setMonth(fromDate.getMonth() - months);
+  const fromDate = addMonths(new Date(), -months);
 
   const orgFilter = orgId != null ? eq(valuationPredictions.organizationId, orgId) : sql`true`;
 

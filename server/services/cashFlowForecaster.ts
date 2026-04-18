@@ -13,6 +13,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, gte, lte, sql } from "drizzle-orm";
 import { getOpenAIClient } from "../utils/openaiClient";
+import { addMonths } from "../utils/dateUtils";
 
 type IncomeSource = "note_payment" | "interest" | "sale_proceeds" | "rent" | "lease";
 type ExpenseCategory = "taxes" | "insurance" | "maintenance" | "legal" | "marketing";
@@ -212,8 +213,7 @@ class CashFlowForecasterService {
       if (currentBalanceCents <= 0) break;
       const currentBalance = currentBalanceCents / 100;
 
-      const paymentDate = new Date(nextPaymentDate);
-      paymentDate.setMonth(paymentDate.getMonth() + i);
+      const paymentDate = addMonths(new Date(nextPaymentDate), i);
       const monthStr = paymentDate.toISOString().slice(0, 7);
 
       const interestPayment = Math.round(currentBalance * interestRate * 100) / 100;
@@ -259,8 +259,7 @@ class CashFlowForecasterService {
     if (property.status === "listed" && property.listPrice) {
       const listPrice = parseFloat(property.listPrice);
       const estimatedSaleMonth = 3;
-      const saleDate = new Date(today);
-      saleDate.setMonth(saleDate.getMonth() + estimatedSaleMonth);
+      const saleDate = addMonths(new Date(today), estimatedSaleMonth);
       
       projections.push({
         month: saleDate.toISOString().slice(0, 7),
@@ -277,8 +276,7 @@ class CashFlowForecasterService {
         const estimatedMonthlyRent = marketValue * 0.008;
         
         for (let i = 0; i < months; i++) {
-          const rentDate = new Date(today);
-          rentDate.setMonth(rentDate.getMonth() + i);
+          const rentDate = addMonths(new Date(today), i);
           
           projections.push({
             month: rentDate.toISOString().slice(0, 7),
@@ -319,8 +317,7 @@ class CashFlowForecasterService {
         const monthlyMaintenance = (assessedValue * 0.01) / 12;
 
         for (let i = 0; i < months; i++) {
-          const expenseDate = new Date(today);
-          expenseDate.setMonth(expenseDate.getMonth() + i);
+          const expenseDate = addMonths(new Date(today), i);
           const monthStr = expenseDate.toISOString().slice(0, 7);
 
           if (monthlyTax > 0) {
@@ -371,8 +368,7 @@ class CashFlowForecasterService {
         const serviceFee = note.serviceFee ? parseFloat(note.serviceFee) : 0;
         
         for (let i = 0; i < months; i++) {
-          const expenseDate = new Date(today);
-          expenseDate.setMonth(expenseDate.getMonth() + i);
+          const expenseDate = addMonths(new Date(today), i);
           const monthStr = expenseDate.toISOString().slice(0, 7);
 
           if (serviceFee > 0) {
@@ -908,8 +904,7 @@ Return valid JSON array with objects containing: type (string), message (string)
     organizationId: number,
     periodMonths: number
   ): Promise<ActualVsProjectedComparison> {
-    const cutoffDate = new Date();
-    cutoffDate.setMonth(cutoffDate.getMonth() - periodMonths);
+    const cutoffDate = addMonths(new Date(), -periodMonths);
 
     const historicalForecasts = await db
       .select()
@@ -929,8 +924,7 @@ Return valid JSON array with objects containing: type (string), message (string)
     for (const forecast of historicalForecasts) {
       if (!forecast.noteId) continue;
 
-      const forecastEndDate = new Date(forecast.forecastDate);
-      forecastEndDate.setMonth(forecastEndDate.getMonth() + (forecast.forecastPeriodMonths || 12));
+      const forecastEndDate = addMonths(new Date(forecast.forecastDate), forecast.forecastPeriodMonths || 12);
 
       if (forecastEndDate > new Date()) continue;
 

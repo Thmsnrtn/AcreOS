@@ -9,6 +9,7 @@ import {
   type InsertPriceTrend
 } from "@shared/schema";
 import { eq, and, gte, desc, sql } from "drizzle-orm";
+import { addMonths } from "../utils/dateUtils";
 
 interface MarketPredictionParams {
   state: string;
@@ -147,8 +148,7 @@ export class MarketPredictionService {
    * Get historical price trends for analysis
    */
   private async getHistoricalTrends(state: string, county: string) {
-    const sixMonthsAgo = new Date();
-    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+    const sixMonthsAgo = addMonths(new Date(), -6);
     
     return await db.select()
       .from(priceTrends)

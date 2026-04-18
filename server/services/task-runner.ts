@@ -2,6 +2,7 @@ import { storage } from "../storage";
 import { workflowEngine } from "./workflow-engine";
 import type { ScheduledTask, InsertScheduledTask } from "@shared/schema";
 import { logger } from "../utils/logger";
+import { addMonths } from "../utils/dateUtils";
 
 const log = (msg: string, meta?: Record<string, any>) => 
   logger.info(JSON.stringify({ level: 'INFO', timestamp: new Date().toISOString(), source: 'task-runner', message: msg, ...meta }));
@@ -20,9 +21,7 @@ export function parseSchedule(schedule: string): Date {
     case "weekly":
       return new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
     case "monthly":
-      const nextMonth = new Date(now);
-      nextMonth.setMonth(nextMonth.getMonth() + 1);
-      return nextMonth;
+      return addMonths(new Date(now), 1);
     default:
       return parseCronExpression(schedule, now);
   }

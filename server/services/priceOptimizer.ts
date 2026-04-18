@@ -22,6 +22,7 @@ import { eq, and, desc, gte, sql, avg, count } from "drizzle-orm";
 import { getOpenAIClient } from "../utils/openaiClient";
 import { getComparableProperties, ComparableProperty, calculateMarketValue } from "./comps";
 import { logger } from "../utils/logger";
+import { addMonths } from "../utils/dateUtils";
 
 interface AdjustmentFactor {
   factor: number;
@@ -383,8 +384,7 @@ export class PriceOptimizerService {
       return [];
     }
 
-    const minSaleDate = new Date();
-    minSaleDate.setMonth(minSaleDate.getMonth() - monthsBack);
+    const minSaleDate = addMonths(new Date(), -monthsBack);
 
     const sizeAcres = property.sizeAcres ? parseFloat(property.sizeAcres) : 5;
     const minAcreage = sizeAcres * 0.5;

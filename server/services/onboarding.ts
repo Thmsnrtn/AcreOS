@@ -5,6 +5,7 @@ import { storage } from "../storage";
 import type { InsertLead, InsertProperty, InsertDeal } from "@shared/schema";
 import OpenAI from "openai";
 import { logger } from "../utils/logger";
+import { addMonths } from "../utils/dateUtils";
 
 function getOpenAIClient(): OpenAI | null {
   if (!process.env.OPENAI_API_KEY) {
@@ -1306,8 +1307,7 @@ Generate 3 helpful tips for this step.`,
     // Create sample notes (seller finance)
     if (createdProperties.length > 1 && createdLeads.length > 2) {
       const today = new Date();
-      const nextMonth = new Date(today);
-      nextMonth.setMonth(nextMonth.getMonth() + 1);
+      const nextMonth = addMonths(new Date(today), 1);
       const maturityDate = new Date(today);
       maturityDate.setFullYear(maturityDate.getFullYear() + 5);
 

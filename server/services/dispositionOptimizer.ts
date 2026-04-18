@@ -19,6 +19,7 @@ import { eq, and, desc, gte, inArray } from "drizzle-orm";
 import { getOpenAIClient } from "../utils/openaiClient";
 import { getComparableProperties, ComparableProperty } from "./comps";
 import { logger } from "../utils/logger";
+import { addMonths } from "../utils/dateUtils";
 
 type DispositionStrategy = "list_retail" | "sell_wholesale" | "owner_finance" | "auction" | "hold";
 type MarketingChannel = "mls" | "facebook" | "craigslist" | "landwatch" | "direct_mail" | "buyer_list";
@@ -670,8 +671,7 @@ export class DispositionOptimizerService {
       return [];
     }
 
-    const minSaleDate = new Date();
-    minSaleDate.setMonth(minSaleDate.getMonth() - monthsBack);
+    const minSaleDate = addMonths(new Date(), -monthsBack);
 
     const sizeAcres = property.sizeAcres ? parseFloat(property.sizeAcres) : 5;
     const minAcreage = sizeAcres * 0.5;

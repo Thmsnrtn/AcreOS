@@ -5,6 +5,7 @@ import {
   backgroundJobs,
 } from "@shared/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
+import { addMonths } from "../utils/dateUtils";
 
 type JobStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
 
@@ -402,7 +403,8 @@ export class ModelTrainingService {
     if (cronExpression.includes("weekly") || cronExpression.startsWith("0 0 * * 0")) {
       next.setDate(next.getDate() + 7);
     } else if (cronExpression.includes("monthly") || cronExpression.startsWith("0 0 1 ")) {
-      next.setMonth(next.getMonth() + 1);
+      const monthly = addMonths(next, 1);
+      next.setTime(monthly.getTime());
     } else {
       next.setDate(next.getDate() + 1);  // default: daily
     }

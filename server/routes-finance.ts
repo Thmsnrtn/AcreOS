@@ -13,6 +13,7 @@ import { financeAgentService } from "./services/financeAgent";
 import { exportNotesToCSV, type ExportFilters } from "./services/importExport";
 import { checkUsury } from "./services/usury";
 import { logger } from "./utils/logger";
+import { addMonths } from "./utils/dateUtils";
 
 // Zod schema for note updates — only user-editable fields are allowed.
 // Sensitive fields (organizationId, currentBalance, interestRate, accessToken,
@@ -385,8 +386,7 @@ export function registerFinanceRoutes(app: Express): void {
         const principalPayment = Math.min(monthlyPayment - interestPayment, balance);
         balance = Math.max(0, balance - principalPayment);
         
-        const dueDate = new Date(startDate);
-        dueDate.setMonth(dueDate.getMonth() + i);
+        const dueDate = addMonths(new Date(startDate), i);
         
         schedule.push({
           paymentNumber: i,
@@ -722,8 +722,7 @@ export function registerFinanceRoutes(app: Express): void {
 
       const monthlyBreakdown: { month: string; principal: number; interest: number }[] = [];
       const last12Months = Array.from({ length: 12 }, (_, i) => {
-        const d = new Date();
-        d.setMonth(d.getMonth() - (11 - i));
+        const d = addMonths(new Date(), -(11 - i));
         return { year: d.getFullYear(), month: d.getMonth() };
       });
 
