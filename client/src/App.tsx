@@ -541,134 +541,203 @@ function Router() {
         {() => <ProtectedRoute component={TeamKPIPage} />}
       </Route>
 
-        {/* Communications */}
-        <Route path="/inbox">{() => <ProtectedRoute component={InboxPage} />}</Route>
-        <Route path="/campaigns">{() => <ProtectedRoute component={CampaignsPage} />}</Route>
+      {/* Finance — additional */}
+      <Route path="/forecasting">
+        {() => <ProtectedRoute component={ForecastingPage} />}
+      </Route>
+      <Route path="/portfolio-health">
+        {() => <ProtectedRoute component={PortfolioHealthPage} />}
+      </Route>
+      <Route path="/portfolio-pnl">
+        {() => <ProtectedRoute component={PortfolioPnLPage} />}
+      </Route>
+      <Route path="/exchange-1031">
+        {() => <ProtectedRoute component={Exchange1031Page} />}
+      </Route>
+      <Route path="/tax-optimizer">
+        {() => <ProtectedRoute component={TaxOptimizerPage} />}
+      </Route>
+      <Route path="/tax-delinquent">
+        {() => <ProtectedRoute component={TaxDelinquentPage} />}
+      </Route>
+      <Route path="/bookkeeping">
+        {() => <ProtectedRoute component={BookkeepingPage} />}
+      </Route>
+      <Route path="/depreciation">
+        {() => <ProtectedRoute component={DepreciationCalculatorPage} />}
+      </Route>
+      <Route path="/closing-costs">
+        {() => <ProtectedRoute component={ClosingCostsPage} />}
+      </Route>
+      <Route path="/property-tax">
+        {() => <ProtectedRoute component={PropertyTaxPage} />}
+      </Route>
+      <Route path="/fee-dashboard">
+        {() => <FounderProtectedRoute component={FeeDashboardPage} />}
+      </Route>
 
-        {/* Finance */}
-        <Route path="/finance">{() => <ProtectedRoute component={FinancePage} />}</Route>
-        <Route path="/portfolio">{() => <ProtectedRoute component={PortfolioPage} />}</Route>
-        <Route path="/cash-flow">{() => <ProtectedRoute component={CashFlowPage} />}</Route>
-        <Route path="/forecasting">{() => <ProtectedRoute component={ForecastingPage} />}</Route>
-        <Route path="/capital-markets">{() => <ProtectedRoute component={CapitalMarketsPage} />}</Route>
-        <Route path="/portfolio-optimizer">{() => <ProtectedRoute component={PortfolioOptimizerPage} />}</Route>
-        <Route path="/portfolio-health">{() => <ProtectedRoute component={PortfolioHealthPage} />}</Route>
-        <Route path="/portfolio-pnl">{() => <ProtectedRoute component={PortfolioPnLPage} />}</Route>
-        <Route path="/exchange-1031">{() => <ProtectedRoute component={Exchange1031Page} />}</Route>
-        <Route path="/tax-optimizer">{() => <ProtectedRoute component={TaxOptimizerPage} />}</Route>
-        <Route path="/tax-delinquent">{() => <ProtectedRoute component={TaxDelinquentPage} />}</Route>
-        <Route path="/bookkeeping">{() => <ProtectedRoute component={BookkeepingPage} />}</Route>
-        <Route path="/depreciation">{() => <ProtectedRoute component={DepreciationCalculatorPage} />}</Route>
-        <Route path="/closing-costs">{() => <ProtectedRoute component={ClosingCostsPage} />}</Route>
-        <Route path="/property-tax">{() => <ProtectedRoute component={PropertyTaxPage} />}</Route>
-        <Route path="/fee-dashboard">{() => <FounderProtectedRoute component={FeeDashboardPage} />}</Route>
+      {/* AI / Intelligence — additional */}
+      <Route path="/avm-bulk">
+        {() => <FlaggedRoute route="/avm-bulk" component={AvmBulkPage} />}
+      </Route>
+      <Route path="/market-watchlist">
+        {() => <FlaggedRoute route="/market-watchlist" component={MarketWatchlistPage} />}
+      </Route>
+      <Route path="/price-optimizer">
+        {() => <FlaggedRoute route="/price-optimizer" component={PriceOptimizerPage} />}
+      </Route>
+      <Route path="/seller-intent">
+        {() => <FlaggedRoute route="/seller-intent" component={SellerIntentPage} />}
+      </Route>
+      <Route path="/deal-patterns">
+        {() => <FlaggedRoute route="/deal-patterns" component={DealPatternsPage} />}
+      </Route>
+      <Route path="/conscious-organization">
+        {() => <ProtectedRoute component={ConsciousOrganizationPage} />}
+      </Route>
+      <Route path="/anticipatory-enterprise">
+        {() => <ProtectedRoute component={AnticipatoryEnterprisePage} />}
+      </Route>
+      <Route path="/real-runtime">
+        {() => <ProtectedRoute component={RealRuntimePage} />}
+      </Route>
+      <Route path="/agent-command-center">
+        {() => <Redirect to="/ai#agents" />}
+      </Route>
 
-        {/* AI / Intelligence */}
-        <Route path="/analytics">{() => <ProtectedRoute component={AnalyticsPage} />}</Route>
-        <Route path="/avm">{() => <ProtectedRoute component={AVMPage} />}</Route>
-        <Route path="/avm-bulk">{() => <ProtectedRoute component={AvmBulkPage} />}</Route>
-        <Route path="/radar">{() => <ProtectedRoute component={AcquisitionRadarPage} />}</Route>
-        <Route path="/negotiation">{() => <ProtectedRoute component={NegotiationCopilotPage} />}</Route>
-        <Route path="/deal-hunter">{() => <ProtectedRoute component={DealHunterPage} />}</Route>
-        <Route path="/vision-ai">{() => <ProtectedRoute component={VisionAIPage} />}</Route>
-        <Route path="/land-credit">{() => <ProtectedRoute component={LandCreditPage} />}</Route>
-        <Route path="/market-intelligence">{() => <ProtectedRoute component={MarketIntelligencePage} />}</Route>
-        <Route path="/market-watchlist">{() => <ProtectedRoute component={MarketWatchlistPage} />}</Route>
-        <Route path="/price-optimizer">{() => <ProtectedRoute component={PriceOptimizerPage} />}</Route>
-        <Route path="/seller-intent">{() => <ProtectedRoute component={SellerIntentPage} />}</Route>
-        <Route path="/deal-patterns">{() => <ProtectedRoute component={DealPatternsPage} />}</Route>
-        <Route path="/document-intelligence">{() => <ProtectedRoute component={DocumentIntelligencePage} />}</Route>
-        <Route path="/tax-researcher">{() => <ProtectedRoute component={TaxResearcherPage} />}</Route>
-        <Route path="/command-center">{() => <Redirect to="/ai#chat" />}</Route>
-        <Route path="/conscious-organization">{() => <ProtectedRoute component={ConsciousOrganizationPage} />}</Route>
-        <Route path="/anticipatory-enterprise">{() => <ProtectedRoute component={AnticipatoryEnterprisePage} />}</Route>
-        <Route path="/real-runtime">{() => <ProtectedRoute component={RealRuntimePage} />}</Route>
-        <Route path="/agent-command-center">{() => <Redirect to="/ai#agents" />}</Route>
-        <Route path="/agents">{() => <Redirect to="/ai#agents" />}</Route>
-        <Route path="/ai-team">{() => <Redirect to="/ai#agents" />}</Route>
+      {/* Operations — additional */}
+      <Route path="/zoning">
+        {() => <ProtectedRoute component={ZoningLookupPage} />}
+      </Route>
+      <Route path="/title-search">
+        {() => <ProtectedRoute component={TitleSearchPage} />}
+      </Route>
+      <Route path="/property-enrichment">
+        {() => <ProtectedRoute component={PropertyEnrichmentPage} />}
+      </Route>
+      <Route path="/syndication">
+        {() => <ProtectedRoute component={SyndicationPage} />}
+      </Route>
+      <Route path="/syndication-status">
+        {() => <ProtectedRoute component={ListingSyndicationPage} />}
+      </Route>
 
-        {/* Operations */}
-        <Route path="/maps">{() => <ProtectedRoute component={MapsPage} />}</Route>
-        <Route path="/automation">{() => <ProtectedRoute component={AutomationPage} />}</Route>
-        <Route path="/workflows">{() => <ProtectedRoute component={WorkflowsPage} />}</Route>
-        <Route path="/tools">{() => <ProtectedRoute component={ToolsPage} />}</Route>
-        <Route path="/zoning">{() => <ProtectedRoute component={ZoningLookupPage} />}</Route>
-        <Route path="/title-search">{() => <ProtectedRoute component={TitleSearchPage} />}</Route>
-        <Route path="/property-enrichment">{() => <ProtectedRoute component={PropertyEnrichmentPage} />}</Route>
-        <Route path="/syndication">{() => <ProtectedRoute component={SyndicationPage} />}</Route>
-        <Route path="/syndication-status">{() => <ProtectedRoute component={ListingSyndicationPage} />}</Route>
+      {/* Team — additional */}
+      <Route path="/commissions">
+        {() => <ProtectedRoute component={CommissionsPage} />}
+      </Route>
+      <Route path="/team-leaderboard">
+        {() => <ProtectedRoute component={TeamLeaderboardPage} />}
+      </Route>
 
-        {/* Team */}
-        <Route path="/team-dashboard">{() => <ProtectedRoute component={TeamDashboardPage} />}</Route>
-        <Route path="/team">{() => <ProtectedRoute component={TeamInboxPage} />}</Route>
-        <Route path="/commissions">{() => <ProtectedRoute component={CommissionsPage} />}</Route>
-        <Route path="/team-leaderboard">{() => <ProtectedRoute component={TeamLeaderboardPage} />}</Route>
+      {/* Analytics / Reporting */}
+      <Route path="/kpis">
+        {() => <ProtectedRoute component={KPIDashboardPage} />}
+      </Route>
+      <Route path="/cohort-analysis">
+        {() => <ProtectedRoute component={CohortAnalysisPage} />}
+      </Route>
+      <Route path="/audit-log">
+        {() => <ProtectedRoute component={AuditLogPage} />}
+      </Route>
+      <Route path="/data-export">
+        {() => <ProtectedRoute component={DataExportPage} />}
+      </Route>
+      <Route path="/model-training">
+        {() => <ProtectedRoute component={ModelTrainingPage} />}
+      </Route>
+      <Route path="/investor-network">
+        {() => <ProtectedRoute component={InvestorDirectoryPage} />}
+      </Route>
+      <Route path="/regulatory-intel">
+        {() => <ProtectedRoute component={RegulatoryIntelPage} />}
+      </Route>
 
-        {/* Analytics / Reporting */}
-        <Route path="/kpis">{() => <ProtectedRoute component={KPIDashboardPage} />}</Route>
-        <Route path="/cohort-analysis">{() => <ProtectedRoute component={CohortAnalysisPage} />}</Route>
-        <Route path="/audit-log">{() => <ProtectedRoute component={AuditLogPage} />}</Route>
-        <Route path="/data-export">{() => <ProtectedRoute component={DataExportPage} />}</Route>
-        <Route path="/model-training">{() => <ProtectedRoute component={ModelTrainingPage} />}</Route>
-        <Route path="/investor-network">{() => <ProtectedRoute component={InvestorDirectoryPage} />}</Route>
-        <Route path="/regulatory-intel">{() => <ProtectedRoute component={RegulatoryIntelPage} />}</Route>
+      {/* Settings — additional */}
+      <Route path="/settings/privacy">
+        {() => <ProtectedRoute component={PrivacySettingsPage} />}
+      </Route>
+      <Route path="/usage">
+        {() => <ProtectedRoute component={UsageQuotaPage} />}
+      </Route>
+      <Route path="/goals">
+        {() => <ProtectedRoute component={GoalsPage} />}
+      </Route>
+      <Route path="/webhooks">
+        {() => <ProtectedRoute component={WebhooksPage} />}
+      </Route>
+      <Route path="/dodd-frank">
+        {() => <FlaggedRoute route="/dodd-frank" component={DoddFrankCheckerPage} />}
+      </Route>
+      <Route path="/state-documents">
+        {() => <ProtectedRoute component={StateDocumentsPage} />}
+      </Route>
+      <Route path="/dunning">
+        {() => <ProtectedRoute component={DunningManagerPage} />}
+      </Route>
+      <Route path="/freedom-meter">
+        {() => <ProtectedRoute component={FreedomMeterPage} />}
+      </Route>
+      <Route path="/blind-offer-wizard">
+        {() => <ProtectedRoute component={BlindOfferWizardPage} />}
+      </Route>
+      <Route path="/night-cap">
+        {() => <ProtectedRoute component={EveningReviewPage} />}
+      </Route>
+      <Route path="/evening-review">
+        {() => <ProtectedRoute component={EveningReviewPage} />}
+      </Route>
 
-        {/* Settings */}
-        <Route path="/settings">{() => <ProtectedRoute component={SettingsPage} />}</Route>
-        <Route path="/settings/email">{() => <ProtectedRoute component={EmailSettingsPage} />}</Route>
-        <Route path="/settings/mail">{() => <ProtectedRoute component={MailSettingsPage} />}</Route>
-        <Route path="/settings/privacy">{() => <ProtectedRoute component={PrivacySettingsPage} />}</Route>
-        <Route path="/usage">{() => <ProtectedRoute component={UsageQuotaPage} />}</Route>
-        <Route path="/goals">{() => <ProtectedRoute component={GoalsPage} />}</Route>
-        <Route path="/webhooks">{() => <ProtectedRoute component={WebhooksPage} />}</Route>
-        <Route path="/compliance">{() => <ProtectedRoute component={CompliancePage} />}</Route>
-        <Route path="/dodd-frank">{() => <ProtectedRoute component={DoddFrankCheckerPage} />}</Route>
-        <Route path="/state-documents">{() => <ProtectedRoute component={StateDocumentsPage} />}</Route>
-        <Route path="/dunning">{() => <ProtectedRoute component={DunningManagerPage} />}</Route>
-        <Route path="/freedom-meter">{() => <ProtectedRoute component={FreedomMeterPage} />}</Route>
-        <Route path="/blind-offer-wizard">{() => <ProtectedRoute component={BlindOfferWizardPage} />}</Route>
-        <Route path="/night-cap">{() => <ProtectedRoute component={EveningReviewPage} />}</Route>
-        <Route path="/evening-review">{() => <ProtectedRoute component={EveningReviewPage} />}</Route>
+      {/* Founder / Admin — additional */}
+      <Route path="/founder/v13">
+        {() => <FounderProtectedRoute component={SovereignV13Page} />}
+      </Route>
+      <Route path="/founder/agents/:codename">
+        {() => <FounderProtectedRoute component={AgentDetailPage} />}
+      </Route>
+      <Route path="/admin/beta-analytics">
+        {() => <FounderProtectedRoute component={BetaAnalyticsPage} />}
+      </Route>
+      <Route path="/admin/queues">
+        {() => <FounderProtectedRoute component={QueueMonitorPage} />}
+      </Route>
+      <Route path="/admin/integrations-health">
+        {() => <FounderProtectedRoute component={IntegrationsHealthPage} />}
+      </Route>
+      <Route path="/admin/monitor">
+        {() => <ProtectedRoute component={ProactiveMonitorPage} />}
+      </Route>
+      <Route path="/reseller">
+        {() => <FounderProtectedRoute component={ResellerDashboardPage} />}
+      </Route>
+      <Route path="/data-moat">
+        {() => <FounderProtectedRoute component={DataMoatDashboardPage} />}
+      </Route>
 
-        {/* Support */}
-        <Route path="/help">{() => <ProtectedRoute component={HelpPage} />}</Route>
-        <Route path="/support">{() => <ProtectedRoute component={SupportPage} />}</Route>
-        <Route path="/admin/support">{() => <ProtectedRoute component={AdminSupportPage} />}</Route>
+      {/* Sovereign Protocol — Phase A Visibility Layer */}
+      <Route path="/sovereign">
+        {() => <FounderProtectedRoute component={SovereignDashboardPage} />}
+      </Route>
+      <Route path="/board-of-directors">
+        {() => <FounderProtectedRoute component={BoardOfDirectorsPage} />}
+      </Route>
+      <Route path="/agent-performance">
+        {() => <FounderProtectedRoute component={AgentPerformancePage} />}
+      </Route>
+      <Route path="/memory-browser">
+        {() => <FounderProtectedRoute component={MemoryBrowserPage} />}
+      </Route>
+      <Route path="/event-log">
+        {() => <FounderProtectedRoute component={EventLogPage} />}
+      </Route>
+      <Route path="/job-health">
+        {() => <FounderProtectedRoute component={JobHealthPage} />}
+      </Route>
+      <Route path="/agent-collaboration">
+        {() => <FounderProtectedRoute component={AgentCollaborationPage} />}
+      </Route>
 
-        {/* Founder / Admin */}
-        <Route path="/founder-home">{() => <FounderProtectedRoute component={FounderHomePage} />}</Route>
-        <Route path="/founder">{() => <Redirect to="/founder-home" />}</Route>
-        <Route path="/founder/v13">{() => <FounderProtectedRoute component={SovereignV13Page} />}</Route>
-        <Route path="/founder/agents/:codename">{() => <FounderProtectedRoute component={AgentDetailPage} />}</Route>
-        <Route path="/founder/ai-observatory">{() => <FounderProtectedRoute component={FounderAiObservatory} />}</Route>
-        <Route path="/founder/feature-flags">{() => <FounderProtectedRoute component={FounderFeatureFlags} />}</Route>
-        <Route path="/founder/agents">{() => <FounderProtectedRoute component={FounderAgentsPage} />}</Route>
-        <Route path="/founder/daily-digest">{() => <FounderProtectedRoute component={FounderDailyDigestPage} />}</Route>
-        <Route path="/executive-dashboard">{() => <FounderProtectedRoute component={ExecutiveDashboardPage} />}</Route>
-        <Route path="/admin/beta">{() => <FounderProtectedRoute component={BetaDashboardPage} />}</Route>
-        <Route path="/admin/beta-analytics">{() => <FounderProtectedRoute component={BetaAnalyticsPage} />}</Route>
-        <Route path="/admin/safety-gates">{() => <FounderProtectedRoute component={SafetyGatesPage} />}</Route>
-        <Route path="/admin/decisions">{() => <FounderProtectedRoute component={DecisionQueuePage} />}</Route>
-        <Route path="/admin/ops">{() => <FounderProtectedRoute component={OpsDashboardPage} />}</Route>
-        <Route path="/admin/beta-intake">{() => <FounderProtectedRoute component={BetaIntakePage} />}</Route>
-        <Route path="/admin/queues">{() => <FounderProtectedRoute component={QueueMonitorPage} />}</Route>
-        <Route path="/admin/integrations-health">{() => <FounderProtectedRoute component={IntegrationsHealthPage} />}</Route>
-        <Route path="/admin/monitor">{() => <ProtectedRoute component={ProactiveMonitorPage} />}</Route>
-        <Route path="/reseller">{() => <FounderProtectedRoute component={ResellerDashboardPage} />}</Route>
-        <Route path="/data-moat">{() => <FounderProtectedRoute component={DataMoatDashboardPage} />}</Route>
-        <Route path="/deal-underwriting">{() => <ProtectedRoute component={DealUnderwritingPage} />}</Route>
-        <Route path="/team-kpi">{() => <ProtectedRoute component={TeamKPIPage} />}</Route>
-
-        {/* Sovereign Protocol — Phase A Visibility Layer */}
-        <Route path="/sovereign">{() => <FounderProtectedRoute component={SovereignDashboardPage} />}</Route>
-        <Route path="/board-of-directors">{() => <FounderProtectedRoute component={BoardOfDirectorsPage} />}</Route>
-        <Route path="/agent-performance">{() => <FounderProtectedRoute component={AgentPerformancePage} />}</Route>
-        <Route path="/memory-browser">{() => <FounderProtectedRoute component={MemoryBrowserPage} />}</Route>
-        <Route path="/event-log">{() => <FounderProtectedRoute component={EventLogPage} />}</Route>
-        <Route path="/job-health">{() => <FounderProtectedRoute component={JobHealthPage} />}</Route>
-        <Route path="/agent-collaboration">{() => <FounderProtectedRoute component={AgentCollaborationPage} />}</Route>
-
-        <Route component={NotFound} />
+      <Route component={NotFound} />
       </Switch>
     </React.Suspense>
   );
