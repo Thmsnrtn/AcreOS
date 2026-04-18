@@ -686,6 +686,7 @@ function PageWrapper({ children }: { children: React.ReactNode }) {
         animate="animate"
         exit="exit"
         className="min-h-screen"
+        id="main-content"
       >
         {children}
       </motion.div>
