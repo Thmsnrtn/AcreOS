@@ -10,7 +10,9 @@ function getStripeClient(): Stripe | null {
   if (!isStripeConfigured()) {
     return null;
   }
-  return new Stripe(process.env.STRIPE_SECRET_KEY!);
+  return new Stripe(process.env.STRIPE_SECRET_KEY!, {
+    maxNetworkRetries: 3,
+  });
 }
 
 export interface StripeConnectStatus {

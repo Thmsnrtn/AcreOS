@@ -17,7 +17,9 @@ function getPublishableKey(): string {
 }
 
 export async function getUncachableStripeClient() {
-  return new Stripe(getSecretKey());
+  return new Stripe(getSecretKey(), {
+    maxNetworkRetries: 3,
+  });
 }
 
 export async function getStripePublishableKey() {
