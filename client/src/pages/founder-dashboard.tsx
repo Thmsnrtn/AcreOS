@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation } from "wouter";
+import { useAuth } from "@/hooks/use-auth";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -483,6 +484,8 @@ function SwipeDecisionsSection() {
 }
 
 function GreetingHeader({ onRefresh, onGenerateDigest, digestPending, onShowShortcuts, onOpenSetup, lastRefreshed }: GreetingHeaderProps) {
+  const { user: authUser } = useAuth();
+  const founderName = authUser?.firstName || "Founder";
   const { data: pulseData } = useQuery<{ pulseStatus: { allClear: boolean; revenueHealth: { green: boolean }; systemHealth: { green: boolean }; churnRisk: { green: boolean } } }>({
     queryKey: ["/api/founder/intelligence/pulse"],
     staleTime: 30000,
@@ -528,7 +531,7 @@ function GreetingHeader({ onRefresh, onGenerateDigest, digestPending, onShowShor
           <div className="flex items-center gap-2">
             <Crown className="h-5 w-5 text-amber-500" />
             <h1 className="text-xl font-bold tracking-tight text-foreground" data-testid="text-founder-dashboard-title">
-              {greeting}, Thomas
+              {greeting}, {founderName}
             </h1>
           </div>
           <div className="flex items-center gap-3">
@@ -6758,6 +6761,8 @@ const MOOD_STYLES: Record<string, { bg: string; border: string; text: string; do
 function CompanyBriefingPanel() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { user: authUser } = useAuth();
+  const founderName = authUser?.firstName || "Founder";
 
   const { data: briefing, isLoading, refetch } = useQuery({
     queryKey: ["/api/founder/intelligence/company-briefing"],
@@ -6823,7 +6828,7 @@ function CompanyBriefingPanel() {
       <div className="flex items-start justify-between">
         <div>
           <h2 className="text-xl font-semibold text-foreground">
-            {greeting}, Thomas. Here's your company.
+            {greeting}, {founderName}. Here's your company.
           </h2>
           <p className="text-sm text-muted-foreground mt-1">
             Generated {briefing.generatedAt ? formatDistanceToNow(new Date(briefing.generatedAt), { addSuffix: true }) : "just now"}
