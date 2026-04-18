@@ -117,6 +117,8 @@ import { activityLogger } from "./services/activityLogger";
 import { insertTaskSchema } from "@shared/schema";
 // F-A04-1: Prompt injection guard
 import { promptInjectionMiddleware } from "./middleware/promptInjection";
+// SEC-004: CSRF protection for state-changing requests
+import { csrfProtection } from "./middleware/csrf";
 // F-A07-1: 2FA enforcement for admin routes
 import { require2FA } from "./middleware/require2FA";
 
@@ -592,6 +594,12 @@ export async function registerRoutes(
   app.use("/api/founder/v12", promptInjectionMiddleware);
   app.use("/api/founder/v13", promptInjectionMiddleware);
   app.use("/api/founder/agent-collaboration", promptInjectionMiddleware);
+
+  // ============================================
+  // SEC-004: CSRF protection for state-changing requests
+  // Skips GET/HEAD/OPTIONS, webhooks, and Bearer-token API clients
+  // ============================================
+  app.use("/api", csrfProtection);
 
   // ============================================
   // RATE LIMITING MIDDLEWARE (excludes health check)

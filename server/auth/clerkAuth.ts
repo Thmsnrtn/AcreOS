@@ -35,8 +35,9 @@ async function hydrateUser(req: any, res: any, next: any) {
         verifier.update(headerB64 + "." + payloadB64);
         const isValid = verifier.verify(process.env.CLERK_JWT_KEY, sigB64, "base64url");
 
-        // Accept tokens up to 5 minutes past expiry to handle Clerk session refresh lag
-        const GRACE_PERIOD_MS = 5 * 60 * 1000;
+        // Accept tokens up to 30 seconds past expiry to handle Clerk session refresh lag
+        // SEC-005: reduced from 5 min — 30s is sufficient for normal clock skew
+        const GRACE_PERIOD_MS = 30 * 1000;
         if (isValid && payload.sub && payload.exp * 1000 > Date.now() - GRACE_PERIOD_MS) {
           userId = payload.sub;
         }

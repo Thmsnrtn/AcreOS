@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import express from "express";
 import { storage, db } from "./storage";
-import { SUBSCRIPTION_TIERS, cancellationSurveys, refundRequests } from "@shared/schema";
+import { SUBSCRIPTION_TIERS, cancellationSurveys, refundRequests, stripeProcessedEvents } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
@@ -637,7 +637,7 @@ export function registerBillingRoutes(app: Express): void {
     try {
       const { stripeConnectService } = await import("./services/stripeConnect");
       const Stripe = require("stripe").default;
-      
+
       const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
       const sig = req.headers["stripe-signature"] as string;
       // Connect webhooks use a separate endpoint secret from standard webhooks
@@ -647,14 +647,14 @@ export function registerBillingRoutes(app: Express): void {
         logger.warn("Stripe Connect webhook secret not configured (set STRIPE_CONNECT_WEBHOOK_SECRET)", {});
         return Errors.badRequest(res, "Webhook secret not configured");
       }
-      
+
       if (!sig) {
         logger.warn("Missing Stripe signature header", {});
         return Errors.badRequest(res, "Missing Stripe signature");
       }
-      
+
       let event: any;
-      
+
       try {
         // req.body is a Buffer (express.raw middleware) — pass it directly.
         // Never JSON.stringify a Buffer before constructEvent or signature verification will fail.
@@ -663,23 +663,50 @@ export function registerBillingRoutes(app: Express): void {
         logger.error("Webhook signature verification failed", { error: err.message });
         return Errors.badRequest(res, `Webhook Error: ${err.message}`);
       }
-      
-      logger.info("Stripe webhook event received", {
+
+      logger.info("Stripe Connect webhook event received", {
         eventType: event.type,
         eventId: event.id,
         timestamp: event.created,
       });
-      
-      await stripeConnectService.handleWebhookEvent(event);
-      
-      logger.info("Stripe webhook event processed", {
+
+      // Idempotency: skip already-processed events (P1-4 fix)
+      try {
+        const [existing] = await db
+          .select({ id: stripeProcessedEvents.id })
+          .from(stripeProcessedEvents)
+          .where(eq(stripeProcessedEvents.stripeEventId, event.id))
+          .limit(1);
+        if (existing) {
+          logger.info(`[connect-webhook] Skipping duplicate event: ${event.id} (${event.type})`);
+          return res.status(200).json({ received: true, duplicate: true });
+        }
+      } catch {
+        // Table may not exist yet during migration — allow processing
+      }
+
+      try {
+        await stripeConnectService.handleWebhookEvent(event);
+      } finally {
+        // Always mark processed to prevent infinite Stripe retries
+        try {
+          await db.insert(stripeProcessedEvents).values({
+            stripeEventId: event.id,
+            eventType: event.type,
+          }).onConflictDoNothing();
+        } catch (markErr) {
+          logger.warn(`[connect-webhook] Failed to record processed event ${event.id}`, markErr instanceof Error ? markErr : undefined);
+        }
+      }
+
+      logger.info("Stripe Connect webhook event processed", {
         eventType: event.type,
         eventId: event.id,
       });
-      
+
       res.status(200).json({ received: true });
     } catch (err: any) {
-      logger.error("Stripe webhook processing error", {
+      logger.error("Stripe Connect webhook processing error", {
         error: err.message,
         stack: err.stack,
       });
