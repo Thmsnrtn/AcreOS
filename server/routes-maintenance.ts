@@ -28,7 +28,7 @@ export function registerMaintenanceRoutes(app: Express): void {
         : sql`WHERE organization_id = ${org.id}`;
 
       const result = await db.execute(
-        sql`SELECT * FROM maintenance_requests ${whereClause} ORDER BY created_at DESC`
+        sql`SELECT * FROM maintenance_requests ${whereClause} ORDER BY created_at DESC LIMIT 2000`
       );
       res.json(result.rows || []);
     } catch (error) {

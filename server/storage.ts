@@ -1,4 +1,4 @@
-import { db } from "./db";
+import { db, withTransaction } from "./db";
 import { addMonths } from "./utils/dateUtils";
 export { db };
 import { eq, and, desc, asc, sql, count, sum, arrayContains, gte, lte, lt, or, inArray, ne, ilike, type SQL } from "drizzle-orm";
@@ -1267,7 +1267,8 @@ export class DatabaseStorage implements IStorage {
     }
     return await db.select().from(leads)
       .where(and(...conditions))
-      .orderBy(desc(leads.createdAt));
+      .orderBy(desc(leads.createdAt))
+      .limit(5000);
   }
 
   async getLeadsPaginated(orgId: number, options: PaginationOptions, filters?: { assignedTo?: number | null }): Promise<PaginatedResult<Lead>> {
@@ -1381,7 +1382,8 @@ export class DatabaseStorage implements IStorage {
         eq(leads.organizationId, orgId),
         sql`${leads.deletedAt} IS NOT NULL`
       ))
-      .orderBy(desc(leads.deletedAt));
+      .orderBy(desc(leads.deletedAt))
+      .limit(5000);
   }
   
   async restoreLeads(orgId: number, ids: number[]): Promise<number> {
@@ -1572,7 +1574,8 @@ export class DatabaseStorage implements IStorage {
     // Task 223: exclude soft-deleted properties from list queries
     return await db.select().from(properties)
       .where(and(eq(properties.organizationId, orgId), sql`${properties.status} != 'deleted'`))
-      .orderBy(desc(properties.createdAt));
+      .orderBy(desc(properties.createdAt))
+      .limit(5000);
   }
 
   async getPropertiesPaginated(orgId: number, options: PaginationOptions): Promise<PaginatedResult<Property>> {
@@ -1666,7 +1669,8 @@ export class DatabaseStorage implements IStorage {
     // Task 223: exclude soft-deleted deals from list queries
     return await db.select().from(deals)
       .where(and(eq(deals.organizationId, orgId), sql`${deals.status} != 'deleted'`))
-      .orderBy(desc(deals.createdAt));
+      .orderBy(desc(deals.createdAt))
+      .limit(5000);
   }
 
   async getDealsPaginated(orgId: number, options: PaginationOptions): Promise<PaginatedResult<Deal>> {
@@ -1830,30 +1834,50 @@ export class DatabaseStorage implements IStorage {
     if (noteId) {
       return await db.select().from(payments)
         .where(and(eq(payments.organizationId, orgId), eq(payments.noteId, noteId)))
-        .orderBy(desc(payments.paymentDate));
+        .orderBy(desc(payments.paymentDate))
+        .limit(2000);
     }
     return await db.select().from(payments)
       .where(eq(payments.organizationId, orgId))
-      .orderBy(desc(payments.paymentDate));
+      .orderBy(desc(payments.paymentDate))
+      .limit(5000);
   }
   
   async createPayment(payment: InsertPayment) {
-    const [newPayment] = await db.insert(payments).values(payment).returning();
-    
-    // Update note balance if payment completed
-    if (payment.status === "completed") {
-      const [note] = await db.select().from(notes).where(eq(notes.id, payment.noteId));
-      if (note) {
-        const newBalance = Number(note.currentBalance) - Number(payment.principalAmount);
-        await db.update(notes).set({
-          currentBalance: String(Math.max(0, newBalance)),
-          status: newBalance <= 0 ? "paid_off" : "active",
-          updatedAt: new Date(),
-        }).where(eq(notes.id, payment.noteId));
+    return withTransaction(async (tx) => {
+      // Insert payment — unique transactionId constraint prevents double-inserts
+      const [newPayment] = await tx.insert(payments).values(payment).returning();
+
+      // Update note balance inside the same transaction with optimistic locking
+      if (payment.status === "completed") {
+        // SELECT FOR UPDATE locks the row until transaction commits
+        const [note] = await tx
+          .select()
+          .from(notes)
+          .where(eq(notes.id, payment.noteId))
+          .for("update");
+
+        if (note) {
+          const newBalance = Number(note.currentBalance) - Number(payment.principalAmount);
+          const updated = await tx
+            .update(notes)
+            .set({
+              currentBalance: String(Math.max(0, newBalance)),
+              status: newBalance <= 0 ? "paid_off" : "active",
+              version: (note.version ?? 1) + 1,
+              updatedAt: new Date(),
+            })
+            .where(and(eq(notes.id, payment.noteId), eq(notes.version, note.version ?? 1)))
+            .returning();
+
+          if (updated.length === 0) {
+            throw new Error(`Optimistic lock conflict on note ${payment.noteId} — concurrent update detected`);
+          }
+        }
       }
-    }
-    
-    return newPayment;
+
+      return newPayment;
+    });
   }
   
   async updatePayment(id: number, updates: Partial<InsertPayment>) {
@@ -3235,7 +3259,8 @@ export class DatabaseStorage implements IStorage {
 
   async getAllOrganizations() {
     return await db.select().from(organizations)
-      .orderBy(desc(organizations.createdAt));
+      .orderBy(desc(organizations.createdAt))
+      .limit(10000);
   }
 
   async getAdminDashboardData() {
@@ -3243,8 +3268,8 @@ export class DatabaseStorage implements IStorage {
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    const allOrgs = await db.select().from(organizations);
-    const allTeamMembers = await db.select().from(teamMembers);
+    const allOrgs = await db.select().from(organizations).limit(10000);
+    const allTeamMembers = await db.select().from(teamMembers).limit(50000);
     
     const orgsByTier = allOrgs.reduce((acc, org) => {
       acc[org.subscriptionTier] = (acc[org.subscriptionTier] || 0) + 1;
@@ -6889,8 +6914,9 @@ Notary Public</p>
       lastActiveAt: organizations.lastActiveAt,
     })
     .from(organizations)
-    .orderBy(desc(organizations.createdAt));
-    
+    .orderBy(desc(organizations.createdAt))
+    .limit(10000);
+
     return orgs;
   }
 

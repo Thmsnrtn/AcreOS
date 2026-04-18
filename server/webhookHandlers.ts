@@ -639,6 +639,8 @@ export class WebhookHandlers {
         if (principalAmount < 0) principalAmount = 0;
       }
 
+      // Process payment + note update in a single transaction (see storage.createPayment)
+      // The transactional createPayment handles balance update with optimistic locking
       await storage.createPayment({
         organizationId: note.organizationId,
         noteId: note.id,
@@ -654,6 +656,7 @@ export class WebhookHandlers {
         status: 'completed',
       });
 
+      // Update schedule and next payment date (non-financial fields, safe outside payment tx)
       const newBalance = Math.max(0, Number(note.currentBalance) - principalAmount);
 
       let updatedSchedule = schedule;
@@ -668,10 +671,8 @@ export class WebhookHandlers {
       const nextPaymentDate = addMonths(new Date(note.nextPaymentDate || new Date()), 1);
 
       await storage.updateNote(note.id, {
-        currentBalance: newBalance.toString(),
         amortizationSchedule: updatedSchedule,
         nextPaymentDate: nextPaymentDate,
-        status: newBalance <= 0 ? 'paid_off' : 'active',
         pendingCheckoutSessionId: null, // Clear after successful payment
       });
 

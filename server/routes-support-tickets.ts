@@ -264,7 +264,7 @@ export function registerSupportTicketRoutes(app: Express): void {
       let query = db.select().from(knowledgeBaseArticles)
         .where(eq(knowledgeBaseArticles.isPublished, true));
       
-      const articles = await query.orderBy(desc(knowledgeBaseArticles.viewCount));
+      const articles = await query.orderBy(desc(knowledgeBaseArticles.viewCount)).limit(500);
       
       let filtered = articles;
       if (category) {

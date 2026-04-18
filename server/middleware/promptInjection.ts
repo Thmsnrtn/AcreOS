@@ -50,6 +50,24 @@ const INJECTION_PATTERNS: RegExp[] = [
   /developer\s+mode\s+(enabled|on|activated)/gi,
   /token\s+budget\s+exceeded/gi,
   /hypothetically\s+speaking,?\s+if\s+you\s+had\s+no\s+(restrictions|rules|guidelines)/gi,
+
+  // Markdown/XML injection for hidden instructions
+  /<!--.*(?:system|instruction|ignore|override).*-->/gis,
+  /```\s*(?:system|override|instruction)/gi,
+
+  // Indirect injection via data exfiltration
+  /(?:send|post|fetch|curl|wget|http)\s+(?:to|this|data|the\s+(?:above|conversation|context))/gi,
+  /!\[.*\]\(https?:\/\/[^)]*\?(?:.*=.*(?:prompt|instruction|context|conversation))/gi,
+
+  // Base64/encoding evasion
+  /(?:base64|atob|decode)\s*\(\s*['"](?:[A-Za-z0-9+/=]{20,})['"]\s*\)/gi,
+
+  // Continuation / multi-turn jailbreaks
+  /(?:from\s+now\s+on|going\s+forward|for\s+the\s+rest\s+of),?\s+(?:you\s+(?:are|will|must|should)|ignore|forget)/gi,
+  /new\s+session\s*[,:]\s*(?:you\s+are|ignore|forget|disregard)/gi,
+
+  // Tool/function abuse
+  /(?:call|execute|run|invoke)\s+(?:the\s+)?(?:function|tool|api)\s+(?:to\s+)?(?:delete|drop|remove|reset)/gi,
 ];
 
 const REDACTION_PLACEHOLDER = "[content removed by safety filter]";

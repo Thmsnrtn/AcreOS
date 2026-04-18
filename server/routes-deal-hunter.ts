@@ -14,7 +14,7 @@ const router = Router();
 
 router.get('/sources', async (req: Request, res: Response) => {
   try {
-    const sources = await db.select().from(dealSources);
+    const sources = await db.select().from(dealSources).limit(1000);
     res.json({ sources });
   } catch (error: any) {
     res.status(500).json({ error: error.message });

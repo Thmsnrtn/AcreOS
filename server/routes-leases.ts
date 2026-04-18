@@ -29,7 +29,7 @@ export function registerLeaseRoutes(app: Express): void {
       const org = req.organization;
       // Query leases table directly
       const result = await db.execute(
-        sql`SELECT * FROM leases WHERE organization_id = ${org.id} ORDER BY created_at DESC`
+        sql`SELECT * FROM leases WHERE organization_id = ${org.id} ORDER BY created_at DESC LIMIT 2000`
       );
       res.json(result.rows || []);
     } catch (error) {
@@ -43,7 +43,7 @@ export function registerLeaseRoutes(app: Express): void {
       const org = req.organization;
       const propertyId = Number(req.params.propertyId);
       const result = await db.execute(
-        sql`SELECT * FROM leases WHERE organization_id = ${org.id} AND property_id = ${propertyId} ORDER BY lease_end DESC`
+        sql`SELECT * FROM leases WHERE organization_id = ${org.id} AND property_id = ${propertyId} ORDER BY lease_end DESC LIMIT 500`
       );
       res.json(result.rows || []);
     } catch (error) {
