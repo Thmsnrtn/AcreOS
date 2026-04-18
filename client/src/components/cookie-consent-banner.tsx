@@ -9,6 +9,7 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
+import { initSentryAfterConsent } from "@/lib/sentry";
 
 const STORAGE_KEY = "acreos_cookie_consent";
 type ConsentStatus = "accepted" | "declined" | null;
@@ -24,6 +25,8 @@ export function CookieConsentBanner() {
   const accept = () => {
     localStorage.setItem(STORAGE_KEY, "accepted");
     setStatus("accepted");
+    // Now that the user has consented, initialize Sentry (session replay, etc.)
+    initSentryAfterConsent();
   };
 
   const decline = () => {
