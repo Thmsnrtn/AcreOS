@@ -9,6 +9,7 @@ import {
 } from "./comps";
 import { voiceLearningService, type VoiceProfile } from "./voiceLearning";
 import { logger } from "../utils/logger";
+import { validateAtlasOutput, AtlasOutputType } from "../ai/validators";
 
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
@@ -222,32 +223,73 @@ Provide exactly 3 offer strategies as JSON with this structure:
     const content = response.choices[0]?.message?.content || "{}";
     const parsed = JSON.parse(content);
 
+    // Validate each LLM-generated offer suggestion
+    const suggestions: OfferSuggestion[] = parsed.suggestions || [
+      {
+        strategyName: "Conservative Offer",
+        offerAmount: offerPrices.conservative.max,
+        confidence: 75,
+        reasoning: "Based on market comparables and property characteristics",
+        marketValuePercent: 50,
+      },
+      {
+        strategyName: "Standard Offer",
+        offerAmount: Math.round((offerPrices.standard.min + offerPrices.standard.max) / 2),
+        confidence: 65,
+        reasoning: "Balanced approach for typical market conditions",
+        marketValuePercent: 57,
+      },
+      {
+        strategyName: "Aggressive Offer",
+        offerAmount: offerPrices.aggressive.min,
+        confidence: 55,
+        reasoning: "Higher offer for competitive situations or high-value properties",
+        marketValuePercent: 65,
+      },
+    ];
+
+    const validatedSuggestions: OfferSuggestion[] = [];
+    for (const suggestion of suggestions) {
+      const validation = validateAtlasOutput(AtlasOutputType.OFFER_AMOUNT, {
+        amount: suggestion.offerAmount,
+        confidence: (suggestion.confidence || 0) / 100,
+        rationale: suggestion.reasoning,
+      });
+      if (validation.valid) {
+        validatedSuggestions.push(suggestion);
+      } else {
+        logger.warn("[generateOfferSuggestions] LLM offer suggestion failed validation", {
+          metadata: { strategy: suggestion.strategyName, amount: suggestion.offerAmount, errors: validation.errors },
+        });
+      }
+    }
+
+    if (validatedSuggestions.length === 0) {
+      logger.error("[generateOfferSuggestions] All LLM offer suggestions failed validation");
+      return {
+        success: false,
+        estimatedMarketValue,
+        suggestions: [],
+        marketAnalysis: {
+          averagePricePerAcre: marketAnalysis?.averagePricePerAcre || 0,
+          medianPricePerAcre: marketAnalysis?.medianPricePerAcre || 0,
+          comparablesCount: compsResult.comps.length,
+          marketTrend: parsed.marketTrend || "stable",
+        },
+        propertyScore: {
+          totalScore: desirabilityScore.totalScore,
+          grade: desirabilityScore.grade,
+          factors: desirabilityScore.factors,
+        },
+        aiReasoning: "",
+        error: "LLM-generated offer amounts failed validation checks. Please retry.",
+      };
+    }
+
     return {
       success: true,
       estimatedMarketValue,
-      suggestions: parsed.suggestions || [
-        {
-          strategyName: "Conservative Offer",
-          offerAmount: offerPrices.conservative.max,
-          confidence: 75,
-          reasoning: "Based on market comparables and property characteristics",
-          marketValuePercent: 50,
-        },
-        {
-          strategyName: "Standard Offer",
-          offerAmount: Math.round((offerPrices.standard.min + offerPrices.standard.max) / 2),
-          confidence: 65,
-          reasoning: "Balanced approach for typical market conditions",
-          marketValuePercent: 57,
-        },
-        {
-          strategyName: "Aggressive Offer",
-          offerAmount: offerPrices.aggressive.min,
-          confidence: 55,
-          reasoning: "Higher offer for competitive situations or high-value properties",
-          marketValuePercent: 65,
-        },
-      ],
+      suggestions: validatedSuggestions,
       marketAnalysis: {
         averagePricePerAcre: marketAnalysis?.averagePricePerAcre || 0,
         medianPricePerAcre: marketAnalysis?.medianPricePerAcre || 0,

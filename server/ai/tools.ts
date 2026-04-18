@@ -10,6 +10,7 @@ import { checkTcpaConsentFromLead } from "../services/tcpaCompliance";
 import { DataSourceBroker } from "../services/data-source-broker";
 import { propertyEnrichmentService } from "../services/propertyEnrichment";
 import { logger } from "../utils/logger";
+import { validateAtlasOutput, AtlasOutputType } from "./validators";
 
 // Tool parameter schemas (OpenAI function calling format)
 export const toolDefinitions = {
@@ -1036,32 +1037,48 @@ export async function executeTool(
         const { principal, annual_rate, term_months, down_payment = 0 } = args;
         const loanAmount = principal - down_payment;
         const monthlyRate = annual_rate / 100 / 12;
-        
+
+        let amortData: Record<string, number>;
         if (monthlyRate === 0) {
           const payment = loanAmount / term_months;
-          return { success: true, data: {
+          amortData = {
             loanAmount,
             monthlyPayment: Math.round(payment * 100) / 100,
             totalPayments: Math.round(loanAmount * 100) / 100,
             totalInterest: 0,
             effectiveRate: 0,
             termMonths: term_months
-          }};
+          };
+        } else {
+          const payment = loanAmount * (monthlyRate * Math.pow(1 + monthlyRate, term_months))
+                         / (Math.pow(1 + monthlyRate, term_months) - 1);
+          const totalPayments = payment * term_months;
+          const totalInterest = totalPayments - loanAmount;
+          amortData = {
+            loanAmount,
+            monthlyPayment: Math.round(payment * 100) / 100,
+            totalPayments: Math.round(totalPayments * 100) / 100,
+            totalInterest: Math.round(totalInterest * 100) / 100,
+            effectiveRate: annual_rate,
+            termMonths: term_months
+          };
         }
-        
-        const payment = loanAmount * (monthlyRate * Math.pow(1 + monthlyRate, term_months)) 
-                       / (Math.pow(1 + monthlyRate, term_months) - 1);
-        const totalPayments = payment * term_months;
-        const totalInterest = totalPayments - loanAmount;
-        
-        return { success: true, data: {
-          loanAmount,
-          monthlyPayment: Math.round(payment * 100) / 100,
-          totalPayments: Math.round(totalPayments * 100) / 100,
-          totalInterest: Math.round(totalInterest * 100) / 100,
-          effectiveRate: annual_rate,
-          termMonths: term_months
-        }};
+
+        const amortValidation = validateAtlasOutput(AtlasOutputType.AMORTIZATION_SCHEDULE, {
+          loanAmount: amortData.loanAmount,
+          interestRate: amortData.effectiveRate,
+          termMonths: amortData.termMonths,
+          monthlyPayment: amortData.monthlyPayment,
+        });
+        if (!amortValidation.valid) {
+          logger.warn("[calculate_amortization] Validation failed", { metadata: { errors: amortValidation.errors } });
+          return { success: false, error: `Amortization calculation failed validation: ${amortValidation.errors.join("; ")}` };
+        }
+        if (amortValidation.warnings.length > 0) {
+          logger.warn("[calculate_amortization] Validation warnings", { metadata: { warnings: amortValidation.warnings } });
+        }
+
+        return { success: true, data: amortData };
       }
       
       case "get_cashflow_summary": {
@@ -1069,12 +1086,28 @@ export async function executeTool(
         const activeNotes = notes.filter(n => n.status === "active");
         const monthlyCashflow = activeNotes.reduce((sum, n) => sum + Number(n.monthlyPayment || 0), 0);
         const totalBalance = activeNotes.reduce((sum, n) => sum + Number(n.currentBalance || 0), 0);
-        return { success: true, data: {
+        const cashflowData = {
           activeNotesCount: activeNotes.length,
           totalOutstandingBalance: Math.round(totalBalance * 100) / 100,
           monthlyCashflow: Math.round(monthlyCashflow * 100) / 100,
           annualCashflow: Math.round(monthlyCashflow * 12 * 100) / 100
-        }};
+        };
+
+        const cfValidation = validateAtlasOutput(AtlasOutputType.CASH_FLOW, {
+          monthlyIncome: cashflowData.monthlyCashflow,
+          monthlyExpenses: 0,
+          netMonthly: cashflowData.monthlyCashflow,
+          annualNOI: cashflowData.annualCashflow,
+        });
+        if (!cfValidation.valid) {
+          logger.warn("[get_cashflow_summary] Validation failed", { metadata: { errors: cfValidation.errors } });
+          return { success: false, error: `Cash flow summary failed validation: ${cfValidation.errors.join("; ")}` };
+        }
+        if (cfValidation.warnings.length > 0) {
+          logger.warn("[get_cashflow_summary] Validation warnings", { metadata: { warnings: cfValidation.warnings } });
+        }
+
+        return { success: true, data: cashflowData };
       }
       
       case "get_dashboard_stats": {
@@ -1459,10 +1492,25 @@ export async function executeTool(
         };
 
         const result = await generateOfferSuggestions(propertyData);
-        return { 
-          success: result.success, 
+        if (result.success && result.suggestions) {
+          for (const suggestion of result.suggestions) {
+            const offerValidation = validateAtlasOutput(AtlasOutputType.OFFER_AMOUNT, {
+              amount: suggestion.offerAmount,
+              confidence: (suggestion.confidence || 0) / 100, // normalize 0-100 to 0-1
+              rationale: suggestion.reasoning,
+            });
+            if (!offerValidation.valid) {
+              logger.warn("[generate_offer] Offer suggestion failed validation", {
+                metadata: { strategy: suggestion.strategyName, errors: offerValidation.errors },
+              });
+              return { success: false, error: `Offer suggestion "${suggestion.strategyName}" failed validation: ${offerValidation.errors.join("; ")}` };
+            }
+          }
+        }
+        return {
+          success: result.success,
           data: result.success ? result : undefined,
-          error: result.error 
+          error: result.error
         };
       }
 
@@ -1620,28 +1668,44 @@ export async function executeTool(
 
       case "calculate_roi": {
         const { purchase_price, estimated_sale_price, holding_costs = 0, improvement_costs = 0, holding_months = 6 } = args;
-        
+
         const totalInvestment = purchase_price + improvement_costs + (holding_costs * holding_months);
         const profit = estimated_sale_price - totalInvestment;
         const roi = (profit / totalInvestment) * 100;
         const annualizedRoi = (roi / holding_months) * 12;
         const cashOnCash = (profit / purchase_price) * 100;
 
-        return { 
-          success: true, 
-          data: {
-            purchasePrice: purchase_price,
-            estimatedSalePrice: estimated_sale_price,
-            totalInvestment: Math.round(totalInvestment * 100) / 100,
-            profit: Math.round(profit * 100) / 100,
-            roiPercent: Math.round(roi * 100) / 100,
-            annualizedRoiPercent: Math.round(annualizedRoi * 100) / 100,
-            cashOnCashPercent: Math.round(cashOnCash * 100) / 100,
-            holdingMonths: holding_months,
-            holdingCostsTotal: holding_costs * holding_months,
-            improvementCosts: improvement_costs,
-          }
+        const roiData = {
+          purchasePrice: purchase_price,
+          estimatedSalePrice: estimated_sale_price,
+          totalInvestment: Math.round(totalInvestment * 100) / 100,
+          profit: Math.round(profit * 100) / 100,
+          roiPercent: Math.round(roi * 100) / 100,
+          annualizedRoiPercent: Math.round(annualizedRoi * 100) / 100,
+          cashOnCashPercent: Math.round(cashOnCash * 100) / 100,
+          holdingMonths: holding_months,
+          holdingCostsTotal: holding_costs * holding_months,
+          improvementCosts: improvement_costs,
         };
+
+        const roiValidation = validateAtlasOutput(AtlasOutputType.ROI_ANALYSIS, {
+          purchasePrice: roiData.purchasePrice,
+          salePrice: roiData.estimatedSalePrice,
+          holdingCosts: roiData.holdingCostsTotal + roiData.improvementCosts,
+          grossProfit: roiData.estimatedSalePrice - roiData.purchasePrice,
+          netProfit: roiData.profit,
+          roiPercent: roiData.roiPercent,
+          annualizedRoi: roiData.annualizedRoiPercent,
+        });
+        if (!roiValidation.valid) {
+          logger.warn("[calculate_roi] Validation failed", { metadata: { errors: roiValidation.errors } });
+          return { success: false, error: `ROI calculation failed validation: ${roiValidation.errors.join("; ")}` };
+        }
+        if (roiValidation.warnings.length > 0) {
+          logger.warn("[calculate_roi] Validation warnings", { metadata: { warnings: roiValidation.warnings } });
+        }
+
+        return { success: true, data: roiData };
       }
 
       case "calculate_payment_schedule": {
@@ -1677,19 +1741,33 @@ export async function executeTool(
           });
         }
 
-        return { 
-          success: true, 
-          data: {
-            loanAmount: Math.round(loanAmount * 100) / 100,
-            downPayment: down_payment,
-            monthlyPayment: Math.round(monthlyPayment * 100) / 100,
-            totalPayments: Math.round(monthlyPayment * term_months * 100) / 100,
-            totalInterest: Math.round(totalInterest * 100) / 100,
-            interestRate: interest_rate,
-            termMonths: term_months,
-            firstYearSchedule: schedule,
-          }
+        const scheduleData = {
+          loanAmount: Math.round(loanAmount * 100) / 100,
+          downPayment: down_payment,
+          monthlyPayment: Math.round(monthlyPayment * 100) / 100,
+          totalPayments: Math.round(monthlyPayment * term_months * 100) / 100,
+          totalInterest: Math.round(totalInterest * 100) / 100,
+          interestRate: interest_rate,
+          termMonths: term_months,
+          firstYearSchedule: schedule,
         };
+
+        const scheduleValidation = validateAtlasOutput(AtlasOutputType.AMORTIZATION_SCHEDULE, {
+          loanAmount: scheduleData.loanAmount,
+          interestRate: scheduleData.interestRate,
+          termMonths: scheduleData.termMonths,
+          monthlyPayment: scheduleData.monthlyPayment,
+          schedule: scheduleData.firstYearSchedule,
+        });
+        if (!scheduleValidation.valid) {
+          logger.warn("[calculate_payment_schedule] Validation failed", { metadata: { errors: scheduleValidation.errors } });
+          return { success: false, error: `Payment schedule failed validation: ${scheduleValidation.errors.join("; ")}` };
+        }
+        if (scheduleValidation.warnings.length > 0) {
+          logger.warn("[calculate_payment_schedule] Validation warnings", { metadata: { warnings: scheduleValidation.warnings } });
+        }
+
+        return { success: true, data: scheduleData };
       }
 
       case "research_property": {
@@ -1811,6 +1889,15 @@ export async function executeTool(
         if (!deal) return { success: false, error: "Deal not found" };
         const property = await storage.getProperty(org.id, deal.propertyId);
         if (!property) return { success: false, error: "Property not found for this deal" };
+
+        // Validate the offer amount before drafting
+        const draftOfferValidation = validateAtlasOutput(AtlasOutputType.OFFER_AMOUNT, {
+          amount: args.offerAmount,
+        });
+        if (!draftOfferValidation.valid) {
+          logger.warn("[draft_offer] Offer amount validation failed", { metadata: { errors: draftOfferValidation.errors, dealId: deal.id } });
+          return { success: false, error: `Offer amount validation failed: ${draftOfferValidation.errors.join("; ")}` };
+        }
 
         const closingDays = args.closingDays || 30;
         const contingencies: string[] = args.contingencies || ["title_clear", "financing"];
