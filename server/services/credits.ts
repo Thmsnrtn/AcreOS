@@ -414,16 +414,31 @@ export class UsageMeteringService {
     const tier = (org.subscriptionTier || 'free') as SubscriptionTier;
     const tierInfo = SUBSCRIPTION_TIERS[tier];
     const monthlyCredits = tierInfo?.limits?.monthlyCredits || 0;
-    
+
     if (!tierInfo || monthlyCredits <= 0) {
       return null;
     }
 
-    // Add monthly allowance (use db directly to avoid circular reference)
+    // Idempotency: check if allowance was already applied this month
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    const existing = await db.query.creditTransactions.findFirst({
+      where: and(
+        eq(creditTransactions.organizationId, organizationId),
+        eq(creditTransactions.type, 'allowance' as any),
+        sql`${creditTransactions.metadata}->>'month' = ${currentMonth}`,
+      ),
+    });
+
+    if (existing) {
+      logger.info(`Monthly allowance already applied for org ${organizationId} in ${currentMonth}, skipping`);
+      return null;
+    }
+
+    // Add monthly allowance
     const [updated] = await db
       .update(organizations)
-      .set({ 
-        creditBalance: sql`COALESCE(${organizations.creditBalance}, '0')::numeric + ${monthlyCredits}` 
+      .set({
+        creditBalance: sql`COALESCE(${organizations.creditBalance}, '0')::numeric + ${monthlyCredits}`
       })
       .where(eq(organizations.id, organizationId))
       .returning({ newBalance: sql<number>`(COALESCE(${organizations.creditBalance}, '0')::numeric)::int` });
@@ -438,7 +453,7 @@ export class UsageMeteringService {
         description: `Monthly ${tierInfo.name} tier allowance`,
         metadata: {
           tier,
-          month: new Date().toISOString().slice(0, 7),
+          month: currentMonth,
         },
       })
       .returning();
