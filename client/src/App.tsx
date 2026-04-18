@@ -12,7 +12,7 @@ import { Loader2 } from "lucide-react";
 import { telemetry } from "@/lib/telemetry";
 import { ThemeProvider } from "@/contexts/theme-context";
 import { PaxRailProvider } from "@/contexts/pax-rail-context";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, MotionConfig } from "framer-motion";
 import { pageTransition } from "@/lib/animations";
 import { useToast } from "@/hooks/use-toast";
 
@@ -783,6 +783,7 @@ function AppContent() {
 function App() {
   return (
     <ErrorBoundary>
+      <MotionConfig reducedMotion="user">
       <ThemeProvider>
         <SidebarProvider>
           <PaxRailProvider>
@@ -804,6 +805,7 @@ function App() {
           </PaxRailProvider>
         </SidebarProvider>
       </ThemeProvider>
+      </MotionConfig>
     </ErrorBoundary>
   );
 }
