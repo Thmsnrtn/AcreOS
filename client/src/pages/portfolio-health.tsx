@@ -50,6 +50,7 @@ function AlertCard({ alert, onDismiss }: { alert: PortfolioAlert; onDismiss: (id
           size="icon"
           className="h-6 w-6 shrink-0"
           onClick={() => onDismiss(alert.id)}
+          aria-label="Dismiss alert"
         >
           <X className="w-3 h-3" />
         </Button>

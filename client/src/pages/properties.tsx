@@ -511,7 +511,7 @@ export default function PropertiesPage() {
               <div className="flex items-center gap-2">
                 <CheckSquare className="w-4 h-4" />
                 <span className="text-sm font-medium" data-testid="text-selected-properties-count">{selectedPropertyIds.size} propert{selectedPropertyIds.size !== 1 ? "ies" : "y"} selected</span>
-                <Button variant="ghost" size="icon" className="md:hidden min-h-[44px] min-w-[44px] ml-auto" onClick={() => setSelectedPropertyIds(new Set())} data-testid="button-clear-selection-properties-mobile">
+                <Button variant="ghost" size="icon" className="md:hidden min-h-[44px] min-w-[44px] ml-auto" onClick={() => setSelectedPropertyIds(new Set())} aria-label="Clear selection" data-testid="button-clear-selection-properties-mobile">
                   <X className="w-4 h-4" />
                 </Button>
               </div>
@@ -942,31 +942,33 @@ function PropertyCard({ property, onDelete }: {
           </Badge>
         </div>
         <div className="absolute top-2 left-2 flex gap-1 z-10 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-          <Button 
-            variant="destructive" 
+          <Button
+            variant="destructive"
             size="icon"
             className="h-10 w-10 sm:h-7 sm:w-7"
             onClick={(e) => {
               e.stopPropagation();
               onDelete();
             }}
+            aria-label="Delete property"
             data-testid={`button-delete-property-${property.id}`}
           >
             <Trash2 className="w-4 h-4 sm:w-3 sm:h-3" />
           </Button>
-          <Button 
-            variant="secondary" 
+          <Button
+            variant="secondary"
             size="icon"
             className="h-10 w-10 sm:h-7 sm:w-7"
             onClick={handleDownloadDeed}
             disabled={isDownloading}
+            aria-label="Download deed"
             data-testid={`button-download-deed-${property.id}`}
           >
             {isDownloading ? <Loader2 className="w-4 h-4 sm:w-3 sm:h-3 animate-spin" /> : <FileText className="w-4 h-4 sm:w-3 sm:h-3" />}
           </Button>
           {hasMapData && (
-            <Button 
-              variant="secondary" 
+            <Button
+              variant="secondary"
               size="icon"
               className="h-10 w-10 sm:h-7 sm:w-7"
               onClick={(e) => {
@@ -974,6 +976,7 @@ function PropertyCard({ property, onDelete }: {
                 fetchParcel(property.id);
               }}
               disabled={isFetchingParcel}
+              aria-label="Refresh parcel data"
               data-testid={`button-refresh-parcel-${property.id}`}
             >
               <RefreshCw className={`w-4 h-4 sm:w-3 sm:h-3 ${isFetchingParcel ? 'animate-spin' : ''}`} />
@@ -1046,11 +1049,12 @@ function PropertyCard({ property, onDelete }: {
             <ClipboardCheck className="w-4 h-4 sm:w-3.5 sm:h-3.5 mr-1.5" />
             <span className="text-sm">Due Diligence</span>
           </Button>
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             size="icon"
             className="min-h-[44px] min-w-[44px] sm:min-h-8 sm:min-w-8"
             onClick={() => setIsCalculatorOpen(true)}
+            aria-label="Open calculator"
             data-testid={`button-calculator-${property.id}`}
           >
             <Calculator className="w-4 h-4 sm:w-3.5 sm:h-3.5" />

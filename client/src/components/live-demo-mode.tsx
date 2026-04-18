@@ -261,6 +261,7 @@ export function LiveDemoMode({
             variant="ghost"
             className="h-7 w-7"
             onClick={handleCancel}
+            aria-label="Cancel demo"
             data-testid="button-cancel-demo"
           >
             <X className="w-4 h-4" />
@@ -300,6 +301,7 @@ export function LiveDemoMode({
             variant="outline"
             onClick={cycleSpeed}
             className="h-9 w-12"
+            aria-label="Change playback speed"
             data-testid="button-speed-demo"
           >
             {speed < 1 ? (
@@ -316,6 +318,7 @@ export function LiveDemoMode({
             variant={isPaused ? "default" : "outline"}
             onClick={handlePauseResume}
             className="h-10 w-10"
+            aria-label={isPaused ? "Resume demo" : "Pause demo"}
             data-testid="button-pause-resume-demo"
           >
             {isPaused ? (
@@ -330,6 +333,7 @@ export function LiveDemoMode({
             variant="destructive"
             onClick={handleCancel}
             className="h-9 w-9"
+            aria-label="Stop demo"
             data-testid="button-stop-demo"
           >
             <Square className="w-4 h-4" />

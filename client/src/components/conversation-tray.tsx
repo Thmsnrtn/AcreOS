@@ -112,10 +112,11 @@ function ConversationList({
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between gap-2 p-3 border-b">
         <h3 className="font-semibold">Messages</h3>
-        <Button 
-          size="icon" 
-          variant="ghost" 
+        <Button
+          size="icon"
+          variant="ghost"
           onClick={onNewConversation}
+          aria-label="New conversation"
           data-testid="button-new-conversation"
         >
           <Plus className="w-4 h-4" />
@@ -185,7 +186,7 @@ function NewConversationView({
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-2 p-3 border-b">
-        <Button size="icon" variant="ghost" onClick={onBack}>
+        <Button size="icon" variant="ghost" onClick={onBack} aria-label="Back to conversations">
           <ArrowLeft className="w-4 h-4" />
         </Button>
         <h3 className="font-semibold">New Message</h3>
@@ -316,7 +317,7 @@ function ChatView({
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-2 p-3 border-b">
-        <Button size="icon" variant="ghost" onClick={onBack}>
+        <Button size="icon" variant="ghost" onClick={onBack} aria-label="Back to conversations">
           <ArrowLeft className="w-4 h-4" />
         </Button>
         <h3 className="font-semibold truncate">{getConversationDisplayName()}</h3>
@@ -398,6 +399,7 @@ function ChatView({
           size="icon"
           onClick={handleSendMessage}
           disabled={!messageInput.trim() || sendMessageMutation.isPending}
+          aria-label="Send message"
           data-testid="button-send-message"
         >
           {sendMessageMutation.isPending ? (
@@ -547,6 +549,7 @@ export function ConversationTray() {
           <Button
             size="icon"
             className="fixed bottom-20 right-4 z-40 rounded-full shadow-lg"
+            aria-label="Open conversations"
             data-testid="button-open-conversations"
           >
             <MessageCircle className="w-5 h-5" />
@@ -569,6 +572,7 @@ export function ConversationTray() {
           size="icon"
           className="fixed bottom-6 right-6 z-40 rounded-full shadow-lg"
           onClick={() => setIsOpen(true)}
+          aria-label="Open conversations"
           data-testid="button-open-conversations"
         >
           <MessageCircle className="w-5 h-5" />
@@ -582,6 +586,7 @@ export function ConversationTray() {
               size="icon"
               variant="ghost"
               onClick={() => setIsOpen(false)}
+              aria-label="Close conversations"
               data-testid="button-close-conversations"
             >
               <X className="w-4 h-4" />

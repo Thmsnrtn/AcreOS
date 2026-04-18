@@ -196,6 +196,7 @@ export function OnboardingProgress() {
           size="icon"
           className="absolute top-3 right-3 z-10"
           onClick={handleDismiss}
+          aria-label="Dismiss progress"
           data-testid="button-dismiss-progress"
         >
           <X className="w-4 h-4" />

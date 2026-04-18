@@ -309,6 +309,7 @@ export function AgentTeamChat() {
             size="icon"
             className="shrink-0 rounded-xl h-10 w-10"
             disabled={!input.trim() || sendMessage.isPending}
+            aria-label="Send message"
           >
             <Send className="h-4 w-4" />
           </Button>

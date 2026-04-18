@@ -2403,20 +2403,22 @@ export default function FounderDashboard() {
                         <p className="text-xs text-muted-foreground truncate">{alert.message}</p>
                       </div>
                       <div className="flex gap-1 flex-shrink-0">
-                        <Button 
-                          size="icon" 
-                          variant="ghost" 
+                        <Button
+                          size="icon"
+                          variant="ghost"
                           className="h-6 w-6"
                           onClick={() => acknowledgeMutation.mutate(alert.id)}
+                          aria-label="Acknowledge alert"
                           data-testid={`button-acknowledge-alert-${alert.id}`}
                         >
                           <Eye className="w-3 h-3" />
                         </Button>
-                        <Button 
-                          size="icon" 
-                          variant="ghost" 
+                        <Button
+                          size="icon"
+                          variant="ghost"
                           className="h-6 w-6"
                           onClick={() => resolveMutation.mutate(alert.id)}
+                          aria-label="Resolve alert"
                           data-testid={`button-resolve-alert-${alert.id}`}
                         >
                           <Check className="w-3 h-3" />
@@ -3167,6 +3169,7 @@ export default function FounderDashboard() {
                           variant="ghost"
                           onClick={() => testGisEndpointMutation.mutate(endpoint.id)}
                           disabled={testingEndpoints.has(endpoint.id) || testGisEndpointMutation.isPending}
+                          aria-label="Test endpoint"
                           data-testid={`button-test-gis-${endpoint.id}`}
                           title="Test endpoint"
                         >
@@ -3182,6 +3185,7 @@ export default function FounderDashboard() {
                             variant="ghost"
                             onClick={() => diagnoseGisEndpointMutation.mutate(endpoint.id)}
                             disabled={diagnosingEndpoint === endpoint.id}
+                            aria-label="Diagnose issues"
                             data-testid={`button-diagnose-gis-${endpoint.id}`}
                             title="Diagnose issues"
                           >
@@ -3197,6 +3201,7 @@ export default function FounderDashboard() {
                           variant="ghost"
                           onClick={() => deleteGisEndpointMutation.mutate(endpoint.id)}
                           disabled={deleteGisEndpointMutation.isPending}
+                          aria-label="Delete endpoint"
                           data-testid={`button-delete-gis-${endpoint.id}`}
                           title="Delete endpoint"
                         >
@@ -3420,6 +3425,7 @@ export default function FounderDashboard() {
                             variant="ghost"
                             onClick={() => testDataSourceMutation.mutate(source.id)}
                             disabled={testingDataSources.has(source.id) || testDataSourceMutation.isPending}
+                            aria-label="Test data source"
                             data-testid={`button-test-source-${source.id}`}
                             title="Test data source"
                           >
@@ -3434,6 +3440,7 @@ export default function FounderDashboard() {
                             variant={source.isEnabled ? "default" : "outline"}
                             onClick={() => toggleDataSourceMutation.mutate({ id: source.id, isEnabled: !source.isEnabled })}
                             disabled={toggleDataSourceMutation.isPending}
+                            aria-label={source.isEnabled ? "Disable data source" : "Enable data source"}
                             data-testid={`button-toggle-source-${source.id}`}
                             title={source.isEnabled ? "Disable" : "Enable"}
                           >
@@ -4027,6 +4034,7 @@ export default function FounderDashboard() {
                             variant="ghost"
                             onClick={() => validateLiveEndpointMutation.mutate(endpoint.id)}
                             disabled={validateLiveEndpointMutation.isPending || endpoint.status === "added"}
+                            aria-label="Validate endpoint"
                             data-testid={`button-validate-live-${endpoint.id}`}
                             title="Validate endpoint"
                           >
@@ -4037,6 +4045,7 @@ export default function FounderDashboard() {
                             variant="ghost"
                             onClick={() => approveLiveEndpointMutation.mutate(endpoint.id)}
                             disabled={approveLiveEndpointMutation.isPending || endpoint.status === "added" || endpoint.status === "rejected"}
+                            aria-label="Approve endpoint"
                             data-testid={`button-approve-live-${endpoint.id}`}
                             title="Approve and add to database"
                           >
@@ -4047,6 +4056,7 @@ export default function FounderDashboard() {
                             variant="ghost"
                             onClick={() => rejectLiveEndpointMutation.mutate(endpoint.id)}
                             disabled={rejectLiveEndpointMutation.isPending || endpoint.status === "added" || endpoint.status === "rejected"}
+                            aria-label="Reject endpoint"
                             data-testid={`button-reject-live-${endpoint.id}`}
                             title="Reject endpoint"
                           >

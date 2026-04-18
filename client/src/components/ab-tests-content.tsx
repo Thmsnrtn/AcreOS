@@ -331,6 +331,7 @@ export function AbTestsContent() {
                               variant="ghost"
                               size="icon"
                               onClick={() => removeVariant(index)}
+                              aria-label="Remove variant"
                               data-testid={`button-remove-variant-${index}`}
                             >
                               <Trash2 className="w-4 h-4" />
@@ -566,6 +567,7 @@ function TestTable({ tests, onView, onStart, onComplete, onDelete, getCampaignNa
                       variant="ghost"
                       size="icon"
                       onClick={() => onView(test)}
+                      aria-label="View test"
                       data-testid={`button-view-test-${test.id}`}
                     >
                       <Eye className="w-4 h-4" />
@@ -576,6 +578,7 @@ function TestTable({ tests, onView, onStart, onComplete, onDelete, getCampaignNa
                         size="icon"
                         onClick={() => onStart(test.id)}
                         disabled={isPending}
+                        aria-label="Start test"
                         data-testid={`button-start-test-${test.id}`}
                       >
                         <Play className="w-4 h-4" />
@@ -587,6 +590,7 @@ function TestTable({ tests, onView, onStart, onComplete, onDelete, getCampaignNa
                         size="icon"
                         onClick={() => onComplete(test.id)}
                         disabled={isPending}
+                        aria-label="Complete test"
                         data-testid={`button-complete-test-${test.id}`}
                       >
                         <Square className="w-4 h-4" />
@@ -598,6 +602,7 @@ function TestTable({ tests, onView, onStart, onComplete, onDelete, getCampaignNa
                         size="icon"
                         onClick={() => onDelete(test.id)}
                         disabled={isPending}
+                        aria-label="Delete test"
                         data-testid={`button-delete-test-${test.id}`}
                       >
                         <Trash2 className="w-4 h-4 text-destructive" />

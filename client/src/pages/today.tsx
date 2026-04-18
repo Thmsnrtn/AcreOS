@@ -725,6 +725,7 @@ export default function TodayPage() {
                       className="h-7 w-7"
                       onClick={() => dismissMutation.mutate(alert.id)}
                       disabled={dismissMutation.isPending}
+                      aria-label="Dismiss alert"
                     >
                       <X className="w-3 h-3" />
                     </Button>

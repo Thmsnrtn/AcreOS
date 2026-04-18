@@ -48,7 +48,7 @@ export default function StatusPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-4">
             <CardTitle className="text-lg">Services</CardTitle>
-            <Button variant="ghost" size="icon" onClick={() => refetch()} className="min-h-[44px] min-w-[44px]">
+            <Button variant="ghost" size="icon" onClick={() => refetch()} className="min-h-[44px] min-w-[44px]" aria-label="Refresh status">
               <RefreshCw className="w-4 h-4" />
             </Button>
           </CardHeader>

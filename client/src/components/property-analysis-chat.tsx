@@ -270,6 +270,7 @@ export function PropertyAnalysisChat({ property, open, onOpenChange }: PropertyA
               type="submit" 
               size="icon" 
               disabled={!inputValue.trim() || isLoading}
+              aria-label="Send message"
               data-testid="button-send-message"
             >
               {isLoading ? (

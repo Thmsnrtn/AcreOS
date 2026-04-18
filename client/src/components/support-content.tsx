@@ -464,6 +464,7 @@ export function SupportContent() {
                         size="icon"
                         className="lg:hidden"
                         onClick={() => setActiveCaseId(null)}
+                        aria-label="Back to cases"
                         data-testid="button-back"
                       >
                         <ArrowLeft className="w-4 h-4" />
@@ -603,6 +604,7 @@ export function SupportContent() {
                       size="icon"
                       onClick={handleSendMessage}
                       disabled={!replyMessage.trim() || sendMessageMutation.isPending}
+                      aria-label="Send message"
                       data-testid="button-send-message"
                     >
                       {sendMessageMutation.isPending ? (

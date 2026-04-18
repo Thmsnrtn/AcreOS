@@ -298,18 +298,20 @@ export default function WorkflowsPage() {
                         onCheckedChange={(checked) => toggleMutation.mutate({ id: workflow.id, isActive: checked })}
                         data-testid={`switch-workflow-${workflow.id}`}
                       />
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
+                      <Button
+                        variant="ghost"
+                        size="icon"
                         onClick={(e) => { e.stopPropagation(); handleEdit(workflow); }}
+                        aria-label="Edit workflow"
                         data-testid={`button-edit-${workflow.id}`}
                       >
                         <Edit className="w-4 h-4" />
                       </Button>
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
+                      <Button
+                        variant="ghost"
+                        size="icon"
                         onClick={(e) => { e.stopPropagation(); handleDelete(workflow); }}
+                        aria-label="Delete workflow"
                         data-testid={`button-delete-${workflow.id}`}
                       >
                         <Trash2 className="w-4 h-4" />

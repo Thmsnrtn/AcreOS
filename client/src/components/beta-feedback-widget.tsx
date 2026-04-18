@@ -37,7 +37,7 @@ export function BetaFeedbackWidget() {
         <div className="bg-card border rounded-lg shadow-lg w-80 p-4 space-y-3">
           <div className="flex items-center justify-between">
             <h4 className="text-sm font-medium">Send Feedback</h4>
-            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setOpen(false)}>
+            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setOpen(false)} aria-label="Close feedback">
               <X className="h-4 w-4" />
             </Button>
           </div>

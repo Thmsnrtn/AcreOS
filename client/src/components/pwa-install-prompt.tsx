@@ -62,6 +62,7 @@ export function PWAInstallPrompt() {
                 variant="ghost"
                 className="shrink-0"
                 onClick={handleDismiss}
+                aria-label="Dismiss"
                 data-testid="button-dismiss-pwa"
               >
                 <X className="h-4 w-4" />
@@ -92,6 +93,7 @@ export function PWAInstallPrompt() {
               variant="ghost"
               className="shrink-0"
               onClick={handleDismiss}
+              aria-label="Dismiss"
               data-testid="button-dismiss-pwa"
             >
               <X className="h-4 w-4" />
