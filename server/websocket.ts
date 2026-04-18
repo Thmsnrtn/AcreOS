@@ -218,16 +218,18 @@ class AcreOSWebSocketServer {
     }
   }
 
-  // Only allow subscribing to channels for the client's own org/user
+  // Only allow subscribing to channels scoped to the client's own org/user
   private isAllowedChannel(client: WSClient, channel: string): boolean {
     if (channel.startsWith(`org:${client.organizationId}`)) return true;
     if (channel.startsWith(`user:${client.userId}`)) return true;
-    // Allow deal/listing/negotiation/market channels (no auth restriction needed — data is filtered server-side)
-    if (channel.startsWith('deal:')) return true;
-    if (channel.startsWith('listing:')) return true;
-    if (channel.startsWith('negotiation:')) return true;
+    // Entity channels must be org-scoped to prevent cross-org data leakage
+    const orgPrefix = `${client.organizationId}:`;
+    if (channel.startsWith(`deal:${orgPrefix}`)) return true;
+    if (channel.startsWith(`listing:${orgPrefix}`)) return true;
+    if (channel.startsWith(`negotiation:${orgPrefix}`)) return true;
+    // Market channels are public (no org-specific data)
     if (channel.startsWith('market:')) return true;
-    // v3: Allow founder agent activity channel
+    // Founder activity only for founder orgs
     if (channel === 'founder:activity') return true;
     return false;
   }
