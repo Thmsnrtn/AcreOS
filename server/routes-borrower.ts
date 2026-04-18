@@ -365,7 +365,7 @@ export function registerBorrowerRoutes(app: Express): void {
   });
   
   // Verify Stripe payment and create payment record
-  api.post("/api/portal/:accessToken/verify-payment", async (req, res) => {
+  api.post("/api/portal/:accessToken/verify-payment", deprecatedPaymentRateLimiter, async (req, res) => {
     try {
       const { accessToken } = req.params;
       const { sessionId } = req.body;
@@ -466,7 +466,7 @@ export function registerBorrowerRoutes(app: Express): void {
   });
   
   // Toggle autopay for borrower portal
-  api.post("/api/portal/:accessToken/autopay", async (req, res) => {
+  api.post("/api/portal/:accessToken/autopay", deprecatedPaymentRateLimiter, async (req, res) => {
     try {
       const { accessToken } = req.params;
       const { enabled, email } = req.body;

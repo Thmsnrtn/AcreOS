@@ -277,7 +277,7 @@ export async function registerRoutes(
 
       res.end(responseBody);
     } catch (err: any) {
-      console.error("[clerk-proxy]", err.message);
+      logger.error("[clerk-proxy] " + err.message);
       res.status(502).json({ error: "Clerk proxy error" });
     }
   });
@@ -965,7 +965,7 @@ export async function registerRoutes(
   app.use('/api/white-label', isAuthenticated, getOrCreateOrg, featureGate("feature_white_label"), whiteLabelRouter);
   app.use('/api/realtime', isAuthenticated, getOrCreateOrg, realtimeRouter);
   app.use('/api/pax', aiLimiter, isAuthenticated, getOrCreateOrg, paxInsightsRouter);
-  app.post('/api/mcp/execute', mcpHandler);
+  app.post('/api/mcp/execute', isAuthenticated, mcpHandler);
 
   // Voice pipeline: webhook (no auth) + authenticated API routes
   app.use('/', voiceRouter); // handles POST /webhook/twilio/recording-complete

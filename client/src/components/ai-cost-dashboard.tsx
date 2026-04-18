@@ -175,9 +175,9 @@ export function AICostDashboard() {
                         border: "1px solid hsl(var(--border))",
                         borderRadius: "8px",
                       }}
-                      formatter={(value: number, name: string) => {
+                      formatter={((value: number, name: string) => {
                         return [`$${value.toFixed(4)}`, name === "actualCost" ? "Actual Cost" : "If GPT-4o"];
-                      }}
+                      }) as any}
                       labelStyle={{ color: "hsl(var(--foreground))" }}
                     />
                     <Legend />

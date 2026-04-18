@@ -58,17 +58,17 @@ function StatRow({
 export function DataNetworkCard() {
   const { data: overview, isLoading: overviewLoading } = useQuery<CountyOverview>({
     queryKey: ["/api/data-network/overview"],
-    queryFn: () => apiRequest("GET", "/api/data-network/overview"),
+    queryFn: () => apiRequest("GET", "/api/data-network/overview").then(r => r.json()),
   });
 
   const { data: metrics, isLoading: metricsLoading } = useQuery<ContributionMetrics>({
     queryKey: ["/api/data-network/contributions"],
-    queryFn: () => apiRequest("GET", "/api/data-network/contributions"),
+    queryFn: () => apiRequest("GET", "/api/data-network/contributions").then(r => r.json()),
   });
 
   const { data: benchmarks, isLoading: benchmarksLoading } = useQuery<LcsBenchmark[]>({
     queryKey: ["/api/data-network/lcs-benchmarks"],
-    queryFn: () => apiRequest("GET", "/api/data-network/lcs-benchmarks"),
+    queryFn: () => apiRequest("GET", "/api/data-network/lcs-benchmarks").then(r => r.json()),
   });
 
   const isLoading = overviewLoading || metricsLoading || benchmarksLoading;

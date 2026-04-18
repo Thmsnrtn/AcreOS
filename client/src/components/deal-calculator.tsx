@@ -79,7 +79,7 @@ export function DealCalculator({ deal, property, onSave, isSaving, showSaveButto
   }, [deal, property]);
 
   const form = useForm<CalculatorFormData>({
-    resolver: zodResolver(calculatorSchema),
+    resolver: zodResolver(calculatorSchema) as unknown as import("react-hook-form").Resolver<CalculatorFormData>,
     defaultValues,
   });
 

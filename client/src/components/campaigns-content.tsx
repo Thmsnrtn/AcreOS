@@ -947,7 +947,7 @@ function CampaignDetailDrawer({ campaign, onClose }: { campaign: Campaign; onClo
 
   const isDirectMail = campaign.type === 'direct_mail';
   const isEmail = campaign.type === 'email';
-  const availableLeads = leads?.filter(l => l.address && l.city && l.state && l.zip) || [];
+  const availableLeads = leads?.filter((l: any) => l.address && l.city && l.state && l.zip) || [];
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" onClick={onClose}>

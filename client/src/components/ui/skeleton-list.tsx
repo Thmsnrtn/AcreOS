@@ -20,7 +20,7 @@ export function SkeletonList({
       data-testid="skeleton-list"
       className={cn("space-y-3", className)}
       initial={{ opacity: 0.5 }}
-      animate={pulseAnimation}
+      animate={pulseAnimation as any}
     >
       {Array.from({ length: items }).map((_, i) => (
         <div
