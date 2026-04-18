@@ -211,6 +211,15 @@ export function registerDealRoutes(app: Express): void {
 
       const validated = updateDealSchema.parse(req.body);
 
+      // Task #210: Enforce deal status state machine transitions
+      if (validated.status && validated.status !== existingDeal.status) {
+        const currentStatus = existingDeal.status || "negotiating";
+        const allowedNext = DEAL_STATUS_TRANSITIONS[currentStatus];
+        if (allowedNext && !allowedNext.includes(validated.status)) {
+          return Errors.badRequest(res, `Cannot transition from ${currentStatus} to ${validated.status}`);
+        }
+      }
+
       // Usury hard block: check updated analysisResults.interestRate against state law before saving
       const updatedInterestRate = validated.analysisResults?.interestRate ?? existingDeal.analysisResults?.interestRate;
       const updatedPropertyId = validated.propertyId ?? existingDeal.propertyId;
@@ -1324,14 +1333,25 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
     try {
       const { stage, force } = req.body;
       const dealId = Number(req.params.id);
-      
+      const org = req.organization;
+
+      const existingDeal = await storage.getDeal(org.id, dealId);
+      if (!existingDeal) return Errors.notFound(res, "Deal");
+
+      // Task #210: Enforce deal status state machine transitions
+      const currentStatus = existingDeal.status || "negotiating";
+      const allowedNext = DEAL_STATUS_TRANSITIONS[currentStatus];
+      if (allowedNext && !allowedNext.includes(stage)) {
+        return Errors.badRequest(res, `Cannot transition from ${currentStatus} to ${stage}`);
+      }
+
       if (!force) {
         const stageGate = await storage.checkStageGate(dealId);
         if (!stageGate.canAdvance) {
           return Errors.badRequest(res, "Cannot advance stage: incomplete required checklist items", { incompleteItems: stageGate.incompleteItems });
         }
       }
-      
+
       const deal = await storage.updateDeal(dealId, { status: stage });
       if (!deal) return Errors.notFound(res, "Deal");
       res.json(deal);

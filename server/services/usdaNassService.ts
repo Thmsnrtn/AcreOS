@@ -40,7 +40,7 @@ export interface CountyLandValue {
   year: number;
   valuePerAcreDollars: number;
   landCategory: "farm_real_estate" | "cropland" | "pastureland" | "irrigated_cropland";
-  source: "usda_nass";
+  source: "usda_nass" | "estimate";
   retrieved: string;
 }
 
@@ -404,13 +404,15 @@ function getEstimatedLandValues(state: string, county: string): CountyLandValue[
   const currentYear = new Date().getFullYear();
 
   // Generate synthetic 5-year trend with ~5% annual appreciation
+  // IMPORTANT: mark source as "estimate" not "usda_nass" so downstream
+  // consumers (blind offer calculator) know this is NOT real USDA data
   return Array.from({ length: 5 }, (_, i) => ({
     state: state.toUpperCase(),
     county,
     year: currentYear - 1 - i,
     valuePerAcreDollars: Math.round(baseValue / Math.pow(1.05, i)),
     landCategory: "farm_real_estate" as const,
-    source: "usda_nass" as const,
+    source: "estimate" as const,
     retrieved: new Date().toISOString(),
   }));
 }
