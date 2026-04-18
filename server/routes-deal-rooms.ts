@@ -17,6 +17,7 @@
 
 import { Router, type Request, type Response } from 'express';
 import type { AuthenticatedRequest } from './types/request';
+import { getOrganizationId } from './types/request';
 import { db } from './db';
 import {
   dealRooms,
@@ -27,6 +28,7 @@ import { eq, desc, and, asc } from 'drizzle-orm';
 import crypto from 'crypto';
 import { asyncHandler } from './middleware/asyncHandler';
 import { validateUrl } from './middleware/fileUploadSecurity';
+import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 
 const router = Router();
@@ -40,13 +42,24 @@ function getUser(req: AuthenticatedRequest) {
 }
 
 
-async function getDealRoomOrFail(id: number, res: Response) {
+async function getDealRoomOrFail(id: number, req: AuthenticatedRequest, res: Response) {
+  const organizationId = getOrganizationId(req);
   const results = await db.select().from(dealRooms).where(eq(dealRooms.id, id)).limit(1);
   if (results.length === 0) {
-    res.status(404).json({ error: 'Deal room not found' });
+    Errors.notFound(res, "Deal room");
     return null;
   }
-  return results[0];
+  const room = results[0];
+  // Verify the requesting organization is a participant in this deal room
+  const participants: any[] = (room.participants as any[]) ?? [];
+  const isParticipant = participants.some(
+    (p: any) => p.organizationId === organizationId
+  );
+  if (!isParticipant) {
+    Errors.notFound(res, "Deal room");
+    return null;
+  }
+  return room;
 }
 
 /** Broadcast to all WebSocket clients subscribed to a deal room */
@@ -70,11 +83,11 @@ function broadcastToDealRoom(req: Request | AuthenticatedRequest, dealRoomId: nu
 
 router.get('/:id', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const dealRoom = await getDealRoomOrFail(parseInt(req.params.id), res);
+    const dealRoom = await getDealRoomOrFail(parseInt(req.params.id), req, res);
     if (!dealRoom) return;
     res.json({ dealRoom });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 }));
 
@@ -83,6 +96,10 @@ router.get('/:id', asyncHandler(async (req: AuthenticatedRequest, res: Response)
 router.get('/:id/messages', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
     const dealRoomId = parseInt(req.params.id);
+    // Verify org-scoped access before returning messages
+    const dealRoom = await getDealRoomOrFail(dealRoomId, req, res);
+    if (!dealRoom) return;
+
     const limit = Math.min(100, parseInt(String(req.query.limit ?? '50')));
     const offset = parseInt(String(req.query.offset ?? '0'));
 
@@ -96,7 +113,7 @@ router.get('/:id/messages', asyncHandler(async (req: AuthenticatedRequest, res: 
 
     res.json({ messages, limit, offset });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 }));
 
@@ -105,11 +122,15 @@ router.get('/:id/messages', asyncHandler(async (req: AuthenticatedRequest, res: 
 router.post('/:id/messages', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
     const dealRoomId = parseInt(req.params.id);
+    // Verify org-scoped access before allowing message send
+    const dealRoom = await getDealRoomOrFail(dealRoomId, req, res);
+    if (!dealRoom) return;
+
     const user = getUser(req);
     const { content, messageType = 'text', attachmentUrl } = req.body;
 
     if (!content?.trim()) {
-      return res.status(400).json({ error: 'Message content is required' });
+      return Errors.badRequest(res, 'Message content is required');
     }
 
     const [message] = await db
@@ -139,6 +160,9 @@ router.post('/:id/messages', asyncHandler(async (req: AuthenticatedRequest, res:
 router.get('/:id/documents', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
     const dealRoomId = parseInt(req.params.id);
+    // Verify org-scoped access before returning documents
+    const dealRoom = await getDealRoomOrFail(dealRoomId, req, res);
+    if (!dealRoom) return;
 
     const documents = await db
       .select()
@@ -171,11 +195,15 @@ router.get('/:id/documents', asyncHandler(async (req: AuthenticatedRequest, res:
 router.post('/:id/documents', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
     const dealRoomId = parseInt(req.params.id);
+    // Verify org-scoped access before allowing document upload
+    const dealRoom = await getDealRoomOrFail(dealRoomId, req, res);
+    if (!dealRoom) return;
+
     const user = getUser(req);
     const { fileName, fileUrl, fileSize, mimeType, allowedUserIds } = req.body;
 
     if (!fileName || !fileUrl) {
-      return res.status(400).json({ error: 'fileName and fileUrl are required' });
+      return Errors.badRequest(res, 'fileName and fileUrl are required');
     }
 
     // Validate file URL to prevent SSRF
@@ -246,6 +274,10 @@ router.post('/:id/documents', asyncHandler(async (req: AuthenticatedRequest, res
 router.get('/:id/documents/:docId/download', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
     const dealRoomId = parseInt(req.params.id);
+    // Verify org-scoped access before allowing document download
+    const dealRoom = await getDealRoomOrFail(dealRoomId, req, res);
+    if (!dealRoom) return;
+
     const docId = parseInt(req.params.docId);
 
     const results = await db
@@ -255,7 +287,7 @@ router.get('/:id/documents/:docId/download', asyncHandler(async (req: Authentica
       .limit(1);
 
     if (results.length === 0) {
-      return res.status(404).json({ error: 'Document not found' });
+      return Errors.notFound(res, "Document");
     }
 
     const doc = results[0];
@@ -285,11 +317,11 @@ router.get('/:id/documents/:docId/download', asyncHandler(async (req: Authentica
 router.post('/:id/participants', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
     const dealRoomId = parseInt(req.params.id);
-    const dealRoom = await getDealRoomOrFail(dealRoomId, res);
+    const dealRoom = await getDealRoomOrFail(dealRoomId, req, res);
     if (!dealRoom) return;
 
     const { email, role = 'buyer' } = req.body;
-    if (!email) return res.status(400).json({ error: 'email is required' });
+    if (!email) return Errors.badRequest(res, 'email is required');
 
     const currentParticipants: any[] = (dealRoom.participants as any[]) ?? [];
 
@@ -352,12 +384,12 @@ router.patch('/:id/participants/:userId', asyncHandler(async (req: Authenticated
     const { userId } = req.params;
     const { role } = req.body;
 
-    const dealRoom = await getDealRoomOrFail(dealRoomId, res);
+    const dealRoom = await getDealRoomOrFail(dealRoomId, req, res);
     if (!dealRoom) return;
 
     const participants: any[] = (dealRoom.participants as any[]) ?? [];
     const idx = participants.findIndex((p: any) => String(p.organizationId) === userId || p.email === userId);
-    if (idx === -1) return res.status(404).json({ error: 'Participant not found' });
+    if (idx === -1) return Errors.notFound(res, "Participant");
 
     participants[idx] = { ...participants[idx], role };
 
@@ -380,7 +412,7 @@ router.delete('/:id/participants/:userId', asyncHandler(async (req: Authenticate
     const dealRoomId = parseInt(req.params.id);
     const { userId } = req.params;
 
-    const dealRoom = await getDealRoomOrFail(dealRoomId, res);
+    const dealRoom = await getDealRoomOrFail(dealRoomId, req, res);
     if (!dealRoom) return;
 
     const participants: any[] = (dealRoom.participants as any[]) ?? [];
@@ -389,7 +421,7 @@ router.delete('/:id/participants/:userId', asyncHandler(async (req: Authenticate
     );
 
     if (filtered.length === participants.length) {
-      return res.status(404).json({ error: 'Participant not found' });
+      return Errors.notFound(res, "Participant");
     }
 
     const [updated] = await db
@@ -411,6 +443,10 @@ router.delete('/:id/participants/:userId', asyncHandler(async (req: Authenticate
 router.get('/:id/activity', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   try {
     const dealRoomId = parseInt(req.params.id);
+    // Verify org-scoped access before returning activity
+    const dealRoom = await getDealRoomOrFail(dealRoomId, req, res);
+    if (!dealRoom) return;
+
     const limit = Math.min(100, parseInt(String(req.query.limit ?? '50')));
 
     // Combine messages and documents as an activity timeline
@@ -462,7 +498,7 @@ router.post('/:id/nda', asyncHandler(async (req: AuthenticatedRequest, res: Resp
   try {
     const dealRoomId = parseInt(req.params.id);
     const user = getUser(req);
-    const dealRoom = await getDealRoomOrFail(dealRoomId, res);
+    const dealRoom = await getDealRoomOrFail(dealRoomId, req, res);
     if (!dealRoom) return;
 
     const {
@@ -537,11 +573,11 @@ router.post('/:id/notifications', asyncHandler(async (req: AuthenticatedRequest,
   try {
     const dealRoomId = parseInt(req.params.id);
     const user = getUser(req);
-    const dealRoom = await getDealRoomOrFail(dealRoomId, res);
+    const dealRoom = await getDealRoomOrFail(dealRoomId, req, res);
     if (!dealRoom) return;
 
     const { subject, message, targetUserIds } = req.body;
-    if (!message) return res.status(400).json({ error: 'message is required' });
+    if (!message) return Errors.badRequest(res, 'message is required');
 
     const participants: any[] = (dealRoom.participants as any[]) ?? [];
     const targets =
