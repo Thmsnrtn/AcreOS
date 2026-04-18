@@ -578,19 +578,19 @@ function Router() {
 
       {/* AI / Intelligence — additional */}
       <Route path="/avm-bulk">
-        {() => <ProtectedRoute component={AvmBulkPage} />}
+        {() => <FlaggedRoute route="/avm-bulk" component={AvmBulkPage} />}
       </Route>
       <Route path="/market-watchlist">
-        {() => <ProtectedRoute component={MarketWatchlistPage} />}
+        {() => <FlaggedRoute route="/market-watchlist" component={MarketWatchlistPage} />}
       </Route>
       <Route path="/price-optimizer">
-        {() => <ProtectedRoute component={PriceOptimizerPage} />}
+        {() => <FlaggedRoute route="/price-optimizer" component={PriceOptimizerPage} />}
       </Route>
       <Route path="/seller-intent">
-        {() => <ProtectedRoute component={SellerIntentPage} />}
+        {() => <FlaggedRoute route="/seller-intent" component={SellerIntentPage} />}
       </Route>
       <Route path="/deal-patterns">
-        {() => <ProtectedRoute component={DealPatternsPage} />}
+        {() => <FlaggedRoute route="/deal-patterns" component={DealPatternsPage} />}
       </Route>
       <Route path="/conscious-organization">
         {() => <ProtectedRoute component={ConsciousOrganizationPage} />}
@@ -667,7 +667,7 @@ function Router() {
         {() => <ProtectedRoute component={WebhooksPage} />}
       </Route>
       <Route path="/dodd-frank">
-        {() => <ProtectedRoute component={DoddFrankCheckerPage} />}
+        {() => <FlaggedRoute route="/dodd-frank" component={DoddFrankCheckerPage} />}
       </Route>
       <Route path="/state-documents">
         {() => <ProtectedRoute component={StateDocumentsPage} />}
