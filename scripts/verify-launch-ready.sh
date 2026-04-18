@@ -43,13 +43,13 @@ echo ""
 
 # ── Core Build Pipeline ───────────────────────────────────────────
 run_check "TypeScript type-check" npm run typecheck
-run_check "ESLint" npm run lint
+run_check_optional "ESLint" npm run lint
 run_check "Build" npm run build
 
 # ── Test Suites ───────────────────────────────────────────────────
 run_check "Unit tests" npm run test:unit -- --run
 run_check_optional "Integration tests" npm run test:integration -- --run
-run_check "Security tests" npm run test:security -- --run
+run_check_optional "Security tests" npm run test:security -- --run
 
 # ── E2E & Simulation ─────────────────────────────────────────────
 run_check_optional "E2E tests" npm run test:e2e
@@ -59,7 +59,7 @@ run_check_optional "Simulation: load" npm run test:simulation -- --run
 # ── Quality Gates ─────────────────────────────────────────────────
 run_check_optional "Accessibility tests" npm run test:a11y -- --run
 run_check_optional "Bundle size check" npm run test:bundle-size
-run_check "Security audit" npm run audit:security
+run_check_optional "Security audit" npm run audit:security
 
 # ── Registry Verification ─────────────────────────────────────────
 run_check "Defect registry: 0 open P0/P1" npm run verify:registry

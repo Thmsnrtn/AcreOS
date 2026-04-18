@@ -36,13 +36,15 @@ describe("Accessibility Compliance", () => {
   });
 
   it("main content landmark has id='main-content'", () => {
-    // Check page-shell or App.tsx for the main landmark
+    // Check App.tsx and components for the main landmark
+    const app = readFile("App.tsx");
+    const inApp = app.includes('id="main-content"');
     const files = findFiles(resolve(CLIENT_SRC, "components"), ".tsx");
-    const hasMainId = files.some((f) => {
+    const inComponents = files.some((f) => {
       const content = readFileSync(f, "utf-8");
       return content.includes('id="main-content"');
     });
-    expect(hasMainId).toBe(true);
+    expect(inApp || inComponents).toBe(true);
   });
 
   it("MotionConfig reducedMotion is configured", () => {
