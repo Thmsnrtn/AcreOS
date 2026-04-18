@@ -9,6 +9,7 @@ import { getAllUsageLimits, type SubscriptionTier, TIER_LIMITS } from "./service
 import { idempotencyMiddleware } from "./middleware/idempotency";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
+import { requirePermission } from "./utils/permissions";
 import { withTransaction } from "./db";
 import { z } from "zod";
 
@@ -18,7 +19,7 @@ export function registerBillingRoutes(app: Express): void {
   // CREDITS AND USAGE METERING
   // ============================================
   
-  api.get("/api/credits/balance", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.get("/api/credits/balance", isAuthenticated, getOrCreateOrg, requirePermission("canManageBilling"), async (req, res) => {
     try {
       const { creditService } = await import("./services/credits");
       const org = req.organization;
@@ -29,7 +30,7 @@ export function registerBillingRoutes(app: Express): void {
     }
   });
 
-  api.get("/api/credits/transactions", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.get("/api/credits/transactions", isAuthenticated, getOrCreateOrg, requirePermission("canManageBilling"), async (req, res) => {
     try {
       const { creditService } = await import("./services/credits");
       const org = req.organization;
@@ -41,7 +42,7 @@ export function registerBillingRoutes(app: Express): void {
     }
   });
 
-  api.get("/api/usage/summary", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.get("/api/usage/summary", isAuthenticated, getOrCreateOrg, requirePermission("canManageBilling"), async (req, res) => {
     try {
       const { usageMeteringService } = await import("./services/credits");
       const org = req.organization;
@@ -53,7 +54,7 @@ export function registerBillingRoutes(app: Express): void {
     }
   });
 
-  api.get("/api/usage/records", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.get("/api/usage/records", isAuthenticated, getOrCreateOrg, requirePermission("canManageBilling"), async (req, res) => {
     try {
       const { usageMeteringService } = await import("./services/credits");
       const org = req.organization;
@@ -127,7 +128,7 @@ export function registerBillingRoutes(app: Express): void {
     packId: z.string().min(1, "packId is required"),
   });
 
-  api.post("/api/credits/purchase", isAuthenticated, getOrCreateOrg, idempotencyMiddleware, async (req, res) => {
+  api.post("/api/credits/purchase", isAuthenticated, getOrCreateOrg, requirePermission("canManageBilling"), idempotencyMiddleware, async (req, res) => {
     try {
       const { stripeService } = await import("./stripeService");
       const { CREDIT_PACKS } = await import("@shared/schema");
@@ -181,7 +182,7 @@ export function registerBillingRoutes(app: Express): void {
   });
 
   // Get auto-top-up settings
-  api.get("/api/credits/auto-top-up", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.get("/api/credits/auto-top-up", isAuthenticated, getOrCreateOrg, requirePermission("canManageBilling"), async (req, res) => {
     try {
       const org = req.organization;
       res.json({
@@ -201,7 +202,7 @@ export function registerBillingRoutes(app: Express): void {
     amountCents: z.number().int().min(0).optional(),
   });
 
-  api.post("/api/credits/auto-top-up", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.post("/api/credits/auto-top-up", isAuthenticated, getOrCreateOrg, requirePermission("canManageBilling"), async (req, res) => {
     try {
       const { usageMeteringService } = await import("./services/credits");
       const org = req.organization;
@@ -274,7 +275,7 @@ export function registerBillingRoutes(app: Express): void {
     priceId: z.string().min(1, "priceId is required"),
   });
 
-  api.post("/api/stripe/checkout", isAuthenticated, getOrCreateOrg, idempotencyMiddleware, async (req, res) => {
+  api.post("/api/stripe/checkout", isAuthenticated, getOrCreateOrg, requirePermission("canManageBilling"), idempotencyMiddleware, async (req, res) => {
     try {
       const { stripeService } = await import("./stripeService");
       const org = req.organization;
@@ -336,7 +337,7 @@ export function registerBillingRoutes(app: Express): void {
     }
   });
 
-  api.post("/api/stripe/portal", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.post("/api/stripe/portal", isAuthenticated, getOrCreateOrg, requirePermission("canManageBilling"), async (req, res) => {
     try {
       const { stripeService } = await import("./stripeService");
       const org = req.organization;
@@ -356,7 +357,7 @@ export function registerBillingRoutes(app: Express): void {
     }
   });
 
-  api.get("/api/stripe/subscription", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.get("/api/stripe/subscription", isAuthenticated, getOrCreateOrg, requirePermission("canManageBilling"), async (req, res) => {
     try {
       const { stripeService } = await import("./stripeService");
       const org = req.organization;
@@ -385,7 +386,7 @@ export function registerBillingRoutes(app: Express): void {
     businessName: z.string().optional(),
   });
 
-  api.post("/api/stripe/connect/link", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.post("/api/stripe/connect/link", isAuthenticated, getOrCreateOrg, requirePermission("canManageBilling"), async (req, res) => {
     try {
       const { stripeConnectService } = await import("./services/stripeConnect");
       const org = req.organization;
@@ -482,7 +483,7 @@ export function registerBillingRoutes(app: Express): void {
     }
   });
 
-  api.post("/api/stripe/connect/disconnect", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.post("/api/stripe/connect/disconnect", isAuthenticated, getOrCreateOrg, requirePermission("canManageBilling"), async (req, res) => {
     try {
       const { stripeConnectService } = await import("./services/stripeConnect");
       const org = req.organization;
@@ -522,7 +523,7 @@ export function registerBillingRoutes(app: Express): void {
     description: z.string().optional(),
   });
 
-  api.post("/api/stripe/connect/payment-intent", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.post("/api/stripe/connect/payment-intent", isAuthenticated, getOrCreateOrg, requirePermission("canManageBilling"), async (req, res) => {
     try {
       const { stripeConnectService } = await import("./services/stripeConnect");
       const org = req.organization;
@@ -691,7 +692,7 @@ export function registerBillingRoutes(app: Express): void {
   // ============================================
 
   // Pre-cancellation: get usage stats for retention offer
-  api.get("/api/subscription/cancellation-context", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.get("/api/subscription/cancellation-context", isAuthenticated, getOrCreateOrg, requirePermission("canManageBilling"), async (req, res) => {
     try {
       const org = req.organization;
       const limits = await getAllUsageLimits(org.id, (org.subscriptionTier || "free") as SubscriptionTier);
@@ -707,7 +708,7 @@ export function registerBillingRoutes(app: Express): void {
   });
 
   // Submit cancellation survey + trigger cancellation via Stripe portal
-  api.post("/api/subscription/cancel", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.post("/api/subscription/cancel", isAuthenticated, getOrCreateOrg, requirePermission("canManageBilling"), async (req, res) => {
     try {
       const org = req.organization;
       const userId = req.auth?.userId;
@@ -751,7 +752,7 @@ export function registerBillingRoutes(app: Express): void {
   // SELF-SERVE REFUND REQUESTS
   // ============================================
 
-  api.post("/api/subscription/refund-request", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.post("/api/subscription/refund-request", isAuthenticated, getOrCreateOrg, requirePermission("canManageBilling"), async (req, res) => {
     try {
       const org = req.organization;
       const userId = req.auth?.userId;
@@ -857,7 +858,7 @@ export function registerBillingRoutes(app: Express): void {
   });
 
   // Get refund request status
-  api.get("/api/subscription/refund-requests", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.get("/api/subscription/refund-requests", isAuthenticated, getOrCreateOrg, requirePermission("canManageBilling"), async (req, res) => {
     try {
       const org = req.organization;
       const requests = await db.select().from(refundRequests)
