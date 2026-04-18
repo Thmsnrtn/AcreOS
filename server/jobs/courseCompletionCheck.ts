@@ -38,7 +38,7 @@ function generateVerificationHash(
   completedAt: Date
 ): string {
   return createHash("sha256")
-    .update(`${userId}|${courseId}|${completedAt.toISOString()}|${process.env.CERT_SECRET || "acreos-cert"}`)
+    .update(`${userId}|${courseId}|${completedAt.toISOString()}|${process.env.CERT_SECRET || (process.env.NODE_ENV === 'production' ? (() => { throw new Error('Missing required secret: CERT_SECRET'); })() : 'dev-fallback-not-for-production')}`)
     .digest("hex");
 }
 

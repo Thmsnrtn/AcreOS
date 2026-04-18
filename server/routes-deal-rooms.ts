@@ -263,8 +263,12 @@ router.get('/:id/documents/:docId/download', asyncHandler(async (req: Authentica
     // Generate a signed URL that expires in 1 hour
     // If using S3/GCS, replace with SDK presigned URL generation
     const expiresAt = Date.now() + 60 * 60 * 1000; // 1 hour
+    const signingSecret = process.env.DOCUMENT_SIGNING_SECRET
+      || (process.env.NODE_ENV === 'production'
+        ? (() => { throw new Error('Missing required secret: DOCUMENT_SIGNING_SECRET'); })()
+        : 'dev-fallback-not-for-production');
     const signature = crypto
-      .createHmac('sha256', process.env.DOCUMENT_SIGNING_SECRET ?? 'dev-secret')
+      .createHmac('sha256', signingSecret)
       .update(`${docId}:${expiresAt}`)
       .digest('hex');
 
