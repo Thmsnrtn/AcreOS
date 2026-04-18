@@ -19,8 +19,7 @@ RUN apt-get update -qq && \
     apt-get install --no-install-recommends -y build-essential node-gyp pkg-config python-is-python3
 
 COPY package-lock.json package.json ./
-# Lock file generated on macOS — fresh install ensures linux platform binaries.
-RUN rm -f package-lock.json && npm install --include=dev --legacy-peer-deps
+RUN npm ci --include=dev --legacy-peer-deps
 
 COPY . .
 RUN npm run build
