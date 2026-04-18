@@ -168,7 +168,9 @@ export function validateAtlasOutput(
         const parsed = offerAmountSchema.safeParse(data);
         if (!parsed.success) {
           result.valid = false;
-          result.errors = parsed.error.issues.map((e: any) => e.message);
+
+          result.errors = parsed.error.issues.map((e: { message: string }) => e.message);
+
         } else {
           result.sanitized = parsed.data;
           result.confidence = parsed.data.confidence ?? 0.7;
@@ -180,7 +182,9 @@ export function validateAtlasOutput(
         const parsed = amortizationScheduleSchema.safeParse(data);
         if (!parsed.success) {
           result.valid = false;
-          result.errors = parsed.error.issues.map((e: any) => e.message);
+
+          result.errors = parsed.error.issues.map((e: { message: string }) => e.message);
+
         } else {
           result.warnings = checkAmortizationMath(parsed.data);
           result.sanitized = parsed.data;
@@ -193,7 +197,9 @@ export function validateAtlasOutput(
         const parsed = roiAnalysisSchema.safeParse(data);
         if (!parsed.success) {
           result.valid = false;
-          result.errors = parsed.error.issues.map((e: any) => e.message);
+
+          result.errors = parsed.error.issues.map((e: { message: string }) => e.message);
+
         } else {
           // Cross-check: gross profit = salePrice - purchasePrice
           const expected = parsed.data.salePrice - parsed.data.purchasePrice;
@@ -215,7 +221,9 @@ export function validateAtlasOutput(
         const parsed = compsAnalysisSchema.safeParse(data);
         if (!parsed.success) {
           result.valid = false;
-          result.errors = parsed.error.issues.map((e: any) => e.message);
+
+          result.errors = parsed.error.issues.map((e: { message: string }) => e.message);
+
         } else {
           result.sanitized = parsed.data;
           result.confidence = parsed.data.confidence;
@@ -230,7 +238,9 @@ export function validateAtlasOutput(
         const parsed = cashFlowSchema.safeParse(data);
         if (!parsed.success) {
           result.valid = false;
-          result.errors = parsed.error.issues.map((e: any) => e.message);
+
+          result.errors = parsed.error.issues.map((e: { message: string }) => e.message);
+
         } else {
           const expected = parsed.data.monthlyIncome - parsed.data.monthlyExpenses;
           if (Math.abs(parsed.data.netMonthly - expected) > 1) {
