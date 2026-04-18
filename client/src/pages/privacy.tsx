@@ -201,8 +201,43 @@ export default function PrivacyPolicy() {
               </p>
             </section>
 
+            <section className="space-y-4" data-testid="section-ccpa">
+              <h2 className="text-xl font-semibold">11. California Privacy Rights (CCPA)</h2>
+              <p className="text-muted-foreground leading-relaxed">
+                If you are a California resident, you have the right to: (1) know what personal information we collect,
+                (2) request deletion of your personal information, (3) opt out of the sale of your personal information,
+                and (4) not be discriminated against for exercising your rights.
+              </p>
+              <p className="text-muted-foreground leading-relaxed font-medium">
+                We do not sell your personal information. AcreOS does not sell, rent, or trade personal information
+                to third parties for monetary or other valuable consideration.
+              </p>
+              <p className="text-muted-foreground leading-relaxed">
+                To exercise your California privacy rights, contact us at privacy@acreos.com.
+              </p>
+            </section>
+
+            <section className="space-y-4" data-testid="section-subprocessors">
+              <h2 className="text-xl font-semibold">12. Sub-Processors</h2>
+              <p className="text-muted-foreground leading-relaxed">
+                We use the following third-party service providers to process data on our behalf:
+              </p>
+              <ul className="list-disc pl-6 space-y-1 text-muted-foreground">
+                <li>Clerk (authentication and user management)</li>
+                <li>Stripe (payment processing)</li>
+                <li>Fly.io (application hosting)</li>
+                <li>Amazon Web Services / SES (email delivery)</li>
+                <li>OpenRouter / OpenAI / Anthropic (AI features — opt-in)</li>
+                <li>Twilio (SMS and voice — opt-in)</li>
+                <li>Lob (direct mail — opt-in)</li>
+                <li>Sentry (error monitoring — with cookie consent)</li>
+                <li>Regrid (property data enrichment — opt-in)</li>
+                <li>Dropbox Sign (e-signatures — opt-in)</li>
+              </ul>
+            </section>
+
             <section className="space-y-4" data-testid="section-changes">
-              <h2 className="text-xl font-semibold">11. Changes to This Policy</h2>
+              <h2 className="text-xl font-semibold">13. Changes to This Policy</h2>
               <p className="text-muted-foreground leading-relaxed">
                 We may update this Privacy Policy from time to time. We will notify you of material changes 
                 by posting the new policy on this page and updating the "Last Updated" date. For significant 
@@ -214,7 +249,7 @@ export default function PrivacyPolicy() {
             </section>
 
             <section className="space-y-4" data-testid="section-contact">
-              <h2 className="text-xl font-semibold">12. Contact Us</h2>
+              <h2 className="text-xl font-semibold">14. Contact Us</h2>
               <p className="text-muted-foreground leading-relaxed">
                 If you have any questions about this Privacy Policy or our data practices, please contact us at:
               </p>
