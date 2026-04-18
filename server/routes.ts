@@ -578,12 +578,20 @@ export async function registerRoutes(
   });
 
   // ============================================
-  // F-A04-1: Prompt injection guard on all AI paths
+  // F-A04-1: Prompt injection guard on all AI-touching paths
   // ============================================
   app.use("/api/ai", promptInjectionMiddleware);
   app.use("/api/atlas", promptInjectionMiddleware);
   app.use("/api/chat", promptInjectionMiddleware);
   app.use("/api/executive", promptInjectionMiddleware);
+  app.use("/api/pax", promptInjectionMiddleware);
+  app.use("/api/founder/v6", promptInjectionMiddleware);
+  app.use("/api/founder/v7", promptInjectionMiddleware);
+  app.use("/api/founder/v8", promptInjectionMiddleware);
+  app.use("/api/founder/v10", promptInjectionMiddleware);
+  app.use("/api/founder/v12", promptInjectionMiddleware);
+  app.use("/api/founder/v13", promptInjectionMiddleware);
+  app.use("/api/founder/agent-collaboration", promptInjectionMiddleware);
 
   // ============================================
   // RATE LIMITING MIDDLEWARE (excludes health check)
@@ -1215,7 +1223,7 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Founder access required" });
       }
       const { platformFeatureFlags } = await import("@shared/schema");
-      const flags = await db.select().from(platformFeatureFlags);
+      const flags = await db.select().from(platformFeatureFlags).limit(1000);
       res.json(flags);
     } catch (err: any) {
       res.status(500).json({ message: err.message || "Failed to fetch feature flags" });
@@ -1288,7 +1296,7 @@ export async function registerRoutes(
       logger.info("[ExecutiveDashboard] Fetching metrics");
 
       // Active organizations and subscription breakdown
-      const allOrgs = await db.select().from(organizations);
+      const allOrgs = await db.select().from(organizations).limit(10000);
       const activeOrgs = allOrgs.filter(o => o.subscriptionStatus === "active");
       const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
       const orgsCreatedLast30 = allOrgs.filter(o => o.createdAt && new Date(o.createdAt) >= thirtyDaysAgo).length;
@@ -1326,7 +1334,7 @@ export async function registerRoutes(
       const [dealCount] = await db.select({ count: count() }).from(deals);
 
       // NPS metrics
-      const npsRows = await db.select().from(npsResponses);
+      const npsRows = await db.select().from(npsResponses).limit(50000);
       const npsCount = npsRows.length;
       const npsAvg = npsCount > 0 ? npsRows.reduce((sum, r) => sum + r.score, 0) / npsCount : 0;
       const promoters = npsRows.filter(r => r.score >= 9).length;

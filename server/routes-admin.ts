@@ -4625,7 +4625,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
       const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
 
       // MRR & customer metrics
-      const allOrgs = await db.select().from(organizations);
+      const allOrgs = await db.select().from(organizations).limit(10000);
       const paidOrgs = allOrgs.filter(o => o.subscriptionTier && o.subscriptionTier !== "free");
       const tierPricing: Record<string, number> = {
         sprout: 29, starter: 59, pro: 179, scale: 449, enterprise: 899,
@@ -4781,7 +4781,8 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   app.get("/api/founder/knowledge-base", isAuthenticated, isFounderAdmin, async (_req, res) => {
     try {
       const articles = await db.select().from(knowledgeBaseArticles)
-        .orderBy(desc(knowledgeBaseArticles.updatedAt));
+        .orderBy(desc(knowledgeBaseArticles.updatedAt))
+        .limit(1000);
       res.json({ articles });
     } catch (err: any) {
       res.status(500).json({ message: err.message });

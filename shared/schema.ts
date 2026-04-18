@@ -853,6 +853,9 @@ export const notes = pgTable("notes", {
   // Entity ownership tracking
   owningEntity: text("owning_entity"), // "Smith Land LLC", "Smith IRA LLC", etc.
 
+  // Optimistic locking — incremented on every balance-changing write
+  version: integer("version").notNull().default(1),
+
   notes: text("notes_text"), // Renamed to avoid conflict with table name
   deletedAt: timestamp("deleted_at"),
   deletedBy: text("deleted_by"),
@@ -881,7 +884,7 @@ export const payments = pgTable("payments", {
   paymentDate: timestamp("payment_date").notNull(),
   dueDate: timestamp("due_date").notNull(),
   paymentMethod: text("payment_method"), // ach, card, check, cash
-  transactionId: text("transaction_id"), // External processor transaction ID
+  transactionId: text("transaction_id").unique(), // External processor transaction ID — unique prevents duplicate payments
   
   // Status
   status: text("status").notNull().default("pending"),

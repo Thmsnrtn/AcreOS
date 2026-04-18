@@ -418,7 +418,8 @@ export function registerBorrowerRoutes(app: Express): void {
         if (principalAmount < 0) principalAmount = 0;
       }
       
-      // Create payment record
+      // Create payment record — balance update happens inside the transaction
+      // with optimistic locking (see storage.createPayment)
       const payment = await storage.createPayment({
         organizationId: note.organizationId,
         noteId: note.id,
@@ -433,32 +434,28 @@ export function registerBorrowerRoutes(app: Express): void {
         transactionId: sessionId,
         status: 'completed',
       });
-      
-      // Update note balance
+
       const newBalance = Math.max(0, Number(note.currentBalance) - principalAmount);
-      
-      // Update amortization schedule status
+
+      // Update schedule and next payment date (non-financial, safe outside payment tx)
       let updatedSchedule = schedule;
       if (nextPendingPayment) {
-        updatedSchedule = schedule.map(s => 
-          s.paymentNumber === nextPendingPayment.paymentNumber 
-            ? { ...s, status: 'paid' } 
+        updatedSchedule = schedule.map(s =>
+          s.paymentNumber === nextPendingPayment.paymentNumber
+            ? { ...s, status: 'paid' }
             : s
         );
       }
-      
-      // Calculate next payment date
+
       const nextPaymentDate = addMonths(new Date(note.nextPaymentDate || new Date()), 1);
-      
+
       await storage.updateNote(note.id, {
-        currentBalance: newBalance.toString(),
         amortizationSchedule: updatedSchedule,
         nextPaymentDate: nextPaymentDate,
-        status: newBalance <= 0 ? 'paid_off' : 'active',
       });
-      
-      res.json({ 
-        success: true, 
+
+      res.json({
+        success: true,
         payment,
         newBalance,
       });
