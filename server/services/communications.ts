@@ -300,12 +300,17 @@ export class CommunicationsService {
     const org = await storage.getOrganization(organizationId);
     const mailMode = org?.settings?.mailMode === 'live' ? 'live' : 'test';
 
+    // Require real return address — never send mail with a fake fallback address
+    const settings = org?.settings as any || {};
+    if (!settings.companyAddress || !settings.companyCity || !settings.companyState || !settings.companyZip) {
+      return { success: false, error: "Return address not configured. Set your company address in Settings before sending direct mail." };
+    }
     const fromAddress = {
       name: org?.name || 'AcreOS',
-      addressLine1: org?.settings?.companyAddress || '123 Main St',
-      city: 'Austin',
-      state: 'TX',
-      zip: '78701',
+      addressLine1: settings.companyAddress,
+      city: settings.companyCity,
+      state: settings.companyState,
+      zip: settings.companyZip,
     };
 
     const toAddress = {
