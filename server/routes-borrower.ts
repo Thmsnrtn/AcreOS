@@ -753,6 +753,14 @@ export function registerBorrowerRoutes(app: Express): void {
       if (!content || !content.trim()) {
         return res.status(400).json({ message: "Message content is required" });
       }
+      // Sanitize content — strip HTML tags and limit length to prevent XSS
+      const sanitized = content.trim()
+        .replace(/<[^>]*>/g, '') // Strip all HTML tags
+        .replace(/[<>]/g, '')   // Remove any remaining angle brackets
+        .slice(0, 5000);        // Cap message length
+      if (!sanitized) {
+        return res.status(400).json({ message: "Message content is required" });
+      }
       // Look up org for the note
       const noteResults = await db.select().from(notes).where(eq(notes.id, session.noteId));
       if (noteResults.length === 0) {
@@ -763,7 +771,7 @@ export function registerBorrowerRoutes(app: Express): void {
         noteId: session.noteId,
         orgId: note.organizationId,
         senderType: "borrower",
-        content: content.trim(),
+        content: sanitized,
         readAt: null,
       });
       res.status(201).json(msg);

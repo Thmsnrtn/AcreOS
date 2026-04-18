@@ -215,6 +215,7 @@ export async function getUserPermissionContext(
 
   const teamMember = await storage.getTeamMember(org.id, userId);
   if (!teamMember) return null;
+  if (!teamMember.isActive) return null; // Block deactivated team members
 
   const role = ROLES.includes(teamMember.role as Role) 
     ? (teamMember.role as Role) 
