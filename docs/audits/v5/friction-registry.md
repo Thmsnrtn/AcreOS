@@ -115,7 +115,7 @@ Resolving commits: pending
 ### FRICTION-0009
 Title: Auth page strips all AcreOS branding
 Severity: HIGH
-Status: OPEN
+Status: FIXED
 Surfaced in runs: run-01
 Personas affected: David, Jenna, Sarah, Robert
 Journeys affected: J1
@@ -123,12 +123,12 @@ Description: /auth renders a bare Clerk widget — no logo, no nav, no context. 
 Screen/location: /auth (auth-page.tsx)
 User impact: Trust damage. Sarah would flag this in enterprise evaluation.
 Remediation plan: Add AcreOS logo and minimal branding wrapper around Clerk widget.
-Resolving commits: pending
+Resolving commits: 9d4df2b
 
 ### FRICTION-0010
 Title: Landing page jargon alienates beginners
 Severity: HIGH
-Status: OPEN
+Status: FIXED
 Surfaced in runs: run-01
 Personas affected: Maria, Robert, Jenna
 Journeys affected: J1
@@ -136,7 +136,7 @@ Description: Terms like GIS, TCPA, DNC, APN, "serious operators" used without ex
 Screen/location: landing.tsx hero and feature sections
 User impact: Maria: "This isn't for me." Robert: "I don't understand half of this."
 Remediation plan: Replace or explain jargon. Lead with benefits, not features.
-Resolving commits: pending
+Resolving commits: 06b3fe8
 
 ### FRICTION-0011
 Title: AI analysis is freeform chat, not structured output
@@ -180,7 +180,7 @@ Resolving commits: pending
 ### FRICTION-0014
 Title: Billing toggle inaccessible to screen readers
 Severity: HIGH
-Status: OPEN
+Status: FIXED
 Surfaced in runs: run-01
 Personas affected: Alex
 Journeys affected: J1
@@ -188,7 +188,7 @@ Description: Monthly/Annual pricing toggle has no role, aria-checked, or aria-la
 Screen/location: pricing.tsx billing toggle
 User impact: Alex cannot switch billing period. WCAG Level A failure.
 Remediation plan: Add role="switch", aria-checked, aria-label to toggle button.
-Resolving commits: pending
+Resolving commits: 6fea5be
 
 ### FRICTION-0015
 Title: Pax responds to navigation questions with investor jargon
@@ -206,7 +206,7 @@ Resolving commits: pending
 ### FRICTION-0016
 Title: No currency labels on financial figures
 Severity: HIGH
-Status: OPEN
+Status: FIXED
 Surfaced in runs: run-01
 Personas affected: Priya
 Journeys affected: J1
@@ -214,7 +214,7 @@ Description: All monetary values displayed without currency symbol context. Inte
 Screen/location: Throughout pricing, property values
 User impact: Priya: "Are these Canadian dollars? I can't assume."
 Remediation plan: Ensure all monetary displays include USD indicator.
-Resolving commits: pending
+Resolving commits: 82544ed
 
 ## MEDIUM
 
@@ -244,7 +244,7 @@ Resolving commits: pending
 ### FRICTION-0019
 Title: No skip-to-content link on landing page
 Severity: MEDIUM
-Status: OPEN
+Status: FIXED
 Surfaced in runs: run-01
 Personas affected: Alex
 Journeys affected: J1
@@ -255,7 +255,7 @@ Resolving commits: pending
 ### FRICTION-0020
 Title: Pricing table check/X icons unlabeled for screen readers
 Severity: MEDIUM
-Status: OPEN
+Status: FIXED
 Surfaced in runs: run-01
 Personas affected: Alex
 Journeys affected: J1
@@ -288,7 +288,7 @@ Resolving commits: pending
 ### FRICTION-0023
 Title: Terminology inconsistency (professional vs investor)
 Severity: MEDIUM
-Status: OPEN
+Status: FIXED
 Surfaced in runs: run-01
 Personas affected: Jenna
 Journeys affected: J1
@@ -299,7 +299,7 @@ Resolving commits: pending
 ### FRICTION-0024
 Title: Tab labels use jargon abbreviations (Intel, DD, Comps)
 Severity: MEDIUM
-Status: OPEN
+Status: FIXED
 Surfaced in runs: run-01
 Personas affected: Maria, Jenna
 Journeys affected: J2
@@ -336,12 +336,12 @@ Resolving commits: pending
 | Severity | Open | Fixed | Total |
 |----------|------|-------|-------|
 | CRITICAL | 2 | 5 | 7 |
-| HIGH | 9 | 0 | 9 |
-| MEDIUM | 10 | 0 | 10 |
+| HIGH | 4 | 5 | 9 |
+| MEDIUM | 6 | 4 | 10 |
 | LOW | 0 | 0 | 0 |
-| **Total** | **21** | **5** | **26** |
+| **Total** | **12** | **14** | **26** |
 
 ### Convergence Status
 - CRITICAL: 2 OPEN (threshold: 0) — NOT MET
-- HIGH: 9 OPEN (threshold: <5) — NOT MET
-- MEDIUM: 10 OPEN (threshold: <20) — MET
+- HIGH: 4 OPEN (threshold: <5) — MET
+- MEDIUM: 6 OPEN (threshold: <20) — MET
