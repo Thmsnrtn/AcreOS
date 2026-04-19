@@ -16,10 +16,12 @@ if (!process.env.DATABASE_URL) {
 }
 
 const STATEMENTS = [
-  // notes: soft-delete columns + owning_entity (schema drift as of 2026-04-19)
+  // notes: columns that never got a proper Drizzle migration applied in prod.
+  // All idempotent — re-running is a no-op.
   'ALTER TABLE "notes" ADD COLUMN IF NOT EXISTS "owning_entity" text',
   'ALTER TABLE "notes" ADD COLUMN IF NOT EXISTS "deleted_at" timestamp',
   'ALTER TABLE "notes" ADD COLUMN IF NOT EXISTS "deleted_by" text',
+  'ALTER TABLE "notes" ADD COLUMN IF NOT EXISTS "version" integer NOT NULL DEFAULT 1',
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
