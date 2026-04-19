@@ -26,6 +26,18 @@ tests/e2e/.auth/
 playwright-report/
 test-results/
 
+# Simulation / audit artifacts
+/*.pdf
+/tests.zip
+/test-results.zip
+/PRODUCTION-REFINEMENT-ROADMAP.md
+/ACREOS-SIMULATION-UPDATE.md
+tests/production-audit-results.json
+tests/smoke-results.json
+tests/simulation/*.md
+tests/simulation/reports/
+tests/simulation/screenshots/
+
 # Editor / IDE
 .vscode/
 .idea/
