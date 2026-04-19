@@ -100,7 +100,7 @@ function CompletionCelebration({ children }: { children: React.ReactNode }) {
 // Onboarding flow — 3 paths, guided by Atlas
 //
 // Expert land investing principle: The first 10 minutes determine whether
-// someone becomes a lifelong investor or abandons the platform.
+// someone becomes a lifelong professional user or abandons the platform.
 // The "aha moment" must happen in minute 2 — real data, real opportunity.
 // ---------------------------------------------------------------------------
 
@@ -1186,7 +1186,7 @@ export default function OnboardingV2() {
                 <div className="text-xs text-gray-500 mb-2">💡 Not sure which county to pick?</div>
                 <div className="text-xs text-gray-400">
                   Expert tip: Start with rural counties in TX, AZ, NM, or CO. Look for counties with
-                  low competition (few investors mailing) and active land sales. The Deal Hunter will
+                  low competition (fewer mailers being sent) and active land sales. The Deal Hunter will
                   show you opportunity scores for any county you choose.
                 </div>
               </div>
@@ -1239,14 +1239,14 @@ export default function OnboardingV2() {
                 {
                   group: "Notes & Creative",
                   types: [
-                    { value: "note_investor", icon: TrendingUp, title: "Note Investor", desc: "Buy, sell, and service mortgage notes. Build passive income streams." },
+                    { value: "note_investor", icon: TrendingUp, title: "Note Professional", desc: "Buy, sell, and service mortgage notes. Build passive income streams." },
                     { value: "creative_finance", icon: Brain, title: "Creative Finance", desc: "Subject-to, wraps, lease options, and seller financing strategies." },
                   ],
                 },
                 {
                   group: "Multi-Strategy",
                   types: [
-                    { value: "agent_investor", icon: UserPlus, title: "Agent-Investor", desc: "Licensed agent who also invests. Manage clients and your own deals." },
+                    { value: "agent_investor", icon: UserPlus, title: "Agent & Professional", desc: "Licensed agent who also invests. Manage clients and your own deals." },
                     { value: "hybrid", icon: BarChart3, title: "Hybrid / Multi-Strategy", desc: "Combine multiple strategies — land, notes, rentals, and more." },
                   ],
                 },
