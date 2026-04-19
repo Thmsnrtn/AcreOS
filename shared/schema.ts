@@ -14904,3 +14904,25 @@ export const adjacentVerticalsWaitlist = pgTable("adjacent_verticals_waitlist", 
 
 export const insertAdjacentVerticalsWaitlistSchema = createInsertSchema(adjacentVerticalsWaitlist).omit({ id: true, createdAt: true });
 export type AdjacentVerticalsWaitlistEntry = typeof adjacentVerticalsWaitlist.$inferSelect;
+
+// ============================================
+// FEEDBACK SUBMISSIONS
+// ============================================
+
+export const feedbackSubmissions = pgTable("feedback_submissions", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  userEmail: text("user_email").notNull(),
+  category: text("category").notNull(), // bug, feature_request, confusion, other
+  message: text("message").notNull(),
+  allowFollowUp: boolean("allow_follow_up").default(true).notNull(),
+  pageUrl: text("page_url"),
+  userAgent: text("user_agent"),
+  status: text("status").default("new").notNull(), // new, reviewed, resolved, archived
+  founderNotes: text("founder_notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertFeedbackSubmissionSchema = createInsertSchema(feedbackSubmissions).omit({ id: true, createdAt: true });
+export type FeedbackSubmission = typeof feedbackSubmissions.$inferSelect;
+export type InsertFeedbackSubmission = z.infer<typeof insertFeedbackSubmissionSchema>;
