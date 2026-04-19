@@ -2,6 +2,7 @@ import React from "react";
 import { PageShell } from "@/components/page-shell";
 import { StatCard } from "@/components/stat-card";
 import { useOrganization, useDashboardStats } from "@/hooks/use-organization";
+import { useAuth } from "@/hooks/use-auth";
 import { useLeads } from "@/hooks/use-leads";
 import { useProperties } from "@/hooks/use-properties";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -36,6 +37,9 @@ import {
   Zap,
   Moon,
   Bot,
+  RefreshCw,
+  Briefcase,
+  MessageSquare,
 } from "lucide-react";
 import { format, isToday, isBefore, startOfDay, subDays } from "date-fns";
 
@@ -172,8 +176,12 @@ const priorityColors: Record<string, string> = {
 };
 
 
+const LAST_VISIT_KEY = "acreos_last_visit_ts";
+const WELCOME_BACK_THRESHOLD_DAYS = 7;
+
 export default function TodayPage() {
   const { data: organization } = useOrganization();
+  const { user } = useAuth();
   const { data: stats, isLoading: statsLoading } = useDashboardStats();
   const { data: leadsRaw = [] } = useLeads();
   const leads = Array.isArray(leadsRaw) ? leadsRaw : [];
@@ -397,6 +405,44 @@ export default function TodayPage() {
   });
   const showOnboardingBanner = !onboardingComplete && !onboardingDismissed;
 
+  // ── Welcome Back: detect returning users after extended absence ─────
+  const [welcomeBackDismissed, setWelcomeBackDismissed] = React.useState(false);
+  const lastVisitTs = React.useMemo(() => {
+    try {
+      const stored = localStorage.getItem(LAST_VISIT_KEY);
+      return stored ? parseInt(stored, 10) : null;
+    } catch {
+      return null;
+    }
+  }, []);
+  const daysSinceLastVisit = lastVisitTs
+    ? Math.floor((Date.now() - lastVisitTs) / (1000 * 60 * 60 * 24))
+    : null;
+  const showWelcomeBack =
+    !welcomeBackDismissed &&
+    daysSinceLastVisit !== null &&
+    daysSinceLastVisit >= WELCOME_BACK_THRESHOLD_DAYS;
+
+  // Update the last-visit timestamp on mount (after reading the old value)
+  React.useEffect(() => {
+    try {
+      localStorage.setItem(LAST_VISIT_KEY, Date.now().toString());
+    } catch {
+      // localStorage unavailable — ignore
+    }
+  }, []);
+
+  const dismissWelcomeBack = React.useCallback(() => {
+    setWelcomeBackDismissed(true);
+    try {
+      localStorage.setItem(LAST_VISIT_KEY, Date.now().toString());
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const userName = user?.firstName || organization?.name || "";
+
   return (
     <PageShell>
       {/* Onboarding prompt for new users */}
@@ -420,6 +466,88 @@ export default function TodayPage() {
               </Link>
               <Button variant="ghost" size="sm" onClick={() => { setOnboardingDismissed(true); sessionStorage.setItem("onboarding_banner_dismissed", "true"); }}>
                 <X className="w-4 h-4" />
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Welcome Back card for returning users after extended absence */}
+      {showWelcomeBack && (
+        <Card className="border-blue-200 dark:border-blue-800 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/20" data-testid="welcome-back-card">
+          <CardContent className="p-5">
+            <div className="flex items-start justify-between gap-4 mb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-blue-100 dark:bg-blue-900/40">
+                  <RefreshCw className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-base">
+                    Welcome back{userName ? `, ${userName}` : ""}!
+                  </h3>
+                  <p className="text-sm text-muted-foreground">
+                    It's been {daysSinceLastVisit} day{daysSinceLastVisit !== 1 ? "s" : ""} since your last visit. Here's what's happening:
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="shrink-0 h-8 w-8"
+                onClick={dismissWelcomeBack}
+                aria-label="Dismiss welcome back card"
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+
+            {/* Summary stats */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+              <div className="bg-white/70 dark:bg-background/40 rounded-lg p-3 text-center">
+                <p className="text-lg font-bold text-foreground">
+                  {statsLoading ? "-" : stats?.activeLeads ?? 0}
+                </p>
+                <p className="text-xs text-muted-foreground">Active Leads</p>
+              </div>
+              <div className="bg-white/70 dark:bg-background/40 rounded-lg p-3 text-center">
+                <p className="text-lg font-bold text-foreground">
+                  {statsLoading ? "-" : stats?.activeDeals ?? 0}
+                </p>
+                <p className="text-xs text-muted-foreground">Active Deals</p>
+              </div>
+              <div className="bg-white/70 dark:bg-background/40 rounded-lg p-3 text-center">
+                <p className="text-lg font-bold text-foreground">
+                  {statsLoading ? "-" : stats?.activeProperties ?? 0}
+                </p>
+                <p className="text-xs text-muted-foreground">Properties</p>
+              </div>
+              <div className="bg-white/70 dark:bg-background/40 rounded-lg p-3 text-center">
+                <p className="text-lg font-bold text-foreground">
+                  {pendingDecisionCount > 0 ? pendingDecisionCount : 0}
+                </p>
+                <p className="text-xs text-muted-foreground">Pending Decisions</p>
+              </div>
+            </div>
+
+            {/* Quick action links */}
+            <div className="flex flex-wrap gap-2">
+              <Button asChild size="sm" variant="default" className="gap-1.5">
+                <Link href="/decision-queue">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  Review Decisions
+                </Link>
+              </Button>
+              <Button asChild size="sm" variant="outline" className="gap-1.5 bg-white/60 dark:bg-background/40">
+                <Link href="/portfolio">
+                  <Briefcase className="w-3.5 h-3.5" />
+                  View Portfolio
+                </Link>
+              </Button>
+              <Button asChild size="sm" variant="outline" className="gap-1.5 bg-white/60 dark:bg-background/40">
+                <Link href="/team-inbox">
+                  <MessageSquare className="w-3.5 h-3.5" />
+                  Check Messages
+                </Link>
               </Button>
             </div>
           </CardContent>
