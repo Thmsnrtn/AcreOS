@@ -1,6 +1,7 @@
 import React from "react";
 import { PageShell } from "@/components/page-shell";
 import { StatCard } from "@/components/stat-card";
+import { GettingStartedChecklist } from "@/components/getting-started-checklist";
 import { useOrganization, useDashboardStats } from "@/hooks/use-organization";
 import { useAuth } from "@/hooks/use-auth";
 import { useLeads } from "@/hooks/use-leads";
@@ -552,6 +553,38 @@ export default function TodayPage() {
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {/* Getting Started Checklist — shown when user has no data yet */}
+      {!statsLoading && (stats?.activeLeads ?? 0) === 0 && (stats?.activeProperties ?? 0) === 0 && (
+        <div className="space-y-4">
+          <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-accent/5">
+            <CardContent className="p-6 text-center space-y-3">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-primary/10">
+                <Target className="w-6 h-6 text-primary" />
+              </div>
+              <h2 className="text-xl font-bold">Ready to find your first deal?</h2>
+              <p className="text-muted-foreground max-w-md mx-auto">
+                Your AcreOS workspace is set up. Follow these steps to start evaluating parcels and closing deals.
+              </p>
+              <div className="flex flex-wrap gap-2 justify-center pt-2">
+                <Button asChild size="sm">
+                  <Link href="/properties">
+                    <Map className="w-4 h-4 mr-1.5" />
+                    Add Your First Parcel
+                  </Link>
+                </Button>
+                <Button asChild size="sm" variant="outline">
+                  <Link href="/leads">
+                    <Users className="w-4 h-4 mr-1.5" />
+                    Import Leads
+                  </Link>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+          <GettingStartedChecklist />
+        </div>
       )}
 
       {/* Header */}
