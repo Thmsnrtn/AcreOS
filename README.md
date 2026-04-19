@@ -1,136 +1,129 @@
 # AcreOS
 
-Real estate management platform — CRM, deal pipeline, seller-financed notes, AI assistants, marketing automation, and portfolio analytics in one app.
+The AI-powered platform for land investors. Find motivated sellers, analyze parcels, send direct mail, and close deals — all in one platform.
 
-## Quick Start (Development)
+## What It Does
+
+- **CRM** — Leads, properties, deal pipeline, and seller-financed note management
+- **AI Analysis** — Parcel evaluation, comps, and investment scoring via Atlas (powered by OpenRouter)
+- **Direct Mail** — Campaign creation and sending via Lob
+- **Skip Tracing** — Owner contact lookup via BatchData
+- **Data Enrichment** — Property data from ATTOM, Regrid, and 6 free government sources (FEMA, Census, USGS, USDA, EPA, BLM)
+- **AI Assistants** — Pax (operations copilot), Sophie (support), Atlas (analysis)
+- **Autonomous Executor** — 30-minute decision cycle for routine operations with founder override
+- **Seller Finance** — Note tracking, amortization, borrower portal
+- **Billing** — Stripe-powered tiers: Free, Starter ($20/mo), Pro ($49/mo), Scale ($79/mo)
+
+## What It Does NOT Yet Do
+
+- Broader REI verticals (wholesaling, fix & flip, etc.) — waitlisted on landing page
+- Mobile app (responsive web only)
+- Public API (internal REST API exists but is undocumented)
+- List building / external property database search
+
+## Quick Start
 
 ```bash
 # 1. Install dependencies
 npm install
 
-# 2. Copy env template and fill in your values
+# 2. Copy env template
 cp .env.example .env
+# Edit .env — at minimum set DATABASE_URL and CLERK keys
 
 # 3. Push database schema
 npm run db:push
 
-# 4. Start dev server (Vite HMR + Express)
+# 4. Start dev server
 npm run dev
 ```
 
-The app runs at `http://localhost:5000` by default.
+Runs at `http://localhost:5000`.
 
-## Quick Start (Docker)
+## Stack
 
-```bash
-# 1. Copy env template
-cp .env.example .env
-# Edit .env with your API keys
+| Layer | Technology |
+|-------|-----------|
+| Frontend | React, Vite, TailwindCSS, shadcn/ui |
+| Backend | Express, TypeScript, esbuild |
+| Database | PostgreSQL via Drizzle ORM |
+| Auth | Clerk (SSO, OAuth, session management) |
+| Email | AWS SES |
+| AI | OpenRouter (primary), OpenAI (optional fallback) |
+| Direct Mail | Lob |
+| SMS | Twilio (optional) |
+| Payments | Stripe |
+| Hosting | Fly.io (2 machines, IAD region) |
 
-# 2. Start everything (Postgres + app)
-docker compose up -d
+## Required Environment Variables
 
-# 3. Push schema into the Dockerized DB
-DATABASE_URL=postgresql://acreos:acreos@localhost:5432/acreos npm run db:push
-```
+See `.env.example` for the full list. Critical variables:
+
+| Variable | Required | Purpose |
+|----------|----------|---------|
+| `DATABASE_URL` | Yes | PostgreSQL connection |
+| `CLERK_SECRET_KEY` | Yes | Authentication |
+| `VITE_CLERK_PUBLISHABLE_KEY` | Yes | Frontend auth |
+| `AI_INTEGRATIONS_OPENROUTER_API_KEY` | Yes* | AI features |
+| `STRIPE_SECRET_KEY` | Yes* | Billing |
+| `STRIPE_WEBHOOK_SECRET` | Yes* | Subscription lifecycle |
+
+*Features degrade gracefully without these but core functionality requires them.
 
 ## Scripts
 
 | Command | Description |
-|---|---|
-| `npm run dev` | Start dev server with Vite HMR |
-| `npm run build` | Build client (Vite) + server (esbuild) into `dist/` |
+|---------|-------------|
+| `npm run dev` | Development server with HMR |
+| `npm run build` | Production build (Vite + esbuild) |
 | `npm start` | Run production build |
-| `npm test` | Run unit tests (vitest) |
-| `npm run test:watch` | Run tests in watch mode |
-| `npm run test:coverage` | Run tests with coverage report |
+| `npm test` | Unit tests (vitest) |
 | `npm run check` | TypeScript type-check |
 | `npm run db:push` | Push Drizzle schema to database |
 
-## Environment Variables
+## Deployment (Fly.io)
 
-See [`.env.example`](.env.example) for the full list. Required variables:
+```bash
+# Deploy
+fly deploy
 
-- `DATABASE_URL` — PostgreSQL connection string
-- `SESSION_SECRET` — Random string for session encryption
-- `FOUNDER_EMAILS` — Comma-separated list of founder email addresses
+# Set secrets
+fly secrets set AI_INTEGRATIONS_OPENROUTER_API_KEY=sk-or-...
+fly secrets set STRIPE_SECRET_KEY=sk_live_...
 
-Optional (features degrade gracefully without these):
-- `STRIPE_SECRET_KEY` / `STRIPE_PUBLISHABLE_KEY` / `STRIPE_WEBHOOK_SECRET`
-- `OPENAI_API_KEY`
-- `SENDGRID_API_KEY`
-
-## Architecture
-
-```
-client/src/          React SPA (Vite, TailwindCSS, shadcn/ui)
-  pages/             Route-level page components
-  components/        Shared UI components
-  hooks/             React Query hooks, auth, utilities
-  lib/               Query client, utilities, animations
-
-server/              Express API server
-  auth/              Passport-local auth (bcrypt + sessions)
-  middleware/        Rate limiting, CSRF, org resolution, security
-  services/          Business logic (AI agents, campaigns, finance, etc.)
-  routes.ts          Main route registrations (~20K lines)
-  storage.ts         Drizzle ORM data access layer
-
-shared/
-  schema.ts          Drizzle table definitions + Zod schemas
-  models/            Auth & chat table models
-
-tests/               Vitest test suites
+# Check status
+fly status
+fly logs
 ```
 
-### Key Patterns
-
-- **Auth**: Passport-local with bcrypt password hashing and `express-session` (PostgreSQL-backed via `connect-pg-simple`).
-- **Multi-tenancy**: Every API route resolves the user's organization via `getOrCreateOrg` middleware. All data is scoped to `organizationId`.
-- **Rate limiting**: Sliding-window in-memory rate limiter (`server/middleware/rateLimit.ts`). IP-based for public endpoints, user-ID-based for authenticated.
-- **CSRF**: Double-submit cookie pattern (`server/middleware/csrf.ts`).
-- **Subscriptions**: Stripe integration with tiered plans (free → starter → pro → scale → enterprise). Founders bypass all limits.
-- **AI**: OpenAI-powered agents for lead scoring, deal analysis, campaign optimization, and a conversational assistant (Pax).
+The app runs 2 machines in IAD with auto-restart, health checks on `/api/health`, and rolling deploys.
 
 ## Health Check
 
 ```
-GET /api/health          — Full health check (DB, Stripe, OpenAI, SendGrid, etc.)
-GET /api/health/cached   — Last cached result (fast, no external calls)
-GET /api/health/:service — Check a specific service
+GET /api/health        — Full check (DB, Redis, Stripe, AI, Email, Twilio, Lob)
+GET /api/health/cached — Last cached result (fast, no external calls)
 ```
 
-## Deployment
+## Architecture
 
-### Docker (recommended)
-
-```bash
-docker compose up -d --build
 ```
+client/src/          React SPA
+  pages/             156 route-level components
+  components/        Shared UI (shadcn/ui based)
 
-The Dockerfile uses a multi-stage build:
-1. **Builder stage**: installs all deps, runs `npm run build`
-2. **Runner stage**: installs only production deps, copies `dist/`
+server/              Express API
+  auth/              Clerk authentication
+  ai/                AI agents (Atlas, Pax, Sophie)
+  services/          383 service files
+  middleware/        Rate limiting, CSRF, org resolution, security
+  routes.ts          Route registrations
 
-The container includes a `HEALTHCHECK` that polls `/api/health/cached`.
+shared/
+  schema.ts          428 Drizzle table definitions + Zod schemas
 
-### Manual
-
-```bash
-npm ci
-npm run build
-npm run db:push
-NODE_ENV=production node dist/index.cjs
+tests/               Vitest + Playwright test suites
 ```
-
-### Production Checklist
-
-- [ ] Set `NODE_ENV=production`
-- [ ] Set a strong, random `SESSION_SECRET`
-- [ ] Configure `APP_URL` to your public domain (used for CORS and Stripe webhooks)
-- [ ] Set up Stripe webhook pointing to `{APP_URL}/api/stripe/webhook`
-- [ ] Enable HTTPS via a reverse proxy (nginx, Caddy, or cloud LB)
-- [ ] Run `npm run db:push` against your production database
 
 ## License
 
