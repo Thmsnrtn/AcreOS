@@ -33,6 +33,8 @@ import {
   ShieldCheck,
   DollarSign,
   FileSearch,
+  Search,
+  ContactRound,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
@@ -280,38 +282,21 @@ const NAV_MODULES: NavModule[] = [
     description: "Overview of your real estate business",
   },
   {
-    id: "leads",
-    label: "Leads",
-    icon: Users,
+    id: "crm",
+    label: "CRM",
+    icon: ContactRound,
     href: "/leads",
-    description: "Manage your leads and sellers",
+    description: "Contacts, deals, and property management",
     children: [
-      { label: "All Leads", icon: Users, href: "/leads", description: "All your leads" },
-      { label: "Blind Offer Wizard", icon: Wand2, href: "/blind-offer-wizard", description: "Calculate blind offers step-by-step" },
-    ],
-  },
-  {
-    id: "properties",
-    label: "Properties",
-    icon: Map,
-    href: "/properties",
-    description: "Properties you own or evaluate",
-    children: [
-      { label: "Properties", icon: Map, href: "/properties", description: "Track properties you own or evaluate" },
-      { label: "Maps", icon: MapPin, href: "/maps", description: "Portfolio map view" },
-      { label: "Documents", icon: FileText, href: "/documents", description: "Property documents" },
-    ],
-  },
-  {
-    id: "deals",
-    label: "Deals",
-    icon: GitBranch,
-    href: "/deals",
-    description: "Visualize your deal flow",
-    children: [
+      { label: "Leads", icon: Users, href: "/leads", description: "Manage your leads and sellers" },
+      { label: "Skip Tracing", icon: Search, href: "/skip-tracing", description: "Find owner contact info" },
+      { label: "Properties", icon: Map, href: "/properties", description: "Properties you own or evaluate" },
+      { label: "Portfolio Map", icon: MapPin, href: "/maps", description: "Interactive portfolio mapping" },
       { label: "Deal Pipeline", icon: GitBranch, href: "/deals", description: "Visualize your deal flow" },
       { label: "Marketplace", icon: Store, href: "/marketplace", description: "Buy and sell deals" },
       { label: "Listings", icon: FileText, href: "/listings", description: "Properties for sale" },
+      { label: "Documents", icon: FileText, href: "/documents", description: "Property documents" },
+      { label: "Blind Offer Wizard", icon: Wand2, href: "/blind-offer-wizard", description: "Calculate blind offers step-by-step" },
     ],
   },
 
@@ -324,6 +309,7 @@ const NAV_MODULES: NavModule[] = [
     description: "Email, SMS, and direct mail campaigns",
     children: [
       { label: "Campaigns", icon: Mail, href: "/campaigns", description: "Email, SMS, and direct mail campaigns" },
+      { label: "Direct Mail", icon: Newspaper, href: "/direct-mail", description: "Direct mail campaign automation" },
       { label: "Sequences", icon: Zap, href: "/sequences", description: "Automated follow-up sequences" },
     ],
   },
@@ -353,12 +339,12 @@ const NAV_MODULES: NavModule[] = [
     children: [
       { label: "Insights", icon: TrendingUp, href: "/analytics", description: "Analytics and market insights" },
       { label: "Cohort Retention", icon: TrendingUp, href: "/analytics#retention", description: "Cohort retention curves and revenue" },
-      { label: "AVM", icon: TrendingUp, href: "/avm", description: "AcreOS Valuation Model" },
+      { label: "AI Valuations", icon: TrendingUp, href: "/avm", description: "AI-powered property valuations" },
       { label: "Land Credit", icon: Shield, href: "/land-credit", description: "Proprietary 300-850 land scoring" },
       { label: "Markets", icon: Globe, href: "/market-intelligence", description: "Market analysis and price trends" },
       { label: "Counties", icon: Landmark, href: "/counties", description: "USDA + Census county intelligence" },
       { label: "Acq. Radar", icon: Target, href: "/radar", description: "AI-scored deal opportunities" },
-      { label: "Doc Intel", icon: FileSearch, href: "/document-intelligence", description: "AI contract parsing" },
+      { label: "Document Intel", icon: FileSearch, href: "/document-intelligence", description: "AI document analysis and parsing" },
       { label: "Compliance", icon: ShieldCheck, href: "/compliance", description: "Regulatory monitoring" },
     ],
   },
@@ -397,7 +383,7 @@ const NAV_MODULES: NavModule[] = [
 ];
 
 // Default expanded modules (open by default)
-const DEFAULT_EXPANDED = new Set<string>(["leads", "properties", "deals", "founder-business"]);
+const DEFAULT_EXPANDED = new Set<string>(["crm", "campaigns", "intelligence", "founder-business"]);
 
 const COLLAPSED_STORAGE_KEY = "sidebar-collapsed";
 const EXPANDED_STORAGE_KEY = "sidebar-expanded-modules";

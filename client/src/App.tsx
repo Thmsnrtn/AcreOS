@@ -615,6 +615,12 @@ function Router() {
       <Route path="/property-enrichment">
         {() => <ProtectedRoute component={PropertyEnrichmentPage} />}
       </Route>
+      <Route path="/skip-tracing">
+        {() => <ProtectedRoute component={SkipTracingPage} />}
+      </Route>
+      <Route path="/direct-mail">
+        {() => <ProtectedRoute component={DirectMailCampaignsPage} />}
+      </Route>
       <Route path="/syndication">
         {() => <ProtectedRoute component={SyndicationPage} />}
       </Route>
