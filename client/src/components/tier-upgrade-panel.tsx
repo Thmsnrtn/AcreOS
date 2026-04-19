@@ -54,7 +54,7 @@ const FEATURES: TierFeature[] = [
   { name: "Sequences", free: false, starter: "2", pro: "Unlimited" },
   { name: "BYOK Data Providers", free: false, starter: false, pro: true },
   { name: "Team Seats", free: "1", starter: "1", pro: "2" },
-  { name: "Open Data Sources (18)", free: true, starter: true, pro: true },
+  { name: "Data Sources (6 free + 3 premium)", free: true, starter: true, pro: true },
 ];
 
 function FeatureCell({ value }: { value: string | boolean }) {
