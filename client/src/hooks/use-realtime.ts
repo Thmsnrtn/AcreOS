@@ -59,9 +59,10 @@ export function useRealtime() {
   const userRef = useRef<any>(null);
   const orgRef = useRef<any>(null);
 
-  // Get auth state via polling (avoids import cycle)
+  // Get auth state via polling (avoids import cycle). STR-007: the
+  // canonical endpoint is /api/auth/user — /api/user is a 404.
   const { data: authData } = useQuery<{ user: any; organization: any }>({
-    queryKey: ['/api/user'],
+    queryKey: ['/api/auth/user'],
     staleTime: 60_000,
   });
 

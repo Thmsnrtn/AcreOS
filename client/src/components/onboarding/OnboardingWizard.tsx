@@ -102,7 +102,7 @@ const WIZARD_STEPS = [
     id: 0,
     name: "welcome",
     title: "Welcome to AcreOS",
-    description: "The operating system for real estate professionals",
+    description: "The operating system for land investors",
     icon: Sparkles,
   },
   {
@@ -379,7 +379,7 @@ export function OnboardingWizard() {
                 <Sparkles className="w-10 h-10 text-primary" />
               </motion.div>
               <h2 className="text-2xl font-bold mb-2">Welcome to AcreOS</h2>
-              <p className="text-muted-foreground">The operating system for real estate professionals — track leads, run campaigns, and close more deals.</p>
+              <p className="text-muted-foreground">The operating system for land investors — track leads, run campaigns, and close more deals.</p>
             </div>
 
             <div className="grid grid-cols-1 gap-3 mb-4">
@@ -635,7 +635,7 @@ export function OnboardingWizard() {
 
             <div className="space-y-2">
               {[
-                { icon: Check, label: "Pre-built templates for real estate professionals" },
+                { icon: Check, label: "Pre-built templates for land investors" },
                 { icon: Check, label: "Target leads by score, stage, or location" },
                 { icon: Check, label: "Track open rates and responses" },
               ].map(({ icon: Icon, label }) => (

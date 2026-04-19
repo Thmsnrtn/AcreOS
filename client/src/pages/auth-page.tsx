@@ -43,7 +43,7 @@ export default function AuthPage() {
             <span className="text-2xl font-bold tracking-tight">AcreOS</span>
           </div>
           <p className="text-sm text-muted-foreground text-center">
-            The operating system for real estate professionals
+            The operating system for land investors
           </p>
         </div>
 

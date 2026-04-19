@@ -75,7 +75,7 @@ const FREEDOM_WISDOM = [
   "\"When your note income exceeds your fixed expenses, you've achieved financial freedom. Not when you have a million dollars in the bank — when you have cash flowing every month.\"",
   "\"The beauty of seller-financed notes is the default protection: if the buyer stops paying, you keep the down payment, the payments made, AND get the property back.\"",
   "\"Diversify across counties and states. A drought in one region doesn't affect your notes elsewhere. Geographic diversification is risk management.\"",
-  "\"The most important thing a real estate professional can do is let the notes compound. Reinvest the cash flips into more acquisitions.\"",
+  "\"The most important thing a land investor can do is let the notes compound. Reinvest the cash flips into more acquisitions.\"",
   "\"Seller-financed notes are the closest thing to a subscription business in real estate: one acquisition, then monthly recurring revenue with zero tenant calls.\"",
 ];
 

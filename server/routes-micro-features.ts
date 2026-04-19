@@ -252,6 +252,118 @@ export function registerMicroFeatureRoutes(app: Express): void {
       Errors.internal(res, error);
     }
   });
+
+  // ─── Field / Driving-for-Dollars endpoints ─────────────────────────
+  // STR-023/024/025: land investors using AcreOS in the field need to
+  // (a) find parcels near a GPS pin, (b) convert GPS → address, and
+  // (c) search their property list by address or APN. Without these
+  // the mobile driving-for-dollars loop is broken.
+
+  // STR-023: GET /api/properties/by-location?lat&lng&radius
+  app.get("/api/properties/by-location", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const lat = Number(req.query.lat);
+      const lng = Number(req.query.lng);
+      const radius = Number(req.query.radius) || 5;
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        return Errors.badRequest(res, "lat and lng are required numeric query params");
+      }
+      if (Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+        return Errors.badRequest(res, "lat must be in [-90, 90] and lng in [-180, 180]");
+      }
+      const clampedRadius = Math.min(Math.max(radius, 0.1), 50);
+      const { findNearbyProperties } = await import("./services/propertyIntelligenceEnhancements");
+      const nearby = await findNearbyProperties(org.id, lat, lng, clampedRadius);
+      const withDistance = nearby.map((p: any) => {
+        const pLat = p.latitude ? Number(p.latitude) : null;
+        const pLng = p.longitude ? Number(p.longitude) : null;
+        const distanceMiles =
+          pLat !== null && pLng !== null ? haversine(lat, lng, pLat, pLng) : null;
+        return { ...p, distanceMiles: distanceMiles !== null ? Number(distanceMiles.toFixed(2)) : null };
+      });
+      withDistance.sort((a, b) => (a.distanceMiles ?? Infinity) - (b.distanceMiles ?? Infinity));
+      res.json({ properties: withDistance, count: withDistance.length, radius: clampedRadius, lat, lng });
+    } catch (error) {
+      Errors.internal(res, error);
+    }
+  });
+
+  // STR-024: GET /api/geocode/reverse?lat&lng  (proxies Mapbox)
+  app.get("/api/geocode/reverse", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const lat = Number(req.query.lat);
+      const lng = Number(req.query.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        return Errors.badRequest(res, "lat and lng are required numeric query params");
+      }
+      const token = process.env.VITE_MAPBOX_TOKEN || process.env.MAPBOX_TOKEN;
+      if (!token) {
+        return res.status(503).json({
+          error: "service_unavailable",
+          message: "Reverse geocoding is not configured. Contact support.",
+        });
+      }
+      const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${encodeURIComponent(token)}&types=address,place,postcode,region,country`;
+      const resp = await fetch(url);
+      if (!resp.ok) {
+        logger.warn("[geocode/reverse] mapbox non-ok", { metadata: { status: resp.status } });
+        return res.status(502).json({ error: "upstream_error", message: "Geocoding service error" });
+      }
+      const data = (await resp.json()) as any;
+      const place = data?.features?.[0];
+      res.json({
+        address: place?.place_name ?? null,
+        components: (data?.features ?? []).map((f: any) => ({
+          id: f.id,
+          type: f.place_type?.[0],
+          text: f.text,
+          placeName: f.place_name,
+        })),
+      });
+    } catch (error) {
+      Errors.internal(res, error);
+    }
+  });
+
+  // STR-025: GET /api/parcels/search?q=  (search org properties by address/APN substring)
+  app.get("/api/parcels/search", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const q = String(req.query.q ?? "").trim();
+      if (!q) {
+        return res.json({ results: [], count: 0, query: q });
+      }
+      if (q.length < 2) {
+        return Errors.badRequest(res, "Query must be at least 2 characters");
+      }
+      const all = await storage.getProperties(org.id);
+      const needle = q.toLowerCase();
+      const results = all
+        .filter((p) => {
+          return (
+            (p.address && p.address.toLowerCase().includes(needle)) ||
+            (p.apn && p.apn.toLowerCase().includes(needle)) ||
+            (p.county && p.county.toLowerCase().includes(needle)) ||
+            (p.state && p.state.toLowerCase().includes(needle))
+          );
+        })
+        .slice(0, 50)
+        .map((p) => ({
+          id: p.id,
+          apn: p.apn,
+          address: p.address,
+          state: p.state,
+          county: p.county,
+          sizeAcres: p.sizeAcres,
+          latitude: p.latitude,
+          longitude: p.longitude,
+        }));
+      res.json({ results, count: results.length, query: q });
+    } catch (error) {
+      Errors.internal(res, error);
+    }
+  });
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────

@@ -161,7 +161,7 @@ export function NpsDialog({ open, trigger, onClose }: NpsDialogProps) {
             <DialogHeader>
               <DialogTitle>Thank you for your feedback!</DialogTitle>
               <DialogDescription>
-                Your input helps us build a better product for real estate professionals like you.
+                Your input helps us build a better product for land investors like you.
               </DialogDescription>
             </DialogHeader>
             <div className="flex justify-end pt-4">

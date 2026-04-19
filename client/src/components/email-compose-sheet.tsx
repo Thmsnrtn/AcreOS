@@ -36,7 +36,7 @@ interface EmailComposeSheetProps {
 
 const TEMPLATES: Record<string, EmailTemplate[]> = {
   lead: [
-    { label: "Initial contact", subject: "Regarding your property", body: "Hello,\n\nI'm reaching out regarding your property. I'm an active real estate professional in the area and would love to discuss a potential opportunity with you.\n\nWould you be open to a brief conversation?\n\nBest regards" },
+    { label: "Initial contact", subject: "Regarding your property", body: "Hello,\n\nI'm reaching out regarding your property. I'm an active land investor in the area and would love to discuss a potential opportunity with you.\n\nWould you be open to a brief conversation?\n\nBest regards" },
     { label: "Follow-up", subject: "Following up on your property", body: "Hello,\n\nI wanted to follow up on my previous message about your property. I'm still very interested and would love to connect when you have a moment.\n\nBest regards" },
     { label: "Offer letter", subject: "Purchase Offer for Your Property", body: "Hello,\n\nThank you for speaking with me about your property. I'd like to present a purchase offer for your consideration.\n\nPlease find the details below and let me know if you have any questions.\n\nBest regards" },
   ],

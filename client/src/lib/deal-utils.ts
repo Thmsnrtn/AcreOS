@@ -8,7 +8,7 @@ export type DealNextAction = {
 };
 
 /**
- * Stage-specific guidance for real estate professionals.
+ * Stage-specific guidance for land investors.
  * Each stage has a primary action that moves the deal forward.
  */
 const stageActions: Record<string, DealNextAction> = {
