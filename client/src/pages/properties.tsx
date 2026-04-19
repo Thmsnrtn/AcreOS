@@ -115,6 +115,7 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { PropertyMap, SinglePropertyMap, StaticPropertyMap } from "@/components/property-map";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
@@ -1243,7 +1244,7 @@ function PropertyForm({ onSuccess }: { onSuccess: () => void }) {
             name="purchasePrice"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Purchase Price</FormLabel>
+                <FormLabel>Purchase Price (USD)</FormLabel>
                 <FormControl>
                   <Input {...field} value={field.value ?? ""} placeholder="5000" type="number" data-testid="input-purchase-price" />
                 </FormControl>
@@ -1256,7 +1257,7 @@ function PropertyForm({ onSuccess }: { onSuccess: () => void }) {
             name="marketValue"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Market Value</FormLabel>
+                <FormLabel>Market Value (USD)</FormLabel>
                 <FormControl>
                   <Input {...field} value={field.value ?? ""} placeholder="15000" type="number" data-testid="input-market-value" />
                 </FormControl>
@@ -1363,22 +1364,49 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
         
         <Tabs defaultValue="overview" className="mt-4">
           <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
-            <TabsList className="inline-flex w-auto min-w-full sm:grid sm:w-full sm:grid-cols-5 gap-1">
-              <TabsTrigger value="overview" className="min-h-[40px] px-3 sm:px-2 whitespace-nowrap" data-testid="tab-overview">Overview</TabsTrigger>
-              <TabsTrigger value="intelligence" className="min-h-[40px] px-3 sm:px-2 whitespace-nowrap" data-testid="tab-intelligence">
-                <Brain className="w-3.5 h-3.5 mr-1 hidden sm:inline" />
-                Intel
-              </TabsTrigger>
-              <TabsTrigger value="comps" className="min-h-[40px] px-3 sm:px-2 whitespace-nowrap" data-testid="tab-comps">
-                <BarChart2 className="w-3.5 h-3.5 mr-1 hidden sm:inline" />
-                Comps
-              </TabsTrigger>
-              <TabsTrigger value="ai-offer" className="min-h-[40px] px-3 sm:px-2 whitespace-nowrap" data-testid="tab-ai-offer">
-                <Calculator className="w-3.5 h-3.5 mr-1 hidden sm:inline" />
-                AI Offer
-              </TabsTrigger>
-              <TabsTrigger value="due-diligence" className="min-h-[40px] px-3 sm:px-2 whitespace-nowrap" data-testid="tab-due-diligence">DD</TabsTrigger>
-            </TabsList>
+            <TooltipProvider delayDuration={300}>
+              <TabsList className="inline-flex w-auto min-w-full sm:grid sm:w-full sm:grid-cols-5 gap-1">
+                <TabsTrigger value="overview" className="min-h-[40px] px-3 sm:px-2 whitespace-nowrap" data-testid="tab-overview">Overview</TabsTrigger>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <TabsTrigger value="intelligence" className="min-h-[40px] px-3 sm:px-2 whitespace-nowrap" data-testid="tab-intelligence">
+                      <Brain className="w-3.5 h-3.5 mr-1 hidden sm:inline" />
+                      <span className="hidden md:inline">Intelligence</span>
+                      <span className="md:hidden">Intel</span>
+                    </TabsTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent>Property Intelligence</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <TabsTrigger value="comps" className="min-h-[40px] px-3 sm:px-2 whitespace-nowrap" data-testid="tab-comps">
+                      <BarChart2 className="w-3.5 h-3.5 mr-1 hidden sm:inline" />
+                      <span className="hidden md:inline">Comparables</span>
+                      <span className="md:hidden">Comps</span>
+                    </TabsTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent>Comparable Sales Analysis</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <TabsTrigger value="ai-offer" className="min-h-[40px] px-3 sm:px-2 whitespace-nowrap" data-testid="tab-ai-offer">
+                      <Calculator className="w-3.5 h-3.5 mr-1 hidden sm:inline" />
+                      AI Offer
+                    </TabsTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent>AI-Powered Offer Generator</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <TabsTrigger value="due-diligence" className="min-h-[40px] px-3 sm:px-2 whitespace-nowrap" data-testid="tab-due-diligence">
+                      <span className="hidden md:inline">Due Diligence</span>
+                      <span className="md:hidden">DD</span>
+                    </TabsTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent>Due Diligence Checklist</TooltipContent>
+                </Tooltip>
+              </TabsList>
+            </TooltipProvider>
           </div>
           
           {isLoadingProperty && (
@@ -1500,15 +1528,15 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                 </h4>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
                   <div className="space-y-1">
-                    <span className="text-muted-foreground text-xs">Assessed Value</span>
+                    <span className="text-muted-foreground text-xs">Assessed Value <span className="text-muted-foreground/60">USD</span></span>
                     <p className="font-medium">{formatCurrency(currentProperty.assessedValue)}</p>
                   </div>
                   <div className="space-y-1">
-                    <span className="text-muted-foreground text-xs">Market Value</span>
+                    <span className="text-muted-foreground text-xs">Market Value <span className="text-muted-foreground/60">USD</span></span>
                     <p className="font-medium">{formatCurrency(currentProperty.marketValue)}</p>
                   </div>
                   <div className="space-y-1">
-                    <span className="text-muted-foreground text-xs">Purchase Price</span>
+                    <span className="text-muted-foreground text-xs">Purchase Price <span className="text-muted-foreground/60">USD</span></span>
                     <p className="font-medium">{formatCurrency(currentProperty.purchasePrice)}</p>
                   </div>
                   {currentProperty.purchaseDate && (
@@ -1518,13 +1546,13 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                     </div>
                   )}
                   <div className="space-y-1">
-                    <span className="text-muted-foreground text-xs">List Price</span>
+                    <span className="text-muted-foreground text-xs">List Price <span className="text-muted-foreground/60">USD</span></span>
                     <p className="font-medium">{formatCurrency(currentProperty.listPrice)}</p>
                   </div>
                   {currentProperty.soldPrice && (
                     <>
                       <div className="space-y-1">
-                        <span className="text-muted-foreground text-xs">Sold Price</span>
+                        <span className="text-muted-foreground text-xs">Sold Price <span className="text-muted-foreground/60">USD</span></span>
                         <p className="font-medium">{formatCurrency(currentProperty.soldPrice)}</p>
                       </div>
                       <div className="space-y-1">
@@ -1535,8 +1563,8 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                   )}
                   {parcelData?.taxAmount && (
                     <div className="space-y-1">
-                      <span className="text-muted-foreground text-xs">Annual Taxes</span>
-                      <p className="font-medium">{parcelData.taxAmount}</p>
+                      <span className="text-muted-foreground text-xs">Annual Taxes <span className="text-muted-foreground/60">USD</span></span>
+                      <p className="font-medium">{formatCurrency(parcelData.taxAmount)}</p>
                     </div>
                   )}
                 </div>
