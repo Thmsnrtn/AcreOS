@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Loader2, MapPin, TrendingUp, TrendingDown, BarChart3, AlertCircle, RefreshCw, Search, DollarSign, Star, Target, Info } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Progress } from "@/components/ui/progress";
+import { DataProvenanceTag } from "@/components/data-provenance-tag";
 import type { Property } from "@shared/schema";
 
 interface ComparableProperty {
@@ -276,6 +277,7 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
               <p className="text-lg font-bold mt-1" data-testid="text-avg-price">
                 {formatCurrency(analysis.averagePricePerAcre)}
               </p>
+              <DataProvenanceTag source={`${analysis.sampleSize} comps`} confidence={analysis.sampleSize >= 5 ? "high" : "medium"} />
             </CardContent>
           </Card>
           <Card>
@@ -287,6 +289,7 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
               <p className="text-lg font-bold mt-1" data-testid="text-median-price">
                 {formatCurrency(analysis.medianPricePerAcre)}
               </p>
+              <DataProvenanceTag source={`${analysis.sampleSize} comps`} confidence={analysis.sampleSize >= 5 ? "high" : "medium"} />
             </CardContent>
           </Card>
           <Card>
@@ -298,6 +301,7 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
               <p className="text-lg font-bold mt-1 text-green-600" data-testid="text-high-price">
                 {formatCurrency(analysis.highPricePerAcre)}
               </p>
+              <DataProvenanceTag source={`${analysis.sampleSize} comps`} confidence={analysis.sampleSize >= 5 ? "high" : "medium"} />
             </CardContent>
           </Card>
           <Card>
@@ -309,6 +313,7 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
               <p className="text-lg font-bold mt-1 text-red-600" data-testid="text-low-price">
                 {formatCurrency(analysis.lowPricePerAcre)}
               </p>
+              <DataProvenanceTag source={`${analysis.sampleSize} comps`} confidence={analysis.sampleSize >= 5 ? "high" : "medium"} />
             </CardContent>
           </Card>
         </div>
@@ -332,6 +337,11 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
                 {analysis.subjectAcreage && ` for ${analysis.subjectAcreage} acres`}
               </span>
             </div>
+            <DataProvenanceTag
+              source="AcreOS comp analysis"
+              asOf={new Date().toISOString()}
+              confidence={analysis.sampleSize >= 5 ? "high" : analysis.sampleSize >= 2 ? "medium" : "low"}
+            />
           </CardContent>
         </Card>
       )}
@@ -356,6 +366,7 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
                   {formatCurrency(data.offerPrices.conservative.min)} - {formatCurrency(data.offerPrices.conservative.max)}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">40-50% of market value</p>
+                <DataProvenanceTag source="AcreOS comp analysis" className="mt-1" />
               </div>
               <div className="p-3 rounded-md bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
                 <div className="flex items-center gap-2 mb-1">
@@ -367,6 +378,7 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
                   {formatCurrency(data.offerPrices.standard.min)} - {formatCurrency(data.offerPrices.standard.max)}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">50-65% of market value</p>
+                <DataProvenanceTag source="AcreOS comp analysis" className="mt-1" />
               </div>
               <div className="p-3 rounded-md bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800">
                 <div className="flex items-center gap-2 mb-1">
@@ -378,6 +390,7 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
                   {formatCurrency(data.offerPrices.aggressive.min)} - {formatCurrency(data.offerPrices.aggressive.max)}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">65-80% of market value</p>
+                <DataProvenanceTag source="AcreOS comp analysis" className="mt-1" />
               </div>
             </div>
           </CardContent>
@@ -474,8 +487,15 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
                       </TableCell>
                       <TableCell className="text-right">{comp.acreage?.toFixed(2) || "N/A"}</TableCell>
                       <TableCell className="text-right">{formatDate(comp.saleDate)}</TableCell>
-                      <TableCell className="text-right font-medium">
-                        {comp.salePrice ? formatCurrency(comp.salePrice) : "N/A"}
+                      <TableCell className="text-right">
+                        <span className="font-medium">{comp.salePrice ? formatCurrency(comp.salePrice) : "N/A"}</span>
+                        {comp.salePrice && (
+                          <DataProvenanceTag
+                            source="County records"
+                            asOf={comp.saleDate}
+                            className="justify-end"
+                          />
+                        )}
                       </TableCell>
                       <TableCell className="text-right">
                         {comp.pricePerAcre ? formatCurrency(comp.pricePerAcre) : "N/A"}
