@@ -129,6 +129,7 @@ import { SavedViewsSelector } from "@/components/saved-views-selector";
 import type { SavedView } from "@shared/schema";
 import { QueryErrorState } from "@/components/query-error-state";
 import { ResearchSummaryPanel } from "@/components/research-summary-panel";
+import { DataProvenanceTag } from "@/components/data-provenance-tag";
 import { usePersistedGisFilters } from "@/hooks/use-persisted-gis-filters";
 import { Bot } from "lucide-react";
 
@@ -1473,6 +1474,12 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                   <p className="font-semibold" data-testid="verdict-market-value">
                     {formatCurrency(currentProperty.marketValue || currentProperty.assessedValue)}
                   </p>
+                  {(currentProperty.marketValue || currentProperty.assessedValue) && (
+                    <DataProvenanceTag
+                      source={currentProperty.marketValue ? (currentProperty.enrichedAt ? "AcreOS estimate" : "User entered") : "County assessor"}
+                      asOf={parcelData?.lastUpdated || currentProperty.enrichedAt || currentProperty.updatedAt}
+                    />
+                  )}
                 </div>
                 <div className="space-y-0.5">
                   <span className="text-muted-foreground text-xs">Price/Acre</span>
@@ -1731,14 +1738,35 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                   <div className="space-y-1">
                     <span className="text-muted-foreground text-xs">Assessed Value <span className="text-muted-foreground/60">USD</span></span>
                     <p className="font-medium">{formatCurrency(currentProperty.assessedValue)}</p>
+                    {currentProperty.assessedValue && Number(currentProperty.assessedValue) > 0 && (
+                      <DataProvenanceTag
+                        source="County assessor"
+                        asOf={parcelData?.lastUpdated || currentProperty.enrichedAt}
+                        confidence="high"
+                      />
+                    )}
                   </div>
                   <div className="space-y-1">
                     <span className="text-muted-foreground text-xs">Market Value <span className="text-muted-foreground/60">USD</span></span>
                     <p className="font-medium">{formatCurrency(currentProperty.marketValue)}</p>
+                    {currentProperty.marketValue && Number(currentProperty.marketValue) > 0 && (
+                      <DataProvenanceTag
+                        source={currentProperty.enrichedAt ? "AcreOS estimate" : "User entered"}
+                        asOf={currentProperty.enrichedAt || currentProperty.updatedAt}
+                        confidence={currentProperty.enrichedAt ? "medium" : undefined}
+                      />
+                    )}
                   </div>
                   <div className="space-y-1">
                     <span className="text-muted-foreground text-xs">Purchase Price <span className="text-muted-foreground/60">USD</span></span>
                     <p className="font-medium">{formatCurrency(currentProperty.purchasePrice)}</p>
+                    {currentProperty.purchasePrice && Number(currentProperty.purchasePrice) > 0 && (
+                      <DataProvenanceTag
+                        source="User entered"
+                        asOf={currentProperty.purchaseDate || currentProperty.updatedAt}
+                        confidence="high"
+                      />
+                    )}
                   </div>
                   {currentProperty.purchaseDate && (
                     <div className="space-y-1">
@@ -1749,12 +1777,23 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                   <div className="space-y-1">
                     <span className="text-muted-foreground text-xs">List Price <span className="text-muted-foreground/60">USD</span></span>
                     <p className="font-medium">{formatCurrency(currentProperty.listPrice)}</p>
+                    {currentProperty.listPrice && Number(currentProperty.listPrice) > 0 && (
+                      <DataProvenanceTag
+                        source="User entered"
+                        asOf={currentProperty.updatedAt}
+                      />
+                    )}
                   </div>
                   {currentProperty.soldPrice && (
                     <>
                       <div className="space-y-1">
                         <span className="text-muted-foreground text-xs">Sold Price <span className="text-muted-foreground/60">USD</span></span>
                         <p className="font-medium">{formatCurrency(currentProperty.soldPrice)}</p>
+                        <DataProvenanceTag
+                          source="User entered"
+                          asOf={currentProperty.soldDate || currentProperty.updatedAt}
+                          confidence="high"
+                        />
                       </div>
                       <div className="space-y-1">
                         <span className="text-muted-foreground text-xs">Sold Date</span>
@@ -1766,6 +1805,11 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                     <div className="space-y-1">
                       <span className="text-muted-foreground text-xs">Annual Taxes <span className="text-muted-foreground/60">USD</span></span>
                       <p className="font-medium">{formatCurrency(parcelData.taxAmount)}</p>
+                      <DataProvenanceTag
+                        source="County records"
+                        asOf={parcelData.lastUpdated}
+                        confidence="high"
+                      />
                     </div>
                   )}
                 </div>
