@@ -159,7 +159,7 @@ import { registerMaintenanceRoutes } from "./routes-maintenance";
 
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
-import { organizations, leads, properties, deals, npsResponses } from "@shared/schema";
+import { organizations, leads, properties, deals, npsResponses, feedbackSubmissions } from "@shared/schema";
 import { eq, and, desc, sql, count, sum, gte, avg } from "drizzle-orm";
 
 // ============================================
@@ -1825,6 +1825,77 @@ export async function registerRoutes(
     } catch (error: any) {
       logger.error("Get dashboard tasks summary error", error instanceof Error ? error : undefined);
       res.status(500).json({ message: error.message || "Failed to fetch tasks summary" });
+    }
+  });
+
+  // ============================================
+  // FEEDBACK SUBMISSIONS
+  // ============================================
+  app.post("/api/feedback", isAuthenticated, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const user = req.user;
+      if (!user?.id) {
+        return Errors.unauthorized(res);
+      }
+
+      const { category, message, allowFollowUp } = req.body;
+
+      // Validate category
+      const validCategories = ["bug", "feature_request", "confusion", "other"];
+      if (!category || !validCategories.includes(category)) {
+        return Errors.badRequest(res, "Invalid category. Must be one of: bug, feature_request, confusion, other");
+      }
+
+      // Validate message (min 10 chars)
+      if (!message || typeof message !== "string" || message.trim().length < 10) {
+        return Errors.badRequest(res, "Message must be at least 10 characters");
+      }
+
+      const pageUrl = req.headers.referer || null;
+      const userAgent = req.headers["user-agent"] || null;
+
+      const [inserted] = await db
+        .insert(feedbackSubmissions)
+        .values({
+          userId: user.id,
+          userEmail: user.email || "unknown",
+          category,
+          message: message.trim(),
+          allowFollowUp: allowFollowUp !== false,
+          pageUrl,
+          userAgent,
+        })
+        .returning({ id: feedbackSubmissions.id });
+
+      // Send email notification to founder (non-blocking)
+      const founderEmail = process.env.FOUNDER_EMAIL;
+      if (founderEmail) {
+        try {
+          const { emailService } = await import("./services/emailService");
+          const categoryLabel = category.replace("_", " ");
+          await emailService.sendEmail({
+            to: founderEmail,
+            subject: `[AcreOS Feedback] New ${categoryLabel} from ${user.email || "a user"}`,
+            html: `
+              <h2>New Feedback Submission</h2>
+              <p><strong>Category:</strong> ${categoryLabel}</p>
+              <p><strong>From:</strong> ${user.email || user.id}</p>
+              <p><strong>Page:</strong> ${pageUrl || "N/A"}</p>
+              <p><strong>Follow-up OK:</strong> ${allowFollowUp !== false ? "Yes" : "No"}</p>
+              <hr />
+              <p>${message.trim().replace(/\n/g, "<br />")}</p>
+            `,
+          });
+        } catch (emailErr) {
+          logger.warn("Failed to send feedback notification email", emailErr instanceof Error ? emailErr : undefined);
+        }
+      }
+
+      logger.info(`Feedback submitted: id=${inserted.id}, category=${category}, user=${user.id}`);
+      res.json({ success: true, id: inserted.id });
+    } catch (error) {
+      logger.error("Feedback submission error", error instanceof Error ? error : undefined);
+      return Errors.internal(res, error);
     }
   });
 
