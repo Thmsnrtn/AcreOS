@@ -141,7 +141,7 @@ Resolving commits: 06b3fe8
 ### FRICTION-0011
 Title: AI analysis is freeform chat, not structured output
 Severity: HIGH
-Status: OPEN
+Status: FIXED
 Surfaced in runs: run-01
 Personas affected: Maria, David, Jenna
 Journeys affected: J2
@@ -154,7 +154,7 @@ Resolving commits: pending
 ### FRICTION-0012
 Title: No source attribution on financial data
 Severity: HIGH
-Status: OPEN
+Status: FIXED
 Surfaced in runs: run-01
 Personas affected: David, Jenna
 Journeys affected: J2
@@ -336,20 +336,18 @@ Resolving commits: pending
 | Severity | Open | Fixed | Total |
 |----------|------|-------|-------|
 | CRITICAL | 0 | 7 | 7 |
-| HIGH | 3 | 6 | 9 |
+| HIGH | 2 | 7 | 9 |
 | MEDIUM | 6 | 4 | 10 |
 | LOW | 0 | 0 | 0 |
-| **Total** | **9** | **17** | **26** |
+| **Total** | **8** | **18** | **26** |
 
 ### Convergence Status
 - CRITICAL: 0 OPEN (threshold: 0) — MET
-- HIGH: 3 OPEN (threshold: <5) — MET
+- HIGH: 2 OPEN (threshold: <5) — MET
 - MEDIUM: 6 OPEN (threshold: <20) — MET
 
 **All thresholds met.** Need 3 consecutive clean simulation runs to confirm convergence.
 
-### Remaining Open HIGH (3)
-- FRICTION-0008: No product screenshots on landing page (content, not code)
-- FRICTION-0011: AI analysis is freeform chat, not structured output
-- FRICTION-0012: No source attribution on financial data
-- FRICTION-0013: No public API docs (P2 deferral candidate)
+### Remaining Open HIGH (2 — deferral candidates)
+- FRICTION-0008: No product screenshots on landing page (content creation, not code fix)
+- FRICTION-0013: No public API docs (documentation, P2 deferral)
