@@ -1,26 +1,195 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { telemetry } from "@/lib/telemetry";
-import { 
-  Send, 
-  Loader2, 
-  MapPin, 
-  Ruler, 
-  DollarSign, 
-  Droplets, 
-  FileText, 
-  Calculator, 
+import {
+  Send,
+  Loader2,
+  MapPin,
+  Ruler,
+  DollarSign,
+  Droplets,
+  FileText,
+  Calculator,
   Search,
   Bot,
-  User
+  User,
+  Sparkles,
+  TrendingUp,
+  AlertTriangle,
+  Target,
+  BarChart3
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Property } from "@shared/schema";
+
+// ─── Lightweight markdown renderer for analysis responses ─────────────────────
+function AnalysisMarkdown({ content }: { content: string }) {
+  const lines = content.split("\n");
+  const elements: React.ReactNode[] = [];
+  let i = 0;
+
+  const inlineFormat = (text: string): React.ReactNode => {
+    const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|__[^_]+__|_[^_]+_)/g);
+    return parts.map((part, idx) => {
+      if (part.startsWith("`") && part.endsWith("`")) return <code key={idx} className="bg-muted px-1 py-0.5 rounded text-[11px] font-mono">{part.slice(1, -1)}</code>;
+      if ((part.startsWith("**") && part.endsWith("**")) || (part.startsWith("__") && part.endsWith("__"))) return <strong key={idx}>{part.slice(2, -2)}</strong>;
+      if ((part.startsWith("*") && part.endsWith("*")) || (part.startsWith("_") && part.endsWith("_"))) return <em key={idx}>{part.slice(1, -1)}</em>;
+      return part;
+    });
+  };
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    // Fenced code block
+    if (line.startsWith("```")) {
+      const codeLines: string[] = [];
+      i++;
+      while (i < lines.length && !lines[i].startsWith("```")) {
+        codeLines.push(lines[i]);
+        i++;
+      }
+      elements.push(
+        <pre key={`code-${i}`} className="bg-muted rounded-md p-2.5 my-1.5 overflow-x-auto text-[11px] font-mono leading-relaxed">
+          <code>{codeLines.join("\n")}</code>
+        </pre>
+      );
+      i++;
+      continue;
+    }
+
+    // Headings
+    const h3 = line.match(/^### (.+)/);
+    if (h3) { elements.push(<h3 key={`h3-${i}`} className="font-semibold text-sm mt-3 mb-1">{inlineFormat(h3[1])}</h3>); i++; continue; }
+    const h2 = line.match(/^## (.+)/);
+    if (h2) { elements.push(<h2 key={`h2-${i}`} className="font-bold text-sm mt-4 mb-1 text-primary">{inlineFormat(h2[1])}</h2>); i++; continue; }
+    const h1 = line.match(/^# (.+)/);
+    if (h1) { elements.push(<h1 key={`h1-${i}`} className="font-bold text-base mt-4 mb-1">{inlineFormat(h1[1])}</h1>); i++; continue; }
+
+    // Unordered list
+    if (line.match(/^[-*+] /)) {
+      const listItems: string[] = [];
+      while (i < lines.length && lines[i].match(/^[-*+] /)) {
+        listItems.push(lines[i].replace(/^[-*+] /, ""));
+        i++;
+      }
+      elements.push(
+        <ul key={`ul-${i}`} className="list-disc list-inside space-y-0.5 my-1 pl-1">
+          {listItems.map((item, j) => <li key={j} className="text-sm">{inlineFormat(item)}</li>)}
+        </ul>
+      );
+      continue;
+    }
+
+    // Ordered list
+    if (line.match(/^\d+\. /)) {
+      const listItems: string[] = [];
+      while (i < lines.length && lines[i].match(/^\d+\. /)) {
+        listItems.push(lines[i].replace(/^\d+\. /, ""));
+        i++;
+      }
+      elements.push(
+        <ol key={`ol-${i}`} className="list-decimal list-inside space-y-0.5 my-1 pl-1">
+          {listItems.map((item, j) => <li key={j} className="text-sm">{inlineFormat(item)}</li>)}
+        </ol>
+      );
+      continue;
+    }
+
+    // Horizontal rule
+    if (line.match(/^---+$/)) { elements.push(<hr key={`hr-${i}`} className="border-border my-2" />); i++; continue; }
+
+    // Blank line
+    if (line.trim() === "") { elements.push(<div key={`sp-${i}`} className="h-1" />); i++; continue; }
+
+    // Normal paragraph
+    elements.push(<p key={`p-${i}`} className="text-sm leading-relaxed">{inlineFormat(line)}</p>);
+    i++;
+  }
+
+  return <div className="space-y-0.5">{elements}</div>;
+}
+
+// ─── Section icons for structured analysis ────────────────────────────────────
+const SECTION_ICONS: Record<string, React.ReactNode> = {
+  "property summary": <BarChart3 className="w-4 h-4 text-blue-500" />,
+  "market position": <TrendingUp className="w-4 h-4 text-green-500" />,
+  "key risks": <AlertTriangle className="w-4 h-4 text-amber-500" />,
+  "investment recommendation": <Target className="w-4 h-4 text-purple-500" />,
+  "suggested offer range": <DollarSign className="w-4 h-4 text-emerald-500" />,
+};
+
+function getSectionIcon(heading: string): React.ReactNode {
+  const lower = heading.toLowerCase();
+  for (const [key, icon] of Object.entries(SECTION_ICONS)) {
+    if (lower.includes(key)) return icon;
+  }
+  return <BarChart3 className="w-4 h-4 text-muted-foreground" />;
+}
+
+// ─── Parse structured analysis into section cards ────────────────────────────
+function StructuredAnalysis({ content }: { content: string }) {
+  // Split content by ## headings into sections
+  const sectionRegex = /^## (.+)$/gm;
+  const sections: { title: string; body: string }[] = [];
+  let lastIndex = 0;
+  let lastTitle = "";
+  let preamble = "";
+  let match: RegExpExecArray | null;
+
+  while ((match = sectionRegex.exec(content)) !== null) {
+    const textBefore = content.slice(lastIndex, match.index).trim();
+    if (lastTitle) {
+      sections.push({ title: lastTitle, body: textBefore });
+    } else if (textBefore) {
+      preamble = textBefore;
+    }
+    lastTitle = match[1];
+    lastIndex = match.index + match[0].length;
+  }
+  // Push the last section
+  if (lastTitle) {
+    sections.push({ title: lastTitle, body: content.slice(lastIndex).trim() });
+  }
+
+  // If we couldn't parse sections, fall back to plain markdown
+  if (sections.length === 0) {
+    return (
+      <div className="bg-muted rounded-lg p-4">
+        <AnalysisMarkdown content={content} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {preamble && (
+        <div className="bg-muted/50 rounded-lg p-3">
+          <AnalysisMarkdown content={preamble} />
+        </div>
+      )}
+      {sections.map((section, idx) => (
+        <Card key={idx} className="border shadow-sm">
+          <CardHeader className="pb-2 pt-3 px-4">
+            <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+              {getSectionIcon(section.title)}
+              {section.title}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-3 pt-0">
+            <AnalysisMarkdown content={section.body} />
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
 
 interface Message {
   role: "user" | "assistant";
@@ -36,6 +205,40 @@ interface PropertyAnalysisChatProps {
   onOpenChange: (open: boolean) => void;
 }
 
+function buildQuickAnalysisPrompt(property: Property): string {
+  const parts = [
+    `Run a comprehensive structured analysis of this property.`,
+    ``,
+    `Property details:`,
+    `- APN: ${property.apn}`,
+    property.address ? `- Address: ${property.address}` : null,
+    `- County: ${property.county}, State: ${property.state}`,
+    property.sizeAcres ? `- Size: ${property.sizeAcres} acres` : null,
+    property.marketValue ? `- Market Value: $${Number(property.marketValue).toLocaleString()}` : null,
+    property.listPrice ? `- List Price: $${Number(property.listPrice).toLocaleString()}` : null,
+    property.status ? `- Status: ${property.status.replace("_", " ")}` : null,
+    property.zoning ? `- Zoning: ${property.zoning}` : null,
+    ``,
+    `Provide the analysis using these exact section headings (use ## for each):`,
+    ``,
+    `## Property Summary`,
+    `Summarize the property type, location characteristics, size, zoning, and current status.`,
+    ``,
+    `## Market Position`,
+    `Assess where this property sits in the local market. Include comparable value ranges and demand indicators for the area.`,
+    ``,
+    `## Key Risks`,
+    `Identify the top risks: environmental (flood zones, wetlands), access issues, zoning restrictions, title concerns, or market risks.`,
+    ``,
+    `## Investment Recommendation`,
+    `Give a clear buy/hold/pass recommendation with reasoning. Rate confidence level.`,
+    ``,
+    `## Suggested Offer Range`,
+    `Provide a low, target, and high offer price with reasoning for each.`,
+  ];
+  return parts.filter(p => p !== null).join("\n");
+}
+
 const quickActions = [
   { label: "What's the flood risk?", icon: Droplets, prompt: "What is the flood risk for this property? Are there any environmental concerns I should be aware of?" },
   { label: "Find similar properties", icon: Search, prompt: "Can you find comparable properties similar to this one for valuation purposes?" },
@@ -47,6 +250,7 @@ export function PropertyAnalysisChat({ property, open, onOpenChange }: PropertyA
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [hasRunAnalysis, setHasRunAnalysis] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -110,6 +314,12 @@ export function PropertyAnalysisChat({ property, open, onOpenChange }: PropertyA
     }
   };
 
+  const runQuickAnalysis = useCallback(() => {
+    const prompt = buildQuickAnalysisPrompt(property);
+    setHasRunAnalysis(true);
+    sendMessage(prompt);
+  }, [property]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     sendMessage(inputValue);
@@ -169,75 +379,159 @@ export function PropertyAnalysisChat({ property, open, onOpenChange }: PropertyA
         <ScrollArea className="flex-1 p-4" ref={scrollAreaRef as any}>
           <div className="space-y-4">
             {messages.length === 0 && (
-              <div className="space-y-4" data-testid="empty-chat-state">
-                <p className="text-sm text-muted-foreground text-center py-4">
-                  Ask questions about this property or use the quick actions below to get started.
-                </p>
-                <div className="grid grid-cols-1 gap-2">
-                  {quickActions.map((action, index) => (
-                    <Button
-                      key={index}
-                      variant="outline"
-                      className="justify-start gap-2 h-auto py-3 text-left"
-                      onClick={() => handleQuickAction(action.prompt)}
-                      disabled={isLoading}
-                      data-testid={`button-quick-action-${index}`}
-                    >
-                      <action.icon className="w-4 h-4 shrink-0" />
-                      <span className="text-sm">{action.label}</span>
-                    </Button>
-                  ))}
+              <div className="space-y-5" data-testid="empty-chat-state">
+                {/* Primary CTA: Run Quick Analysis */}
+                <div className="text-center py-6 space-y-4">
+                  <div className="mx-auto w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                    <Sparkles className="w-6 h-6 text-primary" />
+                  </div>
+                  <div className="space-y-1">
+                    <h3 className="font-semibold text-sm">Property Analysis</h3>
+                    <p className="text-xs text-muted-foreground max-w-[280px] mx-auto">
+                      Get an instant structured report covering market position, risks, and investment recommendation.
+                    </p>
+                  </div>
+                  <Button
+                    size="lg"
+                    className="gap-2 px-6"
+                    onClick={runQuickAnalysis}
+                    disabled={isLoading}
+                    data-testid="button-run-quick-analysis"
+                  >
+                    {isLoading ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Sparkles className="w-4 h-4" />
+                    )}
+                    Run Quick Analysis
+                  </Button>
+                </div>
+
+                {/* Secondary: Quick action buttons */}
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground text-center font-medium uppercase tracking-wide">
+                    Or ask a specific question
+                  </p>
+                  <div className="grid grid-cols-1 gap-2">
+                    {quickActions.map((action, index) => (
+                      <Button
+                        key={index}
+                        variant="outline"
+                        className="justify-start gap-2 h-auto py-2.5 text-left"
+                        onClick={() => handleQuickAction(action.prompt)}
+                        disabled={isLoading}
+                        data-testid={`button-quick-action-${index}`}
+                      >
+                        <action.icon className="w-4 h-4 shrink-0 text-muted-foreground" />
+                        <span className="text-sm">{action.label}</span>
+                      </Button>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
 
-            {messages.map((message, index) => (
-              <div
-                key={index}
-                className={`flex gap-3 ${message.role === "user" ? "justify-end" : "justify-start"}`}
-                data-testid={`message-${message.role}-${index}`}
-              >
-                {message.role === "assistant" && (
-                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                    <Bot className="w-4 h-4 text-primary" />
+            {messages.map((message, index) => {
+              // Detect if this is a structured analysis response (first assistant message after quick analysis)
+              const isStructuredAnalysis = message.role === "assistant"
+                && hasRunAnalysis
+                && message.content.includes("## ");
+
+              if (message.role === "user" && hasRunAnalysis && index === 0) {
+                // Hide the verbose system prompt from the user; show a friendly label instead
+                return (
+                  <div key={index} className="flex gap-3 justify-end" data-testid={`message-user-${index}`}>
+                    <div className="max-w-[80%] rounded-lg p-3 bg-primary text-primary-foreground">
+                      <p className="text-sm flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5" />
+                        Run Quick Analysis
+                      </p>
+                    </div>
+                    <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center shrink-0">
+                      <User className="w-4 h-4" />
+                    </div>
                   </div>
-                )}
+                );
+              }
+
+              return (
                 <div
-                  className={`max-w-[80%] rounded-lg p-3 ${
-                    message.role === "user"
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted"
-                  }`}
+                  key={index}
+                  className={`flex gap-3 ${message.role === "user" ? "justify-end" : "justify-start"}`}
+                  data-testid={`message-${message.role}-${index}`}
                 >
-                  <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                  {message.suggestions && message.suggestions.length > 0 && (
-                    <div className="mt-3 pt-3 border-t border-border/50 space-y-2">
-                      <p className="text-xs text-muted-foreground">Follow-up questions:</p>
-                      <div className="flex flex-wrap gap-1">
-                        {message.suggestions.map((suggestion, sIndex) => (
-                          <Button
-                            key={sIndex}
-                            variant="secondary"
-                            size="sm"
-                            className="text-xs h-auto py-1 px-2"
-                            onClick={() => handleSuggestionClick(suggestion)}
-                            disabled={isLoading}
-                            data-testid={`button-suggestion-${index}-${sIndex}`}
-                          >
-                            {suggestion}
-                          </Button>
-                        ))}
-                      </div>
+                  {message.role === "assistant" && !isStructuredAnalysis && (
+                    <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                      <Bot className="w-4 h-4 text-primary" />
+                    </div>
+                  )}
+                  {isStructuredAnalysis ? (
+                    <div className="w-full" data-testid="structured-analysis-output">
+                      <StructuredAnalysis content={message.content} />
+                      {message.suggestions && message.suggestions.length > 0 && (
+                        <div className="mt-3 space-y-2">
+                          <p className="text-xs text-muted-foreground">Dig deeper:</p>
+                          <div className="flex flex-wrap gap-1">
+                            {message.suggestions.map((suggestion, sIndex) => (
+                              <Button
+                                key={sIndex}
+                                variant="secondary"
+                                size="sm"
+                                className="text-xs h-auto py-1 px-2"
+                                onClick={() => handleSuggestionClick(suggestion)}
+                                disabled={isLoading}
+                                data-testid={`button-suggestion-${index}-${sIndex}`}
+                              >
+                                {suggestion}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div
+                      className={`max-w-[80%] rounded-lg p-3 ${
+                        message.role === "user"
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-muted"
+                      }`}
+                    >
+                      {message.role === "assistant" ? (
+                        <AnalysisMarkdown content={message.content} />
+                      ) : (
+                        <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                      )}
+                      {message.suggestions && message.suggestions.length > 0 && (
+                        <div className="mt-3 pt-3 border-t border-border/50 space-y-2">
+                          <p className="text-xs text-muted-foreground">Follow-up questions:</p>
+                          <div className="flex flex-wrap gap-1">
+                            {message.suggestions.map((suggestion, sIndex) => (
+                              <Button
+                                key={sIndex}
+                                variant="secondary"
+                                size="sm"
+                                className="text-xs h-auto py-1 px-2"
+                                onClick={() => handleSuggestionClick(suggestion)}
+                                disabled={isLoading}
+                                data-testid={`button-suggestion-${index}-${sIndex}`}
+                              >
+                                {suggestion}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {message.role === "user" && !(hasRunAnalysis && index === 0) && (
+                    <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center shrink-0">
+                      <User className="w-4 h-4" />
                     </div>
                   )}
                 </div>
-                {message.role === "user" && (
-                  <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center shrink-0">
-                    <User className="w-4 h-4" />
-                  </div>
-                )}
-              </div>
-            ))}
+              );
+            })}
 
             {isLoading && (
               <div className="flex gap-3 justify-start" data-testid="loading-state">
