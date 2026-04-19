@@ -1,45 +1,68 @@
 /**
  * Clerk session-recovery safety net.
  *
- * After a ticket-based sign-in (OAuth callback, magic link, or E2E
- * signin-token flow) Clerk sometimes ends up with a session in
- * Clerk.client.sessions whose status is "active" but Clerk.session is
- * still null — the session is known but not selected as the active one.
- * In that state the SPA's ProtectedRoute shows an infinite "Loading
- * page" spinner because useAuth's isSignedIn stays false.
+ * Two failure modes this handles:
  *
- * This recovery watches Clerk.loaded. Once Clerk is loaded, if there's
- * an inactive active session and no selected session, we call setActive
- * to promote it. No-op in the happy path. Safe because we only promote
- * sessions Clerk itself already decided are valid.
+ * 1) Post-ticket hydration gap: after a ticket-based sign-in (OAuth
+ *    callback, magic link, E2E signin-token), Clerk ends up with an
+ *    active session in `Clerk.client.sessions` but `Clerk.session`
+ *    itself is null. ProtectedRoute hangs on a loading spinner forever.
+ *
+ * 2) Navigation-time session loss (STR-011): on SPA navigations within
+ *    the authenticated shell, `Clerk.client.sessions` occasionally
+ *    empties even though the `__session` cookie is still on the domain
+ *    and the server accepts it. We observe `Clerk.client.sessions`
+ *    going from `[{id, active}]` → `[]` on route change, then refilling
+ *    a moment later. Without intervention the SPA freezes on "Loading
+ *    page" during the gap.
+ *
+ * Strategy: run a one-shot init sweep, then subscribe to `Clerk.addListener`
+ * so every subsequent change to `client.sessions` re-checks and promotes
+ * the first active session if no `session` is selected. No-op in the
+ * happy path. Safe because we only promote sessions Clerk itself
+ * already decided are valid.
  */
 
 export function installClerkSessionRecovery(): void {
   if (typeof window === "undefined") return;
 
-  const tryRecover = async (): Promise<boolean> => {
+  const promoteActiveIfNeeded = async (): Promise<void> => {
     const Clerk = (window as any).Clerk;
-    if (!Clerk?.loaded) return false;
-    if (Clerk.session) return true; // already active
-    const sessions = Clerk.client?.sessions ?? [];
-    const active = sessions.find((s: any) => s.status === "active");
-    if (!active) return true; // nothing to recover
+    if (!Clerk?.loaded) return;
+    if (Clerk.session) return;
+    const sessions: Array<{ id: string; status: string }> = Clerk.client?.sessions ?? [];
+    const active = sessions.find((s) => s.status === "active") ?? sessions[0];
+    if (!active) return;
     try {
       await Clerk.setActive({ session: active.id });
     } catch {
-      // best-effort — don't throw
+      // best-effort
     }
-    return true;
   };
 
-  // Poll briefly while Clerk is initializing. Stop after 20 * 250ms = 5s
-  // or when we either promote a session or confirm there's nothing to do.
-  let attempts = 0;
-  const MAX_ATTEMPTS = 20;
-  const tick = async () => {
-    if (attempts++ >= MAX_ATTEMPTS) return;
-    const done = await tryRecover();
-    if (!done) setTimeout(tick, 250);
+  let listenerInstalled = false;
+  const installListener = (): void => {
+    if (listenerInstalled) return;
+    const Clerk = (window as any).Clerk;
+    if (!Clerk?.addListener) return;
+    Clerk.addListener(() => {
+      void promoteActiveIfNeeded();
+    });
+    listenerInstalled = true;
   };
-  tick();
+
+  // Initial sweep: poll while Clerk bootstraps, try to recover + install
+  // the listener as soon as Clerk is loaded. Stop after 10s.
+  const started = Date.now();
+  const tick = async (): Promise<void> => {
+    const Clerk = (window as any).Clerk;
+    if (Clerk?.loaded) {
+      await promoteActiveIfNeeded();
+      installListener();
+    }
+    if (!listenerInstalled && Date.now() - started < 10_000) {
+      setTimeout(tick, 200);
+    }
+  };
+  void tick();
 }
