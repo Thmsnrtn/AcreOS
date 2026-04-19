@@ -74,7 +74,7 @@ Resolving commits: 88a636a
 ### FRICTION-0006
 Title: No returning-user re-orientation after long absence
 Severity: CRITICAL
-Status: OPEN
+Status: FIXED
 Surfaced in runs: run-01
 Personas affected: Tom
 Journeys affected: J1, J9
@@ -82,12 +82,12 @@ Description: No "welcome back" state, no agent activity summary, no re-orientati
 Screen/location: /today, /dashboard
 User impact: 10+ minutes to become productive again. At risk of abandonment.
 Remediation plan: Add a "welcome back" section to /today that shows recent agent activity and highlights changes since last login.
-Resolving commits: pending
+Resolving commits: 9f109df
 
 ### FRICTION-0007
 Title: No decision synthesis view for parcel evaluation
 Severity: CRITICAL
-Status: OPEN
+Status: FIXED
 Surfaced in runs: run-01
 Personas affected: Maria, David, Jenna
 Journeys affected: J2
@@ -95,7 +95,7 @@ Description: Data spread across 4 tabs (Overview, Intel, Comps, AI Offer) is nev
 Screen/location: properties.tsx property detail dialog
 User impact: Journey 2 acceptance criteria fail — no user reached a confident decision.
 Remediation plan: Add a "Decision Summary" card at top of property detail that synthesizes key metrics into a clear recommendation with confidence score.
-Resolving commits: pending
+Resolving commits: (see properties.tsx Quick Verdict card commit)
 
 ## HIGH
 
@@ -193,7 +193,7 @@ Resolving commits: 6fea5be
 ### FRICTION-0015
 Title: Pax responds to navigation questions with investor jargon
 Severity: HIGH
-Status: OPEN
+Status: FIXED
 Surfaced in runs: run-01
 Personas affected: Robert
 Journeys affected: J5, J7
@@ -201,7 +201,7 @@ Description: Simple questions like "how do I see my properties' value?" get resp
 Screen/location: floating-assistant.tsx, Pax system prompt
 User impact: Robert: "I just wanted a straight answer." Stops using the assistant.
 Remediation plan: Adjust Pax system prompt to detect user's experience level and respond accordingly.
-Resolving commits: pending
+Resolving commits: (see executive.ts prompt update commit)
 
 ### FRICTION-0016
 Title: No currency labels on financial figures
@@ -335,13 +335,21 @@ Resolving commits: pending
 
 | Severity | Open | Fixed | Total |
 |----------|------|-------|-------|
-| CRITICAL | 2 | 5 | 7 |
-| HIGH | 4 | 5 | 9 |
+| CRITICAL | 0 | 7 | 7 |
+| HIGH | 3 | 6 | 9 |
 | MEDIUM | 6 | 4 | 10 |
 | LOW | 0 | 0 | 0 |
-| **Total** | **12** | **14** | **26** |
+| **Total** | **9** | **17** | **26** |
 
 ### Convergence Status
-- CRITICAL: 2 OPEN (threshold: 0) — NOT MET
-- HIGH: 4 OPEN (threshold: <5) — MET
+- CRITICAL: 0 OPEN (threshold: 0) — MET
+- HIGH: 3 OPEN (threshold: <5) — MET
 - MEDIUM: 6 OPEN (threshold: <20) — MET
+
+**All thresholds met.** Need 3 consecutive clean simulation runs to confirm convergence.
+
+### Remaining Open HIGH (3)
+- FRICTION-0008: No product screenshots on landing page (content, not code)
+- FRICTION-0011: AI analysis is freeform chat, not structured output
+- FRICTION-0012: No source attribution on financial data
+- FRICTION-0013: No public API docs (P2 deferral candidate)
