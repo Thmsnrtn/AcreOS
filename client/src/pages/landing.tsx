@@ -1,18 +1,18 @@
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import {
   MapPin,
   TrendingUp,
   FileText,
   Bot,
   Shield,
-  Zap,
   BarChart3,
-  Users,
   ArrowRight,
-  Check,
+  Map,
+  Sparkles,
+  Mail,
+  DollarSign,
 } from "lucide-react";
 
 const FEATURES = [
@@ -90,33 +90,74 @@ export default function LandingPage() {
       {/* Hero */}
       <section id="main-content" className="py-24 px-6">
         <div className="max-w-4xl mx-auto text-center space-y-6">
-          <Badge variant="outline" className="mb-4">
-            Now in Public Beta
-          </Badge>
           <h1 className="text-5xl sm:text-6xl font-bold tracking-tight">
-            The operating system for{" "}
+            The AI-Powered Platform for{" "}
             <span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-              real estate professionals
+              Land Investors
             </span>
           </h1>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-            AcreOS replaces your spreadsheets, disconnected tools, and guesswork with a single platform
-            that manages leads, automates outreach, and closes deals — powered by AI.
+            Find motivated sellers. Analyze parcels. Send direct mail. Close deals.
+            All in one platform.
           </p>
-          <div className="flex flex-wrap justify-center gap-2 pt-2">
-            {["Wholesaling", "Fix & Flip", "Buy & Hold", "STR / Airbnb", "Land", "Multifamily", "Commercial", "Creative Finance", "Notes"].map((t) => (
-              <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>
-            ))}
-          </div>
           <div className="flex gap-3 justify-center pt-4">
             <Button size="lg" asChild>
               <Link href="/auth?mode=register">
-                Start Free <ArrowRight className="ml-2 h-4 w-4" />
+                Get Started Free <ArrowRight className="ml-2 h-4 w-4" />
               </Link>
             </Button>
             <Button size="lg" variant="outline" asChild>
               <Link href="/pricing">View Pricing</Link>
             </Button>
+          </div>
+        </div>
+      </section>
+
+      {/* How It Works */}
+      <section className="py-20 px-6 bg-muted/30 border-y">
+        <div className="max-w-5xl mx-auto">
+          <div className="text-center mb-14">
+            <h2 className="text-3xl font-bold">How AcreOS Works</h2>
+            <p className="text-muted-foreground mt-3 max-w-xl mx-auto">
+              From raw land data to closed deals in four steps.
+            </p>
+          </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-8">
+            {[
+              {
+                icon: Map,
+                step: "1",
+                title: "Import or Find Parcels",
+                description: "Pull county data, import CSVs, or search by state and county to build your target list.",
+              },
+              {
+                icon: Sparkles,
+                step: "2",
+                title: "AI Analyzes Each Parcel",
+                description: "Instant valuations, comp analysis, and deal scoring powered by 18 free data sources.",
+              },
+              {
+                icon: Mail,
+                step: "3",
+                title: "Launch Direct Mail Campaigns",
+                description: "Generate offer letters, set up mail sequences, and reach motivated sellers at scale.",
+              },
+              {
+                icon: DollarSign,
+                step: "4",
+                title: "Close Deals & Track Returns",
+                description: "Manage contracts, track your pipeline, and monitor ROI across your entire land portfolio.",
+              },
+            ].map(({ icon: Icon, step, title, description }) => (
+              <div key={step} className="text-center space-y-3">
+                <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto">
+                  <Icon className="h-7 w-7 text-primary" />
+                </div>
+                <div className="text-xs font-semibold text-primary uppercase tracking-wider">Step {step}</div>
+                <h3 className="font-semibold">{title}</h3>
+                <p className="text-sm text-muted-foreground">{description}</p>
+              </div>
+            ))}
           </div>
         </div>
       </section>
@@ -137,9 +178,9 @@ export default function LandingPage() {
       <section className="py-24 px-6">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-16">
-            <h2 className="text-3xl font-bold">Everything you need to run your real estate business</h2>
+            <h2 className="text-3xl font-bold">Everything you need to run your land business</h2>
             <p className="text-muted-foreground mt-3 max-w-xl mx-auto">
-              From lead generation to closing, AcreOS handles the full lifecycle of your deals.
+              From finding parcels to closing deals, AcreOS handles the full lifecycle of your land investments.
             </p>
           </div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -190,9 +231,9 @@ export default function LandingPage() {
       {/* CTA */}
       <section className="py-24 px-6">
         <div className="max-w-2xl mx-auto text-center space-y-6">
-          <h2 className="text-3xl font-bold">Ready to modernize your real estate business?</h2>
+          <h2 className="text-3xl font-bold">Ready to close more land deals with less effort?</h2>
           <p className="text-muted-foreground">
-            Join real estate professionals who are closing more deals with less effort.
+            Join land investors who are finding better parcels and closing faster with AcreOS.
           </p>
           <Button size="lg" asChild>
             <Link href="/auth?mode=register">
