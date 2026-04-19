@@ -34,6 +34,7 @@ import {
   Gauge,
   Mic,
   MicOff,
+  LifeBuoy,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -161,6 +162,7 @@ const AGENTS = [
   { id: "marketing", name: "Maya", description: "Marketing - Campaign execution", icon: Megaphone },
   { id: "collections", name: "Charlie", description: "Collections - Payment collection", icon: Wallet },
   { id: "research", name: "Riley", description: "Research - Property research", icon: Search },
+  { id: "support", name: "Sophie", description: "Support - Help, guidance, troubleshooting", icon: LifeBuoy },
 ] as const;
 
 type AgentId = typeof AGENTS[number]["id"];
@@ -1250,9 +1252,13 @@ export function FloatingAssistant() {
                     title: `Hi, I'm ${currentAgent.name}!`, 
                     description: "I manage payment collections and borrower relationships. I can help with reminders, payment plans, and account monitoring." 
                   },
-                  research: { 
-                    title: `Hi, I'm ${currentAgent.name}!`, 
-                    description: "I'm your research specialist. I can conduct property due diligence, market analysis, and zoning research." 
+                  research: {
+                    title: `Hi, I'm ${currentAgent.name}!`,
+                    description: "I'm your research specialist. I can conduct property due diligence, market analysis, and zoning research."
+                  },
+                  support: {
+                    title: `Hi, I'm ${currentAgent.name}!`,
+                    description: "I'm your support specialist. I can help with questions about how to use AcreOS, property valuation guidance, troubleshooting, and general real estate investing advice."
                   },
                 };
                 const greeting = greetings[selectedAgent];
