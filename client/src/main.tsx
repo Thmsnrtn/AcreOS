@@ -32,7 +32,7 @@ createRoot(document.getElementById("root")!).render(
     publishableKey={publishableKey}
     proxyUrl="/__clerk"
     signInFallbackRedirectUrl="/today"
-    signUpFallbackRedirectUrl="/today"
+    signUpFallbackRedirectUrl="/onboarding-v2"
   >
     <App />
   </ClerkProvider>

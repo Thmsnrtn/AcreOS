@@ -75,7 +75,7 @@ export default function LandingPage() {
               <Link href="/auth">Sign In</Link>
             </Button>
             <Button size="sm" asChild>
-              <Link href="/auth">Get Started Free</Link>
+              <Link href="/auth?mode=register">Get Started Free</Link>
             </Button>
           </div>
         </div>
@@ -104,7 +104,7 @@ export default function LandingPage() {
           </div>
           <div className="flex gap-3 justify-center pt-4">
             <Button size="lg" asChild>
-              <Link href="/auth">
+              <Link href="/auth?mode=register">
                 Start Free <ArrowRight className="ml-2 h-4 w-4" />
               </Link>
             </Button>
@@ -189,7 +189,7 @@ export default function LandingPage() {
             Join operators who are closing more deals with less effort.
           </p>
           <Button size="lg" asChild>
-            <Link href="/auth">
+            <Link href="/auth?mode=register">
               Get Started Free <ArrowRight className="ml-2 h-4 w-4" />
             </Link>
           </Button>
