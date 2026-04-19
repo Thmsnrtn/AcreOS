@@ -176,6 +176,7 @@ const FounderDashboard = React.lazy(() => import("@/pages/founder-dashboard"));
 const FounderHomePage = React.lazy(() => import("@/pages/founder-home"));
 const FounderAiObservatory = React.lazy(() => import("@/pages/founder-ai-observatory"));
 const FounderFeatureFlags = React.lazy(() => import("@/pages/founder/feature-flags"));
+const FounderIntegrationsPage = React.lazy(() => import("@/pages/founder/integrations"));
 const DealUnderwritingPage = React.lazy(() => import("@/pages/deal-underwriting"));
 const TeamKPIPage = React.lazy(() => import("@/pages/team-kpi"));
 const SovereignV13Page = React.lazy(() => import("@/pages/sovereign-v13"));
@@ -455,6 +456,9 @@ function Router() {
       </Route>
       <Route path="/founder/feature-flags">
         {() => <FounderProtectedRoute component={FounderFeatureFlags} />}
+      </Route>
+      <Route path="/founder/integrations">
+        {() => <FounderProtectedRoute component={FounderIntegrationsPage} />}
       </Route>
       <Route path="/marketplace">
         {() => <FlaggedRoute route="/marketplace" component={MarketplacePage} />}
