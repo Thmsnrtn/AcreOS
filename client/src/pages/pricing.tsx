@@ -72,8 +72,20 @@ const FEATURES: Feature[] = [
 ];
 
 function FeatureValue({ value }: { value: string | boolean }) {
-  if (value === true) return <Check className="h-4 w-4 text-green-500 mx-auto" />;
-  if (value === false) return <X className="h-4 w-4 text-muted-foreground/30 mx-auto" />;
+  if (value === true)
+    return (
+      <>
+        <Check className="h-4 w-4 text-green-500 mx-auto" aria-hidden="true" />
+        <span className="sr-only">Included</span>
+      </>
+    );
+  if (value === false)
+    return (
+      <>
+        <X className="h-4 w-4 text-muted-foreground/30 mx-auto" aria-hidden="true" />
+        <span className="sr-only">Not included</span>
+      </>
+    );
   return <span className="text-sm text-center">{value}</span>;
 }
 
@@ -111,6 +123,9 @@ export default function PricingPage() {
             Monthly
           </span>
           <button
+            role="switch"
+            aria-checked={annual}
+            aria-label="Switch to annual billing"
             onClick={() => setAnnual(!annual)}
             className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
               annual ? "bg-primary" : "bg-muted-foreground/30"

@@ -19,7 +19,7 @@ const FEATURES = [
   {
     icon: MapPin,
     title: "Portfolio Mapping",
-    description: "Visualize every parcel on interactive maps with GIS overlays, flood zones, and zoning data.",
+    description: "Visualize every parcel on interactive maps with property boundaries, flood zones, and zoning data.",
   },
   {
     icon: TrendingUp,
@@ -44,7 +44,7 @@ const FEATURES = [
   {
     icon: Shield,
     title: "Compliance Built-In",
-    description: "TCPA consent tracking, DNC list checks, and audit trails for every communication.",
+    description: "Phone compliance, do-not-call list checks, and audit trails handled automatically for every communication.",
   },
 ];
 
@@ -58,6 +58,12 @@ const SOCIAL_PROOF = [
 export default function LandingPage() {
   return (
     <div className="min-h-screen bg-background">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:z-[100] focus:top-2 focus:left-2 focus:px-4 focus:py-2 focus:bg-primary focus:text-primary-foreground focus:rounded-md focus:text-sm focus:font-medium"
+      >
+        Skip to content
+      </a>
       {/* Nav */}
       <nav className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
@@ -82,7 +88,7 @@ export default function LandingPage() {
       </nav>
 
       {/* Hero */}
-      <section className="py-24 px-6">
+      <section id="main-content" className="py-24 px-6">
         <div className="max-w-4xl mx-auto text-center space-y-6">
           <Badge variant="outline" className="mb-4">
             Now in Public Beta
@@ -186,7 +192,7 @@ export default function LandingPage() {
         <div className="max-w-2xl mx-auto text-center space-y-6">
           <h2 className="text-3xl font-bold">Ready to modernize your real estate business?</h2>
           <p className="text-muted-foreground">
-            Join operators who are closing more deals with less effort.
+            Join real estate professionals who are closing more deals with less effort.
           </p>
           <Button size="lg" asChild>
             <Link href="/auth?mode=register">
