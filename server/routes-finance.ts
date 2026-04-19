@@ -91,9 +91,48 @@ export function registerFinanceRoutes(app: Express): void {
     res.json(notes);
   });
   
+  // STR-021: stateless amortization preview. Registered BEFORE /:id so
+  // Express resolves the verb-style path to this handler.
+  api.get("/api/notes/amortize", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const principal = Number(req.query.principal);
+      const rate = Number(req.query.rate);
+      const termMonths = Number(req.query.termMonths);
+      if (!Number.isFinite(principal) || principal <= 0) {
+        return Errors.badRequest(res, "principal must be a positive number");
+      }
+      if (!Number.isFinite(rate) || rate < 0 || rate > 100) {
+        return Errors.badRequest(res, "rate must be between 0 and 100 (annual percent)");
+      }
+      if (!Number.isFinite(termMonths) || termMonths <= 0 || termMonths > 600) {
+        return Errors.badRequest(res, "termMonths must be between 1 and 600");
+      }
+      const r = rate / 100 / 12;
+      const monthlyPayment = r === 0
+        ? principal / termMonths
+        : (principal * r) / (1 - Math.pow(1 + r, -termMonths));
+      const totalPaid = monthlyPayment * termMonths;
+      const totalInterest = totalPaid - principal;
+      res.json({
+        principal,
+        annualRate: rate,
+        termMonths,
+        monthlyPayment: Number(monthlyPayment.toFixed(2)),
+        totalPaid: Number(totalPaid.toFixed(2)),
+        totalInterest: Number(totalInterest.toFixed(2)),
+      });
+    } catch (error) {
+      Errors.internal(res, error);
+    }
+  });
+
   api.get("/api/notes/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const note = await storage.getNote(org.id, Number(req.params.id));
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      return Errors.notFound(res, "Note");
+    }
+    const note = await storage.getNote(org.id, id);
     if (!note) return Errors.notFound(res, "Note");
     res.json(note);
   });

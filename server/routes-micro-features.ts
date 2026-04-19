@@ -474,41 +474,6 @@ export function registerMicroFeatureRoutes(app: Express): void {
     }
   });
 
-  // ─── STR-021: /api/notes/amortize ──────────────────────────────────
-  // Stateless amortization preview. Protects note creation UX from
-  // needing to POST a draft note just to see a payment estimate.
-  app.get("/api/notes/amortize", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const principal = Number(req.query.principal);
-      const rate = Number(req.query.rate); // annual % (e.g. 10 for 10%)
-      const termMonths = Number(req.query.termMonths);
-      if (!Number.isFinite(principal) || principal <= 0) {
-        return Errors.badRequest(res, "principal must be a positive number");
-      }
-      if (!Number.isFinite(rate) || rate < 0 || rate > 100) {
-        return Errors.badRequest(res, "rate must be between 0 and 100 (annual percent)");
-      }
-      if (!Number.isFinite(termMonths) || termMonths <= 0 || termMonths > 600) {
-        return Errors.badRequest(res, "termMonths must be between 1 and 600");
-      }
-      const r = rate / 100 / 12;
-      const monthlyPayment = r === 0
-        ? principal / termMonths
-        : (principal * r) / (1 - Math.pow(1 + r, -termMonths));
-      const totalPaid = monthlyPayment * termMonths;
-      const totalInterest = totalPaid - principal;
-      res.json({
-        principal,
-        annualRate: rate,
-        termMonths,
-        monthlyPayment: Number(monthlyPayment.toFixed(2)),
-        totalPaid: Number(totalPaid.toFixed(2)),
-        totalInterest: Number(totalInterest.toFixed(2)),
-      });
-    } catch (error) {
-      Errors.internal(res, error);
-    }
-  });
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────
