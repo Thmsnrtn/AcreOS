@@ -59,14 +59,19 @@ async function hydrateUser(req: any, res: any, next: any) {
       .limit(1);
 
     if (!user) {
-      // First time this Clerk user hits the app — create our DB record
+      // First time this Clerk user hits the app — create our DB record.
+      // Race: many parallel authenticated requests hit this path simultaneously
+      // on first login (dashboard fires 9+ queries at once). Plain INSERT
+      // returned 500 for every request after the first due to the
+      // users_clerk_user_id_unique constraint. ON CONFLICT DO NOTHING +
+      // re-SELECT makes this idempotent and race-safe.
       const clerkUser = await clerkClient.users.getUser(userId);
       const primaryEmail = clerkUser.emailAddresses.find(
         (e: any) => e.id === clerkUser.primaryEmailAddressId
       );
       const email = primaryEmail?.emailAddress?.toLowerCase() ?? null;
 
-      [user] = await db
+      const inserted = await db
         .insert(users)
         .values({
           clerkUserId: userId,
@@ -75,7 +80,19 @@ async function hydrateUser(req: any, res: any, next: any) {
           lastName: clerkUser.lastName ?? null,
           profileImageUrl: clerkUser.imageUrl ?? null,
         })
+        .onConflictDoNothing({ target: users.clerkUserId })
         .returning();
+
+      if (inserted.length > 0) {
+        user = inserted[0];
+      } else {
+        // Another request created the row first — re-select it.
+        [user] = await db
+          .select()
+          .from(users)
+          .where(eq(users.clerkUserId, userId))
+          .limit(1);
+      }
     }
 
     req.user = user;

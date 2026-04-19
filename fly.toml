@@ -3,6 +3,11 @@ primary_region = 'iad'
 
 [build]
 
+[deploy]
+  # Idempotent schema patch runs in a one-shot release VM before new
+  # machines take traffic. See scripts/migrate.mjs for details.
+  release_command = "node scripts/migrate.mjs"
+
 [env]
   NODE_ENV = 'production'
   PORT = '5000'
