@@ -228,6 +228,67 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* Adjacent Verticals Waitlist */}
+      <section className="py-16 px-6 bg-muted/30">
+        <div className="max-w-4xl mx-auto text-center space-y-8">
+          <div className="space-y-2">
+            <h2 className="text-2xl font-bold">Expanding to Serve More Investors</h2>
+            <p className="text-muted-foreground max-w-xl mx-auto">
+              AcreOS starts with land investors. We're building dedicated tools for adjacent real estate verticals. Join the waitlist to get early access.
+            </p>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {[
+              { name: "Wholesaling", desc: "Deal flow and motivated seller outreach" },
+              { name: "Fix & Flip", desc: "Rehab budgeting and ARV analysis" },
+              { name: "Buy & Hold", desc: "Rental portfolio management" },
+              { name: "STR / Airbnb", desc: "Short-term rental optimization" },
+              { name: "Multifamily", desc: "Multi-unit deal underwriting" },
+              { name: "Creative Finance", desc: "Sub-to, wraps, and lease options" },
+              { name: "Notes", desc: "Seller-financed note management" },
+              { name: "Commercial", desc: "Commercial property analysis" },
+            ].map((v) => (
+              <div key={v.name} className="border rounded-lg p-4 text-left bg-background hover:border-primary/40 transition-colors">
+                <h3 className="font-semibold text-sm">{v.name}</h3>
+                <p className="text-xs text-muted-foreground mt-1">{v.desc}</p>
+                <p className="text-xs text-primary mt-2 font-medium">Coming soon</p>
+              </div>
+            ))}
+          </div>
+          <div className="max-w-sm mx-auto">
+            <form
+              className="flex gap-2"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const form = e.currentTarget;
+                const email = (form.elements.namedItem("waitlist-email") as HTMLInputElement)?.value;
+                if (!email) return;
+                try {
+                  await fetch("/api/waitlist", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ email, vertical: "general" }),
+                  });
+                  alert("Thanks! We'll notify you when new verticals launch.");
+                  form.reset();
+                } catch {
+                  alert("Something went wrong. Please try again.");
+                }
+              }}
+            >
+              <input
+                name="waitlist-email"
+                type="email"
+                placeholder="you@email.com"
+                required
+                className="flex-1 px-3 py-2 text-sm border rounded-md bg-background"
+              />
+              <Button type="submit" size="sm">Join Waitlist</Button>
+            </form>
+          </div>
+        </div>
+      </section>
+
       {/* CTA */}
       <section className="py-24 px-6">
         <div className="max-w-2xl mx-auto text-center space-y-6">
