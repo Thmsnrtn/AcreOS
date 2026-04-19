@@ -14890,3 +14890,17 @@ export const fieldScoutPhotos = pgTable("field_scout_photos", {
 export const insertFieldScoutPhotoSchema = createInsertSchema(fieldScoutPhotos).omit({ id: true, createdAt: true });
 export type FieldScoutPhoto = typeof fieldScoutPhotos.$inferSelect;
 export type InsertFieldScoutPhoto = z.infer<typeof insertFieldScoutPhotoSchema>;
+
+// ============================================
+// ADJACENT VERTICALS WAITLIST
+// ============================================
+
+export const adjacentVerticalsWaitlist = pgTable("adjacent_verticals_waitlist", {
+  id: serial("id").primaryKey(),
+  email: text("email").notNull(),
+  vertical: text("vertical").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertAdjacentVerticalsWaitlistSchema = createInsertSchema(adjacentVerticalsWaitlist).omit({ id: true, createdAt: true });
+export type AdjacentVerticalsWaitlistEntry = typeof adjacentVerticalsWaitlist.$inferSelect;

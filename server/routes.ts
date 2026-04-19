@@ -365,6 +365,21 @@ export async function registerRoutes(
     }
   });
 
+  // Adjacent verticals waitlist — public, no auth
+  app.post("/api/waitlist", async (req: Request, res: Response) => {
+    try {
+      const { email, vertical } = req.body;
+      if (!email || !vertical) {
+        return res.status(400).json({ error: "Email and vertical are required" });
+      }
+      const { adjacentVerticalsWaitlist } = await import("../shared/schema");
+      await db.insert(adjacentVerticalsWaitlist).values({ email, vertical });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to join waitlist" });
+    }
+  });
+
   app.get("/api/health/cached", async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { healthCheckService } = await import("./services/healthCheck");
