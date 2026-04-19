@@ -6,13 +6,13 @@ Phase: 0 (Precondition)
 Starting SHA: 12a6e75
 
 ## Phase Progress
-- [ ] Phase 0: Precondition
-- [ ] Phase 1: Reality alignment
-- [ ] Phase 2: Feedback mechanism
-- [ ] Phase 3: Waitlist selector
+- [x] Phase 0: Precondition
+- [x] Phase 1: Reality alignment (README, data sources, v5 handoff)
+- [x] Phase 2: Feedback mechanism (table, API, modal, banner)
+- [x] Phase 3: Waitlist selector (multi-select chips)
 - [ ] Phase 4: API key dashboard
 - [ ] Phase 5: Operational infrastructure
-- [ ] Phase 6: Runbook
+- [x] Phase 6: Runbook
 - [ ] Phase 7: Stress hardening
 - [ ] Phase 8: Edge case hardening
 - [ ] Phase 9: Launch gate
