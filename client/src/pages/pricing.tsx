@@ -93,7 +93,7 @@ export default function PricingPage() {
             <span className="text-lg font-bold">AcreOS</span>
           </Link>
           <Button size="sm" asChild>
-            <Link href="/auth">Get Started</Link>
+            <Link href="/auth?mode=register">Get Started</Link>
           </Button>
         </div>
       </nav>
@@ -177,7 +177,7 @@ export default function PricingPage() {
                     variant={tier.highlighted ? "default" : "outline"}
                     asChild
                   >
-                    <Link href="/auth">{tier.cta}</Link>
+                    <Link href="/auth?mode=register">{tier.cta}</Link>
                   </Button>
                 </CardContent>
               </Card>
@@ -190,7 +190,7 @@ export default function PricingPage() {
       <section className="px-6 pb-24">
         <div className="max-w-5xl mx-auto">
           <h2 className="text-2xl font-bold text-center mb-8">Feature Comparison</h2>
-          <div className="border rounded-lg overflow-hidden">
+          <div className="border rounded-lg overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-muted/50">
