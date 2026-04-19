@@ -14926,3 +14926,23 @@ export const feedbackSubmissions = pgTable("feedback_submissions", {
 export const insertFeedbackSubmissionSchema = createInsertSchema(feedbackSubmissions).omit({ id: true, createdAt: true });
 export type FeedbackSubmission = typeof feedbackSubmissions.$inferSelect;
 export type InsertFeedbackSubmission = z.infer<typeof insertFeedbackSubmissionSchema>;
+
+// ============================================
+// INTEGRATION STATUS (Founder Dashboard)
+// ============================================
+
+export const integrationStatus = pgTable("integration_status", {
+  id: serial("id").primaryKey(),
+  integrationKey: text("integration_key").notNull().unique(),
+  displayName: text("display_name").notNull(),
+  isConfigured: boolean("is_configured").default(false).notNull(),
+  isCritical: boolean("is_critical").default(false).notNull(),
+  lastVerifiedAt: timestamp("last_verified_at"),
+  lastVerificationStatus: text("last_verification_status").default("never_tested").notNull(),
+  setupDocsUrl: text("setup_docs_url"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertIntegrationStatusSchema = createInsertSchema(integrationStatus).omit({ id: true, updatedAt: true });
+export type IntegrationStatus = typeof integrationStatus.$inferSelect;
+export type InsertIntegrationStatus = z.infer<typeof insertIntegrationStatusSchema>;
