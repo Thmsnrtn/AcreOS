@@ -4,9 +4,12 @@ import App from "./App";
 import "./index.css";
 import { initClientSentry } from "./lib/sentry";
 import { installCsrfFetchInterceptor } from "./lib/csrf-fetch";
+import { installClerkSessionRecovery } from "./lib/clerk-session-recovery";
 
 // Install CSRF header interceptor before any fetch fires.
 installCsrfFetchInterceptor();
+// Safety net for ticket/OAuth sign-ins that leave Clerk.session un-selected.
+installClerkSessionRecovery();
 
 // Initialize Sentry before rendering (no-op if VITE_SENTRY_DSN is unset)
 initClientSentry();
