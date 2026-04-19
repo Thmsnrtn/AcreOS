@@ -1012,8 +1012,11 @@ export async function registerRoutes(
   app.use('/api/pax', aiLimiter, isAuthenticated, getOrCreateOrg, paxInsightsRouter);
   app.post('/api/mcp/execute', isAuthenticated, mcpHandler);
 
-  // Voice pipeline: webhook (no auth) + authenticated API routes
-  app.use('/', voiceRouter); // handles POST /webhook/twilio/recording-complete
+  // Voice pipeline: webhook callbacks (no auth, signature-verified) + authenticated API routes
+  // Mount only webhook paths at root — NOT the entire router, which would expose
+  // unauthenticated /analytics, /calls, etc. at the root path.
+  app.post('/webhook/twilio/recording-complete', voiceRouter);
+  app.post('/webhook/disclosure', voiceRouter);
   app.use('/api/voice', isAuthenticated, getOrCreateOrg, featureGate("feature_voice_ai"), voiceRouter);
 
   // Beta program: /api/beta/waitlist is public, /api/beta/admin/* requires founder auth
