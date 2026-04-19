@@ -1354,6 +1354,8 @@ export async function registerRoutes(
     registerFounderV14Routes(app);
     const { registerSovereignIntegrationRoutes } = await import("./routes-sovereign-integration");
     registerSovereignIntegrationRoutes(app);
+    const { registerFounderIntegrationsRoutes } = await import("./routes-founder-integrations");
+    registerFounderIntegrationsRoutes(app);
   }
 
   // Executive Revenue Dashboard — Founder-only aggregate metrics
