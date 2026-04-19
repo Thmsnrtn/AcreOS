@@ -105,7 +105,14 @@ export function registerPropertyRoutes(app: Express): void {
   
   api.get("/api/properties/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const property = await storage.getProperty(org.id, Number(req.params.id));
+    const id = Number(req.params.id);
+    // STR-023: guard non-numeric :id so sibling routes like
+    // /api/properties/by-location don't fall into this handler and fail
+    // with a NaN DB query.
+    if (!Number.isFinite(id) || id <= 0) {
+      return Errors.notFound(res, "Property");
+    }
+    const property = await storage.getProperty(org.id, id);
     if (!property) return Errors.notFound(res, "Property");
     res.json(property);
   });
