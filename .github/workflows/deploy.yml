@@ -46,7 +46,7 @@ jobs:
         run: npm ci
 
       - name: TypeScript check
-        run: npx tsc --noEmit
+        run: npm run check
 
       - name: Run tests
         run: npx vitest run
