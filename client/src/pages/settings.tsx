@@ -21,7 +21,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, Crown, Check, ExternalLink, CreditCard, Loader2, Lightbulb, RotateCcw, Database, Trash2, BarChart3, Users, Home, FileText, Sparkles, TrendingUp, Coins, Shield, Mail, Phone, Bell, Code, Settings as SettingsIcon, Gift, Link2, AlertCircle, CheckCircle2, Clock, RefreshCw, Unlink, Wallet, Target, Plus, X, Calendar, Zap } from "lucide-react";
+import { Building2, Crown, Check, ExternalLink, CreditCard, Loader2, Lightbulb, RotateCcw, Database, Trash2, BarChart3, Users, Home, FileText, Sparkles, TrendingUp, Coins, Shield, Mail, Phone, Bell, Code, Settings as SettingsIcon, Gift, Link2, AlertCircle, CheckCircle2, Clock, RefreshCw, Unlink, Wallet, Target, Plus, X, Calendar, Zap, Download, AlertTriangle, Lock } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Progress } from "@/components/ui/progress";
@@ -55,6 +55,7 @@ import { useQuery } from "@tanstack/react-query";
 import { UserPlus, XCircle } from "lucide-react";
 import { CancellationDialog } from "@/components/cancellation-dialog";
 import { Input } from "@/components/ui/input";
+import { useAuth } from "@/hooks/use-auth";
 
 interface SeatInfo {
   tier: string;
@@ -77,7 +78,7 @@ interface SeatPricing {
   yearly?: { id: string; amount: number; currency: string } | null;
 }
 
-const VALID_TABS = ["general", "appearance", "team", "payments", "communications", "notifications", "ai", "data", "integrations", "developer", "goals", "referral", "automations", "ai-tasks"] as const;
+const VALID_TABS = ["general", "appearance", "team", "payments", "communications", "notifications", "ai", "data", "integrations", "developer", "goals", "referral", "automations", "ai-tasks", "privacy"] as const;
 type TabValue = typeof VALID_TABS[number];
 
 interface StripeConnectStatusResponse {
@@ -788,6 +789,10 @@ export default function Settings() {
                 <TabsTrigger value="security" data-testid="tab-security" className="gap-1">
                   <Shield className="w-4 h-4 hidden sm:inline" />
                   Security
+                </TabsTrigger>
+                <TabsTrigger value="privacy" data-testid="tab-privacy" className="gap-1">
+                  <Lock className="w-4 h-4 hidden sm:inline" />
+                  Privacy
                 </TabsTrigger>
                 <TabsTrigger value="referral" data-testid="tab-referral" className="gap-1">
                   <Gift className="w-4 h-4 hidden sm:inline" />
@@ -1555,6 +1560,11 @@ export default function Settings() {
             <TabsContent value="security" className="space-y-6 mt-6" data-testid="tab-content-security">
               <TwoFactorAuthSettings />
               <PasswordChangeSettings />
+            </TabsContent>
+
+            {/* ── Privacy Tab ──────────────────────────────────────────── */}
+            <TabsContent value="privacy" className="space-y-6 mt-6" data-testid="tab-content-privacy">
+              <PrivacyDataSettings />
             </TabsContent>
 
             <TabsContent value="referral" className="space-y-6 mt-6" data-testid="tab-content-referral">
@@ -2411,6 +2421,232 @@ function ActivityLogPanel() {
               </TableBody>
             </Table>
           )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ── Privacy & Data Settings ─────────────────────────────────────────────────
+
+interface PrivacyStatus {
+  deleted: boolean;
+  userId: number;
+}
+
+function PrivacyDataSettings() {
+  const { toast } = useToast();
+  const { logout } = useAuth();
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [showDeleteForm, setShowDeleteForm] = useState(false);
+
+  const { data: privacyStatus } = useQuery<PrivacyStatus>({
+    queryKey: ["/api/privacy/status"],
+    queryFn: () => fetch("/api/privacy/status", { credentials: "include" }).then(r => r.json()),
+  });
+
+  const exportMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/privacy/export", {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Export failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `acreOS-data-export-${new Date().toISOString().split("T")[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    },
+    onSuccess: () => toast({ title: "Data export downloaded" }),
+    onError: () => toast({ title: "Export failed", variant: "destructive" }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("POST", "/api/privacy/delete", { confirm: "DELETE MY DATA" }),
+    onSuccess: () => {
+      toast({
+        title: "Account anonymized",
+        description: "Your personal data has been deleted. You will be signed out shortly.",
+      });
+      setShowDeleteForm(false);
+      setTimeout(() => {
+        logout();
+      }, 3000);
+    },
+    onError: (err: any) =>
+      toast({ title: err.message || "Deletion failed", variant: "destructive" }),
+  });
+
+  if (privacyStatus?.deleted) {
+    return (
+      <div className="flex flex-col items-center gap-4 py-16 text-center">
+        <CheckCircle2 className="w-12 h-12 text-green-500" />
+        <h2 className="text-xl font-semibold">Data Deletion Complete</h2>
+        <p className="text-muted-foreground text-sm">Your personal data has already been anonymized.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-xl font-semibold flex items-center gap-2">
+          <Lock className="w-5 h-5" />
+          Privacy &amp; Data Rights
+        </h2>
+        <p className="text-muted-foreground text-sm">
+          Manage your personal data rights under GDPR/CCPA.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Data Export */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Download className="w-5 h-5 text-primary" />
+              <CardTitle className="text-base">Export Your Data</CardTitle>
+            </div>
+            <CardDescription>
+              Download a complete copy of all personal data AcreOS holds about you (GDPR Article 15).
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-1 text-sm text-muted-foreground">
+              <p>Your export includes:</p>
+              <ul className="list-disc list-inside space-y-0.5 text-xs">
+                <li>Account information</li>
+                <li>Leads assigned to you</li>
+                <li>Deals and properties</li>
+                <li>Tasks and messages</li>
+                <li>Support tickets</li>
+              </ul>
+            </div>
+            <Button
+              onClick={() => exportMutation.mutate()}
+              disabled={exportMutation.isPending}
+              className="w-full"
+              data-testid="btn-export-data"
+            >
+              {exportMutation.isPending ? (
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Preparing Export...</>
+              ) : (
+                <><Download className="w-4 h-4 mr-2" />Download My Data</>
+              )}
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Data Deletion */}
+        <Card className="border-red-200 dark:border-red-800">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Trash2 className="w-5 h-5 text-red-600" />
+              <CardTitle className="text-base text-red-700 dark:text-red-400">Delete Personal Data</CardTitle>
+            </div>
+            <CardDescription>
+              Permanently anonymize your personal data (GDPR Article 17 — Right to Erasure).
+              Business records required for legal compliance are retained in anonymized form.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <div className="text-xs text-amber-700 dark:text-amber-400 space-y-1">
+                <p className="font-medium">This action cannot be undone.</p>
+                <p>Your email, name, and contact details will be replaced with anonymized values. Deals and business records are retained for legal compliance.</p>
+              </div>
+            </div>
+
+            {!showDeleteForm ? (
+              <Button
+                variant="destructive"
+                className="w-full"
+                onClick={() => setShowDeleteForm(true)}
+                data-testid="btn-request-deletion"
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Request Data Deletion
+              </Button>
+            ) : (
+              <div className="space-y-3">
+                <div>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Type <strong>DELETE</strong> to confirm:
+                  </p>
+                  <Input
+                    value={deleteConfirmText}
+                    onChange={e => setDeleteConfirmText(e.target.value)}
+                    placeholder="DELETE"
+                    className="text-sm"
+                    data-testid="input-delete-confirm"
+                    aria-label="Type DELETE to confirm account deletion"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="destructive"
+                    className="flex-1"
+                    disabled={deleteConfirmText !== "DELETE" || deleteMutation.isPending}
+                    onClick={() => deleteMutation.mutate()}
+                    data-testid="btn-confirm-deletion"
+                  >
+                    {deleteMutation.isPending ? (
+                      <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Deleting...</>
+                    ) : (
+                      "Confirm Deletion"
+                    )}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => { setShowDeleteForm(false); setDeleteConfirmText(""); }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Shield className="w-5 h-5 text-primary" />
+            <CardTitle className="text-base">Your Data Rights</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {[
+              { right: "Right of Access (Art. 15)", desc: "Download all data we hold about you", status: "available" as const },
+              { right: "Right to Erasure (Art. 17)", desc: "Request anonymization of personal data", status: "available" as const },
+              { right: "Right to Rectification (Art. 16)", desc: "Correct inaccurate data via Settings", status: "available" as const },
+              { right: "Right to Portability (Art. 20)", desc: "Export your data in JSON format", status: "available" as const },
+              { right: "Right to Object (Art. 21)", desc: "Contact support to object to processing", status: "contact" as const },
+              { right: "Right to Restriction (Art. 18)", desc: "Contact support to restrict processing", status: "contact" as const },
+            ].map(({ right, desc, status }) => (
+              <div key={right} className="flex items-start gap-2 p-3 rounded-lg border bg-muted/20">
+                <Badge
+                  variant={status === "available" ? "default" : "outline"}
+                  className="text-xs shrink-0 mt-0.5"
+                >
+                  {status === "available" ? "Available" : "Via Support"}
+                </Badge>
+                <div>
+                  <p className="text-xs font-medium">{right}</p>
+                  <p className="text-xs text-muted-foreground">{desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
         </CardContent>
       </Card>
     </div>
