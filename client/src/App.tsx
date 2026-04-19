@@ -30,6 +30,7 @@ import { OfflineIndicator } from "@/components/offline-indicator";
 import { FloatingActionButton } from "@/components/floating-action-button";
 import { FloatingHelpButton } from "@/components/floating-help-button";
 import { FeedbackButton } from "@/components/feedback-button";
+import { EarlyAccessBanner } from "@/components/early-access-banner";
 import { CommandPalette } from "@/components/command-palette";
 import { useSwipeNavigation } from "@/hooks/use-swipe-gesture";
 import { useNextRoutePrefetch } from "@/hooks/use-next-route-prefetch";
@@ -827,6 +828,7 @@ function AppContent() {
       <a href="#main-content" className="skip-to-content" aria-label="Skip to main content">
         Skip to content
       </a>
+      {user && <EarlyAccessBanner />}
       {user && <TrialBanner />}
       <PageWrapper>
         <Router />
