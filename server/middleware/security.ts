@@ -119,10 +119,23 @@ export function corsMiddleware(req: Request, res: Response, next: NextFunction) 
   next();
 }
 
-const REQUEST_TIMEOUT_MS = 30000;
+const DEFAULT_REQUEST_TIMEOUT_MS = 30000;
+// AI / LLM routes are intentionally slow (model inference latency, tool
+// calls, etc). Keep them on a dedicated longer cap so Pax/Atlas prompts
+// don't die at the 30s wall. If this gets too long we should add a
+// streaming response path; until then 90s covers p95 of OpenRouter.
+const AI_REQUEST_TIMEOUT_MS = 90000;
+
+function timeoutForPath(path: string): number {
+  if (path.startsWith("/api/ai/") || path.startsWith("/api/pax/") || path.startsWith("/api/atlas/")) {
+    return AI_REQUEST_TIMEOUT_MS;
+  }
+  return DEFAULT_REQUEST_TIMEOUT_MS;
+}
 
 export function requestTimeout(req: Request, res: Response, next: NextFunction) {
   const startTime = Date.now();
+  const timeoutMs = timeoutForPath(req.originalUrl || req.path);
   const timeout = setTimeout(() => {
     if (!res.headersSent) {
       const { logger } = require("../utils/logger");
@@ -130,7 +143,7 @@ export function requestTimeout(req: Request, res: Response, next: NextFunction) 
         method: req.method,
         path: req.originalUrl || req.path,
         duration: Date.now() - startTime,
-        timeoutMs: REQUEST_TIMEOUT_MS,
+        timeoutMs,
       });
       res.status(504).json({
         error: "Gateway Timeout",
@@ -138,7 +151,7 @@ export function requestTimeout(req: Request, res: Response, next: NextFunction) 
         statusCode: 504,
       });
     }
-  }, REQUEST_TIMEOUT_MS);
+  }, timeoutMs);
 
   res.on("finish", () => clearTimeout(timeout));
   res.on("close", () => clearTimeout(timeout));
