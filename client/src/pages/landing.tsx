@@ -24,7 +24,7 @@ const FEATURES = [
   {
     icon: TrendingUp,
     title: "AI Valuations",
-    description: "Instant property valuations powered by comps analysis and 18 open data sources.",
+    description: "Instant property valuations powered by comps analysis and 9 data sources.",
   },
   {
     icon: Bot,
@@ -49,7 +49,7 @@ const FEATURES = [
 ];
 
 const SOCIAL_PROOF = [
-  { stat: "18", label: "Free data sources" },
+  { stat: "9", label: "Data sources" },
   { stat: "$0", label: "To get started" },
   { stat: "14", label: "Day free trial" },
   { stat: "500+", label: "Properties managed" },
@@ -134,7 +134,7 @@ export default function LandingPage() {
                 icon: Sparkles,
                 step: "2",
                 title: "AI Analyzes Each Parcel",
-                description: "Instant valuations, comp analysis, and deal scoring powered by 18 free data sources.",
+                description: "Instant valuations, comp analysis, and deal scoring powered by 9 data sources.",
               },
               {
                 icon: Mail,

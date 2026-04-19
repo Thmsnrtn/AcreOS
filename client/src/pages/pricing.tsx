@@ -61,7 +61,7 @@ const FEATURES: Feature[] = [
   { name: "Sequences", free: false, starter: "2", pro: "Unlimited", scale: "Unlimited" },
   { name: "BYOK Data Providers", free: false, starter: false, pro: true, scale: true },
   { name: "Team Seats", free: "1", starter: "1", pro: "2 (add more at $20/seat)", scale: "10 (add more at $40/seat)" },
-  { name: "Open Data Sources (18)", free: true, starter: true, pro: true, scale: true },
+  { name: "Data Sources (6 free + 3 premium)", free: true, starter: true, pro: true, scale: true },
   { name: "AI Deal Intelligence", free: true, starter: true, pro: true, scale: true },
   { name: "Document Generation", free: true, starter: true, pro: true, scale: true },
   { name: "Portfolio Mapping", free: true, starter: true, pro: true, scale: true },
