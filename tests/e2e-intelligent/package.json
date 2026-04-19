@@ -1,0 +1,24 @@
+{
+  "name": "acreos-e2e-intelligent",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "e2e:single": "tsx scripts/run-single.ts",
+    "e2e:subset": "tsx scripts/run-subset.ts",
+    "e2e:cycle": "tsx scripts/run-full-cycle.ts",
+    "e2e:replay": "tsx scripts/replay-from-transcript.ts",
+    "test": "vitest run tests/"
+  },
+  "devDependencies": {
+    "@anthropic-ai/sdk": "^0.80.0",
+    "@playwright/test": "^1.52.0",
+    "dotenv": "^16.5.0",
+    "p-retry": "^6.2.1",
+    "playwright": "^1.52.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.1.0",
+    "zod": "^3.25.0"
+  }
+}
