@@ -29,6 +29,7 @@ import { ErrorBoundary } from "@/components/error-boundary";
 import { OfflineIndicator } from "@/components/offline-indicator";
 import { FloatingActionButton } from "@/components/floating-action-button";
 import { FloatingHelpButton } from "@/components/floating-help-button";
+import { FeedbackButton } from "@/components/feedback-button";
 import { CommandPalette } from "@/components/command-palette";
 import { useSwipeNavigation } from "@/hooks/use-swipe-gesture";
 import { useNextRoutePrefetch } from "@/hooks/use-next-route-prefetch";
@@ -832,6 +833,7 @@ function AppContent() {
       </PageWrapper>
       {user && <FloatingActionButton />}
       {user && <FloatingHelpButton />}
+      {user && <FeedbackButton />}
       {user && <QuickActionsMenu />}
       {user && <ConversationTray />}
       {user && <CommandPalette />}
