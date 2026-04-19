@@ -11,7 +11,7 @@ import { useFetchPropertyParcel, useFetchAllParcels } from "@/hooks/use-parcels"
 import { useState, useMemo, useEffect } from "react";
 import { useOrganization } from "@/hooks/use-organization";
 import { useSearch } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertPropertySchema, type Property, type DueDiligenceItem, type DueDiligenceTemplate } from "@shared/schema";
@@ -102,7 +102,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, MapPin, Ruler, DollarSign, Trash2, Loader2, Map as MapIcon, RefreshCw, FileText, Download, Upload, CheckCircle, AlertCircle, ClipboardCheck, Printer, Calculator, BarChart2, X, CheckSquare, Droplets, Leaf, Building2, Flame, Users, Brain, Shield, Zap, Mountain, TreePine, Car, TrendingUp, Thermometer, Cloud, Waves, Wheat, Factory, Grid3x3 } from "lucide-react";
+import { Plus, MapPin, Ruler, DollarSign, Trash2, Loader2, Map as MapIcon, RefreshCw, FileText, Download, Upload, CheckCircle, AlertCircle, ClipboardCheck, Printer, Calculator, BarChart2, X, CheckSquare, Droplets, Leaf, Building2, Flame, Users, Brain, Shield, Zap, Mountain, TreePine, Car, TrendingUp, Thermometer, Cloud, Waves, Wheat, Factory, Grid3x3, Target, ThumbsUp, ThumbsDown } from "lucide-react";
 import { LandCreditBadge } from "@/components/land-credit-badge";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -1298,25 +1298,25 @@ function PropertyForm({ onSuccess }: { onSuccess: () => void }) {
   );
 }
 
-function PropertyDetailDialog({ property, open, onOpenChange }: { 
-  property: Property; 
-  open: boolean; 
+function PropertyDetailDialog({ property, open, onOpenChange }: {
+  property: Property;
+  open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
   const [isAnalysisChatOpen, setIsAnalysisChatOpen] = useState(false);
-  
+
   const { data: freshProperty, isLoading: isLoadingProperty } = useQuery<Property>({
     queryKey: ['/api/properties', property.id],
     enabled: open,
     staleTime: 0,
     gcTime: 0,
   });
-  
+
   const currentProperty = freshProperty || property;
-  
+
   const utilities = currentProperty.utilities as { electric?: boolean; water?: boolean; sewer?: boolean; gas?: boolean } | null;
   const parcelData = currentProperty.parcelData as { regridId?: string; owner?: string; ownerAddress?: string; taxAmount?: string; lastUpdated?: string } | null;
-  
+
   const formatDate = (date: Date | string | null | undefined) => {
     if (!date) return "N/A";
     return new Date(date).toLocaleDateString();
@@ -1335,6 +1335,90 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
   const hasOwnerData = parcelData?.owner || parcelData?.ownerAddress;
   const hasUtilities = utilities && Object.values(utilities).some(Boolean);
 
+  // --- Quick Verdict: investment score computation ---
+  const verdictData = useMemo(() => {
+    let score = 0;
+    const factors: { label: string; met: boolean }[] = [];
+    const enrichment = currentProperty.enrichmentData as any;
+    const ddData = currentProperty.dueDiligenceData as any;
+
+    // Factor 1: Has assessed value
+    const hasAssessedValue = !!currentProperty.assessedValue && Number(currentProperty.assessedValue) > 0;
+    factors.push({ label: "Assessed value on file", met: hasAssessedValue });
+    if (hasAssessedValue) score += 1;
+
+    // Factor 2: Has market value or enrichment value data
+    const hasMarketValue = !!currentProperty.marketValue && Number(currentProperty.marketValue) > 0;
+    factors.push({ label: "Market value available", met: hasMarketValue });
+    if (hasMarketValue) score += 1;
+
+    // Factor 3: Taxes current (check DD data)
+    const taxesCurrent = ddData?.taxesCurrent === true;
+    factors.push({ label: "Taxes current", met: taxesCurrent });
+    if (taxesCurrent) score += 1;
+
+    // Factor 4: Has comps / enrichment intelligence data
+    const hasIntelligence = !!(enrichment?.scores) || !!(ddData?.hazards) || !!currentProperty.parcelBoundary;
+    factors.push({ label: "Intelligence / parcel data", met: hasIntelligence });
+    if (hasIntelligence) score += 1;
+
+    // Derive traffic light
+    let signal: "green" | "yellow" | "red" | "gray";
+    let signalLabel: string;
+    if (factors.every(f => !f.met)) {
+      signal = "gray";
+      signalLabel = "Insufficient Data";
+    } else if (score >= 3) {
+      signal = "green";
+      signalLabel = "Strong Buy";
+    } else if (score === 2) {
+      signal = "yellow";
+      signalLabel = "Investigate";
+    } else {
+      signal = "red";
+      signalLabel = "Pass";
+    }
+
+    // Key metrics
+    const pricePerAcre = currentProperty.sizeAcres && Number(currentProperty.sizeAcres) > 0 && currentProperty.marketValue && Number(currentProperty.marketValue) > 0
+      ? Number(currentProperty.marketValue) / Number(currentProperty.sizeAcres)
+      : null;
+
+    return { score, factors, signal, signalLabel, pricePerAcre };
+  }, [currentProperty]);
+
+  // Verdict decision mutation (Pursue = due_diligence, Pass = rejected)
+  const verdictMutation = useMutation({
+    mutationFn: async (decision: "pursue" | "pass") => {
+      const newStatus = decision === "pursue" ? "due_diligence" : "rejected";
+      const existingDD = (currentProperty.dueDiligenceData as any) || {};
+      const res = await apiRequest("PATCH", `/api/properties/${currentProperty.id}`, {
+        status: newStatus,
+        dueDiligenceData: {
+          ...existingDD,
+          verdictDecision: decision,
+          verdictDecisionAt: new Date().toISOString(),
+          verdictScore: verdictData.score,
+        },
+      });
+      if (!res.ok) throw new Error("Failed to update property decision");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/properties"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/properties", currentProperty.id] });
+    },
+  });
+
+  const signalColors: Record<string, { bg: string; text: string; border: string; dot: string }> = {
+    green: { bg: "bg-green-50 dark:bg-green-950/30", text: "text-green-700 dark:text-green-400", border: "border-green-200 dark:border-green-800", dot: "bg-green-500" },
+    yellow: { bg: "bg-yellow-50 dark:bg-yellow-950/30", text: "text-yellow-700 dark:text-yellow-400", border: "border-yellow-200 dark:border-yellow-800", dot: "bg-yellow-500" },
+    red: { bg: "bg-red-50 dark:bg-red-950/30", text: "text-red-700 dark:text-red-400", border: "border-red-200 dark:border-red-800", dot: "bg-red-500" },
+    gray: { bg: "bg-muted/50", text: "text-muted-foreground", border: "border-muted", dot: "bg-muted-foreground" },
+  };
+  const sc = signalColors[verdictData.signal];
+  const existingDecision = (currentProperty.dueDiligenceData as any)?.verdictDecision as string | undefined;
+
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1345,8 +1429,8 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
               <MapPin className="w-5 h-5 flex-shrink-0" />
               <span className="truncate">{currentProperty.address || `${currentProperty.county}, ${currentProperty.state}`}</span>
             </DialogTitle>
-            <Button 
-              variant="default" 
+            <Button
+              variant="default"
               className="min-h-[44px] sm:min-h-8 w-full sm:w-auto"
               onClick={() => setIsAnalysisChatOpen(true)}
               data-testid="button-analyze-with-ai"
@@ -1361,7 +1445,124 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
             <Badge variant="outline" className="capitalize">{currentProperty.status.replace('_', ' ')}</Badge>
           </DialogDescription>
         </DialogHeader>
-        
+
+        {/* FRICTION-0007: Quick Verdict — synthesized go/no-go recommendation */}
+        <Card className={`${sc.bg} ${sc.border} border`} data-testid="quick-verdict-card">
+          <CardContent className="p-4">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+              {/* Signal indicator + score */}
+              <div className="flex items-center gap-3 shrink-0">
+                <div className="flex items-center gap-2">
+                  <div className={`w-3 h-3 rounded-full ${sc.dot} shrink-0`} data-testid="verdict-signal-dot" />
+                  <div>
+                    <div className={`text-sm font-semibold ${sc.text}`} data-testid="verdict-signal-label">
+                      {verdictData.signalLabel}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Score: {verdictData.score}/4
+                    </div>
+                  </div>
+                </div>
+                <Target className={`w-5 h-5 ${sc.text} hidden sm:block`} />
+              </div>
+
+              {/* Key metrics */}
+              <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+                <div className="space-y-0.5">
+                  <span className="text-muted-foreground text-xs">Est. Value</span>
+                  <p className="font-semibold" data-testid="verdict-market-value">
+                    {formatCurrency(currentProperty.marketValue || currentProperty.assessedValue)}
+                  </p>
+                </div>
+                <div className="space-y-0.5">
+                  <span className="text-muted-foreground text-xs">Price/Acre</span>
+                  <p className="font-semibold" data-testid="verdict-price-per-acre">
+                    {verdictData.pricePerAcre ? `$${Math.round(verdictData.pricePerAcre).toLocaleString()}` : "N/A"}
+                  </p>
+                </div>
+                <div className="space-y-0.5">
+                  <span className="text-muted-foreground text-xs">Tax Status</span>
+                  <p className="font-semibold" data-testid="verdict-tax-status">
+                    {(currentProperty.dueDiligenceData as any)?.taxesCurrent === true
+                      ? "Current"
+                      : (currentProperty.dueDiligenceData as any)?.taxesCurrent === false
+                        ? "Delinquent"
+                        : "Unknown"}
+                  </p>
+                </div>
+                <div className="space-y-0.5">
+                  <span className="text-muted-foreground text-xs">Acreage</span>
+                  <p className="font-semibold" data-testid="verdict-acreage">
+                    {currentProperty.sizeAcres ? `${Number(currentProperty.sizeAcres).toLocaleString()} ac` : "N/A"}
+                  </p>
+                </div>
+              </div>
+
+              {/* Decision buttons */}
+              <div className="flex gap-2 shrink-0">
+                {existingDecision ? (
+                  <Badge
+                    variant={existingDecision === "pursue" ? "default" : "destructive"}
+                    className="text-xs px-3 py-1.5"
+                    data-testid="verdict-decision-badge"
+                  >
+                    {existingDecision === "pursue" ? "Pursuing" : "Passed"}
+                  </Badge>
+                ) : (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="default"
+                      className="min-h-[36px]"
+                      onClick={() => verdictMutation.mutate("pursue")}
+                      disabled={verdictMutation.isPending}
+                      aria-label="Pursue this property"
+                      data-testid="verdict-pursue-button"
+                    >
+                      {verdictMutation.isPending ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                      ) : (
+                        <ThumbsUp className="w-3.5 h-3.5 mr-1" />
+                      )}
+                      Pursue
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="min-h-[36px]"
+                      onClick={() => verdictMutation.mutate("pass")}
+                      disabled={verdictMutation.isPending}
+                      aria-label="Pass on this property"
+                      data-testid="verdict-pass-button"
+                    >
+                      {verdictMutation.isPending ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                      ) : (
+                        <ThumbsDown className="w-3.5 h-3.5 mr-1" />
+                      )}
+                      Pass
+                    </Button>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Score factors (collapsed detail) */}
+            <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3 text-xs" data-testid="verdict-factors">
+              {verdictData.factors.map((f) => (
+                <span key={f.label} className={`flex items-center gap-1 ${f.met ? "text-foreground" : "text-muted-foreground"}`}>
+                  {f.met ? (
+                    <CheckCircle className="w-3 h-3 text-green-500" />
+                  ) : (
+                    <AlertCircle className="w-3 h-3 text-muted-foreground/50" />
+                  )}
+                  {f.label}
+                </span>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
         <Tabs defaultValue="overview" className="mt-4">
           <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
             <TooltipProvider delayDuration={300}>
