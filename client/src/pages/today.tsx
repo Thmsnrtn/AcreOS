@@ -592,7 +592,7 @@ export default function TodayPage() {
         <div className="flex items-center gap-2">
           <Sun className="w-5 h-5 text-amber-500" />
           <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-today-title">
-            {greeting()}{organization?.name ? `, ${organization.name}` : ""}
+            {greeting()}{user?.firstName ? `, ${user.firstName}` : ""}
           </h1>
         </div>
         <p className="text-muted-foreground text-sm">

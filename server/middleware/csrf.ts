@@ -23,6 +23,13 @@ const CSRF_EXEMPT_PATHS = new Set([
   "/api/webhooks/actum",
   "/webhook/twilio/recording-complete",
   "/webhook/disclosure",
+  // STR-009: analytics/telemetry are fire-and-forget beacons that can't
+  // set a CSRF cookie before the first page load, and sendBeacon() can't
+  // attach custom headers. They're auth-gated and don't mutate user data,
+  // so CSRF exemption is safe.
+  "/api/analytics/session/start",
+  "/api/analytics/session/end",
+  "/api/telemetry",
 ]);
 
 const CSRF_COOKIE = "csrf_token";
