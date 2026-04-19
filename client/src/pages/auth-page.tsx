@@ -1,7 +1,8 @@
 import { SignIn, SignUp, useUser } from "@clerk/react";
-import { Redirect } from "wouter";
+import { Link, Redirect } from "wouter";
 import { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
+import { ArrowLeft } from "lucide-react";
 
 export default function AuthPage() {
   const { user, isLoading } = useAuth();
@@ -31,8 +32,21 @@ export default function AuthPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
-      <div className="w-full max-w-md flex flex-col items-center gap-4">
+    <div className="min-h-screen flex items-center justify-center bg-background px-4">
+      <div className="w-full max-w-md flex flex-col items-center gap-6">
+        {/* AcreOS branding */}
+        <div className="flex flex-col items-center gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
+              <span className="text-white font-bold text-lg">A</span>
+            </div>
+            <span className="text-2xl font-bold tracking-tight">AcreOS</span>
+          </div>
+          <p className="text-sm text-muted-foreground text-center">
+            The operating system for real estate professionals
+          </p>
+        </div>
+
         {mode === "sign-in" ? (
           <SignIn
             routing="hash"
@@ -50,6 +64,13 @@ export default function AuthPage() {
         >
           {mode === "sign-in" ? "Need an account? Sign up" : "Already have an account? Sign in"}
         </button>
+        <Link
+          href="/"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+          Back to home
+        </Link>
       </div>
     </div>
   );
