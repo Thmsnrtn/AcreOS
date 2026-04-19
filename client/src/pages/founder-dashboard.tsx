@@ -101,6 +101,7 @@ import {
   CircleDot as CircleDotIcon,
   Minus,
   CalendarCheck,
+  Plug,
 } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
 import {
@@ -2167,6 +2168,23 @@ export default function FounderDashboard() {
               </div>
               <JobQueueHealth />
               <SystemHealth />
+              {/* External Integrations link */}
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                    <Plug className="w-4 h-4 text-blue-500" />
+                    External Integrations
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground mb-3">
+                    View status of all external API integrations and get CLI commands to configure them.
+                  </p>
+                  <a href="/founder/integrations" className="text-sm text-primary hover:underline font-medium">
+                    Open Integrations Dashboard &rarr;
+                  </a>
+                </CardContent>
+              </Card>
               <ThePulse decisionsInboxCount={decisionsInboxData?.totalPending} />
               <DecisionsInbox />
             </div>
