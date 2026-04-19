@@ -103,12 +103,51 @@ export function registerPropertyRoutes(app: Express): void {
     });
   });
   
+  // STR-023: GET /api/properties/by-location — registered BEFORE /:id so
+  // Express resolves the verb-style path to this handler rather than
+  // treating "by-location" as an :id and NaN-querying the DB.
+  api.get("/api/properties/by-location", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const lat = Number(req.query.lat);
+      const lng = Number(req.query.lng);
+      const radius = Number(req.query.radius) || 5;
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        return Errors.badRequest(res, "lat and lng are required numeric query params");
+      }
+      if (Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+        return Errors.badRequest(res, "lat must be in [-90, 90] and lng in [-180, 180]");
+      }
+      const clampedRadius = Math.min(Math.max(radius, 0.1), 50);
+      const { findNearbyProperties } = await import("./services/propertyIntelligenceEnhancements");
+      const nearby = await findNearbyProperties(org.id, lat, lng, clampedRadius);
+      const withDistance = nearby.map((p: any) => {
+        const pLat = p.latitude ? Number(p.latitude) : null;
+        const pLng = p.longitude ? Number(p.longitude) : null;
+        const R = 3959; // miles
+        let distanceMiles: number | null = null;
+        if (pLat !== null && pLng !== null) {
+          const dLat = ((pLat - lat) * Math.PI) / 180;
+          const dLng = ((pLng - lng) * Math.PI) / 180;
+          const a =
+            Math.sin(dLat / 2) ** 2 +
+            Math.cos((lat * Math.PI) / 180) * Math.cos((pLat * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+          distanceMiles = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        }
+        return { ...p, distanceMiles: distanceMiles !== null ? Number(distanceMiles.toFixed(2)) : null };
+      });
+      withDistance.sort((a, b) => (a.distanceMiles ?? Infinity) - (b.distanceMiles ?? Infinity));
+      res.json({ properties: withDistance, count: withDistance.length, radius: clampedRadius, lat, lng });
+    } catch (error) {
+      Errors.internal(res, error);
+    }
+  });
+
   api.get("/api/properties/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
     const id = Number(req.params.id);
-    // STR-023: guard non-numeric :id so sibling routes like
-    // /api/properties/by-location don't fall into this handler and fail
-    // with a NaN DB query.
+    // STR-023 defense-in-depth: reject non-numeric :id even if a sibling
+    // verb-style path isn't registered above.
     if (!Number.isFinite(id) || id <= 0) {
       return Errors.notFound(res, "Property");
     }

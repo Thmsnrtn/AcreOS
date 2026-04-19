@@ -259,36 +259,6 @@ export function registerMicroFeatureRoutes(app: Express): void {
   // (c) search their property list by address or APN. Without these
   // the mobile driving-for-dollars loop is broken.
 
-  // STR-023: GET /api/properties/by-location?lat&lng&radius
-  app.get("/api/properties/by-location", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization;
-      const lat = Number(req.query.lat);
-      const lng = Number(req.query.lng);
-      const radius = Number(req.query.radius) || 5;
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-        return Errors.badRequest(res, "lat and lng are required numeric query params");
-      }
-      if (Math.abs(lat) > 90 || Math.abs(lng) > 180) {
-        return Errors.badRequest(res, "lat must be in [-90, 90] and lng in [-180, 180]");
-      }
-      const clampedRadius = Math.min(Math.max(radius, 0.1), 50);
-      const { findNearbyProperties } = await import("./services/propertyIntelligenceEnhancements");
-      const nearby = await findNearbyProperties(org.id, lat, lng, clampedRadius);
-      const withDistance = nearby.map((p: any) => {
-        const pLat = p.latitude ? Number(p.latitude) : null;
-        const pLng = p.longitude ? Number(p.longitude) : null;
-        const distanceMiles =
-          pLat !== null && pLng !== null ? haversine(lat, lng, pLat, pLng) : null;
-        return { ...p, distanceMiles: distanceMiles !== null ? Number(distanceMiles.toFixed(2)) : null };
-      });
-      withDistance.sort((a, b) => (a.distanceMiles ?? Infinity) - (b.distanceMiles ?? Infinity));
-      res.json({ properties: withDistance, count: withDistance.length, radius: clampedRadius, lat, lng });
-    } catch (error) {
-      Errors.internal(res, error);
-    }
-  });
-
   // STR-024: GET /api/geocode/reverse?lat&lng  (proxies Mapbox)
   app.get("/api/geocode/reverse", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
