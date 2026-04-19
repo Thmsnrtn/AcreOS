@@ -121,6 +121,14 @@ function handleMutationError(error: unknown): void {
   console.error("[Mutation Error]", err);
 }
 
+function readCsrfToken(): string {
+  if (typeof document === "undefined") return "";
+  const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : "";
+}
+
+const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
 export async function apiRequest(
   method: string,
   url: string,
@@ -129,6 +137,12 @@ export async function apiRequest(
   const headers: Record<string, string> = {};
   if (data) {
     headers["Content-Type"] = "application/json";
+  }
+  // Mirror the csrf_token cookie into the x-csrf-token header for the
+  // server's double-submit CSRF check. Safe on GETs (harmless extra header).
+  if (MUTATING_METHODS.has(method.toUpperCase())) {
+    const csrf = readCsrfToken();
+    if (csrf) headers["x-csrf-token"] = csrf;
   }
   const res = await fetch(url, {
     method,

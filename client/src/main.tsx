@@ -3,6 +3,10 @@ import { ClerkProvider } from "@clerk/react";
 import App from "./App";
 import "./index.css";
 import { initClientSentry } from "./lib/sentry";
+import { installCsrfFetchInterceptor } from "./lib/csrf-fetch";
+
+// Install CSRF header interceptor before any fetch fires.
+installCsrfFetchInterceptor();
 
 // Initialize Sentry before rendering (no-op if VITE_SENTRY_DSN is unset)
 initClientSentry();

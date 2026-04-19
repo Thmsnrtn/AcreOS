@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import type { Request, Response, NextFunction } from "express";
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
@@ -24,16 +25,44 @@ const CSRF_EXEMPT_PATHS = new Set([
   "/webhook/disclosure",
 ]);
 
+const CSRF_COOKIE = "csrf_token";
+// ~32 hex chars of entropy, readable by JS (not httpOnly) so the client
+// can mirror it into the x-csrf-token header for the double-submit check.
+function issueToken(): string {
+  return crypto.randomBytes(24).toString("hex");
+}
+
+function ensureCsrfCookie(req: Request, res: Response): void {
+  const existing = (req as any).cookies?.[CSRF_COOKIE];
+  if (existing) return;
+  const token = issueToken();
+  res.cookie(CSRF_COOKIE, token, {
+    path: "/",
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    httpOnly: false, // double-submit requires JS to read it
+    // No maxAge → session cookie, rotated per browser session.
+  });
+  // Ensure same-request reads see the new value.
+  (req as any).cookies = { ...((req as any).cookies ?? {}), [CSRF_COOKIE]: token };
+}
+
 /**
  * Double-submit cookie CSRF protection.
  *
  * For mutating requests (POST, PUT, PATCH, DELETE) the middleware verifies
  * that the `x-csrf-token` request header matches the `csrf_token` cookie and
- * that neither value is empty.  External webhook callback paths are explicitly
+ * that neither value is empty. External webhook callback paths are explicitly
  * exempted since third-party services cannot supply our CSRF token.
+ *
+ * On safe methods, the middleware issues the `csrf_token` cookie if the
+ * client doesn't already have one. This avoids a separate bootstrap endpoint
+ * — the cookie arrives on the first GET and is then mirrored by the client
+ * into the `x-csrf-token` header for every mutation.
  */
 export function csrfProtection(req: Request, res: Response, next: NextFunction): void {
   if (SAFE_METHODS.has(req.method)) {
+    ensureCsrfCookie(req, res);
     next();
     return;
   }
@@ -44,7 +73,7 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction):
     return;
   }
 
-  const cookieToken: string = (req as any).cookies?.csrf_token ?? "";
+  const cookieToken: string = (req as any).cookies?.[CSRF_COOKIE] ?? "";
   const headerToken: string = (req.headers["x-csrf-token"] as string) ?? "";
 
   if (!cookieToken || !headerToken || cookieToken !== headerToken) {
