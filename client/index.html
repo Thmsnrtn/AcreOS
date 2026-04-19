@@ -29,7 +29,7 @@
     <!-- Core app uses system font stack; theme/white-label fonts are loaded dynamically -->
   </head>
   <body>
-    <script>
+    <script data-csp-nonce>
       // Prevent dark mode FOUC — apply theme before React renders
       try {
         const t = localStorage.getItem('theme');

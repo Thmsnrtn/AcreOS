@@ -44,6 +44,7 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
     "font-src 'self' data: https://fonts.gstatic.com",
     "connect-src 'self' https://api.stripe.com https://api.mapbox.com https://events.mapbox.com https://*.clerk.accounts.dev https://*.clerk.dev wss: ws:",
     "frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://*.clerk.accounts.dev https://challenges.cloudflare.com",
+    "worker-src 'self' blob:",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
@@ -148,18 +149,24 @@ export function requestTimeout(req: Request, res: Response, next: NextFunction) 
 export function validateContentType(req: Request, res: Response, next: NextFunction) {
   if (["POST", "PUT", "PATCH"].includes(req.method)) {
     const contentType = req.headers["content-type"];
-    
+
     if (req.path.includes("/webhook")) {
       return next();
     }
-    
-    if (contentType && !contentType.includes("application/json") && 
+
+    // Browsers post CSP violations as application/csp-report (legacy) or
+    // application/reports+json (Report-To). Let them through to the handler.
+    if (req.path === "/api/csp-report") {
+      return next();
+    }
+
+    if (contentType && !contentType.includes("application/json") &&
         !contentType.includes("application/x-www-form-urlencoded") &&
         !contentType.includes("multipart/form-data")) {
       return res.status(415).json({ message: "Unsupported Media Type" });
     }
   }
-  
+
   next();
 }
 
