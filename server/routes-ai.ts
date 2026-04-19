@@ -6,7 +6,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { checkUsageLimit } from "./services/usageLimits";
 import { usageLimitGate } from "./middleware/usageLimitGate";
 import { usageMeteringService, creditService } from "./services/credits";
-import { processChat, processChatStream, agentProfiles, getOrCreateConversation } from "./ai/executive";
+import { processChat, processChatStream, agentProfiles, getOrCreateConversation, ProviderCreditError } from "./ai/executive";
 import { storage, db } from "./storage";
 import { eq, sql, and } from "drizzle-orm";
 import type { SubscriptionTier } from "./services/usageLimits";
@@ -202,7 +202,13 @@ export function registerAIRoutes(app: Express): void {
   });
 
   api.post("/api/ai/chat", isAuthenticated, getOrCreateOrg, aiLimiter, usageLimitGate("ai_requests"), async (req, res) => {
+    // STR-016: step tags let us see in Fly logs exactly which pre-processing
+    // dependency failed when the handler 500s. Non-essential side effects
+    // (trackUsage, recordUsage) are wrapped so they can't block the user's
+    // response.
+    let step: string = "init";
     try {
+      step = "parse";
       const org = req.organization;
       const user = req.user as any;
       const userId = user.claims?.sub || user.id;
@@ -211,7 +217,8 @@ export function registerAIRoutes(app: Express): void {
         return Errors.validationFailed(res, parsed.error.errors);
       }
       const { message, conversationId, agentRole, propertyId } = parsed.data;
-      
+
+      step = "usage_limit";
       const usageCheck = await checkUsageLimit(org.id, "ai_requests");
       if (!usageCheck.allowed) {
         return res.status(429).json({
@@ -222,41 +229,74 @@ export function registerAIRoutes(app: Express): void {
           tier: usageCheck.tier,
         });
       }
-      
-      // Credit pre-check for AI chat (2 cents per request)
-      const aiChatCost = await usageMeteringService.calculateCost("ai_chat", 1);
-      const hasCredits = await creditService.hasEnoughCredits(org.id, aiChatCost);
-      if (!hasCredits) {
-        const balance = await creditService.getBalance(org.id);
-        return res.status(402).json({
-          error: "Insufficient credits",
-          required: aiChatCost / 100,
-          balance: balance / 100,
-        });
+
+      step = "credit_check";
+      // Credit pre-check for AI chat. If credit/rate lookup throws, fail open
+      // rather than 500 — founders, trial users, and insufficient-credit cases
+      // should never be surfaced as a server crash.
+      let aiChatCost = 2;
+      try {
+        aiChatCost = await usageMeteringService.calculateCost("ai_chat", 1);
+      } catch (err) {
+        logger.warn("[AI Chat] calculateCost failed, using default 2¢", err instanceof Error ? err : undefined);
       }
-      
-      await storage.trackUsage(org.id, "ai_request");
-      
+      try {
+        const hasCredits = await creditService.hasEnoughCredits(org.id, aiChatCost);
+        if (!hasCredits) {
+          const balance = await creditService.getBalance(org.id).catch(() => 0);
+          return res.status(402).json({
+            error: "Insufficient credits",
+            required: aiChatCost / 100,
+            balance: balance / 100,
+          });
+        }
+      } catch (err) {
+        logger.warn("[AI Chat] hasEnoughCredits failed, allowing request", err instanceof Error ? err : undefined);
+      }
+
+      step = "track_usage";
+      // Non-blocking: never fail the chat over a telemetry write.
+      try {
+        await storage.trackUsage(org.id, "ai_request");
+      } catch (err) {
+        logger.warn("[AI Chat] trackUsage failed (continuing)", err instanceof Error ? err : undefined);
+      }
+
+      step = "process_chat";
       const result = await processChat(message, org, userId, {
         conversationId,
         agentRole,
         propertyId: propertyId ? Number(propertyId) : undefined,
       });
-      
-      // Record usage after successful AI chat with provider/model/token info
-      await usageMeteringService.recordUsage(org.id, "ai_chat", 1, {
-        conversationId,
-        agentRole,
-        provider: result.provider || "openai",
-        model: result.model || "gpt-4o",
-        estimatedCost: result.estimatedCost,
-        promptTokens: result.promptTokens,
-        completionTokens: result.completionTokens,
-      });
-      
+
+      step = "record_usage";
+      // Non-blocking: already returned the user their AI response; don't 500 on billing.
+      try {
+        await usageMeteringService.recordUsage(org.id, "ai_chat", 1, {
+          conversationId,
+          agentRole,
+          provider: result.provider || "openai",
+          model: result.model || "gpt-4o",
+          estimatedCost: result.estimatedCost,
+          promptTokens: result.promptTokens,
+          completionTokens: result.completionTokens,
+        });
+      } catch (err) {
+        logger.warn("[AI Chat] recordUsage failed (continuing)", err instanceof Error ? err : undefined);
+      }
+
       res.json(result);
     } catch (error: any) {
-      logger.error("AI Chat error", error instanceof Error ? error : undefined);
+      if (error instanceof ProviderCreditError) {
+        logger.error(`[AI Chat] provider out of credits at step=${step}`, error);
+        return res.status(402).json({
+          error: "provider_credits_insufficient",
+          message:
+            "The AI provider is temporarily out of credits. We've been notified — please try again shortly.",
+          details: { affordableTokens: error.affordableTokens },
+        });
+      }
+      logger.error(`AI Chat error at step=${step}`, error instanceof Error ? error : undefined);
       Errors.internal(res, error);
     }
   });
@@ -286,7 +326,10 @@ export function registerAIRoutes(app: Express): void {
   });
 
   api.post("/api/ai/chat/stream", isAuthenticated, getOrCreateOrg, aiLimiter, usageLimitGate("ai_requests"), async (req, res) => {
+    // STR-016: mirror the resilience pattern from /api/ai/chat.
+    let step: string = "init";
     try {
+      step = "parse";
       const org = req.organization;
       const user = req.user as any;
       const userId = user.claims?.sub || user.id;
@@ -295,7 +338,8 @@ export function registerAIRoutes(app: Express): void {
         return Errors.validationFailed(res, parsed.error.errors);
       }
       const { message, conversationId, agentRole, files, propertyId: streamPropertyId, mentionedEntities, activeProjectId, modelOverride } = parsed.data;
-      
+
+      step = "usage_limit";
       const usageCheck = await checkUsageLimit(org.id, "ai_requests");
       if (!usageCheck.allowed) {
         return res.status(429).json({
@@ -306,20 +350,35 @@ export function registerAIRoutes(app: Express): void {
           tier: usageCheck.tier,
         });
       }
-      
-      // Credit pre-check for AI chat (2 cents per request)
-      const aiChatCost = await usageMeteringService.calculateCost("ai_chat", 1);
-      const hasCredits = await creditService.hasEnoughCredits(org.id, aiChatCost);
-      if (!hasCredits) {
-        const balance = await creditService.getBalance(org.id);
-        return res.status(402).json({
-          error: "Insufficient credits",
-          required: aiChatCost / 100,
-          balance: balance / 100,
-        });
+
+      step = "credit_check";
+      let aiChatCost = 2;
+      try {
+        aiChatCost = await usageMeteringService.calculateCost("ai_chat", 1);
+      } catch (err) {
+        logger.warn("[AI Chat Stream] calculateCost failed, using default 2¢", err instanceof Error ? err : undefined);
       }
-      
-      await storage.trackUsage(org.id, "ai_request");
+      try {
+        const hasCredits = await creditService.hasEnoughCredits(org.id, aiChatCost);
+        if (!hasCredits) {
+          const balance = await creditService.getBalance(org.id).catch(() => 0);
+          return res.status(402).json({
+            error: "Insufficient credits",
+            required: aiChatCost / 100,
+            balance: balance / 100,
+          });
+        }
+      } catch (err) {
+        logger.warn("[AI Chat Stream] hasEnoughCredits failed, allowing request", err instanceof Error ? err : undefined);
+      }
+
+      step = "track_usage";
+      try {
+        await storage.trackUsage(org.id, "ai_request");
+      } catch (err) {
+        logger.warn("[AI Chat Stream] trackUsage failed (continuing)", err instanceof Error ? err : undefined);
+      }
+      step = "stream_start";
       
       // Set up SSE
       res.setHeader("Content-Type", "text/event-stream");

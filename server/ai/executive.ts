@@ -94,6 +94,61 @@ async function loadCalibrationContext(orgId: number): Promise<string> {
   }
 }
 
+// Thrown when the AI provider (OpenRouter) returns 402 indicating the
+// account doesn't have enough credit for the requested completion — even
+// after we've tried to clamp max_tokens to what the account can afford.
+// The route handler converts this into a 402 response so the client sees a
+// clear "AI provider out of credits" signal instead of a generic 500.
+export class ProviderCreditError extends Error {
+  constructor(public readonly affordableTokens: number | null, public readonly providerMessage: string) {
+    super(providerMessage);
+    this.name = "ProviderCreditError";
+  }
+}
+
+// Extract the "can only afford N" number from an OpenRouter 402 message.
+function extractAffordableTokens(message: string): number | null {
+  const m = /afford\s+(\d+)/i.exec(message);
+  if (!m) return null;
+  const n = parseInt(m[1], 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+// Call chat.completions.create with automatic one-shot retry when OpenRouter
+// returns a 402 "requires more credits" complaint. We clamp max_tokens to
+// what the account can afford and try once more. If that also 402s, raise a
+// typed ProviderCreditError so the handler can return 402 to the client.
+async function createChatCompletionWithCreditRetry(
+  client: OpenAI,
+  params: OpenAI.ChatCompletionCreateParamsNonStreaming
+): Promise<OpenAI.ChatCompletion> {
+  try {
+    return await client.chat.completions.create(params);
+  } catch (error: any) {
+    const status = error?.status ?? error?.response?.status;
+    const msg = String(error?.message ?? "");
+    if (status === 402 && /credit|afford/i.test(msg)) {
+      const affordable = extractAffordableTokens(msg);
+      // Leave 50t headroom for the response safety margin; floor at 256.
+      const retryMax = affordable && affordable > 300 ? Math.max(256, affordable - 50) : 256;
+      logger.warn("[AI Chat] OpenRouter 402 — retrying with clamped max_tokens", {
+        metadata: { requested: params.max_tokens, retryMax, affordable, providerMessage: msg.slice(0, 200) },
+      });
+      try {
+        return await client.chat.completions.create({ ...params, max_tokens: retryMax });
+      } catch (retryErr: any) {
+        const retryMsg = String(retryErr?.message ?? "");
+        const retryStatus = retryErr?.status ?? retryErr?.response?.status;
+        if (retryStatus === 402) {
+          throw new ProviderCreditError(extractAffordableTokens(retryMsg), retryMsg);
+        }
+        throw retryErr;
+      }
+    }
+    throw error;
+  }
+}
+
 function getChatProviderAndModel(complexity: TaskComplexity): { client: OpenAI; provider: AIProvider; model: string } {
   try {
     const result = selectProviderAndModel(complexity);
@@ -1004,7 +1059,7 @@ export async function processChat(
 
   let response: OpenAI.ChatCompletion;
   try {
-    response = await client.chat.completions.create({
+    response = await createChatCompletionWithCreditRetry(client, {
       model,
       messages: chatMessages,
       tools: tools.length > 0 ? tools : undefined,
@@ -1012,6 +1067,9 @@ export async function processChat(
     });
   } catch (error: any) {
     logger.error(`[AI Chat] ${provider} API error`, error);
+    // Propagate ProviderCreditError so the handler can surface a 402 with
+    // a precise "provider out of credits" message instead of a generic 500.
+    if (error instanceof ProviderCreditError) throw error;
     throw new Error("AI request failed. Please try again in a moment.");
   }
   
@@ -1085,7 +1143,7 @@ export async function processChat(
     chatMessages.push(...toolResults);
 
     try {
-      response = await client.chat.completions.create({
+      response = await createChatCompletionWithCreditRetry(client, {
         model,
         messages: chatMessages,
         tools: tools.length > 0 ? tools : undefined,
@@ -1093,6 +1151,7 @@ export async function processChat(
       });
     } catch (error: any) {
       logger.error(`[AI Chat] ${provider} API error during tool loop`, error);
+      if (error instanceof ProviderCreditError) throw error;
       throw new Error("AI request failed during processing. Please try again.");
     }
 
@@ -1355,19 +1414,48 @@ export async function* processChatStream(
 
   while (continueLoop) {
     let stream;
+    let streamMaxTokens = 2048;
     try {
       stream = await client.chat.completions.create({
         model,
         messages: chatMessages,
         tools: tools.length > 0 ? tools : undefined,
-        max_tokens: 2048,
+        max_tokens: streamMaxTokens,
         stream: true,
         stream_options: { include_usage: true }
       });
     } catch (error: any) {
-      logger.error(`[AI Stream] ${provider} API error`, error);
-      yield { type: "error", content: "AI request failed. Please try again." };
-      return;
+      const status = error?.status ?? error?.response?.status;
+      const msg = String(error?.message ?? "");
+      if (status === 402 && /credit|afford/i.test(msg)) {
+        const affordable = extractAffordableTokens(msg);
+        const retryMax = affordable && affordable > 300 ? Math.max(256, affordable - 50) : 256;
+        logger.warn("[AI Stream] OpenRouter 402 — retrying stream with clamped max_tokens", {
+          metadata: { requested: streamMaxTokens, retryMax, affordable, providerMessage: msg.slice(0, 200) },
+        });
+        try {
+          stream = await client.chat.completions.create({
+            model,
+            messages: chatMessages,
+            tools: tools.length > 0 ? tools : undefined,
+            max_tokens: retryMax,
+            stream: true,
+            stream_options: { include_usage: true }
+          });
+        } catch (retryErr: any) {
+          logger.error(`[AI Stream] ${provider} 402 even after token clamp`, retryErr);
+          yield {
+            type: "error",
+            code: "provider_credits_insufficient",
+            content: "The AI provider is temporarily out of credits. Please try again shortly.",
+          } as any;
+          return;
+        }
+      } else {
+        logger.error(`[AI Stream] ${provider} API error`, error);
+        yield { type: "error", content: "AI request failed. Please try again." };
+        return;
+      }
     }
 
     let currentToolCalls: any[] = [];
