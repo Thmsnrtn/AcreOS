@@ -49,3 +49,4 @@ tests/simulation/screenshots/
 Thumbs.db
 .claude/
 coverage/
+.playwright-mcp/
