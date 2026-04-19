@@ -1,0 +1,17 @@
+- generic [ref=e2]:
+  - region "Notifications (F8)":
+    - list "Notifications"
+  - link "Skip to main content" [ref=e3] [cursor=pointer]:
+    - /url: "#main-content"
+    - text: Skip to content
+  - generic [ref=e6]:
+    - generic [ref=e7]:
+      - generic [ref=e8]:
+        - generic [ref=e10]: A
+        - generic [ref=e11]: AcreOS
+      - paragraph [ref=e12]: The operating system for real estate professionals
+    - button "Need an account? Sign up" [ref=e13] [cursor=pointer]
+    - link "Back to home" [ref=e14] [cursor=pointer]:
+      - /url: /
+      - img [ref=e15]
+      - text: Back to home

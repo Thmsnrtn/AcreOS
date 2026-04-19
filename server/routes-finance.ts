@@ -130,15 +130,18 @@ export function registerFinanceRoutes(app: Express): void {
         }
       }
 
-      // Calculate monthly payment if not provided
-      let monthlyPayment = req.body.monthlyPayment;
-      if (!monthlyPayment && req.body.originalPrincipal && req.body.interestRate && req.body.termMonths) {
-        monthlyPayment = calculateMonthlyPayment(
-          Number(req.body.originalPrincipal),
-          Number(req.body.interestRate),
-          Number(req.body.termMonths)
-        );
+      // STR-020: never trust a client-supplied monthlyPayment. Always
+      // compute from (principal, rate, term). Reject if any of those are
+      // missing instead of silently persisting a garbage payment the
+      // amortization schedule generator will choke on later.
+      if (!req.body.originalPrincipal || !req.body.interestRate || !req.body.termMonths) {
+        return Errors.badRequest(res, "originalPrincipal, interestRate, and termMonths are required to create a note");
       }
+      const monthlyPayment = calculateMonthlyPayment(
+        Number(req.body.originalPrincipal),
+        Number(req.body.interestRate),
+        Number(req.body.termMonths)
+      );
 
       // Convert date strings to Date objects
       const startDate = req.body.startDate ? new Date(req.body.startDate) : new Date();

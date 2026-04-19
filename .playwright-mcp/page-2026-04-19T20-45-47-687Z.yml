@@ -1,0 +1,303 @@
+- generic:
+  - generic:
+    - region "Notifications (F8)":
+      - list "Notifications":
+        - listitem [ref=e926]:
+          - generic [ref=e927]:
+            - generic [ref=e928]: Permission Denied
+            - generic [ref=e929]: You don't have permission to do this.
+          - button [ref=e930] [cursor=pointer]:
+            - img [ref=e931]
+    - link:
+      - /url: "#main-content"
+      - text: Skip to content
+    - generic:
+      - generic:
+        - img
+        - generic: AcreOS is in early access — your feedback helps us build the right thing.
+        - button: Send Feedback
+      - button:
+        - img
+    - generic:
+      - generic:
+        - img
+        - generic: Try Starter or Pro free for 14 days
+      - button: Start Trial
+    - generic:
+      - generic:
+        - complementary:
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - heading [level=1]: AcreOS
+                - generic:
+                  - button:
+                    - img
+                  - button:
+                    - img
+              - paragraph: Real Estate Investor OS
+            - navigation:
+              - generic:
+                - generic:
+                  - link:
+                    - /url: /
+                    - img
+                    - generic: Dashboard
+              - generic:
+                - generic:
+                  - img
+                  - link:
+                    - /url: /leads
+                    - text: CRM
+                  - img
+                - generic:
+                  - link:
+                    - /url: /leads
+                    - img
+                    - generic: Leads
+                  - link:
+                    - /url: /skip-tracing
+                    - img
+                    - generic: Skip Tracing
+                  - link:
+                    - /url: /properties
+                    - img
+                    - generic: Properties
+                  - link:
+                    - /url: /maps
+                    - img
+                    - generic: Portfolio Map
+                  - link:
+                    - /url: /deals
+                    - img
+                    - generic: Deal Pipeline
+                  - link:
+                    - /url: /marketplace
+                    - img
+                    - generic: Marketplace
+                  - link:
+                    - /url: /listings
+                    - img
+                    - generic: Listings
+                  - link:
+                    - /url: /documents
+                    - img
+                    - generic: Documents
+                  - link:
+                    - /url: /blind-offer-wizard
+                    - img
+                    - generic: Blind Offer Wizard
+              - generic:
+                - generic:
+                  - img
+                  - link:
+                    - /url: /campaigns
+                    - text: Campaigns
+                  - img
+                - generic:
+                  - link:
+                    - /url: /campaigns
+                    - img
+                    - generic: Campaigns
+                  - link:
+                    - /url: /direct-mail
+                    - img
+                    - generic: Direct Mail
+                  - link:
+                    - /url: /sequences
+                    - img
+                    - generic: Sequences
+              - generic:
+                - generic:
+                  - link:
+                    - /url: /inbox
+                    - img
+                    - generic: Inbox
+              - generic:
+                - generic:
+                  - link:
+                    - /url: /ai
+                    - img
+                    - generic: AI Hub
+              - generic:
+                - generic:
+                  - img
+                  - link:
+                    - /url: /analytics
+                    - text: Intelligence
+                  - img
+                - generic:
+                  - link:
+                    - /url: /analytics
+                    - img
+                    - generic: Insights
+                  - link:
+                    - /url: /analytics#retention
+                    - img
+                    - generic: Cohort Retention
+                  - link:
+                    - /url: /avm
+                    - img
+                    - generic: AI Valuations
+                  - link:
+                    - /url: /land-credit
+                    - img
+                    - generic: Land Credit
+                  - link:
+                    - /url: /market-intelligence
+                    - img
+                    - generic: Markets
+                  - link:
+                    - /url: /counties
+                    - img
+                    - generic: Counties
+                  - link:
+                    - /url: /radar
+                    - img
+                    - generic: Acq. Radar
+                  - link:
+                    - /url: /document-intelligence
+                    - img
+                    - generic: Document Intel
+                  - link:
+                    - /url: /compliance
+                    - img
+                    - generic: Compliance
+              - generic:
+                - generic:
+                  - img
+                  - link:
+                    - /url: /finance
+                    - text: Finance
+                  - img
+              - generic:
+                - generic:
+                  - img
+                  - link:
+                    - /url: /settings
+                    - text: Settings
+                  - img
+            - generic:
+              - generic:
+                - generic: Theme
+                - button:
+                  - img
+              - button:
+                - img
+                - generic: Sign Out
+              - button:
+                - img
+                - generic: Collapse
+        - main:
+          - generic:
+            - generic:
+              - generic:
+                - heading [level=1]: Inventory
+                - paragraph: Track land parcels and their status.
+              - generic:
+                - generic:
+                  - button [pressed]: ☰ List
+                  - button:
+                    - img
+                    - text: Map
+                - button:
+                  - img
+                  - generic: Export CSV
+                - button:
+                  - img
+                  - generic: Import CSV
+                - button:
+                  - img
+                  - generic: Fetch Boundaries
+                - button [expanded]:
+                  - img
+                  - generic: Add
+                  - text: Property
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - img
+                    - heading [level=3]: No properties yet
+                    - paragraph: Add properties to track your inventory — from prospect parcels to owned land and active listings.
+                    - list:
+                      - listitem:
+                        - generic: "-"
+                        - generic: Track parcels through your entire pipeline
+                      - listitem:
+                        - generic: "-"
+                        - generic: Import from a CSV or add individually
+                      - listitem:
+                        - generic: "-"
+                        - generic: AcreOS auto-values every property with comps
+                    - button:
+                      - img
+                      - text: Add a Property
+                  - generic:
+                    - button:
+                      - img
+                      - text: Import from CSV or spreadsheet
+    - generic:
+      - button:
+        - img
+    - button:
+      - img
+    - button:
+      - img
+    - button:
+      - img
+    - generic:
+      - button:
+        - img
+        - text: Feedback
+    - generic:
+      - generic:
+        - button:
+          - img
+        - generic: Pax
+    - generic:
+      - button:
+        - img
+  - dialog "Add New Property" [active] [ref=e901]:
+    - generic [ref=e902]:
+      - heading "Add New Property" [level=2] [ref=e903]
+      - paragraph [ref=e904]: Enter the property details including APN, location, and acreage.
+    - generic [ref=e905]:
+      - generic [ref=e906]:
+        - generic [ref=e907]:
+          - text: APN
+          - textbox "APN" [ref=e908]:
+            - /placeholder: 123-456-789
+            - text: 301-45-678
+        - generic [ref=e909]:
+          - text: Acres
+          - textbox "Acres" [ref=e910]:
+            - /placeholder: "5.0"
+            - text: "10"
+      - generic [ref=e911]:
+        - generic [ref=e912]:
+          - text: County
+          - textbox "County" [ref=e913]:
+            - /placeholder: San Bernardino
+            - text: Cochise
+        - generic [ref=e914]:
+          - text: State
+          - textbox "State" [ref=e915]:
+            - /placeholder: CA
+            - text: AZ
+      - generic [ref=e916]:
+        - generic [ref=e917]:
+          - text: Purchase Price (USD)
+          - spinbutton "Purchase Price (USD)" [ref=e918]
+        - generic [ref=e919]:
+          - text: Market Value (USD)
+          - spinbutton "Market Value (USD)" [ref=e920]
+      - generic [ref=e921]:
+        - text: Description
+        - textbox "Description" [ref=e922]:
+          - /placeholder: Beautiful desert lot with road access...
+      - button "Add Property" [ref=e924] [cursor=pointer]
+    - button "Close" [ref=e925] [cursor=pointer]:
+      - generic: ✕

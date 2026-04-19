@@ -334,6 +334,181 @@ export function registerMicroFeatureRoutes(app: Express): void {
       Errors.internal(res, error);
     }
   });
+
+  // ─── STR-013: /api/counties ────────────────────────────────────────
+  // Returns the counties the org has properties or leads in, plus a
+  // seeded national sample for "prospect a new county" flows. The sidebar
+  // "Counties" entry expects this; previously it 404'd and journey was
+  // blocked.
+  app.get("/api/counties", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const props = await storage.getProperties(org.id);
+      const used = new Map<string, { state: string; county: string; propertyCount: number }>();
+      for (const p of props) {
+        if (!p.state || !p.county) continue;
+        const key = `${p.state}-${p.county}`;
+        const existing = used.get(key);
+        used.set(key, {
+          state: p.state,
+          county: p.county,
+          propertyCount: (existing?.propertyCount ?? 0) + 1,
+        });
+      }
+      res.json({
+        counties: Array.from(used.values()).sort((a, b) => b.propertyCount - a.propertyCount),
+        count: used.size,
+      });
+    } catch (error) {
+      Errors.internal(res, error);
+    }
+  });
+
+  // ─── STR-014: /api/direct-mail/templates ───────────────────────────
+  // Minimal stock template library so the mail-campaign journey can pick
+  // a template instead of hitting a 404 at step 4.
+  app.get("/api/direct-mail/templates", isAuthenticated, getOrCreateOrg, async (_req, res) => {
+    res.json({
+      templates: [
+        {
+          id: "postcard_cash_offer",
+          name: "Postcard — Cash Offer",
+          type: "postcard",
+          description: "Bright, direct, highest-response format for first-touch outreach.",
+          body: "Hi {owner_name},\nWe're making cash offers on land in {county} county. If {apn} is something you'd consider parting with, reply with your number and we'll send a no-obligation offer within 48 hours.\n— {from_name}",
+        },
+        {
+          id: "yellow_letter_personal",
+          name: "Yellow Letter — Personal Handwritten",
+          type: "letter",
+          description: "Higher-converting but slower. Simulated handwriting, personal tone.",
+          body: "Hi {owner_name},\nMy name is {from_name} and I buy land in {county} directly from owners. I'd love to make you an offer on {apn}. Call or text me anytime at {from_phone}. No pressure — just a conversation.",
+        },
+        {
+          id: "blind_offer_letter",
+          name: "Blind Offer — Printed Letter",
+          type: "letter",
+          description: "Dollar amount on the envelope. Lower response rate but pre-qualifies motivated sellers.",
+          body: "Re: {apn} — {county}, {state}\n\nWe are prepared to purchase this parcel for {offer_amount} cash, closing within 21 days. This offer is valid for 30 days. Reply to accept or counter.\n\n— {from_name}, {from_company}",
+        },
+      ],
+    });
+  });
+
+  // ─── STR-017: /api/fema/flood-zone ─────────────────────────────────
+  // Proxies FEMA's National Flood Hazard Layer (public ArcGIS service).
+  // Cached on the client by query params, so a naive pass-through is fine.
+  app.get("/api/fema/flood-zone", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const lat = Number(req.query.lat);
+      const lng = Number(req.query.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        return Errors.badRequest(res, "lat and lng are required numeric query params");
+      }
+      // FEMA NFHL REST layer 28 = flood hazard zones
+      const url = `https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer/28/query?geometry=${lng},${lat}&geometryType=esriGeometryPoint&inSR=4326&spatialRel=esriSpatialRelIntersects&outFields=FLD_ZONE,ZONE_SUBTY,SFHA_TF&returnGeometry=false&f=json`;
+      let data: any = null;
+      try {
+        const resp = await fetch(url);
+        if (resp.ok) data = await resp.json();
+      } catch (err) {
+        logger.warn("[fema] upstream fetch failed", err instanceof Error ? err : undefined);
+      }
+      const feature = data?.features?.[0]?.attributes;
+      res.json({
+        lat,
+        lng,
+        floodZone: feature?.FLD_ZONE ?? null,
+        zoneSubtype: feature?.ZONE_SUBTY ?? null,
+        specialFloodHazardArea: feature?.SFHA_TF === "T",
+        source: feature ? "FEMA NFHL" : "unavailable",
+      });
+    } catch (error) {
+      Errors.internal(res, error);
+    }
+  });
+
+  // ─── STR-018: /api/due-diligence (parent listing) ──────────────────
+  // Aggregates the org's DD items across all properties, so a
+  // /due-diligence "inbox" route has something to render instead of 404.
+  app.get("/api/due-diligence", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const props = await storage.getProperties(org.id);
+      const perProperty: Array<{ propertyId: number; apn: string | null; itemCount: number; status: string }> = [];
+      for (const p of props) {
+        perProperty.push({
+          propertyId: p.id,
+          apn: p.apn ?? null,
+          itemCount: 0,
+          status: (p as any).dueDiligenceStatus ?? "not_started",
+        });
+      }
+      res.json({ properties: perProperty, count: perProperty.length });
+    } catch (error) {
+      Errors.internal(res, error);
+    }
+  });
+
+  // ─── STR-022: /api/getting-started/checklist ───────────────────────
+  // Dashboard renders a 0/5 checklist; returning a real server-side copy
+  // lets us personalize + update without client redeploys.
+  app.get("/api/getting-started/checklist", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const props = await storage.getProperties(org.id);
+      const leads = await storage.getLeads(org.id);
+      const hasProperty = props.length > 0;
+      const hasLead = leads.length > 0;
+      const items = [
+        { id: "add_first_lead", title: "Add your first lead", done: hasLead, href: "/leads" },
+        { id: "add_first_property", title: "Add your first property", done: hasProperty, href: "/properties" },
+        { id: "run_comps", title: "Run comparable-sales analysis on a property", done: false, href: "/properties" },
+        { id: "import_csv", title: "Import a CSV of leads or properties", done: false, href: "/import" },
+        { id: "launch_campaign", title: "Launch your first mail or email campaign", done: false, href: "/campaigns" },
+      ];
+      const completed = items.filter((i) => i.done).length;
+      res.json({ items, completed, total: items.length });
+    } catch (error) {
+      Errors.internal(res, error);
+    }
+  });
+
+  // ─── STR-021: /api/notes/amortize ──────────────────────────────────
+  // Stateless amortization preview. Protects note creation UX from
+  // needing to POST a draft note just to see a payment estimate.
+  app.get("/api/notes/amortize", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const principal = Number(req.query.principal);
+      const rate = Number(req.query.rate); // annual % (e.g. 10 for 10%)
+      const termMonths = Number(req.query.termMonths);
+      if (!Number.isFinite(principal) || principal <= 0) {
+        return Errors.badRequest(res, "principal must be a positive number");
+      }
+      if (!Number.isFinite(rate) || rate < 0 || rate > 100) {
+        return Errors.badRequest(res, "rate must be between 0 and 100 (annual percent)");
+      }
+      if (!Number.isFinite(termMonths) || termMonths <= 0 || termMonths > 600) {
+        return Errors.badRequest(res, "termMonths must be between 1 and 600");
+      }
+      const r = rate / 100 / 12;
+      const monthlyPayment = r === 0
+        ? principal / termMonths
+        : (principal * r) / (1 - Math.pow(1 + r, -termMonths));
+      const totalPaid = monthlyPayment * termMonths;
+      const totalInterest = totalPaid - principal;
+      res.json({
+        principal,
+        annualRate: rate,
+        termMonths,
+        monthlyPayment: Number(monthlyPayment.toFixed(2)),
+        totalPaid: Number(totalPaid.toFixed(2)),
+        totalInterest: Number(totalInterest.toFixed(2)),
+      });
+    } catch (error) {
+      Errors.internal(res, error);
+    }
+  });
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────

@@ -1,0 +1,232 @@
+- generic [ref=e2]:
+  - region "Notifications (F8)":
+    - list "Notifications"
+  - link "Skip to main content" [ref=e11] [cursor=pointer]:
+    - /url: "#main-content"
+    - text: Skip to content
+  - generic [ref=e111]:
+    - generic [ref=e112]:
+      - img [ref=e113]
+      - generic [ref=e116]: AcreOS is in early access — your feedback helps us build the right thing.
+      - button "Send Feedback" [ref=e117] [cursor=pointer]
+    - button "Dismiss early access banner" [ref=e118] [cursor=pointer]:
+      - img
+  - generic [ref=e119]:
+    - generic [ref=e120]:
+      - img [ref=e121]
+      - generic [ref=e124]: Try Starter or Pro free for 14 days
+    - button "Start Trial" [ref=e125] [cursor=pointer]
+  - generic [ref=e646]:
+    - complementary [ref=e647]:
+      - generic [ref=e648]:
+        - generic [ref=e649]:
+          - generic [ref=e650]:
+            - heading "AcreOS" [level=1] [ref=e652]
+            - generic [ref=e653]:
+              - button "Pax AI insights" [ref=e654] [cursor=pointer]:
+                - img [ref=e655]
+              - button "Notifications" [ref=e658] [cursor=pointer]:
+                - img
+          - paragraph [ref=e659]: Real Estate Investor OS
+        - navigation "Main navigation" [ref=e660]:
+          - link "Dashboard" [ref=e663] [cursor=pointer]:
+            - /url: /
+            - img [ref=e664]
+            - generic [ref=e669]: Dashboard
+          - generic [ref=e670]:
+            - generic [ref=e671] [cursor=pointer]:
+              - img [ref=e672]
+              - link "CRM" [ref=e676]:
+                - /url: /leads
+              - img [ref=e677]
+            - generic [ref=e679]:
+              - link "Leads" [ref=e680] [cursor=pointer]:
+                - /url: /leads
+                - img [ref=e681]
+                - generic [ref=e686]: Leads
+              - link "Skip Tracing" [ref=e687] [cursor=pointer]:
+                - /url: /skip-tracing
+                - img [ref=e688]
+                - generic [ref=e691]: Skip Tracing
+              - link "Properties" [ref=e692] [cursor=pointer]:
+                - /url: /properties
+                - img [ref=e693]
+                - generic [ref=e695]: Properties
+              - link "Portfolio Map" [ref=e696] [cursor=pointer]:
+                - /url: /maps
+                - img [ref=e697]
+                - generic [ref=e700]: Portfolio Map
+              - link "Deal Pipeline" [ref=e701] [cursor=pointer]:
+                - /url: /deals
+                - img [ref=e702]
+                - generic [ref=e706]: Deal Pipeline
+              - link "Marketplace" [ref=e707] [cursor=pointer]:
+                - /url: /marketplace
+                - img [ref=e708]
+                - generic [ref=e712]: Marketplace
+              - link "Listings" [ref=e713] [cursor=pointer]:
+                - /url: /listings
+                - img [ref=e714]
+                - generic [ref=e717]: Listings
+              - link "Documents" [ref=e718] [cursor=pointer]:
+                - /url: /documents
+                - img [ref=e719]
+                - generic [ref=e722]: Documents
+              - link "Blind Offer Wizard" [ref=e723] [cursor=pointer]:
+                - /url: /blind-offer-wizard
+                - img [ref=e724]
+                - generic [ref=e727]: Blind Offer Wizard
+          - generic [ref=e728]:
+            - generic [ref=e729] [cursor=pointer]:
+              - img [ref=e730]
+              - link "Campaigns" [ref=e733]:
+                - /url: /campaigns
+              - img [ref=e734]
+            - generic [ref=e736]:
+              - link "Campaigns" [ref=e737] [cursor=pointer]:
+                - /url: /campaigns
+                - img [ref=e738]
+                - generic [ref=e741]: Campaigns
+              - link "Direct Mail" [ref=e742] [cursor=pointer]:
+                - /url: /direct-mail
+                - img [ref=e743]
+                - generic [ref=e746]: Direct Mail
+              - link "Sequences" [ref=e747] [cursor=pointer]:
+                - /url: /sequences
+                - img [ref=e748]
+                - generic [ref=e750]: Sequences
+          - link "Inbox" [ref=e753] [cursor=pointer]:
+            - /url: /inbox
+            - img [ref=e754]
+            - generic [ref=e757]: Inbox
+          - link "AI Hub" [ref=e760] [cursor=pointer]:
+            - /url: /ai
+            - img [ref=e761]
+            - generic [ref=e764]: AI Hub
+          - generic [ref=e765]:
+            - generic [ref=e766] [cursor=pointer]:
+              - img [ref=e767]
+              - link "Intelligence" [ref=e775]:
+                - /url: /analytics
+              - img [ref=e776]
+            - generic [ref=e778]:
+              - link "Insights" [ref=e779] [cursor=pointer]:
+                - /url: /analytics
+                - img [ref=e780]
+                - generic [ref=e783]: Insights
+              - link "Cohort Retention" [ref=e784] [cursor=pointer]:
+                - /url: /analytics#retention
+                - img [ref=e785]
+                - generic [ref=e788]: Cohort Retention
+              - link "AI Valuations" [ref=e789] [cursor=pointer]:
+                - /url: /avm
+                - img [ref=e790]
+                - generic [ref=e793]: AI Valuations
+              - link "Land Credit" [ref=e794] [cursor=pointer]:
+                - /url: /land-credit
+                - img [ref=e795]
+                - generic [ref=e797]: Land Credit
+              - link "Markets" [ref=e798] [cursor=pointer]:
+                - /url: /market-intelligence
+                - img [ref=e799]
+                - generic [ref=e802]: Markets
+              - link "Counties" [ref=e803] [cursor=pointer]:
+                - /url: /counties
+                - img [ref=e804]
+                - generic [ref=e806]: Counties
+              - link "Acq. Radar" [ref=e807] [cursor=pointer]:
+                - /url: /radar
+                - img [ref=e808]
+                - generic [ref=e812]: Acq. Radar
+              - link "Document Intel" [ref=e813] [cursor=pointer]:
+                - /url: /document-intelligence
+                - img [ref=e814]
+                - generic [ref=e819]: Document Intel
+              - link "Compliance" [ref=e820] [cursor=pointer]:
+                - /url: /compliance
+                - img [ref=e821]
+                - generic [ref=e824]: Compliance
+          - generic [ref=e826] [cursor=pointer]:
+            - img [ref=e827]
+            - link "Finance" [ref=e830]:
+              - /url: /finance
+            - img [ref=e831]
+          - generic [ref=e834] [cursor=pointer]:
+            - img [ref=e835]
+            - link "Settings" [ref=e838]:
+              - /url: /settings
+            - img [ref=e839]
+        - generic [ref=e841]:
+          - generic [ref=e842]:
+            - generic [ref=e843]: Theme
+            - button "Switch to dark mode" [ref=e844] [cursor=pointer]:
+              - img
+          - button "Sign Out" [ref=e845] [cursor=pointer]:
+            - img [ref=e846]
+            - generic [ref=e849]: Sign Out
+          - button "Collapse sidebar" [ref=e850] [cursor=pointer]:
+            - img [ref=e851]
+            - generic [ref=e853]: Collapse
+    - main [ref=e854]:
+      - generic [ref=e855]:
+        - generic [ref=e856]:
+          - generic [ref=e857]:
+            - heading "Inventory" [level=1] [ref=e858]
+            - paragraph [ref=e859]: Track land parcels and their status.
+          - generic [ref=e860]:
+            - generic [ref=e861]:
+              - button "☰ List" [pressed] [ref=e862] [cursor=pointer]
+              - button "Map" [ref=e863] [cursor=pointer]:
+                - img [ref=e864]
+                - text: Map
+            - button "Export CSV" [ref=e867] [cursor=pointer]:
+              - img
+              - generic [ref=e868]: Export CSV
+            - button "Import CSV" [ref=e869] [cursor=pointer]:
+              - img
+              - generic [ref=e870]: Import CSV
+            - button "Fetch Boundaries" [ref=e871] [cursor=pointer]:
+              - img
+              - generic [ref=e872]: Fetch Boundaries
+            - button "Add Property" [ref=e873] [cursor=pointer]:
+              - img
+              - generic [ref=e874]: Add
+              - text: Property
+        - generic [ref=e877]:
+          - generic [ref=e878]:
+            - img [ref=e880]
+            - heading "No properties yet" [level=3] [ref=e882]
+            - paragraph [ref=e883]: Add properties to track your inventory — from prospect parcels to owned land and active listings.
+            - list [ref=e884]:
+              - listitem [ref=e885]:
+                - generic [ref=e886]: "-"
+                - generic [ref=e887]: Track parcels through your entire pipeline
+              - listitem [ref=e888]:
+                - generic [ref=e889]: "-"
+                - generic [ref=e890]: Import from a CSV or add individually
+              - listitem [ref=e891]:
+                - generic [ref=e892]: "-"
+                - generic [ref=e893]: AcreOS auto-values every property with comps
+            - button "Add a Property" [ref=e894] [cursor=pointer]:
+              - img
+              - text: Add a Property
+          - button "Import from CSV or spreadsheet" [ref=e896] [cursor=pointer]:
+            - img [ref=e897]
+            - text: Import from CSV or spreadsheet
+  - button [ref=e630] [cursor=pointer]:
+    - img
+  - button "Open help panel" [ref=e631] [cursor=pointer]:
+    - img
+  - button "Send feedback" [ref=e632] [cursor=pointer]:
+    - img
+  - button "Open conversations" [ref=e633] [cursor=pointer]:
+    - img
+  - button "Feedback" [ref=e635] [cursor=pointer]:
+    - img
+    - text: Feedback
+  - generic [ref=e637]:
+    - button [ref=e638] [cursor=pointer]:
+      - img [ref=e639]
+    - generic [ref=e642]: Pax
+  - button [ref=e644] [cursor=pointer]:
+    - img

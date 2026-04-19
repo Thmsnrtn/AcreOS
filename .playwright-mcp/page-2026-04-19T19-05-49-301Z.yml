@@ -1,0 +1,49 @@
+- generic [ref=e2]:
+  - region "Notifications (F8)":
+    - list "Notifications"
+  - link "Skip to main content" [ref=e3] [cursor=pointer]:
+    - /url: "#main-content"
+    - text: Skip to content
+  - generic [ref=e6]:
+    - generic [ref=e7]:
+      - generic [ref=e8]:
+        - generic [ref=e10]: A
+        - generic [ref=e11]: AcreOS
+      - paragraph [ref=e12]: The operating system for real estate professionals
+    - generic [ref=e65]:
+      - generic [ref=e66]:
+        - generic [ref=e68]:
+          - heading "Enter your password" [level=1] [ref=e69]
+          - paragraph [ref=e70]: Enter the password associated with your account
+          - generic [ref=e71]:
+            - paragraph [ref=e72]: thmsnrtn+e2e-persona-20260419@gmail.com
+            - button "Edit" [ref=e73] [cursor=pointer]:
+              - img [ref=e74]
+        - generic [ref=e76]:
+          - generic [ref=e77]:
+            - generic [ref=e80]:
+              - generic [ref=e81]:
+                - generic [ref=e82]: Password
+                - link "Forgot password?" [ref=e83] [cursor=pointer]:
+                  - /url: ""
+              - generic [ref=e84]:
+                - textbox "Password" [active] [ref=e85]:
+                  - /placeholder: Enter your password
+                - button "Show password" [ref=e86] [cursor=pointer]:
+                  - img [ref=e87]
+            - button "Continue" [ref=e91] [cursor=pointer]:
+              - generic [ref=e92]:
+                - text: Continue
+                - img [ref=e93]
+          - link "Use another method" [ref=e96] [cursor=pointer]:
+            - /url: https://acreos.io/CLERK-ROUTER/HASH/factor-one
+      - generic [ref=e101]:
+        - paragraph [ref=e102]: Secured by
+        - link "Clerk logo" [ref=e103] [cursor=pointer]:
+          - /url: https://go.clerk.com/components
+          - img [ref=e104]
+    - button "Need an account? Sign up" [ref=e13] [cursor=pointer]
+    - link "Back to home" [ref=e14] [cursor=pointer]:
+      - /url: /
+      - img [ref=e15]
+      - text: Back to home

@@ -1,0 +1,30 @@
+- generic [ref=e2]:
+  - region "Notifications (F8)":
+    - list "Notifications"
+  - dialog "Cookie consent" [ref=e3]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - text: We use cookies and similar technologies to improve your experience. By continuing, you agree to our
+        - link "Privacy Policy" [ref=e6] [cursor=pointer]:
+          - /url: /privacy
+        - text: and
+        - link "Terms of Service" [ref=e7] [cursor=pointer]:
+          - /url: /terms
+        - text: .
+      - generic [ref=e8]:
+        - button "Decline" [ref=e9] [cursor=pointer]
+        - button "Accept All" [ref=e10] [cursor=pointer]
+  - link "Skip to main content" [ref=e11] [cursor=pointer]:
+    - /url: "#main-content"
+    - text: Skip to content
+  - generic [ref=e14]:
+    - generic [ref=e15]:
+      - generic [ref=e16]:
+        - generic [ref=e18]: A
+        - generic [ref=e19]: AcreOS
+      - paragraph [ref=e20]: The operating system for real estate professionals
+    - button "Need an account? Sign up" [ref=e21] [cursor=pointer]
+    - link "Back to home" [ref=e22] [cursor=pointer]:
+      - /url: /
+      - img [ref=e23]
+      - text: Back to home

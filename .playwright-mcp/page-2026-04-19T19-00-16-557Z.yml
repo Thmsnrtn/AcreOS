@@ -1,0 +1,175 @@
+- generic [ref=e2]:
+  - region "Notifications (F8)":
+    - list "Notifications"
+  - link "Skip to main content" [ref=e11] [cursor=pointer]:
+    - /url: "#main-content"
+    - text: Skip to content
+  - generic [ref=e16]:
+    - link "Skip to content" [ref=e17] [cursor=pointer]:
+      - /url: "#main-content"
+    - navigation [ref=e18]:
+      - generic [ref=e19]:
+        - generic [ref=e20]:
+          - generic [ref=e22]: A
+          - generic [ref=e23]: AcreOS
+        - generic [ref=e24]:
+          - link "Pricing" [ref=e25] [cursor=pointer]:
+            - /url: /pricing
+          - link "Sign In" [ref=e26] [cursor=pointer]:
+            - /url: /auth
+          - link "Get Started Free" [ref=e27] [cursor=pointer]:
+            - /url: /auth?mode=register
+    - generic [ref=e29]:
+      - heading "The AI-Powered Platform for Land Investors" [level=1] [ref=e30]
+      - paragraph [ref=e31]: Find motivated sellers. Analyze parcels. Send direct mail. Close deals. All in one platform.
+      - generic [ref=e32]:
+        - link "Get Started Free" [ref=e33] [cursor=pointer]:
+          - /url: /auth?mode=register
+          - text: Get Started Free
+          - img
+        - link "View Pricing" [ref=e34] [cursor=pointer]:
+          - /url: /pricing
+    - generic [ref=e36]:
+      - generic [ref=e37]:
+        - heading "How AcreOS Works" [level=2] [ref=e38]
+        - paragraph [ref=e39]: From raw land data to closed deals in four steps.
+      - generic [ref=e40]:
+        - generic [ref=e41]:
+          - img [ref=e43]
+          - generic [ref=e45]: Step 1
+          - heading "Import or Find Parcels" [level=3] [ref=e46]
+          - paragraph [ref=e47]: Pull county data, import CSVs, or search by state and county to build your target list.
+        - generic [ref=e48]:
+          - img [ref=e50]
+          - generic [ref=e53]: Step 2
+          - heading "AI Analyzes Each Parcel" [level=3] [ref=e54]
+          - paragraph [ref=e55]: Instant valuations, comp analysis, and deal scoring powered by 9 data sources.
+        - generic [ref=e56]:
+          - img [ref=e58]
+          - generic [ref=e61]: Step 3
+          - heading "Launch Direct Mail Campaigns" [level=3] [ref=e62]
+          - paragraph [ref=e63]: Generate offer letters, set up mail sequences, and reach motivated sellers at scale.
+        - generic [ref=e64]:
+          - img [ref=e66]
+          - generic [ref=e68]: Step 4
+          - heading "Close Deals & Track Returns" [level=3] [ref=e69]
+          - paragraph [ref=e70]: Manage contracts, track your pipeline, and monitor ROI across your entire land portfolio.
+    - generic [ref=e72]:
+      - generic [ref=e73]:
+        - generic [ref=e74]: "9"
+        - generic [ref=e75]: Data sources
+      - generic [ref=e76]:
+        - generic [ref=e77]: $0
+        - generic [ref=e78]: To get started
+      - generic [ref=e79]:
+        - generic [ref=e80]: "14"
+        - generic [ref=e81]: Day free trial
+      - generic [ref=e82]:
+        - generic [ref=e83]: 500+
+        - generic [ref=e84]: Properties managed
+    - generic [ref=e86]:
+      - generic [ref=e87]:
+        - heading "Everything you need to run your land business" [level=2] [ref=e88]
+        - paragraph [ref=e89]: From finding parcels to closing deals, AcreOS handles the full lifecycle of your land investments.
+      - generic [ref=e90]:
+        - generic [ref=e92]:
+          - img [ref=e94]
+          - heading "Portfolio Mapping" [level=3] [ref=e97]
+          - paragraph [ref=e98]: Visualize every parcel on interactive maps with property boundaries, flood zones, and zoning data.
+        - generic [ref=e100]:
+          - img [ref=e102]
+          - heading "AI Valuations" [level=3] [ref=e105]
+          - paragraph [ref=e106]: Instant property valuations powered by comps analysis and 9 data sources.
+        - generic [ref=e108]:
+          - img [ref=e110]
+          - heading "AI Deal Intelligence" [level=3] [ref=e113]
+          - paragraph [ref=e114]: Sophie, your AI copilot, scores leads, drafts offers, and surfaces the best opportunities.
+        - generic [ref=e116]:
+          - img [ref=e118]
+          - heading "Document Generation" [level=3] [ref=e121]
+          - paragraph [ref=e122]: Auto-generate purchase agreements, contracts, and closing documents in seconds.
+        - generic [ref=e124]:
+          - img [ref=e126]
+          - heading "Campaign Automation" [level=3] [ref=e128]
+          - paragraph [ref=e129]: Multi-channel outreach with SMS, email, and direct mail sequences.
+        - generic [ref=e131]:
+          - img [ref=e133]
+          - heading "Compliance Built-In" [level=3] [ref=e135]
+          - paragraph [ref=e136]: Phone compliance, do-not-call list checks, and audit trails handled automatically for every communication.
+    - generic [ref=e138]:
+      - heading "Simple, transparent pricing" [level=2] [ref=e139]
+      - paragraph [ref=e140]: Start free. Upgrade when you're ready. 14-day free trial on all paid plans.
+      - generic [ref=e141]:
+        - generic [ref=e143]:
+          - heading "Free" [level=3] [ref=e144]
+          - generic [ref=e145]: $0
+          - paragraph [ref=e146]: 10 leads, 3 properties
+        - generic [ref=e148]:
+          - heading "Starter" [level=3] [ref=e149]
+          - generic [ref=e150]: $20/mo
+          - paragraph [ref=e151]: 250 leads, campaigns
+        - generic [ref=e153]:
+          - heading "Pro" [level=3] [ref=e154]
+          - generic [ref=e155]: $49/mo
+          - paragraph [ref=e156]: 500 leads, BYOK, unlimited
+        - generic [ref=e158]:
+          - heading "Scale" [level=3] [ref=e159]
+          - generic [ref=e160]: $79/mo
+          - paragraph [ref=e161]: 10 seats, unlimited everything
+      - link "See Full Comparison" [ref=e162] [cursor=pointer]:
+        - /url: /pricing
+    - generic [ref=e164]:
+      - generic [ref=e165]:
+        - heading "Coming to AcreOS" [level=2] [ref=e166]
+        - paragraph [ref=e167]: AcreOS starts with land investors. Select the verticals you're interested in and we'll notify you when they launch.
+      - generic [ref=e168]:
+        - button "Wholesaling Deal flow and motivated seller outreach Coming soon" [ref=e169] [cursor=pointer]:
+          - heading "Wholesaling" [level=3] [ref=e171]
+          - paragraph [ref=e172]: Deal flow and motivated seller outreach
+          - paragraph [ref=e173]: Coming soon
+        - button "Fix & Flip Rehab budgeting and ARV analysis Coming soon" [ref=e174] [cursor=pointer]:
+          - heading "Fix & Flip" [level=3] [ref=e176]
+          - paragraph [ref=e177]: Rehab budgeting and ARV analysis
+          - paragraph [ref=e178]: Coming soon
+        - button "Buy & Hold Rental portfolio management Coming soon" [ref=e179] [cursor=pointer]:
+          - heading "Buy & Hold" [level=3] [ref=e181]
+          - paragraph [ref=e182]: Rental portfolio management
+          - paragraph [ref=e183]: Coming soon
+        - button "STR / Airbnb Short-term rental optimization Coming soon" [ref=e184] [cursor=pointer]:
+          - heading "STR / Airbnb" [level=3] [ref=e186]
+          - paragraph [ref=e187]: Short-term rental optimization
+          - paragraph [ref=e188]: Coming soon
+        - button "Multifamily Multi-unit deal underwriting Coming soon" [ref=e189] [cursor=pointer]:
+          - heading "Multifamily" [level=3] [ref=e191]
+          - paragraph [ref=e192]: Multi-unit deal underwriting
+          - paragraph [ref=e193]: Coming soon
+        - button "Creative Finance Sub-to, wraps, and lease options Coming soon" [ref=e194] [cursor=pointer]:
+          - heading "Creative Finance" [level=3] [ref=e196]
+          - paragraph [ref=e197]: Sub-to, wraps, and lease options
+          - paragraph [ref=e198]: Coming soon
+        - button "Notes Seller-financed note management Coming soon" [ref=e199] [cursor=pointer]:
+          - heading "Notes" [level=3] [ref=e201]
+          - paragraph [ref=e202]: Seller-financed note management
+          - paragraph [ref=e203]: Coming soon
+        - button "Commercial Commercial property analysis Coming soon" [ref=e204] [cursor=pointer]:
+          - heading "Commercial" [level=3] [ref=e206]
+          - paragraph [ref=e207]: Commercial property analysis
+          - paragraph [ref=e208]: Coming soon
+      - generic [ref=e209]:
+        - textbox "you@email.com" [ref=e210]
+        - button "Join Waitlist" [disabled]
+    - generic [ref=e212]:
+      - heading "Ready to close more land deals with less effort?" [level=2] [ref=e213]
+      - paragraph [ref=e214]: Join land investors who are finding better parcels and closing faster with AcreOS.
+      - link "Get Started Free" [ref=e215] [cursor=pointer]:
+        - /url: /auth?mode=register
+        - text: Get Started Free
+        - img
+    - contentinfo [ref=e216]:
+      - generic [ref=e217]:
+        - generic [ref=e218]: © 2026 AcreOS. All rights reserved.
+        - generic [ref=e219]:
+          - link "Pricing" [ref=e220] [cursor=pointer]:
+            - /url: /pricing
+          - link "Sign In" [ref=e221] [cursor=pointer]:
+            - /url: /auth

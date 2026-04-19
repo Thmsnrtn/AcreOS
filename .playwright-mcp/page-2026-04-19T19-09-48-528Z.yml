@@ -1,0 +1,17 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - region "Notifications (F8)":
+      - list "Notifications" [ref=e4]:
+        - listitem [ref=e5]:
+          - generic [ref=e6]:
+            - generic [ref=e7]: Server Error
+            - generic [ref=e8]: Something went wrong on our end. Please try again in a moment.
+          - button "Copy details" [ref=e9] [cursor=pointer]
+          - button [ref=e10] [cursor=pointer]:
+            - img [ref=e11]
+    - link "Skip to main content" [ref=e15] [cursor=pointer]:
+      - /url: "#main-content"
+      - text: Skip to content
+    - generic "Loading page" [ref=e17]:
+      - img [ref=e18]
+  - status [ref=e20]: Notification Server ErrorSomething went wrong on our end. Please try again in a moment.Copy details

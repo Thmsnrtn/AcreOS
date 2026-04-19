@@ -1,0 +1,43 @@
+- generic [ref=e2]:
+  - region "Notifications (F8)":
+    - list "Notifications"
+  - link "Skip to main content" [ref=e3] [cursor=pointer]:
+    - /url: "#main-content"
+    - text: Skip to content
+  - generic [ref=e6]:
+    - generic [ref=e7]:
+      - generic [ref=e8]:
+        - generic [ref=e10]: A
+        - generic [ref=e11]: AcreOS
+      - paragraph [ref=e12]: The operating system for real estate professionals
+    - generic [ref=e109]:
+      - generic [ref=e110]:
+        - generic [ref=e112]:
+          - heading "Check your email" [level=1] [ref=e113]
+          - paragraph [ref=e114]: to continue to AcreOS
+          - paragraph [ref=e116]: thmsnrtn+e2e-persona-20260419@gmail.com
+        - generic [ref=e117]:
+          - generic [ref=e118]:
+            - generic [ref=e120]:
+              - generic:
+                - group
+                - textbox "Enter verification code" [ref=e121]
+            - button "Didn't receive a code? Resend (24)" [disabled]
+          - paragraph [ref=e124]: You're signing in from a new device. We're asking for verification to keep your account secure.
+          - generic [ref=e125]:
+            - button "Continue" [ref=e126] [cursor=pointer]:
+              - generic [ref=e127]:
+                - text: Continue
+                - img [ref=e128]
+            - link "Use another method" [ref=e131] [cursor=pointer]:
+              - /url: https://acreos.io/CLERK-ROUTER/HASH/factor-two
+      - generic [ref=e136]:
+        - paragraph [ref=e137]: Secured by
+        - link "Clerk logo" [ref=e138] [cursor=pointer]:
+          - /url: https://go.clerk.com/components
+          - img [ref=e139]
+    - button "Need an account? Sign up" [ref=e13] [cursor=pointer]
+    - link "Back to home" [ref=e14] [cursor=pointer]:
+      - /url: /
+      - img [ref=e15]
+      - text: Back to home

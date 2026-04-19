@@ -1,0 +1,37 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - generic [ref=e4]:
+      - progressbar [ref=e6]
+      - main [ref=e84]:
+        - generic [ref=e85]:
+          - generic [ref=e88]:
+            - img [ref=e90]
+            - generic [ref=e95]: Sign in with Google
+          - generic [ref=e96]:
+            - heading "Hi Thomas" [level=1] [ref=e97]
+            - generic [ref=e104]: thmsnrtn@gmail.com
+        - generic [ref=e110]:
+          - heading "Verifying it’s you..." [level=2] [ref=e112]:
+            - generic [ref=e113]: Verifying it’s you...
+          - generic [ref=e116]: Complete sign-in using your passkey
+        - button "Try another way" [ref=e122] [cursor=pointer]:
+          - generic [ref=e125]: Try another way
+    - contentinfo [ref=e69]:
+      - combobox "Change language English (United States)" [ref=e73] [cursor=pointer]:
+        - generic:
+          - generic: English (United States)
+        - generic:
+          - img
+      - list [ref=e75]:
+        - listitem [ref=e76]:
+          - link "Help" [ref=e77] [cursor=pointer]:
+            - /url: https://support.google.com/accounts?hl=en-US&p=account_iph
+        - listitem [ref=e78]:
+          - link "Privacy" [ref=e79] [cursor=pointer]:
+            - /url: https://accounts.google.com/TOS?loc=US&hl=en-US&privacy=true
+        - listitem [ref=e80]:
+          - link "Terms" [ref=e81] [cursor=pointer]:
+            - /url: https://accounts.google.com/TOS?loc=US&hl=en-US
+  - iframe [ref=e82]:
+    
+  - generic [ref=e128]: Hi Thomas

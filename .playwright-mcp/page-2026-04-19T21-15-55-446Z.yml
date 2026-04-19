@@ -1,0 +1,21 @@
+- generic [ref=e2]:
+  - region "Notifications (F8)":
+    - list "Notifications"
+  - dialog "Cookie consent" [ref=e3]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - text: We use cookies and similar technologies to improve your experience. By continuing, you agree to our
+        - link "Privacy Policy" [ref=e6] [cursor=pointer]:
+          - /url: /privacy
+        - text: and
+        - link "Terms of Service" [ref=e7] [cursor=pointer]:
+          - /url: /terms
+        - text: .
+      - generic [ref=e8]:
+        - button "Decline" [ref=e9] [cursor=pointer]
+        - button "Accept All" [ref=e10] [cursor=pointer]
+  - link "Skip to main content" [ref=e11] [cursor=pointer]:
+    - /url: "#main-content"
+    - text: Skip to content
+  - generic "Loading page" [ref=e13]:
+    - img [ref=e14]

@@ -1,0 +1,556 @@
+- generic:
+  - generic:
+    - region "Notifications (F8)":
+      - list "Notifications"
+    - dialog "Cookie consent":
+      - generic:
+        - generic:
+          - text: We use cookies and similar technologies to improve your experience. By continuing, you agree to our
+          - link "Privacy Policy":
+            - /url: /privacy
+          - text: and
+          - link "Terms of Service":
+            - /url: /terms
+          - text: .
+        - generic:
+          - button "Decline"
+          - button "Accept All"
+    - link:
+      - /url: "#main-content"
+      - text: Skip to content
+    - generic:
+      - generic:
+        - img
+        - generic: AcreOS is in early access — your feedback helps us build the right thing.
+        - button: Send Feedback
+      - button:
+        - img
+    - generic:
+      - generic:
+        - img
+        - generic: Try Starter or Pro free for 14 days
+      - button: Start Trial
+    - generic:
+      - generic:
+        - complementary:
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - heading [level=1]: AcreOS
+                - generic:
+                  - button:
+                    - img
+                  - button:
+                    - img
+              - paragraph: Real Estate Investor OS
+            - navigation:
+              - generic:
+                - generic:
+                  - link:
+                    - /url: /
+                    - img
+                    - generic: Dashboard
+              - generic:
+                - generic:
+                  - img
+                  - link:
+                    - /url: /leads
+                    - text: CRM
+                  - img
+                - generic:
+                  - link:
+                    - /url: /leads
+                    - img
+                    - generic: Leads
+                  - link:
+                    - /url: /skip-tracing
+                    - img
+                    - generic: Skip Tracing
+                  - link:
+                    - /url: /properties
+                    - img
+                    - generic: Properties
+                  - link:
+                    - /url: /maps
+                    - img
+                    - generic: Portfolio Map
+                  - link:
+                    - /url: /deals
+                    - img
+                    - generic: Deal Pipeline
+                  - link:
+                    - /url: /marketplace
+                    - img
+                    - generic: Marketplace
+                  - link:
+                    - /url: /listings
+                    - img
+                    - generic: Listings
+                  - link:
+                    - /url: /documents
+                    - img
+                    - generic: Documents
+                  - link:
+                    - /url: /blind-offer-wizard
+                    - img
+                    - generic: Blind Offer Wizard
+              - generic:
+                - generic:
+                  - img
+                  - link:
+                    - /url: /campaigns
+                    - text: Campaigns
+                  - img
+                - generic:
+                  - link:
+                    - /url: /campaigns
+                    - img
+                    - generic: Campaigns
+                  - link:
+                    - /url: /direct-mail
+                    - img
+                    - generic: Direct Mail
+                  - link:
+                    - /url: /sequences
+                    - img
+                    - generic: Sequences
+              - generic:
+                - generic:
+                  - link:
+                    - /url: /inbox
+                    - img
+                    - generic: Inbox
+              - generic:
+                - generic:
+                  - link:
+                    - /url: /ai
+                    - img
+                    - generic: AI Hub
+              - generic:
+                - generic:
+                  - img
+                  - link:
+                    - /url: /analytics
+                    - text: Intelligence
+                  - img
+                - generic:
+                  - link:
+                    - /url: /analytics
+                    - img
+                    - generic: Insights
+                  - link:
+                    - /url: /analytics#retention
+                    - img
+                    - generic: Cohort Retention
+                  - link:
+                    - /url: /avm
+                    - img
+                    - generic: AI Valuations
+                  - link:
+                    - /url: /land-credit
+                    - img
+                    - generic: Land Credit
+                  - link:
+                    - /url: /market-intelligence
+                    - img
+                    - generic: Markets
+                  - link:
+                    - /url: /counties
+                    - img
+                    - generic: Counties
+                  - link:
+                    - /url: /radar
+                    - img
+                    - generic: Acq. Radar
+                  - link:
+                    - /url: /document-intelligence
+                    - img
+                    - generic: Document Intel
+                  - link:
+                    - /url: /compliance
+                    - img
+                    - generic: Compliance
+              - generic:
+                - generic:
+                  - img
+                  - link:
+                    - /url: /finance
+                    - text: Finance
+                  - img
+              - generic:
+                - generic:
+                  - img
+                  - link:
+                    - /url: /settings
+                    - text: Settings
+                  - img
+            - generic:
+              - generic:
+                - generic: Theme
+                - button:
+                  - img
+              - button:
+                - img
+                - generic: Sign Out
+              - button:
+                - img
+                - generic: Collapse
+        - main:
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - img
+                  - generic:
+                    - heading [level=3]: Welcome to AcreOS!
+                    - paragraph: Complete a quick setup to personalize your experience for your real estate business.
+                - generic:
+                  - link:
+                    - /url: /onboarding-v2
+                    - button:
+                      - text: Get Started
+                      - img
+                  - button:
+                    - img
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - img
+                  - heading [level=2]: Ready to find your first deal?
+                  - paragraph: Your AcreOS workspace is set up. Follow these steps to start evaluating parcels and closing deals.
+                  - generic:
+                    - link:
+                      - /url: /properties
+                      - img
+                      - text: Add Your First Parcel
+                    - link:
+                      - /url: /leads
+                      - img
+                      - text: Import Leads
+              - generic:
+                - generic:
+                  - button:
+                    - img
+                  - generic:
+                    - generic:
+                      - img
+                      - generic: Getting Started
+                      - generic: 0/5
+                    - generic: Complete these steps to get the most out of AcreOS
+                    - progressbar
+                  - generic:
+                    - generic:
+                      - link:
+                        - /url: /leads
+                        - generic:
+                          - generic:
+                            - checkbox
+                            - generic:
+                              - img
+                            - generic:
+                              - paragraph: Add your first lead
+                              - paragraph: Import or manually add a seller or buyer to your CRM
+                          - img
+                    - generic:
+                      - link:
+                        - /url: /leads
+                        - generic:
+                          - generic:
+                            - checkbox
+                            - generic:
+                              - img
+                            - generic:
+                              - paragraph: Import leads from CSV
+                              - paragraph: Bulk import your existing contacts from a spreadsheet
+                          - img
+                    - generic:
+                      - link:
+                        - /url: /campaigns
+                        - generic:
+                          - generic:
+                            - checkbox
+                            - generic:
+                              - img
+                            - generic:
+                              - paragraph: Create a campaign
+                              - paragraph: Set up a mail or outreach campaign to engage leads
+                          - img
+                    - generic:
+                      - link:
+                        - /url: /deals
+                        - generic:
+                          - generic:
+                            - checkbox
+                            - generic:
+                              - img
+                            - generic:
+                              - paragraph: Track a deal
+                              - paragraph: Start tracking an acquisition or disposition deal
+                          - img
+                    - generic:
+                      - link:
+                        - /url: /notes
+                        - generic:
+                          - generic:
+                            - checkbox
+                            - generic:
+                              - img
+                            - generic:
+                              - paragraph: Record a note payment
+                              - paragraph: Log a payment on a seller-financed note
+                          - img
+            - generic:
+              - generic:
+                - img
+                - heading [level=1]: Good evening, E2E's Organization
+              - paragraph: Sunday, April 19, 2026 — here's what needs your attention today.
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - img
+                    - generic: Business Pulse
+                    - generic: Building
+                  - generic:
+                    - generic: 0/100
+                - generic:
+                  - generic:
+                    - generic:
+                      - img
+                      - generic: Pipeline
+                    - paragraph: —
+                    - paragraph: 0 active deals
+                  - generic:
+                    - generic:
+                      - img
+                      - generic: Hot Deals
+                    - paragraph: "0"
+                    - paragraph: accepted/in escrow
+                  - generic:
+                    - generic:
+                      - img
+                      - generic: Avg Win Prob
+                    - paragraph: —
+                    - paragraph: across pipeline
+                  - generic:
+                    - generic:
+                      - img
+                      - generic: This Month
+                    - paragraph: —
+                    - paragraph: 0 closed
+            - generic:
+              - generic:
+                - generic:
+                  - img
+                  - heading [level=2]: Start Here Today
+                  - generic: AI
+                - link:
+                  - /url: /evening-review
+                  - button:
+                    - img
+                    - text: Evening Review
+              - generic:
+                - generic:
+                  - generic:
+                    - generic: "1"
+                    - generic:
+                      - generic:
+                        - generic: Send a direct mail campaign — you haven't mailed in 90+ days
+                        - generic: high
+                      - paragraph: The mailer that goes out today is the passive income that arrives next quarter. Keep your pipeline full.
+                    - link:
+                      - /url: /campaigns
+                      - text: Plan Campaign
+                - generic:
+                  - generic:
+                    - generic: "2"
+                    - generic:
+                      - generic:
+                        - generic: Review your deal pipeline for stuck deals
+                        - generic: low
+                      - paragraph: Deals that haven't moved in 14+ days often need a nudge. Check your pipeline board.
+                    - link:
+                      - /url: /pipeline
+                      - text: View Pipeline
+                - generic:
+                  - generic:
+                    - generic: "3"
+                    - generic:
+                      - generic:
+                        - generic: Review your passive income progress tonight
+                        - generic: low
+                      - paragraph: Open the Evening Review dashboard to see today's note payments, freedom meter progress, and tomorrow's one thing.
+                    - link:
+                      - /url: /evening-review
+                      - text: Open Evening Review
+            - generic:
+              - generic:
+                - generic:
+                  - img
+                  - heading [level=2]: Today's Actions
+                - link:
+                  - /url: /pipeline
+                  - button:
+                    - text: All Tasks
+                    - img
+              - generic:
+                - generic:
+                  - img
+                  - paragraph: No tasks due today. You're ahead of schedule.
+            - generic:
+              - generic:
+                - generic:
+                  - img
+                  - heading [level=2]: Pax Suggests
+                  - generic: AI
+                - link:
+                  - /url: /leads
+                  - button:
+                    - text: All Leads
+                    - img
+              - generic:
+                - generic:
+                  - img
+                  - paragraph: No proactive suggestions right now. Pax is monitoring your pipeline.
+            - generic:
+              - generic:
+                - generic:
+                  - img
+                  - heading [level=2]: AI Action Queue
+                - link:
+                  - /url: /pipeline
+                  - button:
+                    - text: View Pipeline
+                    - img
+              - generic:
+                - generic:
+                  - img
+                  - paragraph: You're all caught up! No AI-suggested actions right now.
+            - generic:
+              - heading [level=2]: Portfolio Overview
+              - generic:
+                - region:
+                  - generic:
+                    - generic:
+                      - generic:
+                        - paragraph: Active Leads
+                        - paragraph: "0"
+                        - paragraph: 0 new
+                      - generic:
+                        - img
+                - region:
+                  - generic:
+                    - generic:
+                      - generic:
+                        - paragraph: Properties
+                        - paragraph: "0"
+                        - paragraph: 0 owned
+                      - generic:
+                        - img
+                - region:
+                  - generic:
+                    - generic:
+                      - generic:
+                        - paragraph: Active Notes
+                        - paragraph: "0"
+                      - generic:
+                        - img
+                - region:
+                  - generic:
+                    - generic:
+                      - generic:
+                        - paragraph: Open Deals
+                        - paragraph: "0"
+                      - generic:
+                        - img
+    - generic:
+      - button:
+        - img
+    - button:
+      - img
+    - button:
+      - img
+    - button:
+      - img
+    - generic:
+      - button:
+        - img
+        - text: Feedback
+    - generic:
+      - generic:
+        - button:
+          - img
+        - generic: Pax
+    - generic:
+      - button:
+        - img
+  - dialog "Welcome" [ref=e26]:
+    - generic [ref=e27]:
+      - generic [ref=e28]:
+        - generic [ref=e29]: Step 1 of 6
+        - button "Don't show again" [active] [ref=e30] [cursor=pointer]
+      - progressbar [ref=e31]
+      - generic [ref=e33]:
+        - button [ref=e34] [cursor=pointer]
+        - button [disabled] [ref=e35]
+        - button [disabled] [ref=e36]
+        - button [disabled] [ref=e37]
+        - button [disabled] [ref=e38]
+        - button [disabled] [ref=e39]
+      - img [ref=e42]
+      - heading "Welcome" [level=2] [ref=e45]
+      - paragraph [ref=e46]: Tell us about your business so we can customize your experience.
+    - generic [ref=e48]:
+      - generic [ref=e49]:
+        - text: Organization Name
+        - textbox "Organization Name" [ref=e50]:
+          - /placeholder: My Real Estate Company
+          - text: E2E's Organization
+      - generic [ref=e51]:
+        - text: What type of investing do you do?
+        - paragraph [ref=e52]: We'll customize your workspace, templates, and campaigns to match your strategy.
+      - generic [ref=e53]:
+        - button "Land Flipper Buy raw land at wholesale and resell for profit." [ref=e54] [cursor=pointer]:
+          - generic [ref=e55]:
+            - img [ref=e56]
+            - generic [ref=e58]: Land Flipper
+            - img [ref=e59]
+          - paragraph [ref=e62]: Buy raw land at wholesale and resell for profit.
+        - button "Residential Wholesaler Find distressed homes and assign contracts to cash buyers." [ref=e63] [cursor=pointer]:
+          - generic [ref=e64]:
+            - img [ref=e65]
+            - generic [ref=e68]: Residential Wholesaler
+          - paragraph [ref=e69]: Find distressed homes and assign contracts to cash buyers.
+        - button "Fix & Flip Acquire distressed properties, renovate, and resell." [ref=e70] [cursor=pointer]:
+          - generic [ref=e71]:
+            - img [ref=e72]
+            - generic [ref=e76]: Fix & Flip
+          - paragraph [ref=e77]: Acquire distressed properties, renovate, and resell.
+        - button "Buy & Hold / Rental Build a rental portfolio for long-term cash flow." [ref=e78] [cursor=pointer]:
+          - generic [ref=e79]:
+            - img [ref=e80]
+            - generic [ref=e83]: Buy & Hold / Rental
+          - paragraph [ref=e84]: Build a rental portfolio for long-term cash flow.
+        - button "Commercial Investor Office, retail, multi-family, and industrial acquisitions." [ref=e85] [cursor=pointer]:
+          - generic [ref=e86]:
+            - img [ref=e87]
+            - generic [ref=e90]: Commercial Investor
+          - paragraph [ref=e91]: Office, retail, multi-family, and industrial acquisitions.
+        - button "Note Investor Seller-finance real estate sales and collect payments." [ref=e92] [cursor=pointer]:
+          - generic [ref=e93]:
+            - img [ref=e94]
+            - generic [ref=e97]: Note Investor
+          - paragraph [ref=e98]: Seller-finance real estate sales and collect payments.
+        - button "Land + Notes (Hybrid) Cash flips and seller-financed deals — both strategies." [ref=e99] [cursor=pointer]:
+          - generic [ref=e100]:
+            - img [ref=e101]
+            - generic [ref=e105]: Land + Notes (Hybrid)
+          - paragraph [ref=e106]: Cash flips and seller-financed deals — both strategies.
+    - button "Continue" [ref=e109] [cursor=pointer]:
+      - text: Continue
+      - img
+    - button "Close" [ref=e110] [cursor=pointer]:
+      - generic: ✕

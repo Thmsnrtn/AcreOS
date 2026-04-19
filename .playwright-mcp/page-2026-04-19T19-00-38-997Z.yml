@@ -1,0 +1,62 @@
+- generic [ref=e2]:
+  - region "Notifications (F8)":
+    - list "Notifications"
+  - link "Skip to main content" [ref=e11] [cursor=pointer]:
+    - /url: "#main-content"
+    - text: Skip to content
+  - generic [ref=e224]:
+    - generic [ref=e225]:
+      - generic [ref=e226]:
+        - generic [ref=e228]: A
+        - generic [ref=e229]: AcreOS
+      - paragraph [ref=e230]: The operating system for real estate professionals
+    - generic [ref=e232]:
+      - generic [ref=e233]:
+        - generic [ref=e235]:
+          - heading "Create your account" [level=1] [ref=e236]
+          - paragraph [ref=e237]: Welcome! Please fill in the details to get started.
+        - generic [ref=e238]:
+          - button "Sign in with Google Continue with Google" [ref=e241] [cursor=pointer]:
+            - generic [ref=e242]:
+              - generic "Sign in with Google" [ref=e244]
+              - generic [ref=e245]: Continue with Google
+          - paragraph [ref=e248]: or
+          - generic [ref=e250]:
+            - generic [ref=e251]:
+              - generic [ref=e252]:
+                - generic [ref=e254]:
+                  - generic [ref=e256]: First name
+                  - textbox "First name" [ref=e257]
+                - generic [ref=e260]:
+                  - generic [ref=e262]: Last name
+                  - textbox "Last name" [ref=e263]
+              - generic [ref=e267]:
+                - generic [ref=e269]: Email address
+                - textbox "Email address" [ref=e270]:
+                  - /placeholder: Enter your email address
+              - generic [ref=e274]:
+                - generic [ref=e276]: Password
+                - generic [ref=e277]:
+                  - textbox "Password" [ref=e278]:
+                    - /placeholder: Create a password
+                  - button "Show password" [ref=e279] [cursor=pointer]:
+                    - img [ref=e280]
+            - button "Continue" [ref=e286] [cursor=pointer]:
+              - generic [ref=e287]:
+                - text: Continue
+                - img [ref=e288]
+      - generic [ref=e290]:
+        - generic [ref=e291]:
+          - generic [ref=e292]: Already have an account?
+          - link "Sign in" [ref=e293] [cursor=pointer]:
+            - /url: https://acreos.io/auth
+        - generic [ref=e297]:
+          - paragraph [ref=e298]: Secured by
+          - link "Clerk logo" [ref=e299] [cursor=pointer]:
+            - /url: https://go.clerk.com/components
+            - img [ref=e300]
+    - button "Already have an account? Sign in" [ref=e305] [cursor=pointer]
+    - link "Back to home" [ref=e306] [cursor=pointer]:
+      - /url: /
+      - img [ref=e307]
+      - text: Back to home

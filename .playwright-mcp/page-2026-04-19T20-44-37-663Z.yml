@@ -1,0 +1,422 @@
+- generic [ref=e2]:
+  - region "Notifications (F8)":
+    - list "Notifications"
+  - link "Skip to main content" [ref=e11] [cursor=pointer]:
+    - /url: "#main-content"
+    - text: Skip to content
+  - generic [ref=e111]:
+    - generic [ref=e112]:
+      - img [ref=e113]
+      - generic [ref=e116]: AcreOS is in early access — your feedback helps us build the right thing.
+      - button "Send Feedback" [ref=e117] [cursor=pointer]
+    - button "Dismiss early access banner" [ref=e118] [cursor=pointer]:
+      - img
+  - generic [ref=e119]:
+    - generic [ref=e120]:
+      - img [ref=e121]
+      - generic [ref=e124]: Try Starter or Pro free for 14 days
+    - button "Start Trial" [ref=e125] [cursor=pointer]
+  - generic [ref=e126]:
+    - complementary [ref=e127]:
+      - generic [ref=e128]:
+        - generic [ref=e129]:
+          - generic [ref=e130]:
+            - heading "AcreOS" [level=1] [ref=e132]
+            - generic [ref=e133]:
+              - button "Pax AI insights" [ref=e134] [cursor=pointer]:
+                - img [ref=e135]
+              - button "Notifications" [ref=e138] [cursor=pointer]:
+                - img
+          - paragraph [ref=e139]: Real Estate Investor OS
+        - navigation "Main navigation" [ref=e140]:
+          - link "Dashboard" [ref=e143] [cursor=pointer]:
+            - /url: /
+            - img [ref=e144]
+            - generic [ref=e149]: Dashboard
+          - generic [ref=e150]:
+            - generic [ref=e151] [cursor=pointer]:
+              - img [ref=e152]
+              - link "CRM" [ref=e156]:
+                - /url: /leads
+              - img [ref=e157]
+            - generic [ref=e159]:
+              - link "Leads" [ref=e160] [cursor=pointer]:
+                - /url: /leads
+                - img [ref=e161]
+                - generic [ref=e166]: Leads
+              - link "Skip Tracing" [ref=e167] [cursor=pointer]:
+                - /url: /skip-tracing
+                - img [ref=e168]
+                - generic [ref=e171]: Skip Tracing
+              - link "Properties" [ref=e172] [cursor=pointer]:
+                - /url: /properties
+                - img [ref=e173]
+                - generic [ref=e175]: Properties
+              - link "Portfolio Map" [ref=e176] [cursor=pointer]:
+                - /url: /maps
+                - img [ref=e177]
+                - generic [ref=e180]: Portfolio Map
+              - link "Deal Pipeline" [ref=e181] [cursor=pointer]:
+                - /url: /deals
+                - img [ref=e182]
+                - generic [ref=e186]: Deal Pipeline
+              - link "Marketplace" [ref=e187] [cursor=pointer]:
+                - /url: /marketplace
+                - img [ref=e188]
+                - generic [ref=e192]: Marketplace
+              - link "Listings" [ref=e193] [cursor=pointer]:
+                - /url: /listings
+                - img [ref=e194]
+                - generic [ref=e197]: Listings
+              - link "Documents" [ref=e198] [cursor=pointer]:
+                - /url: /documents
+                - img [ref=e199]
+                - generic [ref=e202]: Documents
+              - link "Blind Offer Wizard" [ref=e203] [cursor=pointer]:
+                - /url: /blind-offer-wizard
+                - img [ref=e204]
+                - generic [ref=e207]: Blind Offer Wizard
+          - generic [ref=e208]:
+            - generic [ref=e209] [cursor=pointer]:
+              - img [ref=e210]
+              - link "Campaigns" [ref=e213]:
+                - /url: /campaigns
+              - img [ref=e214]
+            - generic [ref=e216]:
+              - link "Campaigns" [ref=e217] [cursor=pointer]:
+                - /url: /campaigns
+                - img [ref=e218]
+                - generic [ref=e221]: Campaigns
+              - link "Direct Mail" [ref=e222] [cursor=pointer]:
+                - /url: /direct-mail
+                - img [ref=e223]
+                - generic [ref=e226]: Direct Mail
+              - link "Sequences" [ref=e227] [cursor=pointer]:
+                - /url: /sequences
+                - img [ref=e228]
+                - generic [ref=e230]: Sequences
+          - link "Inbox" [ref=e233] [cursor=pointer]:
+            - /url: /inbox
+            - img [ref=e234]
+            - generic [ref=e237]: Inbox
+          - link "AI Hub" [ref=e240] [cursor=pointer]:
+            - /url: /ai
+            - img [ref=e241]
+            - generic [ref=e244]: AI Hub
+          - generic [ref=e245]:
+            - generic [ref=e246] [cursor=pointer]:
+              - img [ref=e247]
+              - link "Intelligence" [ref=e255]:
+                - /url: /analytics
+              - img [ref=e256]
+            - generic [ref=e258]:
+              - link "Insights" [ref=e259] [cursor=pointer]:
+                - /url: /analytics
+                - img [ref=e260]
+                - generic [ref=e263]: Insights
+              - link "Cohort Retention" [ref=e264] [cursor=pointer]:
+                - /url: /analytics#retention
+                - img [ref=e265]
+                - generic [ref=e268]: Cohort Retention
+              - link "AI Valuations" [ref=e269] [cursor=pointer]:
+                - /url: /avm
+                - img [ref=e270]
+                - generic [ref=e273]: AI Valuations
+              - link "Land Credit" [ref=e274] [cursor=pointer]:
+                - /url: /land-credit
+                - img [ref=e275]
+                - generic [ref=e277]: Land Credit
+              - link "Markets" [ref=e278] [cursor=pointer]:
+                - /url: /market-intelligence
+                - img [ref=e279]
+                - generic [ref=e282]: Markets
+              - link "Counties" [ref=e283] [cursor=pointer]:
+                - /url: /counties
+                - img [ref=e284]
+                - generic [ref=e286]: Counties
+              - link "Acq. Radar" [ref=e287] [cursor=pointer]:
+                - /url: /radar
+                - img [ref=e288]
+                - generic [ref=e292]: Acq. Radar
+              - link "Document Intel" [ref=e293] [cursor=pointer]:
+                - /url: /document-intelligence
+                - img [ref=e294]
+                - generic [ref=e299]: Document Intel
+              - link "Compliance" [ref=e300] [cursor=pointer]:
+                - /url: /compliance
+                - img [ref=e301]
+                - generic [ref=e304]: Compliance
+          - generic [ref=e306] [cursor=pointer]:
+            - img [ref=e307]
+            - link "Finance" [ref=e310]:
+              - /url: /finance
+            - img [ref=e311]
+          - generic [ref=e314] [cursor=pointer]:
+            - img [ref=e315]
+            - link "Settings" [ref=e318]:
+              - /url: /settings
+            - img [ref=e319]
+        - generic [ref=e321]:
+          - generic [ref=e322]:
+            - generic [ref=e323]: Theme
+            - button "Switch to dark mode" [ref=e324] [cursor=pointer]:
+              - img
+          - button "Sign Out" [ref=e325] [cursor=pointer]:
+            - img [ref=e326]
+            - generic [ref=e329]: Sign Out
+          - button "Collapse sidebar" [ref=e330] [cursor=pointer]:
+            - img [ref=e331]
+            - generic [ref=e333]: Collapse
+    - main [ref=e334]:
+      - generic [ref=e335]:
+        - generic [ref=e337]:
+          - generic [ref=e338]:
+            - img [ref=e340]
+            - generic [ref=e343]:
+              - heading "Welcome to AcreOS!" [level=3] [ref=e344]
+              - paragraph [ref=e345]: Complete a quick setup to personalize your experience for your real estate business.
+          - generic [ref=e346]:
+            - link "Get Started" [ref=e347] [cursor=pointer]:
+              - /url: /onboarding-v2
+              - button "Get Started" [ref=e348]:
+                - text: Get Started
+                - img
+            - button [ref=e349] [cursor=pointer]:
+              - img
+        - generic [ref=e350]:
+          - generic [ref=e352]:
+            - img [ref=e354]
+            - heading "Ready to find your first deal?" [level=2] [ref=e358]
+            - paragraph [ref=e359]: Your AcreOS workspace is set up. Follow these steps to start evaluating parcels and closing deals.
+            - generic [ref=e360]:
+              - link "Add Your First Parcel" [ref=e361] [cursor=pointer]:
+                - /url: /properties
+                - img
+                - text: Add Your First Parcel
+              - link "Import Leads" [ref=e362] [cursor=pointer]:
+                - /url: /leads
+                - img
+                - text: Import Leads
+          - generic [ref=e364]:
+            - button "Dismiss checklist" [ref=e365] [cursor=pointer]:
+              - img
+            - generic [ref=e366]:
+              - generic [ref=e367]:
+                - img [ref=e368]
+                - generic [ref=e371]: Getting Started
+                - generic [ref=e372]: 0/5
+              - generic [ref=e373]: Complete these steps to get the most out of AcreOS
+              - progressbar [ref=e374]
+            - generic [ref=e376]:
+              - link "Add your first lead Import or manually add a seller or buyer to your CRM" [ref=e378] [cursor=pointer]:
+                - /url: /leads
+                - generic [ref=e379]:
+                  - generic [ref=e380]:
+                    - checkbox
+                    - img [ref=e382]
+                    - generic [ref=e387]:
+                      - paragraph [ref=e388]: Add your first lead
+                      - paragraph [ref=e389]: Import or manually add a seller or buyer to your CRM
+                  - img [ref=e390]
+              - link "Import leads from CSV Bulk import your existing contacts from a spreadsheet" [ref=e393] [cursor=pointer]:
+                - /url: /leads
+                - generic [ref=e394]:
+                  - generic [ref=e395]:
+                    - checkbox
+                    - img [ref=e397]
+                    - generic [ref=e400]:
+                      - paragraph [ref=e401]: Import leads from CSV
+                      - paragraph [ref=e402]: Bulk import your existing contacts from a spreadsheet
+                  - img [ref=e403]
+              - link "Create a campaign Set up a mail or outreach campaign to engage leads" [ref=e406] [cursor=pointer]:
+                - /url: /campaigns
+                - generic [ref=e407]:
+                  - generic [ref=e408]:
+                    - checkbox
+                    - img [ref=e410]
+                    - generic [ref=e413]:
+                      - paragraph [ref=e414]: Create a campaign
+                      - paragraph [ref=e415]: Set up a mail or outreach campaign to engage leads
+                  - img [ref=e416]
+              - link "Track a deal Start tracking an acquisition or disposition deal" [ref=e419] [cursor=pointer]:
+                - /url: /deals
+                - generic [ref=e420]:
+                  - generic [ref=e421]:
+                    - checkbox
+                    - img [ref=e423]
+                    - generic [ref=e428]:
+                      - paragraph [ref=e429]: Track a deal
+                      - paragraph [ref=e430]: Start tracking an acquisition or disposition deal
+                  - img [ref=e431]
+              - link "Record a note payment Log a payment on a seller-financed note" [ref=e434] [cursor=pointer]:
+                - /url: /notes
+                - generic [ref=e435]:
+                  - generic [ref=e436]:
+                    - checkbox
+                    - img [ref=e438]
+                    - generic [ref=e441]:
+                      - paragraph [ref=e442]: Record a note payment
+                      - paragraph [ref=e443]: Log a payment on a seller-financed note
+                  - img [ref=e444]
+        - generic [ref=e446]:
+          - generic [ref=e447]:
+            - img [ref=e448]
+            - heading "Good afternoon, E2E's Organization" [level=1] [ref=e454]
+          - paragraph [ref=e455]: Sunday, April 19, 2026 — here's what needs your attention today.
+        - generic [ref=e457]:
+          - generic [ref=e458]:
+            - generic [ref=e459]:
+              - img [ref=e460]
+              - generic [ref=e462]: Business Pulse
+              - generic [ref=e463]: Building
+            - generic [ref=e466]: 0/100
+          - generic [ref=e467]:
+            - generic [ref=e468]:
+              - generic [ref=e469]:
+                - img [ref=e470]
+                - generic [ref=e472]: Pipeline
+              - paragraph [ref=e473]: —
+              - paragraph [ref=e474]: 0 active deals
+            - generic [ref=e475]:
+              - generic [ref=e476]:
+                - img [ref=e477]
+                - generic [ref=e479]: Hot Deals
+              - paragraph [ref=e480]: "0"
+              - paragraph [ref=e481]: accepted/in escrow
+            - generic [ref=e482]:
+              - generic [ref=e483]:
+                - img [ref=e484]
+                - generic [ref=e486]: Avg Win Prob
+              - paragraph [ref=e487]: —
+              - paragraph [ref=e488]: across pipeline
+            - generic [ref=e489]:
+              - generic [ref=e490]:
+                - img [ref=e491]
+                - generic [ref=e494]: This Month
+              - paragraph [ref=e495]: —
+              - paragraph [ref=e496]: 0 closed
+        - generic [ref=e499]:
+          - generic [ref=e500]:
+            - generic [ref=e501]:
+              - img [ref=e502]
+              - heading "Start Here Today" [level=2] [ref=e504]
+              - generic [ref=e505]: AI
+            - link "Evening Review" [ref=e506] [cursor=pointer]:
+              - /url: /evening-review
+              - button "Evening Review" [ref=e507]:
+                - img
+                - text: Evening Review
+          - generic [ref=e508]:
+            - generic [ref=e510]:
+              - generic [ref=e511]: "1"
+              - generic [ref=e512]:
+                - generic [ref=e513]:
+                  - generic [ref=e514]: Send a direct mail campaign — you haven't mailed in 90+ days
+                  - generic [ref=e515]: high
+                - paragraph [ref=e516]: The mailer that goes out today is the passive income that arrives next quarter. Keep your pipeline full.
+              - link "Plan Campaign" [ref=e517] [cursor=pointer]:
+                - /url: /campaigns
+            - generic [ref=e519]:
+              - generic [ref=e520]: "2"
+              - generic [ref=e521]:
+                - generic [ref=e522]:
+                  - generic [ref=e523]: Review your deal pipeline for stuck deals
+                  - generic [ref=e524]: low
+                - paragraph [ref=e525]: Deals that haven't moved in 14+ days often need a nudge. Check your pipeline board.
+              - link "View Pipeline" [ref=e526] [cursor=pointer]:
+                - /url: /pipeline
+            - generic [ref=e528]:
+              - generic [ref=e529]: "3"
+              - generic [ref=e530]:
+                - generic [ref=e531]:
+                  - generic [ref=e532]: Review your passive income progress tonight
+                  - generic [ref=e533]: low
+                - paragraph [ref=e534]: Open the Evening Review dashboard to see today's note payments, freedom meter progress, and tomorrow's one thing.
+              - link "Open Evening Review" [ref=e535] [cursor=pointer]:
+                - /url: /evening-review
+        - generic [ref=e536]:
+          - generic [ref=e537]:
+            - generic [ref=e538]:
+              - img [ref=e539]
+              - heading "Today's Actions" [level=2] [ref=e541]
+            - link "All Tasks" [ref=e542] [cursor=pointer]:
+              - /url: /pipeline
+              - button "All Tasks" [ref=e543]:
+                - text: All Tasks
+                - img
+          - generic [ref=e545]:
+            - img [ref=e546]
+            - paragraph [ref=e549]: No tasks due today. You're ahead of schedule.
+        - generic [ref=e550]:
+          - generic [ref=e551]:
+            - generic [ref=e552]:
+              - img [ref=e553]
+              - heading "Pax Suggests" [level=2] [ref=e556]
+              - generic [ref=e557]: AI
+            - link "All Leads" [ref=e558] [cursor=pointer]:
+              - /url: /leads
+              - button "All Leads" [ref=e559]:
+                - text: All Leads
+                - img
+          - generic [ref=e561]:
+            - img [ref=e562]
+            - paragraph [ref=e565]: No proactive suggestions right now. Pax is monitoring your pipeline.
+        - generic [ref=e566]:
+          - generic [ref=e567]:
+            - generic [ref=e568]:
+              - img [ref=e569]
+              - heading "AI Action Queue" [level=2] [ref=e573]
+            - link "View Pipeline" [ref=e574] [cursor=pointer]:
+              - /url: /pipeline
+              - button "View Pipeline" [ref=e575]:
+                - text: View Pipeline
+                - img
+          - generic [ref=e577]:
+            - img [ref=e578]
+            - paragraph [ref=e581]: You're all caught up! No AI-suggested actions right now.
+        - generic [ref=e582]:
+          - heading "Portfolio Overview" [level=2] [ref=e583]
+          - generic [ref=e584]:
+            - 'region "Active Leads: 0" [ref=e585]':
+              - generic [ref=e587]:
+                - generic [ref=e588]:
+                  - paragraph [ref=e589]: Active Leads
+                  - paragraph [ref=e590]: "0"
+                  - paragraph [ref=e591]: 0 new
+                - img [ref=e593]
+            - 'region "Properties: 0" [ref=e598]':
+              - generic [ref=e600]:
+                - generic [ref=e601]:
+                  - paragraph [ref=e602]: Properties
+                  - paragraph [ref=e603]: "0"
+                  - paragraph [ref=e604]: 0 owned
+                - img [ref=e606]
+            - 'region "Active Notes: 0" [ref=e608]':
+              - generic [ref=e610]:
+                - generic [ref=e611]:
+                  - paragraph [ref=e612]: Active Notes
+                  - paragraph [ref=e613]: "0"
+                - img [ref=e615]
+            - 'region "Open Deals: 0" [ref=e618]':
+              - generic [ref=e620]:
+                - generic [ref=e621]:
+                  - paragraph [ref=e622]: Open Deals
+                  - paragraph [ref=e623]: "0"
+                - img [ref=e625]
+  - button [ref=e630] [cursor=pointer]:
+    - img
+  - button "Open help panel" [ref=e631] [cursor=pointer]:
+    - img
+  - button "Send feedback" [ref=e632] [cursor=pointer]:
+    - img
+  - button "Open conversations" [ref=e633] [cursor=pointer]:
+    - img
+  - button "Feedback" [ref=e635] [cursor=pointer]:
+    - img
+    - text: Feedback
+  - generic [ref=e637]:
+    - button [ref=e638] [cursor=pointer]:
+      - img [ref=e639]
+    - generic [ref=e642]: Pax
+  - button [ref=e644] [cursor=pointer]:
+    - img

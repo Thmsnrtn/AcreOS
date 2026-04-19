@@ -1,0 +1,71 @@
+- generic [ref=e2]:
+  - region "Notifications (F8)":
+    - list "Notifications"
+  - dialog "Cookie consent" [ref=e3]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - text: We use cookies and similar technologies to improve your experience. By continuing, you agree to our
+        - link "Privacy Policy" [ref=e6] [cursor=pointer]:
+          - /url: /privacy
+        - text: and
+        - link "Terms of Service" [ref=e7] [cursor=pointer]:
+          - /url: /terms
+        - text: .
+      - generic [ref=e8]:
+        - button "Decline" [ref=e9] [cursor=pointer]
+        - button "Accept All" [ref=e10] [cursor=pointer]
+  - link "Skip to main content" [ref=e11] [cursor=pointer]:
+    - /url: "#main-content"
+    - text: Skip to content
+  - generic [ref=e14]:
+    - generic [ref=e15]:
+      - generic [ref=e16]:
+        - generic [ref=e18]: A
+        - generic [ref=e19]: AcreOS
+      - paragraph [ref=e20]: The operating system for real estate professionals
+    - generic [ref=e26]:
+      - generic [ref=e27]:
+        - generic [ref=e29]:
+          - heading "Sign in to AcreOS" [level=1] [ref=e30]
+          - paragraph [ref=e31]: Welcome back! Please sign in to continue
+        - generic [ref=e32]:
+          - button "Sign in with Google Continue with Google" [ref=e35] [cursor=pointer]:
+            - generic [ref=e36]:
+              - generic "Sign in with Google" [ref=e38]
+              - generic [ref=e39]: Continue with Google
+          - paragraph [ref=e42]: or
+          - generic [ref=e44]:
+            - generic [ref=e45]:
+              - generic [ref=e48]:
+                - generic [ref=e50]: Email address
+                - textbox "Email address" [ref=e51]:
+                  - /placeholder: Enter your email address
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic: Password
+                    - generic:
+                      - textbox "Password":
+                        - /placeholder: Enter your password
+                      - button "Show password":
+                        - img
+            - button "Continue" [ref=e54] [cursor=pointer]:
+              - generic [ref=e55]:
+                - text: Continue
+                - img [ref=e56]
+      - generic [ref=e58]:
+        - generic [ref=e59]:
+          - generic [ref=e60]: Don’t have an account?
+          - link "Sign up" [ref=e61] [cursor=pointer]:
+            - /url: https://acreos.io/auth
+        - generic [ref=e65]:
+          - paragraph [ref=e66]: Secured by
+          - link "Clerk logo" [ref=e67] [cursor=pointer]:
+            - /url: https://go.clerk.com/components
+            - img [ref=e68]
+    - button "Need an account? Sign up" [ref=e21] [cursor=pointer]
+    - link "Back to home" [ref=e22] [cursor=pointer]:
+      - /url: /
+      - img [ref=e23]
+      - text: Back to home
