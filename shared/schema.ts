@@ -606,6 +606,14 @@ export const properties = pgTable("properties", {
       codeViolation?: boolean;
       source?: string; // e.g. "county-assessor-2026-03"
       updatedAt?: string; // ISO date
+      // Cycle 5 r2 Priya / r3 Sofia: tax-delinquent specialists need
+      // the full lien / auction lifecycle, not just a payoff number.
+      lienState?: "tax-lien" | "tax-deed"; // enum
+      lienSoldDate?: string; // ISO — only for tax-lien states
+      lienHolder?: string; // party holding the lien certificate (investor or the county)
+      redemptionDeadline?: string; // ISO — after which foreclosure can proceed
+      auctionDate?: string; // ISO — upcoming tax-deed auction, if scheduled
+      openingBid?: number; // cents — tax-deed auction opening bid
     };
   }>(),
   

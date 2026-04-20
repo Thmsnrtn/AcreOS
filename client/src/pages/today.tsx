@@ -188,6 +188,25 @@ export default function TodayPage() {
   const leads = Array.isArray(leadsRaw) ? leadsRaw : [];
   const { data: propertiesRaw = [] } = useProperties();
   const properties = Array.isArray(propertiesRaw) ? propertiesRaw : [];
+
+  // r5 Eleanor WF-R5-001: progressive disclosure for first-time users.
+  // If the org has very little data (≤ 2 leads + 0 properties) we
+  // treat the dashboard as "new user mode" and hide the
+  // information-dense AI / Pulse / Action Queue sections. The
+  // Getting Started checklist and the hero become the focus.
+  // A user can toggle the full dashboard on via localStorage once
+  // they've decided they want it — we persist that preference.
+  const hasEngaged = leads.length >= 3 || properties.filter((p: any) => p.status === "owned").length >= 1;
+  const newUserModeOverride =
+    typeof window !== "undefined" &&
+    window.localStorage.getItem("acreos.dashboardMode") === "full";
+  const isNewUserMode = !hasEngaged && !newUserModeOverride;
+  const switchToFullMode = () => {
+    try {
+      window.localStorage.setItem("acreos.dashboardMode", "full");
+    } catch { /* noop */ }
+    window.location.reload();
+  };
   const { data: tasks = [], isLoading: tasksLoading } = useQuery<Task[]>({
     queryKey: ["/api/tasks"],
     staleTime: 2 * 60 * 1000,
@@ -650,7 +669,28 @@ export default function TodayPage() {
         </div>
       )}
 
+      {/* r5 Eleanor WF-R5-001: collapse the dense sections behind a
+          "Show full dashboard" toggle while the org is still in
+          first-deal discovery. Keeps the onboarding checklist + hero
+          in focus. */}
+      {isNewUserMode && (
+        <div className="rounded-lg border border-dashed border-muted-foreground/40 p-4 text-sm text-muted-foreground flex items-center justify-between gap-3">
+          <span>
+            Simplified dashboard. Complete a lead or a property to unlock the full metrics view.
+          </span>
+          <button
+            type="button"
+            onClick={switchToFullMode}
+            className="underline hover:text-foreground whitespace-nowrap"
+            data-testid="button-show-full-dashboard"
+          >
+            Show full dashboard
+          </button>
+        </div>
+      )}
+
       {/* Business Pulse — live business momentum snapshot */}
+      {!isNewUserMode && (
       <div data-testid="section-business-pulse">
         <div className={`rounded-xl border bg-gradient-to-br ${pulseBg} p-4`}>
           <div className="flex items-center justify-between mb-3">
@@ -727,7 +767,13 @@ export default function TodayPage() {
           </div>
         </div>
       </div>
+      )}
 
+      {/* r5 Eleanor: Start Here Today + Pax Suggests + AI Action Queue
+          are also hidden in new-user mode. Getting Started checklist
+          (above this block) + Portfolio Overview (below) remain. */}
+      {!isNewUserMode && (
+      <>
       {/* Epic J: Section 0 — Start Here Today (3 AI-prioritized actions) */}
       <div data-testid="section-start-here-today">
         <div className="flex items-center justify-between mb-3">
@@ -1217,6 +1263,8 @@ export default function TodayPage() {
             </div>
           )}
         </div>
+      )}
+      </>
       )}
 
       {/* Section 4: KPI Stats */}

@@ -1876,6 +1876,12 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                       codeViolation?: boolean;
                       source?: string;
                       updatedAt?: string;
+                      lienState?: "tax-lien" | "tax-deed";
+                      lienSoldDate?: string;
+                      lienHolder?: string;
+                      redemptionDeadline?: string;
+                      auctionDate?: string;
+                      openingBid?: number;
                     }
                   | undefined;
                 const hasDistress = !!distress && (
@@ -1944,6 +1950,45 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                         <div className="space-y-1">
                           <span className="text-muted-foreground text-xs">Code Violation</span>
                           <p className="font-medium text-amber-700 dark:text-amber-400">Yes</p>
+                        </div>
+                      )}
+                      {/* Cycle 5 r2 Priya: tax-lien / tax-deed lifecycle
+                          fields. Visible only when at least one of them
+                          is populated. */}
+                      {distress!.lienState && (
+                        <div className="space-y-1">
+                          <span className="text-muted-foreground text-xs">Regime</span>
+                          <p className="font-medium">{distress!.lienState === "tax-lien" ? "Tax-lien state" : "Tax-deed state"}</p>
+                        </div>
+                      )}
+                      {distress!.lienSoldDate && (
+                        <div className="space-y-1">
+                          <span className="text-muted-foreground text-xs">Lien Sold</span>
+                          <p className="font-medium">{formatDate(distress!.lienSoldDate)}</p>
+                        </div>
+                      )}
+                      {distress!.lienHolder && (
+                        <div className="space-y-1">
+                          <span className="text-muted-foreground text-xs">Lien Holder</span>
+                          <p className="font-medium">{distress!.lienHolder}</p>
+                        </div>
+                      )}
+                      {distress!.redemptionDeadline && (
+                        <div className="space-y-1">
+                          <span className="text-muted-foreground text-xs">Redemption Deadline</span>
+                          <p className="font-medium text-amber-700 dark:text-amber-400">{formatDate(distress!.redemptionDeadline)}</p>
+                        </div>
+                      )}
+                      {distress!.auctionDate && (
+                        <div className="space-y-1">
+                          <span className="text-muted-foreground text-xs">Auction Date</span>
+                          <p className="font-medium text-amber-700 dark:text-amber-400">{formatDate(distress!.auctionDate)}</p>
+                        </div>
+                      )}
+                      {distress!.openingBid !== undefined && distress!.openingBid > 0 && (
+                        <div className="space-y-1">
+                          <span className="text-muted-foreground text-xs">Opening Bid</span>
+                          <p className="font-medium">{cents(distress!.openingBid)}</p>
                         </div>
                       )}
                     </div>

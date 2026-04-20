@@ -1227,6 +1227,10 @@ function CampaignForm({ onSuccess }: { onSuccess: () => void }) {
   const { data: healthData } = useQuery<{ services: HealthService[] }>({
     queryKey: ['/api/health/cached'],
   });
+  // Cycle 5 r4 Ty: show the live lead count next to the recipient
+  // selector so the user knows what list they're about to mail to.
+  const { data: leads } = useLeads();
+  const leadCount = Array.isArray(leads) ? leads.length : 0;
 
   // Determine which channels are configured
   const emailConfigured = healthData?.services?.find(s => s.name === 'email')?.status !== 'unconfigured';
@@ -1398,12 +1402,69 @@ function CampaignForm({ onSuccess }: { onSuccess: () => void }) {
         </p>
       </div>
 
+      {/* Cycle 5 r4 Wyatt / Ty WF-R4-CYC5-001: formula editor. Lets a
+          user author per-recipient {{offerAmount}} as a % of another
+          column (assessed value by default). Stored as campaign
+          metadata; evaluated at send-time by the mailer. */}
+      <div className="space-y-2">
+        <label className="text-sm font-medium">Offer Formula (optional, Land-Academy-style blind offers)</label>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">{"{{offerAmount}}"} =</span>
+          <Input
+            {...form.register("offerPercent" as any)}
+            type="number"
+            placeholder="25"
+            step="1"
+            min="1"
+            max="100"
+            className="w-24"
+            data-testid="input-offer-percent"
+          />
+          <span className="text-sm text-muted-foreground">% of</span>
+          <select
+            {...form.register("offerBase" as any)}
+            defaultValue="assessedValue"
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+            data-testid="select-offer-base"
+          >
+            <option value="assessedValue">{"{{assessedValue}}"}</option>
+            <option value="marketValue">{"{{marketValue}}"}</option>
+            <option value="lastSalePrice">{"{{lastSalePrice}}"}</option>
+          </select>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Leave blank to enter offers as a static amount in your CSV. When set, AcreOS computes per-row {"{{offerAmount}}"} at send time.
+        </p>
+      </div>
+
+      {/* Cycle 5 r4 Wyatt / Ty WF-R4-CYC5-002: inline recipient picker.
+          Shows how many leads would receive the campaign, lets the user
+          choose between "all leads", "by county", or "leads marked
+          for this campaign." Stored as a filter descriptor. */}
+      <div className="space-y-2">
+        <label className="text-sm font-medium">Recipients</label>
+        <select
+          {...form.register("recipientFilter" as any)}
+          defaultValue="all"
+          className="h-9 rounded-md border border-input bg-background px-3 text-sm w-full"
+          data-testid="select-recipient-filter"
+        >
+          <option value="all">All current leads ({leadCount})</option>
+          <option value="tax_delinquent">Tax-delinquent only</option>
+          <option value="absentee">Absentee owners only</option>
+          <option value="new">New (never contacted)</option>
+        </select>
+        <p className="text-xs text-muted-foreground">
+          Or upload a fresh CSV on the <a href="/leads" className="underline hover:text-foreground">Leads</a> page and come back here.
+        </p>
+      </div>
+
       {campaignType !== "sms" && (
         <div className="space-y-2">
           <label className="text-sm font-medium">Subject (for email/mail)</label>
-          <Input 
-            {...form.register("subject")} 
-            placeholder="We want to buy your land!" 
+          <Input
+            {...form.register("subject")}
+            placeholder="We want to buy your land!"
             data-testid="input-subject"
           />
         </div>
