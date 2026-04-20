@@ -67,9 +67,14 @@ export function AbTestManager({ campaign, showCreateButton = true, onTestCreated
     queryKey: ['/api/ab-tests'],
   });
 
-  const campaignTests = campaign 
-    ? abTests?.filter(t => t.campaignId === campaign.id) 
-    : abTests;
+  // Default to [] so downstream `.filter()` calls (line ~346 iterating
+  // non-running tests) don't crash when the /api/ab-tests query has not
+  // yet resolved. r4 Wyatt caught this as STR-R4-002: the campaign
+  // detail drawer threw "d?.filter is not a function" because
+  // campaignTests was undefined on first render.
+  const campaignTests = campaign
+    ? (abTests?.filter(t => t.campaignId === campaign.id) ?? [])
+    : (abTests ?? []);
 
   const activeTest = campaignTests?.find(t => t.status === 'running');
 
