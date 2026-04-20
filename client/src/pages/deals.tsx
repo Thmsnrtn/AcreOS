@@ -240,7 +240,16 @@ export default function DealsPage() {
     .filter(deal => typeFilter === "all" || deal.type === typeFilter)
     .map(deal => ({
       ...deal,
-      property: Array.isArray(properties) ? properties.find(p => p.id === deal.propertyId) : undefined,
+      // r8 Tasha (c9): mobile pipeline was showing "Property #3" because
+      // the join used strict === and deal.propertyId can arrive as a
+      // number from /api/deals while properties.find's p.id comes in as
+      // a number too — but coerce both via Number() to survive any
+      // shape drift and make the match truly type-insensitive. Also
+      // prefer the hydrated deal.property from the upstream map if
+      // already populated.
+      property: deal.property ?? (Array.isArray(properties)
+        ? properties.find(p => Number(p.id) === Number(deal.propertyId))
+        : undefined),
     }));
 
   // Server-side pagination: data is already one page
