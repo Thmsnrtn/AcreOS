@@ -99,10 +99,20 @@ export function useAuth() {
     authFailCount = 0;
     queryClient.setQueryData(["/api/auth/user"], null);
     queryClient.removeQueries({ queryKey: ["/api/auth/user"] });
-    document.cookie = "__session=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=.acreos.io";
-    document.cookie = "__session=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/";
-    document.cookie = "__client_uat=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=.acreos.io";
-    document.cookie = "__client_uat=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/";
+    // Clerk's instance cookies are suffixed (`__session_<hash>`, `__client_uat_<hash>`)
+    // and HttpOnly — client JS can't enumerate or clear them. Ask the server to
+    // clearCookie() every one it can see on the request, then fall through to
+    // Clerk's own sign-out which handles the non-HttpOnly names.
+    void fetch("/api/auth/logout", {
+      method: "POST",
+      credentials: "include",
+    }).catch(() => { /* best-effort */ });
+    // Also clear the canonical (non-suffixed) names from the client for old
+    // sessions that predate the suffixed-cookie rollout.
+    for (const name of ["__session", "__client_uat", "__client"]) {
+      document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=.acreos.io`;
+      document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
+    }
     signOut({ redirectUrl: "/auth" });
   };
 
