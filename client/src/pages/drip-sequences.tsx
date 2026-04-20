@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, fetchJsonArray } from "@/lib/queryClient";
 import { Mail, MessageSquare, Phone, Plus, Play, Pause, Users, BarChart3, Loader2, ChevronRight } from "lucide-react";
 
 interface Sequence {
@@ -35,9 +35,19 @@ export default function DripSequencesPage() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
 
+  // /api/sequences may return either a raw array or { sequences: [...] };
+  // normalize via fetch then unwrap.
   const { data, isLoading } = useQuery<{ sequences: Sequence[] }>({
     queryKey: ["/api/sequences"],
-    queryFn: () => fetch("/api/sequences").then(r => r.json()),
+    queryFn: async () => {
+      const res = await fetch("/api/sequences", { credentials: "include" });
+      if (!res.ok) return { sequences: [] };
+      const j = await res.json();
+      if (Array.isArray(j)) return { sequences: j as Sequence[] };
+      if (Array.isArray(j?.sequences)) return j as { sequences: Sequence[] };
+      if (Array.isArray(j?.data)) return { sequences: j.data as Sequence[] };
+      return { sequences: [] };
+    },
   });
 
   const pauseMutation = useMutation({

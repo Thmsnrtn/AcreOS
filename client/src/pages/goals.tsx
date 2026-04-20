@@ -97,7 +97,15 @@ export default function GoalsPage() {
 
   const { data, isLoading } = useQuery<{ goals: Goal[] }>({
     queryKey: ["/api/goals"],
-    queryFn: () => fetch("/api/goals").then(r => r.json()),
+    queryFn: async () => {
+      const res = await fetch("/api/goals", { credentials: "include" });
+      if (!res.ok) return { goals: [] };
+      const j = await res.json();
+      if (Array.isArray(j)) return { goals: j as Goal[] };
+      if (Array.isArray(j?.goals)) return j as { goals: Goal[] };
+      if (Array.isArray(j?.data)) return { goals: j.data as Goal[] };
+      return { goals: [] };
+    },
   });
 
   const createMutation = useMutation({

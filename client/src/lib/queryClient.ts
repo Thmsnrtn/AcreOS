@@ -129,6 +129,38 @@ function readCsrfToken(): string {
 
 const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
+/**
+ * Cycles 7–11 repeatedly hit the same class of bug: pages use
+ * `fetch(url).then(r => r.json())` as their React Query queryFn,
+ * but many of our API endpoints return a paginated envelope
+ * `{ data: [...], total, page, ... }`. Consumer code then calls
+ * `.filter()` / `.map()` on the envelope, which throws
+ * `q.filter is not a function` and fires the global error boundary.
+ *
+ * Use `fetchJsonArray<T>(url)` as a drop-in replacement for those
+ * inline queryFns when the endpoint is supposed to return an array.
+ * It handles: 401 retry via refreshSessionCookie (inherited from
+ * apiRequest), array vs `{data}` envelope normalization, and empty
+ * fallback on network failure.
+ */
+export async function fetchJsonArray<T>(url: string): Promise<T[]> {
+  let res = await fetch(url, { credentials: "include" });
+  if (res.status === 401 && url.startsWith("/api/")) {
+    await refreshSessionCookie();
+    res = await fetch(url, { credentials: "include" });
+  }
+  if (!res.ok) return [];
+  try {
+    const j = await res.json();
+    if (Array.isArray(j)) return j as T[];
+    if (Array.isArray(j?.data)) return j.data as T[];
+    if (Array.isArray(j?.items)) return j.items as T[];
+    return [];
+  } catch {
+    return [];
+  }
+}
+
 // On 401 to an authenticated /api endpoint, proactively touch the Clerk
 // session to refresh the __session JWT, then let the caller retry once.
 // Cycle 3 r1 showed that the 45s keep-alive interval could race against

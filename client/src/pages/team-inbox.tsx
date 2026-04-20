@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { fetchJsonArray } from "@/lib/queryClient";
 import { Sidebar, useSidebarCollapsed } from "@/components/layout-sidebar";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { Button } from "@/components/ui/button";
@@ -196,23 +197,23 @@ export default function TeamInboxPage() {
   const { data: channels = [], isLoading: channelsLoading, refetch: refetchChannels } =
     useQuery<Channel[]>({
       queryKey: ["/api/team-messaging/channels"],
-      queryFn: () => fetch("/api/team-messaging/channels").then(r => r.json()),
+      queryFn: () => fetchJsonArray("/api/team-messaging/channels"),
     });
 
   const { data: dms = [] } = useQuery<Channel[]>({
     queryKey: ["/api/team-messaging/conversations"],
-    queryFn: () => fetch("/api/team-messaging/conversations").then(r => r.json()),
-    select: convs => convs.filter((c: Channel) => c.isDirect),
+    queryFn: () => fetchJsonArray<Channel>("/api/team-messaging/conversations"),
+    select: convs => (Array.isArray(convs) ? convs.filter((c: Channel) => c.isDirect) : []),
   });
 
   const { data: members = [] } = useQuery<TeamMember[]>({
     queryKey: ["/api/organization/members"],
-    queryFn: () => fetch("/api/organization/members").then(r => r.json()),
+    queryFn: () => fetchJsonArray("/api/organization/members"),
   });
 
   const { data: presence = [] } = useQuery<Presence[]>({
     queryKey: ["/api/team-messaging/presence"],
-    queryFn: () => fetch("/api/team-messaging/presence").then(r => r.json()),
+    queryFn: () => fetchJsonArray("/api/team-messaging/presence"),
     refetchInterval: 30_000,
   });
 
