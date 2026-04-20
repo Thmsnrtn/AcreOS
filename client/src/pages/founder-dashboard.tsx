@@ -1161,10 +1161,53 @@ export default function FounderDashboard() {
     return () => window.removeEventListener("keydown", handler);
   }, [handleRefreshAll, focusMode, toast]);
 
-  // Only load dashboard data for overview + growth tabs
+  // Only load dashboard data for overview + growth tabs.
+  // Cycle 11: the /api/admin/dashboard endpoint returns a flatter shape
+  // than the client's AdminDashboardData interface expects. Normalize
+  // missing sections to safe defaults so the UI can render even when the
+  // server hasn't populated every KPI.
   const { data: dashboardData, isLoading } = useQuery<AdminDashboardData>({
     queryKey: ['/api/admin/dashboard'],
     enabled: activeTab === "overview" || activeTab === "growth",
+    select: (raw: any) => {
+      const r = raw ?? {};
+      const agentDefault = { lastRun: null, processed: 0, pending: 0, failed: 0, status: "idle" };
+      return {
+        revenue: {
+          mrr: r?.revenue?.mrr ?? 0,
+          creditSalesThisMonth: r?.revenue?.creditSalesThisMonth ?? 0,
+          totalRevenueThisMonth: r?.revenue?.totalRevenueThisMonth ?? r?.revenue?.mrr ?? 0,
+          mrrAtRisk: r?.revenue?.mrrAtRisk ?? r?.revenueAtRisk?.totalMrrAtRisk ?? 0,
+        },
+        systemHealth: {
+          activeOrganizations: r?.systemHealth?.activeOrganizations ?? r?.revenue?.customers ?? 0,
+          totalUsers: r?.systemHealth?.totalUsers ?? r?.users?.total ?? 0,
+          activeUsers: r?.systemHealth?.activeUsers ?? r?.users?.active ?? 0,
+          uptime: r?.systemHealth?.uptime ?? r?.system?.uptime ?? 0,
+        },
+        agents: {
+          leadNurturer: r?.agents?.leadNurturer ?? agentDefault,
+          campaignOptimizer: r?.agents?.campaignOptimizer ?? agentDefault,
+          financeAgent: r?.agents?.financeAgent ?? agentDefault,
+          apiQueue: r?.agents?.apiQueue ?? { pending: 0, failed: 0 },
+        },
+        alerts: {
+          bySeverity: r?.alerts?.bySeverity ?? {},
+          total: Array.isArray(r?.alerts) ? r.alerts.length : (r?.alerts?.total ?? 0),
+          critical: Array.isArray(r?.alerts?.critical) ? r.alerts.critical : [],
+        },
+        revenueAtRisk: {
+          dunningByStage: r?.revenueAtRisk?.dunningByStage ?? {},
+          totalMrrAtRisk: r?.revenueAtRisk?.totalMrrAtRisk ?? 0,
+          orgsApproachingCreditExhaustion: r?.revenueAtRisk?.orgsApproachingCreditExhaustion ?? 0,
+        },
+        userActivity: {
+          activeUsers: r?.userActivity?.activeUsers ?? r?.users?.active ?? 0,
+          newSignupsThisWeek: r?.userActivity?.newSignupsThisWeek ?? r?.users?.new ?? 0,
+          organizationsByTier: r?.userActivity?.organizationsByTier ?? {},
+        },
+      } as AdminDashboardData;
+    },
   });
 
   // Only poll decisions on overview tab
