@@ -1,4 +1,4 @@
-import { SignIn, SignUp, useUser } from "@clerk/react";
+import { SignIn, SignUp } from "@clerk/react";
 import { Link, Redirect } from "wouter";
 import { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
@@ -6,7 +6,6 @@ import { ArrowLeft } from "lucide-react";
 
 export default function AuthPage() {
   const { user, isLoading } = useAuth();
-  const { isSignedIn, isLoaded } = useUser();
   const params = new URLSearchParams(window.location.search);
   const [mode, setMode] = useState<"sign-in" | "sign-up">(
     params.get("mode") === "register" ? "sign-up" : "sign-in"
@@ -17,13 +16,14 @@ export default function AuthPage() {
   const isHandlingCallback = window.location.hash.includes("sso-callback") ||
                              window.location.hash.includes("verify");
 
-  // If fully authenticated AND not mid-callback, go to dashboard
-  if (isLoaded && isSignedIn && user && !isHandlingCallback) {
+  // Option B: server-backed auth is the truth. If /api/auth/user came
+  // back with a user, we're signed in — send to dashboard.
+  if (user && !isHandlingCallback) {
     return <Redirect to="/today" />;
   }
 
-  // If Clerk says signed in but we don't have app user yet, show loader briefly
-  if (isLoaded && isSignedIn && isLoading && !isHandlingCallback) {
+  // Still resolving the server-side auth check after ticket/OAuth — loader.
+  if (isLoading && !isHandlingCallback) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" />
