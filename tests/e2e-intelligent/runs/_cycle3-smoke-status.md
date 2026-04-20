@@ -1,33 +1,38 @@
 # Cycle 3 Smoke Test Status
 
-**State: PASS. STR-011 fixed via Option B. Ready for Phase 5-6 persona re-run.**
+**State: PASS (with JWT keep-alive). Ready for Phase 5-6 persona runs.**
 
-## Smoke results (2026-04-20, Option B deploy bng62m2nr)
+## Final smoke test (2026-04-20, post-deploy bc02ys2et)
 
 | Step | Expected | Actual |
 |------|----------|--------|
 | `curl -sI https://acreos.fly.dev/` | 301 → https://acreos.io/ | ✓ |
-| Mint Clerk ticket + nav to `https://acreos.io/auth?__clerk_ticket=...` | 200 page loads | ✓ |
-| Auto-redirect to `/today` after sign-in | URL = /today | ✓ |
-| `/api/auth/user` | 200 with user (id=4d66476d-c0e1-4fe6-acce-ea1a34b5d62e, firstName=E2E, email=thmsnrtn+e2e-persona-20260419@gmail.com) | ✓ |
-| Dashboard renders on /today | Not stuck on "Loading", Welcome onboarding dialog visible | ✓ |
-| Nav to `/properties` | Dashboard renders, no redirect to /auth | ✓ |
-| Cross-route session persistence | `/properties` keeps session; content renders | ✓ |
+| Ticket sign-in → /today auto-redirect | URL = /today | ✓ |
+| `/api/auth/user` immediately after sign-in | 200 with user | ✓ |
+| Dashboard renders (Welcome onboarding dialog visible over it) | ✓ |
+| Navigate to /properties | Inventory loads; Cochise AZ property visible | ✓ |
+| Open property detail → Analyze with AI → Run Quick Analysis | Dialog opens, analysis path reachable | ✓ |
+| **Wait 80 seconds** | JWT refreshed by keep-alive (iat 39s ago, not expired) | ✓ |
+| `/api/auth/user` 80s after sign-in | 200 with user (was 401 before keep-alive fix) | ✓ |
 
-## What fixed it
+## Full fix arc this cycle
 
-**Option B — server-backed auth via `/api/auth/user`.**
+| Commit | Fix | Live |
+|--------|-----|------|
+| `001c8e9` | Canonical URL = acreos.io; test configs updated | ✓ |
+| `ab6f8a8` | fly.dev → acreos.io 301 at edge; Clerk `__internal_reloadInitialResources` call | ✓ |
+| `5d03ef8` | Stopped caching /v1/client in proxy (always-"anon" key served stale) | ✓ |
+| `<Opt A>` | Proxy `.getSetCookie()` + Set-Cookie logging | ✓ |
+| `<Opt B>` | `useAuth()` + auth-page pivoted to server-backed `/api/auth/user` | ✓ |
+| `<keep-alive>` | Periodic `touch()` refreshes __session JWT every 45s | ✓ |
 
-`client/src/hooks/use-auth.ts` no longer waits for `Clerk.isSignedIn === true` (which, in Clerk 6.7.4 with our proxy config, never becomes true after ticket sign-in because `GET /v1/client` returns empty sessions). Instead:
+## Observed but unresolved (non-blocking for runs, flag as findings)
 
-- If `__session` cookie is present on the domain → query `/api/auth/user`.
-- 200 with user → authenticated.
-- 401 → retry 2x then redirect to `/auth`.
+- **Onboarding dialog re-appears on every route** until "Don't show again" is clicked. r1 Marcus investigation confirmed this. Will surface as a UX finding in most persona transcripts.
+- Several background endpoints 401 transiently in first ~1s after sign-in (notifications/count, inbox/unread-count, pax/observations) until the query-client catches up. Keep-alive solves the long-tail; first-second transient is cosmetic but worth noting.
+- `/api/land-credit/property/2` returns 500 (seen once, not yet investigated).
+- `/api/white-label/config` returns 404 (probably optional feature).
 
-`@clerk/express` on the server reads the `__session` JWT correctly, so the backend auth has always been healthy. Option B just makes the client trust the backend instead of waiting for broken Clerk-JS in-memory state.
+## Ready for Phase 5-6
 
-`client/src/pages/auth-page.tsx` also pivoted off `useUser().isSignedIn` to `useAuth().user` for the post-sign-in redirect.
-
-## Verdict
-
-✅ **Phase 4 COMPLETE.** Ready to initialize Phase 5 (cycle 3 re-run of 8 personas v3).
+Proceed to persona runs. Keep-alive makes journeys of any length sustainable. Full 8-run matrix in `_cycle3-rerun-progress.md` + `_RESUME-HERE.md`.
