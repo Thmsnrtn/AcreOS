@@ -188,6 +188,21 @@ async function initStripe() {
   }
 }
 
+// STR-026: canonical host is acreos.io. Any request hitting acreos.fly.dev
+// gets a 301 to the same path on acreos.io before any other middleware runs.
+// Rationale: Clerk's FAPI pins JS versions with a 307 whose Location is
+// absolute to the configured Clerk-Proxy-Url (acreos.io). On acreos.fly.dev
+// that 307 is cross-origin, so browsers CORB-block the Clerk script and
+// auth fails entirely. Redirecting at the edge ensures users always land on
+// the configured canonical origin.
+app.use((req, res, next) => {
+  const host = (req.headers.host || "").toLowerCase();
+  if (host === "acreos.fly.dev" || host.endsWith(".acreos.fly.dev")) {
+    return res.redirect(301, `https://acreos.io${req.originalUrl}`);
+  }
+  next();
+});
+
 // API versioning: /api/v1/* is transparently rewritten to /api/*
 // Clients can use either prefix; new code should use /api/v1/.
 app.use((req, _res, next) => {

@@ -32,10 +32,15 @@ export function installClerkSessionRecovery(): void {
   if (typeof window === "undefined") return;
 
   let reloadingClient = false;
-  // STR-011: when Clerk.client.sessions empties mid-navigation but the
-  // __session cookie is still on the domain, force a client reload so the
-  // SDK repopulates its in-memory sessions from the server. We rate-limit
-  // reloads with the reloadingClient flag so a listener storm can't loop.
+  // STR-011: when Clerk.client.sessions empties mid-navigation (or after
+  // ticket sign-in) but the __session cookie is still on the domain, force
+  // the SDK to refetch environment + client and update its in-memory state.
+  // Clerk-JS 6.7.4 exposes this as Clerk.__internal_reloadInitialResources;
+  // it is the only public-ish path in this SDK version that calls both
+  // Environment.fetch() and Client.getOrCreateInstance().fetch() and then
+  // propagates the result via Clerk.updateClient / updateEnvironment so
+  // React subscribers see the new session. Client.fetch() alone does not
+  // update Clerk's in-memory state and leaves Clerk.session null.
   const reloadClientIfCookieAlive = async (): Promise<void> => {
     if (reloadingClient) return;
     const Clerk = (window as any).Clerk;
@@ -45,8 +50,12 @@ export function installClerkSessionRecovery(): void {
     if (!hasSessionCookie()) return;
     reloadingClient = true;
     try {
-      if (typeof Clerk.client?.reload === "function") {
-        await Clerk.client.reload();
+      if (typeof Clerk.__internal_reloadInitialResources === "function") {
+        await Clerk.__internal_reloadInitialResources();
+      } else if (typeof Clerk.client?.fetch === "function") {
+        // Fallback: refetch client only. Won't re-hydrate Clerk.session but
+        // will at least refill Clerk.client.sessions for the promote step.
+        await Clerk.client.fetch({ fetchMaxTries: 1 });
       } else if (typeof Clerk.load === "function") {
         await Clerk.load();
       }
