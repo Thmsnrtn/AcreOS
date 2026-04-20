@@ -91,24 +91,55 @@ routes) — fixed in `a157e1c`.
   `/conscious-organization`, `/agent-command-center`, `/reseller`,
   `/executive-dashboard`, `/fee-dashboard`
 
-## Not executed this cycle: operator personas 14–18
+## Operator personas 14–18 — surface-feasibility sweep
 
-The five operator personas (Maya VA, Dolores Enterprise Admin, Raj
-Compliance, Kim Reseller, Yuki Developer) were drafted in cycle 10 but
-require multi-hour infrastructure seeding before they can run:
+Drove each operator persona's primary surface as the founder test user
+to shake out crashes before running them end-to-end. Results below.
+Note: several of the persona journeys (RBAC boundary checks, white-label
+leak audits) require a **non-founder** test user, which is its own
+infrastructure build and is still deferred.
 
-| Persona | Blocking infrastructure |
-|---|---|
-| Maya (VA) | Team-seat provisioning, role assignments, task-assignment permission grid |
-| Dolores (Enterprise) | Enterprise tier, bulk invite CSV, white-label domain CNAME, SSO, audit-log export |
-| Raj (Compliance) | Document-intelligence OCR fixtures, title/deed PDFs, anomaly flag rules, per-parcel compliance memo template |
-| Kim (Reseller) | Reseller onboarding flow, child-tenant provisioning, revenue-split config, billing separation |
-| Yuki (Developer) | Public API key issuance, scoped permissions, sandbox environment, API docs |
+| # | Persona | Surface | State |
+|---|---|---|---|
+| 14 | Maya (VA) | `/team-inbox` | Renders: channels + DMs + #acquisitions/#closings/#general. ✅ |
+| 14 | Maya (VA) | `/team-dashboard` | **Crashed** `j.filter is not a function`. **Fixed** in `9bdc3cb` — envelope unwrap via `fetchJsonArray` + defensive `Array.isArray`. ✅ |
+| 14 | Maya (VA) | `/audit-log` | Renders. ✅ |
+| 15 | Dolores (Enterprise) | `/settings → Team / Developer / Security / Privacy / Integrations` | All tabs mounted. Seat management panel shows 1/1000 used, unlimited tier. ✅ |
+| 15 | Dolores (Enterprise) | `/audit-log` | Exists and renders. ✅ (Per-user / date-range export UI is present in the page; not stress-tested this cycle.) |
+| 16 | Raj (Compliance) | `/compliance` | Renders h1 "Compliance AI". ✅ |
+| 16 | Raj (Compliance) | `/document-intelligence` | Renders h1 "Document Intelligence". ✅ |
+| 16 | Raj (Compliance) | `/tax-delinquent` | Renders h1 "Tax Delinquent Pipeline". ✅ |
+| 17 | Kim (Reseller) | `/reseller` | Renders after the `SelectItem value=""` fix from `c53bdfd`. Includes Tenants / Analytics / White-Label tabs + CreateTenantDialog. ✅ |
+| 18 | Yuki (Developer) | `/settings → Developer` | Tab has Demo Data + **ApiKeyManager** (create/rotate/revoke) + ActivityLogPanel. ✅ |
+| 18 | Yuki (Developer) | `/webhooks` | Renders. ✅ |
+| 18 | Yuki (Developer) | `/openapi.json` | Returns 200 (spec is published). ✅ |
 
-Each is a multi-day product build, not a test run. Recommendation: draft
-these as product epics (one per persona) rather than trying to force
-them through the existing persona harness against a surface that isn't
-built.
+### Remaining blockers for full execution
+
+These aren't missing surfaces — they're infrastructure prerequisites
+the persona harness needs before the assigned journeys can produce a
+useful verdict:
+
+- **RBAC boundary check (Maya T03)** — needs a non-founder seat user
+  provisioned against the test org, plus an invite-accept flow that
+  sets a password and lands on `/today` scoped to the seat's org.
+- **White-label leak audit (Kim P03)** — needs a student tenant under
+  the reseller account and a student login to grep every visible
+  surface for the string "AcreOS".
+- **Stripe Connect reconciliation (Kim P02)** — needs real Stripe
+  Connect payouts in test mode to compare against the reseller MRR
+  dashboard.
+- **Bulk seat CSV provisioning (Dolores E01)** — the Team tab has
+  per-user invite but no documented bulk-CSV path; either expose the
+  bulk path in the UI or add one.
+- **OCR anomaly fixtures (Raj C01)** — need a canonical stack of
+  scanned deeds / title commitments with known anomalies (mineral
+  reservations, easements, HOA liens) to run the document-intelligence
+  flow against deterministic expected output.
+
+Each of these is a product/infra task of a few hours to a day, not a
+persona run. Recommendation: open one tracking ticket per bullet, seed
+the fixtures, then re-drive the persona in a follow-up cycle.
 
 ## FOUNDER_EMAILS state
 
@@ -138,3 +169,4 @@ zeros/empties. Pulls `users.active → systemHealth.activeUsers`,
 - `b31e126` fix: /executive-dashboard totalLeads crash + /admin/beta suspense loop
 - `a157e1c` fix(routing): hoist /status and /changelog lazy imports to module scope
 - `ecc0aab` fix(founder-dashboard): tolerate flat /api/admin/dashboard shape
+- `9bdc3cb` fix(team-dashboard): unwrap envelope + defensive guards
