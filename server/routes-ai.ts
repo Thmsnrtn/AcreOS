@@ -914,69 +914,11 @@ export function registerAIRoutes(app: Express): void {
     }
   });
 
-  // ============================================
-  // FOUNDER AI OBSERVATORY
-  // ============================================
-
-  api.get("/api/founder/ai/telemetry", isAuthenticated, async (req, res) => {
-    try {
-      const user = req.user as any;
-      const isFounder = user?.id === 'founder' || user?.claims?.sub === 'founder';
-      if (!isFounder) return Errors.forbidden(res, "Founder only");
-      const { aiConversations, aiMessages: msgs, organizations } = await import("@shared/schema");
-      const { desc: _desc, eq: _eq } = await import("drizzle-orm");
-      // Last 50 conversations across all orgs
-      const conversations = await db.select({
-        id: aiConversations.id,
-        title: aiConversations.title,
-        agentRole: aiConversations.agentRole,
-        organizationId: aiConversations.organizationId,
-        createdAt: aiConversations.createdAt,
-        orgName: organizations.name,
-      })
-        .from(aiConversations)
-        .leftJoin(organizations, _eq(aiConversations.organizationId, organizations.id))
-        .orderBy(_desc(aiConversations.createdAt))
-        .limit(50);
-      res.json(conversations);
-    } catch (err: any) {
-      Errors.internal(res, err);
-    }
-  });
-
-  api.get("/api/founder/ai/stats", isAuthenticated, async (req, res) => {
-    try {
-      const user = req.user as any;
-      const isFounder = user?.id === 'founder' || user?.claims?.sub === 'founder';
-      if (!isFounder) return Errors.forbidden(res, "Founder only");
-      const { aiConversations, aiMessages: msgs, paxConnectorInstances, organizations } = await import("@shared/schema");
-      const { count: _count, eq: _eq, desc: _desc } = await import("drizzle-orm");
-      const startOfMonth = new Date(); startOfMonth.setDate(1); startOfMonth.setHours(0, 0, 0, 0);
-      // Conversation count per org
-      const convPerOrg = await db.select({
-        organizationId: aiConversations.organizationId,
-        orgName: organizations.name,
-        convCount: _count(aiConversations.id),
-      })
-        .from(aiConversations)
-        .leftJoin(organizations, _eq(aiConversations.organizationId, organizations.id))
-        .groupBy(aiConversations.organizationId, organizations.name)
-        .orderBy(_desc(_count(aiConversations.id)))
-        .limit(20);
-      // Connector adoption
-      const connectorAdoption = await db.select({
-        connectorId: paxConnectorInstances.connectorId,
-        orgCount: _count(paxConnectorInstances.id),
-      })
-        .from(paxConnectorInstances)
-        .where(_eq(paxConnectorInstances.status, "connected"))
-        .groupBy(paxConnectorInstances.connectorId)
-        .orderBy(_desc(_count(paxConnectorInstances.id)));
-      res.json({ convPerOrg, connectorAdoption, generatedAt: new Date() });
-    } catch (err: any) {
-      Errors.internal(res, err);
-    }
-  });
+  // /api/founder/ai/telemetry and /api/founder/ai/stats are registered in
+  // routes-admin.ts with the canonical isFounderAdmin guard. The duplicates
+  // that previously lived here had a broken check (compared userId to the
+  // literal string "founder") and took priority because registerAIRoutes
+  // runs before registerAdminRoutes.
 
   // ============================================
   // PAX CONNECTORS

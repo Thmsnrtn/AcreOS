@@ -30,6 +30,7 @@ import crypto from "crypto";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { alertingService } from "./services/alerting";
+import { isFounderEmail } from "./services/founder";
 import { logger } from "./utils/logger";
 import { addMonths } from "./utils/dateUtils";
 
@@ -648,9 +649,8 @@ export function registerAdminRoutes(app: Express): void {
     const userId = user.claims?.sub || user.id;
     const userEmail = user.claims?.email || user.email;
 
-    const founderEmails = (process.env.FOUNDER_EMAIL || "").split(",").map(e => e.trim()).filter(Boolean);
     const founderUserIds = (process.env.FOUNDER_USER_IDS || "").split(",").map(id => id.trim()).filter(Boolean);
-    const isFounder = founderEmails.includes(userEmail) || founderUserIds.includes(String(userId));
+    const isFounder = isFounderEmail(userEmail) || founderUserIds.includes(String(userId));
     if (isFounder) {
       return next();
     }
