@@ -208,6 +208,27 @@ Option (a) is strongly preferred; option (b) is the minimum viable.
 - `bd2d50e` fix(api-docs): serve OpenAPI spec without auth (Yuki D03)
 - `16ad093` feat(org): seat invitations (single + bulk CSV)
 - `e6c68da` feat(white-label): brandName fallback for top-visibility surfaces
+- `cd8836b` fix(org): call requireAdminOrAbove as factory on 14 endpoints
+
+## Live-verification after deploy
+
+Signed in as the founder (seat user would also work but the invite
+endpoints need admin-or-above), ran a full CRUD sweep against the
+invitation endpoints — all pass:
+
+| Step | Result |
+|---|---|
+| `POST /api/organization/invitations` with `{ invites: [3 emails] }` | `201`, 3 tokenized links returned |
+| `GET /api/organization/invitations` | `200`, all 3 present |
+| `DELETE /api/organization/invitations/:id` on the first | `200`, row flipped to `revoked` |
+| `GET` again | `200`, statuses `['pending','pending','revoked']` |
+| `/settings#team` UI | renders `TeamInviteCard` + 2 pending rows (revoked one filtered) |
+
+Before `cd8836b`, every one of those POSTs 504'd — the
+`requireAdminOrAbove` factory bug swallowed every request into a 30s
+timeout. Fixing that also unblocked 11 other pre-existing endpoints
+(commissions x7, webhooks PUT, /api/jobs x2) that had silently been
+broken.
 
 ## Persona status matrix after cycle 12
 
