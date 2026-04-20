@@ -106,10 +106,21 @@ export default function DealsPage() {
   const [dealCurrentPage, setDealCurrentPage] = useState(1);
   const [dealPageSize, setDealPageSize] = useState(25);
   const { data: dealsResponse, isLoading, isError, error, refetch } = useDealsPaginated({ page: dealCurrentPage, pageSize: dealPageSize });
-  const deals = dealsResponse?.data;
+  const rawDeals = dealsResponse?.data;
   const serverDealTotal = dealsResponse?.total ?? 0;
   const { data: propertiesRaw } = useProperties();
   const properties = Array.isArray(propertiesRaw) ? propertiesRaw : [];
+  // r5 James / cycle 7: the /api/deals endpoint returns deals without
+  // an embedded property relation, so DealCard falls back to
+  // "Property #3" instead of "Yavapai, AZ". Hydrate deals with their
+  // matching property client-side using the already-fetched
+  // properties list. When the property isn't found we leave deal.property
+  // undefined so the existing fallback still runs.
+  const propById = new Map<number, any>(properties.map((p: any) => [p.id, p]));
+  const deals = rawDeals?.map((d: any) => ({
+    ...d,
+    property: d.property ?? (d.propertyId != null ? propById.get(d.propertyId) : undefined),
+  })) as typeof rawDeals;
   const searchString = useSearch();
   const urlParams = new URLSearchParams(searchString);
   const actionFromUrl = urlParams.get("action");
