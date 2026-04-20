@@ -188,13 +188,10 @@ export async function apiRequest(
   let res = await doApiFetch(method, url, data);
 
   // Transparent 401 recovery for /api/* endpoints: refresh the Clerk
-  // __session cookie and retry once. Skip for non-/api paths and for
-  // the auth endpoints themselves (to avoid loops).
-  if (
-    res.status === 401 &&
-    url.startsWith("/api/") &&
-    !url.startsWith("/api/auth/")
-  ) {
+  // __session cookie via /__clerk/v1/client/sessions/:sid/touch (NOT
+  // /api/auth/*), then retry once. Safe on /api/auth/user because the
+  // refresh path doesn't loop through Express auth middleware.
+  if (res.status === 401 && url.startsWith("/api/")) {
     await refreshSessionCookie();
     res = await doApiFetch(method, url, data);
   }
@@ -214,11 +211,7 @@ export const getQueryFn: <T>(options: {
 
     // Same 401 recovery as apiRequest: refresh Clerk session cookie,
     // retry once. See apiRequest for rationale.
-    if (
-      res.status === 401 &&
-      url.startsWith("/api/") &&
-      !url.startsWith("/api/auth/")
-    ) {
+    if (res.status === 401 && url.startsWith("/api/")) {
       await refreshSessionCookie();
       res = await fetch(url, { credentials: "include" });
     }

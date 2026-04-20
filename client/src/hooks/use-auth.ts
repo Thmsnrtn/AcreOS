@@ -22,8 +22,42 @@ function hasSessionCookie(): boolean {
   return /(^|;\s*)__session=/.test(document.cookie);
 }
 
+async function touchClerkSession(): Promise<void> {
+  // Same 401-recovery touch as queryClient.refreshSessionCookie. Kept
+  // inline to avoid pulling queryClient into the auth bootstrap path.
+  try {
+    const m = typeof document !== "undefined" ? document.cookie.match(/__session=([^;]+)/) : null;
+    const jwt = m?.[1];
+    if (!jwt) return;
+    const payload = JSON.parse(atob(jwt.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+    const sid = payload?.sid;
+    if (!sid) return;
+    await fetch(
+      `/__clerk/v1/client/sessions/${sid}/touch?__clerk_api_version=2025-11-10&_clerk_js_version=6.7.4`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: "active_organization_id=",
+        credentials: "include",
+      }
+    );
+  } catch {
+    // best effort
+  }
+}
+
 async function fetchAppUser(): Promise<AuthUser | null> {
-  const response = await fetch("/api/auth/user", { credentials: "include" });
+  let response = await fetch("/api/auth/user", { credentials: "include" });
+
+  // Cycle 4 follow-up: /finance and /portfolio rendered blank on nav
+  // because /api/auth/user 401'd on route change. Proactively refresh
+  // the __session JWT via the Clerk proxy touch and retry once before
+  // accepting the 401 as "logged out." This mirrors the transparent
+  // 401 retry in queryClient.apiRequest.
+  if (response.status === 401) {
+    await touchClerkSession();
+    response = await fetch("/api/auth/user", { credentials: "include" });
+  }
 
   if (response.status === 401) {
     authFailCount++;
