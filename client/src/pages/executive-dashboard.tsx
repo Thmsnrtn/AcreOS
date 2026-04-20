@@ -23,6 +23,43 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { InfoTooltip } from "@/components/info-tooltip";
 
+interface ExecutiveMetricsRaw {
+  mrr?: number;
+  arr?: number;
+  mrrChange?: number;
+  activeOrgs?: number;
+  totalOrgs?: number;
+  newOrgsLast30?: number;
+  tierBreakdown?: Record<string, number>;
+  totalLeads?: number;
+  totalProperties?: number;
+  totalDeals?: number;
+  totalNotes?: number;
+  newLeadsLast7?: number;
+  newDealsLast7?: number;
+  recentSignups?: Array<unknown>;
+  // Legacy/optional fields
+  activeOrganizations?: number;
+  totalOrganizations?: number;
+  newOrgsLast30Days?: number;
+  churnRate?: number;
+  churnedOrgsLast30Days?: number;
+  arpu?: number;
+  platformUsage?: {
+    totalLeads?: number;
+    totalProperties?: number;
+    totalDeals?: number;
+  };
+  nps?: {
+    score?: number;
+    average?: number;
+    responseCount?: number;
+    promoters?: number;
+    passives?: number;
+    detractors?: number;
+  };
+}
+
 interface ExecutiveMetrics {
   mrr: number;
   activeOrganizations: number;
@@ -47,6 +84,35 @@ interface ExecutiveMetrics {
   };
 }
 
+function normalizeMetrics(raw: ExecutiveMetricsRaw): ExecutiveMetrics {
+  const totalOrgs = raw.totalOrganizations ?? raw.totalOrgs ?? 0;
+  const activeOrgs = raw.activeOrganizations ?? raw.activeOrgs ?? 0;
+  const arpu = raw.arpu ?? (activeOrgs > 0 ? (raw.mrr ?? 0) / activeOrgs : 0);
+  return {
+    mrr: raw.mrr ?? 0,
+    activeOrganizations: activeOrgs,
+    totalOrganizations: totalOrgs,
+    newOrgsLast30Days: raw.newOrgsLast30Days ?? raw.newOrgsLast30 ?? 0,
+    churnRate: raw.churnRate ?? 0,
+    churnedOrgsLast30Days: raw.churnedOrgsLast30Days ?? 0,
+    arpu,
+    tierBreakdown: raw.tierBreakdown ?? {},
+    platformUsage: {
+      totalLeads: raw.platformUsage?.totalLeads ?? raw.totalLeads ?? 0,
+      totalProperties: raw.platformUsage?.totalProperties ?? raw.totalProperties ?? 0,
+      totalDeals: raw.platformUsage?.totalDeals ?? raw.totalDeals ?? 0,
+    },
+    nps: {
+      score: raw.nps?.score ?? 0,
+      average: raw.nps?.average ?? 0,
+      responseCount: raw.nps?.responseCount ?? 0,
+      promoters: raw.nps?.promoters ?? 0,
+      passives: raw.nps?.passives ?? 0,
+      detractors: raw.nps?.detractors ?? 0,
+    },
+  };
+}
+
 function useExecutiveDashboard() {
   return useQuery<ExecutiveMetrics>({
     queryKey: ["/api/founder/executive-dashboard"],
@@ -55,7 +121,8 @@ function useExecutiveDashboard() {
         credentials: "include",
       });
       if (!res.ok) throw new Error("Failed to fetch executive dashboard");
-      return res.json();
+      const raw = (await res.json()) as ExecutiveMetricsRaw;
+      return normalizeMetrics(raw);
     },
     staleTime: 1000 * 60 * 2,
   });

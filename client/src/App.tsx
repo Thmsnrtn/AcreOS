@@ -507,7 +507,7 @@ function Router() {
         {() => <FlaggedRoute route="/document-intelligence" component={DocumentIntelligencePage} />}
       </Route>
       <Route path="/admin/beta">
-        {() => <FounderProtectedRoute component={React.lazy(() => import("@/pages/beta-dashboard"))} />}
+        {() => <FounderProtectedRoute component={BetaDashboardPage} />}
       </Route>
       <Route path="/admin/safety-gates">
         {() => <FounderProtectedRoute component={SafetyGatesPage} />}
