@@ -60,7 +60,7 @@ const CHECKLIST_ITEMS: Omit<ChecklistItem, "statusKey">[] = [
     title: "Record a note payment",
     description: "Log a payment on a seller-financed note",
     icon: Banknote,
-    href: "/notes",
+    href: "/finance",
   },
 ];
 

@@ -129,7 +129,35 @@ function readCsrfToken(): string {
 
 const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
-export async function apiRequest(
+// On 401 to an authenticated /api endpoint, proactively touch the Clerk
+// session to refresh the __session JWT, then let the caller retry once.
+// Cycle 3 r1 showed that the 45s keep-alive interval could race against
+// the 60s+30s JWT validity window — an in-flight fetch could arrive
+// after the cookie expired but before the next scheduled touch. This
+// helper closes that race without changing user-visible behavior.
+async function refreshSessionCookie(): Promise<void> {
+  try {
+    const m = document.cookie.match(/__session=([^;]+)/);
+    const jwt = m?.[1];
+    if (!jwt) return;
+    const payload = JSON.parse(atob(jwt.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+    const sid = payload?.sid;
+    if (!sid) return;
+    await fetch(
+      `/__clerk/v1/client/sessions/${sid}/touch?__clerk_api_version=2025-11-10&_clerk_js_version=6.7.4`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: "active_organization_id=",
+        credentials: "include",
+      }
+    );
+  } catch {
+    // best effort
+  }
+}
+
+async function doApiFetch(
   method: string,
   url: string,
   data?: unknown | undefined,
@@ -144,12 +172,32 @@ export async function apiRequest(
     const csrf = readCsrfToken();
     if (csrf) headers["x-csrf-token"] = csrf;
   }
-  const res = await fetch(url, {
+  return fetch(url, {
     method,
     headers,
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
   });
+}
+
+export async function apiRequest(
+  method: string,
+  url: string,
+  data?: unknown | undefined,
+): Promise<Response> {
+  let res = await doApiFetch(method, url, data);
+
+  // Transparent 401 recovery for /api/* endpoints: refresh the Clerk
+  // __session cookie and retry once. Skip for non-/api paths and for
+  // the auth endpoints themselves (to avoid loops).
+  if (
+    res.status === 401 &&
+    url.startsWith("/api/") &&
+    !url.startsWith("/api/auth/")
+  ) {
+    await refreshSessionCookie();
+    res = await doApiFetch(method, url, data);
+  }
 
   await throwIfResNotOk(res);
   return res;
@@ -161,9 +209,19 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
-    const res = await fetch(queryKey.join("/") as string, {
-      credentials: "include",
-    });
+    const url = queryKey.join("/") as string;
+    let res = await fetch(url, { credentials: "include" });
+
+    // Same 401 recovery as apiRequest: refresh Clerk session cookie,
+    // retry once. See apiRequest for rationale.
+    if (
+      res.status === 401 &&
+      url.startsWith("/api/") &&
+      !url.startsWith("/api/auth/")
+    ) {
+      await refreshSessionCookie();
+      res = await fetch(url, { credentials: "include" });
+    }
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {
       return null;

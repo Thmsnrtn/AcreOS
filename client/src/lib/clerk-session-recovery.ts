@@ -150,9 +150,15 @@ export function installClerkSessionRecovery(): void {
       // best effort; next tick will retry
     }
   };
-  // Fire once ~5s after boot to kick a fresh JWT, then every 45s.
-  setTimeout(() => void touchSession(), 5_000);
-  setInterval(() => void touchSession(), 45_000);
+  // Fire once ~1s after boot to kick a fresh JWT, then every 30s.
+  // Cycle 3 r1 observed /api/properties/:id/analyze 401 at t≈95s despite
+  // the prior 45s interval — gap between touches combined with the 60s
+  // JWT TTL + 30s server grace meant the effective max cookie age could
+  // exceed the grace window. Tightening to 30s keeps max cookie age
+  // comfortably inside the 60s TTL, so authenticated fetches never race
+  // an expired JWT.
+  setTimeout(() => void touchSession(), 1_000);
+  setInterval(() => void touchSession(), 30_000);
 
   // STR-011: SPA route changes are the trigger we actually care about.
   // The History API doesn't fire events by default, so we hook pushState
