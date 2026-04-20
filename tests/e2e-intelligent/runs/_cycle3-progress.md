@@ -5,9 +5,9 @@ Model: opus-4-7 high effort
 
 ## Phase Tracking
 - [x] Phase 1 — Context + canonical URL resolution
-- [ ] Phase 2 — Fix STR-011 (Clerk sessions hydration)
-- [ ] Phase 3 — Fix STR-026 (fly.dev redirect / domain)
-- [ ] Phase 4 — Deploy + client-auth smoke test
+- [x] Phase 2 — Fix STR-011 (Clerk sessions hydration) — uses `__internal_reloadInitialResources`
+- [x] Phase 3 — Fix STR-026 (fly.dev → acreos.io 301 at edge)
+- [~] Phase 4 — Deploy + client-auth smoke test (AWAITING DEPLOY CREDENTIALS)
 - [ ] Phase 5 — Cycle 3 re-run initialization
 - [ ] Phase 6 — Re-run execution (8 personas, v3)
 - [ ] Phase 7 — Comparison report (cycles 1 → 2 → 3)
