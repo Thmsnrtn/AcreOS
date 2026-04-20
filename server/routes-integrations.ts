@@ -1678,7 +1678,7 @@ export function registerIntegrationRoutes(app: Express): void {
   });
 
   // PUT /api/webhooks — save/replace all webhook endpoints for org
-  api.put("/api/webhooks", isAuthenticated, getOrCreateOrg, requireAdminOrAbove, async (req, res) => {
+  api.put("/api/webhooks", isAuthenticated, getOrCreateOrg, requireAdminOrAbove(), async (req, res) => {
     try {
       const org = req.organization;
       const { endpoints } = req.body;

@@ -1096,7 +1096,7 @@ export function registerOrganizationRoutes(app: Express): void {
   }
 
   // GET /api/organization/invitations — list pending invites
-  api.get("/api/organization/invitations", isAuthenticated, getOrCreateOrg, requireAdminOrAbove, async (req, res) => {
+  api.get("/api/organization/invitations", isAuthenticated, getOrCreateOrg, requireAdminOrAbove(), async (req, res) => {
     try {
       const org = (req as AuthenticatedRequest).organization;
       if (!org) return Errors.unauthorized(res);
@@ -1113,7 +1113,7 @@ export function registerOrganizationRoutes(app: Express): void {
   });
 
   // POST /api/organization/invitations — create one or many invites
-  api.post("/api/organization/invitations", isAuthenticated, getOrCreateOrg, requireAdminOrAbove, async (req, res) => {
+  api.post("/api/organization/invitations", isAuthenticated, getOrCreateOrg, requireAdminOrAbove(), async (req, res) => {
     try {
       const org = (req as AuthenticatedRequest).organization;
       if (!org) return Errors.unauthorized(res);
@@ -1184,7 +1184,7 @@ export function registerOrganizationRoutes(app: Express): void {
   });
 
   // DELETE /api/organization/invitations/:id — revoke a pending invite
-  api.delete("/api/organization/invitations/:id", isAuthenticated, getOrCreateOrg, requireAdminOrAbove, async (req, res) => {
+  api.delete("/api/organization/invitations/:id", isAuthenticated, getOrCreateOrg, requireAdminOrAbove(), async (req, res) => {
     try {
       const org = (req as AuthenticatedRequest).organization;
       if (!org) return Errors.unauthorized(res);
@@ -1320,7 +1320,7 @@ export function registerOrganizationRoutes(app: Express): void {
   // -----------------------------------------------------------------------
 
   // GET /api/commissions/config — get tier configuration
-  api.get("/api/commissions/config", isAuthenticated, getOrCreateOrg, requireAdminOrAbove, async (req, res) => {
+  api.get("/api/commissions/config", isAuthenticated, getOrCreateOrg, requireAdminOrAbove(), async (req, res) => {
     try {
       const config = await getCommissionConfig(req.organization.id);
       res.json(config);
@@ -1339,7 +1339,7 @@ export function registerOrganizationRoutes(app: Express): void {
     defaultRate: z.number().min(0).max(100).optional(),
   }).passthrough();
 
-  api.put("/api/commissions/config", isAuthenticated, getOrCreateOrg, requireAdminOrAbove, async (req, res) => {
+  api.put("/api/commissions/config", isAuthenticated, getOrCreateOrg, requireAdminOrAbove(), async (req, res) => {
     try {
       const parsed = commissionConfigSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -1353,7 +1353,7 @@ export function registerOrganizationRoutes(app: Express): void {
   });
 
   // GET /api/commissions/summaries — YTD summary per agent
-  api.get("/api/commissions/summaries", isAuthenticated, getOrCreateOrg, requireAdminOrAbove, async (req, res) => {
+  api.get("/api/commissions/summaries", isAuthenticated, getOrCreateOrg, requireAdminOrAbove(), async (req, res) => {
     try {
       const year = parseInt(req.query.year as string) || new Date().getFullYear();
       const summaries = await getAgentCommissionSummaries(req.organization.id, year);
@@ -1364,7 +1364,7 @@ export function registerOrganizationRoutes(app: Express): void {
   });
 
   // GET /api/commissions — list records, optional filters
-  api.get("/api/commissions", isAuthenticated, getOrCreateOrg, requireAdminOrAbove, async (req, res) => {
+  api.get("/api/commissions", isAuthenticated, getOrCreateOrg, requireAdminOrAbove(), async (req, res) => {
     try {
       const { teamMemberId, dealId, status, fromDate, toDate } = req.query;
       const records = await getCommissionRecords(req.organization.id, {
@@ -1388,7 +1388,7 @@ export function registerOrganizationRoutes(app: Express): void {
     closedAt: z.string().optional(),
   });
 
-  api.post("/api/commissions", isAuthenticated, getOrCreateOrg, requireAdminOrAbove, async (req, res) => {
+  api.post("/api/commissions", isAuthenticated, getOrCreateOrg, requireAdminOrAbove(), async (req, res) => {
     try {
       const parsed = recordCommissionSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -1413,7 +1413,7 @@ export function registerOrganizationRoutes(app: Express): void {
     paidCents: z.number().int().positive("paidCents must be a positive number"),
   });
 
-  api.post("/api/commissions/:id/pay", isAuthenticated, getOrCreateOrg, requireAdminOrAbove, async (req, res) => {
+  api.post("/api/commissions/:id/pay", isAuthenticated, getOrCreateOrg, requireAdminOrAbove(), async (req, res) => {
     try {
       const parsed = commissionPaymentSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -1432,7 +1432,7 @@ export function registerOrganizationRoutes(app: Express): void {
   });
 
   // GET /api/commissions/statement/:teamMemberId — download plain-text statement
-  api.get("/api/commissions/statement/:teamMemberId", isAuthenticated, getOrCreateOrg, requireAdminOrAbove, async (req, res) => {
+  api.get("/api/commissions/statement/:teamMemberId", isAuthenticated, getOrCreateOrg, requireAdminOrAbove(), async (req, res) => {
     try {
       const year = parseInt(req.query.year as string) || new Date().getFullYear();
       const summaries = await getAgentCommissionSummaries(req.organization.id, year);
