@@ -115,6 +115,45 @@ export function installClerkSessionRecovery(): void {
   };
   void tick();
 
+  // STR-011 keep-alive: the Clerk __session JWT has a 60-second TTL.
+  // Clerk-JS is supposed to call /v1/client/sessions/{sid}/touch on its
+  // own to refresh. In our proxy config Clerk-JS client state never
+  // hydrates (see _cycle3-smoke-status.md), so nothing ever touches, and
+  // after ~60s every /api/auth/user (and all authenticated API calls)
+  // returns 401. Polling touch every 45s keeps the cookie fresh.
+  //
+  // Session id is extracted from the __session JWT's sid claim — the
+  // cookie is not HttpOnly in our proxy setup (we saw it in document.cookie)
+  // so we can read it client-side.
+  const parseSessionId = (): string | null => {
+    const m = document.cookie.match(/__session=([^;]+)/);
+    const jwt = m?.[1];
+    if (!jwt) return null;
+    try {
+      const payload = JSON.parse(atob(jwt.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+      return payload?.sid ?? null;
+    } catch {
+      return null;
+    }
+  };
+  const touchSession = async (): Promise<void> => {
+    const sid = parseSessionId();
+    if (!sid) return;
+    try {
+      await fetch(`/__clerk/v1/client/sessions/${sid}/touch?__clerk_api_version=2025-11-10&_clerk_js_version=6.7.4`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: "active_organization_id=",
+        credentials: "include",
+      });
+    } catch {
+      // best effort; next tick will retry
+    }
+  };
+  // Fire once ~5s after boot to kick a fresh JWT, then every 45s.
+  setTimeout(() => void touchSession(), 5_000);
+  setInterval(() => void touchSession(), 45_000);
+
   // STR-011: SPA route changes are the trigger we actually care about.
   // The History API doesn't fire events by default, so we hook pushState
   // / replaceState and popstate and run a recovery sweep on each change.
