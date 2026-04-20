@@ -656,17 +656,27 @@ class LandCreditScoring {
     organizationId: string,
     propertyId: string
   ): Promise<any[]> {
+    // Schema: land_credit_scores has propertyId (integer) but no organizationId.
+    // Org scoping is enforced by verifying the property belongs to this org
+    // before querying score history. Invalid / non-numeric propertyId returns
+    // empty — no throw — so the UI can render an empty state.
+    const propId = Number(propertyId);
+    if (!Number.isFinite(propId)) return [];
     try {
+      const [prop] = await db
+        .select({ id: properties.id, orgId: properties.organizationId })
+        .from(properties)
+        .where(eq(properties.id, propId))
+        .limit(1);
+      if (!prop || String(prop.orgId) !== String(organizationId)) return [];
+
       return await db.query.landCreditScores.findMany({
-        where: and(
-          eq(landCreditScores.organizationId, organizationId),
-          eq(landCreditScores.propertyId, propertyId)
-        ),
+        where: eq(landCreditScores.propertyId, propId),
         orderBy: [desc(landCreditScores.createdAt)],
       });
     } catch (error) {
       logger.error('Failed to get score history', error);
-      throw error;
+      return [];
     }
   }
 

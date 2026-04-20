@@ -27,6 +27,8 @@ export function PaxContextButton({
         <button
           type="button"
           data-testid={`pax-ctx-${entityType}-${entityId}`}
+          aria-label={`Ask Pax about this ${entityType}`}
+          title={`Ask Pax about this ${entityType}`}
           className={cn(
             "inline-flex items-center justify-center",
             "w-6 h-6 rounded-md",

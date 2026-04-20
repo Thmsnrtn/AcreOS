@@ -304,9 +304,22 @@ export function PropertyAnalysisChat({ property, open, onOpenChange }: PropertyA
 
       setMessages(prev => [...prev, assistantMessage]);
     } catch (error: any) {
+      // Surface the failure inline in the conversation so a silent
+      // Atlas failure never looks like "still loading." The toast is
+      // still shown for global visibility; the inline message ensures
+      // a user who missed the toast knows exactly which turn failed.
+      const errMsg = String(error?.message || "Failed to analyze property");
+      setMessages(prev => [
+        ...prev,
+        {
+          role: "assistant",
+          content: `⚠️ Analysis failed: ${errMsg}. Please retry or ask a more specific question.`,
+          timestamp: new Date(),
+        },
+      ]);
       toast({
-        title: "Error",
-        description: error.message || "Failed to analyze property",
+        title: "Analysis failed",
+        description: errMsg,
         variant: "destructive",
       });
     } finally {

@@ -1233,9 +1233,16 @@ export default function TodayPage() {
           />
           <StatCard
             title="Properties"
-            value={statsLoading ? "-" : stats?.activeProperties ?? properties.length}
+            value={statsLoading ? "-" : properties.length}
             icon={Map}
-            trend={`${properties.filter((p) => p.status === "owned").length} owned`}
+            trend={(() => {
+              const owned = properties.filter((p) => p.status === "owned").length;
+              const prospects = properties.filter((p) => p.status === "prospect").length;
+              if (owned > 0 && prospects > 0) return `${owned} owned · ${prospects} prospect`;
+              if (owned > 0) return `${owned} owned`;
+              if (prospects > 0) return `${prospects} prospect`;
+              return "none";
+            })()}
             color="sage"
             data-testid="stat-properties"
           />
