@@ -45,6 +45,7 @@ import { PaxTasksSettingsTab } from "@/components/pax-tasks-settings-tab";
 import { ProviderSettings } from "@/components/provider-settings";
 import { AICostDashboard } from "@/components/ai-cost-dashboard";
 import { ByokSettings } from "@/components/settings/ByokSettings";
+import { TeamInviteCard } from "@/components/settings/TeamInviteCard";
 import { ThemeSettings } from "@/components/theme-settings";
 import { PlanComparisonModal, type TierKey } from "@/components/tier-upgrade-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -1245,6 +1246,7 @@ export default function Settings() {
             </TabsContent>
 
             <TabsContent value="team" className="space-y-8 mt-6" data-testid="tab-content-team">
+              <TeamInviteCard />
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">

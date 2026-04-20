@@ -124,6 +124,22 @@ export const teamMembers = pgTable("team_members", {
   joinedAt: timestamp("joined_at"),
 });
 
+// Pending seat invitations — email-addressed invites that attach the user
+// to this org on first sign-in after they click the invite link.
+export const organizationInvitations = pgTable("organization_invitations", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  email: text("email").notNull(),
+  role: text("role").notNull().default("member"), // owner, admin, member, viewer, acquisitions, marketing, finance
+  token: text("token").notNull().unique(), // opaque token included in the invite link
+  invitedByUserId: text("invited_by_user_id"),
+  status: text("status").notNull().default("pending"), // pending, accepted, revoked, expired
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  acceptedAt: timestamp("accepted_at"),
+  acceptedByUserId: text("accepted_by_user_id"),
+});
+
 // ============================================
 // VERIFIED SENDERS (Email & SMS)
 // ============================================

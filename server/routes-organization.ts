@@ -1073,6 +1073,190 @@ export function registerOrganizationRoutes(app: Express): void {
     }
   });
 
+  // ── Seat Invitations ──────────────────────────────────────────────────────
+  // Owner/admin can invite an email to join the org. Invitee gets a token
+  // link; on first sign-in with that token query param, they're attached
+  // as a team member with the assigned role.
+
+  const createInvitationSchema = z.object({
+    email: z.string().email(),
+    role: z.enum(["admin", "member", "viewer", "acquisitions", "marketing", "finance"]).default("member"),
+  });
+
+  const bulkInvitationSchema = z.object({
+    invites: z.array(createInvitationSchema).min(1).max(200),
+  });
+
+  // Helper: generate a short, URL-safe token
+  function generateInviteToken(): string {
+    const bytes = new Uint8Array(24);
+    // Node 18+ globalThis.crypto
+    globalThis.crypto.getRandomValues(bytes);
+    return Buffer.from(bytes).toString("base64url");
+  }
+
+  // GET /api/organization/invitations — list pending invites
+  api.get("/api/organization/invitations", isAuthenticated, getOrCreateOrg, requireAdminOrAbove, async (req, res) => {
+    try {
+      const org = (req as AuthenticatedRequest).organization;
+      if (!org) return Errors.unauthorized(res);
+      const { organizationInvitations } = await import("@shared/schema");
+      const rows = await db
+        .select()
+        .from(organizationInvitations)
+        .where(eq(organizationInvitations.organizationId, org.id))
+        .orderBy(desc(organizationInvitations.createdAt));
+      res.json({ invitations: rows });
+    } catch (err) {
+      Errors.internal(res, err);
+    }
+  });
+
+  // POST /api/organization/invitations — create one or many invites
+  api.post("/api/organization/invitations", isAuthenticated, getOrCreateOrg, requireAdminOrAbove, async (req, res) => {
+    try {
+      const org = (req as AuthenticatedRequest).organization;
+      if (!org) return Errors.unauthorized(res);
+      const user = (req as any).user;
+      const inviterId = user?.claims?.sub || user?.id || null;
+      // Accept either a single invite or { invites: [...] } for bulk.
+      const bulkParsed = bulkInvitationSchema.safeParse(req.body);
+      const singleParsed = createInvitationSchema.safeParse(req.body);
+      let invites: Array<{ email: string; role: string }>;
+      if (bulkParsed.success) {
+        invites = bulkParsed.data.invites;
+      } else if (singleParsed.success) {
+        invites = [singleParsed.data];
+      } else {
+        return Errors.validationFailed(res, (bulkParsed.error ?? singleParsed.error).errors);
+      }
+      const { organizationInvitations } = await import("@shared/schema");
+      const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000); // 14 days
+      const rows = await db
+        .insert(organizationInvitations)
+        .values(
+          invites.map((i) => ({
+            organizationId: org.id,
+            email: i.email.toLowerCase(),
+            role: i.role,
+            token: generateInviteToken(),
+            invitedByUserId: inviterId,
+            status: "pending",
+            expiresAt,
+          }))
+        )
+        .returning();
+
+      // Non-fatal: log activity so Dolores's audit-log export captures each invite.
+      try {
+        for (const row of rows) {
+          await storage.createAuditLogEntry({
+            organizationId: org.id,
+            userId: inviterId,
+            action: "create",
+            entityType: "organization_invitation",
+            entityId: row.id,
+            changes: { after: { email: row.email, role: row.role }, fields: ["email", "role"] },
+            ipAddress: req.ip || null,
+            userAgent: req.headers["user-agent"] || null,
+            metadata: { token: row.token },
+          });
+        }
+      } catch { /* non-fatal */ }
+
+      // TODO: send actual invitation emails (SendGrid). For now, the link is
+      // surfaced in the response so an operator UI can copy/share it.
+      const origin = (req.headers.origin as string) || `https://${req.headers.host}`;
+      res.status(201).json({
+        created: rows.length,
+        invitations: rows.map((r) => ({
+          id: r.id,
+          email: r.email,
+          role: r.role,
+          token: r.token,
+          expiresAt: r.expiresAt,
+          link: `${origin}/auth?invite=${r.token}`,
+        })),
+      });
+    } catch (err) {
+      Errors.internal(res, err);
+    }
+  });
+
+  // DELETE /api/organization/invitations/:id — revoke a pending invite
+  api.delete("/api/organization/invitations/:id", isAuthenticated, getOrCreateOrg, requireAdminOrAbove, async (req, res) => {
+    try {
+      const org = (req as AuthenticatedRequest).organization;
+      if (!org) return Errors.unauthorized(res);
+      const id = Number.parseInt(req.params.id, 10);
+      if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid invitation id");
+      const { organizationInvitations } = await import("@shared/schema");
+      const [updated] = await db
+        .update(organizationInvitations)
+        .set({ status: "revoked" })
+        .where(and(eq(organizationInvitations.id, id), eq(organizationInvitations.organizationId, org.id)))
+        .returning();
+      if (!updated) return Errors.notFound(res, "Invitation");
+      res.json({ ok: true, id });
+    } catch (err) {
+      Errors.internal(res, err);
+    }
+  });
+
+  // POST /api/organization/invitations/accept — called by a signed-in user
+  // after landing on /auth?invite=<token>. Attaches them to the inviting org.
+  api.post("/api/organization/invitations/accept", isAuthenticated, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const userId = user?.claims?.sub || user?.id;
+      const userEmail = (user?.claims?.email || user?.email || "").toLowerCase();
+      const parsed = z.object({ token: z.string().min(1) }).safeParse(req.body);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.errors);
+      const { organizationInvitations, teamMembers } = await import("@shared/schema");
+      const [invite] = await db
+        .select()
+        .from(organizationInvitations)
+        .where(eq(organizationInvitations.token, parsed.data.token))
+        .limit(1);
+      if (!invite) return Errors.notFound(res, "Invitation");
+      if (invite.status !== "pending") return Errors.badRequest(res, `Invitation is ${invite.status}`);
+      if (invite.expiresAt < new Date()) {
+        await db.update(organizationInvitations).set({ status: "expired" }).where(eq(organizationInvitations.id, invite.id));
+        return Errors.badRequest(res, "Invitation has expired");
+      }
+      if (userEmail && invite.email.toLowerCase() !== userEmail) {
+        return Errors.forbidden(res, "Invitation email does not match the signed-in account");
+      }
+
+      // Attach user as team member (idempotent: skip if already present).
+      const existing = await db
+        .select()
+        .from(teamMembers)
+        .where(and(eq(teamMembers.organizationId, invite.organizationId), eq(teamMembers.userId, userId)))
+        .limit(1);
+      if (existing.length === 0) {
+        await db.insert(teamMembers).values({
+          organizationId: invite.organizationId,
+          userId,
+          email: userEmail || null,
+          displayName: user?.firstName || user?.email || null,
+          role: invite.role,
+          isActive: true,
+          joinedAt: new Date(),
+        });
+      }
+
+      await db
+        .update(organizationInvitations)
+        .set({ status: "accepted", acceptedAt: new Date(), acceptedByUserId: userId })
+        .where(eq(organizationInvitations.id, invite.id));
+
+      res.json({ ok: true, organizationId: invite.organizationId, role: invite.role });
+    } catch (err) {
+      Errors.internal(res, err);
+    }
+  });
+
   // ── Web Push subscriptions ────────────────────────────────────────────────
   // VAPID public key — returned to browser to create a PushSubscription
   api.get("/api/push/vapid-public-key", isAuthenticated, (_req, res) => {

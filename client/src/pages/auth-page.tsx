@@ -1,8 +1,9 @@
 import { SignIn, SignUp } from "@clerk/react";
 import { Link, Redirect } from "wouter";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { ArrowLeft } from "lucide-react";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 export default function AuthPage() {
   const { user, isLoading } = useAuth();
@@ -10,11 +11,33 @@ export default function AuthPage() {
   const [mode, setMode] = useState<"sign-in" | "sign-up">(
     params.get("mode") === "register" ? "sign-up" : "sign-in"
   );
+  const inviteToken = params.get("invite");
+  const inviteAcceptedRef = useRef(false);
 
   // Don't redirect while Clerk is processing an SSO callback —
   // premature redirect unmounts <SignIn> and kills the OAuth flow
   const isHandlingCallback = window.location.hash.includes("sso-callback") ||
                              window.location.hash.includes("verify");
+
+  // Invite-accept flow: if the user arrived with ?invite=<token> and they're
+  // now signed in, attach them to the inviting org before the redirect to
+  // /today. Runs once per page-load.
+  useEffect(() => {
+    if (!user || !inviteToken || inviteAcceptedRef.current) return;
+    inviteAcceptedRef.current = true;
+    (async () => {
+      try {
+        await apiRequest("POST", "/api/organization/invitations/accept", {
+          token: inviteToken,
+        });
+        queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/organization"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/organization/members"] });
+      } catch {
+        /* non-fatal — user is still signed in; invite link may have expired */
+      }
+    })();
+  }, [user, inviteToken]);
 
   // Option B: server-backed auth is the truth. If /api/auth/user came
   // back with a user, we're signed in — send to dashboard.

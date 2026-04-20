@@ -355,6 +355,38 @@ app.use("/api", apiLimiter);
       log(`DB migration warning: ${err.message}`, "db");
       // Non-fatal — server continues even if migration check fails
     }
+
+    // Cycle 12 bootstrap: organization_invitations table. The drizzle
+    // migration runner only applies files tracked in meta/_journal.json,
+    // and the manual SQL migrations in this repo skip that journal. Do
+    // an idempotent CREATE TABLE here so the invite endpoints work on
+    // first deploy regardless of which migration path was used.
+    try {
+      const { pool } = await import("./db");
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS "organization_invitations" (
+          "id" serial PRIMARY KEY,
+          "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+          "email" text NOT NULL,
+          "role" text NOT NULL DEFAULT 'member',
+          "token" text NOT NULL UNIQUE,
+          "invited_by_user_id" text,
+          "status" text NOT NULL DEFAULT 'pending',
+          "created_at" timestamp DEFAULT now() NOT NULL,
+          "expires_at" timestamp NOT NULL,
+          "accepted_at" timestamp,
+          "accepted_by_user_id" text
+        );
+        CREATE INDEX IF NOT EXISTS "idx_org_invitations_org_id"
+          ON "organization_invitations" ("organization_id");
+        CREATE INDEX IF NOT EXISTS "idx_org_invitations_email_status"
+          ON "organization_invitations" ("email", "status");
+        CREATE INDEX IF NOT EXISTS "idx_org_invitations_token"
+          ON "organization_invitations" ("token");
+      `);
+    } catch (err: any) {
+      log(`organization_invitations bootstrap: ${err.message}`, "db");
+    }
   }
 
   await initStripe();
