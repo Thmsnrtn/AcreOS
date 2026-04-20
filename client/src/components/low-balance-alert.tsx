@@ -43,7 +43,13 @@ export function LowBalanceAlert() {
   });
 
   const balance = balanceData?.balance ?? 0;
-  const isLowBalance = balance < LOW_BALANCE_THRESHOLD;
+  // r4 Wyatt: a brand-new org that has never topped up shows "Low credit
+  // balance: $0.00" on first page load, which reads as a failure rather
+  // than "you haven't bought credits yet." Suppress the alert when
+  // balance is exactly 0 — the paid-feature gates elsewhere already
+  // prompt for credits on first use. Show the alert only when balance
+  // is positive but below threshold (i.e., credits have been used down).
+  const isLowBalance = balance > 0 && balance < LOW_BALANCE_THRESHOLD;
   const isFounder = organization?.isFounder ?? false;
 
   // Never show low balance warning for founders - they have unlimited credits

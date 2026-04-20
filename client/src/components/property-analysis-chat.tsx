@@ -234,7 +234,12 @@ function buildQuickAnalysisPrompt(property: Property): string {
     `Give a clear buy/hold/pass recommendation with reasoning. Rate confidence level.`,
     ``,
     `## Suggested Offer Range`,
-    `Provide a low, target, and high offer price with reasoning for each.`,
+    `This is RAW LAND, not residential. Anchor the offer range to land-investing norms, NOT retail home pricing:`,
+    `- Cash acquisition: low = 20% of FMV, target = 25–30% of FMV, high = 40% of FMV. Show the math.`,
+    `- Seller-finance / terms: 100–150% of FMV with 10–30% down and 8–12% interest on 60–120 months.`,
+    `- If FMV is unknown or the market value is $0 / absent, say so explicitly; do not invent numbers.`,
+    `- For Arizona parcels, remember assessed value is 16% of Full Cash Value — never use assessed as market.`,
+    `- If legal access / zoning / flood zone is unknown, state that clearly and reduce confidence.`,
   ];
   return parts.filter(p => p !== null).join("\n");
 }

@@ -1006,7 +1006,14 @@ function PropertyCard({ property, onDelete }: {
           </div>
           <div className="flex items-center gap-1.5 text-muted-foreground">
             <DollarSign className="w-3.5 h-3.5" />
-            <span>${Number(property.marketValue || 0).toLocaleString()}</span>
+            {/* r5 Eleanor: "$0" on a property card reads ambiguously
+                (free? missing? broken?) for a low-tech-comfort persona.
+                Show "—" when the value is unset, actual dollars when known. */}
+            <span>
+              {property.marketValue && Number(property.marketValue) > 0
+                ? `$${Number(property.marketValue).toLocaleString()}`
+                : <span title="No market value on file yet">—</span>}
+            </span>
           </div>
           {Number(property.marketValue) > 0 && Number(property.sizeAcres) > 0 && (
             <div className="flex items-center gap-1.5 col-span-2 pt-1 border-t border-border/50">

@@ -179,6 +179,19 @@ export default function FinancePage() {
               <p className="text-muted-foreground">Manage promissory notes and track payments.</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              {/* r8 James: the borrower portal at /portal was advertised
+                  in the product model but had no discoverable nav
+                  entry. Surface a direct link from /finance. */}
+              <Button
+                variant="outline"
+                asChild
+                data-testid="button-open-borrower-portal"
+                title="Preview the borrower-facing portal where buyers view balances and make payments"
+              >
+                <a href="/portal" target="_blank" rel="noopener noreferrer">
+                  Borrower Portal
+                </a>
+              </Button>
               <Button
                 variant="outline"
                 onClick={handleExport}
