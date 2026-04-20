@@ -7,7 +7,7 @@ Model: opus-4-7 high effort
 - [x] Phase 1 — Context + canonical URL resolution
 - [x] Phase 2 — Fix STR-011 (Clerk sessions hydration) — uses `__internal_reloadInitialResources`
 - [x] Phase 3 — Fix STR-026 (fly.dev → acreos.io 301 at edge)
-- [~] Phase 4 — Deploy + client-auth smoke test (AWAITING DEPLOY CREDENTIALS)
+- [!] Phase 4 — Deploy + client-auth smoke test — **FAILED**. fly.dev→io redirect + proxy-cache bug both FIXED. STR-011 persists: GET /v1/client returns empty sessions though session is valid. Requires operator decision (see `_cycle3-smoke-status.md` options A-D).
 - [ ] Phase 5 — Cycle 3 re-run initialization
 - [ ] Phase 6 — Re-run execution (8 personas, v3)
 - [ ] Phase 7 — Comparison report (cycles 1 → 2 → 3)
