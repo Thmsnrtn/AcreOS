@@ -219,6 +219,8 @@ const DunningManagerPage = React.lazy(() => import("@/pages/dunning-manager"));
 const FreedomMeterPage = React.lazy(() => import("@/pages/freedom-meter"));
 const BlindOfferWizardPage = React.lazy(() => import("@/pages/blind-offer-wizard"));
 const EveningReviewPage = React.lazy(() => import("@/pages/night-cap"));
+const StatusPage = React.lazy(() => import("@/pages/status"));
+const ChangelogPage = React.lazy(() => import("@/pages/changelog"));
 
 // ─── Page loading fallback ──────────────────────────────────────────────────
 function PageLoader() {
@@ -317,8 +319,8 @@ function Router() {
         {/* Competitor comparison pages (public, SEO-targeted) */}
 
       <Route path="/pricing" component={PricingPage} />
-      <Route path="/status">{() => { const C = React.lazy(() => import("@/pages/status")); return <React.Suspense fallback={<PageLoader />}><C /></React.Suspense>; }}</Route>
-      <Route path="/changelog">{() => { const C = React.lazy(() => import("@/pages/changelog")); return <React.Suspense fallback={<PageLoader />}><C /></React.Suspense>; }}</Route>
+      <Route path="/status" component={StatusPage} />
+      <Route path="/changelog" component={ChangelogPage} />
 
       {/* Public Borrower Portal */}
       <Route path="/portal" component={BorrowerPortal} />
