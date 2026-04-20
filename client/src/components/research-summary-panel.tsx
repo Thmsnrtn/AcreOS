@@ -270,28 +270,28 @@ export function ResearchSummaryPanel({ property }: ResearchSummaryPanelProps) {
         <div className="space-y-2">
           <Progress value={completenessWithComps} className="h-2" data-testid="progress-research-completeness" />
           <div className="flex flex-wrap gap-2 text-xs">
-            {Object.entries(checklist).map(([key, value]) => (
-              <div key={key} className="flex items-center gap-1" data-testid={`checklist-${key}`}>
-                {value ? (
-                  <CheckCircle2 className="w-3 h-3 text-green-500" />
-                ) : (
-                  <Circle className="w-3 h-3 text-muted-foreground" />
-                )}
-                <span className={value ? "text-foreground" : "text-muted-foreground"}>
-                  {key.replace(/^has/, "").replace(/([A-Z])/g, " $1").trim()}
-                </span>
-              </div>
-            ))}
-            <div className="flex items-center gap-1" data-testid="checklist-comps">
-              {compsData?.sampleSize ? (
-                <CheckCircle2 className="w-3 h-3 text-green-500" />
-              ) : (
-                <Circle className="w-3 h-3 text-muted-foreground" />
-              )}
-              <span className={compsData?.sampleSize ? "text-foreground" : "text-muted-foreground"}>
-                Comps Data
-              </span>
-            </div>
+            {/* r7 Ingrid caught a duplicate: checklist already includes
+                hasCompsData, AND there was a separate explicit "Comps
+                Data" entry below using live compsData.sampleSize. The
+                duplicate is removed; when compsData.sampleSize is known
+                it can override the checklist-derived value. */}
+            {Object.entries(checklist).map(([key, value]) => {
+              const label = key.replace(/^has/, "").replace(/([A-Z])/g, " $1").trim();
+              const isComps = key === "hasCompsData";
+              const effective = isComps ? (value || !!compsData?.sampleSize) : value;
+              return (
+                <div key={key} className="flex items-center gap-1" data-testid={`checklist-${key}`}>
+                  {effective ? (
+                    <CheckCircle2 className="w-3 h-3 text-green-500" />
+                  ) : (
+                    <Circle className="w-3 h-3 text-muted-foreground" />
+                  )}
+                  <span className={effective ? "text-foreground" : "text-muted-foreground"}>
+                    {label}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </div>
 

@@ -778,6 +778,7 @@ function PageWrapper({ children }: { children: React.ReactNode }) {
 function AppContent() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const [location] = useLocation();
   useSwipeNavigation();
   useWhiteLabel();
   useCursorGlass();
@@ -848,7 +849,11 @@ function AppContent() {
       {user && <OnboardingWizard />}
       {user && <BetaFeedbackWidget />}
       {user && <BetaActivationDetector />}
-      {user && <PaxCopilotRail />}
+      {/* Hide the global PaxCopilotRail on /ai because that page has
+          its own main-area chat UI ("AcreOS Assistant"). r3 Gabriel
+          caught the dual-chat-UI confusion (UX-R3-001). Elsewhere
+          the rail remains the primary conversational entry point. */}
+      {user && !location.startsWith("/ai") && <PaxCopilotRail />}
       {user && <DynamicIsland />}
       {user && <NotificationBanner />}
       {user && npsData?.shouldShow && npsData.trigger && (

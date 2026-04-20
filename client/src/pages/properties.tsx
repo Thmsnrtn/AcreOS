@@ -1305,6 +1305,7 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
   onOpenChange: (open: boolean) => void;
 }) {
   const [isAnalysisChatOpen, setIsAnalysisChatOpen] = useState(false);
+  const { toast } = useToast();
 
   const { data: freshProperty, isLoading: isLoadingProperty } = useQuery<Property>({
     queryKey: ['/api/properties', property.id],
@@ -1430,20 +1431,57 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
               <MapPin className="w-5 h-5 flex-shrink-0" />
               <span className="truncate">{currentProperty.address || `${currentProperty.county}, ${currentProperty.state}`}</span>
             </DialogTitle>
-            <Button
-              variant="default"
-              className="min-h-[44px] sm:min-h-8 w-full sm:w-auto"
-              onClick={() => setIsAnalysisChatOpen(true)}
-              data-testid="button-analyze-with-ai"
-            >
-              <Bot className="w-4 h-4 mr-2" />
-              Analyze with AI
-            </Button>
+            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+              {/* r7 Ingrid WF-R7-002: data-heavy personas need property-level
+                  export to move data into their own analysis environment
+                  (Jupyter, PostgreSQL, etc). Copy-JSON keeps zero infra cost. */}
+              <Button
+                variant="outline"
+                className="min-h-[44px] sm:min-h-8 w-full sm:w-auto"
+                onClick={() => {
+                  const json = JSON.stringify(currentProperty, null, 2);
+                  navigator.clipboard?.writeText(json).then(
+                    () => toast({ title: "Property JSON copied to clipboard" }),
+                    () => toast({ title: "Copy failed", description: "Clipboard permission denied", variant: "destructive" })
+                  );
+                }}
+                data-testid="button-copy-property-json"
+                aria-label="Copy property data as JSON"
+                title="Copy all property fields as JSON"
+              >
+                Copy JSON
+              </Button>
+              <Button
+                variant="default"
+                className="min-h-[44px] sm:min-h-8 w-full sm:w-auto"
+                onClick={() => setIsAnalysisChatOpen(true)}
+                data-testid="button-analyze-with-ai"
+              >
+                <Bot className="w-4 h-4 mr-2" />
+                Analyze with AI
+              </Button>
+            </div>
           </div>
           <DialogDescription className="flex items-center gap-2 sm:gap-4 flex-wrap text-xs sm:text-sm">
-            <span>APN: {currentProperty.apn}</span>
+            {/* r5 Eleanor WF-R5-002: glossary hints for abbreviations. APN
+                is inline-explained here; longer tooltips elsewhere. */}
+            <span title="Assessor Parcel Number — the county's unique identifier for this parcel">
+              APN: {currentProperty.apn}
+            </span>
             <span>{currentProperty.sizeAcres} Acres</span>
-            <Badge variant="outline" className="capitalize">{currentProperty.status.replace('_', ' ')}</Badge>
+            <Badge
+              variant="outline"
+              className="capitalize"
+              title={
+                currentProperty.status === "prospect"
+                  ? "Prospect: under consideration, not yet owned"
+                  : currentProperty.status === "owned"
+                  ? "Owned: in your portfolio"
+                  : String(currentProperty.status).replace("_", " ")
+              }
+            >
+              {currentProperty.status.replace('_', ' ')}
+            </Badge>
           </DialogDescription>
         </DialogHeader>
 
