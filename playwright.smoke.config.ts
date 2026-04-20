@@ -9,7 +9,7 @@ export default defineConfig({
   reporter: [["line"]],
   timeout: 30000,
   use: {
-    baseURL: process.env.SMOKE_URL || "https://acreos.fly.dev",
+    baseURL: process.env.SMOKE_URL || "https://acreos.io",
     trace: "off",
     screenshot: "off",
     video: "off",

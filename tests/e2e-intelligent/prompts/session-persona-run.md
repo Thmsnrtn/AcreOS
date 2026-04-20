@@ -3,7 +3,7 @@
 **Persona:** {{PERSONA_ID}}
 **Journey:** {{JOURNEY_ID}}
 **Run ID:** {{RUN_ID}}  (format: YYYY-MM-DD-personaslug-journeyslug)
-**AcreOS URL:** https://acreos.fly.dev
+**AcreOS URL:** https://acreos.io
 
 ---
 
@@ -46,7 +46,7 @@ Read each file fully. Do NOT skim. The rigor of this session depends on inhabiti
 
 ### Step 2: Launch Browser
 
-Use Playwright MCP `browser_navigate` to open `https://acreos.fly.dev`.
+Use Playwright MCP `browser_navigate` to open `https://acreos.io`.
 Use `browser_snapshot` to capture the initial accessibility tree.
 
 ### Step 3: Decision Loop

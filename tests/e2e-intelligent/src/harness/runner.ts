@@ -18,7 +18,7 @@ const HARNESS_ROOT = resolve(
 );
 const ARTIFACTS_DIR = join(HARNESS_ROOT, 'artifacts');
 const KNOWLEDGE_DIR = join(HARNESS_ROOT, 'knowledge');
-const BASE_URL = process.env.ACREOS_BASE_URL ?? 'https://acreos.fly.dev';
+const BASE_URL = process.env.ACREOS_BASE_URL ?? 'https://acreos.io';
 const MAX_STEPS_DEFAULT = parseInt(
   process.env.MAX_STEPS_PER_JOURNEY ?? '150',
   10,

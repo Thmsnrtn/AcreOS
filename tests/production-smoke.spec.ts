@@ -7,7 +7,7 @@
 
 import { test, expect, type Page } from "@playwright/test";
 
-const BASE = process.env.SMOKE_URL || "https://acreos.fly.dev";
+const BASE = process.env.SMOKE_URL || "https://acreos.io";
 
 // Every route from App.tsx, grouped by area
 const ALL_ROUTES = [
