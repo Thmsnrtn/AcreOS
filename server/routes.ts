@@ -1095,6 +1095,13 @@ export async function registerRoutes(
   app.use('/api/dunning', isAuthenticated, dunningRouter);
   app.use('/api/onboarding', isAuthenticated, getOrCreateOrg, onboardingRouter);
 
+  // Swagger UI + OpenAPI spec — no auth required so external integrators
+  // can consume the spec before signing up. Registered BEFORE the
+  // catch-all `app.use('/api', isAuthenticated, …, epicServicesRouter)`
+  // below; otherwise that middleware chain 401s the docs endpoint even
+  // though the router itself is open.
+  app.use('/api/docs', apiDocsRouter);
+
   // EPIC Services: Seller Motivation, County Opportunity, Title Chain, Investor Network, Financial OS, Developer API
   app.use('/api', isAuthenticated, getOrCreateOrg, epicServicesRouter);
 
@@ -1513,7 +1520,7 @@ export async function registerRoutes(
   app.use('/api/tax-optimization', isAuthenticated, getOrCreateOrg, taxOptimizationRouter);
   app.use('/api/deal-rooms', isAuthenticated, getOrCreateOrg, featureGate("feature_deal_rooms"), dealRoomsRouter);
   app.use('/api/data-api', dataApiRouter); // API key auth handled internally
-  app.use('/api/docs', apiDocsRouter); // Swagger UI — no auth required
+  // (/api/docs registered above, before the /api catch-all auth middleware)
 
   // ============================================
   // DOMAIN ROUTE MODULES
