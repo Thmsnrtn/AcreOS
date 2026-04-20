@@ -513,7 +513,17 @@ function Router() {
         {() => <FounderProtectedRoute component={SafetyGatesPage} />}
       </Route>
       <Route path="/admin/decisions">
-        {() => <FounderProtectedRoute component={DecisionQueuePage} />}
+        {/* Cycle 7 r8 Gabriel: autonomous-decision-review is a customer-
+            facing feature per acreos-product-model.md; opening this to
+            any authenticated user so non-founders can see the
+            Decisions Inbox for their own org. */}
+        {() => <ProtectedRoute component={DecisionQueuePage} />}
+      </Route>
+      {/* Cycle 7: legacy /decision-queue alias — /today linked there
+          but the real route is /admin/decisions. Redirect so existing
+          CTAs and bookmarks still land on the right surface. */}
+      <Route path="/decision-queue">
+        {() => <Redirect to="/admin/decisions" />}
       </Route>
       <Route path="/admin/ops">
         {() => <FounderProtectedRoute component={OpsDashboardPage} />}
