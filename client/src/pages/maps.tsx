@@ -924,6 +924,57 @@ export default function MapsPage() {
             </button>
           </div>
 
+          {/* r6 Tasha WF-R6-001 mobile capture MVP: geolocate + reverse
+              geocode + open Add Property on /properties with the lat/lng
+              pre-filled. On a phone this is the driving-for-dollars
+              "I'm standing next to a parcel — add it now" entry point. */}
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs"
+            data-testid="button-use-my-location"
+            onClick={async () => {
+              if (!navigator.geolocation) {
+                window.alert("Geolocation not supported in this browser.");
+                return;
+              }
+              navigator.geolocation.getCurrentPosition(
+                async (pos) => {
+                  const { latitude, longitude } = pos.coords;
+                  try {
+                    const res = await fetch(`/api/geocode/reverse?lat=${latitude}&lng=${longitude}`, { credentials: "include" });
+                    if (res.ok) {
+                      const data = await res.json();
+                      const county = data.county || "";
+                      const state = data.state || "";
+                      // Navigate to /properties with pre-filled add-property params.
+                      const qs = new URLSearchParams({
+                        addAtLat: String(latitude),
+                        addAtLng: String(longitude),
+                        addCounty: county,
+                        addState: state,
+                      }).toString();
+                      window.location.href = `/properties?${qs}`;
+                    } else {
+                      const qs = new URLSearchParams({ addAtLat: String(latitude), addAtLng: String(longitude) }).toString();
+                      window.location.href = `/properties?${qs}`;
+                    }
+                  } catch {
+                    const qs = new URLSearchParams({ addAtLat: String(latitude), addAtLng: String(longitude) }).toString();
+                    window.location.href = `/properties?${qs}`;
+                  }
+                },
+                (err) => {
+                  window.alert(`Couldn't get your location: ${err.message}. Try enabling location in your browser.`);
+                }
+              );
+            }}
+          >
+            <Navigation className="w-3 h-3 mr-1" />
+            <span className="hidden md:inline">Use my location</span>
+            <span className="md:hidden">Locate</span>
+          </Button>
+
           {/* Search */}
           <div className="relative w-44 hidden sm:block">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
@@ -1059,18 +1110,35 @@ export default function MapsPage() {
                 </div>
               </div>
             ) : filteredProperties.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-center p-8">
-                <MapPin className="w-12 h-12 text-muted-foreground mb-4" />
-                <h3 className="font-semibold text-lg">No properties with coordinates</h3>
-                <p className="text-muted-foreground text-sm mt-2 max-w-sm">
-                  Add GPS coordinates to your properties to visualize them on the 3D intelligence map with parcel boundaries, terrain analysis, and demand heatmaps.
-                </p>
-                <Button asChild variant="outline" className="mt-4" size="sm">
-                  <Link href="/properties">
-                    <ExternalLink className="w-4 h-4 mr-2" />
-                    Go to Inventory
-                  </Link>
-                </Button>
+              // r6 Tasha WF-R6-001 + STR-R6-001: even with zero parcels
+              // that have coordinates, render a real basemap so the user
+              // sees geographic context (important for driving-for-dollars
+              // personas). Also show a helpful overlay explaining how to
+              // get coords on their existing parcels.
+              <div className="relative w-full h-full">
+                <PropertyMap
+                  properties={[]}
+                  height="100%"
+                  showLabels={false}
+                  interactive
+                  enable3DTerrain={false}
+                  showControls
+                />
+                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center p-8 bg-background/70 backdrop-blur-sm">
+                  <div className="pointer-events-auto flex flex-col items-center max-w-sm">
+                    <MapPin className="w-12 h-12 text-muted-foreground mb-4" />
+                    <h3 className="font-semibold text-lg">No parcel coordinates yet</h3>
+                    <p className="text-muted-foreground text-sm mt-2">
+                      Click <strong>Fetch Boundaries</strong> on the Inventory page to auto-geocode your properties, or add lat/lng manually on a parcel's Overview tab. Basemap shown above.
+                    </p>
+                    <Button asChild variant="outline" className="mt-4" size="sm">
+                      <Link href="/properties">
+                        <ExternalLink className="w-4 h-4 mr-2" />
+                        Go to Inventory
+                      </Link>
+                    </Button>
+                  </div>
+                </div>
               </div>
             ) : (
               <PropertyMap

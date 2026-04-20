@@ -147,10 +147,19 @@ export default function PropertiesPage() {
   const urlParams = new URLSearchParams(searchString);
   const actionFromUrl = urlParams.get("action");
 
+  // r6 Tasha mobile capture: /maps can hand off a lat/lng via query
+  // params after the user taps "Use my location." If these are present
+  // we auto-open Add Property with the coords pre-populated.
+  const addAtLat = urlParams.get("addAtLat");
+  const addAtLng = urlParams.get("addAtLng");
+  const addCounty = urlParams.get("addCounty") || "";
+  const addState = urlParams.get("addState") || "";
+  const addFromLocation = !!(addAtLat && addAtLng);
+
   const [viewMode, setViewMode] = useState<"list" | "map">(() => {
     try { return (localStorage.getItem("properties-view-mode") as "list" | "map") || "list"; } catch { return "list"; }
   });
-  const [isCreateOpen, setIsCreateOpen] = useState(actionFromUrl === "new");
+  const [isCreateOpen, setIsCreateOpen] = useState(actionFromUrl === "new" || addFromLocation);
   const [deletingProperty, setDeletingProperty] = useState<Property | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
@@ -502,7 +511,15 @@ export default function PropertiesPage() {
                       Enter the property details including APN, location, and acreage.
                     </DialogDescription>
                   </DialogHeader>
-                  <PropertyForm onSuccess={() => setIsCreateOpen(false)} />
+                  <PropertyForm
+                    onSuccess={() => setIsCreateOpen(false)}
+                    prefill={addFromLocation ? {
+                      county: addCounty,
+                      state: addState,
+                      latitude: addAtLat || undefined,
+                      longitude: addAtLng || undefined,
+                    } : undefined}
+                  />
                 </DialogContent>
               </Dialog>
             </div>
@@ -1100,7 +1117,13 @@ function PropertyCard({ property, onDelete }: {
 
 const LAND_INVESTOR_TYPES = ["land_flipper", "note_investor", "hybrid"];
 
-function PropertyForm({ onSuccess }: { onSuccess: () => void }) {
+function PropertyForm({
+  onSuccess,
+  prefill,
+}: {
+  onSuccess: () => void;
+  prefill?: { county?: string; state?: string; latitude?: string; longitude?: string };
+}) {
   const { mutate, isPending } = useCreateProperty();
   const { data: organization } = useOrganization();
   const businessType = (organization?.onboardingData as any)?.businessType as string | undefined;
@@ -1112,11 +1135,13 @@ function PropertyForm({ onSuccess }: { onSuccess: () => void }) {
     defaultValues: {
       apn: isLandType ? "" : "N/A",
       sizeAcres: "",
-      county: "",
-      state: "",
+      county: prefill?.county || "",
+      state: prefill?.state || "",
       purchasePrice: "",
       marketValue: "",
-      description: "",
+      description: prefill?.latitude && prefill?.longitude
+        ? `Captured from current location: ${prefill.latitude}, ${prefill.longitude}`
+        : "",
       status: "available",
     }
   });

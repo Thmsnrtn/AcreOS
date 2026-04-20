@@ -2022,10 +2022,15 @@ export function PropertyMap({
   }, [measurementPoints, measurementMode, mapLoaded]);
 
   useEffect(() => {
-    if (!mapContainer.current || !MAPBOX_TOKEN || properties.length === 0) return;
+    // r6 Tasha: allow the map to render with zero properties — that's
+    // the state a fresh org / driving-for-dollars user lands in, and
+    // they still need geographic context + basemap tiles.
+    if (!mapContainer.current || !MAPBOX_TOKEN) return;
 
     const viewState = initialViewState || (() => {
       if (properties.length === 0) {
+        // Centered on the US lower 48, low zoom, flat view so the
+        // user can orient. The user can zoom / pan from there.
         return { longitude: -98.5795, latitude: 39.8283, zoom: 4, pitch: 0 };
       }
       const avgLng = properties.reduce((sum, p) => sum + p.centroid.lng, 0) / properties.length;
