@@ -117,9 +117,24 @@ the test user retains founder access for the next cycle. Flip back to
 the single-founder value (`thmsnrtn@gmail.com`) once operator-persona
 runs are scheduled or the E2E harness is retired.
 
+### 5. `/founder-dashboard` — server payload shape — `ecc0aab`
+
+`AdminDashboardData` on the client is a rich nested type (`systemHealth`,
+`userActivity`, `revenueAtRisk`, per-agent objects). The server's
+`/api/admin/dashboard` endpoint returns a much flatter payload
+(`revenue`, `users`, `system`, `agents[]`, `alerts[]`). The first
+render crashed on `dashboardData?.systemHealth.activeOrganizations` —
+the optional chain only guarded `dashboardData`, not `.systemHealth`.
+
+**Fix:** add a React Query `select` shim that maps the flat server
+shape into the nested UI contract and defaults missing sections to
+zeros/empties. Pulls `users.active → systemHealth.activeUsers`,
+`revenue.customers → systemHealth.activeOrganizations`, etc.
+
 ## Commits
 
 - `de65005` fix(auth): root-fix founder-access middleware — use canonical isFounderEmail
 - `c53bdfd` fix(ui): Radix SelectItem empty-string crash across 7 pages
 - `b31e126` fix: /executive-dashboard totalLeads crash + /admin/beta suspense loop
 - `a157e1c` fix(routing): hoist /status and /changelog lazy imports to module scope
+- `ecc0aab` fix(founder-dashboard): tolerate flat /api/admin/dashboard shape
