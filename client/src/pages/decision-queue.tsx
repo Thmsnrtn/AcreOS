@@ -80,14 +80,30 @@ export default function DecisionQueuePage() {
   });
   const [paxInput, setPaxInput] = useState('');
 
+  // Cycle 9: both /api/leads and /api/deals return paginated
+  // { data: [...], total, page, ... } envelopes now. The previous
+  // inline queryFn passed the envelope through as-is, which then
+  // crashed `.filter(...)` downstream ("q.filter is not a function").
+  // Unwrap defensively: accept an array, a { data } envelope, or
+  // fall back to [].
   const { data: leads = [], isLoading: leadsLoading } = useQuery<Lead[]>({
     queryKey: ["/api/leads"],
-    queryFn: () => fetch("/api/leads").then(r => r.json()),
+    queryFn: async () => {
+      const r = await fetch("/api/leads", { credentials: "include" });
+      if (!r.ok) return [];
+      const j = await r.json();
+      return Array.isArray(j) ? j : Array.isArray(j?.data) ? j.data : [];
+    },
   });
 
   const { data: deals = [], isLoading: dealsLoading } = useQuery<Deal[]>({
     queryKey: ["/api/deals"],
-    queryFn: () => fetch("/api/deals").then(r => r.json()),
+    queryFn: async () => {
+      const r = await fetch("/api/deals", { credentials: "include" });
+      if (!r.ok) return [];
+      const j = await r.json();
+      return Array.isArray(j) ? j : Array.isArray(j?.data) ? j.data : [];
+    },
   });
 
   const updateLead = useMutation({
