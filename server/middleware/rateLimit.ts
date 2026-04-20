@@ -294,7 +294,12 @@ export const rateLimiters = {
  * Named limiters for specific route groups
  */
 export const authLimiter = createRateLimiter({ maxRequests: 10, windowMs: 15 * 60 * 1000 });
-export const aiLimiter = createAuthenticatedRateLimiter({ maxRequests: 30, windowMs: 60 * 1000 });
+// r3 Gabriel × Pax: /ai page loads fan out to ~8 ai-category endpoints
+// on mount (conversations, scheduled-tasks/pending-results, pax/observations,
+// ai/nudges, conversations/:id/messages, observations/stream, etc.) plus
+// the first user prompt. 30/min trips on a warm dashboard refresh. Lift
+// to 120/min — still well short of any provider cap and not a self-block.
+export const aiLimiter = createAuthenticatedRateLimiter({ maxRequests: 120, windowMs: 60 * 1000 });
 export const webhookLimiter = createRateLimiter({ maxRequests: 100, windowMs: 60 * 1000 });
 export const importLimiter = createAuthenticatedRateLimiter({ maxRequests: 5, windowMs: 60 * 1000 });
 

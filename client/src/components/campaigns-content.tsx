@@ -22,6 +22,7 @@ import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, Mail, MessageSquare, Send, Calendar, BarChart3, Users, Clock, Play, Pause, CheckCircle, FileText, Target, TrendingUp, Eye, TestTube, Zap, AlertTriangle, AlertCircle, DollarSign, Loader2, Lightbulb, ChevronDown, ChevronUp, Sparkles } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
+import { ErrorBoundary } from "@/components/error-boundary";
 import { ListSkeleton } from "@/components/list-skeleton";
 import { CampaignsEmptyState } from "@/components/empty-states";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -638,10 +639,33 @@ export function CampaignsContent() {
       </Tabs>
 
       {selectedCampaign && (
-        <CampaignDetailDrawer 
-          campaign={selectedCampaign} 
-          onClose={() => setSelectedCampaign(null)} 
-        />
+        // r4 Wyatt STR-R4-002 safety net: the detail drawer historically
+        // threw a TypeError during mount that bubbled to the global error
+        // boundary, nuking the whole /campaigns surface. Local boundary
+        // isolates the drawer so a bad render becomes "can't open this
+        // campaign" instead of "can't use the Campaigns tab."
+        <ErrorBoundary
+          fallback={
+            <Dialog open={true} onOpenChange={() => setSelectedCampaign(null)}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Couldn't open campaign</DialogTitle>
+                  <DialogDescription>
+                    Something went wrong loading this campaign's detail view. The campaigns list is still usable; please try again or pick a different campaign.
+                  </DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                  <Button onClick={() => setSelectedCampaign(null)}>Close</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          }
+        >
+          <CampaignDetailDrawer
+            campaign={selectedCampaign}
+            onClose={() => setSelectedCampaign(null)}
+          />
+        </ErrorBoundary>
       )}
     </div>
   );
