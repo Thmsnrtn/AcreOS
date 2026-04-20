@@ -158,10 +158,10 @@ export default function CapitalMarketsPage() {
 
   // Lender filter state
   const [lenderFilters, setLenderFilters] = useState({
-    loanType: "",
+    loanType: "any",
     maxLtv: "",
     state: "",
-    propertyType: "",
+    propertyType: "any",
   });
 
   const { data: securitiesData } = useQuery({
@@ -313,7 +313,7 @@ export default function CapitalMarketsPage() {
                   <Select value={lenderFilters.loanType} onValueChange={v => setLenderFilters(f => ({ ...f, loanType: v }))}>
                     <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Any" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Any</SelectItem>
+                      <SelectItem value="any">Any</SelectItem>
                       <SelectItem value="conventional">Conventional</SelectItem>
                       <SelectItem value="hard_money">Hard Money</SelectItem>
                       <SelectItem value="bridge">Bridge</SelectItem>
@@ -334,7 +334,7 @@ export default function CapitalMarketsPage() {
                   <Select value={lenderFilters.propertyType} onValueChange={v => setLenderFilters(f => ({ ...f, propertyType: v }))}>
                     <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Any" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Any</SelectItem>
+                      <SelectItem value="any">Any</SelectItem>
                       <SelectItem value="land">Raw Land</SelectItem>
                       <SelectItem value="agricultural">Agricultural</SelectItem>
                       <SelectItem value="residential">Residential</SelectItem>
@@ -356,7 +356,7 @@ export default function CapitalMarketsPage() {
               .filter((lender: any) => {
                 if (lenderFilters.state && lender.state !== lenderFilters.state) return false;
                 if (lenderFilters.maxLtv && lender.maxLtv && parseFloat(lenderFilters.maxLtv) < lender.maxLtv) return false;
-                if (lenderFilters.propertyType && lender.propertyTypes && !lender.propertyTypes.includes(lenderFilters.propertyType)) return false;
+                if (lenderFilters.propertyType && lenderFilters.propertyType !== "any" && lender.propertyTypes && !lender.propertyTypes.includes(lenderFilters.propertyType)) return false;
                 return true;
               })
               .map((lender: any, idx: number) => {

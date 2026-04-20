@@ -111,14 +111,14 @@ export default function AcquisitionRadarPage() {
   const queryClient = useQueryClient();
 
   const [stateFilter, setStateFilter] = useState<string>('');
-  const [typeFilter, setTypeFilter] = useState<string>('');
+  const [typeFilter, setTypeFilter] = useState<string>('all');
   const [minScore, setMinScore] = useState<string>('40');
   const [selectedOpp, setSelectedOpp] = useState<any>(null);
 
   const queryParams = new URLSearchParams({
     limit: '50',
     ...(stateFilter ? { state: stateFilter } : {}),
-    ...(typeFilter ? { opportunityType: typeFilter } : {}),
+    ...(typeFilter && typeFilter !== 'all' ? { opportunityType: typeFilter } : {}),
     minScore,
   }).toString();
 
@@ -252,7 +252,7 @@ export default function AcquisitionRadarPage() {
                 <SelectValue placeholder="Opportunity type" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All Types</SelectItem>
+                <SelectItem value="all">All Types</SelectItem>
                 <SelectItem value="undervalued">Undervalued</SelectItem>
                 <SelectItem value="motivated_seller">Motivated Seller</SelectItem>
                 <SelectItem value="market_shift">Market Shift</SelectItem>

@@ -1183,15 +1183,15 @@ export default function DocumentsPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Link to Deal (optional)</Label>
-                  <Select 
-                    value={packageDealId?.toString() || ""} 
-                    onValueChange={(v) => setPackageDealId(v ? parseInt(v) : undefined)}
+                  <Select
+                    value={packageDealId?.toString() || "none"}
+                    onValueChange={(v) => setPackageDealId(v && v !== "none" ? parseInt(v) : undefined)}
                   >
                     <SelectTrigger data-testid="select-package-deal">
                       <SelectValue placeholder="Select deal" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">No deal</SelectItem>
+                      <SelectItem value="none">No deal</SelectItem>
                       {deals?.map((deal: any) => (
                         <SelectItem key={deal.id} value={deal.id.toString()}>
                           Deal #{deal.id} - {deal.name || deal.type}
@@ -1203,15 +1203,15 @@ export default function DocumentsPage() {
 
                 <div className="space-y-2">
                   <Label>Link to Property (optional)</Label>
-                  <Select 
-                    value={packagePropertyId?.toString() || ""} 
-                    onValueChange={(v) => setPackagePropertyId(v ? parseInt(v) : undefined)}
+                  <Select
+                    value={packagePropertyId?.toString() || "none"}
+                    onValueChange={(v) => setPackagePropertyId(v && v !== "none" ? parseInt(v) : undefined)}
                   >
                     <SelectTrigger data-testid="select-package-property">
                       <SelectValue placeholder="Select property" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">No property</SelectItem>
+                      <SelectItem value="none">No property</SelectItem>
                       {properties?.map(prop => (
                         <SelectItem key={prop.id} value={prop.id.toString()}>
                           {prop.address || prop.apn || `Property #${prop.id}`}

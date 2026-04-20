@@ -216,9 +216,9 @@ function AnalyticsCards({ analytics, loading }: { analytics: ResellerAnalytics |
 // ─── Tenant Table ─────────────────────────────────────────────────────────────
 
 function TenantTable({ tenants, loading }: { tenants: Tenant[]; loading: boolean }) {
-  const [statusFilter, setStatusFilter] = useState<string>("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
 
-  const filtered = statusFilter
+  const filtered = statusFilter && statusFilter !== "all"
     ? tenants.filter(t => t.status === statusFilter)
     : tenants;
 
@@ -229,7 +229,7 @@ function TenantTable({ tenants, loading }: { tenants: Tenant[]; loading: boolean
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="h-8"><SelectValue placeholder="All statuses" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All</SelectItem>
+              <SelectItem value="all">All</SelectItem>
               <SelectItem value="active">Active</SelectItem>
               <SelectItem value="trial">Trial</SelectItem>
               <SelectItem value="onboarding">Onboarding</SelectItem>

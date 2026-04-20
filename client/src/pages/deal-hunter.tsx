@@ -557,16 +557,16 @@ function DealsTab() {
   const { toast } = useToast();
   const [filters, setFilters] = useState({
     status: "new",
-    sourceType: "",
-    minDistressScore: "",
+    sourceType: "all",
+    minDistressScore: "any",
   });
   const [selectedDealIds, setSelectedDealIds] = useState<Set<number>>(new Set());
   const [bulkConverting, setBulkConverting] = useState(false);
 
   const params = new URLSearchParams({ limit: "50", offset: "0" });
-  if (filters.status) params.set("status", filters.status);
-  if (filters.sourceType) params.set("sourceType", filters.sourceType);
-  if (filters.minDistressScore) params.set("minDistressScore", filters.minDistressScore);
+  if (filters.status && filters.status !== "all") params.set("status", filters.status);
+  if (filters.sourceType && filters.sourceType !== "all") params.set("sourceType", filters.sourceType);
+  if (filters.minDistressScore && filters.minDistressScore !== "any") params.set("minDistressScore", filters.minDistressScore);
 
   const { data: dealsData, isLoading } = useQuery({
     queryKey: ["/api/deal-hunter/deals", filters],
@@ -655,7 +655,7 @@ function DealsTab() {
           <Select value={filters.status} onValueChange={v => setFilters(f => ({ ...f, status: v }))}>
             <SelectTrigger className="h-8"><SelectValue placeholder="All" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All</SelectItem>
+              <SelectItem value="all">All</SelectItem>
               <SelectItem value="new">New</SelectItem>
               <SelectItem value="reviewed">Reviewed</SelectItem>
               <SelectItem value="added_to_crm">Added to CRM</SelectItem>
@@ -668,7 +668,7 @@ function DealsTab() {
           <Select value={filters.sourceType} onValueChange={v => setFilters(f => ({ ...f, sourceType: v }))}>
             <SelectTrigger className="h-8"><SelectValue placeholder="All" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All</SelectItem>
+              <SelectItem value="all">All</SelectItem>
               <SelectItem value="tax_lien">Tax Lien</SelectItem>
               <SelectItem value="tax_deed">Tax Deed</SelectItem>
               <SelectItem value="foreclosure">Foreclosure</SelectItem>
@@ -681,7 +681,7 @@ function DealsTab() {
           <Select value={filters.minDistressScore} onValueChange={v => setFilters(f => ({ ...f, minDistressScore: v }))}>
             <SelectTrigger className="h-8"><SelectValue placeholder="Any" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Any</SelectItem>
+              <SelectItem value="any">Any</SelectItem>
               <SelectItem value="40">40+ Moderate</SelectItem>
               <SelectItem value="60">60+ Warm</SelectItem>
               <SelectItem value="80">80+ Hot</SelectItem>

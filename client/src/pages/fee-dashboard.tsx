@@ -170,13 +170,13 @@ function AnalyticsChart({ analytics }: { analytics: FeeAnalytics | null }) {
 function SettlementsTab() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const [statusFilter, setStatusFilter] = useState<string>("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
 
   const { data, isLoading } = useQuery({
     queryKey: ["/api/fees/settlements", statusFilter],
     queryFn: async () => {
       const params = new URLSearchParams({ limit: "50", offset: "0" });
-      if (statusFilter) params.set("status", statusFilter);
+      if (statusFilter && statusFilter !== "all") params.set("status", statusFilter);
       const res = await fetch(`/api/fees/settlements?${params}`, { credentials: "include" });
       return res.json();
     },
@@ -211,7 +211,7 @@ function SettlementsTab() {
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="h-8"><SelectValue placeholder="All statuses" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All</SelectItem>
+              <SelectItem value="all">All</SelectItem>
               <SelectItem value="pending">Pending</SelectItem>
               <SelectItem value="held">Held in Escrow</SelectItem>
               <SelectItem value="released">Released</SelectItem>

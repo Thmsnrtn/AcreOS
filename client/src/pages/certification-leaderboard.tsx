@@ -164,14 +164,14 @@ function TopAchieversRow({ entries }: { entries: LeaderboardEntry[] }) {
 
 function LeaderboardTab() {
   const { toast } = useToast();
-  const [tierFilter, setTierFilter] = useState<string>("");
+  const [tierFilter, setTierFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
 
   const { data, isLoading } = useQuery({
     queryKey: ["/api/certification/leaderboard", tierFilter],
     queryFn: async () => {
       const params = new URLSearchParams({ limit: "100" });
-      if (tierFilter) params.set("tier", tierFilter);
+      if (tierFilter && tierFilter !== "all") params.set("tier", tierFilter);
       const res = await fetch(`/api/certification/leaderboard?${params}`, { credentials: "include" });
       return res.json();
     },
@@ -222,7 +222,7 @@ function LeaderboardTab() {
           <Select value={tierFilter} onValueChange={setTierFilter}>
             <SelectTrigger className="h-8"><SelectValue placeholder="All tiers" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All Tiers</SelectItem>
+              <SelectItem value="all">All Tiers</SelectItem>
               {TIER_CONFIG.map(t => <SelectItem key={t.tier} value={t.tier}>{t.tier}</SelectItem>)}
             </SelectContent>
           </Select>
