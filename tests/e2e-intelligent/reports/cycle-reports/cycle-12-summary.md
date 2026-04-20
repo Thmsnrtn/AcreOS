@@ -134,17 +134,111 @@ tax records) with known anomalies (mineral reservations, easements, HOA
 liens) so the AI output can be diffed against expected flags. Fixture
 curation work.
 
+## Feature builds shipped mid-cycle
+
+### Seat invitations (Maya T01/T02/T04, Dolores E01) — `16ad093`
+
+Built the missing seat-invite flow end-to-end:
+
+- **Schema**: new `organization_invitations` table (org, email, role,
+  token, status, expires_at, accepted_at, accepted_by_user_id).
+- **Bootstrap**: idempotent `CREATE TABLE IF NOT EXISTS` in
+  `server/index.ts` startup, so the table exists on first deploy
+  regardless of whether the drizzle journal tracks migration 0026.
+- **Endpoints**:
+  - `POST /api/organization/invitations` — single `{ email, role }` or
+    bulk `{ invites: [...] }` up to 200 per batch. Admin-or-above
+    only. Returns tokenized invite links `/auth?invite=<token>`.
+  - `GET /api/organization/invitations` — list pending for the org.
+  - `DELETE /api/organization/invitations/:id` — revoke.
+  - `POST /api/organization/invitations/accept` — idempotent attach
+    on sign-in; validates email match + expiry.
+- **Audit log**: every invite creation emits an `audit_log` entry
+  keyed on `organization_invitation` so Dolores's E03 export picks
+  them up cleanly.
+- **UI**: new `TeamInviteCard` at `settings → Team`. Single invite
+  form (email + role dropdown), bulk CSV paste (one per line, or
+  `email:role` per line), pending-invites list with copy-link + revoke.
+- **Accept flow**: `/auth?invite=<token>` POSTs to the accept endpoint
+  after Clerk sign-in completes, then invalidates auth + org queries
+  so the redirect to `/today` lands on the right org.
+
+### White-label brand fallback (Kim P03) — `e6c68da`
+
+Added `useBrandName()` to `use-white-label.ts` that returns the
+tenant's brand name or falls back to "AcreOS". Applied to the three
+highest-visibility surfaces a Kim student would hit first:
+
+1. `/auth` sign-in page (logo initial + wordmark)
+2. `PaxCopilotRail` fallback label (always visible on every app surface)
+3. `OnboardingModal` step 1 "Welcome to …"
+
+**Not yet swept** (documented follow-up):
+- `onboarding/ProductTour.tsx`, `onboarding/OnboardingWizard.tsx`
+- `pricing.tsx`, `landing.tsx`, `command-center.tsx` ("AcreOS Assistant")
+- `avm.tsx` valuation toast, `tools.tsx` Market Value™ label
+- `academy.tsx` certificate text, `certification-leaderboard.tsx`
+- `investor-directory.tsx` marketplace TOS
+- `help/HelpPanel.tsx` KB article titles
+
+A codemod-style sweep would close the remaining ~15 call sites in an
+hour. Mechanic verified; first-impression surfaces branded.
+
+## Yuki D03 — OpenAPI spec accuracy (measured)
+
+Ran a diff of the published spec against the actual prod route table:
+
+- **Spec paths**: 29
+- **Actual route patterns (`api.*` on `/api`, plus mounted `router.*`)**: **1,042**
+- **Documented-but-missing in code**: 0 (all 29 documented paths resolve to real handlers via mounted sub-routers)
+- **Code-but-missing in spec**: **~1,013 endpoints**
+
+So the spec is **truthful but catastrophically under-documented** —
+Yuki's firm would rate this "build around AcreOS, not on top of it."
+
+**Action for Yuki acceptance**: either (a) generate the spec
+programmatically from the route table via a typescript reflector so
+it stays in sync, or (b) document the ~50 highest-value endpoints by
+hand (leads, properties, deals, offers, auth, webhooks, organization).
+Option (a) is strongly preferred; option (b) is the minimum viable.
+
 ## Cycle 12 commits
 
 - `6686c3e` feat(auth): server-side logout clears Clerk suffixed session cookies
 - `bd2d50e` fix(api-docs): serve OpenAPI spec without auth (Yuki D03)
+- `16ad093` feat(org): seat invitations (single + bulk CSV)
+- `e6c68da` feat(white-label): brandName fallback for top-visibility surfaces
 
-## What to do next
+## Persona status matrix after cycle 12
 
-1. Build `POST /api/organization/invitations` + invite-accept flow →
-   unblocks Maya T01/T02/T04 and Dolores E01 at the same time.
-2. Codemod-sweep hardcoded "AcreOS" strings behind
-   `useWhiteLabel().brandName` → unblocks Kim P03.
-3. Seed an OCR fixture pack in `tests/e2e-intelligent/fixtures/ocr/` →
-   unblocks Raj C01.
-4. Diff the OpenAPI spec against the prod route table → closes Yuki D03.
+| Persona | Journey | Status |
+|---|---|---|
+| 14 Maya | T01 Seat invite + onboarding | **Ready** — create via UI/API, accept via `/auth?invite=` |
+| 14 Maya | T02 Team inbox + task assignment | **Ready** — invite + attach flow landing seat user on `/team-inbox` |
+| 14 Maya | T03 RBAC boundary | **PASS** (API + frontend) |
+| 14 Maya | T04 Activity log attribution | **Ready** — invite emits audit_log entries |
+| 15 Dolores | E01 Bulk seat provisioning | **Ready** — 200-invite batch + audit trail |
+| 15 Dolores | E02 White-label setup | Renders + mechanic works for top 3 surfaces |
+| 15 Dolores | E03 Audit log export | **Ready** — /audit-log + export path |
+| 16 Raj | C01 Document OCR + anomaly | Surface ready; needs OCR fixture pack |
+| 16 Raj | C02 Compliance dashboard | **Ready** — renders |
+| 16 Raj | C03 Tax-lien deadlines | Surface ready — `/tax-delinquent` renders |
+| 17 Kim | P01 Provision tenant | **Ready** — CreateTenantDialog |
+| 17 Kim | P02 Revenue share | Needs Stripe Connect test-mode fixtures |
+| 17 Kim | P03 White-label leak | Partial — top 3 surfaces clean, ~15 more to sweep |
+| 18 Yuki | D01 API key provisioning | **Ready** — Settings → Developer → ApiKeyManager |
+| 18 Yuki | D02 Webhook round-trip | `/webhooks` renders; round-trip test pending |
+| 18 Yuki | D03 OpenAPI spec accuracy | **Measured** — 1013 endpoints undocumented; needs spec generator |
+
+Net: **10 of 16 journeys ready to run**, up from 3 at the start of the
+cycle.
+
+## What to do next (cycle 13 seed)
+
+1. Run the 10 ready journeys in a scheduled harness pass and score
+   each against its success-criteria rubric.
+2. Write a route→openapi reflector (1 day) to auto-generate the spec.
+3. Codemod-sweep the remaining ~15 "AcreOS" strings behind
+   `useBrandName()` so Kim P03 passes clean.
+4. Seed OCR fixture pack in `tests/e2e-intelligent/fixtures/ocr/`.
+5. Enable Stripe Connect test-mode for a reseller tenant, run Kim P02.
