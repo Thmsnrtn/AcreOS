@@ -122,10 +122,22 @@ export function useWhiteLabel() {
   }, [config]);
 
   return {
+    // Raw config fields — undefined when the org has no white-label tenant.
     brandName: config?.brandName,
     logoUrl: config?.logoUrl,
     hidePoweredBy: config?.hidePoweredBy ?? false,
     poweredByText: config?.poweredByText,
     isWhiteLabel: !!config?.tenantId,
   };
+}
+
+/**
+ * Returns the brand name for the current tenant, falling back to
+ * "AcreOS" when no white-label config is set. Call this wherever you'd
+ * otherwise hardcode the string "AcreOS" in user-visible copy so
+ * reseller (Kim) white-label tenants don't leak the platform brand.
+ */
+export function useBrandName(): string {
+  const { brandName } = useWhiteLabel();
+  return brandName || "AcreOS";
 }

@@ -9,13 +9,15 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useOrganization, useUpdateOrganization } from "@/hooks/use-organization";
+import { useBrandName } from "@/hooks/use-white-label";
 import { Sparkles, Map, Users, Handshake, Bell, ArrowRight } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
-const onboardingSteps = [
+function buildOnboardingSteps(brandName: string) {
+  return [
   {
     icon: Sparkles,
-    title: "Welcome to AcreOS",
+    title: `Welcome to ${brandName}`,
     description: "The operating system for real estate investors. Let's get you set up for success.",
     highlight: "We'll guide you through the key features to help you get started quickly.",
   },
@@ -43,11 +45,14 @@ const onboardingSteps = [
     description: "Configure notifications to stay on top of payments, lead responses, and important deadlines.",
     highlight: "Customize your notification preferences in settings.",
   },
-];
+  ] as const;
+}
 
 export function OnboardingModal() {
   const { data: organization, isLoading } = useOrganization();
   const updateOrg = useUpdateOrganization();
+  const brandName = useBrandName();
+  const onboardingSteps = buildOnboardingSteps(brandName);
   const [open, setOpen] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
 

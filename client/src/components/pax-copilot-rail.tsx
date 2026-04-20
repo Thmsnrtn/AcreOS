@@ -18,6 +18,7 @@ import {
   Mic, MicOff, BrainCircuit,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useBrandName } from "@/hooks/use-white-label";
 import { usePaxRail } from "@/contexts/pax-rail-context";
 import { ToolCallStream, type ToolEvent, parseToolResultSummary } from "@/components/tool-call-stream";
 import { PaxArtifact, type PaxArtifactData } from "@/components/pax-artifact";
@@ -150,13 +151,13 @@ const PAGE_META: Record<string, PageMeta> = {
   ]},
 };
 
-function getPageMeta(path: string): PageMeta {
+function getPageMeta(path: string, brandName: string = "AcreOS"): PageMeta {
   const exact = PAGE_META[path];
   if (exact) return exact;
   const prefix = Object.keys(PAGE_META).find((k) => path.startsWith(k) && k !== "/");
   if (prefix) return PAGE_META[prefix];
-  return { label: "AcreOS", icon: Sparkles, quickActions: [
-    { label: "What can you do?", prompt: "What can you help me with in AcreOS?" },
+  return { label: brandName, icon: Sparkles, quickActions: [
+    { label: "What can you do?", prompt: `What can you help me with in ${brandName}?` },
     { label: "Quick briefing", prompt: "Give me a quick briefing on the state of my business." },
   ]};
 }
@@ -265,7 +266,8 @@ export function PaxCopilotRail() {
     activeConversationId, setActiveConversationId,
   } = usePaxRail();
   const [location] = useLocation();
-  const pageMeta = useMemo(() => getPageMeta(location), [location]);
+  const brandName = useBrandName();
+  const pageMeta = useMemo(() => getPageMeta(location, brandName), [location, brandName]);
   const PageIcon = pageMeta.icon;
 
   // Chat state

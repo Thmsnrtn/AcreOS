@@ -2,11 +2,13 @@ import { SignIn, SignUp } from "@clerk/react";
 import { Link, Redirect } from "wouter";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
+import { useBrandName } from "@/hooks/use-white-label";
 import { ArrowLeft } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
 export default function AuthPage() {
   const { user, isLoading } = useAuth();
+  const brandName = useBrandName();
   const params = new URLSearchParams(window.location.search);
   const [mode, setMode] = useState<"sign-in" | "sign-up">(
     params.get("mode") === "register" ? "sign-up" : "sign-in"
@@ -57,13 +59,13 @@ export default function AuthPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
       <div className="w-full max-w-md flex flex-col items-center gap-6">
-        {/* AcreOS branding */}
+        {/* Branding — swaps to white-label tenant name when configured */}
         <div className="flex flex-col items-center gap-3">
           <div className="flex items-center gap-2.5">
             <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
-              <span className="text-white font-bold text-lg">A</span>
+              <span className="text-white font-bold text-lg">{brandName.slice(0, 1)}</span>
             </div>
-            <span className="text-2xl font-bold tracking-tight">AcreOS</span>
+            <span className="text-2xl font-bold tracking-tight">{brandName}</span>
           </div>
           <p className="text-sm text-muted-foreground text-center">
             The operating system for land investors
