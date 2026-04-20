@@ -360,7 +360,7 @@ export default function FinancePage() {
                             <div className="flex items-center gap-2">
                               <User className="w-4 h-4 text-muted-foreground" />
                               <span className="font-medium">
-                                {note.borrower ? `${note.borrower.firstName} ${note.borrower.lastName}` : `Borrower #${note.borrowerId}`}
+                                {note.borrower ? `${note.borrower.firstName} ${note.borrower.lastName}` : (note.borrowerId ? `Borrower #${note.borrowerId}` : "Unassigned borrower")}
                               </span>
                             </div>
                           </TableCell>
@@ -368,7 +368,7 @@ export default function FinancePage() {
                             <div className="flex items-center gap-2">
                               <MapPin className="w-4 h-4 text-muted-foreground" />
                               <span className="text-sm">
-                                {note.property ? `${note.property.county}, ${note.property.state}` : `Property #${note.propertyId}`}
+                                {note.property ? `${note.property.county}, ${note.property.state}` : (note.propertyId ? `Property #${note.propertyId}` : "Unassigned property")}
                               </span>
                             </div>
                           </TableCell>
@@ -418,7 +418,7 @@ export default function FinancePage() {
         open={!!deletingNote}
         onOpenChange={(open) => !open && setDeletingNote(null)}
         title="Delete Note"
-        description={`Are you sure you want to delete this promissory note for ${deletingNote?.borrower ? `${deletingNote.borrower.firstName} ${deletingNote.borrower.lastName}` : `Borrower #${deletingNote?.borrowerId}`}? This action cannot be undone and will permanently remove the note and its payment history.`}
+        description={`Are you sure you want to delete this promissory note for ${deletingNote?.borrower ? `${deletingNote.borrower.firstName} ${deletingNote.borrower.lastName}` : (deletingNote?.borrowerId ? `Borrower #${deletingNote.borrowerId}` : "Unassigned borrower")}? This action cannot be undone and will permanently remove the note and its payment history.`}
         confirmLabel="Delete Note"
         onConfirm={handleDelete}
         isLoading={isDeleting}
@@ -569,7 +569,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                 Note #{note.id}
               </h2>
               <p className="text-muted-foreground">
-                {note.borrower ? `${note.borrower.firstName} ${note.borrower.lastName}` : `Borrower #${note.borrowerId}`}
+                {note.borrower ? `${note.borrower.firstName} ${note.borrower.lastName}` : (note.borrowerId ? `Borrower #${note.borrowerId}` : "Unassigned borrower")}
               </p>
             </div>
             <div className="flex items-center gap-2">

@@ -329,7 +329,13 @@ export function ResearchSummaryPanel({ property }: ResearchSummaryPanelProps) {
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">
-              {checklist.hasCoordinates ? "No comps data available" : "Fetch parcel data to enable comps"}
+              {/* r2 Dana: hint that bulk fetch is available from /properties
+                  top bar (the "Fetch Boundaries" button pulls for the whole
+                  inventory). Per-property clicking is a dealbreaker at 500+
+                  row scale; nudge toward the bulk action. */}
+              {checklist.hasCoordinates
+                ? "No comps data available for this parcel."
+                : <>Parcel data isn't fetched yet. Click <strong>Fetch Boundaries</strong> on the Inventory page to pull coordinates + comps in bulk, or open this parcel's <strong>Intelligence</strong> tab to fetch just this one.</>}
             </p>
           )}
         </div>

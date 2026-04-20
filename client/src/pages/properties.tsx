@@ -1860,6 +1860,97 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                 </div>
               </div>
 
+              {(() => {
+                // r7 Ingrid WF-R7-001: inline Distress Indicators section.
+                // Renders only when at least one distress signal is flagged
+                // on the parcel's dueDiligenceData.distress jsonb subtree.
+                const distress = (currentProperty.dueDiligenceData as any)?.distress as
+                  | {
+                      taxDelinquent?: boolean;
+                      taxDelinquentYears?: number;
+                      taxPrincipalCents?: number;
+                      taxPenaltyCents?: number;
+                      taxInterestCents?: number;
+                      taxPayoffAsOf?: string;
+                      probate?: boolean;
+                      codeViolation?: boolean;
+                      source?: string;
+                      updatedAt?: string;
+                    }
+                  | undefined;
+                const hasDistress = !!distress && (
+                  distress.taxDelinquent ||
+                  distress.probate ||
+                  distress.codeViolation ||
+                  (distress.taxDelinquentYears ?? 0) > 0
+                );
+                if (!hasDistress) return null;
+                const cents = (n?: number) => n ? `$${(n / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—";
+                const totalPayoffCents = (distress!.taxPrincipalCents ?? 0) + (distress!.taxPenaltyCents ?? 0) + (distress!.taxInterestCents ?? 0);
+                return (
+                  <div className="border-t pt-4" data-testid="section-distress-indicators">
+                    <h4 className="text-sm font-semibold mb-3 flex items-center gap-2 text-amber-700 dark:text-amber-400">
+                      <AlertTriangle className="w-4 h-4" />
+                      Distress Indicators
+                    </h4>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+                      {distress!.taxDelinquent && (
+                        <div className="space-y-1">
+                          <span className="text-muted-foreground text-xs">Tax Status</span>
+                          <p className="font-medium text-amber-700 dark:text-amber-400">
+                            Delinquent
+                            {distress!.taxDelinquentYears ? ` (${distress!.taxDelinquentYears} years)` : ""}
+                          </p>
+                        </div>
+                      )}
+                      {(distress!.taxPrincipalCents ?? 0) > 0 && (
+                        <div className="space-y-1">
+                          <span className="text-muted-foreground text-xs">Tax Principal</span>
+                          <p className="font-medium">{cents(distress!.taxPrincipalCents)}</p>
+                        </div>
+                      )}
+                      {(distress!.taxPenaltyCents ?? 0) > 0 && (
+                        <div className="space-y-1">
+                          <span className="text-muted-foreground text-xs">Penalty</span>
+                          <p className="font-medium">{cents(distress!.taxPenaltyCents)}</p>
+                        </div>
+                      )}
+                      {(distress!.taxInterestCents ?? 0) > 0 && (
+                        <div className="space-y-1">
+                          <span className="text-muted-foreground text-xs">Accrued Interest</span>
+                          <p className="font-medium">{cents(distress!.taxInterestCents)}</p>
+                        </div>
+                      )}
+                      {totalPayoffCents > 0 && (
+                        <div className="space-y-1">
+                          <span className="text-muted-foreground text-xs">Total Payoff</span>
+                          <p className="font-semibold">{cents(totalPayoffCents)}</p>
+                          {distress!.taxPayoffAsOf && (
+                            <DataProvenanceTag
+                              source={distress!.source ?? "County records"}
+                              asOf={distress!.taxPayoffAsOf}
+                              confidence="high"
+                            />
+                          )}
+                        </div>
+                      )}
+                      {distress!.probate && (
+                        <div className="space-y-1">
+                          <span className="text-muted-foreground text-xs">Probate</span>
+                          <p className="font-medium text-amber-700 dark:text-amber-400">Yes</p>
+                        </div>
+                      )}
+                      {distress!.codeViolation && (
+                        <div className="space-y-1">
+                          <span className="text-muted-foreground text-xs">Code Violation</span>
+                          <p className="font-medium text-amber-700 dark:text-amber-400">Yes</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+
               {hasOwnerData && (
                 <div className="border-t pt-4">
                   <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">

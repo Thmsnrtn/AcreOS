@@ -592,6 +592,21 @@ export const properties = pgTable("properties", {
     taxesCurrent?: boolean;
     checklistCompleted?: boolean;
     notes?: string;
+    // r7 Ingrid WF-R7-001: structured distress indicators. Stored
+    // on the existing jsonb column to avoid a schema migration.
+    // Shapes for cycle-4 distress renderer on the property detail.
+    distress?: {
+      taxDelinquent?: boolean;
+      taxDelinquentYears?: number;
+      taxPrincipalCents?: number;
+      taxPenaltyCents?: number;
+      taxInterestCents?: number;
+      taxPayoffAsOf?: string; // ISO date
+      probate?: boolean;
+      codeViolation?: boolean;
+      source?: string; // e.g. "county-assessor-2026-03"
+      updatedAt?: string; // ISO date
+    };
   }>(),
   
   // Marketing

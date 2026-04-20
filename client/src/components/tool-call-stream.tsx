@@ -75,6 +75,11 @@ function resultToSummary(name: string, result: any): string {
   try {
     const parsed = typeof result === "string" ? JSON.parse(result) : result;
     if (Array.isArray(parsed)) return `${parsed.length} result${parsed.length !== 1 ? "s" : ""}`;
+    // r1 Marcus: a routine "no data yet" returned as `success: true`
+    // with a null enrichment payload was being rendered as "→ failed"
+    // by the next line, which made Pax look broken. Emit "→ no data"
+    // when the tool reports success with an empty payload.
+    if (parsed?.success === true && (parsed?.data === null || parsed?.data?.enrichment === null)) return "no data";
     if (parsed?.success === false) return "failed";
     if (parsed?.success) return "done";
     if (parsed?.id) return `created #${parsed.id}`;

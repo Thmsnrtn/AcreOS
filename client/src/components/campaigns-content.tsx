@@ -1387,7 +1387,14 @@ function CampaignForm({ onSuccess }: { onSuccess: () => void }) {
           </div>
         </div>
         <p className="text-xs text-muted-foreground mt-2">
-          {"Variables: {{firstName}}, {{lastName}}, {{county}}, {{state}}, {{apn}}, {{offerAmount}}"}
+          {/* r4 Wyatt WF-R4-001: Land-Academy-style blind offers price
+              per-recipient from assessor fields. These are surfaced here
+              so templates can reference them; per-row values are resolved
+              at send time from the attached list's columns. */}
+          {"Variables: {{firstName}}, {{lastName}}, {{county}}, {{state}}, {{apn}}, {{offerAmount}}, {{acreage}}, {{assessedValue}}, {{marketValue}}, {{landUseCode}}, {{lastSalePrice}}, {{ownerType}}"}
+        </p>
+        <p className="text-xs text-muted-foreground mt-1">
+          Blind-offer formula example: set {"{{offerAmount}}"} = 25% × {"{{assessedValue}}"} at list-import time, then reference {"{{offerAmount}}"} in your template.
         </p>
       </div>
 

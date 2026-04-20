@@ -1808,9 +1808,22 @@ export async function executeTool(
 
         const enrichmentData = (property as any).enrichmentData;
         if (!enrichmentData) {
+          // r1 Marcus: the tool-call stream labeled this as "→ failed"
+          // which looked like a provider error. It's actually just
+          // "no enrichment run yet" — a soft empty, not a failure.
+          // Return success=true with a null payload + message so the
+          // rail renders "→ no data yet" (via tool-call-stream.tsx
+          // formatter) instead of "failed."
           return {
-            success: false,
-            error: "No enrichment data found for this property. Use research_property tool to trigger enrichment.",
+            success: true,
+            data: {
+              propertyId: property.id,
+              address: property.address,
+              enrichedAt: null,
+              completenessScore: 0,
+              enrichment: null,
+            },
+            message: "No enrichment data yet. Use research_property to trigger a first run.",
           };
         }
 
