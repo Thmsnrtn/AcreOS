@@ -219,9 +219,17 @@ export async function registerRoutes(
     try {
       const clerkPath = req.originalUrl.replace(/^\/__clerk/, "") || "/";
 
-      // Cache Clerk environment/client responses for 60s to reduce proxy latency
-      if (req.method === "GET" && (clerkPath === "/v1/environment" || clerkPath.startsWith("/v1/client"))) {
-        const cacheKey = `clerk:${clerkPath}:${req.headers.cookie?.match(/__client=([^;]{0,20})/)?.[1] || "anon"}`;
+      // STR-011 root cause: /v1/client is per-session and MUST NOT be cached
+      // across users. The prior cache keyed by a `__client=` cookie regex
+      // that never matched (Clerk sets `__client_uat` and `__session`, not
+      // `__client`), so every request fell through to the "anon" bucket and
+      // signed-in users got served a stale empty-sessions response for up
+      // to 60s — blocking hydration after ticket sign-in.
+      //
+      // /v1/environment is safe to cache (it's public / instance-level,
+      // not user-level) — keep that cache, drop the client cache entirely.
+      if (req.method === "GET" && clerkPath === "/v1/environment") {
+        const cacheKey = `clerk:${clerkPath}`;
         if ((globalThis as any).__clerkCache?.[cacheKey] && Date.now() - (globalThis as any).__clerkCache[cacheKey].ts < 60000) {
           const cached = (globalThis as any).__clerkCache[cacheKey];
           res.setHeader("X-Clerk-Cache", "hit");
@@ -270,9 +278,10 @@ export async function registerRoutes(
       res.status(clerkRes.status);
       const responseBody = Buffer.from(await clerkRes.arrayBuffer());
 
-      // Cache successful GET responses for environment/client
-      if (req.method === "GET" && clerkRes.status < 400 && (clerkPath === "/v1/environment" || clerkPath.startsWith("/v1/client"))) {
-        const cacheKey = `clerk:${clerkPath}:${req.headers.cookie?.match(/__client=([^;]{0,20})/)?.[1] || "anon"}`;
+      // Cache ONLY /v1/environment (instance-level, safe to share).
+      // /v1/client is per-session and must not be cached across users.
+      if (req.method === "GET" && clerkRes.status < 400 && clerkPath === "/v1/environment") {
+        const cacheKey = `clerk:${clerkPath}`;
         if (!(globalThis as any).__clerkCache) (globalThis as any).__clerkCache = {};
         const hdrs: [string, string][] = [];
         clerkRes.headers.forEach((v, k) => { if (!["transfer-encoding","connection","content-encoding","content-length"].includes(k)) hdrs.push([k,v]); });
