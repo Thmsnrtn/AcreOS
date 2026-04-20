@@ -258,19 +258,31 @@ export async function registerRoutes(
         else if (typeof req.body === "string") body = req.body;
       }
       const clerkRes = await fetch(targetUrl, { method: req.method, headers: fwdHeaders, body, redirect: "manual" });
+
+      // Set-Cookie: use getSetCookie() to get each Set-Cookie value as a
+      // separate array entry (not merged, not comma-joined). STR-011
+      // investigation showed forEach on Node 20 does iterate per-cookie,
+      // but getSetCookie() is the spec-blessed multi-value accessor and
+      // the safer long-term choice. Also log the cookie names relayed so
+      // we can verify __client lands in the browser.
+      const setCookies = clerkRes.headers.getSetCookie();
+      if (setCookies.length > 0) {
+        const cookieNames = setCookies.map((c) => c.split("=")[0]);
+        logger.info(`[clerk-proxy] ${req.method} ${clerkPath} -> Set-Cookie: ${cookieNames.join(", ")}`);
+        for (const raw of setCookies) {
+          res.appendHeader("Set-Cookie", raw.replace(/domain=[^;]+/gi, "domain=.acreos.io"));
+        }
+      }
+
       clerkRes.headers.forEach((value, key) => {
         const k = key.toLowerCase();
-        if (["transfer-encoding", "connection", "content-encoding", "content-length"].includes(k)) return;
+        if (["transfer-encoding", "connection", "content-encoding", "content-length", "set-cookie"].includes(k)) return;
         if (k === "location") {
           let loc = value;
           if (loc.startsWith("/v1/") || loc.startsWith("/npm/")) loc = "/__clerk" + loc;
           if (loc.includes("possible-emu-83.clerk.accounts.dev")) loc = loc.replace("https://possible-emu-83.clerk.accounts.dev", "/__clerk");
           if (loc.includes("accounts.acreos.io")) loc = "https://acreos.io/";
           res.setHeader(key, loc);
-          return;
-        }
-        if (k === "set-cookie") {
-          res.appendHeader(key, value.replace(/domain=[^;]+/gi, "domain=.acreos.io"));
           return;
         }
         res.setHeader(key, value);
