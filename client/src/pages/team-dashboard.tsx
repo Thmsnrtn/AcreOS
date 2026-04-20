@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { fetchJsonArray } from "@/lib/queryClient";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -69,26 +70,34 @@ export default function TeamDashboardPage() {
 
   const { data: members = [], isLoading: membersLoading } = useQuery<TeamMember[]>({
     queryKey: ["/api/organization/members"],
-    queryFn: () => fetch("/api/organization/members").then(r => r.json()),
+    queryFn: () => fetchJsonArray<TeamMember>("/api/organization/members"),
   });
 
   const { data: presenceData = [], isLoading: presenceLoading } = useQuery<Presence[]>({
     queryKey: ["/api/team-messaging/presence"],
-    queryFn: () => fetch("/api/team-messaging/presence").then(r => r.json()),
+    queryFn: () => fetchJsonArray<Presence>("/api/team-messaging/presence"),
     refetchInterval: 30_000,
   });
 
   const { data: activityData, isLoading: activityLoading } = useQuery<ActivityResponse>({
     queryKey: ["/api/activity", "team-dashboard"],
-    queryFn: () => fetch("/api/activity?limit=500").then(r => r.json()),
+    queryFn: async () => {
+      const res = await fetch("/api/activity?limit=500", { credentials: "include" });
+      if (!res.ok) return { events: [] } as ActivityResponse;
+      const j = await res.json().catch(() => null);
+      if (Array.isArray(j)) return { events: j } as ActivityResponse;
+      if (Array.isArray(j?.events)) return j as ActivityResponse;
+      if (Array.isArray(j?.data)) return { events: j.data } as ActivityResponse;
+      return { events: [] } as ActivityResponse;
+    },
   });
 
   const { data: deals = [], isLoading: dealsLoading } = useQuery<Deal[]>({
     queryKey: ["/api/deals"],
-    queryFn: () => fetch("/api/deals").then(r => r.json()),
+    queryFn: () => fetchJsonArray<Deal>("/api/deals"),
   });
 
-  const events = activityData?.events ?? [];
+  const events = Array.isArray(activityData?.events) ? activityData.events : [];
   const presenceByUserId = new Map(presenceData.map(p => [p.userId, p]));
 
   function statForMember(memberId: string) {
