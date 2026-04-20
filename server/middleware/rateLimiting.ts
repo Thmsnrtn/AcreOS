@@ -35,11 +35,18 @@ interface FeatureLimit {
   windowMs: number;
 }
 
+// r3 Gabriel × Pax caught this as a CRITICAL blocker: a single page load
+// of /ai fans out to ~8 ai-category endpoints (ai/conversations,
+// ai/scheduled-tasks, pax/observations, ai/nudges, ai/messages, etc.)
+// plus the user's first prompt, easily exceeding 30/min on a warm
+// dashboard refresh. Lifting the AI budget to 120/min keeps the per-user
+// quota well short of OpenRouter's actual cap but no longer self-blocks
+// on legitimate page loads.
 const FEATURE_LIMITS: Record<FeatureArea, FeatureLimit> = {
   voice_calls: { maxRequests: 10, windowMs: 60_000 },
   valuation:   { maxRequests: 50, windowMs: 60_000 },
   marketplace: { maxRequests: 100, windowMs: 60_000 },
-  ai:          { maxRequests: 30, windowMs: 60_000 },
+  ai:          { maxRequests: 120, windowMs: 60_000 },
   general:     { maxRequests: 200, windowMs: 60_000 },
 };
 

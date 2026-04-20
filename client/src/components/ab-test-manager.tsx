@@ -63,18 +63,23 @@ export function AbTestManager({ campaign, showCreateButton = true, onTestCreated
   const [variantBSubject, setVariantBSubject] = useState("");
   const [variantBContent, setVariantBContent] = useState("");
 
-  const { data: abTests, isLoading } = useQuery<AbTestWithVariants[]>({
+  const { data: abTestsRaw, isLoading } = useQuery<AbTestWithVariants[] | { tests: AbTestWithVariants[] }>({
     queryKey: ['/api/ab-tests'],
   });
 
-  // Default to [] so downstream `.filter()` calls (line ~346 iterating
-  // non-running tests) don't crash when the /api/ab-tests query has not
-  // yet resolved. r4 Wyatt caught this as STR-R4-002: the campaign
-  // detail drawer threw "d?.filter is not a function" because
-  // campaignTests was undefined on first render.
+  // r4 Wyatt STR-R4-002: campaign detail threw "d?.filter is not a function"
+  // because the server returns { tests: [...] } (see server/routes-ab-tests.ts
+  // line 28) but the client treated the response as a plain array. Unwrap
+  // defensively: handle array OR { tests } OR undefined.
+  const abTests: AbTestWithVariants[] = Array.isArray(abTestsRaw)
+    ? abTestsRaw
+    : Array.isArray((abTestsRaw as { tests?: AbTestWithVariants[] } | undefined)?.tests)
+    ? (abTestsRaw as { tests: AbTestWithVariants[] }).tests
+    : [];
+
   const campaignTests = campaign
-    ? (abTests?.filter(t => t.campaignId === campaign.id) ?? [])
-    : (abTests ?? []);
+    ? abTests.filter(t => t.campaignId === campaign.id)
+    : abTests;
 
   const activeTest = campaignTests?.find(t => t.status === 'running');
 
@@ -568,7 +573,7 @@ function AbTestCard({
 }
 
 export function AbTestHistoryList() {
-  const { data: abTests, isLoading } = useQuery<AbTestWithVariants[]>({
+  const { data: abTestsRaw, isLoading } = useQuery<AbTestWithVariants[] | { tests: AbTestWithVariants[] }>({
     queryKey: ['/api/ab-tests'],
   });
 
@@ -580,8 +585,16 @@ export function AbTestHistoryList() {
     );
   }
 
-  const completedTests = abTests?.filter(t => t.status === 'completed') || [];
-  const runningTests = abTests?.filter(t => t.status === 'running') || [];
+  // Server returns { tests: [...] }; normalize to array. See the same
+  // unwrap in AbTestManager above.
+  const abTests: AbTestWithVariants[] = Array.isArray(abTestsRaw)
+    ? abTestsRaw
+    : Array.isArray((abTestsRaw as { tests?: AbTestWithVariants[] } | undefined)?.tests)
+    ? (abTestsRaw as { tests: AbTestWithVariants[] }).tests
+    : [];
+
+  const completedTests = abTests.filter(t => t.status === 'completed');
+  const runningTests = abTests.filter(t => t.status === 'running');
 
   return (
     <div className="space-y-6">
