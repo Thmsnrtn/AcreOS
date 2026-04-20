@@ -86,19 +86,29 @@ function StatPanel({
 export default function OpsDashboardPage() {
   const qc = useQueryClient();
 
+  // Cycle 10 F04: all three endpoints return {data, total} pagination
+  // envelopes now — unwrap to array or fall back to [] to prevent the
+  // downstream .filter() crash.
+  const unwrapArr = async <T,>(url: string): Promise<T[]> => {
+    const r = await fetch(url, { credentials: "include" });
+    if (!r.ok) return [];
+    const j = await r.json();
+    return Array.isArray(j) ? j : Array.isArray(j?.data) ? j.data : [];
+  };
+
   const { data: tasks, isLoading: tasksLoading } = useQuery<Task[]>({
     queryKey: ["/api/tasks"],
-    queryFn: () => fetch("/api/tasks").then(r => r.json()),
+    queryFn: () => unwrapArr<Task>("/api/tasks"),
   });
 
   const { data: deals, isLoading: dealsLoading } = useQuery<Deal[]>({
     queryKey: ["/api/deals"],
-    queryFn: () => fetch("/api/deals").then(r => r.json()),
+    queryFn: () => unwrapArr<Deal>("/api/deals"),
   });
 
   const { data: leads, isLoading: leadsLoading } = useQuery<Lead[]>({
     queryKey: ["/api/leads"],
-    queryFn: () => fetch("/api/leads").then(r => r.json()),
+    queryFn: () => unwrapArr<Lead>("/api/leads"),
   });
 
   const { data: stats, isLoading: statsLoading } = useQuery<DashboardStats>({

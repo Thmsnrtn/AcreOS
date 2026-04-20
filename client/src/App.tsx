@@ -529,7 +529,12 @@ function Router() {
         {() => <FounderProtectedRoute component={OpsDashboardPage} />}
       </Route>
       <Route path="/admin/beta-intake">
-        {() => <FounderProtectedRoute component={BetaIntakePage} />}
+        {/* Cycle 10 F03: /admin/beta-intake was routing to the PUBLIC
+            beta sign-up form (beta-intake.tsx). The founder's admin
+            review queue is at beta-dashboard.tsx (routed at /admin/beta).
+            Redirect so founders land on the actual admin queue. The
+            public form remains at /beta-intake for non-founder users. */}
+        {() => <Redirect to="/admin/beta" />}
       </Route>
       <Route path="/founder/beta-analytics">
         {() => <FounderProtectedRoute component={BetaAnalyticsPage} />}

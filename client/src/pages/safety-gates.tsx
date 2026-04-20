@@ -174,11 +174,16 @@ export default function SafetyGatesPage() {
 
   const { data: deals = [], isLoading: dealsLoading } = useQuery<Deal[]>({
     queryKey: ["/api/deals"],
-    queryFn: () => fetch("/api/deals").then(r => r.json()),
+    queryFn: async () => {
+      const r = await fetch("/api/deals", { credentials: "include" });
+      if (!r.ok) return [];
+      const j = await r.json();
+      return Array.isArray(j) ? j : Array.isArray(j?.data) ? j.data : [];
+    },
   });
 
-  const activeDeals = deals.filter(d => !["closed", "cancelled"].includes(d.status));
-  const selectedDeal = deals.find(d => String(d.id) === selectedDealId);
+  const activeDeals = Array.isArray(deals) ? deals.filter(d => !["closed", "cancelled"].includes(d.status)) : [];
+  const selectedDeal = Array.isArray(deals) ? deals.find(d => String(d.id) === selectedDealId) : undefined;
 
   const { data: property = null, isLoading: propLoading } = useQuery<Property | null>({
     queryKey: ["/api/properties", selectedDeal?.propertyId],
