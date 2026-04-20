@@ -57,7 +57,12 @@ export default function IntegrationsHealth() {
     staleTime: 30_000,
   });
 
-  const overallConfig = STATUS_CONFIG[data?.overall ?? "unknown"];
+  // Cycle 11 fix: /api/health may return an "overall" status the
+  // client doesn't have a STATUS_CONFIG entry for (e.g. "healthy"
+  // instead of "operational") or may not respond at all. Previously
+  // this threw `Cannot read properties of undefined (reading 'icon')`
+  // and fired the global error boundary. Fall back to "unknown".
+  const overallConfig = STATUS_CONFIG[(data?.overall as keyof typeof STATUS_CONFIG) ?? "unknown"] ?? STATUS_CONFIG.unknown;
   const OverallIcon = overallConfig.icon;
 
   return (
@@ -123,7 +128,7 @@ export default function IntegrationsHealth() {
               </Card>
             ))
           : (data?.services ?? []).map((service) => {
-              const config = STATUS_CONFIG[service.status];
+              const config = STATUS_CONFIG[service.status as keyof typeof STATUS_CONFIG] ?? STATUS_CONFIG.unknown;
               const Icon = config.icon;
               return (
                 <Card key={service.name}>
