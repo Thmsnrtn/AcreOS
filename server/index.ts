@@ -624,6 +624,13 @@ app.use("/api", apiLimiter);
       // depend on outcomeScore being populated).
       startAutonomyOutcomeGraderJob();
 
+      // Monthly prompt-evolution meta-agent — reads 30d of per-agent
+      // performance data and proposes prompt revisions for founder
+      // review. Proposals land in agentPromptEvolutions with status
+      // 'proposed'; live prompts are only mutated after explicit
+      // founder approval.
+      startPromptEvolutionJob();
+
       // Auto-seed county GIS endpoints for free parcel lookups
       seedCountyGisEndpointsOnStartup();
       
@@ -1946,6 +1953,31 @@ function seedCompanyAgentsOnStartup() {
   // before the upsert tries to query the table. The old 5s was racing
   // the migration step under load.
   setTimeout(() => attemptSeed(1), 10_000);
+}
+
+/**
+ * Monthly prompt-evolution meta-agent. Fires on the 1st of each month
+ * at 09:00 UTC (early so the founder sees the proposal queue during
+ * their morning scan). Only reads + proposes; never mutates live
+ * prompts. Founder approval via /api/founder/intelligence/prompt-evolutions/:id/approve.
+ */
+function startPromptEvolutionJob() {
+  const ONE_HOUR = 60 * 60 * 1000;
+  log('Registering monthly prompt-evolution meta-agent (1st of month, 09:00 UTC)', 'sovereign');
+  trackInterval(async () => {
+    const now = new Date();
+    if (now.getUTCDate() !== 1 || now.getUTCHours() !== 9) return;
+    try {
+      const { runMonthlyPromptEvolution } = await import('./services/promptEvolutionMetaAgent');
+      const r = await runMonthlyPromptEvolution();
+      log(
+        `[prompt-evolution] monthly: scanned=${r.scanned} proposals=${r.proposals.filter(p => p.proposalId).length}`,
+        'sovereign',
+      );
+    } catch (err: any) {
+      log(`[prompt-evolution] monthly failed: ${err?.message ?? err}`, 'sovereign');
+    }
+  }, ONE_HOUR);
 }
 
 /**

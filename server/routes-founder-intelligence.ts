@@ -1486,6 +1486,72 @@ router.post("/autonomy-health/grade-outcomes", requireFounder, async (_req: Requ
   }
 });
 
+// ── Prompt evolution — the monthly learning loop ────────────────────
+
+router.get("/prompt-evolutions", requireFounder, async (_req: Request, res: Response) => {
+  try {
+    const { listProposedPromptChanges } = await import("./services/promptEvolutionMetaAgent");
+    const rows = await listProposedPromptChanges();
+    res.json({ proposals: rows });
+  } catch (err: any) {
+    logger.error("[prompt-evolutions] Error", undefined, { metadata: { detail: err.message } });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/prompt-evolutions/:id", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
+    const { getPromptChange } = await import("./services/promptEvolutionMetaAgent");
+    const row = await getPromptChange(id);
+    if (!row) return res.status(404).json({ error: "Proposal not found" });
+    res.json({ proposal: row });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/prompt-evolutions/:id/approve", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
+    const { agentEvolutionEngine } = await import("./services/agentEvolutionEngine");
+    const result = await agentEvolutionEngine.applyPromptChange(id);
+    if (!result.success) return res.status(400).json({ error: result.message });
+    res.json(result);
+  } catch (err: any) {
+    logger.error("[prompt-evolutions approve] Error", undefined, { metadata: { detail: err.message } });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/prompt-evolutions/:id/reject", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
+    const { rejectPromptChange } = await import("./services/promptEvolutionMetaAgent");
+    await rejectPromptChange(id);
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Manual trigger for the monthly meta-agent — useful for first-run
+// and after a series of known-bad decisions the founder wants to
+// learn from immediately.
+router.post("/prompt-evolutions/run-now", requireFounder, async (_req: Request, res: Response) => {
+  try {
+    const { runMonthlyPromptEvolution } = await import("./services/promptEvolutionMetaAgent");
+    const result = await runMonthlyPromptEvolution();
+    res.json(result);
+  } catch (err: any) {
+    logger.error("[prompt-evolutions run] Error", undefined, { metadata: { detail: err.message } });
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Single-decision detail fetch with full contextBundle, for the
 // "expand row" interaction on the founder decisions page.
 router.get("/decision-log/:id", requireFounder, async (req: Request, res: Response) => {
