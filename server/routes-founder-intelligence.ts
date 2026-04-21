@@ -1857,6 +1857,19 @@ router.post("/expansion/:id/resolve", requireFounder, async (req: any, res: Resp
   }
 });
 
+// ── Unified founder todo ────────────────────────────────────────────
+
+router.get("/todo", requireFounder, async (_req: Request, res: Response) => {
+  try {
+    const { getFounderTodos } = await import("./services/founderTodo");
+    const report = await getFounderTodos();
+    res.json(report);
+  } catch (err: any) {
+    logger.error("[founder-todo] Error", undefined, { metadata: { detail: err.message } });
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Agent memory consolidation ──────────────────────────────────────
 
 router.get("/agent-memory", requireFounder, async (_req: Request, res: Response) => {
