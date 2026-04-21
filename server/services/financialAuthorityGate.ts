@@ -48,20 +48,31 @@ import { logger } from "../utils/logger";
 // every Tier 5 approver rubber-stamps it. Default is $25K — tuned low so the
 // system has to ask *the human founder* for anything that could meaningfully
 // dent runway. Raise via FINANCIAL_HARD_CAP_CENTS when you know a large
-// spend is coming.
-function getHardCapCents(): number {
-  const raw = process.env.FINANCIAL_HARD_CAP_CENTS;
-  const parsed = raw ? parseInt(raw, 10) : NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 2_500_000;
+// spend is coming. Now resolved through founderSettings so the founder
+// can adjust live from /founder/settings.
+async function getHardCapCents(): Promise<number> {
+  try {
+    const { getNumberSetting } = await import("./founderSettings");
+    return await getNumberSetting("FINANCIAL_HARD_CAP_CENTS", 2_500_000);
+  } catch {
+    const raw = process.env.FINANCIAL_HARD_CAP_CENTS;
+    const parsed = raw ? parseInt(raw, 10) : NaN;
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 2_500_000;
+  }
 }
 
 // ─── Approval TTL ────────────────────────────────────────────────────────────
 // Pending approvals that don't gather consensus within this window get
 // auto-expired on the next checkApprovalStatus() / sweep.
-function getApprovalTtlHours(): number {
-  const raw = process.env.FINANCIAL_APPROVAL_TTL_HOURS;
-  const parsed = raw ? parseInt(raw, 10) : NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 72;
+async function getApprovalTtlHours(): Promise<number> {
+  try {
+    const { getNumberSetting } = await import("./founderSettings");
+    return await getNumberSetting("FINANCIAL_APPROVAL_TTL_HOURS", 72);
+  } catch {
+    const raw = process.env.FINANCIAL_APPROVAL_TTL_HOURS;
+    const parsed = raw ? parseInt(raw, 10) : NaN;
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 72;
+  }
 }
 
 // ─── Tier Definitions ────────────────────────────────────────────────────────
@@ -197,7 +208,7 @@ class FinancialAuthorityGateService {
     // Non-bypassable. Fail immediately. Do not even create an
     // approval record — a rejected record could theoretically be
     // re-opened by a compromised agent, so we refuse to persist.
-    const hardCap = getHardCapCents();
+    const hardCap = await getHardCapCents();
     if (amountCents > hardCap) {
       logger.warn("[financialAuthorityGate] spend blocked by hard cap", {
         metadata: {
@@ -525,7 +536,7 @@ class FinancialAuthorityGateService {
     // Anything still in "pending" after the TTL window is transitioned
     // to "expired" so the queue can't grow unbounded and stale
     // consensus can't be rubber-stamped days later.
-    const ttlHours = getApprovalTtlHours();
+    const ttlHours = await getApprovalTtlHours();
     const createdAt = request.createdAt instanceof Date ? request.createdAt : new Date(request.createdAt ?? Date.now());
     const ttlDeadline = new Date(createdAt.getTime() + ttlHours * 60 * 60 * 1000);
     if (request.status === "pending" && new Date() > ttlDeadline) {
@@ -771,7 +782,7 @@ class FinancialAuthorityGateService {
    * or on-demand before the founder loads the approvals queue.
    */
   async sweepStaleApprovals(): Promise<{ expired: number }> {
-    const ttlHours = getApprovalTtlHours();
+    const ttlHours = await getApprovalTtlHours();
     const cutoff = new Date(Date.now() - ttlHours * 60 * 60 * 1000);
     const updated = await db
       .update(financialApprovals)
@@ -847,8 +858,8 @@ class FinancialAuthorityGateService {
       monthKey: key,
       envelopes: rolled,
       pendingAnomalies: anomalies.length,
-      hardCapCents: getHardCapCents(),
-      approvalTtlHours: getApprovalTtlHours(),
+      hardCapCents: await getHardCapCents(),
+      approvalTtlHours: await getApprovalTtlHours(),
     };
   }
 

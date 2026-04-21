@@ -535,12 +535,19 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
     }
   }
 
-  // Legacy hard stop: financial impact above absolute threshold (Tier 5 fallback)
-  if (impactCents > EXECUTOR_CONFIG.MAX_FINANCIAL_IMPACT_CENTS) {
+  // Legacy hard stop: financial impact above absolute threshold (Tier 5 fallback).
+  // Reads the live founder-settings value so the founder can raise/lower
+  // the per-decision cap without a deploy.
+  const { getNumberSetting } = await import("./founderSettings");
+  const maxImpactCents = await getNumberSetting(
+    "MAX_FINANCIAL_IMPACT_CENTS",
+    EXECUTOR_CONFIG.MAX_FINANCIAL_IMPACT_CENTS,
+  );
+  if (impactCents > maxImpactCents) {
     result.decision = {
       action: "hard_stop",
       confidence: 100,
-      reasoning: `Financial impact $${(impactCents / 100).toFixed(2)} exceeds autonomous execution limit of $${(EXECUTOR_CONFIG.MAX_FINANCIAL_IMPACT_CENTS / 100).toFixed(2)}. Requires founder review.`,
+      reasoning: `Financial impact $${(impactCents / 100).toFixed(2)} exceeds autonomous execution limit of $${(maxImpactCents / 100).toFixed(2)}. Requires founder review.`,
     };
     result.executedAction = "hard_stop_deferred";
     result.executionSuccess = true;
@@ -665,8 +672,14 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
 
   result.decision = aiDecision;
 
-  // Below confidence threshold → defer 24 hours
-  if (aiDecision.confidence < EXECUTOR_CONFIG.AUTO_EXECUTE_THRESHOLD) {
+  // Below confidence threshold → defer 24 hours. Threshold is founder-tunable
+  // via /founder/settings (AUTO_EXECUTE_THRESHOLD) so the founder can raise
+  // it if the calibration report flags overconfidence.
+  const autoExecuteThreshold = await getNumberSetting(
+    "AUTO_EXECUTE_THRESHOLD",
+    EXECUTOR_CONFIG.AUTO_EXECUTE_THRESHOLD,
+  );
+  if (aiDecision.confidence < autoExecuteThreshold) {
     await db.update(decisionsInboxItems)
       .set({
         status: "deferred",
@@ -674,7 +687,7 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
         updatedAt: new Date(),
       })
       .where(eq(decisionsInboxItems.id, item.id));
-    result.executedAction = `deferred_low_confidence (${aiDecision.confidence}% < ${EXECUTOR_CONFIG.AUTO_EXECUTE_THRESHOLD}% threshold)`;
+    result.executedAction = `deferred_low_confidence (${aiDecision.confidence}% < ${autoExecuteThreshold}% threshold)`;
     result.executionSuccess = true;
     return result;
   }

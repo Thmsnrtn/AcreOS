@@ -434,6 +434,30 @@ app.use("/api", apiLimiter);
       log(`founder_letters bootstrap: ${err.message}`, "db");
     }
 
+    // Founder settings — key-value operational knobs (hard cap,
+    // thresholds, TTLs) editable from /founder/settings.
+    try {
+      const { pool } = await import("./db");
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS "founder_settings" (
+          "id" serial PRIMARY KEY,
+          "key" text NOT NULL UNIQUE,
+          "value" text NOT NULL,
+          "value_type" text NOT NULL DEFAULT 'string',
+          "description" text,
+          "category" text NOT NULL DEFAULT 'general',
+          "updated_at" timestamp DEFAULT now() NOT NULL,
+          "updated_by" text
+        );
+        CREATE INDEX IF NOT EXISTS "founder_settings_key_idx"
+          ON "founder_settings" ("key");
+        CREATE INDEX IF NOT EXISTS "founder_settings_category_idx"
+          ON "founder_settings" ("category");
+      `);
+    } catch (err: any) {
+      log(`founder_settings bootstrap: ${err.message}`, "db");
+    }
+
     // Strategic proposals — weekly per-agent proposals + monthly synthesis
     // feeding the founder letter's Next Month's Focus section.
     try {

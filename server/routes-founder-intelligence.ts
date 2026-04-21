@@ -1705,6 +1705,30 @@ router.get("/calibration/:agentCodename", requireFounder, async (req: Request, r
   }
 });
 
+// ── Founder settings (customization center) ─────────────────────────
+
+router.get("/settings", requireFounder, async (_req: Request, res: Response) => {
+  try {
+    const { listSettings } = await import("./services/founderSettings");
+    const settings = await listSettings();
+    res.json({ settings });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/settings/:key", requireFounder, async (req: any, res: Response) => {
+  try {
+    const { setSetting } = await import("./services/founderSettings");
+    const value = String(req.body?.value ?? "");
+    const userId = req.permissionContext?.userId ?? "founder";
+    await setSetting(req.params.key, value, userId);
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 // Single-decision detail fetch with full contextBundle, for the
 // "expand row" interaction on the founder decisions page.
 router.get("/decision-log/:id", requireFounder, async (req: Request, res: Response) => {

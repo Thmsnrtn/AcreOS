@@ -10949,6 +10949,26 @@ export const insertFounderDigestHistorySchema = createInsertSchema(founderDigest
 export type InsertFounderDigestHistory = z.infer<typeof insertFounderDigestHistorySchema>;
 export type FounderDigestHistory = typeof founderDigestHistory.$inferSelect;
 
+// Founder settings — editable operational knobs. Simple key-value
+// store so adding a new tunable doesn't require a migration. The
+// service layer reads this first, falls back to process.env, then
+// falls back to a hardcoded default.
+export const founderSettings = pgTable("founder_settings", {
+  id: serial("id").primaryKey(),
+  key: text("key").notNull().unique(),
+  value: text("value").notNull(),
+  valueType: text("value_type").notNull().default("string"), // string | number | boolean | json
+  description: text("description"),
+  category: text("category").notNull().default("general"), // safety | learning | scheduling | general
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  updatedBy: text("updated_by"),
+}, (table) => [
+  index("founder_settings_key_idx").on(table.key),
+  index("founder_settings_category_idx").on(table.category),
+]);
+
+export type FounderSetting = typeof founderSettings.$inferSelect;
+
 // Strategic proposals — proactive "what should we do this month"
 // layer. Agents generate weekly proposals; a monthly synthesis step
 // picks the top 3-5 and stamps them with a monthKey for the founder
