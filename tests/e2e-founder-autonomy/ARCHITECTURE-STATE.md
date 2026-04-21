@@ -1,124 +1,172 @@
-# Founder-side infrastructure — architecture state
+# AcreOS platform — architecture state
 
-**Date:** 2026-04-21 (end of session)
+**Date:** 2026-04-21 (end of extended session)
 
-This document captures the current shape of the founder-side infrastructure after building the three foundation moves (Mind / Self-improvement / Narrative) and the six follow-up moves (F-1 through F-6). It's written for future sessions — what exists, where it lives, and how the pieces fit.
+This document is the navigation reference for all autonomous-platform work shipped across the session. It captures the full 8-layer model, every new surface, the schedule, and where to look when something needs debugging.
 
 ## The 8-layer model
 
-| Layer | Concern | Status | Lead file(s) |
-|---|---|---|---|
-| 0 | Foundation (schema, auth, kill-switch, hard caps) | ✅ Rock solid | `shared/schema.ts`, `server/utils/simulationMode.ts` |
-| 1 | Signals in (Stripe, email, support, churn → inbox) | ✅ Working | `server/services/decisionsInbox.ts` |
-| 2 | Reasoning (12 agents, executor, Company Mind) | ✅ Company Mind live | `server/services/companyMind.ts`, `autonomousDecisionExecutor.ts` |
-| 3 | Actions out (sim-mode wrappers + preview checkpoint) | ✅ F-5 live | `server/services/actionPreview.ts` |
-| 4 | Outcomes (grader, trust, safety-rail trips) | ✅ Wired | `server/services/autonomyHealth.ts` |
-| 5 | Learning loop (outcomes → trust → prompts → calibration) | ✅ F-2 live | `promptEvolutionMetaAgent.ts`, `calibration.ts` |
-| 6 | Strategy/proaction (weekly/monthly proposals + tools) | ✅ F-1 + F-6 live | `strategicProposals.ts`, `toolProposals.ts` |
-| 7 | Interface (letter, health, customization, palette) | ✅ F-3 + F-4 live | `founderNarrative.ts`, `founder-command-palette.tsx`, `founder-settings.tsx` |
-| 8 | Meta/self-awareness (calibration, "I don't know") | ✅ F-2 live | `calibration.ts` |
+| Layer | Concern | Status |
+|---|---|---|
+| 0 | Foundation (schema, auth, kill-switch, hard caps) | ✅ Rock solid |
+| 1 | Signals in (Stripe, email, support, churn → inbox) | ✅ Working |
+| 2 | Reasoning (12 agents, executor, Company Mind) | ✅ Cross-wing context live |
+| 3 | Actions out (sim-mode wrappers + action preview checkpoint) | ✅ Preview + audit trail |
+| 4 | Outcomes (grader, trust, safety-rail trips) | ✅ Wired; experiments tapped |
+| 5 | Learning loop (outcomes → trust → prompts → calibration → experiments) | ✅ Full loop |
+| 6 | Strategy/proaction (proposals + tools + expansion radar) | ✅ Live |
+| 7 | Interface (letter, health, trends, customization, palette, preview) | ✅ Narrative-first + navigable |
+| 8 | Meta/self-awareness (calibration Brier + overconfidence bias) | ✅ Live |
 
-## Session timeline
+## All shipped features
 
-### Foundation (moves 1–3 earlier in the session)
+### Foundation (structural moves)
+- **Company Mind** (`server/services/companyMind.ts`) — cross-wing context at decision time
+- **Prompt Evolution Meta-Agent** (`server/services/promptEvolutionMetaAgent.ts`) — monthly LLM-driven prompt revisions
+- **Founder Letter** (`server/services/founderNarrative.ts`) — monthly narrative synthesis
 
-1. **Company Mind** — `server/services/companyMind.ts`. Cross-wing context assembled at decision time from founder reversals, strategic priorities, high-priority agent broadcasts, recent negative outcomes, and same-org activity. Prepended to every executor decision prompt.
-2. **Prompt-evolution meta-agent** — `server/services/promptEvolutionMetaAgent.ts`. Monthly pass reads per-agent performance slices (outcome scores, override rate, negative patterns, calibration), asks Opus to propose surgical prompt revisions, files them in `agentPromptEvolutions` for founder approval.
-3. **Monthly Founder Letter** — `server/services/founderNarrative.ts`. One-page monthly narrative written by the "Chief of Staff" in a single voice. Pulls synthesized strategic moves, pending founder decisions, team trends, highlights, lowlights, calibration. Renders at `/founder/letter`.
+### Founder-side features (F-series)
+- **F-1 Strategic Proposals** (`strategicProposals.ts`) — weekly + monthly synthesis pass feeding the letter
+- **F-2 Calibration** (`calibration.ts`) — Brier score + overconfidence bias
+- **F-3 Customization Center** (`founderSettings.ts`) — live-apply knobs at `/founder/settings`
+- **F-4 Command Palette** (`founder-command-palette.tsx`) — ⌘⇧K global search
+- **F-5 Action Preview** (`actionPreview.ts`) — before-commit checkpoint with cancel window
+- **F-6 Tool Proposals** (`toolProposals.ts`) — capability-growth queue
+- **F-7 Approval UIs** — `/founder/prompt-evolutions` and `/founder/strategy`
 
-### F-1 through F-6
+### Platform-level features (P-series)
+- **P-1 Customer Monthly Letter** (`customerNarrative.ts`) — per-org Sophie letter at `/my-letter`
+- **P-2 Decision Experiments** (`decisionExperiments.ts`) — A/B testing at decision layer
+- **P-3 Onboarding Autonomy** (`onboardingAutonomy.ts`) — Sophie's 30-day scripted journey
+- **P-4 Expansion Radar** (`expansionRadar.ts`) — weekly upsell-ready candidates
+- **P-5 System Trends** (`systemTrends.ts`) — 90-day trust-gauge charts
+- **P-6 Provider Intelligence** (`providerIntelligence.ts`) — per-provider success tracking
 
-4. **F-1 Proactive Strategic Proposals** — `server/services/strategicProposals.ts`. Weekly per-agent proposals (Sunday 00:00 UTC) + monthly synthesis pass (1st 10:00 UTC) into 3-5 company moves. Feeds the letter's "Next month's focus" section.
-5. **F-2 Calibration & self-awareness** — `server/services/calibration.ts`. Measures Brier score + overconfidence bias per agent. No new table — piggy-backs on `decisionsInboxItems.contextBundle.executorConfidence` (now written by executor) paired with `outcomeScore`. Feeds the prompt-evolution meta-agent as an eligibility trigger.
-6. **F-3 Customization Center** — `server/services/founderSettings.ts` + `/founder/settings`. Key-value settings table with 6 tunable knobs (hard cap, TTL, thresholds, preview window, etc.). Live-apply — 30s cache, next decision uses the new value.
-7. **F-4 Command Palette** — `client/src/components/founder-command-palette.tsx` + `GET /api/founder/intelligence/search`. ⌘⇧K (not ⌘K — that's the operator palette) searches decisions, agents, orgs, letters, proposals. Keyboard-first nav.
-8. **F-5 Action Preview** — `server/services/actionPreview.ts` + `/founder/preview`. Every auto-approved action writes a preview row BEFORE committing. Optional cancel window (founder-tunable, 0s default = audit-only). Live countdown UI.
-9. **F-6 Tool Proposal pipeline** — `server/services/toolProposals.ts` + `/founder/tools`. Monthly strategic-synthesis pass now emits tool proposals as a side output. Founder approves/rejects/marks build progress. Capability-growth queue.
+## Founder page map
 
-## Entry points by founder task
-
-| If the founder wants to… | Go to |
+| Page | Purpose |
 |---|---|
-| …read the one monthly summary | `/founder/letter` |
-| …know if the system needs them today | `/founder` (autonomy-health card) |
-| …review every autonomous action, live | `/founder/preview` |
-| …review the decision audit trail | `/founder/decisions` |
-| …review proposed prompt-revisions | (UI page pending — API at `/api/founder/intelligence/prompt-evolutions`) |
-| …review strategic proposals | (via Founder Letter "Next month's focus" + API) |
-| …review new tool/integration proposals | `/founder/tools` |
-| …change operational knobs | `/founder/settings` |
-| …find something specific | ⌘⇧K |
+| `/founder` | Autonomy-health card + business metrics |
+| `/founder/letter` | Monthly Chief-of-Staff letter |
+| `/founder/decisions` | Autonomous decision audit log |
+| `/founder/preview` | Actions about to commit (with cancel) |
+| `/founder/settings` | Operational knobs (hard cap, thresholds) |
+| `/founder/tools` | Tool-proposal approval queue |
+| `/founder/prompt-evolutions` | Prompt-revision approvals |
+| `/founder/strategy` | Strategic-proposal approvals |
+| `/founder/onboarding` | Customer activation journeys |
+| `/founder/expansion` | Upsell-ready customers |
+| `/founder/experiments` | A/B tests on decision playbooks |
+| `/founder/trends` | 90-day system-improvement charts |
+| `/founder/providers` | Data-layer cost + quality |
+| ⌘⇧K | Global search across all of the above |
 
-## Cron schedule
+## Customer-facing page map
+
+| Page | Purpose |
+|---|---|
+| `/my-letter` | Monthly Sophie letter |
+
+## New tables this session
+
+| Table | Purpose |
+|---|---|
+| `founder_letters` | Monthly founder-side letter storage |
+| `customer_letters` | Monthly customer-side letter storage |
+| `strategic_proposals` | Weekly + synthesized strategic moves |
+| `founder_settings` | Live-tunable operational knobs |
+| `action_previews` | Before-commit audit + cancel |
+| `tool_proposals` | Capability-growth queue |
+| `onboarding_journeys` | Per-org 30-day activation tracking |
+| `onboarding_steps` | Per-step schedule + outcome |
+| `expansion_candidates` | Weekly upsell-ready list |
+| `decision_experiments` | A/B experiment definitions |
+| `decision_experiment_assignments` | Per-(exp, org) variant assignments |
+| `provider_lookup_log` | Per-lookup telemetry for data providers |
+
+All bootstrapped via `CREATE TABLE IF NOT EXISTS` at startup. No migration required.
+
+## Cron schedule (full)
 
 | Job | Schedule | File |
 |---|---|---|
-| Morning briefing pre-generation | Daily 06:45am CT (11:45 UTC) | `companyBriefingGenerator` |
+| Morning briefing pre-generation | Daily 06:45am CT | `companyBriefingGenerator` |
+| Onboarding step sweeper | Hourly | `onboardingAutonomy.sweepAndFireDueSteps` |
+| Action-preview orphan sweep | Hourly | `actionPreview.sweepOrphanedPreviews` |
 | Outcome grader | Daily | `autonomyHealth.gradeRecentDecisions` |
-| Strategic proposals — weekly | Sundays 00:00 UTC | `strategicProposals.runWeekly` |
-| Strategic proposals — synthesis | 1st of month 10:00 UTC | `strategicProposals.runSynthesis` |
+| Expansion radar | Monday 08:00 UTC | `expansionRadar.runWeeklyExpansionScan` |
+| Strategic proposals — weekly | Sunday 00:00 UTC | `strategicProposals.runWeeklyProposals` |
+| Strategic proposals — synthesis | 1st of month 10:00 UTC | `strategicProposals.runMonthlySynthesis` |
 | Prompt-evolution meta-agent | 1st of month 09:00 UTC | `promptEvolutionMetaAgent` |
 | Founder letter | 1st of month 12:00 UTC | `founderNarrative.generateMonthlyLetter` |
-| Action-preview orphan sweep | Hourly | `actionPreview.sweepOrphanedPreviews` |
+| Customer letters | 1st of month 15:00 UTC | `customerNarrative.runMonthlyCustomerLetters` |
 | Financial approval TTL sweep | On-demand + on load | `financialAuthorityGate.sweepStaleApprovals` |
 
-## Cost profile
+## Cost profile (updated)
 
-Roughly:
-- Daily operations: ~$0.05 (grader, briefing)
-- Weekly strategic proposals: ~$0.15 (single Opus call)
-- Monthly synthesis + tool extraction: ~$0.20
-- Monthly prompt-evolution: ~$0.30 (~1 Opus call per flagged agent)
-- Monthly founder letter: ~$0.10
-- Per-decision cross-wing context: ~$0.0015
-- Calibration: free (no LLM call)
+| Frequency | Cost per run | Total |
+|---|---|---|
+| Daily operations (grader, briefing) | ~$0.05 | ~$1.50/mo |
+| Weekly strategic proposals | ~$0.15 | ~$0.60/mo |
+| Weekly expansion scan | $0 (pure SQL) | $0 |
+| Monthly synthesis + tools | ~$0.20 | ~$0.20/mo |
+| Monthly prompt-evolution | ~$0.30 | ~$0.30/mo |
+| Monthly founder letter | ~$0.10 | ~$0.10/mo |
+| Monthly customer letters (25 orgs × $0.08) | $2.00/run | ~$2.00/mo |
+| Onboarding journey steps | $0 (no LLM for MVP) | $0 |
+| Per-decision cross-wing context | ~$0.0015 × 20/day | ~$0.90/mo |
+| Provider intelligence | $0 (SQL) | $0 |
+| Experiments | $0 (SQL) | $0 |
 
-**Total: ~$3–5/month at 20 decisions/day.** An avoided founder reversal per month pays for the whole stack.
-
-## What's NOT built yet (open future work)
-
-- **UI for prompt-evolution approvals** — API exists, UI page pending. Would go at `/founder/prompt-evolutions`.
-- **UI for strategic proposal approvals** — API exists, proposals show up in the Founder Letter body. Dedicated `/founder/strategy` page would give inline approve/reject.
-- **Inter-agent negotiation** — the 12 agents broadcast via `agentCommsService` but don't debate proposals. Could add a "the board votes" layer on top of strategic proposals.
-- **Compound-signal synthesis** — if multiple related decisions arrive in a short window, the system still processes them independently. Real synthesis would cluster them into one decision.
-- **Per-customer rules engine** — "this customer gets white-glove treatment" isn't yet expressible outside of code. Extending founderSettings to per-org overrides would close this.
-- **Memory consolidation** — `agentMemory` table exists but isn't populated by the executor. A weekly cron could summarize what worked / what didn't into agent-specific memory notes.
-
-## Safety invariants
-
-All of these are held even after this session's expansion:
-
-- `SIMULATION_MODE=true` still short-circuits every external side effect.
-- Financial hard cap still blocks autonomous spend above the configured ceiling.
-- Prompt revisions NEVER auto-apply — always founder-gated via `agentEvolutionEngine.applyPromptChange`.
-- Strategic proposals NEVER auto-execute — always founder-gated via `strategic-proposals/:id/approve`.
-- Tool proposals NEVER auto-build — always founder-gated.
-- Action preview rows are the single source of truth for "did this happen?" — if cancelled, the action is not committed.
+**Total estimated: ~$5–7/month.**
 
 ## Commit reference
 
-This session shipped:
+Full session commit log:
 
 ```
-1d3d90a feat(tools): F-6 Tool Proposal pipeline
-cbe6fd0 feat(preview): F-5 Action Preview
-9c7ee45 feat(nav): F-4 Founder Command Palette
-4630e86 feat(settings): F-3 Customization Center
-00d15f8 feat(calibration): F-2 self-awareness
-7b5d738 feat(strategy): F-1 proactive strategic proposals
-55f2490 feat(letter): monthly founder letter
-0e27f02 feat(evolution): prompt-evolution meta-agent
 06d17f9 feat(mind): shared cross-wing context
+0e27f02 feat(evolution): prompt-evolution meta-agent
+55f2490 feat(letter): monthly founder letter
+7b5d738 feat(strategy): F-1 proactive strategic proposals
+00d15f8 feat(calibration): F-2 self-awareness
+4630e86 feat(settings): F-3 customization center
+9c7ee45 feat(nav): F-4 founder command palette
+cbe6fd0 feat(preview): F-5 action preview
+1d3d90a feat(tools): F-6 tool proposal pipeline
+cde3a61 feat(founder): F-7 approval UIs
+c3f1605 docs: architecture-state snapshot
+1e661d5 fix(strategy): payments column hotfix
+7c539af feat(trends): P-5 system-improvement meta-dashboard
+2317595 feat(customer): P-1 customer monthly letter
+2eeb7ee feat(onboarding): P-3 30-day activation journey
+19fb929 feat(growth): P-4 expansion radar
+2323f63 feat(experiments): P-2 decision A/B framework
+0a847aa feat(providers): P-6 data-provider intelligence
 ```
 
-## Tests and validation
+## Safety invariants (still held)
 
-The cycle-2 suite (`tests/e2e-founder-autonomy/`) is the regression suite. After this session's work, a cycle-3 run should:
+- `SIMULATION_MODE=true` short-circuits every external side effect
+- Financial hard cap blocks autonomous spend above the configured ceiling
+- Prompt revisions NEVER auto-apply — always founder-gated
+- Strategic proposals NEVER auto-execute — always founder-gated
+- Tool proposals NEVER auto-build — always founder-gated
+- Expansion upgrades NEVER auto-send — always founder-gated
+- Experiments NEVER change existing behavior without explicit start+running status
+- Action previews: commit contingent on `status = 'pending'` at commit time
+- Onboarding: sim orgs opt out of real journeys to keep test state clean
 
-1. Re-run `seed-cohort.ts` + seed all 15 scenarios + trigger executor.
-2. Confirm the executor emits action-preview rows before each approve.
-3. Confirm cross-wing context appears in the executor's prompt (visible in logs).
-4. Manually trigger the monthly synthesis + prompt-evolution passes via `/run-weekly`, `/run-synthesis`, `/prompt-evolutions/run-now`.
-5. Generate the founder letter and verify strategic moves appear.
-6. Visit `/founder/settings`, edit a knob, verify the change is picked up on the next decision.
-7. Press ⌘⇧K, confirm search returns results across all entity types.
+## What would be next (judgment-calls)
+
+Further work past this session needs founder input on direction:
+
+- **Inter-agent negotiation** — agents debate proposals before escalating to founder
+- **Compound-signal synthesis** — cluster related decisions into one
+- **Per-customer rules engine** — "white-glove this customer" DSL
+- **Memory consolidation** — weekly per-agent memory notes (overlaps with Company Mind; worth discussion)
+- **Auto-statistical-significance** for experiments (auto-end + promote)
+- **Multi-arm bandit routing** (explore vs exploit on experiments)
+- **Real email delivery** for customer letters (currently in-app only)
+- **Per-agent run() functions** (agents can proactively act in their domain without executor mediation)
+- **Auto-baked experiment winners** (winning variant config → founder settings automatically)
