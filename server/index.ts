@@ -1024,6 +1024,11 @@ app.use("/api", apiLimiter);
       // decision prompts.
       startAgentMemoryConsolidationJob();
 
+      // Experiment auto-completion — weekly (Monday 09:00 UTC, 1h
+      // after expansion radar). Auto-ends decisively-won experiments
+      // and files a promotion proposal in the decisions inbox.
+      startExperimentSweepJob();
+
       // Auto-seed county GIS endpoints for free parcel lookups
       seedCountyGisEndpointsOnStartup();
       
@@ -2369,6 +2374,33 @@ function startPromptEvolutionJob() {
       );
     } catch (err: any) {
       log(`[prompt-evolution] monthly failed: ${err?.message ?? err}`, 'sovereign');
+    }
+  }, ONE_HOUR);
+}
+
+/**
+ * Experiment auto-completion — weekly, Monday 09:00 UTC. Checks
+ * running experiments for statistical-ish significance and auto-
+ * ends confidently-won ones. Never auto-applies the winner; files
+ * a founder-gated proposal instead.
+ */
+function startExperimentSweepJob() {
+  const ONE_HOUR = 60 * 60 * 1000;
+  log('Registering experiment auto-completion sweep (Mondays 09:00 UTC)', 'sovereign');
+  trackInterval(async () => {
+    const now = new Date();
+    if (now.getUTCDay() !== 1 || now.getUTCHours() !== 9) return;
+    try {
+      const { sweepAndAutoComplete } = await import('./services/decisionExperiments');
+      const r = await sweepAndAutoComplete();
+      if (r.autoCompleted > 0) {
+        log(
+          `[experiments] auto-swept: inspected=${r.inspected} completed=${r.autoCompleted} promos=${r.promotionsProposed}`,
+          'sovereign',
+        );
+      }
+    } catch (err: any) {
+      log(`[experiments] sweep failed: ${err?.message ?? err}`, 'sovereign');
     }
   }, ONE_HOUR);
 }

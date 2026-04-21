@@ -360,3 +360,106 @@ export async function abortExperiment(id: number, notes?: string) {
     })
     .where(eq(decisionExperiments.id, id));
 }
+
+// ── Auto-completion ─────────────────────────────────────────────────
+//
+// Called by a weekly cron. Iterates running experiments and auto-ends
+// any that have a clearly-winning variant, filing a founder-inbox
+// item with the promotion proposal. Never mutates anything beyond
+// the experiment's own status/winner fields; the actual "make this
+// the new default" is still founder-gated via the decisions inbox.
+
+const MIN_OUTCOMES_FOR_AUTOEND = 10; // per variant
+const SIG_OUTCOME_GAP = 0.5;          // winner's mean must beat runner-up by ≥ this
+const SIG_POSITIVE_RATE_GAP = 15;     // OR positiveRate must be 15pp ahead
+
+export async function sweepAndAutoComplete(): Promise<{
+  inspected: number;
+  autoCompleted: number;
+  promotionsProposed: number;
+}> {
+  const running = await db
+    .select()
+    .from(decisionExperiments)
+    .where(eq(decisionExperiments.status, "running"));
+
+  let autoCompleted = 0;
+  let promotionsProposed = 0;
+
+  for (const exp of running) {
+    const analysis = await analyzeExperiment(exp.id);
+    if (!analysis) continue;
+
+    // Every variant needs enough data.
+    const allReady = analysis.variants.every(
+      (v) => v.outcomesRecorded >= MIN_OUTCOMES_FOR_AUTOEND,
+    );
+    if (!allReady) continue;
+
+    // Sort by meanOutcome desc (tiebreak: positiveRate).
+    const ranked = [...analysis.variants].sort((a, b) => {
+      const am = a.meanOutcome ?? -99;
+      const bm = b.meanOutcome ?? -99;
+      if (am !== bm) return bm - am;
+      return (b.positiveRate ?? 0) - (a.positiveRate ?? 0);
+    });
+    const top = ranked[0];
+    const runnerUp = ranked[1];
+    if (!top || !runnerUp) continue;
+
+    const outcomeGap =
+      top.meanOutcome != null && runnerUp.meanOutcome != null
+        ? top.meanOutcome - runnerUp.meanOutcome
+        : 0;
+    const rateGap =
+      top.positiveRate != null && runnerUp.positiveRate != null
+        ? top.positiveRate - runnerUp.positiveRate
+        : 0;
+
+    const decisive = outcomeGap >= SIG_OUTCOME_GAP || rateGap >= SIG_POSITIVE_RATE_GAP;
+    if (!decisive) continue;
+
+    const notes = `Auto-completed by weekly sweep. Winner "${top.label}" beat runner-up "${runnerUp.label}" by ${outcomeGap.toFixed(2)} mean outcome and ${rateGap.toFixed(1)}pp positive rate over ${MIN_OUTCOMES_FOR_AUTOEND}+ outcomes per variant.`;
+    await completeExperiment(exp.id, top.key, notes);
+    autoCompleted++;
+
+    // File a promotion proposal in the decisions inbox so the founder
+    // sees it and can decide whether to turn the winner's config into
+    // the new default behavior. Agents never auto-flip defaults.
+    try {
+      const { decisionsInboxItems: dii } = await import("@shared/schema");
+      const winnerVariant = (exp.variants as Variant[]).find((v) => v.key === top.key);
+      await db.insert(dii).values({
+        itemType: "critical_alert",
+        riskLevel: "low",
+        urgencyScore: 50,
+        estimatedImpactCents: null,
+        sophieAnalysis: `Experiment "${exp.name}" auto-completed. Winner: "${top.label}". ${notes} Consider making this the default for ${exp.itemType ?? exp.category} decisions going forward.`,
+        sophieConfidenceScore: 85,
+        recommendedAction: "experiment_promote_winner",
+        recommendedActionLabel: `Promote "${top.label}" as default for ${exp.itemType ?? exp.category}`,
+        actionPayload: {
+          experimentId: exp.id,
+          winnerVariant: top.key,
+          winnerConfig: winnerVariant?.config ?? {},
+          gap: { outcome: outcomeGap, positiveRate: rateGap },
+        },
+        ownerAgentCodename: "oracle_analytics",
+        contextBundle: { source: "experiment_auto_complete", experimentName: exp.name },
+      });
+      promotionsProposed++;
+    } catch (err: any) {
+      logger.warn("[decisionExperiments] promotion proposal failed", {
+        metadata: { error: err?.message, experimentId: exp.id },
+      });
+    }
+  }
+
+  if (autoCompleted > 0) {
+    logger.info(
+      `[decisionExperiments] auto-swept: ${autoCompleted} ended, ${promotionsProposed} promotions proposed`,
+    );
+  }
+
+  return { inspected: running.length, autoCompleted, promotionsProposed };
+}

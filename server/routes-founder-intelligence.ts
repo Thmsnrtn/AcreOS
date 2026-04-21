@@ -1973,6 +1973,16 @@ router.post("/experiments/:id/abort", requireFounder, async (req: Request, res: 
   }
 });
 
+router.post("/experiments/sweep-now", requireFounder, async (_req: Request, res: Response) => {
+  try {
+    const { sweepAndAutoComplete } = await import("./services/decisionExperiments");
+    const result = await sweepAndAutoComplete();
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── System trends (meta-observability) ──────────────────────────────
 
 router.get("/system-trends", requireFounder, async (req: Request, res: Response) => {
