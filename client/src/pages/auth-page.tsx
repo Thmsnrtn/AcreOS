@@ -15,6 +15,9 @@ export default function AuthPage() {
   );
   const inviteToken = params.get("invite");
   const inviteAcceptedRef = useRef(false);
+  const [inviteState, setInviteState] = useState<"idle" | "accepting" | "done">(
+    inviteToken ? "accepting" : "idle"
+  );
 
   // Don't redirect while Clerk is processing an SSO callback —
   // premature redirect unmounts <SignIn> and kills the OAuth flow
@@ -22,8 +25,10 @@ export default function AuthPage() {
                              window.location.hash.includes("verify");
 
   // Invite-accept flow: if the user arrived with ?invite=<token> and they're
-  // now signed in, attach them to the inviting org before the redirect to
-  // /today. Runs once per page-load.
+  // now signed in, attach them to the inviting org BEFORE redirecting to
+  // /today. Runs once per page-load. The `inviteState` gate below prevents
+  // the Redirect from firing until the accept POST resolves, so the user
+  // lands on the correct org without a race.
   useEffect(() => {
     if (!user || !inviteToken || inviteAcceptedRef.current) return;
     inviteAcceptedRef.current = true;
@@ -32,14 +37,35 @@ export default function AuthPage() {
         await apiRequest("POST", "/api/organization/invitations/accept", {
           token: inviteToken,
         });
-        queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/organization"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/organization/members"] });
       } catch {
         /* non-fatal — user is still signed in; invite link may have expired */
+      } finally {
+        // Drop server-side-cached queries so the post-redirect /today
+        // page fetches the inviting org, not the shadow org.
+        queryClient.removeQueries({ queryKey: ["/api/auth/user"] });
+        queryClient.removeQueries({ queryKey: ["/api/organization"] });
+        queryClient.removeQueries({ queryKey: ["/api/organization/members"] });
+        setInviteState("done");
       }
     })();
   }, [user, inviteToken]);
+
+  // Hold the redirect while the invite is still being processed.
+  if (inviteToken && inviteState !== "done") {
+    // If the user isn't signed in yet, let the SignIn component render
+    // normally. We only block the redirect once the ticket has landed
+    // us a user and the accept POST is mid-flight.
+    if (user && !isHandlingCallback) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-background">
+          <div className="flex flex-col items-center gap-3">
+            <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" />
+            <p className="text-sm text-muted-foreground">Joining organization…</p>
+          </div>
+        </div>
+      );
+    }
+  }
 
   // Option B: server-backed auth is the truth. If /api/auth/user came
   // back with a user, we're signed in — send to dashboard.
