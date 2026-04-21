@@ -150,6 +150,19 @@ export async function runMonthlyCustomerLetters(explicitMonthKey?: string): Prom
   logger.info(
     `[customerNarrative] monthly ${key}: ${succeeded} generated, ${failed} failed, ${orgs.length} total`,
   );
+
+  // Email-deliver any letters that landed in draft status.
+  try {
+    const d = await deliverAllPendingLettersForMonth(key);
+    logger.info(
+      `[customerNarrative] delivery ${key}: ${d.delivered} sent, ${d.skipped} skipped, ${d.failed} failed`,
+    );
+  } catch (err: any) {
+    logger.warn("[customerNarrative] delivery pass failed", {
+      metadata: { error: err?.message },
+    });
+  }
+
   return { monthKey: key, orgsProcessed: orgs.length, succeeded, failed };
 }
 
@@ -201,6 +214,129 @@ export async function markCustomerLetterOpened(organizationId: number, monthKey:
         eq(customerLetters.monthKey, monthKey),
       ),
     );
+}
+
+/**
+ * Email-deliver one customer letter. Uses the existing emailService,
+ * which is already SIMULATION_MODE-wrapped — nothing ships during
+ * sim runs. Returns delivery info; stamps deliveredAt on the letter
+ * row on success so we don't re-send on retries.
+ */
+export async function deliverCustomerLetter(
+  organizationId: number,
+  monthKey: string,
+): Promise<{ success: boolean; skipped?: string; error?: string; messageId?: string }> {
+  const letter = await getCustomerLetter(organizationId, monthKey);
+  if (!letter) return { success: false, skipped: "no letter" };
+  if (letter.deliveredAt) return { success: true, skipped: "already delivered" };
+
+  // Find the org's owner email. Users table lives in shared/models/auth.
+  const { users } = await import("@shared/models/auth");
+  const { organizations } = await import("@shared/schema");
+  const [org] = await db
+    .select({ ownerId: organizations.ownerId, name: organizations.name })
+    .from(organizations)
+    .where(eq(organizations.id, organizationId))
+    .limit(1);
+  if (!org?.ownerId) return { success: false, skipped: "org has no owner" };
+  const [user] = await db
+    .select({ email: users.email })
+    .from(users)
+    .where(eq(users.id, org.ownerId))
+    .limit(1);
+  if (!user?.email) return { success: false, skipped: "owner has no email" };
+
+  const { emailService } = await import("./emailService");
+  const html = markdownToEmailHtml(letter.letterMarkdown);
+  const subject = `Your ${new Date(letter.generatedAt).toLocaleString("en-US", { month: "long", year: "numeric" })} at ${org.name ?? "AcreOS"}`;
+
+  const result = await emailService.sendEmail({
+    to: user.email,
+    subject,
+    html,
+    text: letter.letterMarkdown,
+    fromName: "Sophie at AcreOS",
+    organizationId,
+    tags: { type: "customer_monthly_letter", monthKey },
+  });
+
+  if (result.success) {
+    await db
+      .update(customerLetters)
+      .set({ deliveredAt: new Date(), status: "delivered" })
+      .where(
+        and(
+          eq(customerLetters.organizationId, organizationId),
+          eq(customerLetters.monthKey, monthKey),
+        ),
+      );
+  }
+  return {
+    success: result.success,
+    error: result.error,
+    messageId: result.messageId,
+  };
+}
+
+/**
+ * Deliver letters for all orgs that have an undelivered letter for
+ * the given monthKey. Called right after monthly generation.
+ */
+export async function deliverAllPendingLettersForMonth(
+  monthKey: string,
+): Promise<{ delivered: number; skipped: number; failed: number }> {
+  const pending = await db
+    .select({ organizationId: customerLetters.organizationId })
+    .from(customerLetters)
+    .where(
+      and(
+        eq(customerLetters.monthKey, monthKey),
+        eq(customerLetters.status, "draft"),
+      ),
+    );
+  let delivered = 0;
+  let skipped = 0;
+  let failed = 0;
+  for (const p of pending) {
+    const r = await deliverCustomerLetter(p.organizationId, monthKey);
+    if (r.success && !r.skipped) delivered++;
+    else if (r.skipped) skipped++;
+    else failed++;
+  }
+  logger.info(`[customerNarrative] delivered ${delivered}, skipped ${skipped}, failed ${failed} for ${monthKey}`);
+  return { delivered, skipped, failed };
+}
+
+/**
+ * Lightweight markdown → HTML for email. Tuned for the narrative
+ * structure (h1/h2, bold, lists, paragraphs). Inlines minimal styling.
+ */
+function markdownToEmailHtml(md: string): string {
+  const blocks = md.trim().split(/\n{2,}/);
+  const body = blocks
+    .map((block) => {
+      const t = block.trim();
+      if (t.startsWith("# "))
+        return `<h1 style="font-family:Georgia,serif;color:#111;margin:24px 0 12px">${inlineMd(t.slice(2))}</h1>`;
+      if (t.startsWith("## "))
+        return `<h2 style="font-family:Georgia,serif;color:#222;margin:20px 0 8px;font-size:18px">${inlineMd(t.slice(3))}</h2>`;
+      if (/^[-*] /.test(t)) {
+        const items = t
+          .split(/\n/)
+          .filter((l) => /^[-*] /.test(l))
+          .map((l) => `<li style="margin:4px 0">${inlineMd(l.replace(/^[-*] /, ""))}</li>`)
+          .join("");
+        return `<ul style="padding-left:20px">${items}</ul>`;
+      }
+      if (t === "---") return `<hr style="border:0;border-top:1px solid #e5e5e5;margin:16px 0">`;
+      return `<p style="font-family:Georgia,serif;line-height:1.55;color:#333;margin:12px 0">${inlineMd(t)}</p>`;
+    })
+    .join("\n");
+  return `<!doctype html><html><body style="max-width:640px;margin:0 auto;padding:24px;background:#fafafa"><div style="background:#fff;padding:32px;border:1px solid #eee;border-radius:8px">${body}<p style="margin-top:32px;color:#999;font-size:12px;font-family:Georgia,serif">This letter is personalized for your account. You can also read it in the app at /my-letter.</p></div></body></html>`;
+}
+
+function inlineMd(text: string): string {
+  return text.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
 }
 
 // ── Summary builder ─────────────────────────────────────────────────

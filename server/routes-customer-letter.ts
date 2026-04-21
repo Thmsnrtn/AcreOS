@@ -61,6 +61,20 @@ router.post("/generate", async (req: Request, res: Response) => {
   }
 });
 
+// Email-deliver the current letter on demand. Useful if auto-delivery
+// was disabled or the customer never received it.
+router.post("/:monthKey/deliver", async (req: Request, res: Response) => {
+  try {
+    const org = req.organization;
+    if (!org) return res.status(401).json({ error: "No organization context" });
+    const { deliverCustomerLetter } = await import("./services/customerNarrative");
+    const result = await deliverCustomerLetter(org.id, req.params.monthKey);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Mark current letter as opened.
 router.post("/:monthKey/opened", async (req: Request, res: Response) => {
   try {
