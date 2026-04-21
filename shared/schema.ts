@@ -10949,6 +10949,35 @@ export const insertFounderDigestHistorySchema = createInsertSchema(founderDigest
 export type InsertFounderDigestHistory = z.infer<typeof insertFounderDigestHistorySchema>;
 export type FounderDigestHistory = typeof founderDigestHistory.$inferSelect;
 
+// Strategic proposals — proactive "what should we do this month"
+// layer. Agents generate weekly proposals; a monthly synthesis step
+// picks the top 3-5 and stamps them with a monthKey for the founder
+// letter's "Next month's focus" section.
+export const strategicProposals = pgTable("strategic_proposals", {
+  id: serial("id").primaryKey(),
+  proposedBy: text("proposed_by").notNull(), // agent codename or 'synthesis'
+  weekKey: text("week_key").notNull(),       // YYYY-WW ISO week
+  monthKey: text("month_key"),               // YYYY-MM when synthesized
+  title: text("title").notNull(),
+  rationale: text("rationale").notNull(),
+  estimatedImpactCents: integer("estimated_impact_cents"),
+  confidence: integer("confidence").notNull().default(50), // 0-100
+  category: text("category").notNull(),      // revenue | retention | product | ops | risk
+  supportingDataKeys: jsonb("supporting_data_keys").$type<string[]>().default([]),
+  status: text("status").notNull().default("proposed"), // proposed | synthesized | approved | rejected | executed | deferred
+  founderFeedback: text("founder_feedback"),
+  resolvedAt: timestamp("resolved_at"),
+  resolvedBy: text("resolved_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("strategic_proposals_week_idx").on(table.weekKey),
+  index("strategic_proposals_month_idx").on(table.monthKey),
+  index("strategic_proposals_status_idx").on(table.status),
+  index("strategic_proposals_proposed_by_idx").on(table.proposedBy),
+]);
+
+export type StrategicProposal = typeof strategicProposals.$inferSelect;
+
 // Monthly founder letter — narrative interface replacing the dashboard
 // as primary surface for the "1 hour/month" founder operation. One row
 // per month, regeneratable until delivered.

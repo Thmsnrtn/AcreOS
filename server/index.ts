@@ -433,6 +433,41 @@ app.use("/api", apiLimiter);
     } catch (err: any) {
       log(`founder_letters bootstrap: ${err.message}`, "db");
     }
+
+    // Strategic proposals — weekly per-agent proposals + monthly synthesis
+    // feeding the founder letter's Next Month's Focus section.
+    try {
+      const { pool } = await import("./db");
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS "strategic_proposals" (
+          "id" serial PRIMARY KEY,
+          "proposed_by" text NOT NULL,
+          "week_key" text NOT NULL,
+          "month_key" text,
+          "title" text NOT NULL,
+          "rationale" text NOT NULL,
+          "estimated_impact_cents" integer,
+          "confidence" integer NOT NULL DEFAULT 50,
+          "category" text NOT NULL,
+          "supporting_data_keys" jsonb DEFAULT '[]'::jsonb,
+          "status" text NOT NULL DEFAULT 'proposed',
+          "founder_feedback" text,
+          "resolved_at" timestamp,
+          "resolved_by" text,
+          "created_at" timestamp DEFAULT now() NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS "strategic_proposals_week_idx"
+          ON "strategic_proposals" ("week_key");
+        CREATE INDEX IF NOT EXISTS "strategic_proposals_month_idx"
+          ON "strategic_proposals" ("month_key");
+        CREATE INDEX IF NOT EXISTS "strategic_proposals_status_idx"
+          ON "strategic_proposals" ("status");
+        CREATE INDEX IF NOT EXISTS "strategic_proposals_proposed_by_idx"
+          ON "strategic_proposals" ("proposed_by");
+      `);
+    } catch (err: any) {
+      log(`strategic_proposals bootstrap: ${err.message}`, "db");
+    }
   }
 
   await initStripe();
@@ -658,6 +693,12 @@ app.use("/api", apiLimiter);
       // month's decisions, outcomes, and one thing the founder needs
       // to weigh in on. Primary surface for the 1-hour/month goal.
       startFounderLetterJob();
+
+      // Strategic proposals — weekly per-agent proposal generation
+      // (Sunday 00:00 UTC) + monthly synthesis pass (1st 10:00 UTC,
+      // 2h before the founder letter generates). The synthesized
+      // proposals feed the letter's "Next month's focus" section.
+      startStrategicProposalsJobs();
 
       // Auto-seed county GIS endpoints for free parcel lookups
       seedCountyGisEndpointsOnStartup();
@@ -2004,6 +2045,39 @@ function startPromptEvolutionJob() {
       );
     } catch (err: any) {
       log(`[prompt-evolution] monthly failed: ${err?.message ?? err}`, 'sovereign');
+    }
+  }, ONE_HOUR);
+}
+
+/**
+ * Strategic proposals — weekly + monthly. Weekly fires Sundays at
+ * 00:00 UTC; monthly synthesis fires on the 1st at 10:00 UTC so its
+ * output is available when the founder letter generates at 12:00 UTC.
+ */
+function startStrategicProposalsJobs() {
+  const ONE_HOUR = 60 * 60 * 1000;
+  log('Registering strategic proposals (weekly Sun 00:00 UTC + monthly synthesis 1st 10:00 UTC)', 'sovereign');
+  trackInterval(async () => {
+    const now = new Date();
+    // Weekly: Sunday 00:xx UTC window
+    if (now.getUTCDay() === 0 && now.getUTCHours() === 0) {
+      try {
+        const { runWeeklyProposals } = await import('./services/strategicProposals');
+        const r = await runWeeklyProposals();
+        log(`[strategic-proposals] weekly ${r.weekKey}: ${r.proposalsCreated} created`, 'sovereign');
+      } catch (err: any) {
+        log(`[strategic-proposals] weekly failed: ${err?.message ?? err}`, 'sovereign');
+      }
+    }
+    // Monthly synthesis: 1st at 10:00 UTC
+    if (now.getUTCDate() === 1 && now.getUTCHours() === 10) {
+      try {
+        const { runMonthlySynthesis } = await import('./services/strategicProposals');
+        const r = await runMonthlySynthesis();
+        log(`[strategic-proposals] synthesis ${r.monthKey}: ${r.synthesizedCount} picked`, 'sovereign');
+      } catch (err: any) {
+        log(`[strategic-proposals] synthesis failed: ${err?.message ?? err}`, 'sovereign');
+      }
     }
   }, ONE_HOUR);
 }

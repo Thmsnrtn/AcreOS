@@ -69,6 +69,14 @@ export interface MonthlySummary {
   topHighlights: string[];
   topLowlights: string[];
   candidateFounderDecision: string | null;
+  synthesizedStrategicMoves: Array<{
+    title: string;
+    rationale: string;
+    category: string;
+    estimatedImpactCents: number | null;
+    confidence: number;
+    proposedBy: string;
+  }>;
 }
 
 /**
@@ -309,6 +317,30 @@ async function buildSummary(
     // leave defaults
   }
 
+  // Pull synthesized strategic moves for next month, if any.
+  // The letter is written FOR month N but looks AHEAD to month N+1,
+  // so we peek at synthesized proposals targeted at the upcoming month.
+  let synthesizedStrategicMoves: MonthlySummary["synthesizedStrategicMoves"] = [];
+  try {
+    const { listSynthesizedForMonth } = await import("./strategicProposals");
+    // Next month relative to the month being written about.
+    const nextMonthDate = new Date(end.getTime());
+    const nextMonthKey = `${nextMonthDate.getUTCFullYear()}-${String(nextMonthDate.getUTCMonth() + 1).padStart(2, "0")}`;
+    const rows = await listSynthesizedForMonth(nextMonthKey);
+    synthesizedStrategicMoves = rows.map((r) => ({
+      title: r.title,
+      rationale: r.rationale,
+      category: r.category,
+      estimatedImpactCents: r.estimatedImpactCents,
+      confidence: r.confidence,
+      proposedBy: r.proposedBy,
+    }));
+  } catch (err: any) {
+    logger.warn("[founderNarrative] strategic moves fetch failed", {
+      metadata: { error: err?.message },
+    });
+  }
+
   return {
     monthKey: key,
     monthLabel: label,
@@ -334,6 +366,7 @@ async function buildSummary(
     topHighlights,
     topLowlights,
     candidateFounderDecision,
+    synthesizedStrategicMoves,
   };
 }
 
@@ -404,6 +437,15 @@ function buildNarrativeContext(s: MonthlySummary): string {
   if (s.candidateFounderDecision)
     lines.push(`- Top candidate for "the one decision": ${s.candidateFounderDecision}`);
   lines.push("");
+  if (s.synthesizedStrategicMoves.length > 0) {
+    lines.push(`SYNTHESIZED STRATEGIC MOVES FOR NEXT MONTH (use these as the backbone of "Next month's focus"):`);
+    for (const m of s.synthesizedStrategicMoves) {
+      lines.push(
+        `- [${m.proposedBy}] ${m.category}/${m.confidence}%: "${m.title}" — ${m.rationale.slice(0, 200)}${m.estimatedImpactCents ? ` ($${(m.estimatedImpactCents / 100).toFixed(0)})` : ""}`,
+      );
+    }
+    lines.push("");
+  }
   lines.push(
     `Write the monthly letter per the system prompt. Return JSON with keys markdown and pendingFounderDecision.`,
   );

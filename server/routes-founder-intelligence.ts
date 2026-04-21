@@ -1606,6 +1606,78 @@ router.post("/letter/:monthKey/mark-delivered", requireFounder, async (req: Requ
   }
 });
 
+// ── Strategic proposals (proactive layer) ───────────────────────────
+
+router.get("/strategic-proposals", requireFounder, async (_req: Request, res: Response) => {
+  try {
+    const { listPendingProposals } = await import("./services/strategicProposals");
+    const proposals = await listPendingProposals();
+    res.json({ proposals });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/strategic-proposals/month/:monthKey", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const { listSynthesizedForMonth } = await import("./services/strategicProposals");
+    const proposals = await listSynthesizedForMonth(req.params.monthKey);
+    res.json({ proposals });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/strategic-proposals/:id/approve", requireFounder, async (req: any, res: Response) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
+    const { resolveProposal } = await import("./services/strategicProposals");
+    const feedback = req.body?.feedback as string | undefined;
+    const userId = req.permissionContext?.userId ?? "founder";
+    await resolveProposal(id, "approved", feedback, userId);
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/strategic-proposals/:id/reject", requireFounder, async (req: any, res: Response) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
+    const { resolveProposal } = await import("./services/strategicProposals");
+    const feedback = req.body?.feedback as string | undefined;
+    const userId = req.permissionContext?.userId ?? "founder";
+    await resolveProposal(id, "rejected", feedback, userId);
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/strategic-proposals/run-weekly", requireFounder, async (_req: Request, res: Response) => {
+  try {
+    const { runWeeklyProposals } = await import("./services/strategicProposals");
+    const result = await runWeeklyProposals();
+    res.json(result);
+  } catch (err: any) {
+    logger.error("[strategic-proposals weekly] Error", undefined, { metadata: { detail: err.message } });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/strategic-proposals/run-synthesis", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const { runMonthlySynthesis } = await import("./services/strategicProposals");
+    const result = await runMonthlySynthesis(req.body?.monthKey);
+    res.json(result);
+  } catch (err: any) {
+    logger.error("[strategic-proposals synth] Error", undefined, { metadata: { detail: err.message } });
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Single-decision detail fetch with full contextBundle, for the
 // "expand row" interaction on the founder decisions page.
 router.get("/decision-log/:id", requireFounder, async (req: Request, res: Response) => {
