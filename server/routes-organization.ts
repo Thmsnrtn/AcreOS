@@ -42,6 +42,49 @@ const updateOrganizationSchema = z.object({
 export function registerOrganizationRoutes(app: Express): void {
   const api = app;
 
+  // Founder-facing safety status: which kill-switches are on, and
+  // how many simulated actions got recorded in the last 7 days.
+  // Used by the testing suite to prove "yes, the harness is live"
+  // before a scenario run.
+  api.get("/api/founder/safety-status", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as AuthenticatedRequest).organization;
+      const {
+        isGlobalSimulationMode,
+        isCategorySimulated,
+        isOrgSimulated,
+      } = await import("./utils/simulationMode");
+      const { simulatedActions } = await import("@shared/schema");
+      const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const recent = await db
+        .select()
+        .from(simulatedActions)
+        .where(sql`${simulatedActions.createdAt} >= ${since}`)
+        .orderBy(desc(simulatedActions.createdAt))
+        .limit(100);
+      const categoryCounts: Record<string, number> = {};
+      for (const r of recent) {
+        categoryCounts[r.category] = (categoryCounts[r.category] || 0) + 1;
+      }
+      const categories = ["stripe", "lob", "sms", "email", "ai_paid", "webhook_outbound", "billing_mutation"] as const;
+      res.json({
+        simulationModeActive: isGlobalSimulationMode() || isOrgSimulated(org),
+        globalEnvFlag: isGlobalSimulationMode(),
+        orgFlag: isOrgSimulated(org),
+        categories: Object.fromEntries(
+          categories.map((c) => [c, isCategorySimulated(c) || isOrgSimulated(org)])
+        ),
+        recentSimulatedActions: {
+          last7Days: recent.length,
+          byCategory: categoryCounts,
+          sample: recent.slice(0, 10),
+        },
+      });
+    } catch (err) {
+      Errors.internal(res, err);
+    }
+  });
+
   // PLAYBOOKS
   // ============================================
   

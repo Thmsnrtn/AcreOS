@@ -160,6 +160,25 @@ export async function dispatchWebhook(
   event: WebhookEventType,
   data: Record<string, any>
 ): Promise<{ dispatched: number; failed: number }> {
+  // SIMULATION_MODE_WEBHOOK_OUTBOUND short-circuits delivery. We still
+  // log what *would* have been dispatched so the testing suite can
+  // verify "did the system decide to fire lead.created?" without
+  // pinging an arbitrary partner URL.
+  {
+    const { shouldSimulate, recordSimulatedAction } = await import("../utils/simulationMode");
+    const { storage } = await import("../storage");
+    const org = await storage.getOrganization(organizationId).catch(() => null);
+    if (shouldSimulate("webhook_outbound", org)) {
+      await recordSimulatedAction(
+        "webhook_outbound",
+        `dispatch.${event}`,
+        { organizationId, event, dataKeys: Object.keys(data).slice(0, 10) },
+        org
+      );
+      return { dispatched: 0, failed: 0 };
+    }
+  }
+
   const endpoints = await getWebhookEndpoints(organizationId);
   const activeEndpoints = endpoints.filter(ep =>
     ep.isActive &&

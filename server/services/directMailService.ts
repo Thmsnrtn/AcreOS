@@ -39,7 +39,7 @@ interface SendResult {
   lobId: string;
   url: string;
   expectedDeliveryDate: Date;
-  credentialSource?: 'organization' | 'platform';
+  credentialSource?: 'organization' | 'platform' | 'simulation';
 }
 
 interface VerifyAddressResult {
@@ -172,9 +172,33 @@ async function recordUsage(organizationId: number, metadata: Record<string, any>
 
 export async function sendPostcard(options: SendPostcardOptions): Promise<SendResult> {
   const { organizationId, senderIdentity, recipientName, recipientAddress, frontHtml, backHtml, size = '4x6' } = options;
-  
+
   logger.info(`[DirectMailService] Sending postcard for org ${organizationId} to ${recipientName}`);
-  
+
+  // SIMULATION_MODE short-circuits every Lob postcard print. No paper
+  // leaves the printer. Would-have-mailed payload goes to
+  // simulated_actions so the test harness can verify "did the system
+  // decide to mail this person?" without the postage.
+  {
+    const { shouldSimulate, recordSimulatedAction } = await import("../utils/simulationMode");
+    const { storage } = await import("../storage");
+    const org = await storage.getOrganization(organizationId).catch(() => null);
+    if (shouldSimulate("lob", org)) {
+      const rec = await recordSimulatedAction(
+        "lob",
+        "postcards.create",
+        { recipientName, recipientAddress, size },
+        org
+      );
+      return {
+        lobId: rec.id,
+        url: `https://sim.acreos.io/lob/${rec.id}`,
+        expectedDeliveryDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
+        credentialSource: "simulation",
+      } as SendResult;
+    }
+  }
+
   const { client, source } = await getLobClient(organizationId);
   
   const skipCredits = options.skipCredits === true || source === 'organization';
@@ -219,9 +243,31 @@ export async function sendPostcard(options: SendPostcardOptions): Promise<SendRe
 
 export async function sendLetter(options: SendLetterOptions): Promise<SendResult> {
   const { organizationId, senderIdentity, recipientName, recipientAddress, htmlContent, color = false, doubleSided = false } = options;
-  
+
   logger.info(`[DirectMailService] Sending letter for org ${organizationId} to ${recipientName}`);
-  
+
+  // SIMULATION_MODE short-circuits every Lob letter print. See the
+  // matching block in sendPostcard for the rationale.
+  {
+    const { shouldSimulate, recordSimulatedAction } = await import("../utils/simulationMode");
+    const { storage } = await import("../storage");
+    const org = await storage.getOrganization(organizationId).catch(() => null);
+    if (shouldSimulate("lob", org)) {
+      const rec = await recordSimulatedAction(
+        "lob",
+        "letters.create",
+        { recipientName, recipientAddress, color, doubleSided },
+        org
+      );
+      return {
+        lobId: rec.id,
+        url: `https://sim.acreos.io/lob/${rec.id}`,
+        expectedDeliveryDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
+        credentialSource: "simulation",
+      } as SendResult;
+    }
+  }
+
   const { client, source } = await getLobClient(organizationId);
   
   const skipCredits = options.skipCredits === true || source === 'organization';

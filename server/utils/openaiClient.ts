@@ -55,8 +55,41 @@ export function requireOpenAIClient(): OpenAI {
  *
  * Usage:
  *   const result = await callWithCircuitBreaker(() => openai.chat.completions.create(...));
+ *
+ * Only respects the opt-in SIMULATION_MODE_AI_PAID flag — the global
+ * SIMULATION_MODE=true kill-switch deliberately leaves AI live so
+ * test runs can grade real AI decisions. Tokens are cheap and
+ * metered; the point of the testing suite is to observe what the AI
+ * actually decides, not to test that pipeline wiring runs.
+ *
+ * Set SIMULATION_MODE_AI_PAID=true only if you need a long vacation
+ * simulation and don't want the AI budget running up.
  */
 export async function callWithCircuitBreaker<T>(fn: () => Promise<T>): Promise<T> {
+  const { isCategorySimulated, recordSimulatedAction } = await import("./simulationMode");
+  if (isCategorySimulated("ai_paid")) {
+    const rec = await recordSimulatedAction("ai_paid", "openai.call", {});
+    // Synthetic OpenAI-shaped response. Callers that parse JSON will
+    // get empty-but-valid output; callers that read `.choices[0].message.content`
+    // get a placeholder they can distinguish from real output.
+    return {
+      id: rec.id,
+      object: "chat.completion",
+      created: Math.floor(Date.now() / 1000),
+      model: "simulation",
+      choices: [
+        {
+          index: 0,
+          message: {
+            role: "assistant",
+            content: '{"simulated": true, "note": "SIMULATION_MODE_AI_PAID short-circuited this call"}',
+          },
+          finish_reason: "stop",
+        },
+      ],
+      usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+    } as any;
+  }
   return openAICircuitBreaker.call(fn);
 }
 

@@ -182,6 +182,30 @@ async function sendViaTelnyx(
 }
 
 export async function sendSms(options: SmsOptions): Promise<SmsResult> {
+  // SIMULATION_MODE short-circuits every outbound SMS, regardless of
+  // which provider would have been used. Paired with the Twilio-only
+  // block in smsService.ts — this is the multi-provider version.
+  {
+    const { shouldSimulate, recordSimulatedAction } = await import("../utils/simulationMode");
+    const { storage } = await import("../storage");
+    const org = options.organizationId
+      ? await storage.getOrganization(options.organizationId).catch(() => null)
+      : null;
+    if (shouldSimulate("sms", org)) {
+      const rec = await recordSimulatedAction(
+        "sms",
+        "provider.messages.create",
+        { to: options.to, body: options.message.slice(0, 500) },
+        org
+      );
+      return {
+        success: true,
+        messageId: rec.id,
+        provider: SmsProvider.TWILIO,
+      } as SmsResult;
+    }
+  }
+
   let credentials: ProviderCredentials | null = null;
 
   if (options.organizationId) {

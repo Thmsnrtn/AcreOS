@@ -4160,6 +4160,21 @@ export const auditLog = pgTable("audit_log", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Simulated actions — every time SIMULATION_MODE short-circuits a real
+// external side effect (Stripe charge, Lob mail, Twilio SMS, SendGrid
+// email, paid AI call), a row lands here. Lets the founder-testing
+// suite verify "did the system decide to spend $X?" without the
+// actual $X leaving the building.
+export const simulatedActions = pgTable("simulated_actions", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
+  category: text("category").notNull(), // stripe | lob | sms | email | ai_paid | webhook_outbound | billing_mutation
+  action: text("action").notNull(), // e.g. "subscriptions.create", "postcards.create"
+  payload: jsonb("payload").$type<Record<string, any>>(),
+  simulatedId: text("simulated_id").notNull().unique(), // sim_<ts>_<rand>
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // Insert schema
 export const insertAuditLogSchema = createInsertSchema(auditLog).omit({
   id: true,

@@ -68,6 +68,18 @@ export class SmsService {
   }
 
   async sendSMS(options: SmsOptions): Promise<SmsResult> {
+    // SIMULATION_MODE short-circuits every SMS send — no Twilio API call,
+    // no real SMS delivered. Returns a fake messageId the caller can log.
+    const { isCategorySimulated, recordSimulatedAction } = await import("../utils/simulationMode");
+    if (isCategorySimulated("sms")) {
+      const rec = await recordSimulatedAction("sms", "twilio.messages.create", {
+        to: options.to,
+        from: options.from || this.fromNumber,
+        body: options.message.slice(0, 500),
+      });
+      return { success: true, messageId: rec.id };
+    }
+
     if (!this.isConfigured()) {
       logger.info(`[SMS] Not configured - would send to ${options.to}: ${options.message.substring(0, 50)}...`);
       return { success: true, messageId: `mock-${Date.now()}` };
@@ -147,8 +159,24 @@ export async function sendOrgSMS(
   to: string,
   message: string
 ): Promise<SmsResult> {
+  // SIMULATION_MODE short-circuits per-org SMS too. Read both env +
+  // org.settings.simulationMode so the test org can be simulated
+  // independently of the deployment-wide flag.
+  const { shouldSimulate, recordSimulatedAction } = await import("../utils/simulationMode");
+  const { storage } = await import("../storage");
+  const org = await storage.getOrganization(organizationId).catch(() => null);
+  if (shouldSimulate("sms", org)) {
+    const rec = await recordSimulatedAction(
+      "sms",
+      "twilio.messages.create",
+      { to, body: message.slice(0, 500) },
+      org
+    );
+    return { success: true, messageId: rec.id };
+  }
+
   const credentials = await getOrgTwilioCredentials(organizationId);
-  
+
   if (!credentials) {
     if (smsService.isConfigured()) {
       return smsService.sendSMS({ to, message });

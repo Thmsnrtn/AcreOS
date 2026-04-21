@@ -387,6 +387,29 @@ app.use("/api", apiLimiter);
     } catch (err: any) {
       log(`organization_invitations bootstrap: ${err.message}`, "db");
     }
+
+    // Phase A.0 bootstrap: simulated_actions table. Records every
+    // would-have-happened external side effect when SIMULATION_MODE=true.
+    try {
+      const { pool } = await import("./db");
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS "simulated_actions" (
+          "id" serial PRIMARY KEY,
+          "organization_id" integer REFERENCES "organizations"("id") ON DELETE CASCADE,
+          "category" text NOT NULL,
+          "action" text NOT NULL,
+          "payload" jsonb,
+          "simulated_id" text NOT NULL UNIQUE,
+          "created_at" timestamp DEFAULT now() NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS "idx_sim_actions_org_id"
+          ON "simulated_actions" ("organization_id");
+        CREATE INDEX IF NOT EXISTS "idx_sim_actions_category_created"
+          ON "simulated_actions" ("category", "created_at");
+      `);
+    } catch (err: any) {
+      log(`simulated_actions bootstrap: ${err.message}`, "db");
+    }
   }
 
   await initStripe();

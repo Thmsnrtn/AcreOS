@@ -267,6 +267,37 @@ export class EmailService {
 
     const toAddresses = Array.isArray(options.to) ? options.to : [options.to];
 
+    // SIMULATION_MODE short-circuits every outbound email. SES is
+    // never called, nothing leaves the server. The would-have-sent
+    // payload is logged to simulated_actions so the founder-testing
+    // suite can verify delivery decisions without real delivery.
+    {
+      const { shouldSimulate, recordSimulatedAction } = await import("../utils/simulationMode");
+      const org = options.organizationId
+        ? await (await import("../storage")).storage
+            .getOrganization(options.organizationId)
+            .catch(() => null)
+        : null;
+      if (shouldSimulate("email", org)) {
+        const rec = await recordSimulatedAction(
+          "email",
+          "ses.sendEmail",
+          {
+            to: toAddresses,
+            from: options.from,
+            subject: options.subject,
+            htmlPreview: typeof options.html === "string" ? options.html.slice(0, 200) : undefined,
+          },
+          org
+        );
+        return {
+          success: true,
+          messageId: rec.id,
+          attempts: 1,
+        } as EmailResult;
+      }
+    }
+
     // Validate email addresses before attempting to send
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     const invalidAddresses = toAddresses.filter(addr => !emailRegex.test(addr));
