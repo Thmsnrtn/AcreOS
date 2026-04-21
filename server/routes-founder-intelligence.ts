@@ -1857,6 +1857,19 @@ router.post("/expansion/:id/resolve", requireFounder, async (req: any, res: Resp
   }
 });
 
+// ── Provider intelligence ───────────────────────────────────────────
+
+router.get("/providers", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const { getProviderSummary } = await import("./services/providerIntelligence");
+    const windowDays = parseInt((req.query.windowDays as string) ?? "30", 10);
+    const summary = await getProviderSummary(Number.isFinite(windowDays) ? windowDays : 30);
+    res.json(summary);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Decision experiments ────────────────────────────────────────────
 
 router.get("/experiments", requireFounder, async (_req: Request, res: Response) => {

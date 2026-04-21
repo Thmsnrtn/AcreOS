@@ -434,6 +434,35 @@ app.use("/api", apiLimiter);
       log(`founder_letters bootstrap: ${err.message}`, "db");
     }
 
+    // Provider lookup log — per-lookup telemetry feeding
+    // intelligence-driven routing + founder cost/quality visibility.
+    try {
+      const { pool } = await import("./db");
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS "provider_lookup_log" (
+          "id" serial PRIMARY KEY,
+          "provider_name" text NOT NULL,
+          "category" text NOT NULL,
+          "input_type" text NOT NULL,
+          "success" boolean NOT NULL,
+          "cached" boolean NOT NULL DEFAULT false,
+          "latency_ms" integer,
+          "cost_cents" integer DEFAULT 0,
+          "error_code" text,
+          "organization_id" integer REFERENCES "organizations"("id") ON DELETE CASCADE,
+          "created_at" timestamp DEFAULT now() NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS "provider_lookup_provider_idx"
+          ON "provider_lookup_log" ("provider_name", "created_at");
+        CREATE INDEX IF NOT EXISTS "provider_lookup_category_idx"
+          ON "provider_lookup_log" ("category", "created_at");
+        CREATE INDEX IF NOT EXISTS "provider_lookup_created_idx"
+          ON "provider_lookup_log" ("created_at");
+      `);
+    } catch (err: any) {
+      log(`provider_lookup_log bootstrap: ${err.message}`, "db");
+    }
+
     // Decision experiments — A/B framework at decision-policy layer.
     try {
       const { pool } = await import("./db");

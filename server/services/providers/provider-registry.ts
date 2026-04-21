@@ -162,6 +162,22 @@ class ProviderRegistry {
 
         this.recordSuccess(provider.name);
 
+        // Provider-intelligence telemetry (non-blocking).
+        import("../providerIntelligence")
+          .then(({ recordLookup }) =>
+            recordLookup({
+              providerName: provider.name,
+              category,
+              inputType: input.type,
+              success: true,
+              cached: false,
+              latencyMs,
+              costCents,
+              organizationId,
+            }),
+          )
+          .catch(() => {});
+
         const finalResult: LookupResult = { ...result, latencyMs: result.latencyMs || latencyMs };
 
         logger.info(`Provider lookup succeeded`, {
@@ -187,6 +203,22 @@ class ProviderRegistry {
         return finalResult;
       } catch (error) {
         this.recordFailure(provider.name);
+
+        // Provider-intelligence telemetry (non-blocking).
+        import("../providerIntelligence")
+          .then(({ recordLookup }) =>
+            recordLookup({
+              providerName: provider.name,
+              category,
+              inputType: input.type,
+              success: false,
+              cached: false,
+              errorCode: error instanceof Error ? error.message.slice(0, 100) : "unknown",
+              organizationId,
+            }),
+          )
+          .catch(() => {});
+
         logger.warn(`Provider lookup failed: ${provider.name}`, {
           source: "ProviderRegistry",
           metadata: {
@@ -276,11 +308,40 @@ class ProviderRegistry {
 
   // ── Private helpers ───────────────────────────────────────────
 
+  // In-memory cache of recent per-category performance scores.
+  // Refreshed at most every PERF_CACHE_TTL_MS; callers get whatever is
+  // current without blocking the hot path.
+  private perfCache = new Map<string, { scores: Map<string, number>; fetchedAt: number }>();
+  private readonly PERF_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+  private getPerfScoresSync(category: DataCategory): Map<string, number> {
+    const hit = this.perfCache.get(category);
+    const now = Date.now();
+    if (!hit || now - hit.fetchedAt > this.PERF_CACHE_TTL_MS) {
+      // Kick off a refresh in the background; return stale/empty for now.
+      import("../providerIntelligence")
+        .then(async ({ getCategoryPerformance }) => {
+          const stats = await getCategoryPerformance(category, 7);
+          const scores = new Map<string, number>();
+          for (const [name, s] of stats.entries()) {
+            // Require at least 5 lookups before trusting the score
+            // — small samples are too noisy to use for routing.
+            scores.set(name, s.n >= 5 ? s.score : 50);
+          }
+          this.perfCache.set(category, { scores, fetchedAt: Date.now() });
+        })
+        .catch(() => {});
+      return hit?.scores ?? new Map();
+    }
+    return hit.scores;
+  }
+
   private getCandidates(
     category: DataCategory,
     input: LookupInput,
     orgTier: ProviderTier
   ): Registration[] {
+    const perfScores = this.getPerfScoresSync(category);
     return this.registrations
       .filter(
         (r) =>
@@ -289,13 +350,21 @@ class ProviderRegistry {
           tierAllowed(r.provider.tierRequired, orgTier)
       )
       .sort((a, b) => {
-        // Sort by tier (free first), then by cost, then by priority
+        // Sort by tier (free first), then by cost, then by performance
+        // score (higher first), then by hard-coded priority as final
+        // tiebreaker. Performance score only reorders within the same
+        // tier+cost bracket — it never prefers a paid tier over a
+        // free one, and never overrides cost.
         const tierDiff = tierIndex(a.provider.tierRequired) - tierIndex(b.provider.tierRequired);
         if (tierDiff !== 0) return tierDiff;
 
         const costDiff =
           a.provider.costPerLookupCents(category) - b.provider.costPerLookupCents(category);
         if (costDiff !== 0) return costDiff;
+
+        const aScore = perfScores.get(a.provider.name) ?? 50;
+        const bScore = perfScores.get(b.provider.name) ?? 50;
+        if (aScore !== bScore) return bScore - aScore; // higher score first
 
         return a.priority - b.priority;
       });

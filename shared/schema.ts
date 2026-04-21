@@ -10949,6 +10949,30 @@ export const insertFounderDigestHistorySchema = createInsertSchema(founderDigest
 export type InsertFounderDigestHistory = z.infer<typeof insertFounderDigestHistorySchema>;
 export type FounderDigestHistory = typeof founderDigestHistory.$inferSelect;
 
+// Provider lookup log — a row per external-data call. Powers
+// per-provider success-rate scoring so the registry can prefer the
+// provider that's been answering this query-type well lately, within
+// the same tier+cost bracket.
+export const providerLookupLog = pgTable("provider_lookup_log", {
+  id: serial("id").primaryKey(),
+  providerName: text("provider_name").notNull(),
+  category: text("category").notNull(),
+  inputType: text("input_type").notNull(),
+  success: boolean("success").notNull(),
+  cached: boolean("cached").notNull().default(false),
+  latencyMs: integer("latency_ms"),
+  costCents: integer("cost_cents").default(0),
+  errorCode: text("error_code"),
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("provider_lookup_provider_idx").on(table.providerName, table.createdAt),
+  index("provider_lookup_category_idx").on(table.category, table.createdAt),
+  index("provider_lookup_created_idx").on(table.createdAt),
+]);
+
+export type ProviderLookupLog = typeof providerLookupLog.$inferSelect;
+
 // Decision experiments — A/B test at the agent-decision layer.
 // Not UI A/B tests; these split how agents *decide* for different
 // organizations. Example: half of past-due customers get 7-day
