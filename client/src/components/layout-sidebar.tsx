@@ -608,6 +608,30 @@ export function Sidebar() {
           />
         )}
 
+        {/* Autonomous decisions log — the audit trail of every call the
+            system made in the founder's absence. Sits just below the
+            founder dashboard because it's the single most important
+            page for trust. */}
+        {isFounder && (
+          <DesktopNavItem
+            href="/founder/decisions"
+            icon={Shield}
+            label="Decisions"
+            isActive={location === "/founder/decisions"}
+            isCollapsed={isCollapsed}
+            accentClass={
+              location === "/founder/decisions"
+                ? "bg-amber-500 text-white shadow-md"
+                : "bg-amber-500/10 text-amber-600 hover:bg-amber-500/20"
+            }
+            iconClass={
+              location === "/founder/decisions" ? "text-white" : "text-amber-500"
+            }
+            testId="link-founder-decisions"
+            onMouseEnter={() => {}}
+          />
+        )}
+
         {/* Nav modules (filtered by feature flags) */}
         {visibleModules.map((module) => {
           const active = isModuleActive(module);

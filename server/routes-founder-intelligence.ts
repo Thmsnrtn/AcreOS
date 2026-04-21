@@ -1166,6 +1166,177 @@ router.post("/decisions-inbox/:id/override", requireFounder, async (req: Request
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// DECISION LOG — audit trail of every autonomous-executor decision
+//
+// /decisions-inbox returns PENDING items only. This endpoint returns
+// the full history — approved, rejected, deferred, auto-resolved,
+// and pending — so the founder can see *what the system has been
+// deciding in their absence*.
+//
+// Bucketed for human consumption, layperson framing:
+//
+//   needsYou         — pending + high urgency/risk
+//   autoHandled      — resolved by autonomous_executor without asking
+//   guardrailStopped — rejected by executor (blocked by hard guardrail)
+//   youReviewed      — resolved by a human (override/approve/reject)
+//   deferred         — snoozed for later
+//
+// Every entry includes the AI reasoning, estimated impact, and — if
+// available — the outcome score once it's been graded.
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.get("/decision-log", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const days = Math.min(Math.max(parseInt((req.query.days as string) ?? "30", 10), 1), 90);
+    const limit = Math.min(Math.max(parseInt((req.query.limit as string) ?? "200", 10), 10), 500);
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const rows = await db
+      .select()
+      .from(decisionsInboxItems)
+      .where(sql`${decisionsInboxItems.createdAt} >= ${since}`)
+      .orderBy(desc(decisionsInboxItems.createdAt))
+      .limit(limit);
+
+    // Bucket + summarize for the founder UI.
+    const needsYou: typeof rows = [];
+    const autoHandled: typeof rows = [];
+    const guardrailStopped: typeof rows = [];
+    const youReviewed: typeof rows = [];
+    const deferred: typeof rows = [];
+    for (const r of rows) {
+      const resolvedByExecutor = r.resolvedBy === "autonomous_executor" || r.resolvedBy === "hard_guardrail";
+      if (r.status === "pending") {
+        // Pending rows with critical risk or urgency >= 80 bubble up as "needs you"
+        if (r.riskLevel === "critical" || (r.urgencyScore ?? 0) >= 80) {
+          needsYou.push(r);
+        } else {
+          // Low-urgency pending still goes to needsYou so nothing gets silently lost.
+          needsYou.push(r);
+        }
+      } else if (r.status === "deferred") {
+        deferred.push(r);
+      } else if (r.status === "rejected" && r.resolvedBy === "hard_guardrail") {
+        guardrailStopped.push(r);
+      } else if (r.status === "auto_resolved" || (r.status === "approved" && resolvedByExecutor)) {
+        autoHandled.push(r);
+      } else if (r.resolvedBy && r.resolvedBy !== "autonomous_executor" && r.resolvedBy !== "hard_guardrail") {
+        youReviewed.push(r);
+      } else {
+        // Fall-through bucket: resolved but unclear who did it.
+        youReviewed.push(r);
+      }
+    }
+
+    // Outcome rollup for the "auto-handled" bucket — the honest answer
+    // to "have the decisions the system made turned out well?"
+    const scored = autoHandled.filter((r) => typeof r.outcomeScore === "number");
+    const avgOutcome = scored.length
+      ? scored.reduce((s, r) => s + (r.outcomeScore ?? 0), 0) / scored.length
+      : null;
+
+    // Spend exposure: total $ impact of auto-handled decisions. The
+    // founder should know how much money the system moved in their
+    // absence, even if no single decision was dramatic.
+    const autoHandledImpactCents = autoHandled.reduce(
+      (s, r) => s + Math.abs(r.estimatedImpactCents ?? 0),
+      0
+    );
+
+    res.json({
+      windowDays: days,
+      generatedAt: new Date().toISOString(),
+      summary: {
+        total: rows.length,
+        needsYou: needsYou.length,
+        autoHandled: autoHandled.length,
+        guardrailStopped: guardrailStopped.length,
+        youReviewed: youReviewed.length,
+        deferred: deferred.length,
+        autoHandledImpactCents,
+        avgOutcomeScore: avgOutcome,
+      },
+      buckets: {
+        needsYou: needsYou.slice(0, 50),
+        autoHandled: autoHandled.slice(0, 100),
+        guardrailStopped: guardrailStopped.slice(0, 50),
+        youReviewed: youReviewed.slice(0, 50),
+        deferred: deferred.slice(0, 50),
+      },
+    });
+  } catch (err: any) {
+    logger.error("[decision-log] Error fetching log", undefined, { metadata: { detail: err.message } });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Single-decision detail fetch with full contextBundle, for the
+// "expand row" interaction on the founder decisions page.
+router.get("/decision-log/:id", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
+    const [row] = await db
+      .select()
+      .from(decisionsInboxItems)
+      .where(eq(decisionsInboxItems.id, id))
+      .limit(1);
+    if (!row) return res.status(404).json({ error: "Decision not found" });
+    res.json({ decision: row });
+  } catch (err: any) {
+    logger.error("[decision-log detail] Error", undefined, { metadata: { detail: err.message } });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Reverse an auto-handled decision — flips its status to rejected
+// and records a founder_override_action so the learning loop can
+// pick it up. The underlying action may not be reversible (a Stripe
+// charge is a Stripe charge) — that's why the endpoint is named
+// "reverse": it records your objection, so the executor stops doing
+// the same thing, not that it rolls back the side effect.
+router.post("/decision-log/:id/reverse", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
+    const { reason } = req.body as { reason?: string };
+    const [row] = await db
+      .select()
+      .from(decisionsInboxItems)
+      .where(eq(decisionsInboxItems.id, id))
+      .limit(1);
+    if (!row) return res.status(404).json({ error: "Decision not found" });
+    await db
+      .update(decisionsInboxItems)
+      .set({
+        status: "rejected",
+        founderOverrideAction: "reverse",
+        founderModification: reason?.slice(0, 1000) || "founder reversed an auto-handled decision",
+        resolvedAt: new Date(),
+        resolvedBy: "founder",
+        updatedAt: new Date(),
+      })
+      .where(eq(decisionsInboxItems.id, id));
+    // Feed the reversal back into the learning loop.
+    try {
+      await learnFromOverride({
+        agentCodename: row.ownerAgentCodename || "autonomous_executor",
+        actionName: row.itemType || "decision",
+        originalRecommendation: row.recommendedActionLabel || row.sophieAnalysis || "",
+        ceoOverrideAction: "reverse",
+        ceoOverrideNotes: reason || "",
+        decisionId: id,
+      });
+    } catch {
+      /* non-fatal */
+    }
+    res.json({ success: true });
+  } catch (err: any) {
+    logger.error("[decision-log reverse] Error", undefined, { metadata: { detail: err.message } });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // SOPHIE ACTIVITY LOG
 // ─────────────────────────────────────────────────────────────────────────────
 
