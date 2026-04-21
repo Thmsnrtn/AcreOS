@@ -366,7 +366,7 @@ async function buildWeeklyDomainSummary(
       db
         .select({
           last7_count: sql<number>`count(*)::int`,
-          last7_total: sql<number>`coalesce(sum(amount_cents), 0)::int`,
+          last7_total: sql<number>`coalesce(sum(amount), 0)::numeric`,
         })
         .from(payments)
         .where(gte(payments.createdAt, since)),
@@ -404,7 +404,7 @@ async function buildWeeklyDomainSummary(
     `Organizations: ${orgs?.total ?? 0} total, ${orgs?.active ?? 0} active, ${orgs?.past_due ?? 0} past-due`,
   );
   lines.push(
-    `Payments (7d): ${pay?.last7_count ?? 0} charges totaling $${((pay?.last7_total ?? 0) / 100).toFixed(0)}`,
+    `Payments (7d): ${pay?.last7_count ?? 0} charges totaling $${Number(pay?.last7_total ?? 0).toFixed(0)}`,
   );
   lines.push(
     `Decisions (7d): ${dec?.total ?? 0} total, ${dec?.auto ?? 0} auto-resolved, ${dec?.reversed ?? 0} founder-reversed`,
