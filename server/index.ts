@@ -434,6 +434,30 @@ app.use("/api", apiLimiter);
       log(`founder_letters bootstrap: ${err.message}`, "db");
     }
 
+    // Agent memory notes — weekly consolidation of per-agent wisdom.
+    try {
+      const { pool } = await import("./db");
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS "agent_memory_notes" (
+          "id" serial PRIMARY KEY,
+          "agent_codename" text NOT NULL,
+          "week_key" text NOT NULL,
+          "patterns_learned" text NOT NULL,
+          "wins" jsonb DEFAULT '[]'::jsonb,
+          "losses" jsonb DEFAULT '[]'::jsonb,
+          "self_recommendations" text,
+          "decisions_analyzed" integer NOT NULL DEFAULT 0,
+          "created_at" timestamp DEFAULT now() NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS "agent_memory_notes_agent_idx"
+          ON "agent_memory_notes" ("agent_codename", "created_at");
+        CREATE INDEX IF NOT EXISTS "agent_memory_notes_week_idx"
+          ON "agent_memory_notes" ("week_key");
+      `);
+    } catch (err: any) {
+      log(`agent_memory_notes bootstrap: ${err.message}`, "db");
+    }
+
     // Provider lookup log — per-lookup telemetry feeding
     // intelligence-driven routing + founder cost/quality visibility.
     try {
@@ -993,6 +1017,12 @@ app.use("/api", apiLimiter);
       // Expansion radar — weekly (Monday 08:00 UTC) scan of active
       // orgs for upsell readiness. Top 5 surface for founder review.
       startExpansionRadarJob();
+
+      // Agent memory consolidation — weekly (Sunday 23:00 UTC, the
+      // last cron of the ISO week). Distills each agent's week into
+      // a memory note that Company Mind then injects into future
+      // decision prompts.
+      startAgentMemoryConsolidationJob();
 
       // Auto-seed county GIS endpoints for free parcel lookups
       seedCountyGisEndpointsOnStartup();
@@ -2339,6 +2369,30 @@ function startPromptEvolutionJob() {
       );
     } catch (err: any) {
       log(`[prompt-evolution] monthly failed: ${err?.message ?? err}`, 'sovereign');
+    }
+  }, ONE_HOUR);
+}
+
+/**
+ * Agent memory consolidation — weekly (Sunday 23:00 UTC).
+ * Each agent gets one LLM distillation of their recent week
+ * persisted as a memory note for future prompts.
+ */
+function startAgentMemoryConsolidationJob() {
+  const ONE_HOUR = 60 * 60 * 1000;
+  log('Registering agent memory consolidation (Sunday 23:00 UTC)', 'sovereign');
+  trackInterval(async () => {
+    const now = new Date();
+    if (now.getUTCDay() !== 0 || now.getUTCHours() !== 23) return;
+    try {
+      const { runWeeklyMemoryConsolidation } = await import('./services/agentMemoryConsolidation');
+      const r = await runWeeklyMemoryConsolidation();
+      log(
+        `[agent-memory] week ${r.weekKey}: ${r.notesWritten} notes, ${r.skipped.length} skipped`,
+        'sovereign',
+      );
+    } catch (err: any) {
+      log(`[agent-memory] failed: ${err?.message ?? err}`, 'sovereign');
     }
   }, ONE_HOUR);
 }

@@ -64,13 +64,14 @@ export async function getCrossWingContext(
 ): Promise<string> {
   try {
     const budget = opts.tokenBudgetChars ?? DEFAULT_BUDGET_CHARS;
-    const [overrides, priorities, broadcasts, negativeOutcomes, orgSignal] =
+    const [overrides, priorities, broadcasts, negativeOutcomes, orgSignal, memoryNotes] =
       await Promise.all([
         recentFounderOverrides(14, opts.itemType),
         activeStrategicPriorities(),
         recentHighPriorityBroadcasts(72, opts.agentCodename),
         recentNegativeOutcomes(14),
         opts.organizationId ? recentSameOrgActivity(opts.organizationId) : Promise.resolve(null),
+        ownAgentMemoryNotes(opts.agentCodename),
       ]);
 
     const sections: string[] = [];
@@ -78,6 +79,13 @@ export async function getCrossWingContext(
     sections.push(
       `COMPANY CONTEXT — shared knowledge across the 12-agent board. Read before deciding.`,
     );
+
+    // Agent's own journal entries first — durable wisdom the agent
+    // wrote to itself in past weeks. Highest signal-to-noise ratio.
+    if (memoryNotes.length > 0) {
+      sections.push(`Your own memory from recent weeks (read these before anything else):`);
+      for (const n of memoryNotes) sections.push(`- ${n}`);
+    }
 
     if (overrides.length > 0) {
       sections.push(
@@ -119,6 +127,27 @@ export async function getCrossWingContext(
       metadata: { error: err?.message },
     });
     return "";
+  }
+}
+
+/**
+ * Read the agent's last few memory-consolidation notes — their own
+ * journal of patterns learned. Highest-density durable wisdom we
+ * can inject.
+ */
+async function ownAgentMemoryNotes(agentCodename: string): Promise<string[]> {
+  try {
+    const { getRecentNotesForAgent } = await import("./agentMemoryConsolidation");
+    const notes = await getRecentNotesForAgent(agentCodename, 3);
+    return notes.map((n) => {
+      const head = `[${n.weekKey}] ${n.patternsLearned.slice(0, 300)}`;
+      const rec = n.selfRecommendations
+        ? ` Next week: ${n.selfRecommendations.slice(0, 150)}`
+        : "";
+      return head + rec;
+    });
+  } catch {
+    return [];
   }
 }
 

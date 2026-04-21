@@ -1857,6 +1857,28 @@ router.post("/expansion/:id/resolve", requireFounder, async (req: any, res: Resp
   }
 });
 
+// ── Agent memory consolidation ──────────────────────────────────────
+
+router.get("/agent-memory", requireFounder, async (_req: Request, res: Response) => {
+  try {
+    const { listAllNotes } = await import("./services/agentMemoryConsolidation");
+    const notes = await listAllNotes();
+    res.json({ notes });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/agent-memory/run-now", requireFounder, async (_req: Request, res: Response) => {
+  try {
+    const { runWeeklyMemoryConsolidation } = await import("./services/agentMemoryConsolidation");
+    const result = await runWeeklyMemoryConsolidation();
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Provider intelligence ───────────────────────────────────────────
 
 router.get("/providers", requireFounder, async (req: Request, res: Response) => {

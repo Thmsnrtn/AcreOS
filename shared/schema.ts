@@ -10949,6 +10949,28 @@ export const insertFounderDigestHistorySchema = createInsertSchema(founderDigest
 export type InsertFounderDigestHistory = z.infer<typeof insertFounderDigestHistorySchema>;
 export type FounderDigestHistory = typeof founderDigestHistory.$inferSelect;
 
+// Agent memory notes — per-agent weekly consolidation of learned
+// patterns, wins, losses, and self-recommendations. Acts as the
+// long-term memory complement to Company Mind's 14-day cross-wing
+// context. Each note is one LLM call summarizing the agent's recent
+// activity; notes accumulate as the agent's wisdom over time.
+export const agentMemoryNotes = pgTable("agent_memory_notes", {
+  id: serial("id").primaryKey(),
+  agentCodename: text("agent_codename").notNull(),
+  weekKey: text("week_key").notNull(),
+  patternsLearned: text("patterns_learned").notNull(), // short-form prose
+  wins: jsonb("wins").$type<string[]>().default([]),
+  losses: jsonb("losses").$type<string[]>().default([]),
+  selfRecommendations: text("self_recommendations"), // what the agent advises itself to do next week
+  decisionsAnalyzed: integer("decisions_analyzed").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("agent_memory_notes_agent_idx").on(table.agentCodename, table.createdAt),
+  index("agent_memory_notes_week_idx").on(table.weekKey),
+]);
+
+export type AgentMemoryNote = typeof agentMemoryNotes.$inferSelect;
+
 // Provider lookup log — a row per external-data call. Powers
 // per-provider success-rate scoring so the registry can prefer the
 // provider that's been answering this query-type well lately, within
