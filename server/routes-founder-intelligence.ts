@@ -200,12 +200,64 @@ router.get("/morning-briefing", requireFounder, async (req: Request, res: Respon
     if (ticketsOpen > 5) healthScore -= 5;
     healthScore = Math.max(0, healthScore);
 
+    // ── Full 12-agent activity roll-up ────────────────────────────────
+    // The primary agentUpdates[] above only covers the 5 agents the
+    // AI-voiced briefing speaks for. But the company has 12 agents,
+    // and a silent agent could mean "nothing to do" (fine) or
+    // "broken" (not fine). Surface all 12 so the founder can see who
+    // worked and who didn't.
+    const fullAgentActivity = agents.map((a) => {
+      const actions = actionsByAgent[a.codename];
+      return {
+        codename: a.codename,
+        title: a.title,
+        wing: (a as any).wing ?? null,
+        trustScore: a.trustScore,
+        status: a.status,
+        actionsToday: actions?.total ?? 0,
+        actionsSucceeded: actions?.succeeded ?? 0,
+        silent: !actions || actions.total === 0,
+      };
+    });
+
+    // ── Budget health roll-up ────────────────────────────────────────
+    // Layperson summary: how much has the system spent this month,
+    // any agents near their cap, any unreviewed spend anomalies.
+    let budgetHealth: {
+      totalSpentCents: number;
+      totalBudgetCents: number;
+      utilizationPct: number;
+      nearCap: Array<{ agentCodename: string; utilizationPct: number }>;
+      pendingAnomalies: number;
+      hardCapCents: number;
+    } | null = null;
+    try {
+      const { financialAuthorityGate } = await import("./services/financialAuthorityGate");
+      const summary = await financialAuthorityGate.getBudgetSummary();
+      const totalBudgetCents = summary.envelopes.reduce((s, e) => s + e.budgetCents, 0);
+      const totalSpentCents = summary.envelopes.reduce((s, e) => s + e.spentCents, 0);
+      budgetHealth = {
+        totalSpentCents,
+        totalBudgetCents,
+        utilizationPct: totalBudgetCents > 0 ? Math.round((totalSpentCents / totalBudgetCents) * 100) : 0,
+        nearCap: summary.envelopes
+          .filter((e) => e.warningLevel !== "ok")
+          .map((e) => ({ agentCodename: e.agentCodename, utilizationPct: e.utilizationPct })),
+        pendingAnomalies: summary.pendingAnomalies,
+        hardCapCents: summary.hardCapCents,
+      };
+    } catch {
+      /* budget rollup non-fatal — briefing still ships */
+    }
+
     res.json({
       greeting: `${timeGreeting}, Thomas.`,
       headline,
       healthScore,
       allClear,
       agentUpdates,
+      fullAgentActivity,
+      budgetHealth,
       pendingDecisions,
       trustUpdates,
       generatedAt: now.toISOString(),
@@ -1265,6 +1317,76 @@ router.get("/decision-log", requireFounder, async (req: Request, res: Response) 
     });
   } catch (err: any) {
     logger.error("[decision-log] Error fetching log", undefined, { metadata: { detail: err.message } });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Per-agent activity drill-down for the founder briefing. Returns
+// recent actions, outcome mix (success / failed / escalated), and a
+// "did this agent do anything in the window" signal for each of the
+// 12 registered company agents. The morning briefing summarizes this
+// data; /founder/decisions can expand an agent's row to see it.
+router.get("/agent-activity", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const hours = Math.min(Math.max(parseInt((req.query.hours as string) ?? "24", 10), 1), 24 * 30);
+    const since = new Date(Date.now() - hours * 60 * 60 * 1000);
+
+    const agents = await companyAgentService.getAllIncludingPaused();
+    const recent = await db
+      .select()
+      .from(agentActionLog)
+      .where(gte(agentActionLog.createdAt, since))
+      .orderBy(desc(agentActionLog.createdAt))
+      .limit(500);
+
+    const byAgent = new Map<string, typeof recent>();
+    for (const r of recent) {
+      const bucket = byAgent.get(r.agentCodename) ?? [];
+      bucket.push(r);
+      byAgent.set(r.agentCodename, bucket);
+    }
+
+    const perAgent = agents.map((agent) => {
+      const actions = byAgent.get(agent.codename) ?? [];
+      const successCount = actions.filter((a) => a.outcome === "success").length;
+      const failedCount = actions.filter((a) => a.outcome === "failure").length;
+      const escalatedCount = actions.filter((a) => a.outcome === "escalated").length;
+      const pendingCount = actions.filter((a) => a.outcome === "pending").length;
+      return {
+        codename: agent.codename,
+        title: agent.title,
+        wing: (agent as any).wing ?? null,
+        trustScore: agent.trustScore,
+        status: agent.status,
+        totalActions: actions.length,
+        successCount,
+        failedCount,
+        escalatedCount,
+        pendingCount,
+        hasActivity: actions.length > 0,
+        recentActions: actions.slice(0, 5).map((a) => ({
+          id: a.id,
+          actionType: a.actionType,
+          actionName: a.actionName,
+          outcome: a.outcome,
+          reasoning: a.reasoning?.slice(0, 300) ?? null,
+          confidence: a.confidence,
+          costCents: a.costCents,
+          createdAt: a.createdAt,
+        })),
+      };
+    });
+
+    res.json({
+      windowHours: hours,
+      generatedAt: new Date().toISOString(),
+      totalAgents: perAgent.length,
+      agentsWithActivity: perAgent.filter((a) => a.hasActivity).length,
+      silentAgents: perAgent.filter((a) => !a.hasActivity).map((a) => a.codename),
+      perAgent,
+    });
+  } catch (err: any) {
+    logger.error("[agent-activity] Error", undefined, { metadata: { detail: err.message } });
     res.status(500).json({ error: err.message });
   }
 });
