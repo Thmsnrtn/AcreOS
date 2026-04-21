@@ -10949,6 +10949,28 @@ export const insertFounderDigestHistorySchema = createInsertSchema(founderDigest
 export type InsertFounderDigestHistory = z.infer<typeof insertFounderDigestHistorySchema>;
 export type FounderDigestHistory = typeof founderDigestHistory.$inferSelect;
 
+// Customer letters — per-org monthly narrative mirroring the
+// founder letter. Written by Sophie (CSM agent) voice. One row per
+// (organizationId, monthKey). The customer-facing primary surface
+// for recurring engagement.
+export const customerLetters = pgTable("customer_letters", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  monthKey: text("month_key").notNull(),
+  letterMarkdown: text("letter_markdown").notNull(),
+  summaryJson: jsonb("summary_json").$type<Record<string, any>>().notNull(),
+  recommendedAction: text("recommended_action"),
+  generatedAt: timestamp("generated_at").notNull().defaultNow(),
+  deliveredAt: timestamp("delivered_at"),
+  openedAt: timestamp("opened_at"),
+  status: text("status").notNull().default("draft"), // draft | delivered | opened | archived
+}, (table) => [
+  index("customer_letters_org_month_idx").on(table.organizationId, table.monthKey),
+  index("customer_letters_status_idx").on(table.status),
+]);
+
+export type CustomerLetter = typeof customerLetters.$inferSelect;
+
 // Tool proposals — agents (or the strategic synthesis pass) propose
 // new integrations / data sources / capabilities the company needs
 // to operate better. Always founder-gated.

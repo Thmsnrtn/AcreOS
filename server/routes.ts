@@ -14,6 +14,7 @@ import marketplaceRouter from "./routes-marketplace";
 import predictionsRouter from "./routes-predictions";
 import landCreditRouter from "./routes-land-credit";
 import acquisitionRadarRouter from "./routes-acquisition-radar";
+import customerLetterRouter from "./routes-customer-letter";
 import portfolioOptimizerRouter from "./routes-portfolio-optimizer";
 import avmRouter from "./routes-avm";
 import negotiationRouter from "./routes-negotiation";
@@ -1027,6 +1028,7 @@ export async function registerRoutes(
   app.use('/api/predictions', isAuthenticated, getOrCreateOrg, predictionsRouter);
   app.use('/api/land-credit', isAuthenticated, getOrCreateOrg, landCreditRouter);
   app.use('/api/radar', isAuthenticated, getOrCreateOrg, acquisitionRadarRouter);
+  app.use('/api/my-letter', isAuthenticated, getOrCreateOrg, customerLetterRouter);
   app.use('/api/portfolio-optimizer', isAuthenticated, getOrCreateOrg, portfolioOptimizerRouter);
   app.use('/api/avm', isAuthenticated, getOrCreateOrg, avmRouter);
   app.use('/api/negotiation', isAuthenticated, getOrCreateOrg, negotiationRouter);

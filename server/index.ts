@@ -434,6 +434,32 @@ app.use("/api", apiLimiter);
       log(`founder_letters bootstrap: ${err.message}`, "db");
     }
 
+    // Customer letters — per-org monthly narrative mirroring the
+    // founder letter. Written in Sophie's voice.
+    try {
+      const { pool } = await import("./db");
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS "customer_letters" (
+          "id" serial PRIMARY KEY,
+          "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+          "month_key" text NOT NULL,
+          "letter_markdown" text NOT NULL,
+          "summary_json" jsonb NOT NULL,
+          "recommended_action" text,
+          "generated_at" timestamp DEFAULT now() NOT NULL,
+          "delivered_at" timestamp,
+          "opened_at" timestamp,
+          "status" text NOT NULL DEFAULT 'draft'
+        );
+        CREATE INDEX IF NOT EXISTS "customer_letters_org_month_idx"
+          ON "customer_letters" ("organization_id", "month_key");
+        CREATE INDEX IF NOT EXISTS "customer_letters_status_idx"
+          ON "customer_letters" ("status");
+      `);
+    } catch (err: any) {
+      log(`customer_letters bootstrap: ${err.message}`, "db");
+    }
+
     // Tool proposals — integrations / data sources / capabilities
     // agents have requested. Founder-gated.
     try {
@@ -799,6 +825,11 @@ app.use("/api", apiLimiter);
       // previews (commitAt passed + 1h) as 'failed' so they don't
       // misleadingly show up in /founder/preview.
       startActionPreviewSweeperJob();
+
+      // Customer monthly letters — per-org narrative from Sophie.
+      // Fires on the 1st at 15:00 UTC (3h after the founder letter
+      // at 12:00 UTC) so the customer wave is not in the same burst.
+      startCustomerLetterJob();
 
       // Auto-seed county GIS endpoints for free parcel lookups
       seedCountyGisEndpointsOnStartup();
@@ -2145,6 +2176,30 @@ function startPromptEvolutionJob() {
       );
     } catch (err: any) {
       log(`[prompt-evolution] monthly failed: ${err?.message ?? err}`, 'sovereign');
+    }
+  }, ONE_HOUR);
+}
+
+/**
+ * Customer monthly letters — iterates every active/trialing/past_due
+ * organization and generates a per-org narrative. Fires on the 1st
+ * of each month at 15:00 UTC. Idempotent: per (orgId, monthKey).
+ */
+function startCustomerLetterJob() {
+  const ONE_HOUR = 60 * 60 * 1000;
+  log('Registering customer letter generator (1st of month, 15:00 UTC)', 'sovereign');
+  trackInterval(async () => {
+    const now = new Date();
+    if (now.getUTCDate() !== 1 || now.getUTCHours() !== 15) return;
+    try {
+      const { runMonthlyCustomerLetters } = await import('./services/customerNarrative');
+      const r = await runMonthlyCustomerLetters();
+      log(
+        `[customer-letters] generated ${r.succeeded}/${r.orgsProcessed} for ${r.monthKey} (${r.failed} failed)`,
+        'sovereign',
+      );
+    } catch (err: any) {
+      log(`[customer-letters] run failed: ${err?.message ?? err}`, 'sovereign');
     }
   }, ONE_HOUR);
 }
