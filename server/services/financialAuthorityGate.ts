@@ -11,6 +11,25 @@
  * Tier 3:  $2,500 – $10K    Owner + Ledger + Shield, trust >= 85, 4hr cooling
  * Tier 4:  $10K – $50K      5+ agent quorum, trust >= 90, 24hr cooling, Founder Twin
  * Tier 5:  $50K+            Founder approval required (hard stop)
+ *
+ * Layered on top (Phase A.2 hardening):
+ *
+ *   FINANCIAL_HARD_CAP_CENTS (default $25,000) — an absolute ceiling
+ *     above which the gate refuses to create an approval record at
+ *     all, regardless of tier. Non-bypassable even if every approver
+ *     trust score is gamed. The insurance against "all safeguards
+ *     failed" failure modes. Raise it deliberately via env var when
+ *     you know you're going to be in the room for the decision.
+ *
+ *   Anomaly → Tier escalation — a spend flagged >2σ anomalous bumps
+ *     the required tier by 1. A tier 1 spend that's 3× the agent's
+ *     historical average now needs tier-2 consensus, not just the
+ *     agent's self-approval.
+ *
+ *   Approval TTL (default 72 hours) — pending requests that don't
+ *     gather enough approvals within the window auto-expire. Prevents
+ *     the pending queue from growing unbounded and keeps stale
+ *     consensus from being rubber-stamped days later.
  */
 
 import { db } from "../db";
@@ -20,8 +39,30 @@ import {
   spendAnomalies,
   companyAgents,
 } from "@shared/schema";
-import { eq, and, sql, desc, avg } from "drizzle-orm";
+import { eq, and, sql, desc, lt, avg } from "drizzle-orm";
 import crypto from "crypto";
+import { logger } from "../utils/logger";
+
+// ─── Hard global cap ─────────────────────────────────────────────────────────
+// Absolute ceiling. Any request above this amount fails immediately, even if
+// every Tier 5 approver rubber-stamps it. Default is $25K — tuned low so the
+// system has to ask *the human founder* for anything that could meaningfully
+// dent runway. Raise via FINANCIAL_HARD_CAP_CENTS when you know a large
+// spend is coming.
+function getHardCapCents(): number {
+  const raw = process.env.FINANCIAL_HARD_CAP_CENTS;
+  const parsed = raw ? parseInt(raw, 10) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 2_500_000;
+}
+
+// ─── Approval TTL ────────────────────────────────────────────────────────────
+// Pending approvals that don't gather consensus within this window get
+// auto-expired on the next checkApprovalStatus() / sweep.
+function getApprovalTtlHours(): number {
+  const raw = process.env.FINANCIAL_APPROVAL_TTL_HOURS;
+  const parsed = raw ? parseInt(raw, 10) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 72;
+}
 
 // ─── Tier Definitions ────────────────────────────────────────────────────────
 
@@ -152,7 +193,54 @@ class FinancialAuthorityGateService {
     message: string;
     coolingPeriodEnds?: Date;
   }> {
-    const tier = this.getTier(amountCents);
+    // ── Absolute hard cap (Phase A.2 insurance layer) ──
+    // Non-bypassable. Fail immediately. Do not even create an
+    // approval record — a rejected record could theoretically be
+    // re-opened by a compromised agent, so we refuse to persist.
+    const hardCap = getHardCapCents();
+    if (amountCents > hardCap) {
+      logger.warn("[financialAuthorityGate] spend blocked by hard cap", {
+        metadata: {
+          agentCodename,
+          amountCents,
+          hardCapCents: hardCap,
+          purpose,
+          category,
+        },
+      });
+      return {
+        requestId: "hard-cap-block",
+        tier: 0,
+        status: "blocked",
+        message: `Spend of $${(amountCents / 100).toLocaleString()} exceeds the absolute hard cap of $${(hardCap / 100).toLocaleString()}. No approval flow will run. Raise FINANCIAL_HARD_CAP_CENTS only if you're certain you want the system able to move this much money autonomously.`,
+      };
+    }
+
+    let tier = this.getTier(amountCents);
+
+    // ── Anomaly → tier escalation ──
+    // A spend that's more than 2σ off the agent's historical pattern
+    // requires one level higher of approval than its dollar amount
+    // would normally need. This catches "agent's trust was gamed into
+    // approving a sudden 10× spend" failure modes even if the spend
+    // is technically within its trust tier.
+    const anomaly = await this.detectAnomaly(agentCodename, amountCents);
+    if (anomaly.isAnomaly) {
+      const escalatedTierNumber = Math.min(tier.tier + 1, SPENDING_TIERS.length);
+      const escalatedTier = SPENDING_TIERS.find((t) => t.tier === escalatedTierNumber) ?? tier;
+      if (escalatedTier.tier !== tier.tier) {
+        logger.info("[financialAuthorityGate] anomaly escalated tier", {
+          metadata: {
+            agentCodename,
+            amountCents,
+            sigma: anomaly.sigma,
+            fromTier: tier.tier,
+            toTier: escalatedTier.tier,
+          },
+        });
+        tier = escalatedTier;
+      }
+    }
 
     // ── Hard stop: Tier 5 requires founder approval ──
     if (tier.founderApprovalRequired) {
@@ -190,10 +278,11 @@ class FinancialAuthorityGateService {
       );
     }
 
-    // ── Anomaly detection ──
-    const anomaly = await this.detectAnomaly(agentCodename, amountCents);
+    // ── Anomaly persistence ──
+    // We've already computed `anomaly` at the top of requestSpend and
+    // used it to escalate the tier. Now persist the anomaly record
+    // itself so spendAnomalies keeps a full history for post-hoc audit.
     if (anomaly.isAnomaly) {
-      // Log the anomaly and escalate the tier
       await db.insert(spendAnomalies).values({
         agentCodename,
         amountCents,
@@ -432,6 +521,30 @@ class FinancialAuthorityGateService {
       throw new Error(`Financial approval request "${requestId}" not found.`);
     }
 
+    // ── Approval TTL: expire stale pending requests ──
+    // Anything still in "pending" after the TTL window is transitioned
+    // to "expired" so the queue can't grow unbounded and stale
+    // consensus can't be rubber-stamped days later.
+    const ttlHours = getApprovalTtlHours();
+    const createdAt = request.createdAt instanceof Date ? request.createdAt : new Date(request.createdAt ?? Date.now());
+    const ttlDeadline = new Date(createdAt.getTime() + ttlHours * 60 * 60 * 1000);
+    if (request.status === "pending" && new Date() > ttlDeadline) {
+      await db
+        .update(financialApprovals)
+        .set({
+          status: "expired",
+          updatedAt: new Date(),
+        })
+        .where(eq(financialApprovals.requestId, requestId));
+      return {
+        status: "expired",
+        approvalsReceived: 0,
+        approvalsRequired: request.requiredApprovers,
+        coolingComplete: false,
+        readyToExecute: false,
+      };
+    }
+
     const approvalEntries = Object.values(
       (request.approvalStatus ?? {}) as Record<string, { approved: boolean; timestamp: string; reasoning: string }>,
     );
@@ -650,6 +763,93 @@ class FinancialAuthorityGateService {
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, "0");
     return `${year}-${month}`;
+  }
+
+  /**
+   * Sweep stale pending approvals. Marks anything older than the TTL
+   * window as expired in a single query. Safe to call from a cron job
+   * or on-demand before the founder loads the approvals queue.
+   */
+  async sweepStaleApprovals(): Promise<{ expired: number }> {
+    const ttlHours = getApprovalTtlHours();
+    const cutoff = new Date(Date.now() - ttlHours * 60 * 60 * 1000);
+    const updated = await db
+      .update(financialApprovals)
+      .set({
+        status: "expired",
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(financialApprovals.status, "pending"),
+          lt(financialApprovals.createdAt, cutoff),
+        ),
+      )
+      .returning({ id: financialApprovals.id });
+    if (updated.length > 0) {
+      logger.info("[financialAuthorityGate] swept stale approvals", {
+        metadata: { count: updated.length, cutoff: cutoff.toISOString() },
+      });
+    }
+    return { expired: updated.length };
+  }
+
+  /**
+   * Founder-facing roll-up: every agent's current-month envelope plus
+   * utilization pct + any spend anomalies flagged this month. Drives
+   * the "how much has each agent spent this month" summary on the
+   * founder briefing and the /founder/decisions page.
+   */
+  async getBudgetSummary(monthKey?: string): Promise<{
+    monthKey: string;
+    envelopes: Array<{
+      agentCodename: string;
+      budgetCents: number;
+      spentCents: number;
+      remainingCents: number;
+      utilizationPct: number;
+      warningLevel: "ok" | "warn" | "critical";
+    }>;
+    pendingAnomalies: number;
+    hardCapCents: number;
+    approvalTtlHours: number;
+  }> {
+    const key = monthKey ?? this.getMonthKey();
+    const envelopes = await db
+      .select()
+      .from(agentBudgetEnvelopes)
+      .where(eq(agentBudgetEnvelopes.monthKey, key));
+
+    const rolled = envelopes.map((envelope) => {
+      const remainingCents = envelope.budgetCents - envelope.spentCents;
+      const utilizationPct =
+        envelope.budgetCents > 0
+          ? Math.round((envelope.spentCents / envelope.budgetCents) * 10000) / 100
+          : 0;
+      const warningLevel: "ok" | "warn" | "critical" =
+        utilizationPct >= 100 ? "critical" : utilizationPct >= 80 ? "warn" : "ok";
+      return {
+        agentCodename: envelope.agentCodename,
+        budgetCents: envelope.budgetCents,
+        spentCents: envelope.spentCents,
+        remainingCents,
+        utilizationPct,
+        warningLevel,
+      };
+    });
+
+    const anomalies = await db
+      .select()
+      .from(spendAnomalies)
+      .where(eq(spendAnomalies.peerReviewStatus, "pending"));
+
+    return {
+      monthKey: key,
+      envelopes: rolled,
+      pendingAnomalies: anomalies.length,
+      hardCapCents: getHardCapCents(),
+      approvalTtlHours: getApprovalTtlHours(),
+    };
   }
 
   /**

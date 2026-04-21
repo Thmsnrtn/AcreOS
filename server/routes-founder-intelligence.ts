@@ -1269,6 +1269,22 @@ router.get("/decision-log", requireFounder, async (req: Request, res: Response) 
   }
 });
 
+// Founder-facing financial-authority roll-up: per-agent budget
+// utilization, pending anomalies, current hard-cap value, and how
+// many pending approvals are about to TTL out. Sweeps stale
+// approvals on the way in so the response reflects a clean queue.
+router.get("/budget-summary", requireFounder, async (_req: Request, res: Response) => {
+  try {
+    const { financialAuthorityGate } = await import("./services/financialAuthorityGate");
+    const swept = await financialAuthorityGate.sweepStaleApprovals();
+    const summary = await financialAuthorityGate.getBudgetSummary();
+    res.json({ ...summary, swept: swept.expired });
+  } catch (err: any) {
+    logger.error("[budget-summary] Error", undefined, { metadata: { detail: err.message } });
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Single-decision detail fetch with full contextBundle, for the
 // "expand row" interaction on the founder decisions page.
 router.get("/decision-log/:id", requireFounder, async (req: Request, res: Response) => {
