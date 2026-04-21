@@ -1321,6 +1321,56 @@ router.get("/decision-log", requireFounder, async (req: Request, res: Response) 
   }
 });
 
+// Scenario harness — founder-facing trigger for the seeded cohort.
+// Calls the same code path as scripts/founder-autonomy/seed-scenario.ts
+// so the founder can inject a situation from the browser without
+// SSHing into the prod host. Hard-gated: only works when
+// SIMULATION_MODE is on, and only for orgs tagged simulationMode=true.
+router.post("/scenario/run", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const { isGlobalSimulationMode } = await import("./utils/simulationMode");
+    if (!isGlobalSimulationMode()) {
+      return res.status(400).json({
+        error:
+          "Scenario harness requires SIMULATION_MODE=true. Flip the env flag before firing scenarios.",
+      });
+    }
+    const { scenario, slug, allAtRisk } = req.body as {
+      scenario?: string;
+      slug?: string;
+      allAtRisk?: boolean;
+    };
+    if (!scenario) return res.status(400).json({ error: "scenario is required" });
+    // Shell out to the seed-scenario script so the harness logic lives
+    // in one place. Safe because SIMULATION_MODE is on and the script
+    // refuses any non-sim-* target.
+    const { spawn } = await import("node:child_process");
+    const args = ["tsx", "scripts/founder-autonomy/seed-scenario.ts", "--scenario", scenario];
+    if (slug) args.push("--slug", slug);
+    if (allAtRisk) args.push("--all-at-risk");
+    const proc = spawn("npx", args, {
+      env: { ...process.env, SIMULATION_MODE: "true" },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    proc.stdout.on("data", (d) => (stdout += d.toString()));
+    proc.stderr.on("data", (d) => (stderr += d.toString()));
+    const exitCode: number = await new Promise((resolve) => proc.on("close", resolve));
+    res.json({
+      scenario,
+      slug: slug ?? null,
+      allAtRisk: !!allAtRisk,
+      exitCode,
+      stdout: stdout.slice(-4000),
+      stderr: stderr.slice(-4000),
+    });
+  } catch (err: any) {
+    logger.error("[scenario/run] Error", undefined, { metadata: { detail: err.message } });
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Per-agent activity drill-down for the founder briefing. Returns
 // recent actions, outcome mix (success / failed / escalated), and a
 // "did this agent do anything in the window" signal for each of the
