@@ -395,6 +395,17 @@ export async function gradeRecentDecisions(): Promise<{ graded: number }> {
         updatedAt: new Date(),
       })
       .where(eq(decisionsInboxItems.id, row.id));
+
+    // If this decision was part of an experiment, record the outcome
+    // into the assignment row so per-variant results roll up.
+    if (row.organizationId != null) {
+      try {
+        const { recordExperimentOutcome } = await import("./decisionExperiments");
+        await recordExperimentOutcome(row.organizationId, row.itemType, score);
+      } catch {
+        // best-effort
+      }
+    }
     graded++;
   }
 

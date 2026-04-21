@@ -1857,6 +1857,87 @@ router.post("/expansion/:id/resolve", requireFounder, async (req: any, res: Resp
   }
 });
 
+// ── Decision experiments ────────────────────────────────────────────
+
+router.get("/experiments", requireFounder, async (_req: Request, res: Response) => {
+  try {
+    const { listExperiments } = await import("./services/decisionExperiments");
+    const experiments = await listExperiments();
+    res.json({ experiments });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/experiments/:id", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
+    const { analyzeExperiment } = await import("./services/decisionExperiments");
+    const analysis = await analyzeExperiment(id);
+    if (!analysis) return res.status(404).json({ error: "Not found" });
+    res.json(analysis);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/experiments", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const { createExperiment } = await import("./services/decisionExperiments");
+    const id = await createExperiment(req.body);
+    res.json({ id });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.post("/experiments/:id/start", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
+    const { startExperiment } = await import("./services/decisionExperiments");
+    await startExperiment(id);
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/experiments/:id/pause", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const { pauseExperiment } = await import("./services/decisionExperiments");
+    await pauseExperiment(id);
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/experiments/:id/complete", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const { completeExperiment } = await import("./services/decisionExperiments");
+    if (!req.body?.winningVariant) return res.status(400).json({ error: "winningVariant required" });
+    await completeExperiment(id, req.body.winningVariant, req.body.notes);
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/experiments/:id/abort", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const { abortExperiment } = await import("./services/decisionExperiments");
+    await abortExperiment(id, req.body?.notes);
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── System trends (meta-observability) ──────────────────────────────
 
 router.get("/system-trends", requireFounder, async (req: Request, res: Response) => {

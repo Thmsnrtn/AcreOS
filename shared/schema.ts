@@ -10949,6 +10949,57 @@ export const insertFounderDigestHistorySchema = createInsertSchema(founderDigest
 export type InsertFounderDigestHistory = z.infer<typeof insertFounderDigestHistorySchema>;
 export type FounderDigestHistory = typeof founderDigestHistory.$inferSelect;
 
+// Decision experiments — A/B test at the agent-decision layer.
+// Not UI A/B tests; these split how agents *decide* for different
+// organizations. Example: half of past-due customers get 7-day
+// dunning, half get 10-day, measure which recovers more.
+export const decisionExperiments = pgTable("decision_experiments", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  description: text("description").notNull(),
+  category: text("category").notNull(), // dunning | onboarding_step | nudge | upsell_offer | custom
+  itemType: text("item_type"), // decisionsInboxItems.itemType this hooks into
+  variants: jsonb("variants").$type<Array<{
+    key: string;           // e.g. "retry_7d", "retry_10d"
+    label: string;
+    weight: number;        // 0-100 percentage; variants sum to 100
+    config: Record<string, any>; // variant-specific params
+  }>>().notNull(),
+  successMetric: text("success_metric").notNull(), // "outcome_score_positive" | "conversion" | "custom"
+  status: text("status").notNull().default("draft"), // draft | running | paused | completed | aborted
+  winningVariant: text("winning_variant"),
+  founderNotes: text("founder_notes"),
+  startedAt: timestamp("started_at"),
+  endedAt: timestamp("ended_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("decision_experiments_status_idx").on(table.status),
+  index("decision_experiments_category_idx").on(table.category),
+  index("decision_experiments_item_type_idx").on(table.itemType),
+]);
+
+export type DecisionExperiment = typeof decisionExperiments.$inferSelect;
+
+// Per-(experiment, org) variant assignment. Deterministic via hash
+// so the same org always gets the same variant for a given experiment.
+export const decisionExperimentAssignments = pgTable("decision_experiment_assignments", {
+  id: serial("id").primaryKey(),
+  experimentId: integer("experiment_id").notNull().references(() => decisionExperiments.id, { onDelete: "cascade" }),
+  organizationId: integer("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  variantKey: text("variant_key").notNull(),
+  assignedAt: timestamp("assigned_at").notNull().defaultNow(),
+  outcomeRecorded: boolean("outcome_recorded").notNull().default(false),
+  outcomeValue: integer("outcome_value"), // raw metric (e.g. outcomeScore)
+  outcomeAt: timestamp("outcome_at"),
+}, (table) => [
+  index("dea_experiment_org_unique").on(table.experimentId, table.organizationId),
+  index("dea_experiment_idx").on(table.experimentId),
+  index("dea_variant_idx").on(table.variantKey),
+]);
+
+export type DecisionExperimentAssignment = typeof decisionExperimentAssignments.$inferSelect;
+
 // Expansion candidates — weekly-computed list of customers who look
 // ready to upgrade, with a composite readiness score and the specific
 // signals that qualify them. Founder approves → upgrade offer goes

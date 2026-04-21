@@ -637,7 +637,41 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
     itemType: item.itemType,
     organizationId: item.organizationId ?? null,
   });
-  const contextWithMind = crossWing ? `${crossWing}\n\n---\n\n${context}` : context;
+
+  // Consult the experiments registry. If any running experiment is
+  // hooked into this itemType, the org gets assigned a variant
+  // (deterministic by hash) and the variant config is spliced into
+  // the LLM context so the agent's reasoning is variant-aware. The
+  // variant assignment is stamped into contextBundle for traceability
+  // and for the outcome grader to pair back with the experiment.
+  let experimentContext = "";
+  if (item.organizationId != null) {
+    try {
+      const { assignVariant } = await import("./decisionExperiments");
+      const assigned = await assignVariant(item.itemType, item.organizationId);
+      if (assigned) {
+        experimentContext = `ACTIVE EXPERIMENT VARIANT: "${assigned.variantKey}"\nFollow variant config: ${JSON.stringify(assigned.config)}\n`;
+        // Stamp the assignment on the decision for later pairing.
+        await db
+          .update(decisionsInboxItems)
+          .set({
+            contextBundle: {
+              ...(item.contextBundle as Record<string, any> ?? {}),
+              experimentId: assigned.experimentId,
+              experimentVariant: assigned.variantKey,
+            },
+            updatedAt: new Date(),
+          })
+          .where(eq(decisionsInboxItems.id, item.id));
+      }
+    } catch {
+      // experiments are best-effort — never block a decision on them
+    }
+  }
+
+  const contextWithMind = [crossWing, experimentContext, context]
+    .filter(Boolean)
+    .join("\n\n---\n\n");
 
   // Call Opus 4.6 to make the decision
   let aiDecision: ExecutionDecision;

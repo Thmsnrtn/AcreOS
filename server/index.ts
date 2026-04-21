@@ -434,6 +434,53 @@ app.use("/api", apiLimiter);
       log(`founder_letters bootstrap: ${err.message}`, "db");
     }
 
+    // Decision experiments — A/B framework at decision-policy layer.
+    try {
+      const { pool } = await import("./db");
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS "decision_experiments" (
+          "id" serial PRIMARY KEY,
+          "name" text NOT NULL UNIQUE,
+          "description" text NOT NULL,
+          "category" text NOT NULL,
+          "item_type" text,
+          "variants" jsonb NOT NULL,
+          "success_metric" text NOT NULL,
+          "status" text NOT NULL DEFAULT 'draft',
+          "winning_variant" text,
+          "founder_notes" text,
+          "started_at" timestamp,
+          "ended_at" timestamp,
+          "created_at" timestamp DEFAULT now() NOT NULL,
+          "updated_at" timestamp DEFAULT now() NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS "decision_experiments_status_idx"
+          ON "decision_experiments" ("status");
+        CREATE INDEX IF NOT EXISTS "decision_experiments_category_idx"
+          ON "decision_experiments" ("category");
+        CREATE INDEX IF NOT EXISTS "decision_experiments_item_type_idx"
+          ON "decision_experiments" ("item_type");
+        CREATE TABLE IF NOT EXISTS "decision_experiment_assignments" (
+          "id" serial PRIMARY KEY,
+          "experiment_id" integer NOT NULL REFERENCES "decision_experiments"("id") ON DELETE CASCADE,
+          "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+          "variant_key" text NOT NULL,
+          "assigned_at" timestamp DEFAULT now() NOT NULL,
+          "outcome_recorded" boolean NOT NULL DEFAULT false,
+          "outcome_value" integer,
+          "outcome_at" timestamp
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS "dea_experiment_org_unique"
+          ON "decision_experiment_assignments" ("experiment_id", "organization_id");
+        CREATE INDEX IF NOT EXISTS "dea_experiment_idx"
+          ON "decision_experiment_assignments" ("experiment_id");
+        CREATE INDEX IF NOT EXISTS "dea_variant_idx"
+          ON "decision_experiment_assignments" ("variant_key");
+      `);
+    } catch (err: any) {
+      log(`decision_experiments bootstrap: ${err.message}`, "db");
+    }
+
     // Expansion candidates — weekly computed upsell-ready list.
     try {
       const { pool } = await import("./db");
