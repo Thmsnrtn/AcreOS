@@ -8,12 +8,15 @@ const router = Router();
 router.post('/upload', async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const { name, fileUrl, fileType, propertyId, dealId } = req.body;
-    const doc = await documentIntelligenceService.uploadDocument({
-      organizationId: org.id,
-      name,
-      fileUrl,
-      fileType,
+    if (!org) return res.status(401).json({ error: "Unauthorized" });
+    const { name, documentName, fileUrl, fileType, documentType, propertyId, dealId } = req.body;
+    // Service signature is (organizationId, { documentType, documentName, fileUrl, propertyId, dealId }).
+    // Accept either the old shape ({ name, fileType }) or the service's native
+    // shape ({ documentName, documentType }) for backward compatibility.
+    const doc = await documentIntelligenceService.uploadDocument(org.id, {
+      documentType: (documentType || fileType || "contract") as any,
+      documentName: documentName || name || "Untitled Document",
+      fileUrl: fileUrl || "",
       propertyId: propertyId ? parseInt(propertyId) : undefined,
       dealId: dealId ? parseInt(dealId) : undefined,
     });

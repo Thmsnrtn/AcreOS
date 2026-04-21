@@ -190,6 +190,23 @@ export class DocumentIntelligenceService {
       throw new Error(`Document ${documentId} not found`);
     }
 
+    // Short-circuit for data: URLs containing pre-extracted text. Used by
+    // the persona-test OCR fixture pack (Raj C01) and by any caller that
+    // already has clean text and doesn't need the Vision pass.
+    if (fileUrl && fileUrl.startsWith("data:text/plain;base64,")) {
+      try {
+        const b64 = fileUrl.slice("data:text/plain;base64,".length);
+        const text = Buffer.from(b64, "base64").toString("utf-8");
+        await db
+          .update(documentAnalysis)
+          .set({ rawText: text, ocrConfidence: "1.00", updatedAt: new Date() })
+          .where(eq(documentAnalysis.id, documentId));
+        return text;
+      } catch (err) {
+        logger.warn("[document-intelligence] data-URL decode failed", { err });
+      }
+    }
+
     const openai = getOpenAIClient();
     if (openai && fileUrl) {
       try {
