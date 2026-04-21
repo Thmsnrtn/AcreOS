@@ -1729,6 +1729,35 @@ router.post("/settings/:key", requireFounder, async (req: any, res: Response) =>
   }
 });
 
+// ── Tool proposals (capability growth) ──────────────────────────────
+
+router.get("/tool-proposals", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const { listToolProposals } = await import("./services/toolProposals");
+    const status = req.query.status as any;
+    const proposals = await listToolProposals(status);
+    res.json({ proposals });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/tool-proposals/:id/resolve", requireFounder, async (req: any, res: Response) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
+    const { resolveToolProposal } = await import("./services/toolProposals");
+    const status = req.body?.status as "approved" | "rejected" | "building" | "shipped";
+    if (!["approved", "rejected", "building", "shipped"].includes(status))
+      return res.status(400).json({ error: "Invalid status" });
+    const userId = req.permissionContext?.userId ?? "founder";
+    await resolveToolProposal(id, status, req.body?.notes, userId);
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Action previews (supervise-in-real-time) ────────────────────────
 
 router.get("/action-previews", requireFounder, async (_req: Request, res: Response) => {

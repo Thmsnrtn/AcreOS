@@ -310,6 +310,35 @@ Output JSON (no code fences):
     );
     const parsed = parseJSON(response.content);
     const arr = Array.isArray(parsed?.synthesized) ? parsed.synthesized : [];
+
+    // The synthesis call can also surface tool proposals — route those
+    // to the tool-proposals pipeline now while we have the parsed JSON.
+    const tools = Array.isArray(parsed?.toolProposals) ? parsed.toolProposals : [];
+    if (tools.length > 0) {
+      try {
+        const { proposeTool } = await import("./toolProposals");
+        for (const t of tools) {
+          if (!t?.title || !t?.description || !t?.category) continue;
+          await proposeTool({
+            proposedBy: "synthesis",
+            title: t.title,
+            description: t.description,
+            category: t.category,
+            capabilityGap: t.capabilityGap ?? "",
+            expectedBenefit: t.expectedBenefit ?? "",
+            estimatedComplexity: t.estimatedComplexity ?? "medium",
+            estimatedImpactCents: t.estimatedImpactCents ?? null,
+            supportingEvidence: { source: `synthesis-${monthKey}` },
+          });
+        }
+        logger.info(`[strategicProposals] synthesis surfaced ${tools.length} tool proposals`);
+      } catch (err: any) {
+        logger.warn("[strategicProposals] tool proposal forwarding failed", {
+          metadata: { error: err?.message },
+        });
+      }
+    }
+
     return arr.filter((p: any) => p?.agentCodename && p?.title && p?.rationale && p?.category);
   } catch (err: any) {
     logger.warn("[strategicProposals] synthesis LLM call failed", {
@@ -452,10 +481,28 @@ Principles:
 - Conservative impact estimates. Err on the side of understating expected impact.
 - Use plain English and Land Investors terminology.`;
 
-const SYNTHESIS_SYSTEM_PROMPT = `You are the AcreOS Chief of Staff synthesizing a month's strategic proposals into 3-5 concrete company moves.
+const SYNTHESIS_SYSTEM_PROMPT = `You are the AcreOS Chief of Staff synthesizing a month's strategic proposals into 3-5 concrete company moves AND surfacing tool gaps.
 
 Principles:
 - Prefer recurring signals across multiple weekly proposals — a pattern that repeats is stronger than a one-time proposal.
 - Synthesize related proposals into single company moves rather than listing 12 separate items.
 - It is acceptable to output fewer than 3 if the month is genuinely quiet.
-- Confidence should reflect your certainty in the synthesized move, not the average of inputs.`;
+- Confidence should reflect your certainty in the synthesized move, not the average of inputs.
+
+Additionally: if the weekly proposals contain any recurring signal that "we couldn't act because we lack data/integration/capability X," emit a separate toolProposals array. These are engineering-backlog items, distinct from the strategic moves.
+
+Output JSON (no code fences):
+{
+  "synthesized": [ /* same shape as weekly proposal */ ],
+  "toolProposals": [
+    {
+      "title": "<one-line title>",
+      "description": "<2-4 sentences on what this tool is>",
+      "category": "integration|data_source|capability|rubric",
+      "capabilityGap": "<what the team can't do today without it>",
+      "expectedBenefit": "<what becomes possible after shipping>",
+      "estimatedComplexity": "low|medium|high",
+      "estimatedImpactCents": <integer or null>
+    }
+  ]
+}`;

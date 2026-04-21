@@ -10949,6 +10949,33 @@ export const insertFounderDigestHistorySchema = createInsertSchema(founderDigest
 export type InsertFounderDigestHistory = z.infer<typeof insertFounderDigestHistorySchema>;
 export type FounderDigestHistory = typeof founderDigestHistory.$inferSelect;
 
+// Tool proposals — agents (or the strategic synthesis pass) propose
+// new integrations / data sources / capabilities the company needs
+// to operate better. Always founder-gated.
+export const toolProposals = pgTable("tool_proposals", {
+  id: serial("id").primaryKey(),
+  proposedBy: text("proposed_by").notNull(), // agent codename or 'synthesis'
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  category: text("category").notNull(), // integration | data_source | capability | rubric
+  capabilityGap: text("capability_gap").notNull(), // what's missing today
+  expectedBenefit: text("expected_benefit").notNull(),
+  estimatedComplexity: text("estimated_complexity").notNull().default("medium"), // low | medium | high
+  estimatedImpactCents: integer("estimated_impact_cents"),
+  supportingEvidence: jsonb("supporting_evidence").$type<Record<string, any>>(),
+  status: text("status").notNull().default("proposed"), // proposed | approved | rejected | building | shipped
+  founderNotes: text("founder_notes"),
+  resolvedAt: timestamp("resolved_at"),
+  resolvedBy: text("resolved_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("tool_proposals_status_idx").on(table.status),
+  index("tool_proposals_category_idx").on(table.category),
+  index("tool_proposals_proposed_by_idx").on(table.proposedBy),
+]);
+
+export type ToolProposal = typeof toolProposals.$inferSelect;
+
 // Action previews — every auto-approved executor action writes a
 // preview row that records WHAT was about to happen, WHY, and gives
 // the founder a cancel-before-commit window (0 by default, tunable

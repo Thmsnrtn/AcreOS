@@ -434,6 +434,39 @@ app.use("/api", apiLimiter);
       log(`founder_letters bootstrap: ${err.message}`, "db");
     }
 
+    // Tool proposals — integrations / data sources / capabilities
+    // agents have requested. Founder-gated.
+    try {
+      const { pool } = await import("./db");
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS "tool_proposals" (
+          "id" serial PRIMARY KEY,
+          "proposed_by" text NOT NULL,
+          "title" text NOT NULL,
+          "description" text NOT NULL,
+          "category" text NOT NULL,
+          "capability_gap" text NOT NULL,
+          "expected_benefit" text NOT NULL,
+          "estimated_complexity" text NOT NULL DEFAULT 'medium',
+          "estimated_impact_cents" integer,
+          "supporting_evidence" jsonb,
+          "status" text NOT NULL DEFAULT 'proposed',
+          "founder_notes" text,
+          "resolved_at" timestamp,
+          "resolved_by" text,
+          "created_at" timestamp DEFAULT now() NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS "tool_proposals_status_idx"
+          ON "tool_proposals" ("status");
+        CREATE INDEX IF NOT EXISTS "tool_proposals_category_idx"
+          ON "tool_proposals" ("category");
+        CREATE INDEX IF NOT EXISTS "tool_proposals_proposed_by_idx"
+          ON "tool_proposals" ("proposed_by");
+      `);
+    } catch (err: any) {
+      log(`tool_proposals bootstrap: ${err.message}`, "db");
+    }
+
     // Action previews — audit trail of every auto-approved action,
     // plus an optional cancel-before-commit window (founder-tunable
     // via ACTION_PREVIEW_WINDOW_SECONDS).
