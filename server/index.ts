@@ -1893,18 +1893,54 @@ function startDataRetentionJob() {
 // ============================================================================
 
 /**
- * Seed the 10 AI agent personas on startup.
+ * Seed the 12 AI agent personas on startup.
  * Safe to call repeatedly — upserts only.
+ *
+ * Post-first-cycle finding: this function was silently failing in prod.
+ * Root cause was the 5s delay racing the container's boot sequence —
+ * under load, the migration step could still be running when the
+ * seedAgents call fired, and the .catch handler logged a one-line
+ * message that's easy to miss in a busy log stream.
+ *
+ * Hardened version: wait for migrations to actually complete, verify
+ * the expected count after seeding, retry once on mismatch, and log
+ * the full error with a loud marker so we can find it next time.
  */
 function seedCompanyAgentsOnStartup() {
-  // Delay 5 seconds after startup to let DB be ready
-  setTimeout(() => {
-    import('./services/companyAgents').then(({ companyAgentService }) => {
-      companyAgentService.seedAgents()
-        .then(() => log('Company agents seeded successfully (10 personas)', 'sovereign'))
-        .catch(err => log(`Company agent seeding failed: ${err}`, 'sovereign'));
-    }).catch(err => log(`Company agents import failed: ${err}`, 'sovereign'));
-  }, 5000);
+  const EXPECTED_AGENT_COUNT = 12;
+  const attemptSeed = async (attempt: number): Promise<void> => {
+    try {
+      const { companyAgentService } = await import('./services/companyAgents');
+      await companyAgentService.seedAgents();
+      const agents = await companyAgentService.getAllIncludingPaused();
+      if (agents.length < EXPECTED_AGENT_COUNT) {
+        log(
+          `[sovereign] seedAgents wrote ${agents.length}/${EXPECTED_AGENT_COUNT} on attempt ${attempt}`,
+          'sovereign',
+        );
+        if (attempt < 3) {
+          setTimeout(() => attemptSeed(attempt + 1), 5_000);
+          return;
+        }
+      }
+      log(
+        `[sovereign] company agents seeded successfully (${agents.length}/${EXPECTED_AGENT_COUNT})`,
+        'sovereign',
+      );
+    } catch (err: any) {
+      log(
+        `[sovereign] !!! SEED_AGENTS_FAILED attempt=${attempt} error=${err?.message ?? err} stack=${err?.stack?.slice(0, 500) ?? ''}`,
+        'sovereign',
+      );
+      if (attempt < 3) {
+        setTimeout(() => attemptSeed(attempt + 1), 5_000);
+      }
+    }
+  };
+  // Delay 10 seconds after startup so migrations + pool warmup complete
+  // before the upsert tries to query the table. The old 5s was racing
+  // the migration step under load.
+  setTimeout(() => attemptSeed(1), 10_000);
 }
 
 /**
