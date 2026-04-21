@@ -17,6 +17,7 @@ import { staggerContainer, staggerItem } from "@/lib/animations";
 import {
   DollarSign, Users, Smile, Frown, Meh, AlertTriangle, TrendingUp,
   TrendingDown, CheckCircle2, Bot, Clock, Sparkles, Sun, Moon, Sunset,
+  ShieldCheck, ShieldAlert, ShieldX,
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { formatDistanceToNow } from "date-fns";
@@ -47,6 +48,16 @@ interface ActionQueueData {
   items: ActionQueueItem[];
   totalEstimatedMinutes: number;
   counts: { critical: number; high: number; medium: number };
+}
+
+type Band = "green" | "yellow" | "red";
+
+interface AutonomyHealthReport {
+  generatedAt: string;
+  band: Band;
+  verdict: string;
+  dimensions: Record<string, { band: Band; value: number | string; threshold: string; note: string }>;
+  recommendedAction: string;
 }
 
 interface AgentHealth {
@@ -88,6 +99,56 @@ function getGreeting() {
 const useMetrics = () => useQuery<ExecutiveMetrics>({ queryKey: ["/api/founder/executive-dashboard"], staleTime: 120_000 });
 const useActionQueue = () => useQuery<ActionQueueData>({ queryKey: ["/api/founder/action-queue"], staleTime: 300_000 });
 const useAgents = () => useQuery<AgentHealth[]>({ queryKey: ["/api/admin/agents/status"], refetchInterval: 10_000 });
+const useAutonomyHealth = () =>
+  useQuery<AutonomyHealthReport>({ queryKey: ["/api/founder/intelligence/autonomy-health"], staleTime: 60_000 });
+
+// ── Section 1b: Autonomy Health ──────────────────────────────────────
+
+function AutonomyHealthCard({ report }: { report: AutonomyHealthReport }) {
+  const bandCfg: Record<Band, { bg: string; text: string; Icon: typeof ShieldCheck; label: string }> = {
+    green: { bg: "bg-emerald-50 dark:bg-emerald-950/30", text: "text-emerald-700 dark:text-emerald-400", Icon: ShieldCheck, label: "Autonomous" },
+    yellow: { bg: "bg-amber-50 dark:bg-amber-950/30", text: "text-amber-700 dark:text-amber-500", Icon: ShieldAlert, label: "Needs a look" },
+    red: { bg: "bg-red-50 dark:bg-red-950/30", text: "text-red-700 dark:text-red-400", Icon: ShieldX, label: "Intervene now" },
+  };
+  const cfg = bandCfg[report.band];
+  const dims = Object.entries(report.dimensions);
+  return (
+    <motion.div variants={staggerItem}>
+      <Card className={cfg.bg}>
+        <CardContent className="p-6">
+          <div className="flex items-start gap-4">
+            <cfg.Icon className={`h-8 w-8 ${cfg.text} shrink-0`} aria-label={`Autonomy status: ${cfg.label}`} />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 mb-1">
+                <h2 className={`text-lg font-semibold ${cfg.text}`}>Autonomy: {cfg.label}</h2>
+                <Badge variant="secondary" className="text-xs">{report.band.toUpperCase()}</Badge>
+              </div>
+              <p className="text-sm text-foreground mb-2">{report.verdict}</p>
+              <p className="text-xs text-muted-foreground">{report.recommendedAction}</p>
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mt-4">
+                {dims.map(([key, d]) => {
+                  const dotColor =
+                    d.band === "green" ? "bg-emerald-500" : d.band === "yellow" ? "bg-amber-500" : "bg-red-500";
+                  return (
+                    <div key={key} className="flex items-start gap-2" title={d.note}>
+                      <span className={`h-2 w-2 rounded-full mt-1.5 shrink-0 ${dotColor}`} />
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-medium text-foreground capitalize leading-tight">
+                          {key.replace(/([A-Z])/g, " $1").trim()}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground truncate">{String(d.value)}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </motion.div>
+  );
+}
 
 // ── Section 1: Hero ──────────────────────────────────────────────────
 
@@ -269,6 +330,7 @@ export default function FounderHome() {
   const metrics = useMetrics();
   const actions = useActionQueue();
   const agents = useAgents();
+  const autonomy = useAutonomyHealth();
 
   const isAnyError = metrics.isError || actions.isError || agents.isError;
   const allLoading = metrics.isLoading && actions.isLoading && agents.isLoading;
@@ -295,6 +357,13 @@ export default function FounderHome() {
         ) : (
           <HeroCard metrics={metrics.data} actionCount={actions.data?.items.length ?? 0} />
         )}
+
+        {/* Section 1b: Autonomy Health — single glance signal */}
+        {autonomy.isLoading ? (
+          <Skel><Skeleton className="h-8 w-40 mb-2" /><Skeleton className="h-4 w-72" /></Skel>
+        ) : autonomy.data ? (
+          <AutonomyHealthCard report={autonomy.data} />
+        ) : null}
 
         {/* Section 2: Business Metrics */}
         <section>

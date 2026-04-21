@@ -1457,6 +1457,35 @@ router.get("/budget-summary", requireFounder, async (_req: Request, res: Respons
   }
 });
 
+// The "1 hour per month" signal — a single green/yellow/red light
+// rolled up from 5 dimensions (queue depth, intervention rate, avg
+// outcome score, agent health, safety-rail trip rate). The founder
+// should glance at this and know if they need to touch the system.
+router.get("/autonomy-health", requireFounder, async (_req: Request, res: Response) => {
+  try {
+    const { getAutonomyHealth } = await import("./services/autonomyHealth");
+    const report = await getAutonomyHealth();
+    res.json(report);
+  } catch (err: any) {
+    logger.error("[autonomy-health] Error", undefined, { metadata: { detail: err.message } });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Manual trigger for the outcome grader — useful for first-run bootstrap
+// and for re-grading after a schema change. The daily cron calls the
+// same function.
+router.post("/autonomy-health/grade-outcomes", requireFounder, async (_req: Request, res: Response) => {
+  try {
+    const { gradeRecentDecisions } = await import("./services/autonomyHealth");
+    const result = await gradeRecentDecisions();
+    res.json(result);
+  } catch (err: any) {
+    logger.error("[grade-outcomes] Error", undefined, { metadata: { detail: err.message } });
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Single-decision detail fetch with full contextBundle, for the
 // "expand row" interaction on the founder decisions page.
 router.get("/decision-log/:id", requireFounder, async (req: Request, res: Response) => {

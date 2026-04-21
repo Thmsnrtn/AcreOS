@@ -619,6 +619,11 @@ app.use("/api", apiLimiter);
       startAgentProactiveEngineJob();
       startV5MaintenanceJob();
 
+      // Autonomy Health — grade recent decision outcomes daily so the
+      // learning loop closes (agent trust + autonomy health signal both
+      // depend on outcomeScore being populated).
+      startAutonomyOutcomeGraderJob();
+
       // Auto-seed county GIS endpoints for free parcel lookups
       seedCountyGisEndpointsOnStartup();
       
@@ -1941,6 +1946,35 @@ function seedCompanyAgentsOnStartup() {
   // before the upsert tries to query the table. The old 5s was racing
   // the migration step under load.
   setTimeout(() => attemptSeed(1), 10_000);
+}
+
+/**
+ * Outcome grader — closes the decision learning loop by scoring
+ * resolved inbox items 3+ days old once a day. Feeds trust evolution
+ * and the autonomy-health signal.
+ */
+function startAutonomyOutcomeGraderJob() {
+  const ONE_DAY = 24 * 60 * 60 * 1000;
+  log('Registering autonomy outcome grader (daily)', 'sovereign');
+  // First run 2 minutes after boot so the signal hydrates promptly.
+  setTimeout(async () => {
+    try {
+      const { gradeRecentDecisions } = await import('./services/autonomyHealth');
+      const { graded } = await gradeRecentDecisions();
+      log(`[autonomy-health] initial grade pass: ${graded} decisions`, 'sovereign');
+    } catch (err: any) {
+      log(`[autonomy-health] initial grade failed: ${err?.message ?? err}`, 'sovereign');
+    }
+  }, 2 * 60 * 1000);
+  trackInterval(async () => {
+    try {
+      const { gradeRecentDecisions } = await import('./services/autonomyHealth');
+      const { graded } = await gradeRecentDecisions();
+      if (graded > 0) log(`[autonomy-health] graded ${graded} decisions`, 'sovereign');
+    } catch (err: any) {
+      log(`[autonomy-health] grade failed: ${err?.message ?? err}`, 'sovereign');
+    }
+  }, ONE_DAY);
 }
 
 /**
