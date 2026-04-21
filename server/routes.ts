@@ -59,7 +59,7 @@ import buyerNetworkRouter from "./routes-buyer-network";
 import taxOptimizationRouter from "./routes-tax-optimization";
 import dealRoomsRouter from "./routes-deal-rooms";
 import dataApiRouter from "./routes-data-api";
-import apiDocsRouter from "./routes-api-docs";
+import apiDocsRouter, { registerApiDocsApp } from "./routes-api-docs";
 import portfolioHealthRouter from "./routes-portfolio-health";
 import gdprRouter from "./routes-gdpr";
 import metricsRouter, { recordRequestWithMetrics } from "./routes-metrics";
@@ -1928,6 +1928,10 @@ export async function registerRoutes(
       return Errors.internal(res, error);
     }
   });
+
+  // Hand the fully-mounted app to the OpenAPI reflector so the
+  // generated spec covers every route registered above.
+  registerApiDocsApp(app);
 
   return httpServer;
 }

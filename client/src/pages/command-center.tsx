@@ -1826,7 +1826,7 @@ export default function CommandCenterPage() {
               <Sparkles className="w-5 h-5" />
             </div>
             <div>
-              <h1 className="text-xl font-bold" data-testid="text-page-title">AcreOS Assistant</h1>
+              <h1 className="text-xl font-bold" data-testid="text-page-title">Assistant</h1>
               <p className="text-sm text-muted-foreground">Your AI partner for real estate investing</p>
             </div>
           </div>
@@ -1953,7 +1953,7 @@ export default function CommandCenterPage() {
                         <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mb-6">
                           <Sparkles className="w-10 h-10 text-primary" />
                         </div>
-                        <h3 className="text-xl font-semibold mb-2" data-testid="text-assistant-welcome">AcreOS Assistant</h3>
+                        <h3 className="text-xl font-semibold mb-2" data-testid="text-assistant-welcome">Assistant</h3>
                         <p className="text-muted-foreground text-sm max-w-md mb-4">
                           Your intelligent partner for real estate investing. I can help with research, deals, communications, and operations.
                         </p>

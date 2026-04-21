@@ -48,6 +48,7 @@ import {
   X,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
+import { useBrandName } from "@/hooks/use-white-label";
 import {
   useState,
   useCallback,
@@ -449,6 +450,7 @@ const BUSINESS_TYPE_HIDDEN_ROUTES: Record<string, string[]> = {
 export function Sidebar() {
   const [location] = useLocation();
   const { logout, isFounder } = useAuth();
+  const brandName = useBrandName();
   const [isOpen, setIsOpen] = useState(false);
   const { isCollapsed, setIsCollapsed } = useSidebarCollapsed();
   const { isRouteEnabled, isLoading: flagsLoading } = useFeatureFlags();
@@ -557,7 +559,7 @@ export function Sidebar() {
           <div className="flex items-center justify-between gap-1 min-w-0">
             <div className="flex items-center gap-1.5 min-w-0 shrink">
               <h1 className="text-lg font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent shrink-0">
-                AcreOS
+                {brandName}
               </h1>
               {isFounder && (
                 <Badge
@@ -831,7 +833,7 @@ export function Sidebar() {
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-              AcreOS
+              {brandName}
             </h1>
             {isFounder && (
               <Badge

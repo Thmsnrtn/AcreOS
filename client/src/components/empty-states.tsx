@@ -1,5 +1,6 @@
 import { EmptyState } from "@/components/empty-state";
 import { Users, Map, Handshake, CheckSquare, Megaphone, Banknote, FileSpreadsheet, Target, TrendingUp } from "lucide-react";
+import { useBrandName } from "@/hooks/use-white-label";
 
 // ---------------------------------------------------------------------------
 // Leads
@@ -12,12 +13,13 @@ export function LeadsEmptyState({
   onAddLead?: () => void;
   onImportLeads?: () => void;
 }) {
+  const brandName = useBrandName();
   return (
     <div className="space-y-2">
       <EmptyState
         icon={Users}
         title="No leads yet"
-        description="Import your first leads to start building your pipeline. AcreOS scores and prioritizes every lead automatically."
+        description={`Import your first leads to start building your pipeline. ${brandName} scores and prioritizes every lead automatically.`}
         actionLabel="Add a Lead"
         onAction={onAddLead}
         tips={[
@@ -54,6 +56,7 @@ export function PropertiesEmptyState({
   onAddProperty?: () => void;
   onImportProperties?: () => void;
 }) {
+  const brandName = useBrandName();
   return (
     <div className="space-y-2">
       <EmptyState
@@ -65,7 +68,7 @@ export function PropertiesEmptyState({
         tips={[
           "Track parcels through your entire pipeline",
           "Import from a CSV or add individually",
-          "AcreOS auto-values every property with comps",
+          `${brandName} auto-values every property with comps`,
         ]}
         testId="empty-state-properties"
       />

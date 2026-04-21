@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useBrandName } from "@/hooks/use-white-label";
 
 interface NpsDialogProps {
   open: boolean;
@@ -38,6 +39,7 @@ export function NpsDialog({ open, trigger, onClose }: NpsDialogProps) {
   const [step, setStep] = useState<"score" | "feedback" | "thanks">("score");
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const brandName = useBrandName();
 
   const submitMutation = useMutation({
     mutationFn: async (data: { score: number; feedback?: string; trigger: string }) => {
@@ -89,7 +91,7 @@ export function NpsDialog({ open, trigger, onClose }: NpsDialogProps) {
         {step === "score" && (
           <>
             <DialogHeader>
-              <DialogTitle>How likely are you to recommend AcreOS to a colleague?</DialogTitle>
+              <DialogTitle>How likely are you to recommend {brandName} to a colleague?</DialogTitle>
               <DialogDescription>
                 On a scale of 0 to 10, where 0 is not at all likely and 10 is extremely likely.
               </DialogDescription>

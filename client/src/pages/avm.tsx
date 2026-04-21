@@ -291,7 +291,7 @@ export default function AVMPage() {
       return res.json();
     },
     onSuccess: () => {
-      toast({ title: 'Valuation complete', description: 'AcreOS Valuation Model™ estimate ready.' });
+      toast({ title: 'Valuation complete', description: 'AVM estimate ready.' });
       queryClient.invalidateQueries({ queryKey: ['avm', 'history', selectedPropertyId] });
     },
     onError: (err: Error) => {
@@ -345,7 +345,7 @@ export default function AVMPage() {
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-2">
             <TrendingUp className="w-8 h-8 text-primary" />
-            AcreOS Valuation Model™
+            Valuation Model (AVM)
           </h1>
           <p className="text-muted-foreground mt-1">
             Proprietary ML valuation model trained on land transactions — instant estimates with confidence intervals.
@@ -667,7 +667,7 @@ export default function AVMPage() {
           <Database className="w-12 h-12 mx-auto mb-4 opacity-30" />
           <p className="text-lg font-medium">Select a property to generate an AVM estimate</p>
           <p className="text-sm mt-1">
-            The AcreOS Valuation Model™ uses comparable sales, market adjustments, and GPT-4 qualitative analysis
+            The Valuation Model (AVM) uses comparable sales, market adjustments, and GPT-4 qualitative analysis
           </p>
         </div>
       )}

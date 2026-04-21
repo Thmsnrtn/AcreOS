@@ -7,18 +7,44 @@
  * GET /api/docs/openapi.json → Raw OpenAPI 3.0 spec
  */
 
-import { Router, type Request, type Response } from 'express';
+import { Router, type Request, type Response, type Express } from 'express';
 import { generateOpenAPISpec } from './openapi-spec';
+import { reflectAppPaths } from './openapi-reflector';
+
+// Lazily captured app reference — set by registerApiDocsApp() below
+// once the app has finished mounting all its routers.
+let appRef: Express | null = null;
+let reflectedCache: Record<string, any> | null = null;
+
+export function registerApiDocsApp(app: Express): void {
+  appRef = app;
+  // Invalidate any earlier cache so the first /openapi.json hit is
+  // guaranteed to reflect the freshly-mounted routes.
+  reflectedCache = null;
+}
 
 const docsRouter = Router();
 
 // ── OpenAPI JSON Spec ──────────────────────────────────────────────────────────
 
 docsRouter.get('/openapi.json', (_req: Request, res: Response) => {
-  const spec = generateOpenAPISpec();
+  const hand = generateOpenAPISpec();
+  // Merge reflected paths in, but let the hand-curated paths win —
+  // those have rich schemas, examples, and security definitions that
+  // the reflector can't know about.
+  let reflected: Record<string, any> = {};
+  if (appRef) {
+    if (!reflectedCache) reflectedCache = reflectAppPaths(appRef);
+    reflected = reflectedCache;
+  }
+  const merged = { ...reflected };
+  for (const [path, ops] of Object.entries(hand.paths || {})) {
+    merged[path] = { ...(merged[path] || {}), ...(ops as Record<string, unknown>) };
+  }
+  const out = { ...hand, paths: merged };
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.json(spec);
+  res.json(out);
 });
 
 // ── Swagger UI HTML ────────────────────────────────────────────────────────────

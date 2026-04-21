@@ -1,5 +1,6 @@
 import { AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useBrandName } from "@/hooks/use-white-label";
 
 type RequiredDisclaimerType = "financial" | "legal" | "ai" | "valuation";
 
@@ -8,18 +9,21 @@ interface RequiredDisclaimerProps {
   className?: string;
 }
 
-const disclaimerMessages: Record<RequiredDisclaimerType, string> = {
-  financial:
-    "AcreOS provides financial tools for informational purposes only. This is not financial, tax, or investment advice. Consult a licensed financial advisor before making investment decisions.",
-  legal:
-    "AcreOS compliance tools provide automated screening only. This is not legal advice. Always consult a licensed attorney before finalizing transactions.",
-  ai:
-    "AI-generated content is for informational purposes only and may contain errors. Always verify AI suggestions independently before acting on them.",
-  valuation:
-    "AVM estimates are algorithmic approximations, not certified appraisals. Do not use as the sole basis for financial decisions. Obtain a licensed appraisal for material transactions.",
-};
+function disclaimerFor(type: RequiredDisclaimerType, brand: string): string {
+  switch (type) {
+    case "financial":
+      return `${brand} provides financial tools for informational purposes only. This is not financial, tax, or investment advice. Consult a licensed financial advisor before making investment decisions.`;
+    case "legal":
+      return `${brand} compliance tools provide automated screening only. This is not legal advice. Always consult a licensed attorney before finalizing transactions.`;
+    case "ai":
+      return "AI-generated content is for informational purposes only and may contain errors. Always verify AI suggestions independently before acting on them.";
+    case "valuation":
+      return "AVM estimates are algorithmic approximations, not certified appraisals. Do not use as the sole basis for financial decisions. Obtain a licensed appraisal for material transactions.";
+  }
+}
 
 export function RequiredDisclaimer({ type, className }: RequiredDisclaimerProps) {
+  const brandName = useBrandName();
   return (
     <div
       data-testid={`required-disclaimer-${type}`}
@@ -30,7 +34,7 @@ export function RequiredDisclaimer({ type, className }: RequiredDisclaimerProps)
     >
       <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0" />
       <p className="text-xs text-amber-800 dark:text-amber-200">
-        {disclaimerMessages[type]}
+        {disclaimerFor(type, brandName)}
       </p>
     </div>
   );

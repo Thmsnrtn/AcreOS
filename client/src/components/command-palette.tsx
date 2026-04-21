@@ -116,7 +116,7 @@ const pages = [
   { name: "Acquisition Radar", icon: Target, path: "/radar" },
   { name: "Land Credit Score", icon: Shield, path: "/land-credit" },
   { name: "Portfolio Optimizer", icon: BarChart2, path: "/portfolio-optimizer" },
-  { name: "AcreOS Valuation Model", icon: TrendingUp, path: "/avm" },
+  { name: "Valuation Model (AVM)", icon: TrendingUp, path: "/avm" },
   { name: "Negotiation Copilot", icon: Brain, path: "/negotiation" },
   { name: "Cash Flow Forecaster", icon: Activity, path: "/cash-flow" },
   { name: "Deal Hunter", icon: Search, path: "/deal-hunter" },
