@@ -410,6 +410,29 @@ app.use("/api", apiLimiter);
     } catch (err: any) {
       log(`simulated_actions bootstrap: ${err.message}`, "db");
     }
+
+    // Founder letters — monthly narrative table.
+    try {
+      const { pool } = await import("./db");
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS "founder_letters" (
+          "id" serial PRIMARY KEY,
+          "month_key" text NOT NULL UNIQUE,
+          "letter_markdown" text NOT NULL,
+          "summary_json" jsonb NOT NULL,
+          "pending_founder_decision" text,
+          "generated_at" timestamp DEFAULT now() NOT NULL,
+          "delivered_at" timestamp,
+          "status" text NOT NULL DEFAULT 'draft'
+        );
+        CREATE INDEX IF NOT EXISTS "founder_letters_month_idx"
+          ON "founder_letters" ("month_key");
+        CREATE INDEX IF NOT EXISTS "founder_letters_status_idx"
+          ON "founder_letters" ("status");
+      `);
+    } catch (err: any) {
+      log(`founder_letters bootstrap: ${err.message}`, "db");
+    }
   }
 
   await initStripe();
@@ -630,6 +653,11 @@ app.use("/api", apiLimiter);
       // 'proposed'; live prompts are only mutated after explicit
       // founder approval.
       startPromptEvolutionJob();
+
+      // Monthly founder letter — one-page narrative synthesizing the
+      // month's decisions, outcomes, and one thing the founder needs
+      // to weigh in on. Primary surface for the 1-hour/month goal.
+      startFounderLetterJob();
 
       // Auto-seed county GIS endpoints for free parcel lookups
       seedCountyGisEndpointsOnStartup();
@@ -1976,6 +2004,27 @@ function startPromptEvolutionJob() {
       );
     } catch (err: any) {
       log(`[prompt-evolution] monthly failed: ${err?.message ?? err}`, 'sovereign');
+    }
+  }, ONE_HOUR);
+}
+
+/**
+ * Monthly founder letter. Generates on the 1st of each month at
+ * 12:00 UTC (07:00 CT), covering the previous calendar month. Idempotent
+ * — re-runs upsert by monthKey.
+ */
+function startFounderLetterJob() {
+  const ONE_HOUR = 60 * 60 * 1000;
+  log('Registering monthly founder-letter generator (1st of month, 12:00 UTC)', 'sovereign');
+  trackInterval(async () => {
+    const now = new Date();
+    if (now.getUTCDate() !== 1 || now.getUTCHours() !== 12) return;
+    try {
+      const { generateMonthlyLetter } = await import('./services/founderNarrative');
+      const r = await generateMonthlyLetter();
+      log(`[founder-letter] generated ${r.monthKey}`, 'sovereign');
+    } catch (err: any) {
+      log(`[founder-letter] generation failed: ${err?.message ?? err}`, 'sovereign');
     }
   }, ONE_HOUR);
 }

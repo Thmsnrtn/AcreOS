@@ -1552,6 +1552,60 @@ router.post("/prompt-evolutions/run-now", requireFounder, async (_req: Request, 
   }
 });
 
+// ── Monthly Founder Letter — narrative interface ────────────────────
+
+router.get("/letter/current", requireFounder, async (_req: Request, res: Response) => {
+  try {
+    const { getCurrentLetter } = await import("./services/founderNarrative");
+    const letter = await getCurrentLetter();
+    res.json({ letter });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/letter/archive", requireFounder, async (_req: Request, res: Response) => {
+  try {
+    const { listLetterArchive } = await import("./services/founderNarrative");
+    const letters = await listLetterArchive();
+    res.json({ letters });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/letter/:monthKey", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const { getLetterByMonth } = await import("./services/founderNarrative");
+    const letter = await getLetterByMonth(req.params.monthKey);
+    if (!letter) return res.status(404).json({ error: "Letter not found for that month" });
+    res.json({ letter });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/letter/generate", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const { generateMonthlyLetter } = await import("./services/founderNarrative");
+    const result = await generateMonthlyLetter(req.body?.monthKey);
+    res.json(result);
+  } catch (err: any) {
+    logger.error("[letter generate] Error", undefined, { metadata: { detail: err.message } });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/letter/:monthKey/mark-delivered", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const { markLetterDelivered } = await import("./services/founderNarrative");
+    await markLetterDelivered(req.params.monthKey);
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Single-decision detail fetch with full contextBundle, for the
 // "expand row" interaction on the founder decisions page.
 router.get("/decision-log/:id", requireFounder, async (req: Request, res: Response) => {

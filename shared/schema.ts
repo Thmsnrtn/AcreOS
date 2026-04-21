@@ -10949,6 +10949,25 @@ export const insertFounderDigestHistorySchema = createInsertSchema(founderDigest
 export type InsertFounderDigestHistory = z.infer<typeof insertFounderDigestHistorySchema>;
 export type FounderDigestHistory = typeof founderDigestHistory.$inferSelect;
 
+// Monthly founder letter — narrative interface replacing the dashboard
+// as primary surface for the "1 hour/month" founder operation. One row
+// per month, regeneratable until delivered.
+export const founderLetters = pgTable("founder_letters", {
+  id: serial("id").primaryKey(),
+  monthKey: text("month_key").notNull().unique(), // YYYY-MM
+  letterMarkdown: text("letter_markdown").notNull(),
+  summaryJson: jsonb("summary_json").$type<Record<string, any>>().notNull(),
+  pendingFounderDecision: text("pending_founder_decision"), // the one thing to decide
+  generatedAt: timestamp("generated_at").notNull().defaultNow(),
+  deliveredAt: timestamp("delivered_at"),
+  status: text("status").notNull().default("draft"), // draft | delivered | archived
+}, (table) => [
+  index("founder_letters_month_idx").on(table.monthKey),
+  index("founder_letters_status_idx").on(table.status),
+]);
+
+export type FounderLetter = typeof founderLetters.$inferSelect;
+
 // Platform Config — encrypted key-value store for founder-managed credentials
 // Values are AES-256 encrypted at rest. The configManager service merges these
 // into process.env at startup so all existing code continues to work unchanged.
