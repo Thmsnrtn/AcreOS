@@ -296,6 +296,7 @@ async function runContradictoryRecs(orgId: number, slug: string) {
 async function runComplianceFlag(orgId: number, slug: string) {
   await db.insert(systemAlerts).values({
     organizationId: orgId,
+    type: "scenario_harness",
     alertType: "compliance_violation",
     severity: "high",
     title: "[SIM] Unresolved mineral-reservation disclosure",
@@ -323,6 +324,7 @@ async function runComplianceFlag(orgId: number, slug: string) {
 async function runApiOutageFake(orgId: number, slug: string) {
   await db.insert(systemAlerts).values({
     organizationId: orgId,
+    type: "scenario_harness",
     alertType: "provider_outage",
     severity: "medium",
     title: "[SIM] Skip-trace provider returning 503s",
@@ -386,6 +388,7 @@ async function runAiBudgetRunaway(orgId: number, slug: string) {
   // circuit breaker fires.
   await db.insert(systemAlerts).values({
     organizationId: orgId,
+    type: "scenario_harness",
     alertType: "ai_budget_breach",
     severity: "high",
     title: "[SIM] AI token spend 4× normal for 24 hours",
@@ -409,6 +412,7 @@ async function runAiBudgetRunaway(orgId: number, slug: string) {
 async function runDataBreachIndicator(orgId: number, slug: string) {
   await db.insert(systemAlerts).values({
     organizationId: orgId,
+    type: "scenario_harness",
     alertType: "security_incident",
     severity: "critical",
     title: "[SIM] Unusual export pattern — potential data exfiltration",
@@ -445,6 +449,7 @@ async function runFeatureAdoptionStalled(orgId: number, slug: string) {
 async function runSignupSpikeOffhours(orgId: number, slug: string) {
   await db.insert(systemAlerts).values({
     organizationId: orgId,
+    type: "scenario_harness",
     alertType: "signup_anomaly",
     severity: "medium",
     title: "[SIM] 14 signups in the last hour (3 AM local)",
@@ -505,6 +510,7 @@ async function runDunningRecoverySuccess(orgId: number, slug: string) {
 async function runInfrastructureAnomaly(orgId: number, slug: string) {
   await db.insert(systemAlerts).values({
     organizationId: orgId,
+    type: "scenario_harness",
     alertType: "infrastructure_anomaly",
     severity: "high",
     title: "[SIM] DB connection pool near exhaustion",
