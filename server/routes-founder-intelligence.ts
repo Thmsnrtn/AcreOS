@@ -1818,6 +1818,45 @@ router.post("/onboarding/sweep-now", requireFounder, async (_req: Request, res: 
   }
 });
 
+// ── Expansion radar ─────────────────────────────────────────────────
+
+router.get("/expansion", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const { listExpansionCandidates } = await import("./services/expansionRadar");
+    const status = req.query.status as string | undefined;
+    const candidates = await listExpansionCandidates(status);
+    res.json({ candidates });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/expansion/run-now", requireFounder, async (_req: Request, res: Response) => {
+  try {
+    const { runWeeklyExpansionScan } = await import("./services/expansionRadar");
+    const result = await runWeeklyExpansionScan();
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/expansion/:id/resolve", requireFounder, async (req: any, res: Response) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
+    const status = req.body?.status as any;
+    if (!["approved", "rejected", "offered", "converted", "declined"].includes(status))
+      return res.status(400).json({ error: "Invalid status" });
+    const { resolveExpansionCandidate } = await import("./services/expansionRadar");
+    const userId = req.permissionContext?.userId ?? "founder";
+    await resolveExpansionCandidate(id, status, req.body?.notes, userId);
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── System trends (meta-observability) ──────────────────────────────
 
 router.get("/system-trends", requireFounder, async (req: Request, res: Response) => {

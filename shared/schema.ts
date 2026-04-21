@@ -10949,6 +10949,34 @@ export const insertFounderDigestHistorySchema = createInsertSchema(founderDigest
 export type InsertFounderDigestHistory = z.infer<typeof insertFounderDigestHistorySchema>;
 export type FounderDigestHistory = typeof founderDigestHistory.$inferSelect;
 
+// Expansion candidates — weekly-computed list of customers who look
+// ready to upgrade, with a composite readiness score and the specific
+// signals that qualify them. Founder approves → upgrade offer goes
+// out (wrapped by SIMULATION_MODE in sim runs).
+export const expansionCandidates = pgTable("expansion_candidates", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  weekKey: text("week_key").notNull(),
+  currentTier: text("current_tier").notNull(),
+  proposedTier: text("proposed_tier").notNull(),
+  score: integer("score").notNull(), // 0-100 composite readiness
+  signals: jsonb("signals").$type<Record<string, any>>().notNull(),
+  reasoning: text("reasoning").notNull(),
+  estimatedMrrLiftCents: integer("estimated_mrr_lift_cents"),
+  status: text("status").notNull().default("proposed"), // proposed | approved | rejected | offered | converted | declined
+  founderNotes: text("founder_notes"),
+  resolvedAt: timestamp("resolved_at"),
+  resolvedBy: text("resolved_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("expansion_candidates_week_idx").on(table.weekKey),
+  index("expansion_candidates_status_idx").on(table.status),
+  index("expansion_candidates_org_idx").on(table.organizationId),
+  index("expansion_candidates_score_idx").on(table.score),
+]);
+
+export type ExpansionCandidate = typeof expansionCandidates.$inferSelect;
+
 // Onboarding journeys — per-org 30-day scripted activation sequence
 // owned by Sophie. One journey per organization (unique), tracking
 // activation status. The single biggest conversion lever in SaaS:

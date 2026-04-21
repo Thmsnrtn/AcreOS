@@ -434,6 +434,39 @@ app.use("/api", apiLimiter);
       log(`founder_letters bootstrap: ${err.message}`, "db");
     }
 
+    // Expansion candidates — weekly computed upsell-ready list.
+    try {
+      const { pool } = await import("./db");
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS "expansion_candidates" (
+          "id" serial PRIMARY KEY,
+          "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+          "week_key" text NOT NULL,
+          "current_tier" text NOT NULL,
+          "proposed_tier" text NOT NULL,
+          "score" integer NOT NULL,
+          "signals" jsonb NOT NULL,
+          "reasoning" text NOT NULL,
+          "estimated_mrr_lift_cents" integer,
+          "status" text NOT NULL DEFAULT 'proposed',
+          "founder_notes" text,
+          "resolved_at" timestamp,
+          "resolved_by" text,
+          "created_at" timestamp DEFAULT now() NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS "expansion_candidates_week_idx"
+          ON "expansion_candidates" ("week_key");
+        CREATE INDEX IF NOT EXISTS "expansion_candidates_status_idx"
+          ON "expansion_candidates" ("status");
+        CREATE INDEX IF NOT EXISTS "expansion_candidates_org_idx"
+          ON "expansion_candidates" ("organization_id");
+        CREATE INDEX IF NOT EXISTS "expansion_candidates_score_idx"
+          ON "expansion_candidates" ("score");
+      `);
+    } catch (err: any) {
+      log(`expansion_candidates bootstrap: ${err.message}`, "db");
+    }
+
     // Onboarding journeys + steps — Sophie's 30-day scripted
     // activation sequence for every new Land Investor org.
     try {
@@ -880,6 +913,10 @@ app.use("/api", apiLimiter);
       // pre-scheduled at journey-start time; this just picks up the
       // ones whose scheduledAt has passed.
       startOnboardingSweeperJob();
+
+      // Expansion radar — weekly (Monday 08:00 UTC) scan of active
+      // orgs for upsell readiness. Top 5 surface for founder review.
+      startExpansionRadarJob();
 
       // Auto-seed county GIS endpoints for free parcel lookups
       seedCountyGisEndpointsOnStartup();
@@ -2226,6 +2263,28 @@ function startPromptEvolutionJob() {
       );
     } catch (err: any) {
       log(`[prompt-evolution] monthly failed: ${err?.message ?? err}`, 'sovereign');
+    }
+  }, ONE_HOUR);
+}
+
+/**
+ * Expansion radar — weekly scan Monday 08:00 UTC. Idempotent by weekKey.
+ */
+function startExpansionRadarJob() {
+  const ONE_HOUR = 60 * 60 * 1000;
+  log('Registering expansion radar (Mondays 08:00 UTC)', 'sovereign');
+  trackInterval(async () => {
+    const now = new Date();
+    if (now.getUTCDay() !== 1 || now.getUTCHours() !== 8) return;
+    try {
+      const { runWeeklyExpansionScan } = await import('./services/expansionRadar');
+      const r = await runWeeklyExpansionScan();
+      log(
+        `[expansion-radar] ${r.weekKey}: scanned=${r.scanned} qualifiers=${r.qualifiers} top=${r.topCandidates.length}`,
+        'sovereign',
+      );
+    } catch (err: any) {
+      log(`[expansion-radar] failed: ${err?.message ?? err}`, 'sovereign');
     }
   }, ONE_HOUR);
 }
