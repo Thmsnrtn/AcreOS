@@ -53,6 +53,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, isNull, sql, lte } from "drizzle-orm";
 import { routeCriticalTask } from "./aiRouter";
+import { getCrossWingContext } from "./companyMind";
 import { emailService } from "./emailService";
 import { format } from "date-fns";
 import { companyAgentService } from "./companyAgents";
@@ -621,13 +622,23 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
     return result;
   }
 
+  // Prepend cross-wing context so the agent decides with a company
+  // view rather than a siloed one. Cheap additional tokens (~$0.0015)
+  // that materially reduce founder-override risk.
+  const crossWing = await getCrossWingContext({
+    agentCodename: item.ownerAgentCodename ?? "executor",
+    itemType: item.itemType,
+    organizationId: item.organizationId ?? null,
+  });
+  const contextWithMind = crossWing ? `${crossWing}\n\n---\n\n${context}` : context;
+
   // Call Opus 4.6 to make the decision
   let aiDecision: ExecutionDecision;
   try {
     const aiResponse = await routeCriticalTask(
       "executive_decision",
       EXECUTOR_SYSTEM_PROMPT,
-      context,
+      contextWithMind,
     );
 
     const parsed = JSON.parse(aiResponse.content.replace(/```json\n?|```/g, "").trim());
