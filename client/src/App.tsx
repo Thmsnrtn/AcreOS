@@ -216,6 +216,8 @@ const FounderLetterPage = React.lazy(() => import("@/pages/founder-letter"));
 const FounderSettingsPage = React.lazy(() => import("@/pages/founder-settings"));
 const FounderPreviewPage = React.lazy(() => import("@/pages/founder-preview"));
 const FounderToolsPage = React.lazy(() => import("@/pages/founder-tools"));
+const FounderPromptEvolutionsPage = React.lazy(() => import("@/pages/founder-prompt-evolutions"));
+const FounderStrategyPage = React.lazy(() => import("@/pages/founder-strategy"));
 const ForgotPasswordPage = React.lazy(() => import("@/pages/forgot-password"));
 const ResetPasswordPage = React.lazy(() => import("@/pages/reset-password"));
 const OnboardingWizardPage = React.lazy(() => import("@/pages/onboarding-wizard"));
@@ -567,6 +569,12 @@ function Router() {
       </Route>
       <Route path="/founder/tools">
         {() => <FounderProtectedRoute component={FounderToolsPage} />}
+      </Route>
+      <Route path="/founder/prompt-evolutions">
+        {() => <FounderProtectedRoute component={FounderPromptEvolutionsPage} />}
+      </Route>
+      <Route path="/founder/strategy">
+        {() => <FounderProtectedRoute component={FounderStrategyPage} />}
       </Route>
       <Route path="/executive-dashboard">
         {() => <FounderProtectedRoute component={ExecutiveDashboardPage} />}
