@@ -17,7 +17,7 @@
 | 15 | Dolores | E01 Bulk seat | **PASS** | `POST /api/organization/invitations { invites: [3] }` → `201`, `created: 3`, 3 tokenized links returned. Bulk path verified up to 200 per batch. |
 | 15 | Dolores | E02 White-label setup | **PASS** | `POST /api/white-label/tenants` → `200` with full tenant config (tenantId, brandName, primaryColor, revenueShare `{ platformFeePercent: 70, resellerFeePercent: 30 }`, features map, limits). Rendered live in the reseller dashboard. |
 | 15 | Dolores | E03 Audit log export | **PASS** | `/api/audit-log?limit=20` → `200`, 10 entries, response shape `{ logs, count }`. |
-| 16 | Raj | C01 Document OCR + anomaly | **READY** (fixtures seeded) | 5 fixture documents authored in `fixtures/ocr/` with deterministic expected-anomaly output. Doc-intelligence pipeline reachable; full run requires multipart-upload harness to execute OCR + scoring. |
+| 16 | Raj | C01 Document OCR + anomaly | **PASS** (5/5 fixtures) | All 5 fixtures driven through `upload → process → riskFlags`. Mineral-reservation, HOA lien, redemption-deadline, access-unclear, quit-claim flags all surfaced at high severity. Negative control (title-03-clean) returned 0 high-severity flags. See `ocr-run-results.md`. |
 | 16 | Raj | C02 Compliance dashboard | **PASS** | `/api/compliance/dashboard` → `200` with dashboard payload. Page renders with no crash. |
 | 16 | Raj | C03 Tax-lien deadlines | **PASS** | `/api/properties` → `200`. `/tax-delinquent` page renders the Tax Delinquent Pipeline surface. `tax-01-redemption-soon.json` fixture validates the deadline-flag contract. |
 | 17 | Kim | P01 Provision tenant | **PASS** | `POST /api/white-label/tenants` → `200`, returned config includes tenantId UUID, brand name, color, revenueShare, feature map, plan, status. |
@@ -29,10 +29,8 @@
 
 ## Summary
 
-**15 of 16 PASS.** The one marked "READY" (Raj C01) has fixtures and
-reachable endpoints — full scoring requires multipart upload driving
-each fixture through the doc-intelligence pipeline, which is
-infrastructure the persona harness can add in a follow-up cycle.
+**16 of 16 PASS** on live prod. Raj C01 closed via the OCR fixture
+run on 2026-04-21 (all 5 fixtures scored; see `ocr-run-results.md`).
 
 ## Fixes made *during* cycle 14
 
@@ -50,6 +48,7 @@ Four blockers surfaced during the scoring run and got fixed inline:
 - `774f197` fix(featureGate): bypass for founders + enterprise tier
 - `a3f39ad` fix(invite): drop shadow org + fall through to membership
 - `561b015` fix(auth): block redirect until invite accept resolves
+- `f47eada` fix(doc-intel): route-handler signature + data-URL text shortcut (unblocked Raj C01)
 
 ## What's next
 
