@@ -10949,6 +10949,50 @@ export const insertFounderDigestHistorySchema = createInsertSchema(founderDigest
 export type InsertFounderDigestHistory = z.infer<typeof insertFounderDigestHistorySchema>;
 export type FounderDigestHistory = typeof founderDigestHistory.$inferSelect;
 
+// Onboarding journeys — per-org 30-day scripted activation sequence
+// owned by Sophie. One journey per organization (unique), tracking
+// activation status. The single biggest conversion lever in SaaS:
+// instead of "sign up and figure it out," every Land Investor
+// walks a defined path with checkpoints at 7/14/30 days.
+export const onboardingJourneys = pgTable("onboarding_journeys", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").notNull().unique().references(() => organizations.id, { onDelete: "cascade" }),
+  startedAt: timestamp("started_at").notNull().defaultNow(),
+  currentStepKey: text("current_step_key").notNull().default("day0_welcome"),
+  activationStatus: text("activation_status").notNull().default("pending"), // pending | active | at_risk | churned | completed
+  activationDeterminedAt: timestamp("activation_determined_at"),
+  firstDealAt: timestamp("first_deal_at"),
+  firstLeadAddedAt: timestamp("first_lead_added_at"),
+  founderFlag: text("founder_flag"), // null | "watch" | "escalate"
+  notes: jsonb("notes").$type<Record<string, any>>().default({}),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("onboarding_journeys_status_idx").on(table.activationStatus),
+  index("onboarding_journeys_started_at_idx").on(table.startedAt),
+]);
+
+export type OnboardingJourney = typeof onboardingJourneys.$inferSelect;
+
+// Per-step execution log. Scheduled ahead by the journey starter,
+// fired by the daily cron when the scheduledAt threshold is crossed.
+export const onboardingSteps = pgTable("onboarding_steps", {
+  id: serial("id").primaryKey(),
+  journeyId: integer("journey_id").notNull().references(() => onboardingJourneys.id, { onDelete: "cascade" }),
+  stepKey: text("step_key").notNull(),
+  scheduledAt: timestamp("scheduled_at").notNull(),
+  firedAt: timestamp("fired_at"),
+  status: text("status").notNull().default("scheduled"), // scheduled | fired | skipped | failed
+  outcome: jsonb("outcome").$type<Record<string, any>>().default({}),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("onboarding_steps_journey_idx").on(table.journeyId),
+  index("onboarding_steps_scheduled_at_idx").on(table.scheduledAt),
+  index("onboarding_steps_status_idx").on(table.status),
+]);
+
+export type OnboardingStep = typeof onboardingSteps.$inferSelect;
+
 // Customer letters — per-org monthly narrative mirroring the
 // founder letter. Written by Sophie (CSM agent) voice. One row per
 // (organizationId, monthKey). The customer-facing primary surface

@@ -1783,6 +1783,41 @@ router.post("/action-previews/:id/cancel", requireFounder, async (req: any, res:
   }
 });
 
+// ── Onboarding autonomy ─────────────────────────────────────────────
+
+router.get("/onboarding/journeys", requireFounder, async (_req: Request, res: Response) => {
+  try {
+    const { listJourneys, getActivationStats } = await import("./services/onboardingAutonomy");
+    const [journeys, stats] = await Promise.all([listJourneys(), getActivationStats()]);
+    res.json({ journeys, stats });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/onboarding/journeys/:orgId", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const orgId = parseInt(req.params.orgId, 10);
+    if (!Number.isFinite(orgId)) return res.status(400).json({ error: "Invalid orgId" });
+    const { getJourneyDetail } = await import("./services/onboardingAutonomy");
+    const detail = await getJourneyDetail(orgId);
+    if (!detail) return res.status(404).json({ error: "No journey for that org" });
+    res.json(detail);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/onboarding/sweep-now", requireFounder, async (_req: Request, res: Response) => {
+  try {
+    const { sweepAndFireDueSteps } = await import("./services/onboardingAutonomy");
+    const result = await sweepAndFireDueSteps();
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── System trends (meta-observability) ──────────────────────────────
 
 router.get("/system-trends", requireFounder, async (req: Request, res: Response) => {

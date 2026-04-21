@@ -1177,6 +1177,16 @@ export class DatabaseStorage implements IStorage {
   
   async createOrganization(org: InsertOrganization) {
     const [newOrg] = await db.insert(organizations).values(org).returning();
+    // Fire-and-forget: start Sophie's 30-day onboarding journey for
+    // real (non-simulated) orgs. Sim orgs opt out to keep test state
+    // clean.
+    if (newOrg && !(org as any)?.settings?.simulationMode) {
+      import("./services/onboardingAutonomy")
+        .then(({ startJourney }) => startJourney(newOrg.id))
+        .catch((err) =>
+          console.warn(`[onboarding] startJourney failed for org ${newOrg.id}: ${err?.message ?? err}`),
+        );
+    }
     return newOrg;
   }
   

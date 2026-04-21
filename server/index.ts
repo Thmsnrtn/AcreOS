@@ -434,6 +434,50 @@ app.use("/api", apiLimiter);
       log(`founder_letters bootstrap: ${err.message}`, "db");
     }
 
+    // Onboarding journeys + steps — Sophie's 30-day scripted
+    // activation sequence for every new Land Investor org.
+    try {
+      const { pool } = await import("./db");
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS "onboarding_journeys" (
+          "id" serial PRIMARY KEY,
+          "organization_id" integer NOT NULL UNIQUE REFERENCES "organizations"("id") ON DELETE CASCADE,
+          "started_at" timestamp DEFAULT now() NOT NULL,
+          "current_step_key" text NOT NULL DEFAULT 'day0_welcome',
+          "activation_status" text NOT NULL DEFAULT 'pending',
+          "activation_determined_at" timestamp,
+          "first_deal_at" timestamp,
+          "first_lead_added_at" timestamp,
+          "founder_flag" text,
+          "notes" jsonb DEFAULT '{}'::jsonb,
+          "created_at" timestamp DEFAULT now() NOT NULL,
+          "updated_at" timestamp DEFAULT now() NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS "onboarding_journeys_status_idx"
+          ON "onboarding_journeys" ("activation_status");
+        CREATE INDEX IF NOT EXISTS "onboarding_journeys_started_at_idx"
+          ON "onboarding_journeys" ("started_at");
+        CREATE TABLE IF NOT EXISTS "onboarding_steps" (
+          "id" serial PRIMARY KEY,
+          "journey_id" integer NOT NULL REFERENCES "onboarding_journeys"("id") ON DELETE CASCADE,
+          "step_key" text NOT NULL,
+          "scheduled_at" timestamp NOT NULL,
+          "fired_at" timestamp,
+          "status" text NOT NULL DEFAULT 'scheduled',
+          "outcome" jsonb DEFAULT '{}'::jsonb,
+          "created_at" timestamp DEFAULT now() NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS "onboarding_steps_journey_idx"
+          ON "onboarding_steps" ("journey_id");
+        CREATE INDEX IF NOT EXISTS "onboarding_steps_scheduled_at_idx"
+          ON "onboarding_steps" ("scheduled_at");
+        CREATE INDEX IF NOT EXISTS "onboarding_steps_status_idx"
+          ON "onboarding_steps" ("status");
+      `);
+    } catch (err: any) {
+      log(`onboarding bootstrap: ${err.message}`, "db");
+    }
+
     // Customer letters — per-org monthly narrative mirroring the
     // founder letter. Written in Sophie's voice.
     try {
@@ -830,6 +874,12 @@ app.use("/api", apiLimiter);
       // Fires on the 1st at 15:00 UTC (3h after the founder letter
       // at 12:00 UTC) so the customer wave is not in the same burst.
       startCustomerLetterJob();
+
+      // Onboarding journeys — hourly sweeper fires any due step for
+      // any org walking the 30-day activation sequence. Each step is
+      // pre-scheduled at journey-start time; this just picks up the
+      // ones whose scheduledAt has passed.
+      startOnboardingSweeperJob();
 
       // Auto-seed county GIS endpoints for free parcel lookups
       seedCountyGisEndpointsOnStartup();
@@ -2176,6 +2226,30 @@ function startPromptEvolutionJob() {
       );
     } catch (err: any) {
       log(`[prompt-evolution] monthly failed: ${err?.message ?? err}`, 'sovereign');
+    }
+  }, ONE_HOUR);
+}
+
+/**
+ * Onboarding-journey sweeper — hourly, fires any step whose
+ * scheduledAt has passed. Each step is responsible for its own
+ * idempotence (status flips to 'fired' after execution).
+ */
+function startOnboardingSweeperJob() {
+  const ONE_HOUR = 60 * 60 * 1000;
+  log('Registering onboarding-journey sweeper (hourly)', 'sovereign');
+  trackInterval(async () => {
+    try {
+      const { sweepAndFireDueSteps } = await import('./services/onboardingAutonomy');
+      const r = await sweepAndFireDueSteps();
+      if (r.fired > 0 || r.failed > 0) {
+        log(
+          `[onboarding] swept ${r.inspected}, fired ${r.fired}, failed ${r.failed}`,
+          'sovereign',
+        );
+      }
+    } catch (err: any) {
+      log(`[onboarding] sweep failed: ${err?.message ?? err}`, 'sovereign');
     }
   }, ONE_HOUR);
 }
