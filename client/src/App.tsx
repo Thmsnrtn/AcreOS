@@ -32,6 +32,7 @@ import { FloatingHelpButton } from "@/components/floating-help-button";
 import { FeedbackButton } from "@/components/feedback-button";
 import { EarlyAccessBanner } from "@/components/early-access-banner";
 import { CommandPalette } from "@/components/command-palette";
+import { FounderCommandPaletteProvider } from "@/components/founder-command-palette";
 import { useSwipeNavigation } from "@/hooks/use-swipe-gesture";
 import { useNextRoutePrefetch } from "@/hooks/use-next-route-prefetch";
 import { MobileBottomNav } from "@/components/mobile";
@@ -873,6 +874,8 @@ function AppContent() {
       {user && <QuickActionsMenu />}
       {user && <ConversationTray />}
       {user && <CommandPalette />}
+      {/* Founder-specific ⌘⇧K palette — searches decisions, agents, letters, proposals */}
+      <FounderCommandPaletteProvider>{null}</FounderCommandPaletteProvider>
       {user && <NewItemMenu />}
       {user && <MobileBottomNav />}
       {user && <OnboardingWizard />}

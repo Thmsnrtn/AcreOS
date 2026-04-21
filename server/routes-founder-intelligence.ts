@@ -1729,6 +1729,110 @@ router.post("/settings/:key", requireFounder, async (req: any, res: Response) =>
   }
 });
 
+// ── Global search (command palette) ─────────────────────────────────
+// One endpoint backs the ⌘K palette across every founder-side entity.
+
+router.get("/search", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const q = String(req.query.q ?? "").trim();
+    if (q.length < 1) return res.json({ groups: [] });
+    const like = `%${q}%`;
+
+    const [decisions, agents, orgs, letters, proposals] = await Promise.all([
+      db
+        .select({
+          id: decisionsInboxItems.id,
+          label: decisionsInboxItems.recommendedActionLabel,
+          itemType: decisionsInboxItems.itemType,
+          status: decisionsInboxItems.status,
+          agent: decisionsInboxItems.ownerAgentCodename,
+          organizationId: decisionsInboxItems.organizationId,
+          urgencyScore: decisionsInboxItems.urgencyScore,
+          createdAt: decisionsInboxItems.createdAt,
+        })
+        .from(decisionsInboxItems)
+        .where(
+          sql`${decisionsInboxItems.recommendedActionLabel} ILIKE ${like}
+            OR ${decisionsInboxItems.ownerAgentCodename} ILIKE ${like}
+            OR ${decisionsInboxItems.itemType} ILIKE ${like}`,
+        )
+        .orderBy(desc(decisionsInboxItems.createdAt))
+        .limit(8),
+      db
+        .select({
+          codename: companyAgents.codename,
+          title: companyAgents.title,
+          wing: companyAgents.wing,
+          trustScore: companyAgents.trustScore,
+        })
+        .from(companyAgents)
+        .where(
+          sql`${companyAgents.codename} ILIKE ${like}
+            OR ${companyAgents.title} ILIKE ${like}
+            OR ${companyAgents.wing} ILIKE ${like}`,
+        )
+        .limit(6),
+      db
+        .select({
+          id: organizations.id,
+          name: organizations.name,
+          slug: organizations.slug,
+          subscriptionTier: organizations.subscriptionTier,
+          subscriptionStatus: organizations.subscriptionStatus,
+        })
+        .from(organizations)
+        .where(
+          sql`${organizations.name} ILIKE ${like} OR ${organizations.slug} ILIKE ${like}`,
+        )
+        .limit(6),
+      (async () => {
+        const { founderLetters } = await import("@shared/schema");
+        return db
+          .select({
+            monthKey: founderLetters.monthKey,
+            status: founderLetters.status,
+            generatedAt: founderLetters.generatedAt,
+          })
+          .from(founderLetters)
+          .where(sql`${founderLetters.monthKey} ILIKE ${like} OR ${founderLetters.letterMarkdown} ILIKE ${like}`)
+          .orderBy(desc(founderLetters.generatedAt))
+          .limit(4);
+      })(),
+      (async () => {
+        const { strategicProposals } = await import("@shared/schema");
+        return db
+          .select({
+            id: strategicProposals.id,
+            title: strategicProposals.title,
+            category: strategicProposals.category,
+            status: strategicProposals.status,
+            proposedBy: strategicProposals.proposedBy,
+            monthKey: strategicProposals.monthKey,
+          })
+          .from(strategicProposals)
+          .where(
+            sql`${strategicProposals.title} ILIKE ${like} OR ${strategicProposals.rationale} ILIKE ${like}`,
+          )
+          .orderBy(desc(strategicProposals.createdAt))
+          .limit(5);
+      })(),
+    ]);
+
+    res.json({
+      groups: [
+        { key: "decisions", label: "Decisions", items: decisions },
+        { key: "agents", label: "Agents", items: agents },
+        { key: "organizations", label: "Organizations", items: orgs },
+        { key: "letters", label: "Founder letters", items: letters },
+        { key: "proposals", label: "Strategic proposals", items: proposals },
+      ].filter((g) => g.items.length > 0),
+    });
+  } catch (err: any) {
+    logger.error("[search] Error", undefined, { metadata: { detail: err.message } });
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Single-decision detail fetch with full contextBundle, for the
 // "expand row" interaction on the founder decisions page.
 router.get("/decision-log/:id", requireFounder, async (req: Request, res: Response) => {
