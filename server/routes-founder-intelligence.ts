@@ -1783,6 +1783,20 @@ router.post("/action-previews/:id/cancel", requireFounder, async (req: any, res:
   }
 });
 
+// ── System trends (meta-observability) ──────────────────────────────
+
+router.get("/system-trends", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const { computeSystemTrends } = await import("./services/systemTrends");
+    const windowDays = parseInt((req.query.windowDays as string) ?? "90", 10);
+    const report = await computeSystemTrends(Number.isFinite(windowDays) ? windowDays : 90);
+    res.json(report);
+  } catch (err: any) {
+    logger.error("[system-trends] Error", undefined, { metadata: { detail: err.message } });
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Global search (command palette) ─────────────────────────────────
 // One endpoint backs the ⌘K palette across every founder-side entity.
 
