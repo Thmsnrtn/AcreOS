@@ -1678,6 +1678,33 @@ router.post("/strategic-proposals/run-synthesis", requireFounder, async (req: Re
   }
 });
 
+// ── Calibration (self-awareness) ────────────────────────────────────
+
+router.get("/calibration", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const { computeCalibration } = await import("./services/calibration");
+    const windowDays = parseInt((req.query.windowDays as string) ?? "60", 10);
+    const report = await computeCalibration("all", Number.isFinite(windowDays) ? windowDays : 60);
+    res.json(report);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/calibration/:agentCodename", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const { computeCalibration } = await import("./services/calibration");
+    const windowDays = parseInt((req.query.windowDays as string) ?? "60", 10);
+    const report = await computeCalibration(
+      req.params.agentCodename,
+      Number.isFinite(windowDays) ? windowDays : 60,
+    );
+    res.json(report);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Single-decision detail fetch with full contextBundle, for the
 // "expand row" interaction on the founder decisions page.
 router.get("/decision-log/:id", requireFounder, async (req: Request, res: Response) => {

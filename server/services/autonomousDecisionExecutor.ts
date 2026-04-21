@@ -716,6 +716,11 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
           resolvedAt: new Date(),
           resolvedBy: "autonomous_executor",
           founderOverrideAction: `[AUTO] ${aiDecision.reasoning.slice(0, 200)}`,
+          contextBundle: {
+            ...(item.contextBundle as Record<string, any> ?? {}),
+            executorConfidence: aiDecision.confidence,
+            executorAction: aiDecision.action,
+          },
           updatedAt: new Date(),
         })
         .where(eq(decisionsInboxItems.id, item.id));

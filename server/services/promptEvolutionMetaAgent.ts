@@ -49,6 +49,8 @@ export interface AgentPerformanceSlice {
   overrideRate: number;
   deferredCount: number;
   deferredRate: number;
+  brierScore: number | null;
+  overconfidenceBias: number | null;
   negativeOutcomes: Array<{
     itemType: string;
     recommendedActionLabel: string;
@@ -172,6 +174,19 @@ export async function analyseAgent(
     reason: r.actualOutcome,
   }));
 
+  // Pull calibration stats — the meta-agent needs to see these so it
+  // can prescribe "teach the agent to say I don't know" when warranted.
+  let brierScore: number | null = null;
+  let overconfidenceBias: number | null = null;
+  try {
+    const { computeCalibration } = await import("./calibration");
+    const calib = await computeCalibration(agentCodename, windowDays);
+    brierScore = calib.brierScore;
+    overconfidenceBias = calib.overconfidenceBias;
+  } catch {
+    // leave nulls
+  }
+
   return {
     agentCodename,
     decisionsTotal: total,
@@ -180,6 +195,8 @@ export async function analyseAgent(
     overrideRate: total > 0 ? overrides.length / total : 0,
     deferredCount: deferred.length,
     deferredRate: total > 0 ? deferred.length / total : 0,
+    brierScore,
+    overconfidenceBias,
     negativeOutcomes: negative,
     founderOverrides,
   };
@@ -199,6 +216,12 @@ function shouldPropose(slice: AgentPerformanceSlice): { ok: boolean; reason: str
     return {
       ok: true,
       reason: `founder-override rate ${(slice.overrideRate * 100).toFixed(0)}% above ${CONCERN_THRESHOLD_OVERRIDE * 100}%`,
+    };
+  }
+  if (slice.brierScore != null && slice.brierScore >= 0.25) {
+    return {
+      ok: true,
+      reason: `poor calibration (Brier ${slice.brierScore.toFixed(2)} ≥ 0.25) — confidence scores aren't tracking outcomes`,
     };
   }
   return { ok: false, reason: "performance within tolerance" };
@@ -244,6 +267,20 @@ function buildDraftContext(slice: AgentPerformanceSlice, currentPrompt: string):
   lines.push(
     `  Deferral rate: ${(slice.deferredRate * 100).toFixed(0)}% (${slice.deferredCount}/${slice.decisionsTotal})`,
   );
+  if (slice.brierScore != null) {
+    lines.push("");
+    lines.push("CALIBRATION:");
+    lines.push(`  Brier score: ${slice.brierScore.toFixed(3)} (lower=better, <0.2 is good)`);
+    if (slice.overconfidenceBias != null) {
+      const tag =
+        slice.overconfidenceBias > 10
+          ? "overconfident"
+          : slice.overconfidenceBias < -10
+            ? "underconfident"
+            : "well-calibrated";
+      lines.push(`  Overconfidence bias: ${slice.overconfidenceBias.toFixed(1)}pp (${tag})`);
+    }
+  }
   if (slice.negativeOutcomes.length > 0) {
     lines.push("");
     lines.push("NEGATIVELY GRADED DECISIONS:");
