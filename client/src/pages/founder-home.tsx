@@ -101,6 +101,80 @@ const useActionQueue = () => useQuery<ActionQueueData>({ queryKey: ["/api/founde
 const useAgents = () => useQuery<AgentHealth[]>({ queryKey: ["/api/admin/agents/status"], refetchInterval: 10_000 });
 const useAutonomyHealth = () =>
   useQuery<AutonomyHealthReport>({ queryKey: ["/api/founder/intelligence/autonomy-health"], staleTime: 60_000 });
+const useFounderTodo = () =>
+  useQuery<{ total: number; items: Array<{ type: string; id: number; title: string; subtitle: string; urgency: number; actionUrl: string; createdAt: string; badge?: string; estimatedImpactCents: number | null }> }>({
+    queryKey: ["/api/founder/intelligence/todo"],
+    staleTime: 60_000,
+  });
+
+// ── Section 1c: What needs you ───────────────────────────────────────
+
+function WhatNeedsYouCard({
+  data,
+}: {
+  data: ReturnType<typeof useFounderTodo>["data"];
+}) {
+  const top5 = (data?.items ?? []).slice(0, 5);
+  if (top5.length === 0) {
+    return (
+      <motion.div variants={staggerItem}>
+        <Card>
+          <CardContent className="p-6 flex items-center gap-3">
+            <CheckCircle2 className="h-6 w-6 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <div>
+              <h2 className="text-lg font-semibold text-foreground">Inbox zero</h2>
+              <p className="text-sm text-muted-foreground">
+                Nothing is waiting on you right now. The system is running itself.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+    );
+  }
+  const urgencyTint = (u: number) =>
+    u >= 70 ? "border-l-red-500" : u >= 50 ? "border-l-amber-500" : "border-l-muted";
+  return (
+    <motion.div variants={staggerItem}>
+      <Card>
+        <CardContent className="p-0">
+          <div className="p-4 border-b border-border flex items-center justify-between gap-2">
+            <h2 className="text-base font-semibold text-foreground">
+              What needs you ({data?.total ?? 0})
+            </h2>
+            <a href="/founder/todo" className="text-xs text-muted-foreground hover:text-foreground">
+              See all →
+            </a>
+          </div>
+          <ul>
+            {top5.map((item) => (
+              <li key={`${item.type}-${item.id}`} className="border-b border-border last:border-b-0">
+                <a
+                  href={item.actionUrl}
+                  className={`flex items-start gap-3 p-3 hover:bg-muted/40 transition border-l-4 ${urgencyTint(item.urgency)}`}
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-foreground truncate">{item.title}</p>
+                    <p className="text-[11px] text-muted-foreground truncate mt-0.5">
+                      {item.type.replace(/_/g, " ")}
+                      {item.badge ? ` · ${item.badge}` : ""}
+                      {item.estimatedImpactCents != null && item.estimatedImpactCents !== 0
+                        ? ` · ${item.estimatedImpactCents > 0 ? "+" : ""}$${Math.abs(item.estimatedImpactCents / 100).toLocaleString()}`
+                        : ""}
+                    </p>
+                  </div>
+                  <span className="text-[10px] text-muted-foreground shrink-0 mt-1">
+                    {item.urgency}
+                  </span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </CardContent>
+      </Card>
+    </motion.div>
+  );
+}
 
 // ── Section 1b: Autonomy Health ──────────────────────────────────────
 
@@ -331,6 +405,7 @@ export default function FounderHome() {
   const actions = useActionQueue();
   const agents = useAgents();
   const autonomy = useAutonomyHealth();
+  const todo = useFounderTodo();
 
   const isAnyError = metrics.isError || actions.isError || agents.isError;
   const allLoading = metrics.isLoading && actions.isLoading && agents.isLoading;
@@ -364,6 +439,13 @@ export default function FounderHome() {
         ) : autonomy.data ? (
           <AutonomyHealthCard report={autonomy.data} />
         ) : null}
+
+        {/* Section 1c: What needs you — top-5 unified todos */}
+        {todo.isLoading ? (
+          <Skel><Skeleton className="h-5 w-32 mb-3" /><Skeleton className="h-12 w-full" /></Skel>
+        ) : (
+          <WhatNeedsYouCard data={todo.data} />
+        )}
 
         {/* Section 2: Business Metrics */}
         <section>
