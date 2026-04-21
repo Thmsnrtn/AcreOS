@@ -101,6 +101,17 @@ export const KNOBS: KnobDefinition[] = [
     max: 90,
     units: "days",
   },
+  {
+    key: "ACTION_PREVIEW_WINDOW_SECONDS",
+    valueType: "number",
+    defaultValue: "0",
+    description:
+      "Pause before each auto-approved action commits, giving you a chance to cancel from /founder/preview. Set to 0 for audit-only (no delay). Raise to 30+ to supervise in real-time.",
+    category: "safety",
+    min: 0,
+    max: 300,
+    units: "seconds",
+  },
 ];
 
 const cache = new Map<string, { value: string; fetchedAt: number }>();

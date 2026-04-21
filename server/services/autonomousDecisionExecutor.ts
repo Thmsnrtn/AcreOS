@@ -696,6 +696,37 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
   if (aiDecision.action === "approve") {
     let execResult: { success: boolean; detail: string } = { success: false, detail: "Unknown item type" };
 
+    // Open an action preview — writes a record of what's about to
+    // happen and waits ACTION_PREVIEW_WINDOW_SECONDS (founder setting,
+    // default 0) for a founder cancellation.
+    const { beginActionPreview } = await import("./actionPreview");
+    const preview = await beginActionPreview({
+      decisionId: item.id,
+      agentCodename: item.ownerAgentCodename ?? "executor",
+      itemType: item.itemType,
+      actionSummary: item.recommendedActionLabel,
+      actionReasoning: aiDecision.reasoning,
+      actionPayload: (item.actionPayload as Record<string, any>) ?? null,
+      estimatedImpactCents: item.estimatedImpactCents ?? null,
+      confidence: aiDecision.confidence,
+    });
+
+    if (!(await preview.shouldProceed())) {
+      // Founder cancelled during the preview window.
+      await preview.recordResult("failed", "cancelled by founder");
+      await db.update(decisionsInboxItems)
+        .set({
+          status: "deferred",
+          deferredUntil: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          updatedAt: new Date(),
+        })
+        .where(eq(decisionsInboxItems.id, item.id));
+      result.executed = false;
+      result.executionSuccess = true;
+      result.executedAction = "cancelled_by_founder_preview";
+      return result;
+    }
+
     try {
       switch (item.itemType) {
         case "support_escalation":
@@ -717,6 +748,11 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
     } catch (err: any) {
       execResult = { success: false, detail: err.message };
     }
+
+    await preview.recordResult(
+      execResult.success ? "committed" : "failed",
+      execResult.detail,
+    );
 
     result.executed = true;
     result.executionSuccess = execResult.success;

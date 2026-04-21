@@ -1729,6 +1729,31 @@ router.post("/settings/:key", requireFounder, async (req: any, res: Response) =>
   }
 });
 
+// ── Action previews (supervise-in-real-time) ────────────────────────
+
+router.get("/action-previews", requireFounder, async (_req: Request, res: Response) => {
+  try {
+    const { listPendingPreviews, listRecentPreviews } = await import("./services/actionPreview");
+    const [pending, recent] = await Promise.all([listPendingPreviews(), listRecentPreviews()]);
+    res.json({ pending, recent });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/action-previews/:id/cancel", requireFounder, async (req: any, res: Response) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
+    const { cancelPreview } = await import("./services/actionPreview");
+    const userId = req.permissionContext?.userId ?? "founder";
+    await cancelPreview(id, userId, req.body?.reason);
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Global search (command palette) ─────────────────────────────────
 // One endpoint backs the ⌘K palette across every founder-side entity.
 

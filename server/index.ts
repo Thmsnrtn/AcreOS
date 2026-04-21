@@ -434,6 +434,44 @@ app.use("/api", apiLimiter);
       log(`founder_letters bootstrap: ${err.message}`, "db");
     }
 
+    // Action previews — audit trail of every auto-approved action,
+    // plus an optional cancel-before-commit window (founder-tunable
+    // via ACTION_PREVIEW_WINDOW_SECONDS).
+    try {
+      const { pool } = await import("./db");
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS "action_previews" (
+          "id" serial PRIMARY KEY,
+          "decision_id" integer,
+          "agent_codename" text NOT NULL,
+          "item_type" text NOT NULL,
+          "action_summary" text NOT NULL,
+          "action_reasoning" text,
+          "action_payload" jsonb,
+          "estimated_impact_cents" integer,
+          "confidence" integer,
+          "planned_at" timestamp DEFAULT now() NOT NULL,
+          "commit_at" timestamp NOT NULL,
+          "committed_at" timestamp,
+          "cancelled_at" timestamp,
+          "cancelled_by" text,
+          "cancel_reason" text,
+          "status" text NOT NULL DEFAULT 'pending',
+          "execution_result" text
+        );
+        CREATE INDEX IF NOT EXISTS "action_previews_status_idx"
+          ON "action_previews" ("status");
+        CREATE INDEX IF NOT EXISTS "action_previews_commit_at_idx"
+          ON "action_previews" ("commit_at");
+        CREATE INDEX IF NOT EXISTS "action_previews_decision_idx"
+          ON "action_previews" ("decision_id");
+        CREATE INDEX IF NOT EXISTS "action_previews_agent_idx"
+          ON "action_previews" ("agent_codename");
+      `);
+    } catch (err: any) {
+      log(`action_previews bootstrap: ${err.message}`, "db");
+    }
+
     // Founder settings — key-value operational knobs (hard cap,
     // thresholds, TTLs) editable from /founder/settings.
     try {
@@ -723,6 +761,11 @@ app.use("/api", apiLimiter);
       // 2h before the founder letter generates). The synthesized
       // proposals feed the letter's "Next month's focus" section.
       startStrategicProposalsJobs();
+
+      // Action-preview sweeper — hourly; marks orphaned pending
+      // previews (commitAt passed + 1h) as 'failed' so they don't
+      // misleadingly show up in /founder/preview.
+      startActionPreviewSweeperJob();
 
       // Auto-seed county GIS endpoints for free parcel lookups
       seedCountyGisEndpointsOnStartup();
@@ -2069,6 +2112,25 @@ function startPromptEvolutionJob() {
       );
     } catch (err: any) {
       log(`[prompt-evolution] monthly failed: ${err?.message ?? err}`, 'sovereign');
+    }
+  }, ONE_HOUR);
+}
+
+/**
+ * Action-preview sweeper — once an hour, marks previews whose
+ * commit window expired over an hour ago as 'failed'. Catches
+ * orphans left behind when the executor crashes mid-wait.
+ */
+function startActionPreviewSweeperJob() {
+  const ONE_HOUR = 60 * 60 * 1000;
+  log('Registering action-preview sweeper (hourly)', 'sovereign');
+  trackInterval(async () => {
+    try {
+      const { sweepOrphanedPreviews } = await import('./services/actionPreview');
+      const r = await sweepOrphanedPreviews();
+      if (r.swept > 0) log(`[action-preview] swept ${r.swept} orphans`, 'sovereign');
+    } catch (err: any) {
+      log(`[action-preview] sweep failed: ${err?.message ?? err}`, 'sovereign');
     }
   }, ONE_HOUR);
 }

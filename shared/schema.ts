@@ -10949,6 +10949,38 @@ export const insertFounderDigestHistorySchema = createInsertSchema(founderDigest
 export type InsertFounderDigestHistory = z.infer<typeof insertFounderDigestHistorySchema>;
 export type FounderDigestHistory = typeof founderDigestHistory.$inferSelect;
 
+// Action previews — every auto-approved executor action writes a
+// preview row that records WHAT was about to happen, WHY, and gives
+// the founder a cancel-before-commit window (0 by default, tunable
+// via settings). Also works as a permanent audit trail of
+// autonomous side effects.
+export const actionPreviews = pgTable("action_previews", {
+  id: serial("id").primaryKey(),
+  decisionId: integer("decision_id"),
+  agentCodename: text("agent_codename").notNull(),
+  itemType: text("item_type").notNull(),
+  actionSummary: text("action_summary").notNull(),  // plain-English
+  actionReasoning: text("action_reasoning"),
+  actionPayload: jsonb("action_payload").$type<Record<string, any>>(),
+  estimatedImpactCents: integer("estimated_impact_cents"),
+  confidence: integer("confidence"),
+  plannedAt: timestamp("planned_at").notNull().defaultNow(),
+  commitAt: timestamp("commit_at").notNull(), // when the window closes
+  committedAt: timestamp("committed_at"),
+  cancelledAt: timestamp("cancelled_at"),
+  cancelledBy: text("cancelled_by"),
+  cancelReason: text("cancel_reason"),
+  status: text("status").notNull().default("pending"), // pending | committed | cancelled | failed
+  executionResult: text("execution_result"),
+}, (table) => [
+  index("action_previews_status_idx").on(table.status),
+  index("action_previews_commit_at_idx").on(table.commitAt),
+  index("action_previews_decision_idx").on(table.decisionId),
+  index("action_previews_agent_idx").on(table.agentCodename),
+]);
+
+export type ActionPreview = typeof actionPreviews.$inferSelect;
+
 // Founder settings — editable operational knobs. Simple key-value
 // store so adding a new tunable doesn't require a migration. The
 // service layer reads this first, falls back to process.env, then
