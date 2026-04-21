@@ -16,8 +16,20 @@
  */
 
 import { db } from "../../server/db";
-import { organizations, decisionsInboxItems } from "../../shared/schema";
-import { like, eq, sql } from "drizzle-orm";
+import {
+  organizations,
+  decisionsInboxItems,
+  leads,
+  properties,
+  deals,
+  teamMembers,
+  supportTickets,
+  systemAlerts,
+  churnRiskScores,
+  notes,
+  simulatedActions,
+} from "../../shared/schema";
+import { like, eq, inArray, sql } from "drizzle-orm";
 import { requireSimulationMode, isOrgSimulated } from "../../server/utils/simulationMode";
 
 async function main() {
@@ -38,9 +50,19 @@ async function main() {
       skipped++;
       continue;
     }
-    // Purge orphan decision-inbox rows first (they don't cascade when
-    // organizationId is nullable).
+    // Explicit child-table cleanup in dependency order. Some tables
+    // (notably deals) reference organizations without ON DELETE CASCADE
+    // so we have to delete bottom-up before we can drop the org row.
     await db.delete(decisionsInboxItems).where(eq(decisionsInboxItems.organizationId, row.id));
+    await db.delete(supportTickets).where(eq(supportTickets.organizationId, row.id));
+    await db.delete(systemAlerts).where(eq(systemAlerts.organizationId, row.id));
+    await db.delete(churnRiskScores).where(eq(churnRiskScores.organizationId, row.id));
+    await db.delete(notes).where(eq(notes.organizationId, row.id));
+    await db.delete(deals).where(eq(deals.organizationId, row.id));
+    await db.delete(properties).where(eq(properties.organizationId, row.id));
+    await db.delete(leads).where(eq(leads.organizationId, row.id));
+    await db.delete(teamMembers).where(eq(teamMembers.organizationId, row.id));
+    await db.delete(simulatedActions).where(eq(simulatedActions.organizationId, row.id));
     await db.delete(organizations).where(eq(organizations.id, row.id));
     deleted++;
     console.log(`  deleted ${row.slug} (id ${row.id})`);
