@@ -46,6 +46,31 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
 
   let org = await storage.getOrganizationByOwner(userId);
 
+  // Cycle 14: if the user doesn't own any org but is an active team
+  // member of one (invited seat user), use that org instead of
+  // spinning up a fresh shadow org. Prevents seat users from
+  // accidentally landing in a personal sandbox after accepting an
+  // invite.
+  if (!org) {
+    try {
+      const memberships = await db
+        .select()
+        .from(teamMembers)
+        .where(eq(teamMembers.userId, userId));
+      const active = memberships.find((m) => m.isActive);
+      if (active) {
+        const [inviteOrg] = await db
+          .select()
+          .from(organizations)
+          .where(eq(organizations.id, active.organizationId))
+          .limit(1);
+        if (inviteOrg) org = inviteOrg;
+      }
+    } catch {
+      /* non-fatal; fall through to shadow-org creation below */
+    }
+  }
+
   if (!org) {
     // DEFECT-0021: Wrap org creation + team member creation in a transaction
     // so we never end up with an org that has no owner team member.

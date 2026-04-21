@@ -1246,6 +1246,43 @@ export function registerOrganizationRoutes(app: Express): void {
         });
       }
 
+      // Cycle 14: if the invitee still has the auto-created shadow org
+      // that `getOrCreateOrg` spun up on their very first sign-in, and
+      // that org is completely empty, make them switch to the inviting
+      // org by default. Without this, a seat user lands on their own
+      // zero-data org after signing in via an invite link and has no
+      // way to "enter" the company they were invited to.
+      try {
+        const { organizations: orgsTable, leads, properties, deals, notes } = await import("@shared/schema");
+        const shadow = await db
+          .select()
+          .from(orgsTable)
+          .where(eq(orgsTable.ownerId, userId))
+          .limit(1);
+        if (shadow[0] && shadow[0].id !== invite.organizationId) {
+          const shadowId = shadow[0].id;
+          const counts = await Promise.all([
+            db.select().from(leads).where(eq(leads.organizationId, shadowId)).limit(1),
+            db.select().from(properties).where(eq(properties.organizationId, shadowId)).limit(1),
+            db.select().from(deals).where(eq(deals.organizationId, shadowId)).limit(1),
+            db.select().from(notes).where(eq(notes.organizationId, shadowId)).limit(1),
+          ]);
+          const isEmpty = counts.every((c) => c.length === 0);
+          if (isEmpty) {
+            // Delete the shadow org (cascades to team_members). The user
+            // becomes only a member of the inviting org; getOrCreateOrg
+            // will now fall through to their team membership on next
+            // request instead of resurrecting the shadow.
+            await db.delete(orgsTable).where(eq(orgsTable.id, shadowId));
+          }
+        }
+      } catch (err) {
+        logger.warn("shadow-org cleanup failed on invite accept", {
+          userId,
+          error: (err as Error).message,
+        });
+      }
+
       await db
         .update(organizationInvitations)
         .set({ status: "accepted", acceptedAt: new Date(), acceptedByUserId: userId })
