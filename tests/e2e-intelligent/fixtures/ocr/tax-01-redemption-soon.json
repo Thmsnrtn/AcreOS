@@ -1,0 +1,28 @@
+{
+  "id": "tax-01-redemption-soon",
+  "kind": "tax_statement",
+  "text": "YAVAPAI COUNTY TREASURER\nNOTICE OF TAX LIEN — FINAL REDEMPTION PERIOD\n\nParcel No: 304-12-058A\nSitus Address: 4120 Mountain Vista Rd, Prescott, AZ 86301\nAssessed Owner: DELGADO FAMILY TRUST\n\nYou are hereby notified that the above-referenced parcel was sold at tax-lien auction on February 18, 2023, to STERLING LAND INVESTMENTS LLC (Certificate of Purchase No. 2023-04182).\n\nThe statutory three-year redemption period for this tax lien expires on FEBRUARY 18, 2026. After that date, the certificate holder is entitled to apply for a Treasurer's Deed conveying fee simple title to the parcel, and all redemption rights of the owner and any lienholders will be FOREVER EXTINGUISHED.\n\nTo redeem this parcel, the owner or any party in interest must pay the following amount on or before the redemption deadline:\n\n  Original tax lien amount:         $2,418.00\n  Interest (16% per annum, 3 years):  $1,160.64\n  Subsequent taxes (2023-2025):     $6,870.00\n  Subsequent-tax interest:            $549.60\n  Fees and costs:                     $158.00\n  ─────────────────────────────────────────\n  TOTAL DUE TO REDEEM:             $11,156.24\n\nPayment must be made in cash, certified funds, or cashier's check to the Yavapai County Treasurer.\n\nREDEMPTION DEADLINE: FEBRUARY 18, 2026 — 5:00 PM LOCAL TIME\n\nAfter this date, no redemption will be accepted and the property will be lost.",
+  "expected": {
+    "anomalies": [
+      {
+        "type": "redemption_deadline",
+        "severity": "critical",
+        "snippet": "REDEMPTION DEADLINE: FEBRUARY 18, 2026",
+        "reason": "Three-year statutory redemption period ends in <30 days. After Feb 18, 2026 all owner redemption rights are extinguished and the certificate holder can apply for a Treasurer's Deed."
+      },
+      {
+        "type": "tax_delinquent",
+        "severity": "high",
+        "snippet": "Original tax lien amount: $2,418.00 ... TOTAL DUE TO REDEEM: $11,156.24",
+        "reason": "Property has unresolved tax lien; current redemption cost is $11,156.24 including interest and subsequent years."
+      }
+    ],
+    "keyTerms": {
+      "parcel": "304-12-058A, 4120 Mountain Vista Rd, Prescott, AZ 86301",
+      "owner": "Delgado Family Trust",
+      "lienHolder": "Sterling Land Investments LLC",
+      "redemptionAmount": "$11,156.24",
+      "redemptionDeadline": "2026-02-18"
+    }
+  }
+}

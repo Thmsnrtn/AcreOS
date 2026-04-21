@@ -100,6 +100,55 @@ router.get('/report', async (req: Request, res: Response) => {
 });
 
 /**
+ * GET /white-label/analytics
+ * Reseller analytics card data. Shape matches the ResellerDashboard
+ * client contract: { analytics: { totalTenants, activeTenants,
+ * trialTenants, totalUsers, totalRevenue, mrr, totalAiCreditsUsed } }.
+ */
+router.get('/analytics', async (req: Request, res: Response) => {
+  try {
+    const org = req.organization;
+    const tenants = await whiteLabelService.listTenants(org.id);
+    const totalTenants = tenants.length;
+    const activeTenants = tenants.filter((t: any) => t.status === 'active').length;
+    const trialTenants = tenants.filter((t: any) => t.status === 'trial').length;
+    // These roll-ups require per-tenant aggregation; default to 0 when
+    // the service hasn't populated them (Stripe Connect not live yet).
+    const report = await whiteLabelService.getResellerReport(org.id).catch(() => null);
+    res.json({
+      analytics: {
+        totalTenants,
+        activeTenants,
+        trialTenants,
+        totalUsers: (report as any)?.totalUsers ?? 0,
+        totalRevenue: (report as any)?.totalRevenue ?? 0,
+        mrr: (report as any)?.mrr ?? 0,
+        totalAiCreditsUsed: (report as any)?.totalAiCreditsUsed ?? 0,
+      },
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /white-label/revenue-trend
+ * 12-month revenue + new-tenant-count trend. Returns an empty series
+ * when Stripe Connect isn't populated — the chart renders "no data"
+ * rather than crashing the page.
+ */
+router.get('/revenue-trend', async (req: Request, res: Response) => {
+  try {
+    const org = req.organization;
+    const report = await whiteLabelService.getResellerReport(org.id).catch(() => null);
+    const trend = (report as any)?.revenueTrend ?? [];
+    res.json({ trend });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
  * GET /white-label/features/:feature
  * Check if a specific feature is enabled for this org.
  */

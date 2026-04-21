@@ -1,0 +1,27 @@
+{
+  "id": "deed-03-access-unknown",
+  "kind": "warranty_deed",
+  "text": "QUIT CLAIM DEED\n\nKNOW ALL MEN BY THESE PRESENTS, that WILLIAM T. ANDERSON, a single man, of Maricopa County, Arizona, for and in consideration of the sum of TEN DOLLARS ($10.00) and other valuable consideration, the receipt whereof is hereby acknowledged, does hereby remise, release and forever quit claim unto LANDMARK HOLDINGS LLC, an Arizona limited liability company, all of his right, title, interest and claim in and to the following described real property situated in Mohave County, Arizona, to-wit:\n\nThe Southeast Quarter of the Northwest Quarter (SE1/4 NW1/4) of Section 18, Township 19 North, Range 17 West, Gila and Salt River Base and Meridian, Mohave County, Arizona.\n\nContaining 40.00 acres, more or less.\n\nTogether with all appurtenances thereunto belonging, without warranty of title.\n\nNO REPRESENTATION IS MADE REGARDING LEGAL OR PHYSICAL ACCESS TO THE ABOVE-DESCRIBED PROPERTY. GRANTEE IS ADVISED TO CONDUCT AN INDEPENDENT ACCESS STUDY PRIOR TO CLOSING.\n\nDATED this 7th day of April, 2026.\n\n_________________________________\nWILLIAM T. ANDERSON",
+  "expected": {
+    "anomalies": [
+      {
+        "type": "legal_access_unclear",
+        "severity": "medium",
+        "snippet": "NO REPRESENTATION IS MADE REGARDING LEGAL OR PHYSICAL ACCESS",
+        "reason": "Quit-claim deed explicitly disclaims any representation of legal access. Parcel may be landlocked or require easement purchase; title insurance will not cover access defects."
+      },
+      {
+        "type": "quit_claim_instead_of_warranty",
+        "severity": "medium",
+        "snippet": "QUIT CLAIM DEED ... without warranty of title",
+        "reason": "Grantor conveys only whatever interest he has, if any. Grantee has no recourse if title turns out to be defective."
+      }
+    ],
+    "keyTerms": {
+      "grantor": "William T. Anderson",
+      "grantee": "Landmark Holdings LLC",
+      "parcel": "SE1/4 NW1/4, Section 18, T19N R17W, Mohave County, AZ (40 acres)",
+      "consideration": "$10.00 nominal"
+    }
+  }
+}

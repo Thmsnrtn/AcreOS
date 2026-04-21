@@ -1,0 +1,22 @@
+{
+  "id": "deed-01-mineral-sever",
+  "kind": "warranty_deed",
+  "text": "WARRANTY DEED\n\nTHIS INDENTURE made this 15th day of March, 2023, between JOHN A. SMITH and MARGARET R. SMITH, husband and wife, parties of the first part (hereinafter \"Grantor\"), and PHOENIX LAND HOLDINGS LLC, an Arizona limited liability company, party of the second part (hereinafter \"Grantee\").\n\nWITNESSETH, that the said Grantor, for and in consideration of the sum of SIXTY-FIVE THOUSAND AND NO/100 DOLLARS ($65,000.00), in hand paid by the Grantee, the receipt whereof is hereby acknowledged, hath granted, bargained, sold and conveyed, and by these presents doth grant, bargain, sell, convey and confirm unto the said Grantee, and to its successors and assigns forever, all that certain parcel of land situate in Yavapai County, State of Arizona, more particularly described as follows:\n\nLot 14, Block 3, Highlands North Subdivision, according to the plat thereof recorded in Book 127 of Maps, Page 43, records of Yavapai County, Arizona.\n\nRESERVING UNTO THE GRANTOR, his heirs and assigns, ALL OIL, GAS, COAL, AND OTHER MINERAL RIGHTS, together with the right of ingress and egress for the purpose of exploring, drilling, mining and removing the same. The mineral estate hereby reserved shall be severed from the surface estate and shall pass to Grantor's heirs, executors, administrators and assigns in perpetuity.\n\nSUBJECT TO easements, restrictions and rights-of-way of record.\n\nTO HAVE AND TO HOLD the said premises, with all the appurtenances thereunto belonging.\n\nIN WITNESS WHEREOF the said parties of the first part have hereunto set their hands and seals the day and year first above written.\n\n_________________________________\nJOHN A. SMITH\n\n_________________________________\nMARGARET R. SMITH",
+  "expected": {
+    "anomalies": [
+      {
+        "type": "mineral_reservation",
+        "severity": "high",
+        "snippet": "RESERVING UNTO THE GRANTOR, his heirs and assigns, ALL OIL, GAS, COAL, AND OTHER MINERAL RIGHTS",
+        "reason": "Grantor has severed the mineral estate from the surface estate. Buyer will not own subsurface rights and may be subject to surface damage from future extraction activity."
+      }
+    ],
+    "keyTerms": {
+      "grantor": "John A. Smith and Margaret R. Smith",
+      "grantee": "Phoenix Land Holdings LLC",
+      "parcel": "Lot 14, Block 3, Highlands North Subdivision, Yavapai County, AZ",
+      "consideration": "$65,000.00",
+      "recordedAt": "2023-03-15"
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "id": "title-01-hoa-lien",
+  "kind": "title_commitment",
+  "text": "CHICAGO TITLE INSURANCE COMPANY\nTITLE COMMITMENT FOR TITLE INSURANCE\n\nCommitment Number: CTIC-AZ-2026-04219\nEffective Date: April 1, 2026 at 7:30 AM\n\nSCHEDULE A\n\n1. Commitment Date: April 1, 2026\n2. Policy (or Policies) to be issued:\n   ALTA Owner's Policy (2021)\n   Policy Amount: $85,000.00\n   Proposed Insured: DESERT TRAIL PROPERTIES LLC\n3. The estate or interest in the Land described or referred to in this Commitment is: Fee Simple\n4. The Title is, at the Commitment Date, vested in: ROBERT M. JENKINS\n5. The Land is described as follows:\n   Lot 22, Block 7, Saguaro Estates Unit Two, Cochise County, Arizona\n\nSCHEDULE B — PART II: EXCEPTIONS\n\nThe Policy will not insure against loss or damage resulting from the terms and conditions of any lease or easement identified in Schedule A, and the following matters:\n\n1. Taxes for the year 2026, not yet due and payable.\n\n2. CLAIM OF LIEN recorded November 12, 2024, in Book 1247 at Page 118, Official Records of Cochise County, in favor of SAGUARO ESTATES HOMEOWNERS ASSOCIATION, INC., for delinquent assessments in the principal amount of $8,421.00, plus accrued interest, late fees, and attorneys' fees. Said lien remains of record and has not been satisfied of record as of the Commitment Date.\n\n3. Covenants, conditions and restrictions recorded August 3, 1998, as Document No. 1998-42118, Official Records of Cochise County, Arizona.\n\n4. 10-foot public utility easement along the rear lot line as shown on the recorded plat.\n\nTHIS COMMITMENT SHALL TERMINATE IN SIX (6) MONTHS FROM THE COMMITMENT DATE UNLESS A POLICY IS ISSUED.",
+  "expected": {
+    "anomalies": [
+      {
+        "type": "hoa_lien",
+        "severity": "high",
+        "snippet": "CLAIM OF LIEN recorded November 12, 2024 ... SAGUARO ESTATES HOMEOWNERS ASSOCIATION ... $8,421.00",
+        "reason": "Unsatisfied HOA lien of $8,421 plus accruing charges must be paid off at closing or assumed by the buyer. Will reduce net proceeds or require seller contribution."
+      }
+    ],
+    "keyTerms": {
+      "grantor": "Robert M. Jenkins",
+      "grantee": "Desert Trail Properties LLC",
+      "parcel": "Lot 22, Block 7, Saguaro Estates Unit Two, Cochise County, AZ",
+      "consideration": "$85,000.00 (policy amount)",
+      "recordedAt": "2026-04-01"
+    }
+  }
+}

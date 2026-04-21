@@ -355,7 +355,21 @@ export function registerLeadRoutes(app: Express): void {
           }
         });
       }
-      
+
+      // Cycle 13: fire lead.created webhook asynchronously. Never blocks
+      // the response; failures are logged inside the dispatcher.
+      void (async () => {
+        try {
+          const { webhookLeadCreated } = await import("./services/webhookDispatcher");
+          await webhookLeadCreated(org.id, lead);
+        } catch (err) {
+          logger.warn("lead.created webhook dispatch failed", {
+            leadId: lead.id,
+            error: (err as Error).message,
+          });
+        }
+      })();
+
       res.status(201).json(lead);
     } catch (err) {
       if (err instanceof z.ZodError) {

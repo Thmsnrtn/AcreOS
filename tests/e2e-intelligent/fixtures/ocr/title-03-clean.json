@@ -1,0 +1,14 @@
+{
+  "id": "title-03-clean",
+  "kind": "title_commitment",
+  "text": "FIRST AMERICAN TITLE INSURANCE COMPANY\nTITLE COMMITMENT FOR TITLE INSURANCE\n\nCommitment Number: FATC-AZ-2026-00817\nEffective Date: April 8, 2026 at 8:00 AM\n\nSCHEDULE A\n\n1. Commitment Date: April 8, 2026\n2. Policy to be issued: ALTA Owner's Policy (2021), Amount $45,000.00\n3. Proposed Insured: HORIZON ACRES LP\n4. The Title is vested in: MARIA SANTOS and LUIS SANTOS, husband and wife\n5. Description: Lot 8, Block 2, Granite Ridge Subdivision, Pinal County, AZ\n\nSCHEDULE B — PART II: EXCEPTIONS\n\n1. Taxes for the year 2026, not yet due and payable.\n2. Covenants, conditions and restrictions recorded September 2, 2012, as Document No. 2012-39871, which do NOT contain any reversionary clauses nor restrictions based upon race, color, religion, sex, handicap, familial status or national origin.\n3. 10-foot public utility easement along the rear lot line as shown on the recorded plat.\n\nNO OTHER EXCEPTIONS.",
+  "expected": {
+    "anomalies": [],
+    "keyTerms": {
+      "grantor": "Maria Santos and Luis Santos",
+      "grantee": "Horizon Acres LP",
+      "parcel": "Lot 8, Block 2, Granite Ridge Subdivision, Pinal County, AZ",
+      "consideration": "$45,000.00"
+    }
+  }
+}
