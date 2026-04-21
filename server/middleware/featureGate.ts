@@ -16,9 +16,22 @@ import { db } from "../storage";
 import { platformFeatureFlags } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import type { Request, Response, NextFunction } from "express";
+import { isFounderEmail } from "../services/founder";
 
 export function featureGate(flagKey: string) {
-  return async (_req: Request, res: Response, next: NextFunction) => {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    // Founders bypass every feature gate — they're the operators for
+    // enterprise + white-label + admin tiers and need access while
+    // feature flags get provisioned. Without this, every
+    // founder-tier persona journey (Kim P02 reseller analytics,
+    // Dolores white-label, etc.) 404s.
+    const email = (req.user as any)?.claims?.email || (req.user as any)?.email;
+    if (isFounderEmail(email)) return next();
+    // Enterprise-tier orgs also pass — white-label and reseller features
+    // are part of the enterprise contract.
+    const tier = (req.organization as any)?.subscriptionTier;
+    if (tier === "enterprise") return next();
+
     try {
       const [flag] = await db
         .select()
