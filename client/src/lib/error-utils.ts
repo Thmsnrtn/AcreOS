@@ -55,10 +55,15 @@ export function getErrorTitle(error: unknown): string {
 }
 
 export function shouldRetry(error: unknown, attempt: number): boolean {
-  if (attempt >= 3) return false;
+  // Cap at 1 retry (2 total attempts). Previously 3 retries with
+  // exponential backoff meant a failing query could block UI for up to
+  // 30s (1s + 2s + 4s + 8s); users perceived that as a broken page.
+  // One retry catches the transient case (network hiccup, cold DB
+  // connection) without punishing the normal failure mode.
+  if (attempt >= 1) return false;
   if (error instanceof Error) {
     // Retry on network/timeout errors, not on auth/permission errors
-    return error.message.includes('fetch') || 
+    return error.message.includes('fetch') ||
            error.message.includes('network') ||
            error.message.includes('timeout') ||
            error.message.includes('500');

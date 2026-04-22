@@ -291,7 +291,7 @@ export const queryClient = new QueryClient({
         }
         return shouldRetry(err, failureCount);
       },
-      retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
+      retryDelay: (attemptIndex) => Math.min(500 * 2 ** attemptIndex, 3000),
     },
     mutations: {
       retry: (failureCount, error) => {
@@ -302,7 +302,7 @@ export const queryClient = new QueryClient({
         }
         return shouldRetry(err, failureCount);
       },
-      retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
+      retryDelay: (attemptIndex) => Math.min(500 * 2 ** attemptIndex, 3000),
     },
   },
 });

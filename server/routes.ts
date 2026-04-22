@@ -664,6 +664,14 @@ export async function registerRoutes(
   // ============================================
   app.use("/api", csrfProtection);
 
+  // PERF: add private Cache-Control + stale-while-revalidate headers to
+  // GET /api/ responses. Pattern-matched by path prefix (see
+  // server/middleware/httpCacheHeaders.ts for the rule table). Mutations
+  // and non-2xx responses are never cached. Huge win for navigation
+  // between pages that share endpoints (leads/deals/notes/etc.).
+  const { httpCacheHeaders } = await import("./middleware/httpCacheHeaders");
+  app.use("/api", httpCacheHeaders);
+
   // ============================================
   // RATE LIMITING MIDDLEWARE (excludes health check)
   // ============================================
