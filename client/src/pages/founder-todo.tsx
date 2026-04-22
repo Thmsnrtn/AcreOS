@@ -30,7 +30,7 @@ import {
   CheckCircle2,
   ChevronRight,
 } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { dollars, relative } from "@/lib/format";
 
 type TodoType =
   | "decision"
@@ -171,12 +171,11 @@ export default function FounderTodoPage() {
                               )}
                               {item.estimatedImpactCents != null && item.estimatedImpactCents !== 0 && (
                                 <Badge variant="outline" className="text-[10px]">
-                                  {item.estimatedImpactCents > 0 ? "+" : ""}$
-                                  {Math.abs(item.estimatedImpactCents / 100).toLocaleString()}
+                                  {dollars(item.estimatedImpactCents, { showSign: true })}
                                 </Badge>
                               )}
                               <span className="text-[10px] text-muted-foreground ml-auto">
-                                {formatDistanceToNow(new Date(item.createdAt), { addSuffix: true })}
+                                {relative(item.createdAt)}
                               </span>
                             </div>
                             <p className="text-sm font-medium text-foreground truncate">{item.title}</p>

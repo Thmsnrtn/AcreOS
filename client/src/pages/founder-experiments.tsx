@@ -32,7 +32,7 @@ import {
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { FlaskConical, Play, Pause, CheckCircle2, XCircle, Plus } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { relative } from "@/lib/format";
 
 interface Experiment {
   id: number;
@@ -210,7 +210,7 @@ function ExperimentCard({
                 </Badge>
               )}
               <span className="text-[10px] text-muted-foreground">
-                {formatDistanceToNow(new Date(experiment.createdAt), { addSuffix: true })}
+                {relative(experiment.createdAt)}
               </span>
             </div>
             <CardTitle className="text-base">{experiment.name}</CardTitle>

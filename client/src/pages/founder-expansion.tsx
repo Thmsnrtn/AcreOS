@@ -21,7 +21,7 @@ import { EmptyState } from "@/components/empty-state";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { TrendingUp, Check, X, PlayCircle, ArrowUpRight } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { dollars, relative } from "@/lib/format";
 
 interface Candidate {
   id: number;
@@ -180,11 +180,11 @@ function CandidateRow({
             </Badge>
             {lift > 0 && (
               <Badge variant="secondary" className="text-[10px]">
-                +${(lift / 100).toLocaleString()}/mo
+                {dollars(lift, { showSign: true })}/mo
               </Badge>
             )}
             <span className="text-[10px] text-muted-foreground">
-              {formatDistanceToNow(new Date(candidate.createdAt), { addSuffix: true })}
+              {relative(candidate.createdAt)}
             </span>
           </div>
           <h3 className="text-sm font-semibold text-foreground mb-1">

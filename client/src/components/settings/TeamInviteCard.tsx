@@ -22,9 +22,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { UserPlus, Copy, X, Upload } from "lucide-react";
+import { UserPlus, X, Upload } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { CopyButton } from "@/components/ui/copy-button";
+import { shortDate } from "@/lib/format";
 
 interface Invitation {
   id: number;
@@ -122,19 +124,6 @@ export function TeamInviteCard() {
     });
     if (invites.length === 0) return;
     createMutation.mutate({ invites });
-  }
-
-  function copyLink(link: string | undefined) {
-    if (!link) return;
-    navigator.clipboard.writeText(link).then(
-      () => toast({ title: "Invite link copied" }),
-      () =>
-        toast({
-          title: "Could not copy",
-          description: "Select the text manually",
-          variant: "destructive",
-        })
-    );
   }
 
   return (
@@ -244,23 +233,19 @@ export function TeamInviteCard() {
                   <div className="flex-1 min-w-0">
                     <p className="font-medium truncate">{inv.email}</p>
                     <p className="text-xs text-muted-foreground">
-                      Invited {new Date(inv.createdAt).toLocaleDateString()} ·
-                      Expires {new Date(inv.expiresAt).toLocaleDateString()}
+                      Invited {shortDate(inv.createdAt)} · Expires {shortDate(inv.expiresAt)}
                     </p>
                   </div>
                   <Badge variant="outline" className="uppercase text-[10px]">
                     {inv.role}
                   </Badge>
                   {inv.link && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => copyLink(inv.link)}
+                    <CopyButton
+                      value={inv.link}
+                      successMessage="Invite link copied"
+                      label="Copy link"
                       className="h-8"
-                    >
-                      <Copy className="w-3 h-3 mr-1" />
-                      Copy link
-                    </Button>
+                    />
                   )}
                   <Button
                     size="sm"
