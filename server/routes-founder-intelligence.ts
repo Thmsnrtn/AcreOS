@@ -1499,6 +1499,61 @@ router.get("/prompt-evolutions", requireFounder, async (_req: Request, res: Resp
   }
 });
 
+// Prompt history — all versions for a given agent, newest first.
+// Powers the per-agent prompt timeline + version-to-version diff viewer.
+router.get("/prompt-history", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const agentCodename = (req.query.agent as string | undefined)?.trim();
+    if (!agentCodename) return res.status(400).json({ error: "agent query param required" });
+    const { db } = await import("./db");
+    const { agentVersions } = await import("@shared/schema");
+    const { eq, desc } = await import("drizzle-orm");
+    const rows = await db
+      .select({
+        id: agentVersions.id,
+        versionNumber: agentVersions.versionNumber,
+        personalityPrompt: agentVersions.personalityPrompt,
+        changeDescription: agentVersions.changeDescription,
+        isActive: agentVersions.isActive,
+        canaryWeight: agentVersions.canaryWeight,
+        deployedAt: agentVersions.deployedAt,
+        rolledBackAt: agentVersions.rolledBackAt,
+        createdBy: agentVersions.createdBy,
+        createdAt: agentVersions.createdAt,
+      })
+      .from(agentVersions)
+      .where(eq(agentVersions.agentCodename, agentCodename))
+      .orderBy(desc(agentVersions.versionNumber))
+      .limit(50);
+    res.json({ agentCodename, versions: rows });
+  } catch (err: any) {
+    logger.error("[prompt-history] Error", undefined, { metadata: { detail: err.message } });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// List of agents that have at least one version on file — powers the
+// agent selector on the prompt-history page.
+router.get("/prompt-history/agents", requireFounder, async (_req: Request, res: Response) => {
+  try {
+    const { db } = await import("./db");
+    const { agentVersions } = await import("@shared/schema");
+    const { sql } = await import("drizzle-orm");
+    const rows = await db.execute(sql`
+      SELECT agent_codename AS "agentCodename",
+             COUNT(*)::int AS "versionCount",
+             MAX(version_number)::int AS "latestVersion"
+      FROM ${agentVersions}
+      GROUP BY agent_codename
+      ORDER BY agent_codename ASC
+    `);
+    res.json({ agents: (rows as any).rows ?? [] });
+  } catch (err: any) {
+    logger.error("[prompt-history agents] Error", undefined, { metadata: { detail: err.message } });
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get("/prompt-evolutions/:id", requireFounder, async (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id, 10);

@@ -214,6 +214,7 @@ const FounderSettingsPage = React.lazy(() => import("@/pages/founder-settings"))
 const FounderPreviewPage = React.lazy(() => import("@/pages/founder-preview"));
 const FounderToolsPage = React.lazy(() => import("@/pages/founder-tools"));
 const FounderPromptEvolutionsPage = React.lazy(() => import("@/pages/founder-prompt-evolutions"));
+const FounderPromptHistoryPage = React.lazy(() => import("@/pages/founder-prompt-history"));
 const FounderStrategyPage = React.lazy(() => import("@/pages/founder-strategy"));
 const FounderTrendsPage = React.lazy(() => import("@/pages/founder-trends"));
 const MyLetterPage = React.lazy(() => import("@/pages/my-letter"));
@@ -582,6 +583,9 @@ function Router() {
       </Route>
       <Route path="/founder/prompt-evolutions">
         {() => <FounderProtectedRoute component={FounderPromptEvolutionsPage} />}
+      </Route>
+      <Route path="/founder/prompt-history">
+        {() => <FounderProtectedRoute component={FounderPromptHistoryPage} />}
       </Route>
       <Route path="/founder/strategy">
         {() => <FounderProtectedRoute component={FounderStrategyPage} />}

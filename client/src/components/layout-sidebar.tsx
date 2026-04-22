@@ -52,6 +52,7 @@ import {
   FlaskConical,
   Database,
   Lightbulb,
+  History,
   X,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
@@ -395,6 +396,7 @@ const NAV_MODULES: NavModule[] = [
       { label: "Onboarding", icon: Rocket, href: "/founder/onboarding", description: "New-customer activation journeys" },
       { label: "Experiments", icon: FlaskConical, href: "/founder/experiments", description: "A/B tests on decision playbooks" },
       { label: "Prompt evolutions", icon: Brain, href: "/founder/prompt-evolutions", description: "Agent prompt revision approvals" },
+      { label: "Prompt history", icon: History, href: "/founder/prompt-history", description: "Per-agent version timeline with diffs" },
       { label: "Tool proposals", icon: Wrench, href: "/founder/tools", description: "Capability-growth queue" },
       { label: "Providers", icon: Database, href: "/founder/providers", description: "Data-layer cost + quality" },
       { label: "Founder settings", icon: Settings2, href: "/founder/settings", description: "Live-apply operational knobs" },
