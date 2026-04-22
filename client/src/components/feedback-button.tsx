@@ -22,97 +22,17 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
+/**
+ * @deprecated FeedbackButton no longer renders its own floating
+ * button. Feedback is now accessed through:
+ *   - Help sheet (⌘? or the help button in the dock)
+ *   - Settings page
+ *   - Command palette search
+ * The component still exists as a no-op shim so existing imports
+ * don't break; safe to remove once callers are updated.
+ */
 export function FeedbackButton() {
-  const [open, setOpen] = useState(false);
-  const [category, setCategory] = useState<string>("");
-  const [message, setMessage] = useState("");
-  const [allowFollowUp, setAllowFollowUp] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const { toast } = useToast();
-
-  function resetForm() {
-    setCategory("");
-    setMessage("");
-    setAllowFollowUp(true);
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-
-    if (!category) {
-      toast({ title: "Please select a category", variant: "destructive" });
-      return;
-    }
-    if (message.trim().length < 10) {
-      toast({
-        title: "Message too short",
-        description: "Please provide at least 10 characters of detail.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      await apiRequest("POST", "/api/feedback", {
-        category,
-        message: message.trim(),
-        allowFollowUp,
-      });
-
-      setOpen(false);
-      resetForm();
-      toast({
-        title: "Feedback sent",
-        description: "Thank you! We read every submission.",
-      });
-    } catch {
-      toast({
-        title: "Failed to send feedback",
-        description: "Please try again in a moment.",
-        variant: "destructive",
-      });
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            size="icon"
-            variant="outline"
-            onClick={() => setOpen(true)}
-            className="fixed bottom-[304px] md:bottom-[248px] right-4 md:right-16 z-[47] rounded-full shadow-lg hover:shadow-xl transition-shadow bg-background safe-area-bottom"
-            aria-label="Send feedback"
-          >
-            <MessageSquarePlus className="w-5 h-5" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="left">
-          <p>Send Feedback</p>
-        </TooltipContent>
-      </Tooltip>
-
-      <FeedbackDialog
-        open={open}
-        onOpenChange={(v) => {
-          setOpen(v);
-          if (!v) resetForm();
-        }}
-        category={category}
-        onCategoryChange={setCategory}
-        message={message}
-        onMessageChange={setMessage}
-        allowFollowUp={allowFollowUp}
-        onAllowFollowUpChange={setAllowFollowUp}
-        submitting={submitting}
-        onSubmit={handleSubmit}
-      />
-    </>
-  );
+  return null;
 }
 
 interface FeedbackDialogProps {
@@ -128,7 +48,85 @@ interface FeedbackDialogProps {
   onSubmit: (e: React.FormEvent) => void;
 }
 
+/**
+ * Self-contained feedback dialog — manages its own state and submit
+ * logic. Use this from any surface (help sheet, settings, etc.)
+ * where you want a feedback trigger without wiring up 6 props.
+ */
 export function FeedbackDialog({
+  open: openProp,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [category, setCategory] = useState<string>("");
+  const [message, setMessage] = useState("");
+  const [allowFollowUp, setAllowFollowUp] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const { toast } = useToast();
+
+  const reset = () => {
+    setCategory("");
+    setMessage("");
+    setAllowFollowUp(true);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!category) {
+      toast({ title: "Please select a category", variant: "destructive" });
+      return;
+    }
+    if (message.trim().length < 10) {
+      toast({
+        title: "Message too short",
+        description: "Please provide at least 10 characters of detail.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await apiRequest("POST", "/api/feedback", {
+        category,
+        message: message.trim(),
+        allowFollowUp,
+      });
+      onOpenChange(false);
+      reset();
+      toast({ title: "Feedback sent", description: "Thank you! We read every submission." });
+    } catch {
+      toast({
+        title: "Failed to send feedback",
+        description: "Please try again in a moment.",
+        variant: "destructive",
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <FeedbackDialogInner
+      open={openProp}
+      onOpenChange={(v) => {
+        onOpenChange(v);
+        if (!v) reset();
+      }}
+      category={category}
+      onCategoryChange={setCategory}
+      message={message}
+      onMessageChange={setMessage}
+      allowFollowUp={allowFollowUp}
+      onAllowFollowUpChange={setAllowFollowUp}
+      submitting={submitting}
+      onSubmit={handleSubmit}
+    />
+  );
+}
+
+function FeedbackDialogInner({
   open,
   onOpenChange,
   category,

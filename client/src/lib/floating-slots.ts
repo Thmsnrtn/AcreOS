@@ -25,7 +25,7 @@ export const FLOATING_SLOT = {
   fab: "fixed bottom-[88px] md:bottom-4 right-4 md:right-16 z-50 safe-area-bottom",
   conversation: "fixed bottom-[160px] md:bottom-24 right-4 md:right-16 z-[49] safe-area-bottom",
   help: "fixed bottom-[232px] md:bottom-[176px] right-4 md:right-16 z-[48] safe-area-bottom",
-  feedback: "fixed bottom-[304px] md:bottom-[248px] right-4 md:right-16 z-[47] safe-area-bottom",
+  // feedback slot retired — feedback now lives inside the help sheet
 
   // Top-right (notifications, chrome)
   notificationsTop: "fixed top-4 right-4 z-40",

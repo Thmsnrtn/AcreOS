@@ -89,10 +89,11 @@ export function NotificationBanner() {
 
   return (
     <>
-      {/* Toast Banner */}
+      {/* Toast Banner — stacked below the permanent bell so both are
+          visible when a live notification arrives. */}
       {showBanner && latestNotif && (
         <div className={cn(
-          "fixed top-4 right-4 z-50 max-w-sm",
+          "fixed top-16 right-4 md:right-16 z-50 max-w-sm",
           "bg-card border shadow-lg rounded-lg p-4",
           "animate-in slide-in-from-top-2 fade-in duration-300",
           latestNotif.priority <= 2 && "border-red-300 dark:border-red-800",
@@ -122,13 +123,17 @@ export function NotificationBanner() {
         </div>
       )}
 
-      {/* Notification Bell (fixed bottom-right, above FAB) */}
-      <div className="fixed bottom-20 right-4 z-40 md:bottom-4 md:right-20">
+      {/* Notification Bell — top-right, consistent with the banner.
+          Previously was at bottom-right colliding with the dock; now
+          lives in the top-right (alongside the transient banner) where
+          notifications conventionally live in macOS/iOS. */}
+      <div className="fixed top-4 right-4 md:right-16 z-40">
         <Button
           variant="outline"
           size="sm"
           className="relative rounded-full w-10 h-10 p-0 shadow-md bg-background"
           onClick={() => setShowTray(!showTray)}
+          aria-label="Notifications"
         >
           <Bell className="w-4 h-4" />
           {unreadCount > 0 && (
@@ -139,9 +144,9 @@ export function NotificationBanner() {
         </Button>
       </div>
 
-      {/* Notification Tray */}
+      {/* Notification Tray — drops down from the bell */}
       {showTray && (
-        <div className="fixed bottom-32 right-4 z-50 md:bottom-16 md:right-20 w-80 max-h-96 bg-card border shadow-xl rounded-lg overflow-hidden">
+        <div className="fixed top-16 right-4 md:right-16 z-50 w-80 max-h-96 bg-card border shadow-xl rounded-lg overflow-hidden">
           <div className="flex items-center justify-between p-3 border-b">
             <p className="font-medium text-sm">Notifications</p>
             <div className="flex items-center gap-2">

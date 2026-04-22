@@ -916,12 +916,12 @@ function AppContent() {
       {/* Floating dock — canonical slots, no overlaps (see lib/floating-slots.ts):
           slot 0 (bottom-4):    primary FAB  — new lead/property/deal/etc
           slot 1 (bottom-24):   conversation tray — chat with agents
-          slot 2 (bottom-176):  help
-          slot 3 (bottom-248):  feedback (auth only) */}
+          slot 2 (bottom-176):  help (also hosts feedback)
+          Feedback was slot 3 until the consolidation pass — now it
+          lives inside the help sheet + settings + command palette. */}
       {user && <FloatingActionButton />}
       {user && <ConversationTray />}
       {user && <FloatingHelpButton />}
-      {user && <FeedbackButton />}
       {user && <CommandPalette />}
       {/* Founder-specific ⌘⇧K palette — searches decisions, agents, letters, proposals */}
       <FounderCommandPaletteProvider>{null}</FounderCommandPaletteProvider>

@@ -247,15 +247,28 @@ export function OnboardingWizard() {
   useEffect(() => {
     if (!orgLoading && organization && onboardingStatus) {
       const localState = getLocalState();
-      
+
       if (!onboardingStatus.completed) {
         if (localState?.dismissed && localState?.dontShowAgain) {
           return;
         }
-        
+
+        // Once-per-session modal. The full wizard is an interruption;
+        // auto-opening it on every page load (which the old behavior
+        // did) is invasive. Show it at most once per browser tab.
+        // After dismissal, users see a subtle banner on /today with
+        // a "Finish setup" link.
+        const sessionFlag = "acreos.onboarding.session_shown";
+        if (typeof window !== "undefined" && sessionStorage.getItem(sessionFlag)) {
+          return;
+        }
+        if (typeof window !== "undefined") {
+          sessionStorage.setItem(sessionFlag, "1");
+        }
+
         setOpen(true);
         setCurrentStep(localState?.currentStep ?? onboardingStatus.currentStep);
-        
+
         if (onboardingStatus.data.businessType) {
           setBusinessType(onboardingStatus.data.businessType);
         }

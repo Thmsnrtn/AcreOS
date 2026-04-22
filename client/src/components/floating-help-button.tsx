@@ -1,12 +1,15 @@
 import { useState, useEffect } from "react";
-import { HelpCircle } from "lucide-react";
+import { Link } from "wouter";
+import { HelpCircle, MessageSquarePlus, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { HelpPanel } from "@/components/help/HelpPanel";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { FeedbackDialog } from "@/components/feedback-button";
 
 export function FloatingHelpButton() {
   const [isOpen, setIsOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
 
   // Handle Cmd+? (or Ctrl+? on Windows) to open help
   useEffect(() => {
@@ -50,11 +53,43 @@ export function FloatingHelpButton() {
               Help
             </SheetTitle>
           </SheetHeader>
-          <div className="mt-6">
+          <div className="mt-6 space-y-6">
             <HelpPanel />
+
+            {/* Help surface consolidation: feedback is now inside the
+                help sheet (one discovery path for support-adjacent
+                actions), with a link to the full /help center below. */}
+            <div className="border-t pt-4 space-y-2">
+              <Button
+                variant="outline"
+                className="w-full justify-start"
+                onClick={() => {
+                  setIsOpen(false);
+                  setFeedbackOpen(true);
+                }}
+                data-testid="button-help-feedback"
+              >
+                <MessageSquarePlus className="w-4 h-4 mr-2" />
+                Send feedback
+              </Button>
+              <Button
+                variant="ghost"
+                className="w-full justify-start"
+                asChild
+              >
+                <Link href="/help" onClick={() => setIsOpen(false)}>
+                  <ExternalLink className="w-4 h-4 mr-2" />
+                  Open full help center
+                </Link>
+              </Button>
+            </div>
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Feedback dialog — reused from FeedbackButton component so
+          the submission form stays DRY. */}
+      <FeedbackDialog open={feedbackOpen} onOpenChange={setFeedbackOpen} />
     </>
   );
 }

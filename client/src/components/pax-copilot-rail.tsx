@@ -270,6 +270,19 @@ export function PaxCopilotRail() {
   const pageMeta = useMemo(() => getPageMeta(location, brandName), [location, brandName]);
   const PageIcon = pageMeta.icon;
 
+  // The rail is a desktop ambient surface. On mobile it would cover
+  // almost the entire viewport (360px rail on a 390px phone), so we
+  // hide it there entirely. Mobile users reach chat via /ai, the
+  // conversation tray button, or the command palette.
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 767px)");
+    const update = () => setIsMobileViewport(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+
   // Chat state
   const [messages, setMessages] = useState<RailMessage[]>([]);
   const [inputValue, setInputValue] = useState("");
@@ -962,6 +975,12 @@ export function PaxCopilotRail() {
   };
 
   // ── Render ───────────────────────────────────────────────────────────────
+
+  // Mobile: rail is hidden. 360px of 390px phone screen isn't a rail,
+  // it's a takeover. Mobile users get chat via /ai, the conversation
+  // tray button in the dock, and the command palette search.
+  if (isMobileViewport) return null;
+
   return (
     <>
       <div
