@@ -969,3 +969,64 @@ textarea:focus-visible,
     opacity: 1 !important;
   }
 }
+
+/* Print stylesheet — letters, summaries, monthly narrative should print
+   as clean documents. Hide app chrome, switch to serif prose width,
+   kill shadows/gradients so toner isn't wasted. Roadmap #53. */
+@media print {
+  @page {
+    margin: 0.75in;
+  }
+  html, body {
+    background: white !important;
+    color: black !important;
+    font-size: 11pt;
+  }
+  nav,
+  aside,
+  .pax-rail,
+  [data-pax-rail],
+  .sidebar,
+  [data-sidebar],
+  [data-print-hide],
+  .floating-dock,
+  [data-testid="mobile-bottom-nav"],
+  [data-testid="command-palette"],
+  button,
+  a[role="button"] {
+    display: none !important;
+  }
+  main,
+  [role="main"],
+  .page-shell {
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  /* Show URLs after links so a printed page is still usable */
+  a[href^="http"]::after {
+    content: " (" attr(href) ")";
+    font-size: 9pt;
+    color: #555;
+  }
+  /* Drop decorative effects that waste toner or render badly */
+  * {
+    box-shadow: none !important;
+    text-shadow: none !important;
+    background-image: none !important;
+  }
+  h1, h2, h3 {
+    page-break-after: avoid;
+  }
+  p, li {
+    orphans: 3;
+    widows: 3;
+  }
+  /* Expand max-w-prose / narrative bodies to full width for print */
+  .max-w-prose,
+  .max-w-2xl,
+  .max-w-3xl,
+  .max-w-4xl {
+    max-width: 100% !important;
+  }
+}
