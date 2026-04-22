@@ -12,6 +12,7 @@ import {
   Mail,
   Inbox,
   GitBranch,
+  GitMerge,
   Calculator,
   Crown,
   Home,
@@ -301,6 +302,7 @@ const NAV_MODULES: NavModule[] = [
     description: "Contacts, deals, and property management",
     children: [
       { label: "Leads", icon: Users, href: "/leads", description: "Manage your leads and sellers" },
+      { label: "Dedupe", icon: GitMerge, href: "/leads/dedupe", description: "Find and merge duplicate leads" },
       { label: "Skip Tracing", icon: Search, href: "/skip-tracing", description: "Find owner contact info" },
       { label: "Properties", icon: Map, href: "/properties", description: "Properties you own or evaluate" },
       { label: "Portfolio Map", icon: MapPin, href: "/maps", description: "Interactive portfolio mapping" },

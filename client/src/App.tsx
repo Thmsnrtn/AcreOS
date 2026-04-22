@@ -217,6 +217,7 @@ const FounderPromptEvolutionsPage = React.lazy(() => import("@/pages/founder-pro
 const FounderPromptHistoryPage = React.lazy(() => import("@/pages/founder-prompt-history"));
 const SignDocumentPage = React.lazy(() => import("@/pages/sign-document"));
 const OfferBatchesPage = React.lazy(() => import("@/pages/offer-batches"));
+const LeadsDedupePage = React.lazy(() => import("@/pages/leads-dedupe"));
 const FounderStrategyPage = React.lazy(() => import("@/pages/founder-strategy"));
 const FounderTrendsPage = React.lazy(() => import("@/pages/founder-trends"));
 const MyLetterPage = React.lazy(() => import("@/pages/my-letter"));
@@ -372,6 +373,9 @@ function Router() {
       </Route>
       <Route path="/leads">
         {() => <ProtectedRoute component={LeadsPage} />}
+      </Route>
+      <Route path="/leads/dedupe">
+        {() => <ProtectedRoute component={LeadsDedupePage} />}
       </Route>
       <Route path="/properties">
         {() => <ProtectedRoute component={PropertiesPage} />}

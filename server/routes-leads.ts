@@ -249,6 +249,20 @@ export function registerLeadRoutes(app: Express): void {
     res.json(lead);
   });
   
+  // Batch dedupe scan — find every cluster of likely-duplicate leads
+  // across the org. Result sorted by cluster size so operators work
+  // highest-leverage merges first. Used by /leads/dedupe UI.
+  api.get("/api/leads/duplicate-clusters", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { findDuplicateClusters } = await import("./services/leadDedupeScanner");
+      const clusters = await findDuplicateClusters(org.id);
+      res.json({ clusters });
+    } catch (err: any) {
+      Errors.internal(res, err);
+    }
+  });
+
   // Check for duplicate leads before creating
   api.post("/api/leads/check-duplicates", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
