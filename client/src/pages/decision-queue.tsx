@@ -11,7 +11,8 @@ import {
   Clock, PhoneCall, CheckCircle2, XCircle,
   ChevronRight, CheckCheck, Loader2, Sparkles, Send,
 } from "lucide-react";
-import { formatDistanceToNow, subDays } from "date-fns";
+import { subDays } from "date-fns";
+import { relative } from "@/lib/format";
 
 interface Lead {
   id: number;
@@ -239,7 +240,7 @@ export default function DecisionQueuePage() {
               {stalledLeads.map(lead => {
                 const name = [lead.firstName, lead.lastName].filter(Boolean).join(" ") || `Lead #${lead.id}`;
                 const lastContact = lead.lastContactedAt
-                  ? `Last contact ${formatDistanceToNow(new Date(lead.lastContactedAt), { addSuffix: true })}`
+                  ? `Last contact ${relative(lead.lastContactedAt)}`
                   : "Never contacted";
                 const paxMsg = `I have a stalled lead named ${name}${lead.propertyAddress ? ` at ${lead.propertyAddress}` : ''}. ${lastContact}. What should I do to re-engage this seller?`;
                 return (
@@ -296,7 +297,7 @@ export default function DecisionQueuePage() {
                   ? `$${parseFloat(deal.offerAmount).toLocaleString()}`
                   : 'unknown amount';
                 const sentWhen = deal.offerDate
-                  ? formatDistanceToNow(new Date(deal.offerDate), { addSuffix: true })
+                  ? relative(deal.offerDate)
                   : 'recently';
                 const paxMsg = `Deal #${deal.id} has had an offer of ${offerAmt} sitting with no response since ${sentWhen}. Should I follow up, revise the offer, or walk away?`;
                 return (
@@ -310,7 +311,7 @@ export default function DecisionQueuePage() {
                           </p>
                         )}
                         <p className="text-xs text-orange-500 mt-0.5">
-                          Sent {formatDistanceToNow(new Date(deal.offerDate!), { addSuffix: true })}
+                          Sent {relative(deal.offerDate)}
                         </p>
                       </div>
                       <div className="flex gap-2 shrink-0 flex-wrap justify-end">
@@ -366,7 +367,7 @@ export default function DecisionQueuePage() {
                 };
                 const nextStage = stageMap[deal.status];
                 const stalledWhen = deal.updatedAt
-                  ? formatDistanceToNow(new Date(deal.updatedAt), { addSuffix: true })
+                  ? relative(deal.updatedAt)
                   : '';
                 const paxMsg = `Deal #${deal.id} is stuck in the "${deal.status.replace(/_/g, ' ')}" stage${stalledWhen ? `, last updated ${stalledWhen}` : ''}. What are the best next steps to move this forward?`;
                 return (
@@ -379,7 +380,7 @@ export default function DecisionQueuePage() {
                         </p>
                         {deal.updatedAt && (
                           <p className="text-xs text-yellow-600 mt-0.5">
-                            Stalled {formatDistanceToNow(new Date(deal.updatedAt), { addSuffix: true })}
+                            Stalled {relative(deal.updatedAt)}
                           </p>
                         )}
                       </div>
