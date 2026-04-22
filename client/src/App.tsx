@@ -216,6 +216,7 @@ const FounderToolsPage = React.lazy(() => import("@/pages/founder-tools"));
 const FounderPromptEvolutionsPage = React.lazy(() => import("@/pages/founder-prompt-evolutions"));
 const FounderPromptHistoryPage = React.lazy(() => import("@/pages/founder-prompt-history"));
 const SignDocumentPage = React.lazy(() => import("@/pages/sign-document"));
+const OfferBatchesPage = React.lazy(() => import("@/pages/offer-batches"));
 const FounderStrategyPage = React.lazy(() => import("@/pages/founder-strategy"));
 const FounderTrendsPage = React.lazy(() => import("@/pages/founder-trends"));
 const MyLetterPage = React.lazy(() => import("@/pages/my-letter"));
@@ -422,6 +423,9 @@ function Router() {
       </Route>
       <Route path="/offers">
         {() => <ProtectedRoute component={OffersPage} />}
+      </Route>
+      <Route path="/offers/batches">
+        {() => <ProtectedRoute component={OfferBatchesPage} />}
       </Route>
       <Route path="/listings">
         {() => <ProtectedRoute component={ListingsPage} />}
