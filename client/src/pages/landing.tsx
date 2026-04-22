@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { AcreosLogo } from "@/components/acreos-logo";
+import { ThemeToggle } from "@/components/theme-toggle";
 import {
   MapPin,
   TrendingUp,
@@ -176,6 +177,7 @@ export default function LandingPage() {
             <Button variant="ghost" size="sm" asChild className="hidden sm:inline-flex">
               <Link href="/pricing">Pricing</Link>
             </Button>
+            <ThemeToggle />
             <Button variant="ghost" size="sm" asChild>
               <Link href="/auth">Sign in</Link>
             </Button>

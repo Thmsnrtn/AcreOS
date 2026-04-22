@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Check, X, ArrowLeft } from "lucide-react";
 import { AcreosLogo } from "@/components/acreos-logo";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 const TIERS = [
   {
@@ -102,9 +103,12 @@ export default function PricingPage() {
             <ArrowLeft className="h-4 w-4" />
             <AcreosLogo size={30} />
           </Link>
-          <Button size="sm" asChild>
-            <Link href="/auth?mode=register">Get started</Link>
-          </Button>
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+            <Button size="sm" asChild>
+              <Link href="/auth?mode=register">Get started</Link>
+            </Button>
+          </div>
         </div>
       </nav>
 
