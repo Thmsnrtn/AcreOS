@@ -354,12 +354,7 @@ Respond with only the category name or "none".`,
         }
       } catch (_) { /* continue without voice */ }
 
-      const response = await openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [
-          {
-            role: "system",
-            content: `You are an expert land deal negotiator helping craft responses to seller objections.
+      const systemPrompt = `You are an expert land deal negotiator helping craft responses to seller objections.
 Strategy to use: ${selectedStrategy}
 Approach: ${strategyPrompt}
 
@@ -367,23 +362,36 @@ Keep responses:
 - Professional and respectful
 - Concise (2-3 sentences max)
 - Focused on moving the deal forward
-- Land deal specific when relevant${voiceBlock}`,
-          },
-          {
-            role: "user",
-            content: `Context:
+- Land deal specific when relevant${voiceBlock}`;
+      const userPrompt = `Context:
 ${context}
 
 Seller's objection (${objection.category}): "${objection.text}"
 
-Generate a response using the ${selectedStrategy} strategy.`,
-          },
-        ],
-        max_tokens: 200,
-        temperature: 0.7,
-      });
+Generate a response using the ${selectedStrategy} strategy.`;
 
-      const generatedResponse = response.choices[0]?.message?.content || this.getFallbackResponse(objection.category, selectedStrategy);
+      const { tracedLlmCall } = await import("./tracedLlmCall");
+      const { response, content } = await tracedLlmCall({
+        agentCodename: "pax",
+        purpose: "negotiation_objection_response",
+        organizationId: session.organizationId,
+        decisionId: session.id,
+        model: "gpt-4o",
+        systemPrompt,
+        userPrompt,
+        metadata: { strategy: selectedStrategy, category: objection.category },
+        call: () => openai.chat.completions.create({
+          model: "gpt-4o",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+          max_tokens: 200,
+          temperature: 0.7,
+        }),
+      });
+      void response; // trace consumes it; content is what we use
+      const generatedResponse = content || this.getFallbackResponse(objection.category, selectedStrategy);
 
       const suggestedResponses = (session.suggestedResponses as Array<{
         id: string;

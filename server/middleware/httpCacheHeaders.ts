@@ -1,35 +1,21 @@
 /**
  * HTTP Cache-Control headers for GET /api/ responses.
  *
- * Navigation-heavy SPAs repeatedly hit the same read endpoints as the
- * user moves between pages (/today → /leads → back to /today). Without
- * proper Cache-Control, every navigation triggers a fresh round-trip,
- * DB query, and serialization — even for data that hasn't changed.
+ * Uses `on-headers` (already a transitive dep via `compression`) to run
+ * right before the headers flush to the socket — the only reliable
+ * moment to decide based on final status code. Earlier attempts that
+ * overrode res.send / res.json / res.writeHead were silently bypassed
+ * by downstream middleware (compression wraps res.end, etc.).
  *
- * This middleware adds private, short-TTL cache headers to GET /api/
- * responses so the browser (and the React Query cache mechanics)
- * serve cached responses instantly when the user navigates back within
- * the TTL window. Mutation responses are never cached.
- *
- * Rules:
- *   - GET /api/auth/*              → max-age=30, no-cache on logout
- *   - GET /api/organization        → max-age=60
- *   - GET /api/feature-flags       → max-age=300
- *   - GET /api/white-label/config  → max-age=300
- *   - GET /api/intelligence/*      → max-age=120
- *   - GET /api/dashboard/*         → max-age=60
- *   - GET /api/leads|properties|deals|notes → max-age=30 (list views)
- *   - GET /api/status              → max-age=30 (public)
- *   - Everything else              → no explicit caching (safer default)
- *
- * All responses use `private` (no CDN caching) because bodies can
- * include org-specific data. stale-while-revalidate gives the browser
- * permission to serve the old response while fetching a fresh one in
- * the background — the user sees instant results, the data refreshes
- * silently.
+ * All responses use `private` (no CDN caching) since bodies can include
+ * org-specific data. stale-while-revalidate gives the browser permission
+ * to serve the old response while refreshing in the background — the
+ * user sees instant results, the data updates silently.
  */
 
 import type { Request, Response, NextFunction } from "express";
+// @ts-ignore — transitive dep via `compression`, no types
+import onHeaders from "on-headers";
 
 interface CacheRule {
   pattern: RegExp;
@@ -58,6 +44,7 @@ const RULES: CacheRule[] = [
   { pattern: /^\/auth\/user(\/|\?|$)/, maxAge: 30, swr: 120 },
   { pattern: /^\/white-label\//, maxAge: 300, swr: 900 },
   { pattern: /^\/feature-flags(\/|\?|$)/, maxAge: 300, swr: 900 },
+  { pattern: /^\/config\/features(\/|\?|$)/, maxAge: 300, swr: 900 },
   { pattern: /^\/intelligence\//, maxAge: 120, swr: 300 },
 
   // Long-TTL — truly static-ish
@@ -67,36 +54,25 @@ const RULES: CacheRule[] = [
 ];
 
 export function httpCacheHeaders(req: Request, res: Response, next: NextFunction): void {
-  // Only apply to safe-read GETs. Mutations, uploads, webhooks, etc. skip.
-  if (req.method !== "GET") {
-    next();
-    return;
-  }
+  if (req.method !== "GET") return next();
 
   const match = RULES.find((r) => r.pattern.test(req.path));
-  if (!match) {
-    next();
-    return;
-  }
+  if (!match) return next();
 
-  // Hook into writeHead — fires just before headers flush. That's the
-  // last moment we can set a header and have it land on the response.
-  // Earlier attempts overriding res.send / res.json were silently
-  // bypassed because downstream middleware (compression, etc.) can
-  // replace res.send and never call our wrapped version.
-  const originalWriteHead = res.writeHead.bind(res);
-  (res as any).writeHead = function (...args: any[]) {
-    const statusCode = typeof args[0] === "number" ? args[0] : res.statusCode;
-    // Skip caching on non-2xx.
-    if (statusCode >= 200 && statusCode < 300 && !res.getHeader("Cache-Control")) {
-      const parts = [`private`, `max-age=${match.maxAge}`];
-      if (match.swr) parts.push(`stale-while-revalidate=${match.swr}`);
-      res.setHeader("Cache-Control", parts.join(", "));
-      const existingVary = res.getHeader("Vary");
-      res.setHeader("Vary", existingVary ? `${existingVary}, Cookie` : "Cookie");
-    }
-    return (originalWriteHead as any)(...args);
-  };
+  onHeaders(res, function () {
+    // Skip on non-2xx — don't tell browsers to cache errors.
+    const sc = res.statusCode;
+    if (sc < 200 || sc >= 300) return;
+    // Don't overwrite if a handler already set its own policy.
+    if (res.getHeader("Cache-Control")) return;
+
+    const parts = [`private`, `max-age=${match.maxAge}`];
+    if (match.swr) parts.push(`stale-while-revalidate=${match.swr}`);
+    res.setHeader("Cache-Control", parts.join(", "));
+
+    const existingVary = res.getHeader("Vary");
+    res.setHeader("Vary", existingVary ? `${existingVary}, Cookie` : "Cookie");
+  });
 
   next();
 }
