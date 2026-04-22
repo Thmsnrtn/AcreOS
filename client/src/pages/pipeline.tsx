@@ -19,6 +19,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { ConversionFunnel, type FunnelStage } from "@/components/ui/conversion-funnel";
 import DealsPage from "@/pages/deals";
 
 const LeadsPage = lazy(() => import("@/pages/leads"));
@@ -122,56 +123,14 @@ function PipelineIntelligenceHeader({ leads, deals }: { leads: Lead[]; deals: De
             </div>
           </div>
 
-          {/* Horizontal funnel bars */}
-          <div className="flex items-stretch gap-0.5 h-10">
-            {stageCounts.map((stage, idx) => {
-              const widthPct = totalLeads > 0
-                ? Math.max(8, (stage.count / (totalLeads || 1)) * 100)
-                : 20;
-              const convRate = idx > 0 && stageCounts[idx - 1].count > 0
-                ? Math.round((stage.count / stageCounts[idx - 1].count) * 100)
-                : null;
-              return (
-                <Tooltip key={stage.key}>
-                  <TooltipTrigger asChild>
-                    <div
-                      className="flex items-center justify-center rounded-sm cursor-default transition-all duration-500 relative group"
-                      style={{
-                        width: `${widthPct}%`,
-                        backgroundColor: stage.color,
-                        opacity: stage.count === 0 ? 0.25 : 1,
-                      }}
-                    >
-                      <span className="text-white text-[10px] font-bold truncate px-1">
-                        {stage.count > 0 ? stage.count : ""}
-                      </span>
-                      {idx < stageCounts.length - 1 && (
-                        <ChevronRight className="absolute -right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground z-10" />
-                      )}
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" className="text-xs">
-                    <div className="font-semibold">{stage.label}</div>
-                    <div>{stage.count} leads</div>
-                    {convRate !== null && (
-                      <div className="text-muted-foreground">{convRate}% conv from prev</div>
-                    )}
-                  </TooltipContent>
-                </Tooltip>
-              );
-            })}
-          </div>
-
-          {/* Stage labels */}
-          <div className="flex items-center mt-1.5 gap-4 flex-wrap">
-            {stageCounts.map((stage) => (
-              <div key={stage.key} className="flex items-center gap-1.5">
-                <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: stage.color }} />
-                <span className="text-[10px] text-muted-foreground">{stage.label}</span>
-                <span className="text-[10px] font-semibold">{stage.count}</span>
-              </div>
-            ))}
-          </div>
+          <ConversionFunnel
+            stages={stageCounts.map<FunnelStage>((s) => ({
+              key: s.key,
+              label: s.label,
+              count: s.count,
+              color: s.color,
+            }))}
+          />
         </CardContent>
       </Card>
 
