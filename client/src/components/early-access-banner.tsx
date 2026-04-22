@@ -1,8 +1,6 @@
 import { useState } from "react";
 import { X, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
 import { FeedbackDialog } from "@/components/feedback-button";
 
 const DISMISS_KEY = "acreos_ea_banner_dismissed_v1";
@@ -16,60 +14,7 @@ export function EarlyAccessBanner() {
     }
   });
 
-  // Feedback dialog state
   const [feedbackOpen, setFeedbackOpen] = useState(false);
-  const [category, setCategory] = useState<string>("");
-  const [message, setMessage] = useState("");
-  const [allowFollowUp, setAllowFollowUp] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const { toast } = useToast();
-
-  function resetForm() {
-    setCategory("");
-    setMessage("");
-    setAllowFollowUp(true);
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-
-    if (!category) {
-      toast({ title: "Please select a category", variant: "destructive" });
-      return;
-    }
-    if (message.trim().length < 10) {
-      toast({
-        title: "Message too short",
-        description: "Please provide at least 10 characters of detail.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      await apiRequest("POST", "/api/feedback", {
-        category,
-        message: message.trim(),
-        allowFollowUp,
-      });
-
-      setFeedbackOpen(false);
-      resetForm();
-      toast({
-        title: "Feedback sent",
-        description: "Thank you! We read every submission.",
-      });
-    } catch {
-      toast({
-        title: "Failed to send feedback",
-        description: "Please try again in a moment.",
-        variant: "destructive",
-      });
-    } finally {
-      setSubmitting(false);
-    }
-  }
 
   function handleDismiss() {
     setDismissed(true);
@@ -109,21 +54,7 @@ export function EarlyAccessBanner() {
         </Button>
       </div>
 
-      <FeedbackDialog
-        open={feedbackOpen}
-        onOpenChange={(v) => {
-          setFeedbackOpen(v);
-          if (!v) resetForm();
-        }}
-        category={category}
-        onCategoryChange={setCategory}
-        message={message}
-        onMessageChange={setMessage}
-        allowFollowUp={allowFollowUp}
-        onAllowFollowUpChange={setAllowFollowUp}
-        submitting={submitting}
-        onSubmit={handleSubmit}
-      />
+      <FeedbackDialog open={feedbackOpen} onOpenChange={setFeedbackOpen} />
     </>
   );
 }
