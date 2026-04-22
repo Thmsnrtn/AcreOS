@@ -236,18 +236,9 @@ export default function DocumentsPage() {
     },
   });
 
-  const sendForSignatureMutation = useMutation({
-    mutationFn: async (id: number) => {
-      return apiRequest("POST", `/api/generated-documents/${id}/send-for-signature`, {});
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/generated-documents"] });
-      toast({ title: "Document sent for signature", description: "E-signature request has been sent." });
-    },
-    onError: (error: any) => {
-      toast({ title: "Failed to send for signature", description: error.message, variant: "destructive" });
-    },
-  });
+  // The legacy sendForSignatureMutation hit /send-for-signature which
+  // didn't collect signer info. Replaced by <RequestSignaturesDialog />
+  // which calls /request-signature (native) with explicit signers.
 
   const createPackageMutation = useMutation({
     mutationFn: async (data: { name: string; description?: string; dealId?: number; propertyId?: number; documents: { templateId: number; order: number; status: string }[] }) => {
