@@ -937,8 +937,20 @@ textarea:focus-visible,
   opacity: 1;
 }
 
-/* Reduced motion override */
+/* Reduced motion override — honor the system preference globally.
+   The specific class list kills our custom keyframes; the wildcard
+   clause below collapses every other transition/animation (framer-
+   motion variants, tailwind `transition-*`, etc.) so vestibular-
+   sensitive users get a fully still interface. */
 @media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
   .sidebar-spring,
   .content-spring,
   .page-enter,
