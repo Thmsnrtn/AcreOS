@@ -1,7 +1,7 @@
 {
-  "name": "AcreOS - Real Estate Platform",
+  "name": "AcreOS — Land Investor OS",
   "short_name": "AcreOS",
-  "description": "Complete real estate management - CRM, deals, financing, and marketing automation",
+  "description": "The AI-powered platform for Land Investors — find parcels, run campaigns, close deals, manage portfolios.",
   "theme_color": "#8B4513",
   "background_color": "#F5E6D3",
   "display": "standalone",
@@ -17,24 +17,18 @@
       "purpose": "any"
     },
     {
-      "src": "/pwa-512x512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/pwa-maskable-512x512.png",
-      "sizes": "512x512",
+      "src": "/pwa-192x192.png",
+      "sizes": "192x192",
       "type": "image/png",
       "purpose": "maskable"
     }
   ],
   "shortcuts": [
     {
-      "name": "Dashboard",
-      "short_name": "Home",
-      "description": "View your dashboard",
-      "url": "/",
+      "name": "Today",
+      "short_name": "Today",
+      "description": "Today's priorities and business pulse",
+      "url": "/today",
       "icons": [{ "src": "/pwa-192x192.png", "sizes": "192x192" }]
     },
     {
@@ -54,7 +48,7 @@
     {
       "name": "Deals",
       "short_name": "Deals",
-      "description": "Manage deal pipeline",
+      "description": "Manage your deal pipeline",
       "url": "/deals",
       "icons": [{ "src": "/pwa-192x192.png", "sizes": "192x192" }]
     }
