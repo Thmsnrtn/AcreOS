@@ -1104,6 +1104,13 @@ export async function registerRoutes(
   // though the router itself is open.
   app.use('/api/docs', apiDocsRouter);
 
+  // Public e-sign endpoints — external signers (no AcreOS account)
+  // authenticate via an HMAC token in the URL, not Clerk. Must register
+  // BEFORE the app.use('/api', isAuthenticated, …) catch-all below, or
+  // the catch-all 401s them. See server/services/signingTokens.ts.
+  const { registerPublicSignRoutes } = await import("./routes-public-sign");
+  registerPublicSignRoutes(app);
+
   // EPIC Services: Seller Motivation, County Opportunity, Title Chain, Investor Network, Financial OS, Developer API
   app.use('/api', isAuthenticated, getOrCreateOrg, epicServicesRouter);
 
