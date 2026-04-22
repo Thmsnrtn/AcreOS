@@ -10,6 +10,7 @@ import {
 import { voiceLearningService, type VoiceProfile } from "./voiceLearning";
 import { logger } from "../utils/logger";
 import { validateAtlasOutput, AtlasOutputType } from "../ai/validators";
+import { tracedLlmCall } from "./tracedLlmCall";
 
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
@@ -213,15 +214,24 @@ Provide exactly 3 offer strategies as JSON with this structure:
   "marketTrend": "stable" | "increasing" | "decreasing"
 }`;
 
-    const response = await openai.chat.completions.create({
+    const { content } = await tracedLlmCall({
+      agentCodename: "atlas",
+      purpose: "offer_suggestions",
+      organizationId: null,
+      decisionId: property.id ?? null,
       model: "gpt-4o",
-      messages: [{ role: "user", content: prompt }],
-      response_format: { type: "json_object" },
-      max_completion_tokens: 1500,
+      userPrompt: prompt,
+      metadata: { propertyId: property.id, sizeAcres: property.sizeAcres },
+      call: () =>
+        openai.chat.completions.create({
+          model: "gpt-4o",
+          messages: [{ role: "user", content: prompt }],
+          response_format: { type: "json_object" },
+          max_completion_tokens: 1500,
+        }),
     });
 
-    const content = response.choices[0]?.message?.content || "{}";
-    const parsed = JSON.parse(content);
+    const parsed = JSON.parse(content || "{}");
 
     // Validate each LLM-generated offer suggestion
     const suggestions: OfferSuggestion[] = parsed.suggestions || [
@@ -387,15 +397,23 @@ The letter should:
 4. Include a call to action
 5. Close professionally with buyer contact information`;
 
-    const response = await openai.chat.completions.create({
+    const { content } = await tracedLlmCall({
+      agentCodename: "atlas",
+      purpose: "offer_letter",
+      organizationId: request.organizationId ?? null,
       model: "gpt-4o",
-      messages: [{ role: "user", content: prompt }],
-      response_format: { type: "json_object" },
-      max_completion_tokens: 2000,
+      userPrompt: prompt,
+      metadata: { tone: request.tone, county: request.property.county, state: request.property.state },
+      call: () =>
+        openai.chat.completions.create({
+          model: "gpt-4o",
+          messages: [{ role: "user", content: prompt }],
+          response_format: { type: "json_object" },
+          max_completion_tokens: 2000,
+        }),
     });
 
-    const content = response.choices[0]?.message?.content || "{}";
-    const parsed = JSON.parse(content);
+    const parsed = JSON.parse(content || "{}");
 
     return {
       success: true,
