@@ -19,10 +19,13 @@
 
 export const FLOATING_SLOT = {
   // Bottom-right stack (primary user actions)
-  fab: "fixed bottom-[88px] md:bottom-4 right-4 z-50 safe-area-bottom",
-  conversation: "fixed bottom-[160px] md:bottom-24 right-4 z-[49] safe-area-bottom",
-  help: "fixed bottom-[232px] md:bottom-[176px] right-4 z-[48] safe-area-bottom",
-  feedback: "fixed bottom-[304px] md:bottom-[248px] right-4 z-[47] safe-area-bottom",
+  // md:right-16 (64px) clears the 48px PaxCopilotRail that lives
+  // fixed right-0 on desktop. Mobile uses right-4 since the rail
+  // isn't shown there.
+  fab: "fixed bottom-[88px] md:bottom-4 right-4 md:right-16 z-50 safe-area-bottom",
+  conversation: "fixed bottom-[160px] md:bottom-24 right-4 md:right-16 z-[49] safe-area-bottom",
+  help: "fixed bottom-[232px] md:bottom-[176px] right-4 md:right-16 z-[48] safe-area-bottom",
+  feedback: "fixed bottom-[304px] md:bottom-[248px] right-4 md:right-16 z-[47] safe-area-bottom",
 
   // Top-right (notifications, chrome)
   notificationsTop: "fixed top-4 right-4 z-40",
