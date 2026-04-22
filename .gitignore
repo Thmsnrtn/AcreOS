@@ -50,3 +50,7 @@ Thumbs.db
 .claude/
 coverage/
 .playwright-mcp/
+
+# Cycle handoff scratch notes (may contain secrets for test rigs)
+tests/e2e-intelligent/runs/_RESUME-HERE.md
+tests/e2e-intelligent/runs/**/_RESUME-HERE.md
