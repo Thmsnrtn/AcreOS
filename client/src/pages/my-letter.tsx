@@ -118,7 +118,7 @@ export default function MyLetterPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/my-letter/current"] });
       qc.invalidateQueries({ queryKey: ["/api/my-letter/archive"] });
-      toast({ title: "Letter generated", description: "Refresh to read it." });
+      toast({ title: "Letter generated", description: "Your latest brief is ready." });
     },
     onError: (e: Error) => toast({ title: "Couldn't generate", description: e.message, variant: "destructive" }),
   });

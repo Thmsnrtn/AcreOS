@@ -141,7 +141,7 @@ export default function FounderLetterPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/founder/intelligence/letter/current"] });
       qc.invalidateQueries({ queryKey: ["/api/founder/intelligence/letter/archive"] });
-      toast({ title: "Letter generated", description: "Refresh to read the latest." });
+      toast({ title: "Letter generated", description: "Fresh content loaded." });
     },
     onError: (e: Error) => toast({ title: "Generate failed", description: e.message, variant: "destructive" }),
   });

@@ -12,7 +12,7 @@ const TIERS = [
     price: 0,
     yearlyPrice: 0,
     description: "Explore the platform",
-    cta: "Get Started",
+    cta: "Get started",
     highlighted: false,
   },
   {
@@ -105,7 +105,7 @@ export default function PricingPage() {
             <span className="text-lg font-bold">AcreOS</span>
           </Link>
           <Button size="sm" asChild>
-            <Link href="/auth?mode=register">Get Started</Link>
+            <Link href="/auth?mode=register">Get started</Link>
           </Button>
         </div>
       </nav>
@@ -257,7 +257,11 @@ export default function PricingPage() {
           <span>&copy; {new Date().getFullYear()} AcreOS. All rights reserved.</span>
           <div className="flex gap-4">
             <Link href="/" className="hover:text-foreground">Home</Link>
-            <Link href="/auth" className="hover:text-foreground">Sign In</Link>
+            <Link href="/status" className="hover:text-foreground">Status</Link>
+            <Link href="/changelog" className="hover:text-foreground">Changelog</Link>
+            <Link href="/terms" className="hover:text-foreground">Terms</Link>
+            <Link href="/privacy" className="hover:text-foreground">Privacy</Link>
+            <Link href="/auth" className="hover:text-foreground">Sign in</Link>
           </div>
         </div>
       </footer>
