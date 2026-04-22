@@ -689,7 +689,11 @@ function Router() {
         {() => <ProtectedRoute component={ConsciousOrganizationPage} />}
       </Route>
       <Route path="/anticipatory-enterprise">
-        {() => <ProtectedRoute component={AnticipatoryEnterprisePage} />}
+        {/* Exposes internal agent-negotiation codenames (forge_revenue,
+            sophie_support, shield_compliance...). Founder-only to keep
+            the internal agent taxonomy off customer surfaces — customers
+            see one AI brand (Pax), not the dozen under the hood. */}
+        {() => <FounderProtectedRoute component={AnticipatoryEnterprisePage} />}
       </Route>
       <Route path="/real-runtime">
         {() => <ProtectedRoute component={RealRuntimePage} />}

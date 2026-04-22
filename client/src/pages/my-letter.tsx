@@ -1,12 +1,16 @@
 /**
- * MyLetterPage — the customer-facing monthly letter from Sophie.
+ * MyLetterPage — the customer-facing monthly letter from Pax.
  *
  * Customer-side surface mirroring /founder/letter. Each Land Investor
  * gets a personalized monthly brief on their own business — portfolio
- * delta, what worked, what didn't, and Sophie's recommended next step.
+ * delta, what worked, what didn't, and Pax's recommended next step.
  *
  * This is a primary engagement lever, so the page is minimal and
  * focused — one letter, one clear recommended action, an archive.
+ *
+ * Persona note: customers see ONE AI brand — Pax. The founder-side
+ * board (sophie_csm, forge_revenue, etc.) is internal and never
+ * surfaces here.
  */
 
 import { useEffect } from "react";
@@ -195,7 +199,7 @@ export default function MyLetterPage() {
                 <Card className="bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800/40">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm text-emerald-900 dark:text-emerald-200">
-                      Sophie's recommendation
+                      Pax's recommendation
                     </CardTitle>
                   </CardHeader>
                   <CardContent>

@@ -2,8 +2,8 @@
  * Customer Narrative — the per-Land-Investor monthly letter.
  *
  * Mirror of the founder letter, but written for each organization's
- * principal (the Land Investor using AcreOS). Generated in Sophie's
- * voice — the CSM agent who knows their account.
+ * principal (the Land Investor using AcreOS). Generated in Pax's
+ * voice — the customer-facing AI copilot that knows their account.
  *
  * Each letter synthesizes the org's past month:
  *   - Portfolio delta (leads, properties, deals, revenue)
@@ -13,12 +13,17 @@
  *   - One recommended action for next month
  *
  * The letter is the single biggest retention + engagement lever in
- * the product. Instead of a silent CRM, each user hears from Sophie
+ * the product. Instead of a silent CRM, each user hears from Pax
  * monthly with personalized recommendations. Read rate and action-
  * taken rate become first-class metrics.
  *
+ * Persona: customers see ONE AI brand — Pax. The founder-side board
+ * (sophie_csm, forge_revenue, etc.) is an internal taxonomy that
+ * never leaks into customer-facing surfaces. Sophie as a name stays
+ * founder-internal.
+ *
  * Voice rules (enforced by system prompt):
- *   - "Sophie" first-person — never "the AcreOS team"
+ *   - "Pax" first-person — never "the AcreOS team"
  *   - Land Investors (never real estate professionals, users, or clients)
  *   - Plain English, no CRM jargon
  *   - No competitor references
@@ -255,7 +260,7 @@ export async function deliverCustomerLetter(
     subject,
     html,
     text: letter.letterMarkdown,
-    fromName: "Sophie at AcreOS",
+    fromName: "Pax at AcreOS",
     organizationId,
     tags: { type: "customer_monthly_letter", monthKey },
   });
@@ -506,7 +511,7 @@ function buildFallbackLetter(s: CustomerMonthlySummary): string {
   return [
     `# Your ${s.monthLabel} at ${s.organizationName}`,
     "",
-    `Hi — this is Sophie, your account's point of contact at AcreOS.`,
+    `Hi — this is Pax, your AI copilot at AcreOS.`,
     "",
     `## Your month`,
     "",
@@ -550,10 +555,10 @@ function resolveMonth(
   return { key, start, end, label };
 }
 
-const CUSTOMER_LETTER_SYSTEM_PROMPT = `You are Sophie, the AcreOS Customer Success agent writing a monthly letter to a Land Investor about their business.
+const CUSTOMER_LETTER_SYSTEM_PROMPT = `You are Pax, the Land Investor's AI copilot, writing the monthly letter to the Land Investor about their business.
 
 Voice rules (non-negotiable):
-- First-person "I" as Sophie. Never "we" or "the AcreOS team" or "the platform."
+- First-person "I" as Pax. Never "we" or "the AcreOS team" or "the platform."
 - Refer to the reader as a Land Investor. Never "user," "customer," "client," or "real estate professional."
 - Specific over generic. Cite exact numbers. Never "great month" or "keep up the good work."
 - Unflinching when the data is bad. If deals are drying up, say so — and suggest what to do.

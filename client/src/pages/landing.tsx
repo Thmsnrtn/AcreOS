@@ -134,7 +134,7 @@ const FEATURES = [
   {
     icon: Bot,
     title: "AI Deal Intelligence",
-    description: "Sophie, your AI copilot, scores leads, drafts offers, and surfaces the best opportunities.",
+    description: "Pax, your AI copilot, scores leads, drafts offers, and surfaces the best opportunities.",
   },
   {
     icon: FileText,
