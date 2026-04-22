@@ -39,8 +39,17 @@ export default defineConfig({
             '@radix-ui/react-slider',
             '@radix-ui/react-toast',
           ],
+          // Isolate heavy deps so they only download when a page that
+          // needs them is visited (charts on analytics/dashboards, map
+          // on /maps, PDF on document pages, motion on animation-heavy
+          // pages, date-fns once across the app, Clerk on auth pages).
           'vendor-charts': ['recharts'],
           'vendor-map': ['mapbox-gl'],
+          'vendor-motion': ['framer-motion'],
+          'vendor-pdf': ['jspdf'],
+          'vendor-sanitize': ['isomorphic-dompurify'],
+          'vendor-clerk': ['@clerk/react'],
+          'vendor-date': ['date-fns'],
         },
       },
     },
