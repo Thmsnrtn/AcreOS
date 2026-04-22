@@ -402,7 +402,15 @@ export interface ClosingDocumentItem {
   expertTip?: string;
 }
 
-export function generateClosingChecklist(
+/**
+ * Returns a reference checklist of closing documents with expert tips —
+ * purely informational / educational content. Does NOT persist.
+ *
+ * Not to be confused with server/services/closingChecklistGenerator.ts's
+ * generateClosingChecklist() (async, state-specific, persists to the
+ * dealChecklists table). Renamed in 2026-04 to eliminate the name collision.
+ */
+export function getClosingChecklistReference(
   dealType: "cash" | "owner_finance" | "creative",
   hasTitle: boolean = true,
   isRemote: boolean = true
@@ -742,7 +750,7 @@ export async function runPostCloseAutomation(
 export default {
   analyzeChainOfTitle,
   parseScheduleBException,
-  generateClosingChecklist,
+  getClosingChecklistReference,
   checkCountyRecordingStatus,
   runPostCloseAutomation,
 };

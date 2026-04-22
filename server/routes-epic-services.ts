@@ -176,12 +176,12 @@ router.get("/county-opportunity/:state/:county", async (req: Request, res: Respo
 
 router.post("/title-chain/analyze", async (req: Request, res: Response) => {
   try {
-    const { analyzeChainOfTitle, parseScheduleBException, generateClosingChecklist } = await import("./services/titleChainService");
+    const { analyzeChainOfTitle, parseScheduleBException, getClosingChecklistReference } = await import("./services/titleChainService");
     const { events, scheduleBText, dealType = "cash", isRemote = true } = req.body;
 
     const titleChain = analyzeChainOfTitle(events || []);
     const scheduleBExceptions = scheduleBText ? parseScheduleBException(scheduleBText) : [];
-    const closingChecklist = generateClosingChecklist(dealType, true, isRemote);
+    const closingChecklist = getClosingChecklistReference(dealType, true, isRemote);
 
     res.json({ titleChain, scheduleBExceptions, closingChecklist });
   } catch (err: any) {
@@ -191,7 +191,7 @@ router.post("/title-chain/analyze", async (req: Request, res: Response) => {
 
 router.get("/closing-checklist/:dealId", async (req: Request, res: Response) => {
   try {
-    const { generateClosingChecklist } = await import("./services/titleChainService");
+    const { getClosingChecklistReference } = await import("./services/titleChainService");
     const { db } = await import("./db");
     const { deals } = await import("@shared/schema");
     const { eq, and } = await import("drizzle-orm");
@@ -206,7 +206,7 @@ router.get("/closing-checklist/:dealId", async (req: Request, res: Response) => 
     if (!deal) return res.status(404).json({ error: "Deal not found" });
 
     const dealType = (deal as any).dealType || "cash";
-    const checklist = generateClosingChecklist(dealType, true, true);
+    const checklist = getClosingChecklistReference(dealType, true, true);
     res.json({ dealId: deal.id, checklist });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
