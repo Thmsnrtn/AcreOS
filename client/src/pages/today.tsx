@@ -475,7 +475,7 @@ export default function TodayPage() {
               </div>
               <div>
                 <h3 className="font-semibold text-sm">Welcome to AcreOS!</h3>
-                <p className="text-sm text-muted-foreground">Complete a quick setup to personalize your experience for your real estate business.</p>
+                <p className="text-sm text-muted-foreground">Complete a quick setup to personalize AcreOS for your land-investing business.</p>
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">

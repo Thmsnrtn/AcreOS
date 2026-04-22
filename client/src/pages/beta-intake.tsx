@@ -155,7 +155,7 @@ export default function BetaIntakePage() {
           </div>
           <h1 className="text-3xl font-bold">Join the AcreOS Beta</h1>
           <p className="text-muted-foreground max-w-md mx-auto">
-            Get early access to the most powerful real estate platform ever built.
+            Get early access to the AI-powered platform built for Land Investors.
             Limited spots available.
           </p>
         </div>

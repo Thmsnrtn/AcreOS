@@ -287,7 +287,7 @@ const NAV_MODULES: NavModule[] = [
     label: "Dashboard",
     icon: LayoutDashboard,
     href: "/",
-    description: "Overview of your real estate business",
+    description: "Overview of your land-investing business",
   },
   {
     id: "crm",
@@ -613,7 +613,7 @@ export function Sidebar() {
         )}
         {!isCollapsed && (
           <p className="text-xs text-muted-foreground mt-1">
-            Real Estate Investor OS
+            Land Investor OS
           </p>
         )}
       </div>
@@ -891,18 +891,18 @@ export function Sidebar() {
             <NotificationCenter />
           </div>
         </div>
-        <p className="text-xs text-muted-foreground mt-1">Real Estate Platform</p>
+        <p className="text-xs text-muted-foreground mt-1">Land Investor OS</p>
         </div>
       </div>
 
       <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
         {isFounder && (
           <Link
-            href="/founder-dashboard"
+            href="/founder"
             onClick={onNavClick}
             className={cn(
               "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors duration-150 group mb-2 min-h-[44px]",
-              location === "/founder-dashboard" || location === "/founder-home"
+              location === "/founder" || location === "/founder-home"
                 ? "bg-amber-500 text-white shadow-md"
                 : "bg-amber-500/10 text-amber-600 hover:bg-amber-500/20"
             )}
@@ -911,10 +911,10 @@ export function Sidebar() {
             <Crown
               className={cn(
                 "w-5 h-5",
-                location === "/founder-dashboard" || location === "/founder-home" ? "text-white" : "text-amber-500"
+                location === "/founder" || location === "/founder-home" ? "text-white" : "text-amber-500"
               )}
             />
-            <span className="font-medium text-sm">Founder Dashboard</span>
+            <span className="font-medium text-sm">Founder home</span>
           </Link>
         )}
 
