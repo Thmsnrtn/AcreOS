@@ -1,5 +1,6 @@
 import { PageShell } from "@/components/page-shell";
 import { plural } from "@/lib/format";
+import { DealJourney } from "@/components/ui/deal-journey";
 import { PaxContextButton } from "@/components/pax-context-button";
 import { ListPagination, usePagination } from "@/components/list-pagination";
 import { useDeals, useDealsPaginated, useCreateDeal, useUpdateDeal, useDeleteDeal, useSaveDealAnalysis, useBulkStageUpdate, useBulkStageUndo, type BulkStageUpdateResult } from "@/hooks/use-deals";
@@ -990,6 +991,10 @@ function DealCard({ deal, onSelect, isDragging = false, isSelected, onToggleSele
                 </span>
               </div>
             )}
+            {/* Stage progression — dense dot strip fits inside the card */}
+            <div className="mt-3" data-testid={`journey-${deal.id}`}>
+              <DealJourney status={deal.status as any} dense />
+            </div>
           </div>
         </div>
       </CardContent>
@@ -1185,6 +1190,9 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
               <h2 className="text-lg md:text-xl font-bold mt-2 line-clamp-2" data-testid="text-deal-title">
                 {deal.property ? `${deal.property.county}, ${deal.property.state}` : `Deal #${deal.id}`}
               </h2>
+              <div className="mt-3 max-w-md">
+                <DealJourney status={deal.status as any} />
+              </div>
             </div>
             <div className="flex items-center gap-1 flex-shrink-0">
               <Button size="icon" variant="ghost" onClick={onDelete} className="min-h-[44px] min-w-[44px]" aria-label="Delete deal" data-testid="button-delete-deal">
