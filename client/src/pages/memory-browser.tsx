@@ -10,7 +10,7 @@ import {
   Brain, Database, Clock, Tag, Search, ChevronDown, ChevronUp,
   Lightbulb, History, Layers,
 } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { relative } from "@/lib/format";
 import { useCognitiveMemory } from "@/hooks/use-sovereign-dashboard";
 
 function useMemorySearch(query: string, memoryType: string) {
@@ -95,10 +95,10 @@ function MemoryCard({ memory }: { memory: any }) {
               {memory.accessCount != null && <span>Accessed {memory.accessCount}x</span>}
               {memory.decayRate != null && <span>Decay: {(memory.decayRate * 100).toFixed(1)}%/day</span>}
               {memory.createdAt && (
-                <span>Created {formatDistanceToNow(new Date(memory.createdAt), { addSuffix: true })}</span>
+                <span>Created {relative(memory.createdAt)}</span>
               )}
               {memory.lastAccessedAt && (
-                <span>Last accessed {formatDistanceToNow(new Date(memory.lastAccessedAt), { addSuffix: true })}</span>
+                <span>Last accessed {relative(memory.lastAccessedAt)}</span>
               )}
             </div>
           </div>

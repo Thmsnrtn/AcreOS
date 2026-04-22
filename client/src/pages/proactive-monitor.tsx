@@ -18,7 +18,8 @@ import {
   TrendingDown,
   Eye,
 } from "lucide-react";
-import { format, formatDistanceToNow } from "date-fns";
+import { format } from "date-fns";
+import { relative } from "@/lib/format";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -238,7 +239,7 @@ export default function ProactiveMonitorPage() {
                         </div>
                         <p className="text-sm text-muted-foreground">{alert.message}</p>
                         <p className="text-xs text-muted-foreground mt-1">
-                          {formatDistanceToNow(new Date(alert.createdAt), { addSuffix: true })}
+                          {relative(alert.createdAt)}
                         </p>
                       </div>
                     </div>
@@ -271,7 +272,7 @@ export default function ProactiveMonitorPage() {
                         <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 flex-shrink-0" />
                         <span className="text-sm font-medium truncate">{alert.title}</span>
                         <span className="text-xs text-muted-foreground ml-auto flex-shrink-0">
-                          {alert.resolvedAt ? formatDistanceToNow(new Date(alert.resolvedAt), { addSuffix: true }) : ""}
+                          {alert.resolvedAt ? relative(alert.resolvedAt) : ""}
                         </span>
                       </div>
                     </CardContent>

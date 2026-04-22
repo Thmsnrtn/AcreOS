@@ -28,7 +28,8 @@ import {
   GitBranch,
   Lock,
 } from "lucide-react";
-import { format, formatDistanceToNow } from "date-fns";
+import { format } from "date-fns";
+import { relative } from "@/lib/format";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, Area, AreaChart } from "recharts";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -357,7 +358,7 @@ export default function ModelTrainingPage() {
                         )}
                       </TableCell>
                       <TableCell className="text-muted-foreground text-sm">
-                        {formatDistanceToNow(new Date(p.createdAt), { addSuffix: true })}
+                        {relative(p.createdAt)}
                       </TableCell>
                     </TableRow>
                   ))}

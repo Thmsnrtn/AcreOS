@@ -50,7 +50,8 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { staggerContainer, staggerItem, collapsibleContent } from "@/lib/animations";
-import { format, formatDistanceToNow } from "date-fns";
+import { format } from "date-fns";
+import { relative } from "@/lib/format";
 import { InfoTooltip } from "@/components/info-tooltip";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 
@@ -348,7 +349,7 @@ function DecisionCard({
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs text-muted-foreground">
-                {formatDistanceToNow(new Date(decision.timestamp), { addSuffix: true })}
+                {relative(decision.timestamp)}
               </span>
               <Badge variant="outline" className={`text-xs ${categoryColor(decision.actionType)}`}>
                 {decision.actionType}
@@ -895,9 +896,7 @@ export default function AiObservatory() {
                         <TableRow key={row.id}>
                           <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                             <span title={format(new Date(row.createdAt), "PPpp")}>
-                              {formatDistanceToNow(new Date(row.createdAt), {
-                                addSuffix: true,
-                              })}
+                              {relative(row.createdAt)}
                             </span>
                           </TableCell>
                           <TableCell className="text-xs max-w-[120px] truncate">
@@ -1013,9 +1012,7 @@ export default function AiObservatory() {
                         {p.status}
                       </Badge>
                       <span className="text-xs text-muted-foreground">
-                        {formatDistanceToNow(new Date(p.createdAt), {
-                          addSuffix: true,
-                        })}
+                        {relative(p.createdAt)}
                       </span>
                     </div>
                   </div>

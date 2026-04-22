@@ -36,7 +36,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import { format, formatDistanceToNow } from "date-fns";
+import { format } from "date-fns";
+import { relative } from "@/lib/format";
 import { InspectionChecklist, type ChecklistResults } from "@/components/field-scout/inspection-checklist";
 import { PhotoGallery, type ScoutPhoto } from "@/components/field-scout/photo-gallery";
 import { ScoutReportCard, type FieldScoutVisit } from "@/components/field-scout/scout-report-card";

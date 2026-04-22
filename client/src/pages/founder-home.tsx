@@ -20,7 +20,7 @@ import {
   ShieldCheck, ShieldAlert, ShieldX,
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
-import { formatDistanceToNow } from "date-fns";
+import { relative } from "@/lib/format";
 import { useState } from "react";
 
 // ── Types ────────────────────────────────────────────────────────────
@@ -339,7 +339,7 @@ function AgentCards({ agents }: { agents: AgentHealth[] }) {
   function summary(a: AgentHealth) {
     if (a.status === "error" && a.lastError) return a.lastError;
     if (a.status === "disabled") return "Paused by you";
-    if (a.lastRun) return `Last ran ${formatDistanceToNow(new Date(a.lastRun), { addSuffix: true })}`;
+    if (a.lastRun) return `Last ran ${relative(a.lastRun)}`;
     return "Has not run yet";
   }
 

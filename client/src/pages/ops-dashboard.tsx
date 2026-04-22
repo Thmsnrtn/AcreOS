@@ -8,7 +8,8 @@ import {
   CheckSquare, FileText, UserX, TrendingUp,
   Loader2, AlertCircle, ChevronRight, Clock,
 } from "lucide-react";
-import { formatDistanceToNow, format, isAfter, subDays, addDays } from "date-fns";
+import { format, isAfter, subDays, addDays } from "date-fns";
+import { relative } from "@/lib/format";
 
 interface Task {
   id: number;
@@ -213,7 +214,7 @@ export default function OpsDashboardPage() {
                         <span className="truncate">Deal #{d.id}</span>
                         <Badge variant="outline" className="text-xs shrink-0">
                           <Clock className="w-3 h-3 mr-1" />
-                          {formatDistanceToNow(expires, { addSuffix: true })}
+                          {relative(expires)}
                         </Badge>
                       </li>
                     );
@@ -243,7 +244,7 @@ export default function OpsDashboardPage() {
                       </span>
                       <span className="text-xs text-muted-foreground shrink-0">
                         {l.lastContactedAt
-                          ? formatDistanceToNow(new Date(l.lastContactedAt), { addSuffix: true })
+                          ? relative(l.lastContactedAt)
                           : "never contacted"}
                       </span>
                     </li>

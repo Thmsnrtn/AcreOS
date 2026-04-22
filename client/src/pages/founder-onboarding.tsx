@@ -19,7 +19,7 @@ import { EmptyState } from "@/components/empty-state";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Rocket, AlertTriangle, CheckCircle2, Clock, RefreshCw } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { relative } from "@/lib/format";
 import { Link } from "wouter";
 
 interface JourneyRow {
@@ -204,7 +204,7 @@ function JourneyRowDisplay({ journey }: { journey: JourneyRow }) {
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium text-foreground">Org #{journey.organizationId}</p>
             <p className="text-[11px] text-muted-foreground">
-              Started {formatDistanceToNow(new Date(journey.startedAt), { addSuffix: true })} · {stepLabel}
+              Started {relative(journey.startedAt)} · {stepLabel}
             </p>
           </div>
           <Badge variant="secondary" className="text-[10px]">

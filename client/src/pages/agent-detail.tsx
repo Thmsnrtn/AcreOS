@@ -15,7 +15,7 @@ import {
   CheckCircle2, XCircle, Clock, AlertTriangle, Loader2,
   MessageSquare, Target, TrendingUp, Activity, Play, Pause,
 } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { relative } from "@/lib/format";
 import { describeTrust, trustLabel, trustBadgeColor } from "@/lib/trust-language";
 
 const AGENT_ICONS: Record<string, React.ElementType> = {
@@ -113,7 +113,7 @@ export default function AgentDetailPage() {
                   {isPaused ? "Paused" : "Active"}
                 </Badge>
                 <span className="text-sm text-muted-foreground">
-                  Last active: {agent.lastActivityAt ? formatDistanceToNow(new Date(agent.lastActivityAt), { addSuffix: true }) : "Never"}
+                  Last active: {agent.lastActivityAt ? relative(agent.lastActivityAt) : "Never"}
                 </span>
               </div>
             </div>
@@ -224,7 +224,7 @@ export default function AgentDetailPage() {
                         <div className="text-xs text-muted-foreground">{action.reasoning?.slice(0, 120)}</div>
                         <div className="text-xs text-muted-foreground mt-0.5">
                           {trustLabel(action.trustScoreAtTime)}
-                          {action.createdAt && ` · ${formatDistanceToNow(new Date(action.createdAt), { addSuffix: true })}`}
+                          {action.createdAt && ` · ${relative(action.createdAt)}`}
                         </div>
                       </div>
                       <Badge variant="outline" className="text-[10px] shrink-0">{action.actionType}</Badge>

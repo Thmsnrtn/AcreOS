@@ -10,7 +10,8 @@ import {
   Network, Zap, Search, RefreshCw, AlertTriangle,
   CheckCircle, Clock, ChevronDown, ChevronUp, Filter,
 } from "lucide-react";
-import { formatDistanceToNow, format } from "date-fns";
+import { format } from "date-fns";
+import { relative } from "@/lib/format";
 import {
   useEventMeshEvents,
   useEventMeshStats,
@@ -41,7 +42,7 @@ function EventRow({ event }: { event: any }) {
             </div>
             <p className="text-xs text-muted-foreground">
               {event.publisher ?? "unknown"} ·{" "}
-              {event.createdAt && formatDistanceToNow(new Date(event.createdAt), { addSuffix: true })}
+              {event.createdAt && relative(event.createdAt)}
             </p>
           </div>
         </div>
