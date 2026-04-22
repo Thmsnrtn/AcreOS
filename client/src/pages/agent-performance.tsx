@@ -7,7 +7,7 @@ import {
   TrendingUp, Bot, DollarSign, Brain,
   Target, Award, BarChart2, Clock,
 } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { relative } from "@/lib/format";
 import {
   useAgentRuntimeStates,
   useRevenueAttribution,
@@ -101,7 +101,7 @@ export default function AgentPerformance() {
                         {agent.decisionsCount ?? agent.totalDecisions ?? 0} decisions made
                       </span>
                       {agent.lastDecisionAt && (
-                        <span>Last: {formatDistanceToNow(new Date(agent.lastDecisionAt), { addSuffix: true })}</span>
+                        <span>Last: {relative(agent.lastDecisionAt)}</span>
                       )}
                     </div>
                   </CardContent>
@@ -208,7 +208,7 @@ export default function AgentPerformance() {
                         <span>Adopted by: {Array.isArray(strategy.adoptedBy) ? strategy.adoptedBy.join(", ") : strategy.adoptedBy}</span>
                       )}
                       {strategy.updatedAt && (
-                        <span>Updated {formatDistanceToNow(new Date(strategy.updatedAt), { addSuffix: true })}</span>
+                        <span>Updated {relative(strategy.updatedAt)}</span>
                       )}
                     </div>
                   </CardContent>

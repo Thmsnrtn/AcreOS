@@ -12,7 +12,8 @@ import {
   Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { format, formatDistanceToNow } from "date-fns";
+import { format } from "date-fns";
+import { relative } from "@/lib/format";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -106,7 +107,7 @@ export function OfflineSyncBanner({
           {lastSyncedAt && (
             <span className="text-[10px] text-gray-600 flex items-center gap-1">
               <Clock className="w-3 h-3" />
-              {formatDistanceToNow(new Date(lastSyncedAt), { addSuffix: true })}
+              {relative(lastSyncedAt)}
             </span>
           )}
 

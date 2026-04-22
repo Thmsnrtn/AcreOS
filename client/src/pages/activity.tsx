@@ -8,7 +8,8 @@ import {
   Mail, MessageSquare, Phone, FileText, DollarSign,
   GitBranch, Plus, AlertCircle, Loader2,
 } from "lucide-react";
-import { formatDistanceToNow, format, isToday, isYesterday } from "date-fns";
+import { format, isToday, isYesterday } from "date-fns";
+import { relative } from "@/lib/format";
 
 interface ActivityEvent {
   id: number;
@@ -161,7 +162,7 @@ export default function ActivityPage() {
                     <div className="text-right shrink-0 space-y-1">
                       <Badge variant="outline" className="text-xs">{meta.label}</Badge>
                       <p className="text-xs text-muted-foreground">
-                        {formatDistanceToNow(new Date(event.eventDate), { addSuffix: true })}
+                        {relative(event.eventDate)}
                       </p>
                     </div>
                   </CardContent>

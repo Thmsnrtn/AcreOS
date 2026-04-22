@@ -11,7 +11,8 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { format, formatDistanceToNow } from "date-fns";
+import { format } from "date-fns";
+import { relative } from "@/lib/format";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -102,7 +103,7 @@ export function ScoutReportCard({
               </span>
             )}
             <span className="text-[10px] text-gray-600">
-              {formatDistanceToNow(new Date(visit.startedAt), { addSuffix: true })}
+              {relative(visit.startedAt)}
             </span>
           </div>
         </div>

@@ -19,7 +19,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { formatDistanceToNow, format } from "date-fns";
+import { format } from "date-fns";
+import { relative } from "@/lib/format";
 import { useJobHealthLogs } from "@/hooks/use-sovereign-dashboard";
 
 function StatusIcon({ status }: { status: string }) {
@@ -139,7 +140,7 @@ export default function JobHealth() {
                         <p className="font-mono text-xs font-medium truncate">{job.jobName}</p>
                         <p className="text-xs text-muted-foreground">
                           {job.durationMs != null ? `${job.durationMs}ms` : "N/A"} ·{" "}
-                          {job.runCompletedAt && formatDistanceToNow(new Date(job.runCompletedAt), { addSuffix: true })}
+                          {job.runCompletedAt && relative(job.runCompletedAt)}
                         </p>
                       </div>
                     </div>
