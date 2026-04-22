@@ -8,6 +8,7 @@ import { telemetry } from "@/lib/telemetry";
 import { queryClient, apiRequest, prefetchRoute } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useProviderStatus } from "@/hooks/use-provider-status";
+import { Kbd } from "@/components/ui/kbd";
 import {
   Command,
   CommandEmpty,
@@ -473,7 +474,7 @@ export function CommandPalette() {
                       ))}
                     </CommandGroup>
                     <div className="border-t px-3 py-2 text-xs text-muted-foreground">
-                      Press <kbd className="mx-1 px-1.5 py-0.5 rounded border bg-muted font-mono text-[10px]">esc</kbd> to go back
+                      Press <Kbd size="sm" className="mx-1">esc</Kbd> to go back
                     </div>
                   </>
                 )}
@@ -503,7 +504,7 @@ export function CommandPalette() {
                       ))}
                     </CommandGroup>
                     <div className="border-t px-3 py-2 text-xs text-muted-foreground">
-                      Press <kbd className="mx-1 px-1.5 py-0.5 rounded border bg-muted font-mono text-[10px]">esc</kbd> to go back
+                      Press <Kbd size="sm" className="mx-1">esc</Kbd> to go back
                     </div>
                   </>
                 )}
@@ -728,30 +729,10 @@ export function CommandPalette() {
 
               {!selectedLeadId && !selectedDealId && (
                 <div className="border-t px-3 py-2 text-xs text-muted-foreground flex items-center justify-between">
-                  <span>
-                    <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
-                      {"\u2191\u2193"}
-                    </kbd>{" "}
-                    navigate
-                  </span>
-                  <span>
-                    <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
-                      {"\u21b5"}
-                    </kbd>{" "}
-                    {showAIMode ? "ask AI" : "select"}
-                  </span>
-                  <span>
-                    <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
-                      {"\u2318K"}
-                    </kbd>{" "}
-                    toggle
-                  </span>
-                  <span>
-                    <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
-                      esc
-                    </kbd>{" "}
-                    close
-                  </span>
+                  <span><Kbd size="sm">{"\u2191\u2193"}</Kbd> navigate</span>
+                  <span><Kbd size="sm">{"\u21b5"}</Kbd> {showAIMode ? "ask AI" : "select"}</span>
+                  <span><Kbd size="sm">{"\u2318K"}</Kbd> toggle</span>
+                  <span><Kbd size="sm">esc</Kbd> close</span>
                 </div>
               )}
             </Command>
