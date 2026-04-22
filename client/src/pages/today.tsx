@@ -44,6 +44,7 @@ import {
 } from "lucide-react";
 import { format, isToday, isBefore, startOfDay, subDays } from "date-fns";
 import { AnimatedCounter } from "@/components/ui/animated-counter";
+import { plural } from "@/lib/format";
 
 interface GoalWithProgress {
   id: number;
@@ -507,7 +508,7 @@ export default function TodayPage() {
                     Welcome back{userName ? `, ${userName}` : ""}!
                   </h3>
                   <p className="text-sm text-muted-foreground">
-                    It's been {daysSinceLastVisit} day{daysSinceLastVisit !== 1 ? "s" : ""} since your last visit. Here's what's happening:
+                    It's been {plural(daysSinceLastVisit, "day")} since your last visit. Here's what's happening:
                   </p>
                 </div>
               </div>
@@ -622,7 +623,7 @@ export default function TodayPage() {
           <Link href="/decision-queue">
             <div className="inline-flex items-center gap-2 mt-2 px-3 py-1.5 rounded-full bg-red-50 border border-red-200 dark:bg-red-900/20 dark:border-red-800 text-sm text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors cursor-pointer">
               <Clock className="w-4 h-4" />
-              <span className="font-medium">{pendingDecisionCount} pending decision{pendingDecisionCount !== 1 ? "s" : ""}</span>
+              <span className="font-medium">{plural(pendingDecisionCount, "pending decision")}</span>
               <Badge variant="destructive" className="text-xs px-1.5 py-0">{pendingDecisionCount}</Badge>
               <ArrowRight className="w-3.5 h-3.5" />
             </div>
