@@ -206,7 +206,10 @@ export default function PricingPage() {
         <div className="max-w-5xl mx-auto">
           <h2 className="text-2xl font-bold text-center mb-8">Feature Comparison</h2>
           <div className="border rounded-lg overflow-x-auto">
-            <table className="w-full text-sm">
+            {/* min-w-[640px] forces the comparison table to keep its
+                natural width on mobile instead of crushing columns;
+                the parent overflow-x-auto gives horizontal scroll. */}
+            <table className="w-full min-w-[640px] text-sm">
               <thead>
                 <tr className="border-b bg-muted/50">
                   <th className="text-left p-3 font-medium">Feature</th>
