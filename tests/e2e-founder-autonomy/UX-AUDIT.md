@@ -85,21 +85,37 @@ Items I looked at but deemed not clearly-broken-without-seeing:
   design decision (keep rail universal vs desktop-only) that's your
   call.
 
-## Suggested next passes (need your input)
+## Suggested next passes — RESOLVED (founder delegated; executed with judgment)
 
-1. **Pax rail mobile behavior** — should it hide on mobile, or slide
-   up from the bottom like a sheet? Right now it covers the content
-   when opened on a phone.
-2. **Consolidate help surfaces** — there's `/help`, FloatingHelpButton,
-   help topics in command palette. Three discovery paths for help.
-   Worth unifying under one pattern?
-3. **Feedback discovery** — FeedbackButton lives at dock slot 3 (hard
-   to discover). A Settings → Feedback link would be more predictable.
-4. **Onboarding Wizard modal timing** — opens on every page if
-   incomplete. Consider showing once per session then a dismissable
-   banner.
-5. **Notification Banner placement** — top-center or top-right
-   consistently, not bottom-right-on-mobile vs top-right-on-desktop.
+### UX-6 shipped (resolves all 5 items above)
+
+1. **Pax rail mobile** → hidden on mobile (<768px). Rail was 360px
+   wide on a 390px phone — a takeover, not a rail. Mobile chat:
+   /ai, conversation tray in dock, command palette.
+2. **Help consolidation** → FloatingHelpButton sheet is the single
+   primary surface. Sheet now hosts HelpPanel + "Send feedback" +
+   "Open full help center →" link to /help.
+3. **Feedback discovery** → folded into the help sheet above. Dock
+   slot retired. FeedbackButton component is a no-op shim for
+   backwards-compatible imports.
+4. **Onboarding wizard timing** → sessionStorage guard ensures it
+   opens at most once per tab. Dismissed users aren't re-prompted
+   until a fresh browser session.
+5. **Notification placement** → bell + banner both top-right on all
+   screen sizes (macOS/iOS convention). Bell at top-4, tray+banner
+   at top-16 so they coexist cleanly.
+
+### Final floating dock roster
+
+| Slot | Component | Notes |
+|---|---|---|
+| 0 (bottom) | FloatingActionButton | primary "new ..." CTA |
+| 1 (stacked) | ConversationTray | chat with agents |
+| 2 (stacked) | FloatingHelpButton | help + feedback + help-center link |
+| — | NotificationBanner bell | moved to top-right |
+
+Went from 8 components fighting 4 positions → 3 components in
+deterministic slots.
 
 ## Commits
 
@@ -109,7 +125,8 @@ b1a30a4  UX-2 wire 13 founder pages to sidebar + activate FounderHomePage
 54d713d  UX-3 mobile dock clears the 72px MobileBottomNav
 8697147  UX-4 dock clears PaxCopilotRail on desktop
 41ea449  UX-5 remove duplicate Attention Queue from /founder home
+6cadd37  UX-6 resolve all 5 judgment calls (rail hide, help merge, onboarding once, notif top-right)
 ```
 
-5 commits of structural UX cleanup. Not cosmetic — all were actually
+6 commits of structural UX cleanup. Not cosmetic — all were actually
 broken layouts or architectural dead weight.
