@@ -81,6 +81,7 @@ import {
 } from "@/components/ui/popover";
 import { prefetchRoute } from "@/lib/queryClient";
 import { AcreosLogo } from "@/components/acreos-logo";
+import { useContextProfile, type InvestorType } from "@/hooks/use-context-profile";
 import { NotificationCenter } from "@/components/notification-center";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useFeatureFlags } from "@/hooks/use-feature-flags";
@@ -469,7 +470,10 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
 
 // ─────────────────────────────────────────────────────────────────────
 // Main Sidebar component
-// Routes hidden for certain business types
+// Routes hidden for certain business types (legacy — from the onboarding
+// wizard's manual selection). New verticals should hook in via
+// INVESTOR_TYPE_HIDDEN_ROUTES below, which uses the auto-detected
+// ContextProfile instead of onboarding self-report.
 const BUSINESS_TYPE_HIDDEN_ROUTES: Record<string, string[]> = {
   // Land-centric routes hidden for specific business types
   residential_wholesaler: ["/maps", "/land-credit"],
@@ -484,6 +488,20 @@ const BUSINESS_TYPE_HIDDEN_ROUTES: Record<string, string[]> = {
   // land_flipper, note_investor, hybrid, developer, tax_lien_deed: all routes visible
 };
 
+// Routes hidden based on the auto-detected investor type from
+// contextProfile.ts. Lets the sidebar adapt even for orgs that skipped
+// the onboarding business-type step. Intersection with the legacy map
+// above means a route hidden by EITHER source stays hidden.
+const INVESTOR_TYPE_HIDDEN_ROUTES: Record<InvestorType, string[]> = {
+  wholesaler:        ["/maps", "/land-credit", "/finance/cash-flow-forecaster"],
+  fix_and_flip:     ["/maps", "/land-credit", "/borrower-portal"],
+  portfolio_builder: ["/land-credit", "/deal-hunter"],
+  auction_hunter:   [],
+  developer:        ["/land-credit"],
+  note_investor:    [],
+  new_investor:     [],
+};
+
 // ─────────────────────────────────────────────────────────────────────
 export function Sidebar() {
   const [location] = useLocation();
@@ -495,7 +513,15 @@ export function Sidebar() {
   const { data: organization } = useOrganization();
 
   const businessType = (organization?.onboardingData as any)?.businessType as string | undefined;
-  const hiddenForType = businessType ? (BUSINESS_TYPE_HIDDEN_ROUTES[businessType] ?? []) : [];
+  const { investorType } = useContextProfile();
+  // Hidden routes = legacy manual business-type hides ∪ auto-detected
+  // investor-type hides. Either source gets a vote.
+  const hiddenForType = Array.from(
+    new Set([
+      ...(businessType ? BUSINESS_TYPE_HIDDEN_ROUTES[businessType] ?? [] : []),
+      ...(INVESTOR_TYPE_HIDDEN_ROUTES[investorType] ?? []),
+    ]),
+  );
 
   // Filter NAV_MODULES: hide any nav items whose route is feature-flagged off
   // or hidden for the user's investor type.
