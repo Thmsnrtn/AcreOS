@@ -36,6 +36,35 @@ export type InvestorType =
   | 'developer'
   | 'new_investor';
 
+/**
+ * Bridge: map the 14 onboarding businessType strings (defined in the
+ * onboarding wizard + schema.ts) to our 7 InvestorType buckets.
+ *
+ * New verticals get mapped to their closest existing bucket until a
+ * dedicated InvestorType is worth adding (requires its own primary
+ * focus, widgets, quick actions — not just a label).
+ */
+export function mapBusinessTypeToInvestorType(businessType: string): InvestorType | null {
+  const map: Record<string, InvestorType> = {
+    land_flipper: 'wholesaler',
+    residential_wholesaler: 'wholesaler',
+    wholesaling: 'wholesaler',
+    note_investor: 'note_investor',
+    creative_finance: 'note_investor',
+    fix_and_flip: 'fix_and_flip',
+    buy_and_hold: 'portfolio_builder',
+    multifamily: 'portfolio_builder',
+    short_term_rental: 'portfolio_builder',
+    commercial: 'portfolio_builder',
+    mobile_home: 'portfolio_builder',
+    tax_lien_deed: 'auction_hunter',
+    developer: 'developer',
+    agent_investor: 'wholesaler',
+    hybrid: 'portfolio_builder',
+  };
+  return map[businessType] ?? null;
+}
+
 export interface ContextProfile {
   organizationId: number;
   investorType: InvestorType;
@@ -182,7 +211,17 @@ class ContextProfileService {
    */
   async buildProfile(organizationId: number): Promise<ContextProfile> {
     const signals = await this.gatherSignals(organizationId);
-    const investorType = this.inferInvestorType(signals);
+    // If the user told us at onboarding what they are, respect that
+    // until their actual data strongly contradicts. Signal-based
+    // inference only overrides the onboarding self-report once
+    // total activity crosses a threshold (50+ combined entities) —
+    // below that the user's stated intent is the best signal we have.
+    const declared = await this.getDeclaredBusinessType(organizationId);
+    const total = signals.leadCount + signals.propertyCount + signals.dealCount;
+    const declaredInvestorType = declared ? mapBusinessTypeToInvestorType(declared) : null;
+    const investorType = declaredInvestorType && total < 50
+      ? declaredInvestorType
+      : this.inferInvestorType(signals);
     const experienceLevel = this.inferExperienceLevel(signals);
     const config = INVESTOR_CONFIGS[investorType];
 
@@ -224,6 +263,25 @@ class ContextProfileService {
    */
   invalidate(organizationId: number): void {
     this.profileCache.delete(organizationId);
+  }
+
+  /**
+   * Pull the onboarding-declared business type from the org record.
+   * Schema stores it on organizations.onboardingData.businessType.
+   * Returns null if onboarding was skipped or field is unset.
+   */
+  private async getDeclaredBusinessType(organizationId: number): Promise<string | null> {
+    try {
+      const [row] = await db
+        .select({ onboardingData: organizations.onboardingData })
+        .from(organizations)
+        .where(eq(organizations.id, organizationId))
+        .limit(1);
+      const bt = (row?.onboardingData as any)?.businessType;
+      return typeof bt === "string" && bt.length > 0 ? bt : null;
+    } catch {
+      return null;
+    }
   }
 
   private async gatherSignals(organizationId: number): Promise<Record<string, number>> {
