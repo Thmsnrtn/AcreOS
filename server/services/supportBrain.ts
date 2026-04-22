@@ -12,6 +12,7 @@ import {
 } from "@shared/schema";
 import { logActivity } from "./systemActivityLogger";
 import { logger } from "../utils/logger";
+import { tracedLlmCall } from "./tracedLlmCall";
 
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
@@ -67,17 +68,27 @@ Respond in JSON format only:
 }`;
 
     try {
-      const response = await openai.chat.completions.create({
+      const { content } = await tracedLlmCall({
+        agentCodename: "pax",
+        purpose: "support_classify",
+        organizationId: context.organizationId,
+        decisionId: context.existingCase?.id ?? null,
         model: "gpt-4o-mini",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: message },
-        ],
-        temperature: 0.3,
-        response_format: { type: "json_object" },
+        systemPrompt,
+        userPrompt: message,
+        call: () =>
+          openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: message },
+            ],
+            temperature: 0.3,
+            response_format: { type: "json_object" },
+          }),
       });
 
-      const result = JSON.parse(response.choices[0].message.content || "{}");
+      const result = JSON.parse(content || "{}");
       return {
         category: result.category || "other",
         confidence: result.confidence || 0.5,
@@ -371,18 +382,28 @@ The playbook's success response template: "${playbook.successResponse}"
 Adapt this template with the specific details from the context. Be conversational and helpful.`;
 
     try {
-      const response = await openai.chat.completions.create({
+      const { content } = await tracedLlmCall({
+        agentCodename: "pax",
+        purpose: "support_playbook_response",
+        organizationId,
         model: "gpt-4o-mini",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: "Generate the response message." },
-        ],
-        temperature: 0.7,
-        max_tokens: 300,
+        systemPrompt,
+        userPrompt: "Generate the response message.",
+        metadata: { playbookSlug: playbook.slug, actionsTaken },
+        call: () =>
+          openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: "Generate the response message." },
+            ],
+            temperature: 0.7,
+            max_tokens: 300,
+          }),
       });
 
       return (
-        response.choices[0].message.content ||
+        content ||
         playbook.successResponse ||
         "Your request has been processed successfully."
       );
@@ -428,15 +449,25 @@ If you cannot resolve the issue, say you will escalate to a human.`;
     }));
 
     try {
-      const response = await openai.chat.completions.create({
+      const { content } = await tracedLlmCall({
+        agentCodename: "pax",
+        purpose: "support_contextual_response",
+        organizationId,
+        decisionId: supportCase.id,
         model: "gpt-4o-mini",
-        messages: [{ role: "system", content: systemPrompt }, ...chatHistory],
-        temperature: 0.7,
-        max_tokens: 400,
+        systemPrompt,
+        userPrompt: userMessage,
+        call: () =>
+          openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [{ role: "system", content: systemPrompt }, ...chatHistory],
+            temperature: 0.7,
+            max_tokens: 400,
+          }),
       });
 
       const aiResponse =
-        response.choices[0].message.content ||
+        content ||
         "I apologize, but I am having trouble understanding your request. Let me connect you with a human support agent.";
 
       await storage.createSupportMessage({

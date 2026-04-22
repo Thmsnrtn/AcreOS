@@ -6,6 +6,7 @@ import { usageMeteringService } from "./credits";
 import { alertingService } from "./alerting";
 import { getOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
+import { tracedLlmCall } from "./tracedLlmCall";
 
 export type ScoreFactors = {
   responseRecency?: number;
@@ -170,15 +171,24 @@ Respond in JSON format:
 }`;
 
     try {
-      const response = await openai.chat.completions.create({
+      const { content } = await tracedLlmCall({
+        agentCodename: "pax",
+        purpose: "lead_nurture_followup",
+        organizationId: lead.organizationId,
+        decisionId: lead.id,
         model: "gpt-4o",
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.7,
-        max_tokens: 500,
-        response_format: { type: "json_object" },
+        userPrompt: prompt,
+        metadata: { leadStage: context.nurturingStage, leadType: context.type },
+        call: () =>
+          openai.chat.completions.create({
+            model: "gpt-4o",
+            messages: [{ role: "user", content: prompt }],
+            temperature: 0.7,
+            max_tokens: 500,
+            response_format: { type: "json_object" },
+          }),
       });
 
-      const content = response.choices[0]?.message?.content;
       if (content) {
         const parsed = JSON.parse(content);
         return {
