@@ -3,6 +3,7 @@ import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { Keyboard, Navigation, Zap, Bot, Command, HelpCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Kbd } from "@/components/ui/kbd";
 
 interface ShortcutCategory {
   name: string;
@@ -140,7 +141,7 @@ export function KeyboardShortcutsModal() {
         </ScrollArea>
         
         <div className="border-t pt-4 text-center text-xs text-muted-foreground">
-          Press <kbd className="px-[6px] py-0.5 rounded border bg-muted font-mono text-[10px]">?</kbd> anytime to show this dialog
+          Press <Kbd size="sm">?</Kbd> anytime to show this dialog
         </div>
       </DialogContent>
     </Dialog>
@@ -155,9 +156,7 @@ function ShortcutKeys({ keys }: { keys: string }) {
       {parts.map((key, index) => (
         <span key={index} className="flex items-center gap-1">
           {index > 0 && <span className="text-muted-foreground text-xs">then</span>}
-          <kbd className="px-2 py-1 text-xs font-mono bg-muted border rounded shadow-sm min-w-[24px] text-center">
-            {formatKey(key)}
-          </kbd>
+          <Kbd>{formatKey(key)}</Kbd>
         </span>
       ))}
     </div>
