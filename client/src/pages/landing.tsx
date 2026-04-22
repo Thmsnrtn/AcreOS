@@ -2,6 +2,7 @@ import { Link } from "wouter";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { AcreosLogo } from "@/components/acreos-logo";
 import {
   MapPin,
   TrendingUp,
@@ -169,12 +170,8 @@ export default function LandingPage() {
       {/* Nav */}
       <nav className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
-              <span className="text-white font-bold text-sm">A</span>
-            </div>
-            <span className="text-lg font-bold">AcreOS</span>
-          </div>
+          <AcreosLogo size={30} />
+
           <div className="flex items-center gap-1 sm:gap-3">
             <Button variant="ghost" size="sm" asChild className="hidden sm:inline-flex">
               <Link href="/pricing">Pricing</Link>

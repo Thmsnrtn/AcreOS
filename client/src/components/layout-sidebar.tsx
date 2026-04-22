@@ -78,6 +78,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { prefetchRoute } from "@/lib/queryClient";
+import { AcreosLogo } from "@/components/acreos-logo";
 import { NotificationCenter } from "@/components/notification-center";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useFeatureFlags } from "@/hooks/use-feature-flags";
@@ -584,9 +585,7 @@ export function Sidebar() {
       >
         {isCollapsed ? (
           <div className="flex justify-center">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
-              <span className="text-white font-bold text-xs">A</span>
-            </div>
+            <AcreosLogo variant="mark" size={32} />
           </div>
         ) : (
           <div className="flex items-center justify-between gap-1 min-w-0">

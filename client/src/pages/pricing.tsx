@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Check, X, ArrowLeft } from "lucide-react";
+import { AcreosLogo } from "@/components/acreos-logo";
 
 const TIERS = [
   {
@@ -99,10 +100,7 @@ export default function PricingPage() {
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
             <ArrowLeft className="h-4 w-4" />
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
-              <span className="text-white font-bold text-sm">A</span>
-            </div>
-            <span className="text-lg font-bold">AcreOS</span>
+            <AcreosLogo size={30} />
           </Link>
           <Button size="sm" asChild>
             <Link href="/auth?mode=register">Get started</Link>
