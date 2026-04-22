@@ -1,6 +1,7 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { Keyboard } from "lucide-react";
+import { Kbd } from "@/components/ui/kbd";
 
 export function KeyboardShortcutsDialog() {
   const { shortcuts, isDialogOpen, setDialogOpen } = useKeyboardShortcuts();
@@ -60,9 +61,7 @@ function ShortcutKeys({ keys }: { keys: string }) {
       {parts.map((key, index) => (
         <span key={index}>
           {index > 0 && <span className="text-muted-foreground text-xs mx-0.5">then</span>}
-          <kbd className="px-2 py-1 text-xs font-mono bg-muted border rounded shadow-sm">
-            {key === "/" ? "/" : key.toUpperCase()}
-          </kbd>
+          <Kbd>{key === "/" ? "/" : key.toUpperCase()}</Kbd>
         </span>
       ))}
     </div>
