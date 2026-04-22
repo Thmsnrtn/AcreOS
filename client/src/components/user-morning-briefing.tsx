@@ -15,7 +15,9 @@ interface BriefingData {
 }
 
 async function fetchBriefing(): Promise<BriefingData> {
-  const res = await fetch("/api/today/priorities", { credentials: "include" });
+  // Canonical endpoint lives on the dashboard router. /api/today/priorities
+  // was the old path that never shipped server-side.
+  const res = await fetch("/api/dashboard/today-priorities", { credentials: "include" });
   if (!res.ok) throw new Error("Failed to fetch briefing");
   const data = await res.json();
 
@@ -43,7 +45,7 @@ const ICON_MAP: Record<string, React.ReactNode> = {
 export function UserMorningBriefing() {
   const [dismissed, setDismissed] = useState(false);
   const { data, isLoading } = useQuery({
-    queryKey: ["/api/today/priorities"],
+    queryKey: ["/api/dashboard/today-priorities"],
     queryFn: fetchBriefing,
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
