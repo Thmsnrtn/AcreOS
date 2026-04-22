@@ -1934,6 +1934,39 @@ router.get("/todo", requireFounder, async (_req: Request, res: Response) => {
   }
 });
 
+// ── Agent LLM traces — action-replay ────────────────────────────────
+
+// GET /traces?agent=pax&limit=50 — list recent traces (metadata only)
+router.get("/traces", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const agent = typeof req.query.agent === "string" ? req.query.agent : undefined;
+    const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : 50;
+    const { listRecentTraces } = await import("./services/agentLlmTraces");
+    const rows = await listRecentTraces({
+      agentCodename: agent,
+      limit: Number.isFinite(limit) ? limit : 50,
+    });
+    res.json({ traces: rows });
+  } catch (err: any) {
+    logger.error("[traces list] Error", undefined, { metadata: { detail: err.message } });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /traces/:id — full trace including prompt + response text
+router.get("/traces/:id", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
+    const { getTraceById } = await import("./services/agentLlmTraces");
+    const trace = await getTraceById(id);
+    if (!trace) return res.status(404).json({ error: "Trace not found" });
+    res.json({ trace });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Agent memory consolidation ──────────────────────────────────────
 
 router.get("/agent-memory", requireFounder, async (_req: Request, res: Response) => {

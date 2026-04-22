@@ -14906,6 +14906,37 @@ export const agentPromptEvolutions = pgTable("agent_prompt_evolutions", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// Raw LLM prompt/response capture for agent action-replay.
+// Persists the full input + output of any LLM call so the founder
+// can audit "what did Sophie see and say when she recommended X?"
+// See migrations/0027_agent_llm_traces.sql.
+export const agentLlmTraces = pgTable("agent_llm_traces", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
+  agentCodename: text("agent_codename").notNull(),
+  // Free-text call-site tag — "customer_monthly_letter", "support_chat",
+  // "negotiation_script", etc. No schema migration to add a new source.
+  purpose: text("purpose").notNull(),
+  decisionId: integer("decision_id"),
+  model: text("model").notNull(),
+  systemPrompt: text("system_prompt"),
+  userPrompt: text("user_prompt").notNull(),
+  response: text("response").notNull(),
+  latencyMs: integer("latency_ms"),
+  inputTokens: integer("input_tokens"),
+  outputTokens: integer("output_tokens"),
+  costCents: integer("cost_cents"),
+  error: text("error"),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("idx_agent_llm_traces_agent_recent").on(table.agentCodename, table.createdAt),
+  index("idx_agent_llm_traces_decision").on(table.decisionId),
+  index("idx_agent_llm_traces_org_recent").on(table.organizationId, table.createdAt),
+]);
+export type AgentLlmTrace = typeof agentLlmTraces.$inferSelect;
+export type InsertAgentLlmTrace = typeof agentLlmTraces.$inferInsert;
+
 export const agentSpawnProposals = pgTable("agent_spawn_proposals", {
   id: serial("id").primaryKey(),
   proposalId: text("proposal_id").notNull().unique(),

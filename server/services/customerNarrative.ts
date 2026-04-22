@@ -454,12 +454,28 @@ async function writeLetter(s: CustomerMonthlySummary): Promise<{
   const systemPrompt = verticalBlock
     ? `${CUSTOMER_LETTER_SYSTEM_PROMPT}\n${verticalBlock}`
     : CUSTOMER_LETTER_SYSTEM_PROMPT;
+  const started = Date.now();
   try {
     const response = await routeCriticalTask(
       "customer_monthly_letter",
       systemPrompt,
       context,
     );
+    // Capture the trace so "why did Pax recommend X?" is answerable
+    // from the founder audit UI. Fire-and-forget — never gates the
+    // letter's primary return.
+    const { logAgentTrace } = await import("./agentLlmTraces");
+    void logAgentTrace({
+      organizationId: s.organizationId,
+      agentCodename: "pax",
+      purpose: "customer_monthly_letter",
+      model: (response as any).model ?? "unknown",
+      systemPrompt,
+      userPrompt: context,
+      response: response.content,
+      latencyMs: Date.now() - started,
+      metadata: { monthKey: s.monthKey, investorType },
+    });
     const parsed = parseNarrative(response.content);
     return parsed;
   } catch (err: any) {

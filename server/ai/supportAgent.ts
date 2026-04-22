@@ -5256,14 +5256,38 @@ export async function processSupportChat(
   
   const openai = getOpenAIClient();
   
+  const traceStarted = Date.now();
   let response = await openai.chat.completions.create({
     model: "gpt-4o",
     messages: chatMessages,
     tools,
     tool_choice: "auto"
   });
-  
+
   let assistantMessage = response.choices[0].message;
+
+  // Capture the initial LLM call for action-replay. Tool-call iterations
+  // are skipped — only the user-facing first turn gets traced, which is
+  // enough to answer "why did Pax route to X?" without bloating the
+  // table with every chain step.
+  try {
+    const { logAgentTrace } = await import("../services/agentLlmTraces");
+    void logAgentTrace({
+      organizationId: org.id,
+      agentCodename: "pax",
+      purpose: "support_chat",
+      model: "gpt-4o",
+      systemPrompt,
+      userPrompt: message,
+      response: assistantMessage.content ?? JSON.stringify(assistantMessage.tool_calls ?? ""),
+      latencyMs: Date.now() - traceStarted,
+      inputTokens: response.usage?.prompt_tokens,
+      outputTokens: response.usage?.completion_tokens,
+      metadata: { ticketId, userId },
+    });
+  } catch {
+    // never block the chat on a trace write
+  }
   
   let toolIterations = 0;
   while (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
