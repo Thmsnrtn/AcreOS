@@ -90,8 +90,14 @@ function updateFavicon(faviconUrl: string): void {
 }
 
 export function useWhiteLabel() {
+  // The /white-label/config endpoint requires auth — fetching it for
+  // unauthenticated visitors on /, /pricing, /auth etc. produces 401s
+  // in the console. Skip until we have an auth cookie.
+  const hasSession =
+    typeof document !== "undefined" && /(^|;\s*)__session=/.test(document.cookie);
   const { data } = useQuery<{ config: WhiteLabelConfig | null }>({
     queryKey: ["/api/white-label/config"],
+    enabled: hasSession,
     queryFn: () =>
       fetch("/api/white-label/config")
         .then((r) => (r.ok ? r.json() : { config: null }))

@@ -1,6 +1,7 @@
 import { useState, useEffect, createContext, useContext } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useAuth } from "@/hooks/use-auth";
 import {
   Tooltip,
   TooltipContent,
@@ -132,22 +133,30 @@ const FEATURE_HINTS: FeatureHint[] = [
 
 export function HintsProvider({ children }: { children: React.ReactNode }) {
   const [dismissedHints, setDismissedHints] = useState<string[]>([]);
+  // HintsProvider wraps the whole app — including public routes. All
+  // queries below are authenticated, so skip them for unauthed visitors
+  // to avoid 401 console spam and wasted server work.
+  const { isAuthenticated } = useAuth();
 
   const { data: organization } = useQuery<any>({
     queryKey: ["/api/organization"],
+    enabled: isAuthenticated,
   });
 
   // Fetch lightweight usage counts to drive adaptive hints
   const { data: leadsData } = useQuery<{ total: number } | any>({
     queryKey: ["/api/leads?limit=0"],
+    enabled: isAuthenticated,
     select: (d: any) => ({ total: d?.total ?? d?.leads?.length ?? 0 }),
   });
   const { data: campaignsData } = useQuery<{ total: number } | any>({
     queryKey: ["/api/campaigns?limit=0"],
+    enabled: isAuthenticated,
     select: (d: any) => ({ total: d?.total ?? (Array.isArray(d) ? d.length : 0) }),
   });
   const { data: notesData } = useQuery<{ total: number } | any>({
     queryKey: ["/api/notes?limit=0"],
+    enabled: isAuthenticated,
     select: (d: any) => ({ total: d?.total ?? (Array.isArray(d) ? d.length : 0) }),
   });
 
