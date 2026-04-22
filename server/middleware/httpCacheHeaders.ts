@@ -41,7 +41,10 @@ const RULES: CacheRule[] = [
 
   // Medium-TTL — org identity / feature flags don't change often
   { pattern: /^\/organization(\/|\?|$)/, maxAge: 60, swr: 300 },
-  { pattern: /^\/auth\/user(\/|\?|$)/, maxAge: 30, swr: 120 },
+  // NOTE: /auth/user deliberately NOT cached. Safari / iOS have historic
+  // Vary: Cookie quirks that can serve a stale "signed out" 200 after
+  // sign-in, trapping the user on the auth page with a spinner while
+  // useAuth retries. Auth state MUST be authoritative per-request.
   { pattern: /^\/white-label\//, maxAge: 300, swr: 900 },
   { pattern: /^\/feature-flags(\/|\?|$)/, maxAge: 300, swr: 900 },
   { pattern: /^\/config\/features(\/|\?|$)/, maxAge: 300, swr: 900 },

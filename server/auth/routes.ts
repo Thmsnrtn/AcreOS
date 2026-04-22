@@ -4,7 +4,11 @@ import { isFounderEmail } from "../services/founder";
 
 export function registerAuthRoutes(app: Express): void {
   // Get current authenticated user (used by frontend useAuth hook)
+  // Cache-Control: no-store is belt-and-suspenders. Safari / iOS have
+  // historic Vary: Cookie bugs that can serve a stale signed-out 200
+  // after sign-in, trapping the user on the auth page.
   app.get("/api/auth/user", isAuthenticated, (req, res) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     const user = req.user as any;
     const isFounder = isFounderEmail(user?.email);
     res.json(isFounder ? { ...user, isFounder: true } : user);
