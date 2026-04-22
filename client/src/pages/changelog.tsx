@@ -4,7 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
-import { useDocumentTitle } from "@/hooks/use-document-title";
+import { usePageMeta } from "@/hooks/use-document-title";
 
 interface ChangelogEntry {
   version: string;
@@ -70,7 +70,10 @@ function isCustomerVisible(cleaned: string): boolean {
 }
 
 export default function ChangelogPage() {
-  useDocumentTitle("Changelog");
+  usePageMeta(
+    "Changelog",
+    "Recent updates, new features, and improvements to the AcreOS platform for land investors."
+  );
   const { data, isLoading } = useQuery<{ entries: ChangelogEntry[] }>({
     queryKey: ["/api/changelog"],
     staleTime: 1000 * 60 * 60,

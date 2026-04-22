@@ -2,10 +2,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Shield } from "lucide-react";
 import { Link } from "wouter";
-import { useDocumentTitle } from "@/hooks/use-document-title";
+import { usePageMeta } from "@/hooks/use-document-title";
 
 export default function PrivacyPolicy() {
-  useDocumentTitle("Privacy Policy");
+  usePageMeta(
+    "Privacy Policy",
+    "How AcreOS collects, uses, and protects data from land investors and their leads — including encryption, retention, and your rights under applicable privacy laws."
+  );
   const lastUpdated = "March 2026";
 
   return (

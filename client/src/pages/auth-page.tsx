@@ -5,10 +5,13 @@ import { useAuth } from "@/hooks/use-auth";
 import { useBrandName } from "@/hooks/use-white-label";
 import { ArrowLeft } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { useDocumentTitle } from "@/hooks/use-document-title";
+import { usePageMeta } from "@/hooks/use-document-title";
 
 export default function AuthPage() {
-  useDocumentTitle("Sign in");
+  usePageMeta(
+    "Sign in",
+    "Sign in to AcreOS — the AI-powered platform land investors use to manage leads, properties, deals, and seller financing in one place."
+  );
   const { user, isLoading } = useAuth();
   const brandName = useBrandName();
   const params = new URLSearchParams(window.location.search);

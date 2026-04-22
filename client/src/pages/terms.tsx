@@ -2,10 +2,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, FileText } from "lucide-react";
 import { Link } from "wouter";
-import { useDocumentTitle } from "@/hooks/use-document-title";
+import { usePageMeta } from "@/hooks/use-document-title";
 
 export default function TermsOfService() {
-  useDocumentTitle("Terms of Service");
+  usePageMeta(
+    "Terms of Service",
+    "AcreOS Terms of Service — the agreement governing access and use of the AcreOS platform for land investors."
+  );
   const lastUpdated = "March 2026";
 
   return (

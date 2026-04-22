@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, CheckCircle2, AlertTriangle, XCircle, RefreshCw } from "lucide-react";
 import { StatusDot } from "@/components/ui/status-dot";
-import { useDocumentTitle } from "@/hooks/use-document-title";
+import { usePageMeta } from "@/hooks/use-document-title";
 
 type Tone = "green" | "amber" | "red" | "gray";
 const STATUS_CONFIG: Record<string, { tone: Tone; icon: typeof CheckCircle2; label: string }> = {
@@ -31,7 +31,10 @@ const SERVICE_DISPLAY_NAME: Record<string, string> = {
 };
 
 export default function StatusPage() {
-  useDocumentTitle("System status");
+  usePageMeta(
+    "System status",
+    "Live status of AcreOS platform services — database, authentication, email, SMS, payments, and integrations. Real-time health checks."
+  );
   const { data, isLoading, refetch } = useQuery<{
     status: string;
     services: { name: string; status: string }[];
