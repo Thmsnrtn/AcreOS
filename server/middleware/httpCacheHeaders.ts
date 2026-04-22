@@ -37,31 +37,33 @@ interface CacheRule {
   swr?: number;
 }
 
+// Patterns match req.path — which, under app.use("/api", mw), is
+// relative to the mount prefix. So "/leads", not "/api/leads".
 const RULES: CacheRule[] = [
   // Short-TTL — data that might change per-request
-  { pattern: /^\/api\/leads(\/|\?|$)/, maxAge: 30, swr: 60 },
-  { pattern: /^\/api\/properties(\/|\?|$)/, maxAge: 30, swr: 60 },
-  { pattern: /^\/api\/deals(\/|\?|$)/, maxAge: 30, swr: 60 },
-  { pattern: /^\/api\/notes(\/|\?|$)/, maxAge: 30, swr: 60 },
-  { pattern: /^\/api\/payments(\/|\?|$)/, maxAge: 30, swr: 60 },
-  { pattern: /^\/api\/tasks(\/|\?|$)/, maxAge: 30, swr: 60 },
-  { pattern: /^\/api\/campaigns(\/|\?|$)/, maxAge: 30, swr: 60 },
-  { pattern: /^\/api\/alerts(\/|\?|$)/, maxAge: 15, swr: 30 },
-  { pattern: /^\/api\/notifications(\/|\?|$)/, maxAge: 15, swr: 30 },
-  { pattern: /^\/api\/dashboard\//, maxAge: 60, swr: 120 },
-  { pattern: /^\/api\/activity(\/|\?|$)/, maxAge: 30, swr: 60 },
+  { pattern: /^\/leads(\/|\?|$)/, maxAge: 30, swr: 60 },
+  { pattern: /^\/properties(\/|\?|$)/, maxAge: 30, swr: 60 },
+  { pattern: /^\/deals(\/|\?|$)/, maxAge: 30, swr: 60 },
+  { pattern: /^\/notes(\/|\?|$)/, maxAge: 30, swr: 60 },
+  { pattern: /^\/payments(\/|\?|$)/, maxAge: 30, swr: 60 },
+  { pattern: /^\/tasks(\/|\?|$)/, maxAge: 30, swr: 60 },
+  { pattern: /^\/campaigns(\/|\?|$)/, maxAge: 30, swr: 60 },
+  { pattern: /^\/alerts(\/|\?|$)/, maxAge: 15, swr: 30 },
+  { pattern: /^\/notifications(\/|\?|$)/, maxAge: 15, swr: 30 },
+  { pattern: /^\/dashboard\//, maxAge: 60, swr: 120 },
+  { pattern: /^\/activity(\/|\?|$)/, maxAge: 30, swr: 60 },
 
   // Medium-TTL — org identity / feature flags don't change often
-  { pattern: /^\/api\/organization(\/|\?|$)/, maxAge: 60, swr: 300 },
-  { pattern: /^\/api\/auth\/user(\/|\?|$)/, maxAge: 30, swr: 120 },
-  { pattern: /^\/api\/white-label\//, maxAge: 300, swr: 900 },
-  { pattern: /^\/api\/feature-flags(\/|\?|$)/, maxAge: 300, swr: 900 },
-  { pattern: /^\/api\/intelligence\//, maxAge: 120, swr: 300 },
+  { pattern: /^\/organization(\/|\?|$)/, maxAge: 60, swr: 300 },
+  { pattern: /^\/auth\/user(\/|\?|$)/, maxAge: 30, swr: 120 },
+  { pattern: /^\/white-label\//, maxAge: 300, swr: 900 },
+  { pattern: /^\/feature-flags(\/|\?|$)/, maxAge: 300, swr: 900 },
+  { pattern: /^\/intelligence\//, maxAge: 120, swr: 300 },
 
   // Long-TTL — truly static-ish
-  { pattern: /^\/api\/changelog(\/|\?|$)/, maxAge: 600, swr: 3600 },
-  { pattern: /^\/api\/status(\/|\?|$)/, maxAge: 30, swr: 60 },
-  { pattern: /^\/api\/docs(\/|\?|$)/, maxAge: 3600, swr: 86400 },
+  { pattern: /^\/changelog(\/|\?|$)/, maxAge: 600, swr: 3600 },
+  { pattern: /^\/status(\/|\?|$)/, maxAge: 30, swr: 60 },
+  { pattern: /^\/docs(\/|\?|$)/, maxAge: 3600, swr: 86400 },
 ];
 
 export function httpCacheHeaders(req: Request, res: Response, next: NextFunction): void {
@@ -83,7 +85,7 @@ export function httpCacheHeaders(req: Request, res: Response, next: NextFunction
     // Don't clobber a Cache-Control header the handler already set.
     if (res.getHeader("Cache-Control")) return;
 
-    const match = RULES.find((r) => r.pattern.test(req.path + (req.url.includes("?") ? "?" : "")));
+    const match = RULES.find((r) => r.pattern.test(req.path));
     if (!match) return;
 
     const parts = [`private`, `max-age=${match.maxAge}`];
