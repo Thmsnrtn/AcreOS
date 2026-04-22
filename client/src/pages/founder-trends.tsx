@@ -28,6 +28,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { TrendingUp, TrendingDown, Minus, Activity } from "lucide-react";
+import { PageHeader } from "@/components/ui/page-header";
 
 interface TrendPoint {
   date: string;
@@ -80,24 +81,17 @@ export default function FounderTrendsPage() {
   return (
     <PageShell label="System Trends">
       <div className="space-y-6 max-w-6xl mx-auto">
-        <Card>
-          <CardContent className="p-6">
-            <h1 className="text-2xl font-semibold text-foreground mb-2 flex items-center gap-2">
-              <Activity className="h-5 w-5 text-muted-foreground" />
-              Is the system getting better?
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              Longer arc than the autonomy-health meter or the monthly letter. Shows how the system
-              has trended over the last 90 days — outcomes, override rate, calibration, safety-rail
-              trips, per-agent trust. Use this as your trust gauge for how much to delegate further.
+        <PageHeader
+          title="Is the system getting better?"
+          icon={<Activity className="h-5 w-5 text-muted-foreground" />}
+          description="Longer arc than the autonomy-health meter or the monthly letter. Shows how the system has trended over the last 90 days — outcomes, override rate, calibration, safety-rail trips, per-agent trust. Use this as your trust gauge for how much to delegate further."
+        >
+          {data && (
+            <p className="text-sm font-medium text-foreground">
+              Verdict: <span className="text-muted-foreground">{data.verdict}</span>
             </p>
-            {data && (
-              <p className="mt-3 text-sm font-medium text-foreground">
-                Verdict: <span className="text-muted-foreground">{data.verdict}</span>
-              </p>
-            )}
-          </CardContent>
-        </Card>
+          )}
+        </PageHeader>
 
         {isLoading ? (
           <Card>

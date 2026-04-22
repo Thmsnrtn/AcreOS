@@ -14,6 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { Database, AlertTriangle } from "lucide-react";
+import { PageHeader } from "@/components/ui/page-header";
 
 interface ProviderSummary {
   windowDays: number;
@@ -42,20 +43,11 @@ export default function FounderProvidersPage() {
   return (
     <PageShell label="Data Providers">
       <div className="space-y-6 max-w-5xl mx-auto">
-        <Card>
-          <CardContent className="p-6">
-            <h1 className="text-2xl font-semibold text-foreground mb-2 flex items-center gap-2">
-              <Database className="h-5 w-5 text-muted-foreground" />
-              Data providers
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              External data sources (parcel, property details, skip trace, etc). The registry now
-              uses per-(provider, category) success rate as a tiebreaker within the same tier+cost
-              bracket, so high-performing providers automatically get more traffic. If a provider
-              degrades quietly, the success-rate column surfaces it here.
-            </p>
-          </CardContent>
-        </Card>
+        <PageHeader
+          title="Data providers"
+          icon={<Database className="h-5 w-5 text-muted-foreground" />}
+          description="External data sources (parcel, property details, skip trace, etc). The registry now uses per-(provider, category) success rate as a tiebreaker within the same tier+cost bracket, so high-performing providers automatically get more traffic. If a provider degrades quietly, the success-rate column surfaces it here."
+        />
 
         {isLoading ? (
           <Card>

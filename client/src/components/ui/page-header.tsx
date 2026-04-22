@@ -12,6 +12,8 @@ type PageHeaderProps = Omit<React.HTMLAttributes<HTMLDivElement>, "title"> & {
   actions?: React.ReactNode;
   /** Breadcrumb trail rendered above the title. */
   breadcrumbs?: React.ReactNode;
+  /** Extra content rendered below description (badges, verdict lines). */
+  children?: React.ReactNode;
 };
 
 /**
@@ -34,6 +36,7 @@ export function PageHeader({
   icon,
   actions,
   breadcrumbs,
+  children,
   className,
   ...rest
 }: PageHeaderProps) {
@@ -51,6 +54,7 @@ export function PageHeader({
               {description}
             </p>
           )}
+          {children && <div className="mt-3">{children}</div>}
         </div>
         {actions && (
           <div className="flex items-center gap-2 flex-shrink-0">{actions}</div>

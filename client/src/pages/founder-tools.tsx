@@ -24,7 +24,8 @@ import { EmptyState } from "@/components/empty-state";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Wrench, Check, X, Clock, Rocket } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { relative } from "@/lib/format";
+import { PageHeader } from "@/components/ui/page-header";
 
 interface ToolProposalRow {
   id: number;
@@ -88,19 +89,11 @@ export default function FounderToolsPage() {
   return (
     <PageShell label="Tool Proposals">
       <div className="space-y-6 max-w-5xl mx-auto">
-        <Card>
-          <CardContent className="p-6">
-            <h1 className="text-2xl font-semibold text-foreground mb-2 flex items-center gap-2">
-              <Wrench className="h-5 w-5 text-muted-foreground" />
-              Capability growth queue
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              What the system needs to do its job better. Proposals come from agents and from the
-              monthly strategic synthesis. Approving a proposal doesn't build it — it moves it onto
-              the engineering backlog. Mark it "building" when you start, "shipped" when it's live.
-            </p>
-          </CardContent>
-        </Card>
+        <PageHeader
+          title="Capability growth queue"
+          icon={<Wrench className="h-5 w-5 text-muted-foreground" />}
+          description={`What the system needs to do its job better. Proposals come from agents and from the monthly strategic synthesis. Approving a proposal doesn't build it — it moves it onto the engineering backlog. Mark it "building" when you start, "shipped" when it's live.`}
+        />
 
         {isLoading ? (
           <Card>
@@ -185,7 +178,7 @@ function ToolProposalCard({
               </span>
             )}
             <span className="text-[10px] text-muted-foreground">
-              {formatDistanceToNow(new Date(row.createdAt), { addSuffix: true })}
+              {relative(row.createdAt)}
             </span>
           </div>
           <h3 className="text-sm font-semibold text-foreground mb-1">{row.title}</h3>
