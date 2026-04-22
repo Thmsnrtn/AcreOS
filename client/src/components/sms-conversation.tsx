@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { staggerContainer, staggerItem } from "@/lib/animations";
 import { useToast } from "@/hooks/use-toast";
+import { TcpaComplianceBanner } from "@/components/tcpa-compliance-banner";
 
 interface SmsMessage {
   id: number;
@@ -173,13 +174,15 @@ export function SmsConversation({ leadId, leadPhone, leadName, tcpaConsent, doNo
       </div>
 
       {/* Input */}
-      <div className="p-3 border-t">
+      <div className="p-3 border-t space-y-2">
         {isDncBlocked ? (
           <div className="text-center text-sm text-destructive py-2">
             <AlertTriangle className="h-4 w-4 inline mr-1" />
             This lead is on the Do Not Contact list. SMS sending is disabled.
           </div>
         ) : (
+          <>
+          <TcpaComplianceBanner />
           <div className="flex gap-2">
             <Input
               value={message}
@@ -198,6 +201,7 @@ export function SmsConversation({ leadId, leadPhone, leadName, tcpaConsent, doNo
               <Send className="h-4 w-4" />
             </Button>
           </div>
+          </>
         )}
       </div>
     </div>
