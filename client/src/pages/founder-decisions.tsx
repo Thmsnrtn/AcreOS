@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { dollars, relative } from "@/lib/format";
 
 // ───────────── Types ─────────────
 
@@ -81,25 +82,6 @@ interface DecisionLogResponse {
 type BucketKey = keyof DecisionLogResponse["buckets"];
 
 // ───────────── Helpers ─────────────
-
-function formatCents(cents: number | null | undefined): string {
-  if (cents == null) return "—";
-  const abs = Math.abs(cents);
-  const sign = cents < 0 ? "-" : "";
-  if (abs >= 10000) return `${sign}$${Math.round(abs / 100).toLocaleString()}`;
-  return `${sign}$${(abs / 100).toFixed(2)}`;
-}
-
-function timeAgo(iso: string): string {
-  const then = new Date(iso).getTime();
-  const diff = Date.now() - then;
-  const mins = Math.floor(diff / 60000);
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-}
 
 function riskBadgeClass(level: string): string {
   switch (level) {
@@ -179,12 +161,12 @@ function DecisionRowCard({
         <div className="text-right shrink-0">
           <div className="text-xs font-mono text-muted-foreground whitespace-nowrap flex items-center gap-1 justify-end">
             <Clock className="w-3 h-3" />
-            {timeAgo(row.createdAt)}
+            {relative(row.createdAt)}
           </div>
           {row.estimatedImpactCents != null && (
             <div className="text-xs font-mono mt-0.5 flex items-center gap-1 justify-end text-muted-foreground">
               <DollarSign className="w-3 h-3" />
-              {formatCents(row.estimatedImpactCents)}
+              {dollars(row.estimatedImpactCents)}
             </div>
           )}
           {typeof row.sophieConfidenceScore === "number" && (
@@ -431,7 +413,7 @@ export default function FounderDecisionsPage() {
               <span>
                 Auto-handled dollar exposure:{" "}
                 <span className="font-semibold text-foreground">
-                  {formatCents(data.summary.autoHandledImpactCents)}
+                  {dollars(data.summary.autoHandledImpactCents)}
                 </span>
               </span>
             </div>
