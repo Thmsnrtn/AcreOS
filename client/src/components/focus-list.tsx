@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Flame, Sun, Snowflake, Skull, Phone, Mail, MessageSquare, Target, Loader2, CheckCircle, ArrowRight, Sparkles } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { relative } from "@/lib/format";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import type { Lead } from "@shared/schema";
@@ -386,7 +386,7 @@ export function FocusList() {
                   </div>
                   <div className="text-xs text-muted-foreground mt-1">
                     {lead.lastContactedAt ? (
-                      <>Last contact: {formatDistanceToNow(new Date(lead.lastContactedAt), { addSuffix: true })}</>
+                      <>Last contact: {relative(lead.lastContactedAt)}</>
                     ) : (
                       <>Never contacted</>
                     )}
