@@ -150,8 +150,8 @@ export function HelpContent({ onNavigateToSupport }: HelpContentProps) {
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-muted-foreground">
-            AcreOS is an all-in-one platform designed for real estate investors. It helps you manage every aspect of your
-            investing business, from finding motivated sellers to closing deals and managing seller-financed notes.
+            AcreOS is an all-in-one platform designed for Land Investors. It helps you manage every aspect of your
+            land-investing business, from finding motivated sellers to closing deals and managing seller-financed notes.
           </p>
           
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4">

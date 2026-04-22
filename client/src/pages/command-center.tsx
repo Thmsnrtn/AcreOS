@@ -1827,7 +1827,7 @@ export default function CommandCenterPage() {
             </div>
             <div>
               <h1 className="text-xl font-bold" data-testid="text-page-title">Assistant</h1>
-              <p className="text-sm text-muted-foreground">Your AI partner for real estate investing</p>
+              <p className="text-sm text-muted-foreground">Your AI partner for land investing</p>
             </div>
           </div>
           <DisclaimerBanner type="ai" className="mb-4" />
@@ -1955,7 +1955,7 @@ export default function CommandCenterPage() {
                         </div>
                         <h3 className="text-xl font-semibold mb-2" data-testid="text-assistant-welcome">Assistant</h3>
                         <p className="text-muted-foreground text-sm max-w-md mb-4">
-                          Your intelligent partner for real estate investing. I can help with research, deals, communications, and operations.
+                          Your intelligent partner for land investing. I can help with research, deals, communications, and operations.
                         </p>
                         {trialTokens > 0 && (
                           <div className="flex items-center gap-2 mb-8 px-3 py-2 rounded-md bg-emerald-500/10 border border-emerald-500/20" data-testid="trial-tokens-indicator">
@@ -2202,7 +2202,7 @@ export default function CommandCenterPage() {
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
                         onKeyDown={handleKeyDown}
-                        placeholder={isImageMode ? "Describe the image you want to generate..." : "Ask me anything about your real estate investments..."}
+                        placeholder={isImageMode ? "Describe the image you want to generate..." : "Ask me anything about your land investments..."}
                         className="flex-1 min-h-[48px] max-h-32 resize-none"
                         disabled={isStreaming}
                         data-testid="input-message"

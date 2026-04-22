@@ -1258,7 +1258,7 @@ export function FloatingAssistant() {
                   },
                   support: {
                     title: `Hi, I'm ${currentAgent.name}!`,
-                    description: "I'm your support specialist. I can help with questions about how to use AcreOS, property valuation guidance, troubleshooting, and general real estate investing advice."
+                    description: "I'm your support specialist. I can help with questions about how to use AcreOS, property valuation guidance, troubleshooting, and general land-investing advice."
                   },
                 };
                 const greeting = greetings[selectedAgent];

@@ -175,7 +175,7 @@ const WIZARD_STEPS = [
     id: 5,
     name: "complete",
     title: "Complete",
-    description: "You're all set to start growing your real estate business!",
+    description: "You're all set to start growing your land-investing business!",
     icon: PartyPopper,
   },
 ];
