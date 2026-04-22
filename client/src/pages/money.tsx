@@ -31,7 +31,7 @@ function getTabFromHash(): TabValue {
 function TabFallback() {
   return (
     <div className="flex items-center justify-center py-20">
-      <div className="animate-pulse text-muted-foreground text-sm">Loading...</div>
+      <div className="animate-pulse text-muted-foreground text-sm">Loading money view…</div>
     </div>
   );
 }

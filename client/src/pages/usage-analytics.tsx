@@ -131,7 +131,7 @@ export default function UsageAnalyticsPage() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="h-48 flex items-center justify-center text-muted-foreground">Loading...</div>
+            <div className="h-48 flex items-center justify-center text-muted-foreground">Tallying daily usage…</div>
           ) : !data?.series.length ? (
             <div className="h-48 flex items-center justify-center text-muted-foreground">No usage data for this period</div>
           ) : (
@@ -167,7 +167,7 @@ export default function UsageAnalyticsPage() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="text-muted-foreground">Loading...</div>
+            <div className="text-muted-foreground">Grouping usage by type…</div>
           ) : (
             <div className="space-y-3">
               {Object.entries(data?.totals || {})
