@@ -20,7 +20,10 @@ import { logger } from "../utils/logger";
 
 export const require2FA: RequestHandler = async (req, res, next) => {
   try {
-    if (!(req as any).isAuthenticated() || !req.user) {
+    // isAuthenticated (Clerk) runs before this middleware and populates
+    // req.user. If it isn't there, auth is missing — reject.
+    const user = (req as any).user;
+    if (!user) {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
@@ -29,7 +32,6 @@ export const require2FA: RequestHandler = async (req, res, next) => {
       return next();
     }
 
-    const user = req.user as any;
     const userId = user.claims?.sub || user.id;
 
     const [dbUser] = await db.select().from(users).where(eq(users.id, String(userId)));
