@@ -6,6 +6,7 @@ import { leads, deals, properties, payments, notes, activityLog, goals, insertGo
 import { gte, lte, count as sqlCount } from "drizzle-orm";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
+import { cacheResponse } from "./middleware/responseCache";
 import { runPortfolioHealthJob, getActiveAlerts, dismissAlert } from "./services/portfolioHealth";
 import { logger } from "./utils/logger";
 
@@ -24,7 +25,12 @@ export function registerDashboardRoutes(app: Express): void {
   });
   
   // Dashboard Intelligence - Anomalies, Predictions, Next Best Actions
-  api.get("/api/dashboard/intelligence", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  // /api/dashboard/intelligence pulls ALL leads/deals/properties and
+  // runs in-process analytics. At org scale (5k+ of each) this is the
+  // #1 perf hotspot on /today. Cache for 60s — the anomalies it
+  // surfaces are week-over-week comparisons, so a minute of staleness
+  // is well within acceptable freshness.
+  api.get("/api/dashboard/intelligence", isAuthenticated, getOrCreateOrg, cacheResponse(60), async (req, res) => {
     try {
       const org = req.organization;
       const now = new Date();
@@ -33,10 +39,13 @@ export function registerDashboardRoutes(app: Express): void {
       const oneMonthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
       const twoMonthsAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
 
-      // Fetch data for analysis
-      const allLeads = await storage.getLeads(org.id);
-      const allDeals = await storage.getDeals(org.id);
-      const allProperties = await storage.getProperties(org.id);
+      // Fetch data for analysis — run in parallel so we're not waiting
+      // on sequential round-trips to Postgres.
+      const [allLeads, allDeals, allProperties] = await Promise.all([
+        storage.getLeads(org.id),
+        storage.getDeals(org.id),
+        storage.getProperties(org.id),
+      ]);
 
       // Calculate week-over-week anomalies
       const anomalies: Array<{

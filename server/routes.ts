@@ -439,6 +439,13 @@ export async function registerRoutes(
     proxyUrl: process.env.APP_URL ? `${process.env.APP_URL}/__clerk` : undefined,
   }));
 
+  // PERF: HTTP Cache-Control headers for safe-GET /api/ responses.
+  // MUST register before any route definitions — Express middleware
+  // only runs if it's installed before the matched route. See
+  // server/middleware/httpCacheHeaders.ts for the rule table.
+  const { httpCacheHeaders } = await import("./middleware/httpCacheHeaders");
+  app.use("/api", httpCacheHeaders);
+
   // Register auth routes (/api/auth/user, /api/auth/attribution)
   registerAuthRoutes(app);
 
@@ -663,14 +670,9 @@ export async function registerRoutes(
   // Skips GET/HEAD/OPTIONS, webhooks, and Bearer-token API clients
   // ============================================
   app.use("/api", csrfProtection);
-
-  // PERF: add private Cache-Control + stale-while-revalidate headers to
-  // GET /api/ responses. Pattern-matched by path prefix (see
-  // server/middleware/httpCacheHeaders.ts for the rule table). Mutations
-  // and non-2xx responses are never cached. Huge win for navigation
-  // between pages that share endpoints (leads/deals/notes/etc.).
-  const { httpCacheHeaders } = await import("./middleware/httpCacheHeaders");
-  app.use("/api", httpCacheHeaders);
+  // (httpCacheHeaders registered earlier — before any route definitions,
+  // since Express middleware has to be installed before the routes it
+  // should wrap.)
 
   // ============================================
   // RATE LIMITING MIDDLEWARE (excludes health check)
