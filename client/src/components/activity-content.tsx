@@ -15,7 +15,7 @@ import {
   Loader2,
   ChevronRight
 } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { relative } from "@/lib/format";
 import { Link } from "wouter";
 import type { ActivityLogEntry } from "@shared/schema";
 
@@ -131,7 +131,7 @@ export function ActivityContent() {
                       <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
                         <span className="flex items-center gap-1">
                           <Clock className="w-3 h-3" />
-                          {activity.createdAt && formatDistanceToNow(new Date(activity.createdAt), { addSuffix: true })}
+                          {activity.createdAt && relative(activity.createdAt)}
                         </span>
                         {activity.userId && (
                           <span>by {activity.userId}</span>

@@ -21,7 +21,8 @@ import {
   AlertTriangle,
   CheckCheck
 } from "lucide-react";
-import { format, formatDistanceToNow } from "date-fns";
+import { format } from "date-fns";
+import { relative } from "@/lib/format";
 import { Link } from "wouter";
 import type { Notification } from "@shared/schema";
 
@@ -191,7 +192,7 @@ export function NotificationCenter() {
                           </p>
                         )}
                         <p className="text-xs text-muted-foreground mt-1">
-                          {notification.createdAt && formatDistanceToNow(new Date(notification.createdAt), { addSuffix: true })}
+                          {notification.createdAt && relative(notification.createdAt)}
                         </p>
                       </div>
                       {!notification.isRead && (

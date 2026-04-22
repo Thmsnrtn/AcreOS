@@ -1,5 +1,6 @@
 import { useQuery, useInfiniteQuery } from "@tanstack/react-query";
-import { formatDistanceToNow, format } from "date-fns";
+import { format } from "date-fns";
+import { relative } from "@/lib/format";
 import { 
   Mail, MailOpen, MousePointer, MessageSquare, MessageCircle,
   FileText, Package, PhoneOutgoing, PhoneIncoming, StickyNote,
@@ -130,7 +131,7 @@ function ActivityFeedItem({ event }: ActivityFeedItemProps) {
             className="text-xs text-muted-foreground"
             title={format(eventDate, "PPpp")}
           >
-            {formatDistanceToNow(eventDate, { addSuffix: true })}
+            {relative(eventDate)}
           </span>
           {entityLink && (
             <Link href={entityLink}>

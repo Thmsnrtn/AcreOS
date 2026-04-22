@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { formatDistanceToNow, format } from "date-fns";
+import { format } from "date-fns";
+import { relative } from "@/lib/format";
 import {
   Mail, MailOpen, MousePointer, MessageSquare, MessageCircle,
   FileText, Package, PhoneOutgoing, PhoneIncoming, StickyNote,
@@ -106,7 +107,7 @@ function TimelineEvent({ event }: TimelineEventProps) {
               </p>
               <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-muted-foreground">
                 <span title={format(eventDate, "PPpp")}>
-                  {formatDistanceToNow(eventDate, { addSuffix: true })}
+                  {relative(eventDate)}
                 </span>
                 {event.userId && (
                   <>
