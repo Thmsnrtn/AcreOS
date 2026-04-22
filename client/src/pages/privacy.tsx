@@ -10,10 +10,10 @@ export default function PrivacyPolicy() {
     <div className="min-h-screen bg-background">
       <div className="max-w-4xl mx-auto p-4 md:p-8 pb-24">
         <div className="mb-6">
-          <Link href="/auth">
-            <Button variant="ghost" size="sm" data-testid="button-back-to-login">
+          <Link href="/">
+            <Button variant="ghost" size="sm" data-testid="button-back-to-home">
               <ArrowLeft className="w-4 h-4 mr-2" />
-              Back to Login
+              Back to AcreOS
             </Button>
           </Link>
         </div>

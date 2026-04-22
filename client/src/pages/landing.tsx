@@ -175,15 +175,20 @@ export default function LandingPage() {
             </div>
             <span className="text-lg font-bold">AcreOS</span>
           </div>
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="sm" asChild>
+          <div className="flex items-center gap-1 sm:gap-3">
+            <Button variant="ghost" size="sm" asChild className="hidden sm:inline-flex">
               <Link href="/pricing">Pricing</Link>
             </Button>
             <Button variant="ghost" size="sm" asChild>
-              <Link href="/auth">Sign In</Link>
+              <Link href="/auth">Sign in</Link>
             </Button>
             <Button size="sm" asChild>
-              <Link href="/auth?mode=register">Get Started Free</Link>
+              {/* Short label on mobile so the button doesn't clip. Full
+                  "Get Started Free" on sm+ screens. */}
+              <Link href="/auth?mode=register">
+                <span className="sm:hidden">Get started</span>
+                <span className="hidden sm:inline">Get Started Free</span>
+              </Link>
             </Button>
           </div>
         </div>
@@ -352,11 +357,15 @@ export default function LandingPage() {
 
       {/* Footer */}
       <footer className="border-t py-8 px-6">
-        <div className="max-w-6xl mx-auto flex items-center justify-between text-sm text-muted-foreground">
+        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-muted-foreground">
           <span>&copy; {new Date().getFullYear()} AcreOS. All rights reserved.</span>
-          <div className="flex gap-4">
+          <div className="flex gap-4 flex-wrap justify-center">
             <Link href="/pricing" className="hover:text-foreground">Pricing</Link>
-            <Link href="/auth" className="hover:text-foreground">Sign In</Link>
+            <Link href="/status" className="hover:text-foreground">Status</Link>
+            <Link href="/changelog" className="hover:text-foreground">Changelog</Link>
+            <Link href="/terms" className="hover:text-foreground">Terms</Link>
+            <Link href="/privacy" className="hover:text-foreground">Privacy</Link>
+            <Link href="/auth" className="hover:text-foreground">Sign in</Link>
           </div>
         </div>
       </footer>
