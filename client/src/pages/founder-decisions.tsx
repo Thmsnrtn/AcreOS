@@ -33,6 +33,7 @@ import {
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { dollars, relative } from "@/lib/format";
+import { CopyButton } from "@/components/ui/copy-button";
 
 // ───────────── Types ─────────────
 
@@ -154,8 +155,13 @@ function DecisionRowCard({
             )}
           </div>
           <p className="text-sm text-foreground mb-1">{row.recommendedActionLabel || row.recommendedAction}</p>
-          <p className="text-xs text-muted-foreground">
-            {expanded ? row.sophieAnalysis : `${row.sophieAnalysis.slice(0, 180)}${row.sophieAnalysis.length > 180 ? "…" : ""}`}
+          {/* Preserve newlines from the agent's analysis when expanded — they
+              encode structure the agent produced deliberately. Truncate
+              without whitespace preservation in the collapsed state. */}
+          <p className={expanded ? "text-xs text-muted-foreground whitespace-pre-wrap" : "text-xs text-muted-foreground"}>
+            {expanded
+              ? row.sophieAnalysis
+              : `${row.sophieAnalysis.replace(/\s+/g, " ").slice(0, 180)}${row.sophieAnalysis.length > 180 ? "…" : ""}`}
           </p>
         </button>
         <div className="text-right shrink-0">
@@ -211,8 +217,17 @@ function DecisionRowCard({
           )}
           {row.contextBundle && Object.keys(row.contextBundle).length > 0 && (
             <details className="mt-1">
-              <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+              <summary className="cursor-pointer text-muted-foreground hover:text-foreground flex items-center gap-2">
                 Context bundle
+                <span onClick={(e) => e.stopPropagation()} className="inline-flex">
+                  <CopyButton
+                    value={JSON.stringify(row, null, 2)}
+                    successMessage="Decision JSON copied"
+                    srLabel="Copy decision as JSON"
+                    size="sm"
+                    className="h-6 w-6"
+                  />
+                </span>
               </summary>
               <pre className="mt-1 p-2 bg-muted rounded overflow-x-auto text-[10px] leading-relaxed max-h-64">
                 {JSON.stringify(row.contextBundle, null, 2)}
