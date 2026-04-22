@@ -11,7 +11,7 @@ import {
   CheckCircle, Clock, TrendingUp, ChevronRight, RefreshCw,
   Network, Eye, Gauge, HeartPulse,
 } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { relative } from "@/lib/format";
 import { InfoTooltip } from "@/components/info-tooltip";
 import {
   useAgentRuntimeStates,
@@ -189,7 +189,7 @@ export default function SovereignDashboard() {
                     {agent.lastAction && (
                       <p className="text-xs text-muted-foreground mt-2 pl-5">
                         Last: {agent.lastAction}
-                        {agent.lastActionAt && ` · ${formatDistanceToNow(new Date(agent.lastActionAt), { addSuffix: true })}`}
+                        {agent.lastActionAt && ` · ${relative(agent.lastActionAt)}`}
                       </p>
                     )}
                     {agent.resourceUsage != null && (
@@ -324,7 +324,7 @@ export default function SovereignDashboard() {
                           )}
                           {job.runCompletedAt && (
                             <span className="text-xs text-muted-foreground">
-                              {formatDistanceToNow(new Date(job.runCompletedAt), { addSuffix: true })}
+                              {relative(job.runCompletedAt)}
                             </span>
                           )}
                         </div>

@@ -24,7 +24,7 @@ import { EmptyState } from "@/components/empty-state";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Eye, X, CheckCircle2, AlertCircle, Clock } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { relative } from "@/lib/format";
 
 interface PreviewRow {
   id: number;
@@ -233,7 +233,7 @@ function RecentPreviewRow({ row }: { row: PreviewRow }) {
           <span className="text-[10px] text-muted-foreground">{statusMeta.label}</span>
           <span className="text-[10px] text-muted-foreground">·</span>
           <span className="text-[10px] text-muted-foreground">
-            {formatDistanceToNow(new Date(row.plannedAt), { addSuffix: true })}
+            {relative(row.plannedAt)}
           </span>
         </div>
         <p className="text-sm text-foreground truncate">{row.actionSummary}</p>

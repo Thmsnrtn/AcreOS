@@ -23,7 +23,8 @@ import {
   Activity,
   Layers,
 } from "lucide-react";
-import { format, formatDistanceToNow } from "date-fns";
+import { format } from "date-fns";
+import { relative } from "@/lib/format";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -390,9 +391,7 @@ export default function AiObservatory() {
                         <TableRow key={row.id}>
                           <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                             <span title={format(new Date(row.createdAt), "PPpp")}>
-                              {formatDistanceToNow(new Date(row.createdAt), {
-                                addSuffix: true,
-                              })}
+                              {relative(row.createdAt)}
                             </span>
                           </TableCell>
                           <TableCell className="text-xs max-w-[120px] truncate">
@@ -508,9 +507,7 @@ export default function AiObservatory() {
                         {p.status}
                       </Badge>
                       <span className="text-xs text-muted-foreground">
-                        {formatDistanceToNow(new Date(p.createdAt), {
-                          addSuffix: true,
-                        })}
+                        {relative(p.createdAt)}
                       </span>
                     </div>
                   </div>

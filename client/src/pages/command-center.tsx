@@ -71,7 +71,7 @@ import {
   Image as ImageIcon,
 } from "lucide-react";
 import { AISettings } from "@/components/ai-settings";
-import { formatDistanceToNow } from "date-fns";
+import { relative } from "@/lib/format";
 import { DisclaimerBanner } from "@/components/disclaimer-banner";
 import { LowBalanceAlert } from "@/components/low-balance-alert";
 
@@ -409,7 +409,7 @@ function TeamTabContent() {
                       </ul>
                     )}
                     <p className="text-xs text-muted-foreground mt-2">
-                      Generated {formatDistanceToNow(new Date(briefing.generatedAt), { addSuffix: true })}
+                      Generated {relative(briefing.generatedAt)}
                     </p>
                   </div>
                 </div>
@@ -476,7 +476,7 @@ function TeamTabContent() {
                             <div className="flex items-center gap-4 mt-2 flex-wrap">
                               <span className="text-xs text-muted-foreground flex items-center gap-1">
                                 <Clock className="w-3 h-3" />
-                                {formatDistanceToNow(new Date(action.createdAt), { addSuffix: true })}
+                                {relative(action.createdAt)}
                               </span>
                               <span className="text-xs text-muted-foreground">{action.agentName}</span>
                             </div>
@@ -687,7 +687,7 @@ function TeamTabContent() {
                               </Badge>
                             </div>
                             <p className="text-xs text-muted-foreground">
-                              {formatDistanceToNow(new Date(action.createdAt), { addSuffix: true })}
+                              {relative(action.createdAt)}
                             </p>
                           </div>
                         ))}
@@ -879,7 +879,7 @@ function AgentsTabContent() {
                       {agent.lastRunAt && (
                         <div className="flex items-center gap-2 text-muted-foreground">
                           <Clock className="w-3 h-3" />
-                          <span>Last run: {formatDistanceToNow(new Date(agent.lastRunAt), { addSuffix: true })}</span>
+                          <span>Last run: {relative(agent.lastRunAt)}</span>
                         </div>
                       )}
                       {(agent.processedCount !== undefined && agent.processedCount > 0) && (
@@ -1479,7 +1479,7 @@ function AIOperationsTabContent() {
                         </div>
                         <p className="text-xs text-muted-foreground line-clamp-2">{alert.message}</p>
                         <p className="text-xs text-muted-foreground mt-1">
-                          {alert.createdAt && formatDistanceToNow(new Date(alert.createdAt), { addSuffix: true })}
+                          {alert.createdAt && relative(alert.createdAt)}
                         </p>
                       </div>
                     </div>

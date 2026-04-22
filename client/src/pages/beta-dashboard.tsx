@@ -45,7 +45,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { formatDistanceToNow } from "date-fns";
+import { relative } from "@/lib/format";
 
 interface WaitlistEntry {
   id: number;
@@ -290,7 +290,7 @@ export default function BetaDashboardPage() {
                           </TableCell>
                           <TableCell className="text-sm font-mono">{entry.score}</TableCell>
                           <TableCell className="text-xs text-muted-foreground">
-                            {formatDistanceToNow(new Date(entry.createdAt), { addSuffix: true })}
+                            {relative(entry.createdAt)}
                           </TableCell>
                           <TableCell>
                             {entry.status === "waiting" && (
@@ -396,7 +396,7 @@ export default function BetaDashboardPage() {
                           </span>
                         )}
                         <span className="text-xs text-muted-foreground ml-auto">
-                          {formatDistanceToNow(new Date(fb.createdAt), { addSuffix: true })}
+                          {relative(fb.createdAt)}
                         </span>
                       </div>
                       <p className="text-sm text-muted-foreground mt-1">{fb.message}</p>

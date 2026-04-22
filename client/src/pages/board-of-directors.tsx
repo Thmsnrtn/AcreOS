@@ -21,7 +21,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { formatDistanceToNow } from "date-fns";
+import { relative } from "@/lib/format";
 import {
   useAgentNegotiations,
   useDelegationTokens,
@@ -143,7 +143,7 @@ function NegotiationCard({ negotiation }: { negotiation: any }) {
 
             {negotiation.createdAt && (
               <p className="text-xs text-muted-foreground">
-                Started {formatDistanceToNow(new Date(negotiation.createdAt), { addSuffix: true })}
+                Started {relative(negotiation.createdAt)}
               </p>
             )}
           </div>
@@ -286,7 +286,7 @@ export default function BoardOfDirectors() {
                         </div>
                         {entry.createdAt && (
                           <span className="text-xs text-muted-foreground">
-                            {formatDistanceToNow(new Date(entry.createdAt), { addSuffix: true })}
+                            {relative(entry.createdAt)}
                           </span>
                         )}
                       </div>
@@ -320,7 +320,7 @@ export default function BoardOfDirectors() {
                         </div>
                         <p className="text-xs text-muted-foreground mt-1">
                           Agent: {override.agent ?? override.targetAgent ?? "System"} ·{" "}
-                          {override.createdAt && formatDistanceToNow(new Date(override.createdAt), { addSuffix: true })}
+                          {override.createdAt && relative(override.createdAt)}
                         </p>
                         {override.learningApplied && (
                           <p className="text-xs text-green-600 mt-1">Learning applied to future decisions</p>

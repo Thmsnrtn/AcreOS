@@ -17,7 +17,7 @@ import { useRealtime } from "@/hooks/use-realtime";
 import {
   Hash, MessageSquare, Plus, Send, Loader2, Lock,
 } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { relative } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -419,7 +419,7 @@ export default function TeamInboxPage() {
                         <p className={cn("text-xs text-muted-foreground mb-0.5", isMe && "text-right")}>
                           {isMe ? "You" : displayName(msg.senderId)}
                           {" · "}
-                          {formatDistanceToNow(new Date(msg.createdAt), { addSuffix: true })}
+                          {relative(msg.createdAt)}
                         </p>
                       )}
                       <div

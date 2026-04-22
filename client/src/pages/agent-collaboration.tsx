@@ -13,7 +13,7 @@ import {
   Vote, AlertTriangle, CheckCircle, Clock, Crown,
   Bot, XCircle, ChevronDown, ChevronUp,
 } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { relative } from "@/lib/format";
 import { useWebSocketChannel } from "@/hooks/use-websocket-channel";
 
 const AGENT_CODENAMES = [
@@ -73,7 +73,7 @@ function MessageBubble({ message }: { message: any }) {
           </p>
         )}
         <p className="text-xs opacity-60 mt-1">
-          {message.createdAt && formatDistanceToNow(new Date(message.createdAt), { addSuffix: true })}
+          {message.createdAt && relative(message.createdAt)}
         </p>
       </div>
     </div>

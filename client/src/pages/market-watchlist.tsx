@@ -50,7 +50,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { formatDistanceToNow } from "date-fns";
+import { relative } from "@/lib/format";
 
 interface WatchlistEntry {
   id: string;
@@ -299,7 +299,7 @@ export default function MarketWatchlistPage() {
                         </div>
                         {entry.lastAlertAt && (
                           <div className="text-xs text-muted-foreground mt-0.5">
-                            Last alert {formatDistanceToNow(new Date(entry.lastAlertAt), { addSuffix: true })}
+                            Last alert {relative(entry.lastAlertAt)}
                           </div>
                         )}
                       </div>
@@ -376,7 +376,7 @@ export default function MarketWatchlistPage() {
                         <Badge variant="outline" className="text-xs">{alert.type.replace("_", " ")}</Badge>
                         {!alert.read && <div className="w-2 h-2 rounded-full bg-primary" />}
                         <span className="text-xs text-muted-foreground ml-auto">
-                          {formatDistanceToNow(new Date(alert.createdAt), { addSuffix: true })}
+                          {relative(alert.createdAt)}
                         </span>
                       </div>
                       <p className="text-sm text-muted-foreground mt-1">{alert.summary}</p>
