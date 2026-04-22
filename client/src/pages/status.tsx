@@ -4,12 +4,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, CheckCircle2, AlertTriangle, XCircle, RefreshCw } from "lucide-react";
+import { StatusDot } from "@/components/ui/status-dot";
 
-const STATUS_CONFIG: Record<string, { color: string; icon: typeof CheckCircle2; label: string }> = {
-  operational: { color: "bg-green-500", icon: CheckCircle2, label: "Operational" },
-  degraded: { color: "bg-yellow-500", icon: AlertTriangle, label: "Degraded" },
-  outage: { color: "bg-red-500", icon: XCircle, label: "Outage" },
-  unknown: { color: "bg-gray-400", icon: AlertTriangle, label: "Unknown" },
+type Tone = "green" | "amber" | "red" | "gray";
+const STATUS_CONFIG: Record<string, { tone: Tone; icon: typeof CheckCircle2; label: string }> = {
+  operational: { tone: "green", icon: CheckCircle2, label: "Operational" },
+  degraded:    { tone: "amber", icon: AlertTriangle, label: "Degraded" },
+  outage:      { tone: "red",   icon: XCircle, label: "Outage" },
+  unknown:     { tone: "gray",  icon: AlertTriangle, label: "Unknown" },
 };
 
 // Proper display names. Tailwind's `capitalize` only uppercases the
@@ -55,8 +57,12 @@ export default function StatusPage() {
         <div className="text-center mb-12">
           <h1 className="text-3xl font-bold mb-2">AcreOS System Status</h1>
           <div className="flex items-center justify-center gap-2 mt-4">
-            <div className={`w-3 h-3 rounded-full ${config.color}`} />
-            <span className="text-lg font-medium">{isLoading ? "Checking..." : config.label}</span>
+            <StatusDot
+              tone={config.tone}
+              size="lg"
+              pulse={config.tone === "green"}
+              label={<span className="text-lg font-medium">{isLoading ? "Checking…" : config.label}</span>}
+            />
           </div>
         </div>
 
@@ -69,7 +75,7 @@ export default function StatusPage() {
           </CardHeader>
           <CardContent className="space-y-0 p-0">
             {isLoading ? (
-              <div className="p-6 text-center text-muted-foreground">Loading status...</div>
+              <div className="p-6 text-center text-muted-foreground">Checking every service…</div>
             ) : (
               data?.services.map((service) => {
                 const svc = STATUS_CONFIG[service.status] || STATUS_CONFIG.unknown;
