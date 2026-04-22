@@ -1,4 +1,5 @@
 import { PageShell } from "@/components/page-shell";
+import { plural } from "@/lib/format";
 import { PaxContextButton } from "@/components/pax-context-button";
 import { ListPagination, usePagination } from "@/components/list-pagination";
 import { useDeals, useDealsPaginated, useCreateDeal, useUpdateDeal, useDeleteDeal, useSaveDealAnalysis, useBulkStageUpdate, useBulkStageUndo, type BulkStageUpdateResult } from "@/hooks/use-deals";
@@ -557,7 +558,7 @@ export default function DealsPage() {
             <div className="p-3 bg-muted/50 border rounded-md space-y-3 md:space-y-0 md:flex md:flex-wrap md:items-center md:gap-3" data-testid="bulk-actions-toolbar-deals">
               <div className="flex items-center gap-2">
                 <CheckSquare className="w-4 h-4" />
-                <span className="text-sm font-medium">{selectedDealIds.size} deal{selectedDealIds.size !== 1 ? "s" : ""} selected</span>
+                <span className="text-sm font-medium">{plural(selectedDealIds.size, "deal")} selected</span>
                 <Button variant="ghost" size="icon" className="md:hidden min-h-[44px] min-w-[44px] ml-auto" onClick={() => setSelectedDealIds(new Set())} aria-label="Clear selection">
                   <X className="w-4 h-4" />
                 </Button>
@@ -841,7 +842,7 @@ export default function DealsPage() {
         open={showBulkDeleteConfirm}
         onOpenChange={(open) => !open && setShowBulkDeleteConfirm(false)}
         title="Delete Selected Deals"
-        description={`Delete ${selectedDealIds.size} deal${selectedDealIds.size !== 1 ? "s" : ""}? This cannot be undone.`}
+        description={`Delete ${plural(selectedDealIds.size, "deal")}? This cannot be undone.`}
         confirmLabel="Delete All"
         onConfirm={handleBulkDelete}
         isLoading={isBulkDeleting}
