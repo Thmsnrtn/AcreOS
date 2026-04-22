@@ -7,6 +7,7 @@ import { Check, X, ArrowLeft } from "lucide-react";
 import { AcreosLogo } from "@/components/acreos-logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { SkipToContent } from "@/components/skip-to-content";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 const TIERS = [
   {
@@ -94,6 +95,7 @@ function FeatureValue({ value }: { value: string | boolean }) {
 
 export default function PricingPage() {
   const [annual, setAnnual] = useState(false);
+  useDocumentTitle("Pricing");
 
   return (
     <div className="min-h-screen bg-background">

@@ -4,6 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 interface ChangelogEntry {
   version: string;
@@ -69,6 +70,7 @@ function isCustomerVisible(cleaned: string): boolean {
 }
 
 export default function ChangelogPage() {
+  useDocumentTitle("Changelog");
   const { data, isLoading } = useQuery<{ entries: ChangelogEntry[] }>({
     queryKey: ["/api/changelog"],
     staleTime: 1000 * 60 * 60,

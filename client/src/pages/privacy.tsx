@@ -2,8 +2,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Shield } from "lucide-react";
 import { Link } from "wouter";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 export default function PrivacyPolicy() {
+  useDocumentTitle("Privacy Policy");
   const lastUpdated = "March 2026";
 
   return (

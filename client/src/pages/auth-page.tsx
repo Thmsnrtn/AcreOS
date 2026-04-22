@@ -5,8 +5,10 @@ import { useAuth } from "@/hooks/use-auth";
 import { useBrandName } from "@/hooks/use-white-label";
 import { ArrowLeft } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 export default function AuthPage() {
+  useDocumentTitle("Sign in");
   const { user, isLoading } = useAuth();
   const brandName = useBrandName();
   const params = new URLSearchParams(window.location.search);
