@@ -24,6 +24,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Brain, Check, X, ChevronDown, ChevronRight } from "lucide-react";
 import { relative } from "@/lib/format";
 import { PromptDiffViewer } from "@/components/prompt-diff-viewer";
+import { PageHeader } from "@/components/ui/page-header";
 
 interface EvolutionProposal {
   id: number;
@@ -84,19 +85,11 @@ export default function FounderPromptEvolutionsPage() {
   return (
     <PageShell label="Prompt Evolutions">
       <div className="space-y-6 max-w-5xl mx-auto">
-        <Card>
-          <CardContent className="p-6 flex items-start justify-between gap-4 flex-wrap">
-            <div>
-              <h1 className="text-2xl font-semibold text-foreground mb-2 flex items-center gap-2">
-                <Brain className="h-5 w-5 text-muted-foreground" />
-                Prompt evolutions
-              </h1>
-              <p className="text-sm text-muted-foreground max-w-2xl">
-                Revisions the monthly meta-agent has proposed based on per-agent performance data
-                (outcome scores, founder overrides, calibration). Approving applies the new prompt
-                immediately. Rejecting marks the proposal dead.
-              </p>
-            </div>
+        <PageHeader
+          title="Prompt evolutions"
+          icon={<Brain className="h-5 w-5 text-muted-foreground" />}
+          description="Revisions the monthly meta-agent has proposed based on per-agent performance data (outcome scores, founder overrides, calibration). Approving applies the new prompt immediately. Rejecting marks the proposal dead."
+          actions={
             <Button
               onClick={() => runNow.mutate()}
               disabled={runNow.isPending}
@@ -106,8 +99,8 @@ export default function FounderPromptEvolutionsPage() {
             >
               {runNow.isPending ? "Running…" : "Run meta-agent now"}
             </Button>
-          </CardContent>
-        </Card>
+          }
+        />
 
         {isLoading ? (
           <Card>
