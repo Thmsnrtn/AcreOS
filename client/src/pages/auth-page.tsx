@@ -94,7 +94,7 @@ export default function AuthPage() {
             <span className="text-2xl font-bold tracking-tight">{brandName}</span>
           </div>
           <p className="text-sm text-muted-foreground text-center">
-            The operating system for land investors
+            The AI-powered platform for Land Investors
           </p>
         </div>
 
@@ -109,12 +109,9 @@ export default function AuthPage() {
             fallbackRedirectUrl="/today"
           />
         )}
-        <button
-          onClick={() => setMode(mode === "sign-in" ? "sign-up" : "sign-in")}
-          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          {mode === "sign-in" ? "Need an account? Sign up" : "Already have an account? Sign in"}
-        </button>
+        {/* Clerk's widget already renders "Don't have an account? Sign up"
+            inside its card, so we don't duplicate it here. The mode
+            toggle still exists via route/hash if needed programmatically. */}
         <Link
           href="/"
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"

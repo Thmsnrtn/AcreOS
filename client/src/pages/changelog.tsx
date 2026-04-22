@@ -19,6 +19,44 @@ const SECTION_COLORS: Record<string, string> = {
   Security: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
 };
 
+/**
+ * Scrub internal dev-ese from a changelog item so a customer-facing
+ * audience can read it. The raw CHANGELOG.md is written by engineers
+ * and contains ticket IDs (F-A10-1), file paths (`server/...`), and
+ * literal markdown asterisks. Until we split public/internal
+ * changelogs, we clean at render time.
+ */
+function cleanChangelogItem(raw: string): string {
+  let s = raw;
+  // Strip leading ticket + status prefix:  "**F-A10-1 FIXED:** webhook..."
+  s = s.replace(/^\*\*[A-Z]+-[A-Z0-9-]+\s+[A-Z]+:\*\*\s*/, "");
+  // Strip inline file paths in backticks:  "... (`server/routes.ts`)"
+  s = s.replace(/\s*\([`']?[^)]*\/[^)]*[`']?\)/g, "");
+  // Strip bare backticks wrapping code:  "`foo()`" → "foo()"
+  s = s.replace(/`([^`]+)`/g, "$1");
+  // Strip any remaining markdown-bold asterisks
+  s = s.replace(/\*\*([^*]+)\*\*/g, "$1");
+  return s.trim();
+}
+
+/**
+ * Drop items that are pure internal (no customer-visible change) even
+ * after cleaning. Heuristic: items with 3+ internal tokens (CI, CVE,
+ * npm audit, Dockerfile, regex pattern counts) are filtered out.
+ */
+function isCustomerVisible(cleaned: string): boolean {
+  const internalMarkers = [
+    /CI (warnings?|build)/i,
+    /CVE patch SLA/i,
+    /npm ci|npm audit/i,
+    /Dockerfile/i,
+    /\d+ regex patterns/i,
+    /dev fallback/i,
+    /log retention policy/i,
+  ];
+  return internalMarkers.every((re) => !re.test(cleaned));
+}
+
 export default function ChangelogPage() {
   const { data, isLoading } = useQuery<{ entries: ChangelogEntry[] }>({
     queryKey: ["/api/changelog"],
@@ -58,12 +96,15 @@ export default function ChangelogPage() {
                         {section.title}
                       </Badge>
                       <ul className="space-y-1.5 ml-1">
-                        {section.items.map((item, i) => (
-                          <li key={i} className="text-sm text-muted-foreground flex gap-2">
-                            <span className="text-muted-foreground/50 shrink-0">-</span>
-                            <span>{item}</span>
-                          </li>
-                        ))}
+                        {section.items
+                          .map(cleanChangelogItem)
+                          .filter(isCustomerVisible)
+                          .map((item, i) => (
+                            <li key={i} className="text-sm text-muted-foreground flex gap-2">
+                              <span className="text-muted-foreground/50 shrink-0">-</span>
+                              <span>{item}</span>
+                            </li>
+                          ))}
                       </ul>
                     </div>
                   ))}

@@ -52,12 +52,16 @@ const TIER_LADDER: Record<string, string> = {
   // enterprise intentionally omitted — no higher tier, renewal-talk instead
 };
 
+// Tier prices in cents. MUST match /pricing page values. When the
+// pricing page changes, update these too — the expansion-radar MRR
+// lift estimates are rendered to the founder and customer-facing
+// upgrade offers use the delta.
 const TIER_PRICES_CENTS: Record<string, number> = {
   free: 0,
-  starter: 4900,
-  pro: 9900,
-  scale: 19900,
-  enterprise: 49900,
+  starter: 2000,   // $20/mo — was $49 (mismatch with pricing page)
+  pro: 4900,       // $49/mo — was $99
+  scale: 7900,     // $79/mo — was $199
+  enterprise: 19900, // $199 — not listed on pricing page; custom quote
 };
 
 const CANDIDATE_THRESHOLD = 60;

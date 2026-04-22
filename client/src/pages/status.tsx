@@ -12,6 +12,21 @@ const STATUS_CONFIG: Record<string, { color: string; icon: typeof CheckCircle2; 
   unknown: { color: "bg-gray-400", icon: AlertTriangle, label: "Unknown" },
 };
 
+// Proper display names. Tailwind's `capitalize` only uppercases the
+// first letter, so "openai" became "Openai" — wrong. Branded names
+// (OpenAI, Stripe, etc) need explicit casing.
+const SERVICE_DISPLAY_NAME: Record<string, string> = {
+  database: "Database",
+  redis: "Redis",
+  stripe: "Stripe",
+  openai: "OpenAI",
+  twilio: "Twilio",
+  email: "Email (SES)",
+  lob: "Lob",
+  anthropic: "Anthropic",
+  clerk: "Clerk",
+};
+
 export default function StatusPage() {
   const { data, isLoading, refetch } = useQuery<{
     status: string;
@@ -61,7 +76,10 @@ export default function StatusPage() {
                 const SvcIcon = svc.icon;
                 return (
                   <div key={service.name} className="flex items-center justify-between px-6 py-4 border-t first:border-t-0">
-                    <span className="font-medium capitalize">{service.name}</span>
+                    <span className="font-medium">
+                      {SERVICE_DISPLAY_NAME[service.name.toLowerCase()] ??
+                        service.name.charAt(0).toUpperCase() + service.name.slice(1)}
+                    </span>
                     <Badge variant="outline" className="gap-1.5">
                       <SvcIcon className={`w-3.5 h-3.5 ${service.status === "operational" ? "text-green-600" : service.status === "degraded" ? "text-yellow-600" : "text-red-600"}`} />
                       {svc.label}
