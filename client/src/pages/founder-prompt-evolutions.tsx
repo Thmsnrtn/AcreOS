@@ -22,7 +22,8 @@ import { EmptyState } from "@/components/empty-state";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Brain, Check, X, ChevronDown, ChevronRight } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { relative } from "@/lib/format";
+import { PromptDiffViewer } from "@/components/prompt-diff-viewer";
 
 interface EvolutionProposal {
   id: number;
@@ -154,6 +155,15 @@ function EvolutionCard({
   const [expanded, setExpanded] = useState(false);
   const before = proposal.performanceDataBefore ?? {};
 
+  // Fetch current active prompt only when the card is expanded — keeps
+  // the list page lightweight but enables a real diff on drill-in.
+  const { data: detail } = useQuery<{ proposal: EvolutionProposal; currentPrompt: string | null }>({
+    queryKey: [`/api/founder/intelligence/prompt-evolutions/${proposal.id}`],
+    enabled: expanded,
+    staleTime: 60_000,
+  });
+  const currentPrompt = detail?.currentPrompt ?? null;
+
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -162,7 +172,7 @@ function EvolutionCard({
             <div className="flex items-center gap-2 mb-1">
               <Badge variant="secondary">{proposal.agentCodename}</Badge>
               <span className="text-xs text-muted-foreground">
-                {formatDistanceToNow(new Date(proposal.createdAt), { addSuffix: true })}
+                {relative(proposal.createdAt)}
               </span>
             </div>
             <CardTitle className="text-base font-medium">{proposal.proposalReason}</CardTitle>
@@ -207,12 +217,16 @@ function EvolutionCard({
           className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
         >
           {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-          {expanded ? "Hide proposed prompt" : "Show proposed prompt"}
+          {expanded ? "Hide diff" : "Show diff"}
         </button>
         {expanded && (
-          <pre className="bg-muted/50 p-3 rounded text-[11px] whitespace-pre-wrap font-mono max-h-96 overflow-y-auto">
-            {proposal.proposedPrompt}
-          </pre>
+          currentPrompt ? (
+            <PromptDiffViewer current={currentPrompt} proposed={proposal.proposedPrompt} />
+          ) : (
+            <pre className="bg-muted/50 p-3 rounded text-[11px] whitespace-pre-wrap font-mono max-h-96 overflow-y-auto">
+              {proposal.proposedPrompt}
+            </pre>
+          )
         )}
       </CardContent>
     </Card>

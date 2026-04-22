@@ -1506,7 +1506,16 @@ router.get("/prompt-evolutions/:id", requireFounder, async (req: Request, res: R
     const { getPromptChange } = await import("./services/promptEvolutionMetaAgent");
     const row = await getPromptChange(id);
     if (!row) return res.status(404).json({ error: "Proposal not found" });
-    res.json({ proposal: row });
+    // Attach the currently-active prompt so the client can render a diff.
+    let currentPrompt: string | null = null;
+    try {
+      const { agentVersionControlService } = await import("./services/agentVersionControlV12");
+      const active = await agentVersionControlService.getActiveVersion(row.agentCodename);
+      currentPrompt = active?.personalityPrompt ?? null;
+    } catch (_e) {
+      currentPrompt = null;
+    }
+    res.json({ proposal: row, currentPrompt });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
