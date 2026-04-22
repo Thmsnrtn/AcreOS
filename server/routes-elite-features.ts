@@ -215,8 +215,22 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
   });
 
   // ============================================
-  // E-SIGNING
+  // E-SIGNING (Dropbox Sign — legacy, opt-in via DROPBOX_SIGN_API_KEY)
+  //
+  // The canonical native flow lives on /api/generated-documents/:id/
+  // request-signature + /api/public/sign/:docId — no subscription
+  // required. These endpoints stay in place for orgs that explicitly
+  // opt into Dropbox Sign by setting the env key. Each one catches the
+  // "not configured" error and steers callers to the native flow
+  // instead of a cryptic 500.
   // ============================================
+
+  function esignNotConfigured(res: Response, err: any) {
+    return res.status(503).json({
+      message: "Dropbox Sign is not configured on this deployment. Use the native signing flow: POST /api/generated-documents/:id/request-signature",
+      detail: err?.message,
+    });
+  }
 
   app.post("/api/documents/:id/send-for-signature", ...auth, async (req: Request, res: Response) => {
     try {
@@ -234,6 +248,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
 
       res.json(result);
     } catch (err: any) {
+      if (err?.message?.includes("DROPBOX_SIGN_API_KEY")) return esignNotConfigured(res, err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -243,6 +258,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
       const status = await eSigningService.getSignatureRequestStatus(req.params.signatureRequestId);
       res.json(status);
     } catch (err: any) {
+      if (err?.message?.includes("DROPBOX_SIGN_API_KEY")) return esignNotConfigured(res, err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -253,6 +269,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
       await eSigningService.resendSignatureReminder(req.params.signatureRequestId, signerEmail);
       res.json({ success: true });
     } catch (err: any) {
+      if (err?.message?.includes("DROPBOX_SIGN_API_KEY")) return esignNotConfigured(res, err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -262,6 +279,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
       await eSigningService.cancelSignatureRequest(req.params.signatureRequestId);
       res.json({ success: true });
     } catch (err: any) {
+      if (err?.message?.includes("DROPBOX_SIGN_API_KEY")) return esignNotConfigured(res, err);
       res.status(500).json({ message: err.message });
     }
   });
