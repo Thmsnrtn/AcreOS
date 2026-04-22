@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Check, X, ArrowLeft } from "lucide-react";
 import { AcreosLogo } from "@/components/acreos-logo";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { SkipToContent } from "@/components/skip-to-content";
 
 const TIERS = [
   {
@@ -96,6 +97,7 @@ export default function PricingPage() {
 
   return (
     <div className="min-h-screen bg-background">
+      <SkipToContent />
       {/* Nav */}
       <nav className="border-b bg-background/95 backdrop-blur sticky top-0 z-50">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
@@ -113,7 +115,7 @@ export default function PricingPage() {
       </nav>
 
       {/* Header */}
-      <section className="py-16 px-6 text-center">
+      <section id="main-content" className="py-16 px-6 text-center">
         <h1 className="text-4xl font-bold">Simple, transparent pricing</h1>
         <p className="text-muted-foreground mt-3 max-w-lg mx-auto">
           Start free. Upgrade when you're ready. Every paid plan includes a 14-day free trial.

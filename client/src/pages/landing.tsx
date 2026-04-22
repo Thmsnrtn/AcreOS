@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { AcreosLogo } from "@/components/acreos-logo";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { SkipToContent } from "@/components/skip-to-content";
 import {
   MapPin,
   TrendingUp,
@@ -162,12 +163,7 @@ const SOCIAL_PROOF = [
 export default function LandingPage() {
   return (
     <div className="min-h-screen bg-background">
-      <a
-        href="#main-content"
-        className="sr-only focus:not-sr-only focus:absolute focus:z-[100] focus:top-2 focus:left-2 focus:px-4 focus:py-2 focus:bg-primary focus:text-primary-foreground focus:rounded-md focus:text-sm focus:font-medium"
-      >
-        Skip to content
-      </a>
+      <SkipToContent />
       {/* Nav */}
       <nav className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
