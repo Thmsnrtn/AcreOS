@@ -23,7 +23,8 @@ import { EmptyState } from "@/components/empty-state";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Lightbulb, Check, X, PlayCircle, RefreshCw } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { relative } from "@/lib/format";
+import { PageHeader } from "@/components/ui/page-header";
 
 interface StrategicProposal {
   id: number;
@@ -92,20 +93,12 @@ export default function FounderStrategyPage() {
   return (
     <PageShell label="Strategic Proposals">
       <div className="space-y-6 max-w-5xl mx-auto">
-        <Card>
-          <CardContent className="p-6 flex items-start justify-between gap-4 flex-wrap">
-            <div>
-              <h1 className="text-2xl font-semibold text-foreground mb-2 flex items-center gap-2">
-                <Lightbulb className="h-5 w-5 text-muted-foreground" />
-                Strategic proposals
-              </h1>
-              <p className="text-sm text-muted-foreground max-w-2xl">
-                The proactive layer. Each week agents propose moves in their domain. On the 1st, a
-                synthesis pass picks the top 3-5 recurring signals and surfaces them for your
-                approval. Approved moves become the sanctioned direction.
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
+        <PageHeader
+          title="Strategic proposals"
+          icon={<Lightbulb className="h-5 w-5 text-muted-foreground" />}
+          description="The proactive layer. Each week agents propose moves in their domain. On the 1st, a synthesis pass picks the top 3-5 recurring signals and surfaces them for your approval. Approved moves become the sanctioned direction."
+          actions={
+            <>
               <Button
                 onClick={() => runWeekly.mutate()}
                 disabled={runWeekly.isPending}
@@ -123,9 +116,9 @@ export default function FounderStrategyPage() {
                 <PlayCircle className="h-4 w-4 mr-1" />
                 {runSynthesis.isPending ? "Synthesizing…" : "Run synthesis"}
               </Button>
-            </div>
-          </CardContent>
-        </Card>
+            </>
+          }
+        />
 
         {/* Synthesized (the picks) */}
         <Card>
@@ -221,7 +214,7 @@ function ProposalRow({
               </span>
             )}
             <span className="text-[10px] text-muted-foreground">
-              {formatDistanceToNow(new Date(proposal.createdAt), { addSuffix: true })}
+              {relative(proposal.createdAt)}
             </span>
           </div>
           <h3 className={`${compact ? "text-sm" : "text-base"} font-semibold text-foreground mb-1`}>
