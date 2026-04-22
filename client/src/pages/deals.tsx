@@ -247,7 +247,7 @@ export default function DealsPage() {
       // shape drift and make the match truly type-insensitive. Also
       // prefer the hydrated deal.property from the upstream map if
       // already populated.
-      property: deal.property ?? (Array.isArray(properties)
+      property: (deal as any).property ?? (Array.isArray(properties)
         ? properties.find(p => Number(p.id) === Number(deal.propertyId))
         : undefined),
     }));
