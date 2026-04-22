@@ -309,6 +309,14 @@ export async function registerRoutes(
   });
 
 
+  // PERF: HTTP Cache-Control for safe-GET /api/ responses. Registered
+  // BEFORE any route definitions — Express only applies middleware to
+  // routes registered after it. Earlier placements were silently
+  // bypassed because /api/status, /api/changelog, /api/config/features,
+  // etc. were defined before the middleware chain.
+  const { httpCacheHeaders: _httpCacheHeaders } = await import("./middleware/httpCacheHeaders");
+  app.use("/api", _httpCacheHeaders);
+
   // Public feature flags endpoint — needed before Clerk middleware for sidebar rendering
   app.get("/api/config/features", async (_req, res) => {
     try {
@@ -438,13 +446,6 @@ export async function registerRoutes(
     jwtKey: process.env.CLERK_JWT_KEY,
     proxyUrl: process.env.APP_URL ? `${process.env.APP_URL}/__clerk` : undefined,
   }));
-
-  // PERF: HTTP Cache-Control headers for safe-GET /api/ responses.
-  // MUST register before any route definitions — Express middleware
-  // only runs if it's installed before the matched route. See
-  // server/middleware/httpCacheHeaders.ts for the rule table.
-  const { httpCacheHeaders } = await import("./middleware/httpCacheHeaders");
-  app.use("/api", httpCacheHeaders);
 
   // Register auth routes (/api/auth/user, /api/auth/attribution)
   registerAuthRoutes(app);
