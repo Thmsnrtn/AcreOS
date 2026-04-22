@@ -459,19 +459,9 @@ export default function FounderHome() {
           ) : metrics.data ? <MetricCards metrics={metrics.data} /> : null}
         </section>
 
-        {/* Section 3: Attention Queue */}
-        <section>
-          <h2 className="text-lg font-semibold text-foreground mb-3 flex items-center gap-2">
-            <Clock className="h-4 w-4 text-muted-foreground" />Needs Your Attention
-          </h2>
-          {actions.isLoading ? (
-            <Skel>{[1, 2, 3].map((i) => <div key={i} className="flex items-center justify-between py-2"><div className="space-y-1"><Skeleton className="h-4 w-48" /><Skeleton className="h-3 w-32" /></div><Skeleton className="h-8 w-16 rounded" /></div>)}</Skel>
-          ) : actions.data ? (
-            <AttentionQueue data={actions.data} />
-          ) : (
-            <EmptyState icon={CheckCircle2} title="All clear!" description="Your platform is humming along. Nothing needs your attention right now." />
-          )}
-        </section>
+        {/* Section 3 (Attention Queue) was removed — the new
+            WhatNeedsYouCard above (section 1c) supersedes it with a
+            unified ranked feed across 7 inbox sources instead of one. */}
 
         {/* Section 4: Agent Team */}
         <section>
