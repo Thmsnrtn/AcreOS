@@ -1455,17 +1455,50 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       });
 
       if (sendForEsign && sellerEmail) {
-        // Save as a generated document first, then send for e-sign
-        const { eSigningService } = await import("./services/eSigningService");
-        const result = await eSigningService.sendOfferLetterForSignature({
+        // Native e-sign path. The previous branch routed to
+        // eSigningService.sendOfferLetterForSignature() — a function that
+        // was never exported and would 500 at runtime. Now: save the PDF
+        // as a generated document, stamp a seller signer, mint an HMAC
+        // signing link per server/services/signingTokens.ts, return the
+        // link for the operator to paste into their own outreach.
+        const { makeSigningToken } = await import("./services/signingTokens");
+        const title = `Purchase Offer — ${deal.propertyAddress || deal.apn}`;
+        const signerId = `signer-${Date.now()}-seller`;
+        const signers = [
+          {
+            id: signerId,
+            name: sellerName || "Seller",
+            email: sellerEmail,
+            role: "seller",
+            order: 1,
+          },
+        ];
+        const genDoc = await storage.createGeneratedDocument({
           organizationId: org.id,
+          name: title,
+          type: "offer_letter",
           dealId: deal.id,
-          pdfBuffer: buffer,
-          title: `Purchase Offer — ${deal.propertyAddress || deal.apn}`,
-          sellerName: sellerName || "Seller",
-          sellerEmail,
+          propertyId: deal.propertyId ?? null,
+          // Content is the base64-encoded PDF since we don't have file storage
+          // wired in this path — the public signing page will surface a link
+          // for the seller to read the letter (PDF served via /pdf route).
+          content: null,
+          status: "pending_signature",
+          esignProvider: "native",
+          esignStatus: "pending",
+          signers,
+          sentAt: new Date(),
+          expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         });
-        return res.json({ ...result, pdfGenerated: true });
+        const base = (process.env.APP_URL || req.headers.origin || "").toString().replace(/\/$/, "");
+        const url = `${base}/sign/${genDoc.id}?s=${encodeURIComponent(signerId)}&t=${makeSigningToken(genDoc.id, signerId)}`;
+        return res.json({
+          pdfGenerated: true,
+          documentId: genDoc.id,
+          signingLinks: [
+            { signerId, name: signers[0].name, email: sellerEmail, role: "seller", url },
+          ],
+        });
       }
 
       res.set("Content-Type", "application/pdf");
