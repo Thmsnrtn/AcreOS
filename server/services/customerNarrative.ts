@@ -332,7 +332,8 @@ function markdownToEmailHtml(md: string): string {
       return `<p style="font-family:Georgia,serif;line-height:1.55;color:#333;margin:12px 0">${inlineMd(t)}</p>`;
     })
     .join("\n");
-  return `<!doctype html><html><body style="max-width:640px;margin:0 auto;padding:24px;background:#fafafa"><div style="background:#fff;padding:32px;border:1px solid #eee;border-radius:8px">${body}<p style="margin-top:32px;color:#999;font-size:12px;font-family:Georgia,serif">This letter is personalized for your account. You can also read it in the app at /my-letter.</p></div></body></html>`;
+  const appUrl = process.env.APP_URL ?? "https://acreos.io";
+  return `<!doctype html><html><body style="max-width:640px;margin:0 auto;padding:24px;background:#fafafa"><div style="background:#fff;padding:32px;border:1px solid #eee;border-radius:8px">${body}<p style="margin-top:32px;color:#999;font-size:12px;font-family:Georgia,serif">This letter is personalized for your account. <a href="${appUrl}/my-letter" style="color:#666;text-decoration:underline">View it in the app →</a></p></div></body></html>`;
 }
 
 function inlineMd(text: string): string {

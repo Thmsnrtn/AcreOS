@@ -76,6 +76,14 @@ function urgencyClass(u: number): string {
   return "bg-muted text-muted-foreground";
 }
 
+/** Naive pluralizer for the known TodoType labels. Good enough since
+ * the label set is closed. */
+function pluralize(label: string): string {
+  if (/y$/.test(label)) return label.replace(/y$/, "ies");
+  if (/(s|x|z|ch|sh)$/.test(label)) return `${label}es`;
+  return `${label}s`;
+}
+
 export default function FounderTodoPage() {
   const { data, isLoading, isError } = useQuery<TodoResponse>({
     queryKey: ["/api/founder/intelligence/todo"],
@@ -105,10 +113,14 @@ export default function FounderTodoPage() {
                   .filter((k) => data.byType[k] > 0)
                   .map((k) => {
                     const meta = TYPE_META[k];
+                    const count = data.byType[k];
+                    // Pluralize label naturally: "1 decision" not "1 decisions".
+                    const base = meta.label.toLowerCase();
+                    const label = count === 1 ? base : pluralize(base);
                     return (
                       <span key={k} className="text-[11px] text-muted-foreground flex items-center gap-1">
                         <meta.icon className={`h-3 w-3 ${meta.color}`} />
-                        {data.byType[k]} {meta.label.toLowerCase()}
+                        {count} {label}
                       </span>
                     );
                   })}
@@ -133,7 +145,7 @@ export default function FounderTodoPage() {
           <EmptyState
             icon={CheckCircle2}
             title="Inbox zero"
-            description="Nothing is waiting on you right now. The system is running itself. Glance at /founder/trends to see how quality's trending."
+            description="Nothing is waiting on you right now. The system is running itself. Check System trends in the sidebar to see how quality is trending."
           />
         ) : (
           <Card>
