@@ -53,6 +53,7 @@ import {
   Database,
   Lightbulb,
   History,
+  Layers,
   X,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
@@ -307,6 +308,7 @@ const NAV_MODULES: NavModule[] = [
       { label: "Listings", icon: FileText, href: "/listings", description: "Properties for sale" },
       { label: "Documents", icon: FileText, href: "/documents", description: "Property documents" },
       { label: "Blind Offer Wizard", icon: Wand2, href: "/blind-offer-wizard", description: "Calculate blind offers step-by-step" },
+      { label: "Offer Batches", icon: Layers, href: "/offers/batches", description: "Bulk-generated offers by pricing matrix" },
     ],
   },
 
