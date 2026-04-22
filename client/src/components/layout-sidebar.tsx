@@ -441,9 +441,21 @@ const routePrefetchMap: Record<string, string> = {
   "/properties": "/api/properties",
   "/deals": "/api/deals",
   "/finance": "/api/notes",
+  "/notes": "/api/notes",
+  "/payments": "/api/payments",
+  "/tasks": "/api/tasks",
   "/campaigns": "/api/campaigns",
   "/inbox": "/api/inbox",
   "/ai": "/api/pax/insights",
+  "/today": "/api/dashboard/today-priorities",
+  "/": "/api/dashboard/today-priorities",
+  "/alerts": "/api/alerts/active",
+  "/notifications": "/api/notifications",
+  "/activity": "/api/activity",
+  "/dashboard": "/api/dashboard/intelligence",
+  "/settings": "/api/organization",
+  "/changelog": "/api/changelog",
+  "/status": "/api/status",
 };
 
 // ─────────────────────────────────────────────────────────────────────
