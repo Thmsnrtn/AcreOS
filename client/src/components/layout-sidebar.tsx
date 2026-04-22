@@ -45,6 +45,13 @@ import {
   Landmark,
   Bell,
   Sparkles,
+  CheckCircle2,
+  Eye,
+  Wrench,
+  Rocket,
+  FlaskConical,
+  Database,
+  Lightbulb,
   X,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
@@ -365,7 +372,33 @@ const NAV_MODULES: NavModule[] = [
     ],
   },
 
-  // All founder/advanced tools are accessed from inside the Founder Dashboard page
+  // ── Founder business ──────────────────────────────────────────────
+  // The full autonomous-operation surface. Appears only to founders.
+  // Covers the monthly 1-hour workflow: todo (hub) → letter (narrative)
+  // → trends (trust gauge) → individual approval surfaces.
+  {
+    id: "founder-business",
+    label: "Founder business",
+    icon: Crown,
+    href: "/founder/todo",
+    description: "Autonomous-operation command center",
+    founderOnly: true,
+    children: [
+      { label: "What needs you", icon: CheckCircle2, href: "/founder/todo", description: "Unified ranked feed across every inbox" },
+      { label: "Monthly letter", icon: FileText, href: "/founder/letter", description: "Chief-of-Staff narrative" },
+      { label: "Decisions", icon: Shield, href: "/founder/decisions", description: "Autonomous decision audit log" },
+      { label: "Action preview", icon: Eye, href: "/founder/preview", description: "Before-commit action feed" },
+      { label: "System trends", icon: TrendingUp, href: "/founder/trends", description: "90-day trust gauge" },
+      { label: "Strategy", icon: Lightbulb, href: "/founder/strategy", description: "Strategic proposals (weekly + synthesis)" },
+      { label: "Expansion radar", icon: Target, href: "/founder/expansion", description: "Weekly upsell-ready candidates" },
+      { label: "Onboarding", icon: Rocket, href: "/founder/onboarding", description: "New-customer activation journeys" },
+      { label: "Experiments", icon: FlaskConical, href: "/founder/experiments", description: "A/B tests on decision playbooks" },
+      { label: "Prompt evolutions", icon: Brain, href: "/founder/prompt-evolutions", description: "Agent prompt revision approvals" },
+      { label: "Tool proposals", icon: Wrench, href: "/founder/tools", description: "Capability-growth queue" },
+      { label: "Providers", icon: Database, href: "/founder/providers", description: "Data-layer cost + quality" },
+      { label: "Founder settings", icon: Settings2, href: "/founder/settings", description: "Live-apply operational knobs" },
+    ],
+  },
 
   // ── Settings ──────────────────────────────────────────────────────
   {
@@ -587,50 +620,33 @@ export function Sidebar() {
 
       {/* Nav */}
       <nav aria-label="Main navigation" className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto overflow-x-hidden">
-        {/* Founder link */}
+        {/* Founder home link — clean autonomy-health + todo hub.
+            The legacy operational dashboard is still at /founder-dashboard
+            and reachable via the Founder business group below. */}
         {isFounder && (
           <DesktopNavItem
-            href="/founder-dashboard"
+            href="/founder"
             icon={Crown}
-            label="Founder Dashboard"
-            isActive={location === "/founder-dashboard" || location === "/founder-home"}
+            label="Founder home"
+            isActive={location === "/founder" || location === "/founder-home"}
             isCollapsed={isCollapsed}
             accentClass={
-              location === "/founder-dashboard" || location === "/founder-home"
+              location === "/founder" || location === "/founder-home"
                 ? "bg-amber-500 text-white shadow-md"
                 : "bg-amber-500/10 text-amber-600 hover:bg-amber-500/20"
             }
             iconClass={
-              location === "/founder-dashboard" || location === "/founder-home" ? "text-white" : "text-amber-500"
+              location === "/founder" || location === "/founder-home" ? "text-white" : "text-amber-500"
             }
             testId="link-founder-dashboard"
             onMouseEnter={() => {}}
           />
         )}
 
-        {/* Autonomous decisions log — the audit trail of every call the
-            system made in the founder's absence. Sits just below the
-            founder dashboard because it's the single most important
-            page for trust. */}
-        {isFounder && (
-          <DesktopNavItem
-            href="/founder/decisions"
-            icon={Shield}
-            label="Decisions"
-            isActive={location === "/founder/decisions"}
-            isCollapsed={isCollapsed}
-            accentClass={
-              location === "/founder/decisions"
-                ? "bg-amber-500 text-white shadow-md"
-                : "bg-amber-500/10 text-amber-600 hover:bg-amber-500/20"
-            }
-            iconClass={
-              location === "/founder/decisions" ? "text-white" : "text-amber-500"
-            }
-            testId="link-founder-decisions"
-            onMouseEnter={() => {}}
-          />
-        )}
+        {/* Decisions link used to live here standalone; now it's a
+            child of the Founder business module below alongside 12
+            other founder surfaces (todo, letter, preview, trends,
+            strategy, expansion, etc). */}
 
         {/* Nav modules (filtered by feature flags) */}
         {visibleModules.map((module) => {

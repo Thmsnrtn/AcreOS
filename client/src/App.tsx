@@ -463,11 +463,14 @@ function Router() {
       <Route path="/founder-dashboard">
         {() => <FounderProtectedRoute component={FounderDashboard} />}
       </Route>
+      {/* /founder and /founder-home now serve the new clean home with
+          autonomy-health card + unified todo preview. The legacy
+          operational dashboard lives at /founder-dashboard. */}
       <Route path="/founder-home">
-        {() => <Redirect to="/founder-dashboard" />}
+        {() => <FounderProtectedRoute component={FounderHomePage} />}
       </Route>
       <Route path="/founder">
-        {() => <Redirect to="/founder-dashboard" />}
+        {() => <FounderProtectedRoute component={FounderHomePage} />}
       </Route>
       <Route path="/founder/ai-observatory">
         {() => <FounderProtectedRoute component={FounderAiObservatory} />}
