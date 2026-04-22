@@ -32,8 +32,17 @@ function parseCookies(header: string): Record<string, string> {
 
 /**
  * Validate a WebSocket upgrade request by verifying the session cookie.
- * Returns the authenticated userId/orgId from the session, or null if invalid.
+ * Returns true if the Clerk __session JWT is valid and maps to
+ * claimedUserId (our internal users.id, not the Clerk user id).
  * T-WS-AUTH: WebSocket connections must prove a valid server-side session.
+ *
+ * Previously this checked express-session + Passport (sess.passport.user).
+ * The app migrated to Clerk in cycle 3 but this validator was missed,
+ * which meant every WebSocket upgrade was rejected with 4003 and live
+ * features silently fell back to polling. Now the __session JWT is
+ * verified with CLERK_JWT_KEY (same flow as hydrateUser's fallback) and
+ * the JWT's `sub` is mapped to our users table to compare against the
+ * claimed id.
  */
 async function validateWsSession(
   req: IncomingMessage,
@@ -42,31 +51,31 @@ async function validateWsSession(
   try {
     const cookieHeader = req.headers.cookie || '';
     const cookies = parseCookies(cookieHeader);
-    const rawSid = cookies['connect.sid'];
-    if (!rawSid) return false;
+    const sessionCookie = cookies['__session'];
+    const jwtKey = process.env.CLERK_JWT_KEY;
+    if (!sessionCookie || !jwtKey) return false;
 
-    // express-session stores signed cookies as "s:sid.signature"
-    // Strip the "s:" prefix and take only the sid portion (before the first dot after s:)
-    const unsigned = rawSid.startsWith('s:') ? rawSid.slice(2) : rawSid;
-    const sid = unsigned.split('.')[0];
+    const [headerB64, payloadB64, sigB64] = sessionCookie.split('.');
+    if (!headerB64 || !payloadB64 || !sigB64) return false;
 
-    // Look up the session in the DB (connect-pg-simple stores by raw sid)
-    const result = await db.execute<{ sess: Record<string, any>; expire: Date }>(
-      sql`SELECT sess, expire FROM "session" WHERE sid = ${sid} LIMIT 1`
+    const verifier = crypto.createVerify('RSA-SHA256');
+    verifier.update(headerB64 + '.' + payloadB64);
+    if (!verifier.verify(jwtKey, sigB64, 'base64url')) return false;
+
+    const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString());
+    const GRACE_PERIOD_MS = 30 * 1000;
+    if (!payload.sub || payload.exp * 1000 <= Date.now() - GRACE_PERIOD_MS) return false;
+
+    // Map Clerk user id → our internal users.id and compare to what the
+    // client claimed. Prevents a stolen cookie from authenticating as
+    // another org's user by passing their id in the querystring.
+    const result = await db.execute<{ id: number }>(
+      sql`SELECT id FROM users WHERE clerk_user_id = ${payload.sub} LIMIT 1`
     );
-    const rows = (result as any)?.rows ?? [];
-    const row = rows[0];
-
+    const row = (result as any)?.rows?.[0];
     if (!row) return false;
-    if (new Date(row.expire) < new Date()) return false;
 
-    // The session JSON contains passport: { user: userId }
-    const sess = row.sess as Record<string, any>;
-    const passportUserId = sess?.passport?.user;
-    if (!passportUserId) return false;
-
-    // userId may be numeric or string depending on auth strategy
-    return String(passportUserId) === String(claimedUserId);
+    return String(row.id) === String(claimedUserId);
   } catch {
     return false;
   }
