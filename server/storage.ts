@@ -1736,6 +1736,12 @@ export class DatabaseStorage implements IStorage {
     if (expectedUpdatedAt) conditions.push(eq(deals.updatedAt, expectedUpdatedAt));
     const whereClause = and(...conditions);
 
+    // Capture pre-update status so the post-update hook can tell
+    // whether the status actually transitioned (vs. other field updates).
+    const [before] = await db.select({ status: deals.status, propertyId: deals.propertyId })
+      .from(deals)
+      .where(eq(deals.id, id));
+
     const [updated] = await db.update(deals)
       .set({ ...updates, updatedAt: new Date() })
       .where(whereClause!)
@@ -1748,7 +1754,48 @@ export class DatabaseStorage implements IStorage {
       );
     }
 
+    // Autonomy hook: when a deal transitions to an actionable closing
+    // status (accepted / under_contract / in_escrow) and no checklist
+    // exists yet, generate one automatically. State-specific via
+    // stateDocumentConfig. Keeps the closing workflow from getting
+    // stuck on "who's supposed to create this checklist."
+    if (updated && before?.status !== updated.status) {
+      const triggerStatuses = new Set(["accepted", "under_contract", "in_escrow"]);
+      if (triggerStatuses.has(updated.status ?? "")) {
+        void this._autoGenerateClosingChecklist(updated.id, before?.propertyId ?? null).catch((err) => {
+          // Never let a hook failure break the primary update.
+          // eslint-disable-next-line no-console
+          console.warn("[storage.updateDeal] auto-checklist skipped:", err?.message);
+        });
+      }
+    }
+
     return updated;
+  }
+
+  /**
+   * Fire-and-forget: generate a closing checklist if none exists.
+   * Called from updateDeal's post-update hook on status transitions
+   * into accepted / under_contract / in_escrow.
+   */
+  private async _autoGenerateClosingChecklist(dealId: number, propertyId: number | null) {
+    const existing = await this.getDealChecklist(dealId);
+    if (existing) return;
+    // Pull property state for state-specific checklist (stateDocumentConfig).
+    let state = "TX";
+    if (propertyId) {
+      try {
+        const [prop] = await db.select({ state: properties.state })
+          .from(properties)
+          .where(eq(properties.id, propertyId))
+          .limit(1);
+        if (prop?.state && prop.state.length === 2) state = prop.state.toUpperCase();
+      } catch {}
+    }
+    const closingDate = new Date();
+    closingDate.setDate(closingDate.getDate() + 30);
+    const { generateClosingChecklist } = await import("./services/closingChecklistGenerator");
+    await generateClosingChecklist(dealId, state, closingDate, false).catch(() => {});
   }
 
   async bulkDeleteDeals(orgId: number, ids: number[]): Promise<number> {
