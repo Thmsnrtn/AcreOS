@@ -21,10 +21,13 @@ const buttonVariants = cva(
         glass: "liquid-glass-sm text-foreground hover:-translate-y-px hover:shadow-level-2",
       },
       size: {
-        default: "min-h-9 rounded-lg px-4 py-2",
-        sm: "min-h-8 rounded-md px-3 text-xs",
-        lg: "min-h-10 rounded-full px-8",
-        icon: "h-9 w-9 rounded-lg",
+        // WCAG 2.1 SC 2.5.5 + Apple HIG call for 44px min touch target.
+        // Desktop stays dense (h-9 / 36px) but mobile (<640px) bumps to
+        // h-11 (44px) and icon buttons bump to 44x44.
+        default: "min-h-9 sm:min-h-9 max-sm:min-h-11 rounded-lg px-4 py-2",
+        sm: "min-h-8 max-sm:min-h-10 rounded-md px-3 text-xs",
+        lg: "min-h-10 max-sm:min-h-12 rounded-full px-8",
+        icon: "h-9 w-9 max-sm:h-11 max-sm:w-11 rounded-lg",
       },
     },
     defaultVariants: {
