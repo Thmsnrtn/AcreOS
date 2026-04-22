@@ -21,7 +21,6 @@ import { HintsProvider } from "@/components/feature-hints";
 import { KeyboardShortcutsProvider } from "@/hooks/use-keyboard-shortcuts";
 import { KeyboardShortcutsModal } from "@/components/keyboard-shortcuts";
 import { NewItemMenu } from "@/components/new-item-menu";
-import { QuickActionsMenu } from "@/components/quick-actions-menu";
 import { OnboardingWizard } from "@/components/onboarding-wizard";
 import { PWAInstallPrompt } from "@/components/pwa-install-prompt";
 import { ConversationTray } from "@/components/conversation-tray";
@@ -36,7 +35,6 @@ import { FounderCommandPaletteProvider } from "@/components/founder-command-pale
 import { useSwipeNavigation } from "@/hooks/use-swipe-gesture";
 import { useNextRoutePrefetch } from "@/hooks/use-next-route-prefetch";
 import { MobileBottomNav } from "@/components/mobile";
-import { BetaFeedbackWidget } from "@/components/beta-feedback-widget";
 import { BetaActivationDetector } from "@/components/beta-activation-detector";
 import { PaxCopilotRail } from "@/components/pax-copilot-rail";
 import { DynamicIsland } from "@/components/dynamic-island";
@@ -912,18 +910,21 @@ function AppContent() {
       <PageWrapper>
         <Router />
       </PageWrapper>
+      {/* Floating dock — canonical slots, no overlaps (see lib/floating-slots.ts):
+          slot 0 (bottom-4):    primary FAB  — new lead/property/deal/etc
+          slot 1 (bottom-24):   conversation tray — chat with agents
+          slot 2 (bottom-176):  help
+          slot 3 (bottom-248):  feedback (auth only) */}
       {user && <FloatingActionButton />}
+      {user && <ConversationTray />}
       {user && <FloatingHelpButton />}
       {user && <FeedbackButton />}
-      {user && <QuickActionsMenu />}
-      {user && <ConversationTray />}
       {user && <CommandPalette />}
       {/* Founder-specific ⌘⇧K palette — searches decisions, agents, letters, proposals */}
       <FounderCommandPaletteProvider>{null}</FounderCommandPaletteProvider>
       {user && <NewItemMenu />}
       {user && <MobileBottomNav />}
       {user && <OnboardingWizard />}
-      {user && <BetaFeedbackWidget />}
       {user && <BetaActivationDetector />}
       {/* Hide the global PaxCopilotRail on /ai because that page has
           its own main-area chat UI ("AcreOS Assistant"). r3 Gabriel

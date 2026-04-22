@@ -30,7 +30,7 @@ export function FloatingHelpButton() {
             size="icon"
             variant="ghost"
             onClick={() => setIsOpen(true)}
-            className="fixed bottom-6 right-6 rounded-full shadow-lg hover:shadow-xl transition-shadow"
+            className="fixed bottom-[176px] right-4 z-[48] rounded-full shadow-lg hover:shadow-xl transition-shadow safe-area-bottom bg-background border"
             data-testid="button-floating-help"
             aria-label="Open help panel"
           >

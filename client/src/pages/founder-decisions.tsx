@@ -13,6 +13,7 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -359,7 +360,8 @@ export default function FounderDecisionsPage() {
   }, [data, activeBucket]);
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-6">
+    <PageShell label="Autonomous decisions">
+    <div className="max-w-5xl mx-auto space-y-6">
       <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
@@ -485,5 +487,6 @@ export default function FounderDecisionsPage() {
         </CardContent>
       </Card>
     </div>
+    </PageShell>
   );
 }

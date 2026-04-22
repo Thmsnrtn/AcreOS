@@ -548,7 +548,7 @@ export function ConversationTray() {
         <SheetTrigger asChild>
           <Button
             size="icon"
-            className="fixed bottom-20 right-4 z-40 rounded-full shadow-lg"
+            className="fixed bottom-24 right-4 z-[49] rounded-full shadow-lg safe-area-bottom"
             aria-label="Open conversations"
             data-testid="button-open-conversations"
           >
@@ -570,7 +570,7 @@ export function ConversationTray() {
       {!isOpen && (
         <Button
           size="icon"
-          className="fixed bottom-6 right-6 z-40 rounded-full shadow-lg"
+          className="fixed bottom-24 right-4 z-[49] rounded-full shadow-lg safe-area-bottom"
           onClick={() => setIsOpen(true)}
           aria-label="Open conversations"
           data-testid="button-open-conversations"
@@ -580,7 +580,7 @@ export function ConversationTray() {
       )}
       
       {isOpen && (
-        <div className="fixed bottom-6 right-6 z-40 w-[360px] h-[500px] bg-background border rounded-lg shadow-xl flex flex-col overflow-hidden">
+        <div className="fixed bottom-24 right-4 z-[49] w-[360px] h-[500px] bg-background border rounded-lg shadow-xl flex flex-col overflow-hidden safe-area-bottom">
           <div className="absolute top-2 right-2 z-10">
             <Button
               size="icon"

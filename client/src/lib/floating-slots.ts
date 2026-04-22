@@ -1,0 +1,29 @@
+/**
+ * Floating-slot layout — canonical positions for every bottom-right
+ * floating element. Before this file, 8 components picked their own
+ * bottom/right values independently and three pairs collided.
+ *
+ * Slots are assigned vertically from the bottom-right corner:
+ *   slot 0 — primary CTA (most thumb-accessible)
+ *   slot 1 — chat/agent toggle
+ *   slot 2 — help
+ *   slot 3 — feedback (auth'd users only, dev+beta)
+ *
+ * Each slot is 56px (button) + 16px gap = 72px tall.
+ * Values are expressed as Tailwind classnames so components can
+ * compose them into their own class strings.
+ */
+
+export const FLOATING_SLOT = {
+  // Bottom-right stack (primary user actions)
+  fab: "fixed bottom-4 right-4 z-50 safe-area-bottom",
+  conversation: "fixed bottom-24 right-4 z-[49] safe-area-bottom",
+  help: "fixed bottom-[176px] right-4 z-[48] safe-area-bottom",
+  feedback: "fixed bottom-[248px] right-4 z-[47] safe-area-bottom",
+
+  // Top-right (notifications, chrome)
+  notificationsTop: "fixed top-4 right-4 z-40",
+
+  // Bottom-left (secondary, avoids the right-stack entirely)
+  bottomLeft: "fixed bottom-4 left-4 z-40 safe-area-bottom",
+} as const;
