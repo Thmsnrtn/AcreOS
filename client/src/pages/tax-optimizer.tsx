@@ -392,7 +392,7 @@ export default function TaxOptimizerPage() {
                 <Card key={i}>
                   <CardContent className="pt-4">
                     <h4 className="font-medium">{s.propertyAddress}</h4>
-                    <div className="grid grid-cols-3 gap-4 mt-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-3">
                       <div>
                         <p className="text-xs text-muted-foreground">Total Gain</p>
                         <p className="font-semibold text-emerald-600">{fmt(s.totalGain)}</p>

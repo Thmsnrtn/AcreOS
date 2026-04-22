@@ -720,7 +720,7 @@ export function Sidebar() {
               {/* Module row */}
               <div
                 className={cn(
-                  "flex items-center gap-2 px-3 py-2 rounded-lg transition-colors duration-150 group cursor-pointer min-h-[40px]",
+                  "flex items-center gap-2 px-3 py-2 rounded-lg transition-colors duration-150 group cursor-pointer min-h-[44px]",
                   active && !hasChildren
                     ? "nav-item-active"
                     : active
@@ -864,7 +864,7 @@ export function Sidebar() {
             <button
               onClick={() => logout()}
               data-testid="button-logout"
-              className="flex items-center justify-center w-full p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors min-h-[40px]"
+              className="flex items-center justify-center w-full p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors min-h-[44px]"
             >
               <Tooltip delayDuration={0}>
                 <TooltipTrigger asChild>
@@ -875,7 +875,7 @@ export function Sidebar() {
             </button>
             <button
               onClick={() => setIsCollapsed(false)}
-              className="flex items-center justify-center w-full p-2 rounded-lg text-muted-foreground hover:bg-sidebar-accent transition-colors min-h-[40px]"
+              className="flex items-center justify-center w-full p-2 rounded-lg text-muted-foreground hover:bg-sidebar-accent transition-colors min-h-[44px]"
               aria-label="Expand sidebar"
             >
               <ChevronRight className="w-4 h-4" />
@@ -890,14 +890,14 @@ export function Sidebar() {
             <button
               onClick={() => logout()}
               data-testid="button-logout"
-              className="flex items-center gap-2 px-3 py-2 w-full rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors min-h-[40px]"
+              className="flex items-center gap-2 px-3 py-2 w-full rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors min-h-[44px]"
             >
               <LogOut className="w-4 h-4" />
               <span className="font-medium text-sm">Sign Out</span>
             </button>
             <button
               onClick={() => setIsCollapsed(true)}
-              className="flex items-center gap-2 px-3 py-2 w-full rounded-lg text-muted-foreground hover:bg-sidebar-accent transition-colors min-h-[40px]"
+              className="flex items-center gap-2 px-3 py-2 w-full rounded-lg text-muted-foreground hover:bg-sidebar-accent transition-colors min-h-[44px]"
               aria-label="Collapse sidebar"
             >
               <ChevronLeft className="w-4 h-4" />
@@ -1049,7 +1049,7 @@ export function Sidebar() {
                         href={child.href}
                         onClick={onNavClick}
                         className={cn(
-                          "flex items-center gap-3 px-3 py-2 rounded-md transition-colors duration-150 min-h-[40px]",
+                          "flex items-center gap-3 px-3 py-2 rounded-md transition-colors duration-150 min-h-[44px]",
                           childActive
                             ? "nav-item-active"
                             : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
@@ -1156,7 +1156,7 @@ function CollapsedModuleItem({
           <Link
             href={module.href}
             className={cn(
-              "flex items-center justify-center w-full p-2.5 rounded-lg transition-colors duration-150 min-h-[40px] relative",
+              "flex items-center justify-center w-full p-2.5 rounded-lg transition-colors duration-150 min-h-[44px] relative",
               isActive
                 ? "nav-item-active"
                 : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
@@ -1192,7 +1192,7 @@ function CollapsedModuleItem({
           <PopoverTrigger asChild>
             <button
               className={cn(
-                "flex items-center justify-center w-full p-2.5 rounded-lg transition-colors duration-150 min-h-[40px] relative",
+                "flex items-center justify-center w-full p-2.5 rounded-lg transition-colors duration-150 min-h-[44px] relative",
                 isActive
                   ? "nav-item-active"
                   : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
@@ -1275,7 +1275,7 @@ function DesktopNavItem({
           <Link
             href={href}
             className={cn(
-              "flex items-center justify-center w-full p-2.5 rounded-lg transition-all min-h-[40px]",
+              "flex items-center justify-center w-full p-2.5 rounded-lg transition-all min-h-[44px]",
               accentClass
             )}
             onMouseEnter={onMouseEnter}
@@ -1295,7 +1295,7 @@ function DesktopNavItem({
     <Link
       href={href}
       className={cn(
-        "flex items-center gap-2 px-3 py-2 rounded-lg transition-all mb-1 min-h-[40px]",
+        "flex items-center gap-2 px-3 py-2 rounded-lg transition-all mb-1 min-h-[44px]",
         accentClass
       )}
       onMouseEnter={onMouseEnter}

@@ -22,7 +22,7 @@ export function FieldWorkToolbar() {
   }
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 border-t bg-background px-2 py-2 flex items-center justify-around gap-1 safe-area-pb">
+    <div className="fixed bottom-0 left-0 right-0 z-50 border-t bg-background px-2 py-2 flex items-center justify-around gap-1 safe-area-bottom">
       <Button
         variant="ghost"
         size="sm"

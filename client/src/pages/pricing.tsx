@@ -213,8 +213,11 @@ export default function PricingPage() {
       {/* Feature comparison table */}
       <section className="px-6 pb-24">
         <div className="max-w-5xl mx-auto">
-          <h2 className="text-2xl font-bold text-center mb-8">Feature Comparison</h2>
-          <div className="border rounded-lg overflow-x-auto">
+          <h2 className="text-2xl font-bold text-center mb-2">Feature Comparison</h2>
+          <p className="text-xs text-muted-foreground text-center mb-6 sm:hidden">
+            Swipe the table to compare all tiers →
+          </p>
+          <div className="border rounded-lg overflow-x-auto relative">
             {/* min-w-[640px] forces the comparison table to keep its
                 natural width on mobile instead of crushing columns;
                 the parent overflow-x-auto gives horizontal scroll. */}
@@ -262,9 +265,9 @@ export default function PricingPage() {
 
       {/* Footer */}
       <footer className="border-t py-8 px-6">
-        <div className="max-w-6xl mx-auto flex items-center justify-between text-sm text-muted-foreground">
+        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 text-sm text-muted-foreground">
           <span>&copy; {new Date().getFullYear()} AcreOS. All rights reserved.</span>
-          <div className="flex gap-4">
+          <div className="flex flex-wrap gap-x-4 gap-y-2">
             <Link href="/" className="hover:text-foreground">Home</Link>
             <Link href="/status" className="hover:text-foreground">Status</Link>
             <Link href="/changelog" className="hover:text-foreground">Changelog</Link>

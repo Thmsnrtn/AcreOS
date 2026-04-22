@@ -65,7 +65,7 @@ export default function SkipTracingPage() {
       </div>
 
       {statsData && (
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <Card>
             <CardContent className="p-4">
               <p className="text-xs text-muted-foreground mb-1">Total Traced</p>

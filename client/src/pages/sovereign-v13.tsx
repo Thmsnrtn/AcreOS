@@ -266,13 +266,16 @@ export default function SovereignV13Page() {
 
         {/* Active Tab Content */}
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as PillarTab)}>
-          <TabsList className="grid grid-cols-6 w-full">
-            <TabsTrigger value="memory"><Brain className="h-3 w-3 mr-1" />Memory</TabsTrigger>
-            <TabsTrigger value="strategy"><Target className="h-3 w-3 mr-1" />Strategy</TabsTrigger>
-            <TabsTrigger value="collaboration"><Users className="h-3 w-3 mr-1" />Collab</TabsTrigger>
-            <TabsTrigger value="healing"><HeartPulse className="h-3 w-3 mr-1" />Healing</TabsTrigger>
-            <TabsTrigger value="governance"><Shield className="h-3 w-3 mr-1" />Governance</TabsTrigger>
-            <TabsTrigger value="intelligence"><Lightbulb className="h-3 w-3 mr-1" />Intel</TabsTrigger>
+          {/* Scroll horizontally on mobile instead of cramming 6 tabs
+              into 390px. Flex + overflow keeps the full labels visible
+              with a swipe gesture; on md+ the 6-col grid locks back. */}
+          <TabsList className="flex md:grid md:grid-cols-6 w-full overflow-x-auto no-scrollbar">
+            <TabsTrigger value="memory" className="shrink-0 md:shrink"><Brain className="h-3 w-3 mr-1" />Memory</TabsTrigger>
+            <TabsTrigger value="strategy" className="shrink-0 md:shrink"><Target className="h-3 w-3 mr-1" />Strategy</TabsTrigger>
+            <TabsTrigger value="collaboration" className="shrink-0 md:shrink"><Users className="h-3 w-3 mr-1" />Collab</TabsTrigger>
+            <TabsTrigger value="healing" className="shrink-0 md:shrink"><HeartPulse className="h-3 w-3 mr-1" />Healing</TabsTrigger>
+            <TabsTrigger value="governance" className="shrink-0 md:shrink"><Shield className="h-3 w-3 mr-1" />Governance</TabsTrigger>
+            <TabsTrigger value="intelligence" className="shrink-0 md:shrink"><Lightbulb className="h-3 w-3 mr-1" />Intel</TabsTrigger>
           </TabsList>
 
           {/* ─── Memory Tab ─────────────────────────────────────────── */}

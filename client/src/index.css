@@ -270,11 +270,22 @@
   * {
     @apply border-border;
   }
+  /* Kill iOS Safari's default semi-transparent tap flash on every
+     interactive element — our components manage their own :active
+     states, and the grey/purple flash reads as a rendering bug to
+     users. Applies site-wide. */
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
   body {
     @apply bg-background text-foreground antialiased;
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    /* Prevent horizontal scroll from any accidental overflow. Children
+       that legitimately need to scroll (wide tables, carousels) still
+       can because they use overflow-x-auto on their own wrapper. */
+    overflow-x: hidden;
   }
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-display);
@@ -522,6 +533,17 @@
 }
 
 /* Safe area insets for iOS devices */
+/* Hide scrollbars on elements that scroll horizontally — typically
+   mobile tab bars where showing a scrollbar adds visual noise. The
+   swipe gesture still works; only the chrome is hidden. */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 .safe-area-bottom {
   padding-bottom: env(safe-area-inset-bottom, 0);
 }
