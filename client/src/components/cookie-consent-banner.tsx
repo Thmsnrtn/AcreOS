@@ -72,7 +72,7 @@ export function CookieConsentBanner() {
             onClick={accept}
             data-testid="cookie-consent-accept"
           >
-            Accept All
+            Accept all
           </Button>
         </div>
       </div>
