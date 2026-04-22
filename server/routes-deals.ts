@@ -1437,17 +1437,36 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       const deal = await storage.getDeal(org.id, Number(req.params.id));
       if (!deal) return Errors.notFound(res, "Deal");
 
+      // The deals table has no apn/propertyAddress — those live on the
+      // linked property. Hydrate here so the PDF has the real parcel
+      // data instead of "Unknown APN / (no address)". The existing
+      // code referenced deal.apn, deal.propertyAddress, and
+      // deal.purchasePrice — all undefined at runtime.
+      const property = deal.propertyId
+        ? await storage.getProperty(org.id, deal.propertyId).catch(() => null)
+        : null;
+
       const { generateOfferLetterPdf } = await import("./services/offerLetterPdf");
       const { sendForEsign, sellerEmail, sellerName, ...offerData } = req.body;
+
+      const propertyAddress = property
+        ? [property.address, property.city, property.state, property.zip]
+            .filter(Boolean)
+            .join(", ")
+        : undefined;
 
       const buffer = await generateOfferLetterPdf({
         orgName: org.name || "Buyer",
         orgEmail: org.email,
         orgPhone: org.phone,
         sellerName: sellerName || "Property Owner",
-        apn: deal.apn || "Unknown",
-        propertyAddress: deal.propertyAddress,
-        purchasePrice: Number(deal.offerAmount || deal.purchasePrice || 0),
+        apn: property?.apn || "Unknown",
+        propertyAddress: propertyAddress || offerData.propertyAddress,
+        legalDescription: property?.legalDescription || offerData.legalDescription,
+        acres: property?.sizeAcres != null ? Number(property.sizeAcres) : offerData.acres,
+        state: property?.state || offerData.state,
+        county: property?.county || offerData.county,
+        purchasePrice: Number(deal.acceptedAmount || deal.offerAmount || offerData.purchasePrice || 0),
         earnestMoneyDeposit: offerData.earnestMoneyDeposit,
         closingDays: offerData.closingDays ?? 30,
         offerExpirationDays: offerData.offerExpirationDays ?? 10,
@@ -1462,7 +1481,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
         // signing link per server/services/signingTokens.ts, return the
         // link for the operator to paste into their own outreach.
         const { makeSigningToken } = await import("./services/signingTokens");
-        const title = `Purchase Offer — ${deal.propertyAddress || deal.apn}`;
+        const title = `Purchase Offer — ${propertyAddress || property?.apn || `Deal #${deal.id}`}`;
         const signerId = `signer-${Date.now()}-seller`;
         const signers = [
           {
