@@ -22,6 +22,8 @@ import {
   deals,
   organizations,
   campaigns,
+  notes as financeNotes,
+  taxSaleAuctions,
 } from '../../shared/schema';
 import { eq, count, sql, desc } from 'drizzle-orm';
 
@@ -264,6 +266,26 @@ class ContextProfileService {
         .from(campaigns)
         .where(eq(campaigns.organizationId, organizationId));
       signals.campaignCount = Number(campResult?.count || 0);
+    } catch (_) {}
+
+    // Seller-financed notes → note investor signal
+    try {
+      const [noteResult] = await db
+        .select({ count: count() })
+        .from(financeNotes)
+        .where(eq(financeNotes.organizationId, organizationId));
+      signals.financeNoteCount = Number(noteResult?.count || 0);
+    } catch (_) {}
+
+    // Auction deals — properties acquired at auction suggest an
+    // auction-hunter profile. Count deals whose related property has
+    // an auction source tag.
+    try {
+      const [auctionResult] = await db
+        .select({ count: count() })
+        .from(taxSaleAuctions)
+        .where(eq(taxSaleAuctions.organizationId, organizationId));
+      signals.auctionDealCount = Number(auctionResult?.count || 0);
     } catch (_) {}
 
     return signals;
