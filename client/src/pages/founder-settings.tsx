@@ -23,6 +23,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Shield, Brain, Clock, Settings, Save } from "lucide-react";
+import { PageHeader } from "@/components/ui/page-header";
 
 interface SettingRow {
   key: string;
@@ -68,15 +69,11 @@ export default function FounderSettingsPage() {
   return (
     <PageShell label="Founder Settings">
       <div className="space-y-6 max-w-4xl mx-auto">
-        <Card>
-          <CardContent className="p-6">
-            <h1 className="text-2xl font-semibold text-foreground mb-2">Customization Center</h1>
-            <p className="text-sm text-muted-foreground">
-              Operational knobs the system reads on every decision. Changes take effect on the next
-              decision — no restart, no deploy. Values you set here override environment variables.
-            </p>
-          </CardContent>
-        </Card>
+        <PageHeader
+          title="Customization center"
+          icon={<Settings className="h-5 w-5 text-muted-foreground" />}
+          description="Operational knobs the system reads on every decision. Changes take effect on the next decision — no restart, no deploy. Values you set here override environment variables."
+        />
 
         {isLoading ? (
           <Card>
