@@ -10,6 +10,7 @@ import { PageShell } from "@/components/page-shell";
 import { ListSkeleton } from "@/components/list-skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { TemplateEditor } from "@/components/template-editor";
+import { RequestSignaturesDialog } from "@/components/request-signatures-dialog";
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -88,6 +89,7 @@ export default function DocumentsPage() {
   const [variableValues, setVariableValues] = useState<Record<string, string>>({});
   const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState(false);
   const [versionHistoryTarget, setVersionHistoryTarget] = useState<{ id: number; type: "template" | "generated"; name: string } | null>(null);
+  const [signaturesFor, setSignaturesFor] = useState<GeneratedDocument | null>(null);
   const [isCreatePackageOpen, setIsCreatePackageOpen] = useState(false);
   const [isPackageDetailOpen, setIsPackageDetailOpen] = useState(false);
   const [selectedPackage, setSelectedPackage] = useState<DocumentPackage | null>(null);
@@ -673,18 +675,13 @@ export default function DocumentsPage() {
                     <History className="w-4 h-4" />
                   </Button>
                   {doc.status === "draft" && (
-                    <Button 
+                    <Button
                       size="sm"
-                      onClick={() => sendForSignatureMutation.mutate(doc.id)}
-                      disabled={sendForSignatureMutation.isPending}
+                      onClick={() => setSignaturesFor(doc)}
                       data-testid={`button-send-for-signature-${doc.id}`}
                     >
-                      {sendForSignatureMutation.isPending ? (
-                        <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                      ) : (
-                        <Send className="w-3 h-3 mr-1" />
-                      )}
-                      Send for Signature
+                      <Send className="w-3 h-3 mr-1" />
+                      Request signatures
                     </Button>
                   )}
                   {doc.status === "pending_signature" && (
@@ -1417,6 +1414,23 @@ export default function DocumentsPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {signaturesFor && (
+        <RequestSignaturesDialog
+          open={!!signaturesFor}
+          onOpenChange={(v) => { if (!v) setSignaturesFor(null); }}
+          documentId={signaturesFor.id}
+          documentName={signaturesFor.name}
+          defaultSigners={
+            (signaturesFor.signers ?? []).map((s: any) => ({
+              name: s.name ?? "",
+              email: s.email ?? "",
+              role: s.role ?? "signer",
+            }))
+          }
+          onSuccess={() => queryClient.invalidateQueries({ queryKey: ["/api/generated-documents"] })}
+        />
+      )}
     </PageShell>
   );
 }
