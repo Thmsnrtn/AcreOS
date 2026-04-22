@@ -465,6 +465,118 @@ export function registerBorrowerRoutes(app: Express): void {
     }
   });
   
+  // Session-based payment verification — borrower has already verified
+  // via /api/borrower/verify, so the session tells us which note. No
+  // accessToken in the URL → safer against log/referrer leakage.
+  api.post("/api/borrower/verify-payment", validateBorrowerSession, portalPaymentRateLimiter, async (req, res) => {
+    try {
+      const session = (req as any).borrowerSession;
+      const { sessionId } = req.body;
+      if (!sessionId) return res.status(400).json({ message: "Session ID is required" });
+
+      const noteResults = await db.select().from(notes).where(eq(notes.id, session.noteId));
+      if (noteResults.length === 0) return res.status(404).json({ message: "Loan not found" });
+      const note = noteResults[0];
+
+      const { getUncachableStripeClient } = await import("./stripeClient");
+      const stripe = await getUncachableStripeClient();
+      const stripeSession = await stripe.checkout.sessions.retrieve(sessionId);
+
+      if (stripeSession.payment_status !== "paid") {
+        return res.status(400).json({ message: "Payment not completed" });
+      }
+
+      // Idempotency — don't double-record the same Stripe session.
+      const existingPayments = await storage.getPayments(note.organizationId, note.id);
+      const alreadyRecorded = existingPayments.some((p) => p.transactionId === sessionId);
+      if (alreadyRecorded) {
+        return res.json({ success: true, message: "Payment already recorded" });
+      }
+
+      const paymentAmount = stripeSession.amount_total
+        ? stripeSession.amount_total / 100
+        : Number(note.monthlyPayment);
+
+      const schedule = note.amortizationSchedule || [];
+      const nextPendingPayment = schedule.find((s) => s.status === "pending");
+
+      let principalAmount = 0;
+      let interestAmount = 0;
+      if (nextPendingPayment) {
+        const ratio = paymentAmount / nextPendingPayment.payment;
+        principalAmount = Number((nextPendingPayment.principal * ratio).toFixed(2));
+        interestAmount = Number((nextPendingPayment.interest * ratio).toFixed(2));
+      } else {
+        const monthlyRate = Number(note.interestRate) / 100 / 12;
+        interestAmount = Number((Number(note.currentBalance) * monthlyRate).toFixed(2));
+        principalAmount = Number((paymentAmount - interestAmount).toFixed(2));
+        if (principalAmount < 0) principalAmount = 0;
+      }
+
+      const payment = await storage.createPayment({
+        organizationId: note.organizationId,
+        noteId: note.id,
+        amount: paymentAmount.toString(),
+        principalAmount: principalAmount.toString(),
+        interestAmount: interestAmount.toString(),
+        feeAmount: "0",
+        lateFeeAmount: "0",
+        paymentDate: new Date(),
+        dueDate: note.nextPaymentDate || new Date(),
+        paymentMethod: "card",
+        transactionId: sessionId,
+        status: "completed",
+      });
+
+      const newBalance = Math.max(0, Number(note.currentBalance) - principalAmount);
+      let updatedSchedule = schedule;
+      if (nextPendingPayment) {
+        updatedSchedule = schedule.map((s) =>
+          s.paymentNumber === nextPendingPayment.paymentNumber ? { ...s, status: "paid" } : s,
+        );
+      }
+      const nextPaymentDate = addMonths(new Date(note.nextPaymentDate || new Date()), 1);
+      await storage.updateNote(
+        note.id,
+        { amortizationSchedule: updatedSchedule, nextPaymentDate },
+        note.organizationId,
+      );
+
+      res.json({ success: true, payment, newBalance });
+    } catch (err: any) {
+      logger.error("Payment verification error (session)", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Session-based autopay toggle — identity is proven by the session,
+  // no need to repeat borrowerEmail on every request.
+  api.post("/api/borrower/autopay", validateBorrowerSession, portalPaymentRateLimiter, async (req, res) => {
+    try {
+      const session = (req as any).borrowerSession;
+      const { enabled } = req.body;
+
+      const noteResults = await db.select().from(notes).where(eq(notes.id, session.noteId));
+      if (noteResults.length === 0) return res.status(404).json({ message: "Loan not found" });
+      const note = noteResults[0];
+
+      await storage.updateNote(
+        note.id,
+        { autoPayEnabled: enabled === true },
+        note.organizationId,
+      );
+
+      res.json({
+        success: true,
+        autopayEnabled: enabled === true,
+        nextPaymentDate: note.nextPaymentDate,
+      });
+    } catch (err: any) {
+      logger.error("Autopay toggle error (session)", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // Toggle autopay for borrower portal
   api.post("/api/portal/:accessToken/autopay", deprecatedPaymentRateLimiter, async (req, res) => {
     try {

@@ -271,8 +271,11 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
   
   const verifyPayment = async (sessionId: string) => {
     try {
-      const res = await fetch(`/api/portal/${accessToken}/verify-payment`, {
+      // Session-based. /api/borrower/verify established the cookie;
+      // no need to put the access token in every URL.
+      const res = await fetch(`/api/borrower/verify-payment`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionId }),
       });
@@ -294,8 +297,9 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
   const handleMakePayment = async () => {
     setIsProcessingPayment(true);
     try {
-      const res = await fetch(`/api/portal/${accessToken}/payment`, {
+      const res = await fetch(`/api/borrower/payment`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ amount: Number(note.monthlyPayment) }),
       });
@@ -319,10 +323,11 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
   const handleToggleAutopay = async () => {
     setIsTogglingAutopay(true);
     try {
-      const res = await fetch(`/api/portal/${accessToken}/autopay`, {
+      const res = await fetch(`/api/borrower/autopay`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled: !autopayEnabled, email: verifiedEmail }),
+        body: JSON.stringify({ enabled: !autopayEnabled }),
       });
       
       if (res.ok) {
