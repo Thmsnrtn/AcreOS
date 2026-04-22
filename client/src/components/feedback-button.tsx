@@ -85,7 +85,7 @@ export function FeedbackButton() {
             size="icon"
             variant="outline"
             onClick={() => setOpen(true)}
-            className="fixed bottom-[248px] right-4 z-[47] rounded-full shadow-lg hover:shadow-xl transition-shadow bg-background safe-area-bottom"
+            className="fixed bottom-[304px] md:bottom-[248px] right-4 z-[47] rounded-full shadow-lg hover:shadow-xl transition-shadow bg-background safe-area-bottom"
             aria-label="Send feedback"
           >
             <MessageSquarePlus className="w-5 h-5" />
