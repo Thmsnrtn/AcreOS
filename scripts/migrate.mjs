@@ -22,6 +22,31 @@ const STATEMENTS = [
   'ALTER TABLE "notes" ADD COLUMN IF NOT EXISTS "deleted_at" timestamp',
   'ALTER TABLE "notes" ADD COLUMN IF NOT EXISTS "deleted_by" text',
   'ALTER TABLE "notes" ADD COLUMN IF NOT EXISTS "version" integer NOT NULL DEFAULT 1',
+
+  // agent_llm_traces — added 2026-04 for action-replay. See
+  // migrations/0027_agent_llm_traces.sql. Create table + indexes
+  // idempotently so every agent LLM call can be audited.
+  `CREATE TABLE IF NOT EXISTS "agent_llm_traces" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "agent_codename" text NOT NULL,
+     "purpose" text NOT NULL,
+     "decision_id" integer,
+     "model" text NOT NULL,
+     "system_prompt" text,
+     "user_prompt" text NOT NULL,
+     "response" text NOT NULL,
+     "latency_ms" integer,
+     "input_tokens" integer,
+     "output_tokens" integer,
+     "cost_cents" integer,
+     "error" text,
+     "metadata" jsonb DEFAULT '{}'::jsonb,
+     "created_at" timestamp DEFAULT now() NOT NULL
+   )`,
+  'CREATE INDEX IF NOT EXISTS "idx_agent_llm_traces_agent_recent" ON "agent_llm_traces" ("agent_codename", "created_at" DESC)',
+  'CREATE INDEX IF NOT EXISTS "idx_agent_llm_traces_decision" ON "agent_llm_traces" ("decision_id")',
+  'CREATE INDEX IF NOT EXISTS "idx_agent_llm_traces_org_recent" ON "agent_llm_traces" ("organization_id", "created_at" DESC)',
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
