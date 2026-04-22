@@ -8,6 +8,7 @@ import {
   Target, Award, BarChart2, Clock,
 } from "lucide-react";
 import { relative } from "@/lib/format";
+import { PageHeader } from "@/components/ui/page-header";
 import {
   useAgentRuntimeStates,
   useRevenueAttribution,
@@ -39,16 +40,11 @@ export default function AgentPerformance() {
   return (
     <PageShell isLoading={isLoading}>
       <div className="space-y-6 md:space-y-8">
-        {/* Header */}
-        <div className="space-y-2">
-          <h1 className="text-2xl font-semibold flex items-center gap-2">
-            <TrendingUp className="w-6 h-6 text-primary" />
-            Agent Performance
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Trust scores, revenue attribution, decision accuracy, and adaptive strategies
-          </p>
-        </div>
+        <PageHeader
+          title="Agent performance"
+          icon={<TrendingUp className="w-5 h-5 text-muted-foreground" />}
+          description="Trust scores, revenue attribution, decision accuracy, and adaptive strategies."
+        />
 
         <Tabs defaultValue="trust">
           <TabsList>
