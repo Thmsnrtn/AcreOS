@@ -215,6 +215,7 @@ const FounderPreviewPage = React.lazy(() => import("@/pages/founder-preview"));
 const FounderToolsPage = React.lazy(() => import("@/pages/founder-tools"));
 const FounderPromptEvolutionsPage = React.lazy(() => import("@/pages/founder-prompt-evolutions"));
 const FounderPromptHistoryPage = React.lazy(() => import("@/pages/founder-prompt-history"));
+const SignDocumentPage = React.lazy(() => import("@/pages/sign-document"));
 const FounderStrategyPage = React.lazy(() => import("@/pages/founder-strategy"));
 const FounderTrendsPage = React.lazy(() => import("@/pages/founder-trends"));
 const MyLetterPage = React.lazy(() => import("@/pages/my-letter"));
@@ -337,6 +338,10 @@ function Router() {
 
       {/* Public Borrower Portal */}
       <Route path="/portal" component={BorrowerPortal} />
+
+      {/* Public signing — external signers (sellers, borrowers) arrive via
+          /sign/:docId?s=...&t=... with an HMAC token in the URL. No auth. */}
+      <Route path="/sign/:docId" component={SignDocumentPage} />
       <Route path="/portal/:accessToken" component={BorrowerPortal} />
       
       {/* Onboarding V2 wizard */}

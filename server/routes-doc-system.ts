@@ -923,15 +923,182 @@ export function registerDocSystemRoutes(app: Express): void {
         sentAt: new Date(),
         expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
       });
-      
+
+      // Per-signer signing links. The token is an HMAC over (docId,
+      // signerId) so each external signer's URL is unique, unforgeable,
+      // and safe to email. Operators paste these into their own email /
+      // SMS send — we don't auto-email from this endpoint.
+      const { makeSigningToken } = await import("./services/signingTokens");
+      const base = (process.env.APP_URL || req.headers.origin || "").toString().replace(/\/$/, "");
+      const signingLinks = formattedSigners.map((s) => ({
+        signerId: s.id,
+        name: s.name,
+        email: s.email,
+        role: s.role,
+        url: `${base}/sign/${id}?s=${encodeURIComponent(s.id)}&t=${makeSigningToken(id, s.id)}`,
+      }));
+
       res.json({
         success: true,
         message: "Document ready for signature",
         document: updated,
-        signingUrl: `/sign/${id}`,
+        signingLinks,
       });
     } catch (error: any) {
       logger.error("Request signature error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
+    }
+  });
+
+  // ── Public signing endpoints — no auth, gated by signing token ────
+
+  // GET /api/public/sign/:docId?s={signerId}&t={token}
+  // Returns the minimal info an external signer needs: document name/type,
+  // rendered content, their role, and whether they've already signed.
+  api.get("/api/public/sign/:docId", async (req, res) => {
+    try {
+      const docId = parseInt(req.params.docId, 10);
+      const signerId = String(req.query.s || "");
+      const token = String(req.query.t || "");
+      if (!Number.isFinite(docId) || !signerId || !token) {
+        return Errors.badRequest(res, "Missing doc, signer, or token");
+      }
+
+      const { verifySigningToken } = await import("./services/signingTokens");
+      if (!verifySigningToken(docId, signerId, token)) {
+        return res.status(403).json({ error: "Invalid or expired signing link" });
+      }
+
+      // Fetch without org scoping — the token IS the auth for external signers.
+      const { db } = await import("./db");
+      const { generatedDocuments, organizations } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+      const [doc] = await db.select().from(generatedDocuments).where(eq(generatedDocuments.id, docId)).limit(1);
+      if (!doc) return Errors.notFound(res, "Document");
+
+      const signers = (doc.signers || []) as Array<{
+        id: string;
+        name: string;
+        email: string;
+        role: string;
+        signedAt?: string;
+        order?: number;
+      }>;
+      const signer = signers.find((s) => s.id === signerId);
+      if (!signer) return res.status(403).json({ error: "Invalid or expired signing link" });
+
+      // Organization name for trust — signer should see who sent it.
+      const [org] = await db.select({ name: organizations.name }).from(organizations).where(eq(organizations.id, doc.organizationId)).limit(1);
+
+      // If the doc has expired, reject. Check expiresAt timestamp.
+      if (doc.expiresAt && new Date(doc.expiresAt) < new Date()) {
+        return res.status(410).json({ error: "This signing link has expired" });
+      }
+
+      res.json({
+        document: {
+          id: doc.id,
+          name: doc.name,
+          type: doc.type,
+          content: doc.content,
+          status: doc.status,
+          expiresAt: doc.expiresAt,
+        },
+        organization: { name: org?.name ?? "AcreOS" },
+        signer: {
+          id: signer.id,
+          name: signer.name,
+          email: signer.email,
+          role: signer.role,
+          signedAt: signer.signedAt ?? null,
+          order: signer.order ?? 1,
+        },
+        signersTotal: signers.length,
+        signersCompleted: signers.filter((s) => !!s.signedAt).length,
+      });
+    } catch (error: any) {
+      logger.error("Public sign fetch error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
+    }
+  });
+
+  // POST /api/public/sign/:docId — submit signature
+  //   body: { s: signerId, t: token, signatureData, signatureType, consentGiven }
+  api.post("/api/public/sign/:docId", async (req, res) => {
+    try {
+      const docId = parseInt(req.params.docId, 10);
+      const { s: signerId, t: token, signatureData, signatureType, consentGiven } = req.body || {};
+      if (!Number.isFinite(docId) || !signerId || !token || !signatureData) {
+        return Errors.badRequest(res, "Missing doc, signer, token, or signature data");
+      }
+
+      const { verifySigningToken } = await import("./services/signingTokens");
+      if (!verifySigningToken(docId, String(signerId), String(token))) {
+        return res.status(403).json({ error: "Invalid or expired signing link" });
+      }
+
+      const { db } = await import("./db");
+      const { generatedDocuments } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+      const [doc] = await db.select().from(generatedDocuments).where(eq(generatedDocuments.id, docId)).limit(1);
+      if (!doc) return Errors.notFound(res, "Document");
+
+      if (doc.expiresAt && new Date(doc.expiresAt) < new Date()) {
+        return res.status(410).json({ error: "This signing link has expired" });
+      }
+
+      const signers = (doc.signers || []) as Array<{
+        id: string;
+        name: string;
+        email: string;
+        role: string;
+        signedAt?: string;
+        signatureUrl?: string;
+        order?: number;
+      }>;
+      const signerIdx = signers.findIndex((x) => x.id === String(signerId));
+      if (signerIdx < 0) return res.status(403).json({ error: "Invalid or expired signing link" });
+      if (signers[signerIdx].signedAt) {
+        return res.status(409).json({ error: "This document has already been signed" });
+      }
+
+      const signer = signers[signerIdx];
+
+      // Record the signature in the signatures audit table.
+      await storage.createSignature({
+        organizationId: doc.organizationId,
+        documentId: doc.id,
+        signerName: signer.name,
+        signerEmail: signer.email || null,
+        signerRole: signer.role || "signer",
+        signatureData: String(signatureData),
+        signatureType: signatureType === "typed" ? "typed" : "drawn",
+        ipAddress: req.ip || (req.headers["x-forwarded-for"] as string) || null,
+        userAgent: (req.headers["user-agent"] as string) || null,
+        consentGiven: consentGiven !== false,
+        consentText:
+          "I agree that this electronic signature is legally binding and has the same legal effect as a handwritten signature.",
+      });
+
+      // Update the signer entry on the document.
+      const now = new Date().toISOString();
+      const updatedSigners = signers.map((x, i) =>
+        i === signerIdx ? { ...x, signedAt: now, signatureUrl: String(signatureData) } : x,
+      );
+      const allSigned = updatedSigners.every((x) => !!x.signedAt);
+      await storage.updateGeneratedDocument(doc.id, {
+        signers: updatedSigners,
+        status: allSigned ? "signed" : "partially_signed",
+        ...(allSigned ? { completedAt: new Date(), signedAt: new Date() } : {}),
+      });
+
+      res.json({
+        success: true,
+        signer: { id: signer.id, signedAt: now },
+        allSigned,
+      });
+    } catch (error: any) {
+      logger.error("Public sign submit error", error instanceof Error ? error : undefined);
       Errors.internal(res, error);
     }
   });
