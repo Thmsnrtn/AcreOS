@@ -25,7 +25,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Download, Filter, Search, RefreshCw, User, FileText, DollarSign, Home, Handshake } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { relative } from "@/lib/format";
 import { useAuth } from "@/hooks/use-auth";
 
 interface AuditEntry {
@@ -206,7 +206,7 @@ export default function AuditLog() {
                     return (
                       <TableRow key={entry.id}>
                         <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                          {formatDistanceToNow(new Date(entry.createdAt), { addSuffix: true })}
+                          {relative(entry.createdAt)}
                         </TableCell>
                         <TableCell>
                           <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${getActionColor(entry.action)}`}>

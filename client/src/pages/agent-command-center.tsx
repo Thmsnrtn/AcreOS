@@ -42,7 +42,7 @@ import {
   DollarSign,
   Briefcase,
 } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { relative } from "@/lib/format";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -227,7 +227,7 @@ function AgentCard({
         {/* Last active */}
         {agent.lastActiveAt && (
           <p className="text-[10px] text-muted-foreground">
-            Last active {formatDistanceToNow(new Date(agent.lastActiveAt), { addSuffix: true })}
+            Last active {relative(agent.lastActiveAt)}
           </p>
         )}
       </CardContent>
@@ -280,7 +280,7 @@ function TaskRow({
           </p>
         )}
         <p className="text-[10px] text-muted-foreground mt-0.5">
-          {formatDistanceToNow(new Date(task.createdAt), { addSuffix: true })}
+          {relative(task.createdAt)}
           {task.executionTimeMs && ` · ${task.executionTimeMs}ms`}
         </p>
         {task.error && (
