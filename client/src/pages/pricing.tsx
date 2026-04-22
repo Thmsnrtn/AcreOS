@@ -247,7 +247,7 @@ export default function PricingPage() {
 
           <p className="text-center text-sm text-muted-foreground mt-8">
             Need custom enterprise pricing?{" "}
-            <a href="mailto:hello@acreos.com" className="text-primary hover:underline">
+            <a href="mailto:support@acreos.io" className="text-primary hover:underline">
               Contact us
             </a>
             .
