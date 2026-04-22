@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BrainCircuit, X, Trash2, ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { formatDistanceToNow } from "date-fns";
+import { relative } from "@/lib/format";
 import { apiRequest } from "@/lib/queryClient";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -163,7 +163,7 @@ function MemoryCard({
           </button>
         )}
         <p className="text-[10px] text-muted-foreground/60">
-          {formatDistanceToNow(new Date(memory.createdAt), { addSuffix: true })}
+          {relative(memory.createdAt)}
         </p>
       </div>
       <button

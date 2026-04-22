@@ -15,7 +15,7 @@ import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Task } from "@shared/schema";
-import { formatDistanceToNow } from "date-fns";
+import { relative } from "@/lib/format";
 
 interface TasksDashboardSummary {
   overdue: Task[];
@@ -66,10 +66,10 @@ function TaskItem({ task, onComplete, isCompleting }: {
               <Clock className="w-3 h-3" />
               {isOverdue ? (
                 <span className="text-red-600 dark:text-red-400">
-                  {formatDistanceToNow(new Date(task.dueDate), { addSuffix: true })}
+                  {relative(task.dueDate)}
                 </span>
               ) : (
-                formatDistanceToNow(new Date(task.dueDate), { addSuffix: true })
+                relative(task.dueDate)
               )}
             </p>
           )}

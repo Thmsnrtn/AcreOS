@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TrendingDown, CheckCircle2, Clock, AlertTriangle } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { relative } from "@/lib/format";
 
 interface ChurnData {
   churnMetrics: {
@@ -177,7 +177,7 @@ export function ChurnIntelligence() {
                     {org.daysSinceLastActive != null
                       ? `${org.daysSinceLastActive}d idle`
                       : org.lastActiveAt
-                      ? formatDistanceToNow(new Date(org.lastActiveAt), { addSuffix: true })
+                      ? relative(org.lastActiveAt)
                       : "—"}
                   </span>
                 </div>
