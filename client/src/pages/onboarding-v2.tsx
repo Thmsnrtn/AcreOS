@@ -1212,9 +1212,9 @@ export default function OnboardingV2() {
             <div className="space-y-6">
               {[
                 {
-                  group: "Land & Development",
+                  group: "Land & Development — Recommended",
                   types: [
-                    { value: "land_flipper", icon: MapPin, title: "Land Flipper", desc: "Buy raw land at wholesale and resell for profit. Fast cycles, high margins." },
+                    { value: "land_flipper", icon: MapPin, title: "Land Flipper", desc: "Buy raw land at wholesale and resell for profit. Fast cycles, high margins. AcreOS is built for this." },
                     { value: "developer", icon: Building, title: "Developer / Subdivider", desc: "Land development, entitlements, subdivisions, and new construction." },
                     { value: "tax_lien_deed", icon: DollarSign, title: "Tax Lien / Tax Deed", desc: "Purchase tax liens and deeds at county auctions. Research-driven, high ROI." },
                   ],
