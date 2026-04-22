@@ -33,6 +33,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { FlaskConical, Play, Pause, CheckCircle2, XCircle, Plus } from "lucide-react";
 import { relative } from "@/lib/format";
+import { PageHeader } from "@/components/ui/page-header";
 
 interface Experiment {
   id: number;
@@ -108,19 +109,11 @@ export default function FounderExperimentsPage() {
   return (
     <PageShell label="Experiments">
       <div className="space-y-6 max-w-5xl mx-auto">
-        <Card>
-          <CardContent className="p-6 flex items-start justify-between gap-3 flex-wrap">
-            <div>
-              <h1 className="text-2xl font-semibold text-foreground mb-2 flex items-center gap-2">
-                <FlaskConical className="h-5 w-5 text-muted-foreground" />
-                Decision experiments
-              </h1>
-              <p className="text-sm text-muted-foreground max-w-2xl">
-                A/B test how agents decide. Each experiment hooks into a specific item type and
-                deterministically assigns variants per org. When outcomes get graded, they roll up
-                per variant so you can see which playbook works.
-              </p>
-            </div>
+        <PageHeader
+          title="Decision experiments"
+          icon={<FlaskConical className="h-5 w-5 text-muted-foreground" />}
+          description="A/B test how agents decide. Each experiment hooks into a specific item type and deterministically assigns variants per org. When outcomes get graded, they roll up per variant so you can see which playbook works."
+          actions={
             <Dialog open={createOpen} onOpenChange={setCreateOpen}>
               <DialogTrigger asChild>
                 <Button size="sm">
@@ -130,8 +123,8 @@ export default function FounderExperimentsPage() {
               </DialogTrigger>
               <CreateExperimentDialog onClose={() => setCreateOpen(false)} />
             </Dialog>
-          </CardContent>
-        </Card>
+          }
+        />
 
         {isLoading ? (
           <Card>

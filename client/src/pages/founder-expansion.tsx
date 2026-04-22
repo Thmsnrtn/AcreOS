@@ -22,6 +22,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { TrendingUp, Check, X, PlayCircle, ArrowUpRight } from "lucide-react";
 import { dollars, relative } from "@/lib/format";
+import { PageHeader } from "@/components/ui/page-header";
 
 interface Candidate {
   id: number;
@@ -84,25 +85,17 @@ export default function FounderExpansionPage() {
   return (
     <PageShell label="Expansion Radar">
       <div className="space-y-6 max-w-5xl mx-auto">
-        <Card>
-          <CardContent className="p-6 flex items-start justify-between gap-3 flex-wrap">
-            <div>
-              <h1 className="text-2xl font-semibold text-foreground mb-2 flex items-center gap-2">
-                <TrendingUp className="h-5 w-5 text-muted-foreground" />
-                Expansion radar
-              </h1>
-              <p className="text-sm text-muted-foreground max-w-2xl">
-                Weekly scan for Land Investors ready to upgrade. Scored on tenure, lead/deal growth,
-                payment cadence, engagement. Top 5 candidates surface here for your approval.
-                Approving queues a tier-upgrade offer from Forge.
-              </p>
-            </div>
+        <PageHeader
+          title="Expansion radar"
+          icon={<TrendingUp className="h-5 w-5 text-muted-foreground" />}
+          description="Weekly scan for Land Investors ready to upgrade. Scored on tenure, lead/deal growth, payment cadence, engagement. Top 5 candidates surface here for your approval. Approving queues a tier-upgrade offer from Forge."
+          actions={
             <Button onClick={() => runNow.mutate()} disabled={runNow.isPending} size="sm" variant="outline">
               <PlayCircle className="h-4 w-4 mr-1" />
               {runNow.isPending ? "Scanning…" : "Run scan now"}
             </Button>
-          </CardContent>
-        </Card>
+          }
+        />
 
         <Card>
           <CardHeader className="pb-3">
