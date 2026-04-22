@@ -103,7 +103,8 @@ import {
   CalendarCheck,
   Plug,
 } from "lucide-react";
-import { formatDistanceToNow, format } from "date-fns";
+import { format } from "date-fns";
+import { relative } from "@/lib/format";
 import {
   ThePulse, DecisionsInbox, JobQueueHealth, BusinessIntelligence,
   MRRTrajectory, ChurnIntelligence, GrowthEngine, PlatformPassiveScore,
@@ -547,7 +548,7 @@ function GreetingHeader({ onRefresh, onGenerateDigest, digestPending, onShowShor
             </div>
             <span className="text-xs text-muted-foreground hidden sm:block">·</span>
             <span className="text-xs text-muted-foreground hidden sm:block">
-              Refreshed {formatDistanceToNow(lastRefreshed, { addSuffix: true })}
+              Refreshed {relative(lastRefreshed)}
             </span>
           </div>
         </div>
@@ -674,7 +675,7 @@ function SophieActivityPreview() {
               <CheckCircle2 className="h-3 w-3 text-green-500 shrink-0" />
               <span className="text-foreground truncate flex-1">{t.subject ?? `Ticket #${t.id}`}</span>
               <span className="text-muted-foreground shrink-0 text-[11px]">
-                {t.resolvedAt ? formatDistanceToNow(new Date(t.resolvedAt), { addSuffix: true }) : ""}
+                {t.resolvedAt ? relative(t.resolvedAt) : ""}
               </span>
             </div>
           ))}
@@ -758,7 +759,7 @@ function SystemActivityPanel() {
                 <div className="text-right shrink-0">
                   <Badge variant="outline" className="text-xs font-mono py-0">{row.jobName.replace(/_/g, " ")}</Badge>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    {formatDistanceToNow(new Date(row.createdAt), { addSuffix: true })}
+                    {relative(row.createdAt)}
                   </p>
                 </div>
               </div>
@@ -816,7 +817,7 @@ function JobHealthPanel() {
                 <span className="text-sm font-mono flex-1 truncate">{job.name.replace(/_/g, " ")}</span>
                 <div className="text-right text-xs text-muted-foreground shrink-0">
                   {job.lastRunAt ? (
-                    <span>{formatDistanceToNow(new Date(job.lastRunAt), { addSuffix: true })}</span>
+                    <span>{relative(job.lastRunAt)}</span>
                   ) : (
                     <span className="italic">not yet run</span>
                   )}
@@ -989,7 +990,7 @@ function PaxEyesPanel() {
                       {obs.orgName && <span className="text-xs text-muted-foreground">{obs.orgName}</span>}
                       {obs.confidence != null && confidenceBadge(Number(obs.confidence))}
                       <span className="text-xs text-muted-foreground">
-                        {formatDistanceToNow(new Date(obs.createdAt), { addSuffix: true })}
+                        {relative(obs.createdAt)}
                       </span>
                     </div>
                   </div>
@@ -2357,7 +2358,7 @@ export default function FounderDashboard() {
                     <span className="text-sm font-medium">Lead Nurturing</span>
                     <span className="text-xs text-muted-foreground">
                       {dashboardData?.agents.leadNurturer.lastRun 
-                        ? formatDistanceToNow(new Date(dashboardData.agents.leadNurturer.lastRun), { addSuffix: true })
+                        ? relative(dashboardData.agents.leadNurturer.lastRun)
                         : 'Never run'}
                     </span>
                   </div>
@@ -2370,7 +2371,7 @@ export default function FounderDashboard() {
                     <span className="text-sm font-medium">Campaign Optimizer</span>
                     <span className="text-xs text-muted-foreground">
                       {dashboardData?.agents.campaignOptimizer.lastRun 
-                        ? formatDistanceToNow(new Date(dashboardData.agents.campaignOptimizer.lastRun), { addSuffix: true })
+                        ? relative(dashboardData.agents.campaignOptimizer.lastRun)
                         : 'Never run'}
                     </span>
                   </div>
@@ -2383,7 +2384,7 @@ export default function FounderDashboard() {
                     <span className="text-sm font-medium">Finance Agent</span>
                     <span className="text-xs text-muted-foreground">
                       {dashboardData?.agents.financeAgent.lastRun 
-                        ? formatDistanceToNow(new Date(dashboardData.agents.financeAgent.lastRun), { addSuffix: true })
+                        ? relative(dashboardData.agents.financeAgent.lastRun)
                         : 'Never run'}
                     </span>
                   </div>
@@ -2945,7 +2946,7 @@ export default function FounderDashboard() {
                                 {ticket.organizationName}
                               </span>
                               <span className="text-xs text-muted-foreground">
-                                {ticket.createdAt ? formatDistanceToNow(new Date(ticket.createdAt), { addSuffix: true }) : ''}
+                                {ticket.createdAt ? relative(ticket.createdAt) : ''}
                               </span>
                             </div>
                           </div>
@@ -3072,7 +3073,7 @@ export default function FounderDashboard() {
                         </div>
                         <p className="text-sm text-muted-foreground mt-1">{alert.message}</p>
                         <p className="text-xs text-muted-foreground mt-1">
-                          {alert.createdAt ? formatDistanceToNow(new Date(alert.createdAt), { addSuffix: true }) : ''}
+                          {alert.createdAt ? relative(alert.createdAt) : ''}
                         </p>
                       </div>
                       {alert.status !== 'resolved' && (
@@ -3632,7 +3633,7 @@ export default function FounderDashboard() {
                         {org.createdAt ? format(new Date(org.createdAt), 'MMM d, yyyy') : 'N/A'}
                       </span>
                       <span className="col-span-1 text-xs text-muted-foreground">
-                        {org.lastActiveAt ? formatDistanceToNow(new Date(org.lastActiveAt), { addSuffix: true }) : 'Never'}
+                        {org.lastActiveAt ? relative(org.lastActiveAt) : 'Never'}
                       </span>
                     </div>
                   ))}
@@ -3735,7 +3736,7 @@ export default function FounderDashboard() {
                           Org #{event.organizationId}
                         </span>
                         <span className="text-xs text-muted-foreground">
-                          {event.createdAt ? formatDistanceToNow(new Date(event.createdAt), { addSuffix: true }) : ''}
+                          {event.createdAt ? relative(event.createdAt) : ''}
                         </span>
                       </div>
                     ))}
@@ -4280,7 +4281,7 @@ export default function FounderDashboard() {
                         <h4 className="font-medium mb-2">{agentNames[agentKey]}</h4>
                         <div className="grid grid-cols-4 gap-4 text-sm">
                           <div><span className="text-muted-foreground">Status:</span><br/><Badge variant="outline" className={getAgentStatusColor(agent.status)}>{agent.status}</Badge></div>
-                          <div><span className="text-muted-foreground">Last Run:</span><br/>{agent.lastRun ? formatDistanceToNow(new Date(agent.lastRun), { addSuffix: true }) : 'Never'}</div>
+                          <div><span className="text-muted-foreground">Last Run:</span><br/>{agent.lastRun ? relative(agent.lastRun) : 'Never'}</div>
                           <div><span className="text-muted-foreground">Processed:</span><br/><span className="font-medium">{agent.processed}</span></div>
                           <div><span className="text-muted-foreground">Failed:</span><br/><span className={agent.failed > 0 ? 'text-red-600 font-medium' : ''}>{agent.failed}</span></div>
                         </div>
@@ -4376,7 +4377,7 @@ export default function FounderDashboard() {
                         </div>
                         <p className="text-sm text-muted-foreground mt-1">{alert.message}</p>
                         <p className="text-xs text-muted-foreground mt-1">
-                          {alert.createdAt ? formatDistanceToNow(new Date(alert.createdAt), { addSuffix: true }) : ''}
+                          {alert.createdAt ? relative(alert.createdAt) : ''}
                         </p>
                       </div>
                       {alert.status !== 'resolved' && (
@@ -5947,7 +5948,7 @@ function TodaysBriefing() {
             )}
             {data?.generatedAt && (
               <p className="text-xs text-muted-foreground mt-1.5">
-                Updated {formatDistanceToNow(new Date(data.generatedAt), { addSuffix: true })}
+                Updated {relative(data.generatedAt)}
               </p>
             )}
           </div>
@@ -6902,7 +6903,7 @@ function CompanyBriefingPanel() {
             {greeting}, {founderName}. Here's your company.
           </h2>
           <p className="text-sm text-muted-foreground mt-1">
-            Generated {briefing.generatedAt ? formatDistanceToNow(new Date(briefing.generatedAt), { addSuffix: true }) : "just now"}
+            Generated {briefing.generatedAt ? relative(briefing.generatedAt) : "just now"}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -7352,7 +7353,7 @@ export function NewSubscriberFeed({ alerts }: { alerts: SystemAlert[] | undefine
             <CheckCircle2 className="w-3.5 h-3.5 text-green-600 shrink-0" />
             <span className="flex-1 truncate">{alert.message}</span>
             <span className="text-xs text-muted-foreground shrink-0">
-              {formatDistanceToNow(new Date(alert.createdAt!), { addSuffix: true })}
+              {relative(alert.createdAt!)}
             </span>
           </div>
         ))}
