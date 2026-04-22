@@ -68,10 +68,15 @@ const notificationColors: Record<string, string> = {
 
 export function NotificationCenter() {
   const [isOpen, setIsOpen] = useState(false);
+  const [unreadOnly, setUnreadOnly] = useState(false);
 
-  const { data: notifications } = useQuery<Notification[]>({
+  const { data: allNotifications } = useQuery<Notification[]>({
     queryKey: ["/api/notifications"],
   });
+
+  const notifications = unreadOnly
+    ? allNotifications?.filter((n) => !n.isRead)
+    : allNotifications;
 
   const { data: countData } = useQuery<{ count: number }>({
     queryKey: ["/api/notifications/count"],
@@ -148,18 +153,31 @@ export function NotificationCenter() {
       <PopoverContent className="w-80 p-0" align="end">
         <div className="flex items-center justify-between p-3 border-b">
           <h4 className="font-semibold">Notifications</h4>
-          {unreadCount > 0 && (
-            <Button 
-              variant="ghost" 
+          <div className="flex items-center gap-1">
+            <Button
+              variant={unreadOnly ? "secondary" : "ghost"}
               size="sm"
-              onClick={() => markAllReadMutation.mutate()}
-              disabled={markAllReadMutation.isPending}
-              data-testid="button-mark-all-read"
+              onClick={() => setUnreadOnly((v) => !v)}
+              className="h-7 text-xs"
+              aria-pressed={unreadOnly}
+              data-testid="button-unread-only"
             >
-              <CheckCheck className="w-4 h-4 mr-1" />
-              Mark all read
+              {unreadOnly ? "All" : `Unread${unreadCount > 0 ? ` (${unreadCount})` : ""}`}
             </Button>
-          )}
+            {unreadCount > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => markAllReadMutation.mutate()}
+                disabled={markAllReadMutation.isPending}
+                className="h-7 text-xs"
+                data-testid="button-mark-all-read"
+              >
+                <CheckCheck className="w-4 h-4 mr-1" />
+                Mark all
+              </Button>
+            )}
+          </div>
         </div>
         
         <ScrollArea className="h-80">
