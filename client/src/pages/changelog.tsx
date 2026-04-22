@@ -32,10 +32,21 @@ function cleanChangelogItem(raw: string): string {
   s = s.replace(/^\*\*[A-Z]+-[A-Z0-9-]+\s+[A-Z]+:\*\*\s*/, "");
   // Strip inline file paths in backticks:  "... (`server/routes.ts`)"
   s = s.replace(/\s*\([`']?[^)]*\/[^)]*[`']?\)/g, "");
+  // Strip trailing "Full X implementation in path/file.ts + path/file2.ts"
+  // or similar: after "in" or "+", any sequence of filepath-like tokens.
+  s = s.replace(
+    /\.\s*(Full [^.]+ (?:implementation|module) )?(in|at)\s+[\w/.-]+(?:\s*\+\s*[\w/.-]+)*\b[\s.]*$/i,
+    "",
+  );
+  // Strip bare file paths left standalone in prose:  "... in server/foo.ts"
+  s = s.replace(/\b(?:server|client|shared|docs|scripts)\/[\w./+-]+/g, "");
   // Strip bare backticks wrapping code:  "`foo()`" → "foo()"
   s = s.replace(/`([^`]+)`/g, "$1");
   // Strip any remaining markdown-bold asterisks
   s = s.replace(/\*\*([^*]+)\*\*/g, "$1");
+  // Collapse whitespace + trailing " in " / "Full ... implementation" remnants.
+  s = s.replace(/\s+/g, " ");
+  s = s.replace(/\s+[.,;]+$/, "");
   return s.trim();
 }
 
