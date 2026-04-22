@@ -72,42 +72,30 @@ export function httpCacheHeaders(req: Request, res: Response, next: NextFunction
     next();
     return;
   }
-  // Never cache error responses. Install a setHeader guard that only
-  // applies the cache header if the status code is 2xx by the time the
-  // response is sent.
-  const originalSend = res.send.bind(res);
-  const originalJson = res.json.bind(res);
-  let applied = false;
 
-  const applyIfEligible = () => {
-    if (applied) return;
-    if (res.statusCode < 200 || res.statusCode >= 300) return;
-    // Don't clobber a Cache-Control header the handler already set.
-    if (res.getHeader("Cache-Control")) return;
+  const match = RULES.find((r) => r.pattern.test(req.path));
+  if (!match) {
+    next();
+    return;
+  }
 
-    const match = RULES.find((r) => r.pattern.test(req.path));
-    if (!match) return;
-
-    const parts = [`private`, `max-age=${match.maxAge}`];
-    if (match.swr) parts.push(`stale-while-revalidate=${match.swr}`);
-    res.setHeader("Cache-Control", parts.join(", "));
-    // Vary on Cookie so cached responses don't cross-pollinate between
-    // logged-in/out states or between orgs (different __session cookies).
-    const existingVary = res.getHeader("Vary");
-    res.setHeader(
-      "Vary",
-      existingVary ? `${existingVary}, Cookie` : "Cookie",
-    );
-    applied = true;
-  };
-
-  res.send = (body: any) => {
-    applyIfEligible();
-    return originalSend(body);
-  };
-  res.json = (body: any) => {
-    applyIfEligible();
-    return originalJson(body);
+  // Hook into writeHead — fires just before headers flush. That's the
+  // last moment we can set a header and have it land on the response.
+  // Earlier attempts overriding res.send / res.json were silently
+  // bypassed because downstream middleware (compression, etc.) can
+  // replace res.send and never call our wrapped version.
+  const originalWriteHead = res.writeHead.bind(res);
+  (res as any).writeHead = function (...args: any[]) {
+    const statusCode = typeof args[0] === "number" ? args[0] : res.statusCode;
+    // Skip caching on non-2xx.
+    if (statusCode >= 200 && statusCode < 300 && !res.getHeader("Cache-Control")) {
+      const parts = [`private`, `max-age=${match.maxAge}`];
+      if (match.swr) parts.push(`stale-while-revalidate=${match.swr}`);
+      res.setHeader("Cache-Control", parts.join(", "));
+      const existingVary = res.getHeader("Vary");
+      res.setHeader("Vary", existingVary ? `${existingVary}, Cookie` : "Cookie");
+    }
+    return (originalWriteHead as any)(...args);
   };
 
   next();
