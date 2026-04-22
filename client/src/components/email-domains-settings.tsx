@@ -7,17 +7,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { 
-  Globe, 
-  Plus, 
-  Trash2, 
-  RefreshCw, 
-  CheckCircle, 
-  Clock, 
+import {
+  Globe,
+  Plus,
+  Trash2,
+  RefreshCw,
+  CheckCircle,
+  Clock,
   AlertCircle,
-  Copy,
   Star
 } from "lucide-react";
+import { CopyButton } from "@/components/ui/copy-button";
 import {
   Dialog,
   DialogContent,
@@ -137,15 +137,6 @@ export function EmailDomainsSettings() {
       toast({ title: "Failed to remove domain", description: err.message, variant: "destructive" });
     },
   });
-
-  const copyToClipboard = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      toast({ title: "Copied to clipboard" });
-    } catch {
-      toast({ title: "Failed to copy", variant: "destructive" });
-    }
-  };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -338,14 +329,11 @@ export function EmailDomainsSettings() {
                                   )}
                                 </TableCell>
                                 <TableCell>
-                                  <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    onClick={() => copyToClipboard(record.data)}
-                                    aria-label="Copy DNS record"
-                                  >
-                                    <Copy className="w-3 h-3" />
-                                  </Button>
+                                  <CopyButton
+                                    value={record.data}
+                                    srLabel="Copy DNS record"
+                                    successMessage="DNS record copied"
+                                  />
                                 </TableCell>
                               </TableRow>
                             ))}
