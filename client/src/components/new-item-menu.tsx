@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Users, Map, Briefcase, X, FileText, DollarSign } from "lucide-react";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { cn } from "@/lib/utils";
+import { Kbd } from "@/components/ui/kbd";
 
 interface NewItemOption {
   icon: typeof Users;
@@ -150,11 +151,7 @@ export function NewItemMenu() {
               
               <div className="p-3 border-t text-center">
                 <span className="text-xs text-muted-foreground">
-                  Press{" "}
-                  <kbd className="px-[6px] py-0.5 rounded border bg-muted font-mono text-[10px]">
-                    ⌘N
-                  </kbd>{" "}
-                  to toggle this menu
+                  Press <Kbd size="sm">⌘N</Kbd> to toggle this menu
                 </span>
               </div>
             </div>

@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Kbd } from "@/components/ui/kbd";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Sparkles, Send, Loader2, X, ChevronRight,
@@ -1334,7 +1335,7 @@ export function PaxCopilotRail() {
                   ))}
                 </div>
                 <p className="text-[10px] text-muted-foreground/50 mt-2">
-                  Tip: Type <span className="font-mono">/</span> for commands · <span className="font-mono">@</span> to mention an entity · <kbd className="text-[9px] bg-muted px-1 rounded">⌘K</kbd> for palette
+                  Tip: Type <Kbd size="sm">/</Kbd> for commands · <Kbd size="sm">@</Kbd> to mention an entity · <Kbd size="sm">⌘K</Kbd> for palette
                 </p>
               </div>
             )}
