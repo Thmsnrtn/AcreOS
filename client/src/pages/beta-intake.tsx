@@ -133,7 +133,7 @@ export default function BetaIntakePage() {
                   </Button>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Share this code with other land investors. Each person who signs up with your code moves you up the list.
+                  Share this code with other Land Investors. Each person who signs up with your code moves you up the list.
                 </p>
               </div>
             </CardContent>

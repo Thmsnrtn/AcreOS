@@ -46,7 +46,7 @@ function WaitlistSection() {
       <div className="space-y-2">
         <h2 className="text-2xl font-bold">Coming to AcreOS</h2>
         <p className="text-muted-foreground max-w-xl mx-auto">
-          AcreOS starts with land investors. Select the verticals you're interested in and we'll notify you when they launch.
+          AcreOS starts with Land Investors. Select the verticals you're interested in and we'll notify you when they launch.
         </p>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -345,7 +345,7 @@ export default function LandingPage() {
         <div className="max-w-2xl mx-auto text-center space-y-6">
           <h2 className="text-3xl font-bold">Ready to close more land deals with less effort?</h2>
           <p className="text-muted-foreground">
-            Join land investors who are finding better parcels and closing faster with AcreOS.
+            Join Land Investors who are finding better parcels and closing faster with AcreOS.
           </p>
           <Button size="lg" asChild>
             <Link href="/auth?mode=register">
