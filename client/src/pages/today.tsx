@@ -43,6 +43,7 @@ import {
   MessageSquare,
 } from "lucide-react";
 import { format, isToday, isBefore, startOfDay, subDays } from "date-fns";
+import { AnimatedCounter } from "@/components/ui/animated-counter";
 
 interface GoalWithProgress {
   id: number;
@@ -650,19 +651,24 @@ export default function TodayPage() {
           </div>
           <div className="grid grid-cols-3 gap-3">
             <div className="text-center">
-              <p className="text-lg font-bold">{activeAgentCount}</p>
+              <AnimatedCounter value={activeAgentCount} className="text-lg font-bold" />
               <p className="text-xs text-muted-foreground">Active Agents</p>
             </div>
             <div className="text-center">
               <Link href="/ai#agents">
-                <p className={`text-lg font-bold ${pendingApprovalCount > 0 ? "text-amber-600" : ""}`}>
-                  {pendingApprovalCount}
-                </p>
+                <AnimatedCounter
+                  value={pendingApprovalCount}
+                  className={`text-lg font-bold ${pendingApprovalCount > 0 ? "text-amber-600" : ""}`}
+                />
                 <p className="text-xs text-muted-foreground">Pending Approvals</p>
               </Link>
             </div>
             <div className="text-center">
-              <p className="text-lg font-bold">{Math.round(autonomyScore)}%</p>
+              <AnimatedCounter
+                value={Math.round(autonomyScore)}
+                format={(n) => `${Math.round(n)}%`}
+                className="text-lg font-bold"
+              />
               <p className="text-xs text-muted-foreground">Autonomy Score</p>
             </div>
           </div>
