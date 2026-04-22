@@ -5228,9 +5228,17 @@ export async function processSupportChat(
     .from(supportTicketMessages)
     .where(eq(supportTicketMessages.ticketId, ticketId))
     .orderBy(supportTicketMessages.createdAt);
-  
+
+  // Vertical-aware voice — address a wholesaler as a Wholesaler, a
+  // note investor as a Note Investor, etc. Falls back to base prompt
+  // on any inference failure.
+  const { paxVerticalContext, getOrgInvestorType } = await import("../services/paxPersona");
+  const investorType = await getOrgInvestorType(org.id);
+  const verticalBlock = paxVerticalContext(investorType);
+  const systemPrompt = verticalBlock ? `${PAX_SYSTEM_PROMPT}\n${verticalBlock}` : PAX_SYSTEM_PROMPT;
+
   const chatMessages: OpenAI.ChatCompletionMessageParam[] = [
-    { role: "system", content: PAX_SYSTEM_PROMPT }
+    { role: "system", content: systemPrompt }
   ];
   
   for (const msg of previousMessages) {

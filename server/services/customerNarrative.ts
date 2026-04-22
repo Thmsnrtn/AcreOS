@@ -445,10 +445,19 @@ async function writeLetter(s: CustomerMonthlySummary): Promise<{
   recommendedAction: string | null;
 }> {
   const context = buildLetterContext(s);
+  // Vertical-aware voice: wholesaler vs. note investor vs. fix-and-flip
+  // all get addressed correctly. Falls back to land-investor vocabulary
+  // when we can't infer.
+  const { paxVerticalContext, getOrgInvestorType } = await import("./paxPersona");
+  const investorType = await getOrgInvestorType(s.organizationId);
+  const verticalBlock = paxVerticalContext(investorType);
+  const systemPrompt = verticalBlock
+    ? `${CUSTOMER_LETTER_SYSTEM_PROMPT}\n${verticalBlock}`
+    : CUSTOMER_LETTER_SYSTEM_PROMPT;
   try {
     const response = await routeCriticalTask(
       "customer_monthly_letter",
-      CUSTOMER_LETTER_SYSTEM_PROMPT,
+      systemPrompt,
       context,
     );
     const parsed = parseNarrative(response.content);
