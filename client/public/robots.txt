@@ -4,13 +4,25 @@ Disallow: /api/
 Disallow: /admin/
 Disallow: /settings/
 Disallow: /founder/
+Disallow: /founder-dashboard
+Disallow: /founder-home
 Disallow: /portal/
+Disallow: /today
+Disallow: /pax
+Disallow: /ai
+Disallow: /leads
+Disallow: /properties
+Disallow: /deals
+Disallow: /analytics
 
 # Allow public pages
 Allow: /
+Allow: /pricing
+Allow: /status
+Allow: /changelog
 Allow: /terms
 Allow: /privacy
 Allow: /auth
 
 # Sitemap
-Sitemap: https://app.acreos.com/sitemap.xml
+Sitemap: https://acreos.io/sitemap.xml

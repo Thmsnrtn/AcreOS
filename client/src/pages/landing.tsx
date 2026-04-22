@@ -194,8 +194,19 @@ export default function LandingPage() {
         </div>
       </nav>
 
-      {/* Hero */}
-      <section id="main-content" className="py-24 px-6">
+      {/* Hero — aerial backdrop for emotional resonance, overlay keeps
+          copy readable. One of the 13 unused aerial photos that were
+          sitting in public/images/. */}
+      <section id="main-content" className="relative py-24 px-6 overflow-hidden">
+        <div
+          className="absolute inset-0 -z-10 bg-cover bg-center"
+          style={{ backgroundImage: "url(/images/aerial_view_wide_hor_0f1000c4.jpg)" }}
+          aria-hidden="true"
+        />
+        <div
+          className="absolute inset-0 -z-10 bg-gradient-to-b from-background/85 via-background/75 to-background"
+          aria-hidden="true"
+        />
         <div className="max-w-4xl mx-auto text-center space-y-6">
           <h1 className="text-5xl sm:text-6xl font-bold tracking-tight">
             The AI-Powered Platform for{" "}
@@ -203,7 +214,7 @@ export default function LandingPage() {
               Land Investors
             </span>
           </h1>
-          <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+          <p className="text-xl text-foreground/80 max-w-2xl mx-auto">
             Find motivated sellers. Analyze parcels. Send direct mail. Close deals.
             All in one platform.
           </p>
