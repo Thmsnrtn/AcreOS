@@ -69,14 +69,26 @@ export function ThemeSettings() {
 
           {/* Preset cards */}
           <div>
-            <p className="text-sm font-medium mb-2">Theme Preset</p>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm font-medium">Theme Preset</p>
+              {themeConfig.preset !== "default" && (
+                <button
+                  type="button"
+                  onClick={() => setThemeConfig({ preset: "default" })}
+                  className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
+                >
+                  Reset to Desert
+                </button>
+              )}
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {PRESETS.map((preset) => (
                 <button
                   key={preset.id}
                   onClick={() => setThemeConfig({ preset: preset.id })}
+                  aria-pressed={themeConfig.preset === preset.id}
                   className={cn(
-                    "flex flex-col items-start rounded-lg border p-3 text-left transition-all",
+                    "flex flex-col items-start rounded-lg border p-3 text-left transition-all min-h-[88px]",
                     themeConfig.preset === preset.id
                       ? "border-primary ring-2 ring-primary/30"
                       : "border-border hover:border-primary/50"

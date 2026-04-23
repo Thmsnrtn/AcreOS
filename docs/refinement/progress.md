@@ -121,3 +121,22 @@ Applies to every protected route during auth resolution + every
   saw a tiny spinner with no brand context — now they see AcreOS.
 
 **Sign-off:** D ✓ M ✓ A ✓ E ✓ AI n/a LI n/a CW ✓ I ✓ T ✓
+
+### 2026-04-23 — `ThemeSettings` dialog (cross-cutting, mounted in `/settings`)
+**Refinements made:**
+- [M] Mobile: preset grid was `grid-cols-3`.  At 375px inside the
+  DialogContent's padding, cards had ~110px each — description text
+  ("Warm terracotta & sand") wrapped awkwardly.  Now
+  `grid-cols-2 sm:grid-cols-3`.
+- [D] Designer: cards had inconsistent heights depending on
+  description length.  Added `min-h-[88px]` so the grid looks
+  intentional.
+- [A] Accessibility: each preset button now has `aria-pressed` so
+  screen-reader users hear which preset is selected.
+- [CW] Copywriter: added a "Reset to Desert" quick link that appears
+  only when the user is on a non-default preset.  This is the direct
+  escape hatch for the reported-purple-on-Safari scenario — if they
+  find the Theme panel and their preset is "Midnight", one tap
+  restores the default.
+
+**Sign-off:** D ✓ M ✓ A ✓ E ✓ AI n/a LI ✓ CW ✓ I ✓ T ✓
