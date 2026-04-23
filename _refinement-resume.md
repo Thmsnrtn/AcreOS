@@ -1,22 +1,24 @@
 # Elite-Team Refinement — Resume Point
 
-**Last session:** 2026-04-23 (session 5l — DealDetailDrawer)
-**Last completed refinement:** `DealDetailDrawer` (5-tab surface in
-`deals.tsx`) — drawer role=dialog + Esc key, pricing/negotiate
-buttons 44px + aria-label, decorative icon aria-hidden sweep,
-checklist checkbox → role=checkbox/aria-checked/44px, window.confirm
-→ ConfirmDialog for template replace, money unset → em-dash,
-dealPackages silent failure → toast, dead "Generate Documents" /
-"View Property" stub buttons removed, loading spinners → skeletons,
-sentence-case copy sweep, shadowed `statusColors` renamed,
-DialogDescription for a11y.
+**Last session:** 2026-04-23 (session 5m — DealForm create-deal modal)
+**Last completed refinement:** `DealForm` (create-deal modal in
+`deals.tsx`) — sentence-case sweep on dialog/trigger/labels/copy,
+`$` prefix adornment + `text-right tabular-nums` on offer amount,
+`inputMode="decimal"` + `min=0` + `step=any` for mobile keypad,
+required-field asterisks (aria-hidden) on type/property, controlled
+date inputs with Invalid-Date guard + undefined-on-empty, property
+select value-binding + three-state render (loading/empty/populated),
+`autoCapitalize="words"` on title company, SelectTrigger aria-label,
+Loader2 aria-hidden, re-ordered to chronological practitioner flow
+(closing date | title company).
 
 **Phase 1 inventory:** ✅ committed at `11d0e8c`
 **PropertyDetailDialog:** ✅ fully refined across all tabs.
 **/deals kanban:** ✅ slice 5j complete (commit `f001623`).
 **/deals list + filters:** ✅ slice 5k complete (commit `d157464`).
 **/deals DealDetailDrawer (5 tabs):** ✅ slice 5l complete.
-**/deals DealForm:** ⬜ slice 5m next
+**/deals DealForm (create modal):** ✅ slice 5m complete (commit `0707ee4`).
+**/campaigns (list + detail + create + AI letter):** ⬜ slice 6a next
 
 ## How to continue
 
@@ -58,7 +60,7 @@ Session 4:
   state conformance + mobile action-row stack + source badge
   promotion + token-based visuals
 
-Session 5 (twelve slices so far — /properties and /deals):
+Session 5 (thirteen slices so far — /properties and /deals):
 - 5a–5i. `/properties` (list, card/form, detail dialog all tabs,
   research summary, comps, AI offer, chat, intelligence,
   cross-cutting status.replace sweep)
@@ -78,7 +80,13 @@ Session 5 (twelve slices so far — /properties and /deals):
   button removal, money-unset → em-dash, silent fetch → toast,
   DialogDescription binding, skeleton loading states,
   decorative-icon aria-hidden sweep, sentence-case copy, shadow
-  rename (pkgStatusColors)
+  rename (pkgStatusColors) (commit `cc375b1`)
+- 5m. `/deals` DealForm create modal — sentence case sweep,
+  currency adornment + tabular-nums, decimal inputMode + min=0,
+  required-field asterisks, controlled date inputs w/ Invalid-Date
+  guard, property select value-binding + three-state render
+  (loading/empty/populated), SelectTrigger aria-label, Loader2
+  aria-hidden, chronological row reorder (commit `0707ee4`)
 
 ## Cross-cutting gains this pass
 
@@ -164,28 +172,45 @@ Session 5 (twelve slices so far — /properties and /deals):
   inaccessible (no focus trap with surrounding Radix UI, no
   aria wiring, inconsistent styling, blocks main thread). Always
   use `ConfirmDialog` — it's already in the tree.
+- **Prerequisite-select three-state rule (new 5m):** when a
+  creation form depends on a prerequisite entity (deal → property,
+  package → deal, etc.), the dependent `Select` must distinguish
+  three states: **loading** (disabled + "Loading X…" placeholder),
+  **empty** (explicit next-action message: "No X yet — add one
+  first."), **populated**. A silently empty dropdown is
+  indistinguishable from a failed query, a racing query, or a
+  genuinely empty list.
+- **Controlled-date-input rule (new 5m):** `<Input type="date">`
+  must bind both `value` AND `onChange`. Bind: `value={date
+  instanceof Date && !isNaN(date.getTime()) ? format(date,
+  'yyyy-MM-dd') : ''}`. Change: `onChange={(e) => field.onChange(
+  e.target.value ? new Date(e.target.value) : undefined)}`. Bare
+  `new Date(e.target.value)` silently produces `Invalid Date` when
+  the user clears the field, which then serializes to null/NaN
+  downstream. Grep candidate across all forms.
+- **Currency-adornment rule (new 5m):** `$` should be a visual
+  prefix inside the input (relative wrapper + absolute-positioned
+  span + `pl-7`), not suffixed on the label as `Amount ($)`.
+  Combine with `text-right tabular-nums` for money readability and
+  `inputMode="decimal"` + `min={0}` + `step="any"` for mobile.
 
 ## Next surface to refine
 
-**Next slice: `/deals` DealForm — create/edit modal form (5m).**
+**Next slice: `/campaigns` — list + detail + create (6a).**
 
-Scope for 5m:
-- Field ordering: type → property → offer → dates → title → notes.
-- Form mobile-keyboard checklist applied (offer amount numeric /
-  decimal inputMode, close date proper native date picker).
-- Currency inputs: leading `$` adornment + right-align digits.
-- Validation states: visible error copy; aria-invalid wired.
-- Property combobox: confirm "searchable" + keyboard nav; loading
-  state while useProperties() is pending.
-- Submit button: disabled while `isPending`, 44px target, loading
-  indicator copy ("Saving…" not "Loading…").
-- Dialog-close focus restoration back to the triggering button.
-- Error recovery: server validation error surfaces which field
-  failed, not just a generic toast.
+Scope for 6a (campaigns list + create):
+- List page: sort/filter chrome parity with /deals (saved views?),
+  QueryErrorState on fetch failure, ListSkeleton on load, empty
+  state with meaningful CTA.
+- Create flow: AI-drafted letter copy is the hot spot — grounded
+  in property/owner data, output scannable, regeneration discoverable.
+- Provider-cost visibility: campaign cost preview before send.
+- Mobile: create form at 375px; send confirm at 320px.
+- Trust: send confirmation with recipient count + credits + recall
+  policy. Clear "mail goes to Lob" attribution.
 
-After 5m: move per inventory to:
-1. `/campaigns` — list + detail + create; AI-drafted letter copy
-   is likely the AI/T hot spot
+After 6a: move per inventory to:
+1. `/campaigns` detail + per-recipient view
 2. `/inbox` — message rendering + thread navigation a11y
 3. `/documents` — upload + OCR trust signals
 4. `/sign/:docId` — **legal/trust surface** — signer flow
@@ -236,6 +261,6 @@ After 5m: move per inventory to:
   `storage`, `autonomousDealMachine`, `countyAssessorIngest`,
   `supportAgent`, etc. — not blocking client refinement work.
 
-## Expected HEAD after session 5l
+## Expected HEAD after session 5m
 
-New commit on top of `d157464` (deals list + bulk-actions).
+`0707ee4 refine(deals/form): …` on top of `cc375b1` (DealDetailDrawer).
