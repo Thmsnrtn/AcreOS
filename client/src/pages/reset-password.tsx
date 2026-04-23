@@ -52,10 +52,10 @@ export default function ResetPasswordPage() {
       <div className="min-h-screen flex items-center justify-center p-4 bg-background">
         <Card className="w-full max-w-md">
           <CardContent className="p-8 text-center space-y-4">
-            <AlertCircle className="w-12 h-12 text-red-500 mx-auto" />
+            <AlertCircle className="w-12 h-12 text-destructive mx-auto" aria-hidden="true" />
             <h1 className="text-xl font-bold">Invalid reset link</h1>
             <p className="text-muted-foreground text-sm">
-              This password reset link is missing a token. Please request a new link.
+              This password reset link is missing a token. It may have been copied incorrectly or expired.
             </p>
             <Link href="/forgot-password">
               <Button variant="outline">Request new link</Button>
@@ -78,16 +78,21 @@ export default function ResetPasswordPage() {
           </div>
 
           {success ? (
-            <div className="flex flex-col items-center gap-3 py-4">
-              <CheckCircle className="w-12 h-12 text-green-500" />
+            <div className="flex flex-col items-center gap-3 py-4" role="status">
+              <CheckCircle className="w-12 h-12 text-emerald-500" aria-hidden="true" />
               <p className="text-center text-sm text-muted-foreground">
-                Password reset successful! Redirecting to login…
+                Password reset successful. Redirecting to sign in…
               </p>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
               {error && (
-                <p className="text-sm text-red-500 bg-red-50 dark:bg-red-950 rounded p-2">{error}</p>
+                <p
+                  className="text-sm text-destructive bg-destructive/10 rounded p-2"
+                  role="alert"
+                >
+                  {error}
+                </p>
               )}
               <div className="space-y-1.5">
                 <Label htmlFor="password">New password</Label>
@@ -123,7 +128,7 @@ export default function ResetPasswordPage() {
                 disabled={isLoading}
                 data-testid="button-reset-submit"
               >
-                {isLoading && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
+                {isLoading && <Loader2 className="w-4 h-4 animate-spin mr-2" aria-hidden="true" />}
                 Reset password
               </Button>
             </form>

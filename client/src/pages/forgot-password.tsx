@@ -35,8 +35,8 @@ export default function ForgotPasswordPage() {
           <div className="space-y-1">
             <Link href="/auth">
               <Button variant="ghost" size="sm" className="-ml-2">
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Back to login
+                <ArrowLeft className="w-4 h-4 mr-2" aria-hidden="true" />
+                Back to sign in
               </Button>
             </Link>
             <h1 className="text-2xl font-bold">Forgot your password?</h1>
@@ -46,20 +46,25 @@ export default function ForgotPasswordPage() {
           </div>
 
           {sent ? (
-            <div className="flex flex-col items-center gap-3 py-4">
-              <CheckCircle className="w-12 h-12 text-green-500" />
+            <div className="flex flex-col items-center gap-3 py-4" role="status">
+              <CheckCircle className="w-12 h-12 text-emerald-500" aria-hidden="true" />
               <p className="text-center text-sm text-muted-foreground">
                 If an account exists for <strong>{email}</strong>, you'll receive a
                 reset link within a few minutes.
               </p>
               <Link href="/auth">
-                <Button variant="outline" className="mt-2">Return to login</Button>
+                <Button variant="outline" className="mt-2">Return to sign in</Button>
               </Link>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
               {error && (
-                <p className="text-sm text-red-500 bg-red-50 dark:bg-red-950 rounded p-2">{error}</p>
+                <p
+                  className="text-sm text-destructive bg-destructive/10 rounded p-2"
+                  role="alert"
+                >
+                  {error}
+                </p>
               )}
               <div className="space-y-1.5">
                 <Label htmlFor="email">Email address</Label>
@@ -75,7 +80,7 @@ export default function ForgotPasswordPage() {
                 />
               </div>
               <Button type="submit" className="w-full" disabled={isLoading} data-testid="button-forgot-submit">
-                {isLoading && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
+                {isLoading && <Loader2 className="w-4 h-4 animate-spin mr-2" aria-hidden="true" />}
                 Send reset link
               </Button>
             </form>

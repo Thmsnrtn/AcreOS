@@ -711,10 +711,12 @@ export default function Settings() {
 
   const getTierColor = (tier: string) => {
     switch (tier) {
-      case "pro": return "bg-purple-500/10 text-purple-500 border-purple-500/20";
-      case "scale": return "bg-amber-500/10 text-amber-500 border-amber-500/20";
+      // Pro is the recommended tier — use the theme primary so "Pro"
+      // reads as on-brand rather than an off-theme lavender accent.
+      case "pro":     return "bg-primary/10 text-primary border-primary/20";
+      case "scale":   return "bg-amber-500/10 text-amber-500 border-amber-500/20";
       case "starter": return "bg-blue-500/10 text-blue-500 border-blue-500/20";
-      default: return "bg-muted text-muted-foreground border-border";
+      default:        return "bg-muted text-muted-foreground border-border";
     }
   };
 
@@ -838,9 +840,9 @@ export default function Settings() {
                       <div className="flex flex-col gap-1">
                         <span className="text-sm text-muted-foreground">Subscription Tier</span>
                         <div className="flex items-center gap-2 flex-wrap">
-                          <Badge 
-                            variant="outline" 
-                            className={`${organization.isFounder ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white border-purple-500' : getTierColor(organization.subscriptionTier)}`}
+                          <Badge
+                            variant="outline"
+                            className={`${organization.isFounder ? 'bg-gradient-to-r from-primary to-accent text-white border-primary' : getTierColor(organization.subscriptionTier)}`}
                             data-testid="badge-current-tier"
                           >
                             <Crown className="w-3 h-3 mr-1" />

@@ -225,3 +225,36 @@ surfaces.
   already had sm:/md:/lg: responsive variants; no changes needed.
 
 **Sign-off:** D ✓ M ✓ A ✓ E ✓ AI n/a LI ✓ CW ✓ I ✓ T ✓
+
+### 2026-04-23 — `/settings` — tier badges
+**Refinements made:**
+- [D] Designer: Pro-tier subscription badge was `bg-purple-500/10
+  text-purple-500` — another off-brand purple.  Pro is the
+  *recommended* tier in pricing; it should read as on-brand.  Now
+  `bg-primary/10 text-primary`.
+- [D] Designer: "Founder" special-case badge was a purple-to-pink
+  gradient — Apple-caliber would respect the theme.  Now
+  `from-primary to-accent`.
+
+**Sign-off:** D ✓ M ✓ A ✓ E ✓ AI n/a LI ✓ CW ✓ I ✓ T ✓
+
+### 2026-04-23 — `/forgot-password` + `/reset-password`
+**Refinements made:**
+- [CW] Copywriter: CTA labels "Back to login" / "Return to login" →
+  "Back to sign in" / "Return to sign in".  Matches the /auth page
+  header ("Sign in to AcreOS") and Clerk's own copy.
+- [D] Designer: `text-green-500` / `text-red-500` success/error
+  accents → `text-emerald-500` / `text-destructive`.  Destructive
+  token adapts to theme; emerald is closer to the app's accent
+  green in dark mode.
+- [D] Designer: inline error messages `bg-red-50 dark:bg-red-950`
+  → `bg-destructive/10` — single token, theme-aware.
+- [A] Accessibility: all decorative icons (ArrowLeft, CheckCircle,
+  Loader2, AlertCircle) now `aria-hidden`.  Success `<div>` gets
+  `role="status"`; error `<p>` gets `role="alert"`.
+- [CW] Copywriter: reset-password "Password reset successful!" →
+  "Password reset successful." (exclamation felt overeager for
+  security flow).  Invalid-link copy now hints "copied incorrectly
+  or expired" — more actionable.
+
+**Sign-off:** D ✓ M ✓ A ✓ E ✓ AI n/a LI ✓ CW ✓ I ✓ T ✓
