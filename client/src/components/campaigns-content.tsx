@@ -20,11 +20,12 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Mail, MessageSquare, Send, Calendar, BarChart3, Users, Clock, Play, Pause, CheckCircle, FileText, Target, TrendingUp, Eye, TestTube, Zap, AlertTriangle, AlertCircle, DollarSign, Loader2, Lightbulb, ChevronDown, ChevronUp, Sparkles } from "lucide-react";
+import { Plus, Mail, MessageSquare, Send, Calendar, BarChart3, Users, Clock, Play, Pause, CheckCircle, FileText, Target, TrendingUp, Eye, TestTube, Zap, AlertTriangle, DollarSign, Loader2, Lightbulb, ChevronDown, ChevronUp, Sparkles } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { ListSkeleton } from "@/components/list-skeleton";
 import { CampaignsEmptyState } from "@/components/empty-states";
+import { QueryErrorState } from "@/components/query-error-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { format } from "date-fns";
@@ -221,7 +222,13 @@ function SparklineTrend({ campaignId }: { campaignId: number }) {
 
   return (
     <div className="flex items-center gap-2 mt-3">
-      <svg width={width} height={height} className="text-emerald-500 shrink-0">
+      <svg
+        width={width}
+        height={height}
+        className="text-emerald-500 shrink-0"
+        role="img"
+        aria-label={`7-day response trend: ${totalThisWeek} responses`}
+      >
         <polyline
           fill="none"
           stroke="currentColor"
@@ -231,7 +238,7 @@ function SparklineTrend({ campaignId }: { campaignId: number }) {
           points={points}
         />
       </svg>
-      <span className="text-xs text-muted-foreground whitespace-nowrap">
+      <span className="text-xs text-muted-foreground whitespace-nowrap tabular-nums">
         {totalThisWeek} responses (7d)
       </span>
     </div>
@@ -414,9 +421,9 @@ function MailModeIndicator() {
       <Card className="glass-panel border-amber-200 dark:border-amber-800">
         <CardContent className="p-4">
           <div className="flex items-center gap-3">
-            <AlertTriangle className="w-5 h-5 text-amber-500" />
+            <AlertTriangle className="w-5 h-5 text-amber-500" aria-hidden="true" />
             <div>
-              <p className="font-medium">Direct Mail Not Configured</p>
+              <p className="font-medium">Direct mail not configured</p>
               <p className="text-sm text-muted-foreground">Add your Lob API key in settings to enable direct mail.</p>
             </div>
           </div>
@@ -433,10 +440,10 @@ function MailModeIndicator() {
     try {
       await updateModeMutation.mutateAsync(newMode);
       toast({
-        title: newMode === 'live' ? 'Live Mode Enabled' : 'Test Mode Enabled',
-        description: newMode === 'live' 
-          ? 'Mail will now be sent and billed.' 
-          : 'Mail will not actually be sent.',
+        title: newMode === 'live' ? 'Live mode enabled' : 'Test mode enabled',
+        description: newMode === 'live'
+          ? 'Mail will now be sent and billed.'
+          : 'Mail pieces are simulated — no actual mail is sent.',
       });
     } catch (error: any) {
       toast({
@@ -453,22 +460,22 @@ function MailModeIndicator() {
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             {isTestMode ? (
-              <TestTube className="w-5 h-5 text-blue-500" />
+              <TestTube className="w-5 h-5 text-blue-500" aria-hidden="true" />
             ) : (
-              <Zap className="w-5 h-5 text-emerald-500" />
+              <Zap className="w-5 h-5 text-emerald-500" aria-hidden="true" />
             )}
             <div>
               <div className="flex items-center gap-2">
                 <p className="font-medium">
-                  {isTestMode ? 'Test Mode' : 'Live Mode'}
+                  {isTestMode ? 'Test mode' : 'Live mode'}
                 </p>
                 <Badge className={isTestMode ? 'bg-blue-100 text-blue-800' : 'bg-emerald-100 text-emerald-800'}>
                   {isTestMode ? 'Safe' : 'Active'}
                 </Badge>
               </div>
               <p className="text-sm text-muted-foreground">
-                {isTestMode 
-                  ? 'Mail pieces are simulated - no actual mail is sent.' 
+                {isTestMode
+                  ? 'Mail pieces are simulated — no actual mail is sent.'
                   : 'Real mail will be sent and costs will be deducted.'}
               </p>
             </div>
@@ -480,6 +487,7 @@ function MailModeIndicator() {
                 checked={!isTestMode}
                 onCheckedChange={handleModeChange}
                 disabled={updateModeMutation.isPending}
+                aria-label={`Switch to ${isTestMode ? 'live' : 'test'} mode`}
                 data-testid="switch-mail-mode"
               />
               <span className="text-sm text-muted-foreground">Live</span>
@@ -504,12 +512,12 @@ export function CampaignsContent() {
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-center" data-testid="error-state-campaigns">
-        <AlertCircle className="w-12 h-12 text-destructive mb-4" />
-        <h3 className="text-lg font-semibold mb-2">Failed to load campaigns</h3>
-        <p className="text-muted-foreground mb-4">{(error as Error).message || 'Something went wrong'}</p>
-        <Button onClick={() => refetch()} variant="outline">Try again</Button>
-      </div>
+      <QueryErrorState
+        error={error as Error}
+        onRetry={() => refetch()}
+        title="Failed to load campaigns"
+        testId="error-state-campaigns"
+      />
     );
   }
 
@@ -523,13 +531,13 @@ export function CampaignsContent() {
         <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
           <DialogTrigger asChild>
             <Button data-testid="button-create-campaign">
-              <Plus className="w-4 h-4 mr-2" /> New Campaign
+              <Plus className="w-4 h-4 mr-2" aria-hidden="true" /> New campaign
             </Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-[600px] floating-window">
             <DialogHeader>
-              <DialogTitle>Create Campaign</DialogTitle>
-              <DialogDescription>Set up a new marketing campaign for your leads</DialogDescription>
+              <DialogTitle>New campaign</DialogTitle>
+              <DialogDescription>Set up a direct mail, email, or SMS campaign for your leads.</DialogDescription>
             </DialogHeader>
             <CampaignForm onSuccess={() => setIsCreateOpen(false)} />
           </DialogContent>
@@ -543,11 +551,11 @@ export function CampaignsContent() {
           <CardContent className="p-6">
             <div className="flex items-center gap-3">
               <div className="p-3 rounded-xl bg-primary/10">
-                <Target className="w-5 h-5 text-primary" />
+                <Target className="w-5 h-5 text-primary" aria-hidden="true" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Active Campaigns</p>
-                <p className="text-2xl font-bold" data-testid="text-active-campaigns">{activeCampaigns.length}</p>
+                <p className="text-sm text-muted-foreground">Active campaigns</p>
+                <p className="text-2xl font-bold tabular-nums" data-testid="text-active-campaigns">{activeCampaigns.length}</p>
               </div>
             </div>
           </CardContent>
@@ -557,11 +565,11 @@ export function CampaignsContent() {
           <CardContent className="p-6">
             <div className="flex items-center gap-3">
               <div className="p-3 rounded-xl bg-blue-500/10">
-                <Send className="w-5 h-5 text-blue-600" />
+                <Send className="w-5 h-5 text-blue-600" aria-hidden="true" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Total Sent</p>
-                <p className="text-2xl font-bold" data-testid="text-total-sent">{totalSent.toLocaleString()}</p>
+                <p className="text-sm text-muted-foreground">Total sent</p>
+                <p className="text-2xl font-bold tabular-nums" data-testid="text-total-sent">{totalSent.toLocaleString()}</p>
               </div>
             </div>
           </CardContent>
@@ -571,11 +579,11 @@ export function CampaignsContent() {
           <CardContent className="p-6">
             <div className="flex items-center gap-3">
               <div className="p-3 rounded-xl bg-emerald-500/10">
-                <TrendingUp className="w-5 h-5 text-emerald-600" />
+                <TrendingUp className="w-5 h-5 text-emerald-600" aria-hidden="true" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Response Rate</p>
-                <p className="text-2xl font-bold text-emerald-600" data-testid="text-response-rate">{responseRate}%</p>
+                <p className="text-sm text-muted-foreground">Response rate</p>
+                <p className="text-2xl font-bold text-emerald-600 tabular-nums" data-testid="text-response-rate">{responseRate}%</p>
               </div>
             </div>
           </CardContent>
@@ -585,11 +593,11 @@ export function CampaignsContent() {
           <CardContent className="p-6">
             <div className="flex items-center gap-3">
               <div className="p-3 rounded-xl bg-purple-500/10">
-                <Users className="w-5 h-5 text-purple-600" />
+                <Users className="w-5 h-5 text-purple-600" aria-hidden="true" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Available Leads</p>
-                <p className="text-2xl font-bold" data-testid="text-available-leads">{leads?.length || 0}</p>
+                <p className="text-sm text-muted-foreground">Available leads</p>
+                <p className="text-2xl font-bold tabular-nums" data-testid="text-available-leads">{leads?.length || 0}</p>
               </div>
             </div>
           </CardContent>
@@ -598,7 +606,7 @@ export function CampaignsContent() {
 
       <Tabs defaultValue="all">
         <TabsList>
-          <TabsTrigger value="all">All Campaigns</TabsTrigger>
+          <TabsTrigger value="all">All campaigns</TabsTrigger>
           <TabsTrigger value="active">Active</TabsTrigger>
           <TabsTrigger value="scheduled">Scheduled</TabsTrigger>
           <TabsTrigger value="completed">Completed</TabsTrigger>
@@ -702,14 +710,14 @@ function CampaignList({ campaigns, isLoading, onSelect, onCreateNew }: {
               <div className="flex items-start justify-between gap-4">
                 <div className="flex items-start gap-4">
                   <div className="p-3 rounded-xl bg-muted">
-                    <TypeIcon className="w-5 h-5" />
+                    <TypeIcon className="w-5 h-5" aria-hidden="true" />
                   </div>
                   <div>
                     <h3 className="font-semibold text-lg">{campaign.name}</h3>
                     <p className="text-sm text-muted-foreground capitalize">{campaign.type?.replace(/_/g, ' ')}</p>
                   </div>
                 </div>
-                <Badge className={statusColors[campaign.status] || statusColors.draft}>
+                <Badge className={`capitalize ${statusColors[campaign.status] || statusColors.draft}`}>
                   {campaign.status}
                 </Badge>
               </div>
@@ -717,27 +725,27 @@ function CampaignList({ campaigns, isLoading, onSelect, onCreateNew }: {
               <div className="mt-4 grid grid-cols-4 gap-4">
                 <div>
                   <p className="text-xs text-muted-foreground">Sent</p>
-                  <p className="font-medium">{campaign.totalSent || 0}</p>
+                  <p className="font-medium tabular-nums">{campaign.totalSent || 0}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Delivered</p>
-                  <p className="font-medium">{campaign.totalDelivered || 0}</p>
+                  <p className="font-medium tabular-nums">{campaign.totalDelivered || 0}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Opened</p>
-                  <p className="font-medium">{campaign.totalOpened || 0}</p>
+                  <p className="font-medium tabular-nums">{campaign.totalOpened || 0}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Responded</p>
-                  <p className="font-medium text-emerald-600">{campaign.totalResponded || 0}</p>
+                  <p className="font-medium text-emerald-600 tabular-nums">{campaign.totalResponded || 0}</p>
                 </div>
               </div>
 
               {campaign.totalSent ? (
                 <div className="mt-4">
                   <div className="flex justify-between text-xs text-muted-foreground mb-1">
-                    <span>Delivery Rate</span>
-                    <span>{deliveryRate}%</span>
+                    <span>Delivery rate</span>
+                    <span className="tabular-nums">{deliveryRate}%</span>
                   </div>
                   <Progress value={Number(deliveryRate)} className="h-1.5" />
                 </div>
@@ -1268,17 +1276,24 @@ function CampaignForm({ onSuccess }: { onSuccess: () => void }) {
   return (
     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4">
       <div className="space-y-2">
-        <label className="text-sm font-medium">Campaign Name</label>
-        <Input 
-          {...form.register("name")} 
-          placeholder="Q1 Offer Mailer" 
+        <label htmlFor="campaign-name" className="text-sm font-medium">
+          Campaign name <span className="text-destructive" aria-hidden="true">*</span>
+        </label>
+        <Input
+          id="campaign-name"
+          {...form.register("name")}
+          placeholder="Q1 offer mailer"
+          autoCapitalize="words"
+          required
           data-testid="input-campaign-name"
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-2">
-          <label className="text-sm font-medium">Type</label>
+          <label className="text-sm font-medium">
+            Type <span className="text-destructive" aria-hidden="true">*</span>
+          </label>
           <TooltipProvider>
             <Select
               value={form.watch("type")}
@@ -1288,7 +1303,7 @@ function CampaignForm({ onSuccess }: { onSuccess: () => void }) {
                 setSelectedTemplate("");
               }}
             >
-              <SelectTrigger data-testid="select-campaign-type">
+              <SelectTrigger aria-label="Campaign type" data-testid="select-campaign-type">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -1302,7 +1317,7 @@ function CampaignForm({ onSuccess }: { onSuccess: () => void }) {
                       className={!configured ? "opacity-50" : ""}
                     >
                       <div className="flex items-center gap-2">
-                        <type.icon className="w-4 h-4" />
+                        <type.icon className="w-4 h-4" aria-hidden="true" />
                         {type.label}
                         {!configured && <span className="text-xs text-muted-foreground ml-1">(not configured)</span>}
                       </div>
@@ -1324,100 +1339,113 @@ function CampaignForm({ onSuccess }: { onSuccess: () => void }) {
         </div>
 
         <div className="space-y-2">
-          <label className="text-sm font-medium">Schedule</label>
-          <Input 
-            type="date" 
-            onChange={(e) => form.setValue("scheduledDate", new Date(e.target.value))} 
+          <label htmlFor="schedule-date" className="text-sm font-medium">Schedule</label>
+          <Input
+            id="schedule-date"
+            type="date"
+            value={(() => {
+              const d = form.watch("scheduledDate");
+              return d instanceof Date && !isNaN(d.getTime()) ? format(d, 'yyyy-MM-dd') : '';
+            })()}
+            onChange={(e) => form.setValue("scheduledDate", e.target.value ? new Date(e.target.value) : undefined as any)}
             data-testid="input-schedule-date"
           />
         </div>
       </div>
 
       <div className="space-y-2">
-        <label className="text-sm font-medium">Template</label>
-        <div className="grid grid-cols-1 gap-2">
-          {availableTemplates.map((template) => (
-            <div
-              key={template.id}
-              onClick={() => handleTemplateSelect(template.id)}
-              className={`p-3 rounded-lg border cursor-pointer transition-colors hover-elevate ${
-                selectedTemplate === template.id
-                  ? "border-primary bg-primary/5"
-                  : "border-border"
-              }`}
-              data-testid={`template-${template.id}`}
-            >
-              <div className="flex items-start gap-3">
-                <div className={`mt-0.5 w-4 h-4 rounded-full border-2 flex items-center justify-center ${
-                  selectedTemplate === template.id ? "border-primary" : "border-muted-foreground"
-                }`}>
-                  {selectedTemplate === template.id && (
-                    <div className="w-2 h-2 rounded-full bg-primary" />
-                  )}
+        <label id="template-group-label" className="text-sm font-medium">Template</label>
+        <div
+          role="radiogroup"
+          aria-labelledby="template-group-label"
+          className="grid grid-cols-1 gap-2"
+        >
+          {availableTemplates.map((template) => {
+            const selected = selectedTemplate === template.id;
+            return (
+              <button
+                key={template.id}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                onClick={() => handleTemplateSelect(template.id)}
+                className={`text-left p-3 rounded-lg border transition-colors hover-elevate focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+                  selected ? "border-primary bg-primary/5" : "border-border"
+                }`}
+                data-testid={`template-${template.id}`}
+              >
+                <div className="flex items-start gap-3">
+                  <div
+                    aria-hidden="true"
+                    className={`mt-0.5 w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                      selected ? "border-primary" : "border-muted-foreground"
+                    }`}
+                  >
+                    {selected && <div className="w-2 h-2 rounded-full bg-primary" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm">{template.name}</p>
+                    <p className="text-xs text-muted-foreground">{template.description}</p>
+                  </div>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-sm">{template.name}</p>
-                  <p className="text-xs text-muted-foreground">{template.description}</p>
-                </div>
-              </div>
-            </div>
-          ))}
-          <div
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            role="radio"
+            aria-checked={selectedTemplate === "custom"}
             onClick={() => {
               setSelectedTemplate("custom");
               form.setValue("subject", "");
               form.setValue("content", "");
             }}
-            className={`p-3 rounded-lg border cursor-pointer transition-colors hover-elevate ${
-              selectedTemplate === "custom"
-                ? "border-primary bg-primary/5"
-                : "border-border"
+            className={`text-left p-3 rounded-lg border transition-colors hover-elevate focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+              selectedTemplate === "custom" ? "border-primary bg-primary/5" : "border-border"
             }`}
             data-testid="template-custom"
           >
             <div className="flex items-start gap-3">
-              <div className={`mt-0.5 w-4 h-4 rounded-full border-2 flex items-center justify-center ${
-                selectedTemplate === "custom" ? "border-primary" : "border-muted-foreground"
-              }`}>
-                {selectedTemplate === "custom" && (
-                  <div className="w-2 h-2 rounded-full bg-primary" />
-                )}
+              <div
+                aria-hidden="true"
+                className={`mt-0.5 w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                  selectedTemplate === "custom" ? "border-primary" : "border-muted-foreground"
+                }`}
+              >
+                {selectedTemplate === "custom" && <div className="w-2 h-2 rounded-full bg-primary" />}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-medium text-sm">Custom Message</p>
-                <p className="text-xs text-muted-foreground">Write your own content from scratch</p>
+                <p className="font-medium text-sm">Custom message</p>
+                <p className="text-xs text-muted-foreground">Write your own content from scratch.</p>
               </div>
             </div>
-          </div>
+          </button>
         </div>
         <p className="text-xs text-muted-foreground mt-2">
-          {/* r4 Wyatt WF-R4-001: Land-Academy-style blind offers price
-              per-recipient from assessor fields. These are surfaced here
-              so templates can reference them; per-row values are resolved
-              at send time from the attached list's columns. */}
           {"Variables: {{firstName}}, {{lastName}}, {{county}}, {{state}}, {{apn}}, {{offerAmount}}, {{acreage}}, {{assessedValue}}, {{marketValue}}, {{landUseCode}}, {{lastSalePrice}}, {{ownerType}}"}
         </p>
         <p className="text-xs text-muted-foreground mt-1">
-          Blind-offer formula example: set {"{{offerAmount}}"} = 25% × {"{{assessedValue}}"} at list-import time, then reference {"{{offerAmount}}"} in your template.
+          Blind-offer example: set {"{{offerAmount}}"} = 25% × {"{{assessedValue}}"} at list-import time, then reference {"{{offerAmount}}"} in your template.
         </p>
       </div>
 
-      {/* Cycle 5 r4 Wyatt / Ty WF-R4-CYC5-001: formula editor. Lets a
-          user author per-recipient {{offerAmount}} as a % of another
-          column (assessed value by default). Stored as campaign
-          metadata; evaluated at send-time by the mailer. */}
       <div className="space-y-2">
-        <label className="text-sm font-medium">Offer Formula (optional, Land-Academy-style blind offers)</label>
-        <div className="flex items-center gap-2">
+        <label htmlFor="offer-percent" className="text-sm font-medium">
+          Blind-offer formula <span className="text-muted-foreground font-normal">(optional)</span>
+        </label>
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="text-sm text-muted-foreground">{"{{offerAmount}}"} =</span>
           <Input
+            id="offer-percent"
             {...form.register("offerPercent" as any)}
             type="number"
+            inputMode="numeric"
             placeholder="25"
             step="1"
             min="1"
             max="100"
-            className="w-24"
+            className="w-24 text-right tabular-nums"
+            aria-label="Offer percent"
             data-testid="input-offer-percent"
           />
           <span className="text-sm text-muted-foreground">% of</span>
@@ -1425,6 +1453,7 @@ function CampaignForm({ onSuccess }: { onSuccess: () => void }) {
             {...form.register("offerBase" as any)}
             defaultValue="assessedValue"
             className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+            aria-label="Offer base field"
             data-testid="select-offer-base"
           >
             <option value="assessedValue">{"{{assessedValue}}"}</option>
@@ -1437,19 +1466,18 @@ function CampaignForm({ onSuccess }: { onSuccess: () => void }) {
         </p>
       </div>
 
-      {/* Cycle 5 r4 Wyatt / Ty WF-R4-CYC5-002: inline recipient picker.
-          Shows how many leads would receive the campaign, lets the user
-          choose between "all leads", "by county", or "leads marked
-          for this campaign." Stored as a filter descriptor. */}
       <div className="space-y-2">
-        <label className="text-sm font-medium">Recipients</label>
+        <label htmlFor="recipient-filter" className="text-sm font-medium">
+          Recipients <span className="text-destructive" aria-hidden="true">*</span>
+        </label>
         <select
+          id="recipient-filter"
           {...form.register("recipientFilter" as any)}
           defaultValue="all"
           className="h-9 rounded-md border border-input bg-background px-3 text-sm w-full"
           data-testid="select-recipient-filter"
         >
-          <option value="all">All current leads ({leadCount})</option>
+          <option value="all">All current leads ({leadCount.toLocaleString()})</option>
           <option value="tax_delinquent">Tax-delinquent only</option>
           <option value="absentee">Absentee owners only</option>
           <option value="new">New (never contacted)</option>
@@ -1461,42 +1489,70 @@ function CampaignForm({ onSuccess }: { onSuccess: () => void }) {
 
       {campaignType !== "sms" && (
         <div className="space-y-2">
-          <label className="text-sm font-medium">Subject (for email/mail)</label>
+          <label htmlFor="campaign-subject" className="text-sm font-medium">
+            Subject <span className="text-muted-foreground font-normal">(email and direct mail)</span>
+          </label>
           <Input
+            id="campaign-subject"
             {...form.register("subject")}
-            placeholder="We want to buy your land!"
+            placeholder="We'd like to buy your land"
             data-testid="input-subject"
           />
         </div>
       )}
 
       <div className="space-y-2">
-        <label className="text-sm font-medium">Content</label>
-        <Textarea 
-          {...form.register("content")} 
-          placeholder="Dear [Name], we are interested in purchasing your property..."
+        <label htmlFor="campaign-content" className="text-sm font-medium">
+          Content <span className="text-destructive" aria-hidden="true">*</span>
+        </label>
+        <Textarea
+          id="campaign-content"
+          {...form.register("content")}
+          placeholder="Dear {{firstName}}, I'm interested in purchasing your property in {{county}} County…"
           rows={6}
+          required
           data-testid="input-content"
         />
       </div>
 
       <div className="space-y-2">
-        <label className="text-sm font-medium">Budget ($)</label>
-        <Input 
-          {...form.register("budget")} 
-          type="number" 
-          placeholder="500" 
-          data-testid="input-budget"
-        />
+        <label htmlFor="campaign-budget" className="text-sm font-medium">Budget</label>
+        <div className="relative">
+          <span
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none text-sm"
+            aria-hidden="true"
+          >
+            $
+          </span>
+          <Input
+            id="campaign-budget"
+            {...form.register("budget")}
+            type="number"
+            inputMode="decimal"
+            min={0}
+            step="any"
+            placeholder="500"
+            className="pl-7 text-right tabular-nums"
+            aria-label="Budget in US dollars"
+            data-testid="input-budget"
+          />
+        </div>
       </div>
 
       <div className="pt-2 space-y-2">
         <Button type="submit" className="w-full" disabled={isPending} data-testid="button-create-campaign-submit">
-          {isPending ? "Creating..." : "Create Campaign"}
+          {isPending ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
+              Creating…
+            </>
+          ) : (
+            "Create campaign"
+          )}
         </Button>
         <div className="text-xs text-muted-foreground text-center space-y-1" data-testid="text-campaign-costs">
-          <p>Sending costs: Email $0.01/each, SMS $0.03/each</p>
-          <p>Direct mail: $0.75-$1.45 per piece (varies by type)</p>
+          <p>Sending costs: email $0.01 each, SMS $0.03 each.</p>
+          <p>Direct mail: $0.75–$1.25 per piece (varies by size).</p>
         </div>
       </div>
     </form>

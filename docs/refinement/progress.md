@@ -1209,3 +1209,220 @@ Tasks (checklist), ROI.
   prefix inside the input (`relative` wrapper + absolute-positioned
   span + `pl-7`), not suffixed on the label as `Amount ($)`.
   Combine with `text-right tabular-nums` for money readability.
+
+
+## Slice 6a — `/campaigns` (Marketing Hub → Campaigns tab): list + create modal
+
+**Scope:** `client/src/components/campaigns-content.tsx` — top-level
+`CampaignsContent`, `MailModeIndicator`, `SparklineTrend`, `CampaignList`,
+and `CampaignForm` (create-campaign modal). Deferred to 6b:
+`CampaignDetailDrawer`, `SendMailDialog`, `OptimizerSuggestionsPanel`.
+
+### Refinements shipped
+
+**Error state → `QueryErrorState` (Engineer, Trust):**
+Inline hand-rolled error card with generic copy and a raw retry button
+replaced with the shared `QueryErrorState` component. Same benefits as
+/deals and /properties list pages — error-type detection (network /
+server / auth / notFound / generic), consistent copy, retry button with
+proper 44px mobile tap target, `role="alert"` + `aria-live="polite"`,
+dev-only debug panel.
+
+**Sentence-case sweep (Copywriter):**
+Dialog title "Create Campaign" → "New campaign". Button "New Campaign"
+→ "New campaign". Stat labels: "Active Campaigns", "Total Sent",
+"Response Rate", "Available Leads" → sentence case. Tab "All Campaigns"
+→ "All campaigns". Card metric "Delivery Rate" → "Delivery rate".
+MailModeIndicator: "Direct Mail Not Configured" → "Direct mail not
+configured"; "Test Mode" / "Live Mode" → lowercase (badge "Safe" /
+"Active" left title-case as labels). Toasts: "Live Mode Enabled" /
+"Test Mode Enabled" → sentence case. Form labels: "Campaign Name" →
+"Campaign name"; "Custom Message" → "Custom message". Submit
+"Creating..." → "Creating…" (ellipsis) and "Create Campaign" → "Create
+campaign". Placeholder "Q1 Offer Mailer" → "Q1 offer mailer". Subject
+placeholder "We want to buy your land!" → "We'd like to buy your land"
+(removes exclamation urgency, more in-voice). Template description
+"Write your own content from scratch" → sentence with period.
+
+**Copy accuracy (Copywriter, Land Investor):**
+Sending costs footer corrected: "Direct mail: $0.75-$1.45 per piece"
+→ "Direct mail: $0.75–$1.25 per piece (varies by size)." Actual
+`pieceTypes` range caps at letter-1-page $1.25 — prior `$1.45` was
+fabricated and a trust bug for a practitioner who would have vetted the
+numbers against their own Lob invoice. Formatted with en-dash.
+
+**Competitor-brand cleanup (Copywriter, Trust):**
+"Offer Formula (optional, Land-Academy-style blind offers)" → "Blind-
+offer formula (optional)". Below-the-fold paragraph prefix "Blind-offer
+formula example:" → "Blind-offer example:". Removes two references to
+Land Academy (a competitor educational product). AcreOS should stand
+on its own — blind offers are a standard industry term, no external
+brand needed.
+
+**Dialog description upgrade (Copywriter, Accessibility):**
+Create-campaign DialogDescription "Set up a new marketing campaign for
+your leads" → "Set up a direct mail, email, or SMS campaign for your
+leads." Names the channels the form actually supports, sets
+expectations.
+
+**Controlled date input + Invalid-Date guard (Engineer, 5m pattern
+extension):**
+Schedule-date Input was write-only: `onChange={(e) => form.setValue(
+"scheduledDate", new Date(e.target.value))}` — when the user clears
+the field, `new Date('')` silently produces `Invalid Date`, which
+zod/serialization then turns into `null` or `NaN` downstream. Bound
+both sides: `value={d instanceof Date && !isNaN(d.getTime()) ? format(
+d, 'yyyy-MM-dd') : ''}` and `onChange={(e) => form.setValue(
+"scheduledDate", e.target.value ? new Date(e.target.value) :
+undefined)}`. Same pattern established in 5m DealForm.
+
+**Currency adornment on Budget (Engineer, Designer, Mobile, 5m pattern
+extension):**
+`<label>Budget ($)</label>` + bare `<Input type="number">` → proper
+adornment: `<label>Budget</label>` + `<div class="relative">` with
+absolute-positioned `$` span (`pl-7`) + `text-right tabular-nums`
+readability + `inputMode="decimal"` + `min={0}` + `step="any"` for
+mobile keypads + `aria-label="Budget in US dollars"`. Same pattern as
+DealForm offer amount.
+
+**Required-field indicators (Accessibility, Copywriter):**
+Sentence-case asterisks with `aria-hidden="true"` on required fields:
+Campaign name, Type, Recipients, Content. Optional marker on Blind-
+offer formula and Subject. Convention matches 5m DealForm. HTML
+`required` added to Campaign name and Content inputs.
+
+**Template picker a11y (Accessibility, Engineer):**
+Template cards were clickable `<div>`s with `onClick` only — keyboard
+users could neither focus nor activate them. Converted to
+`<button type="button" role="radio" aria-checked={selected}>` inside a
+`<div role="radiogroup" aria-labelledby={…}>` container. Keyboard
+activation via Space/Enter now works (native `<button>` behavior),
+focus-visible ring added, the surrounding label is wired via
+`aria-labelledby`. Visible radio-dot indicator kept but marked
+`aria-hidden="true"` so SR users aren't told about two "selected"
+states.
+
+**Form field IDs + label htmlFor (Accessibility):**
+Every form `<label>` now has a matching `htmlFor={id}` target:
+`campaign-name`, `schedule-date`, `offer-percent`, `recipient-filter`,
+`campaign-subject`, `campaign-content`, `campaign-budget`. Previously
+labels were unattached — clicking them didn't focus the input, and
+screen readers had to infer the association.
+
+**SelectTrigger / select aria-labels (Accessibility):**
+Campaign type trigger → `aria-label="Campaign type"`. Offer-base
+`<select>` → `aria-label="Offer base field"`. Budget input →
+`aria-label="Budget in US dollars"`. Mail-mode Switch →
+`aria-label="Switch to live/test mode"` (dynamic by state).
+
+**Decorative-icon aria-hidden sweep (Accessibility, 5j pattern
+extension):**
+Every lucide icon paired with a text label is decorative — not a label.
+Added `aria-hidden="true"` to: Plus (button-create-campaign), Target /
+Send / TrendingUp / Users (stat cards), TypeIcon (campaign card),
+TestTube / Zap / AlertTriangle (mail-mode card + banner), type.icon
+(select option), Loader2 (submit spinner).
+
+**Status-badge capitalization (Designer, Copywriter):**
+Campaign list-card status badge rendered the raw lowercase DB value
+(`draft`, `active`, `paused`…). Added `capitalize` utility so the
+badge reads "Draft", "Active", "Paused" at display time without
+touching stored values.
+
+**Numeric readability (Designer):**
+All stat numbers and progress percentages now use `tabular-nums` so the
+digit rhythm doesn't jitter as counts update (Active campaigns, Total
+sent, Response rate, Available leads, card Sent/Delivered/Opened/
+Responded, Delivery rate %, 7-day response trend total).
+
+**SparklineTrend a11y (Accessibility, 5c sparkline-svg rule):**
+`<svg>` with polyline had no semantics — SR users encountered a
+mysterious graphical region with no description. Added `role="img"` +
+dynamic `aria-label={`7-day response trend: ${totalThisWeek}
+responses`}` so the SR user gets the summary without needing the
+adjacent text label.
+
+**Subject-field scope copy (Copywriter, Land Investor):**
+"Subject (for email/mail)" → "Subject (email and direct mail)". "Mail"
+was ambiguous between "direct mail" and "email"; naming both channels
+explicitly removes the ambiguity. Optional-marker styling matches the
+blind-offer formula label.
+
+**Content placeholder upgrade (Copywriter, Land Investor):**
+"Dear [Name], we are interested in purchasing your property..." →
+"Dear {{firstName}}, I'm interested in purchasing your property in
+{{county}} County…". Uses real template variables the form supports
+(first-name, county), ellipsis character, first-person singular
+(matches how a solo land investor actually writes), non-awkward
+phrasing ("we are interested" → "I'm interested"). Teaches the
+variable-substitution pattern by example in the same keystroke.
+
+**Responsive grid tightening (Mobile Designer):**
+Type + Schedule row was `grid-cols-2` at all breakpoints — on 320px the
+inputs were cramped. Changed to `grid-cols-1 sm:grid-cols-2` so the
+two selectors stack cleanly on small phones.
+
+**Unused import sweep (Engineer):**
+Removed `AlertCircle` from the lucide import set — it was only
+referenced by the inline error state that `QueryErrorState` replaced.
+
+### Nine-lens sign-off
+
+- **Designer (D):** ✓ — rhythm, tabular-nums consistency, radio-
+  indicator visual weight reasonable at both viewports.
+- **Mobile (M):** ✓ — type/schedule stacks at 320px; template cards
+  reach 44px tap height with padding; currency adornment + decimal
+  keypad working for budget + offer percent.
+- **Accessibility (A):** ✓ — every form field has label+id, SelectTrigger
+  has aria-label, template radiogroup keyboard-activates via
+  Space/Enter, SparklineTrend has role=img + aria-label, error state is
+  role=alert via QueryErrorState, decorative icons hidden from SR.
+- **Engineer (E):** ✓ — single error-path via QueryErrorState,
+  controlled date binding with Invalid-Date guard, native button
+  semantics for template radios, `tabular-nums` applied where digits
+  change.
+- **AI Systems (AI):** n/a for create-form shell; AI-output refinement
+  moves to 6b (OptimizerSuggestionsPanel).
+- **Land Investor (LI):** ✓ — direct-mail cost range matches Lob
+  reality ($0.75–$1.25), no external brand references, "Subject (email
+  and direct mail)" reads correctly, placeholder content uses actual
+  template variables.
+- **Copywriter (CW):** ✓ — sentence-case sweep, ellipsis characters,
+  en-dash for ranges, first-person placeholders, dialog description
+  names the channels.
+- **Infrastructure (I):** ✓ — no new network paths; error state now
+  degrades gracefully via QueryErrorState offline/server variants.
+- **Trust (T):** ✓ — fabricated-price bug ($1.45) fixed; competitor
+  brand references removed; required-field indicators present.
+
+**Deferred to 6b (`CampaignDetailDrawer` slice):**
+- Drawer is a hand-rolled overlay with no focus trap, no Esc key
+  handling, no role=dialog/aria-modal, and no focus restoration —
+  identical pattern to DealDetailDrawer from 5l. Per the 5l dialog-Esc
+  rule, either add role=dialog + aria-modal + aria-labelledby + Esc
+  handler, or convert to Radix Sheet/Dialog. Will pair with
+  sentence-case sweep and OptimizerSuggestionsPanel refinement.
+- `SendMailDialog` title/copy sweep, test-mode vs live-mode banner
+  refinement, cost-estimate trust state.
+- `OptimizerSuggestionsPanel` — AI-output structuring + "Run AI
+  Analysis" button sweep.
+
+### Cross-cutting additions (6a)
+
+- **Competitor-brand hygiene:** when a user-facing label or help text
+  names an external educational product or competitor brand (Land
+  Academy, Land Geek, etc.), replace with a generic industry term. A
+  "standard-practice" framing is always available ("blind offer" is
+  generic; "Land-Academy-style blind offer" is brand-coupled). Check
+  the feedback_competitor_refs memory for the full brand list.
+- **Fabricated-price rule:** any user-facing price range that isn't
+  sourced from a live object (`pieceTypes`, `provider.costCents`, etc.)
+  is a trust bug — practitioners cross-check numbers. Either compute
+  the range from the source or remove the line.
+- **Template-picker radiogroup pattern:** mutually-exclusive selection
+  cards built as clickable `<div>`s must become `<button
+  role="radio">` inside `role="radiogroup"` with Space/Enter keyboard
+  activation and a focus-visible ring. The decorative radio-dot goes
+  `aria-hidden="true"` so SR users hear one selection state, not two.
+
+**Commit:** (this commit)
