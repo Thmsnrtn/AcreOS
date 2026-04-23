@@ -16,6 +16,7 @@ import {
   type DragEndEvent,
   DragOverlay,
   PointerSensor,
+  KeyboardSensor,
   useSensor,
   useSensors,
   useDroppable,
@@ -136,14 +137,16 @@ export default function DealsPage() {
   const [isExporting, setIsExporting] = useState(false);
   const [selectedDealIds, setSelectedDealIds] = useState<Set<number>>(new Set());
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
-  const [isBulkUpdating, setIsBulkUpdating] = useState(false);
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
   const [mobileViewMode, setMobileViewMode] = useState<'kanban' | 'list'>('kanban');
   const [selectedStageIndex, setSelectedStageIndex] = useState(0);
   const [activeDragId, setActiveDragId] = useState<number | null>(null);
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const { mutate: updateDealStage } = useUpdateDeal();
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor),
+  );
 
   const handleDragEnd = (event: DragEndEvent) => {
     setActiveDragId(null);
@@ -151,9 +154,31 @@ export default function DealsPage() {
     if (!over || active.id === over.id) return;
     const dealId = active.id as number;
     const newStage = over.id as string;
-    if (!dealStages.find(s => s.value === newStage)) return;
-    // Optimistic update via cache, then persist
-    updateDealStage({ id: dealId, status: newStage });
+    const stageDef = dealStages.find(s => s.value === newStage);
+    if (!stageDef) return;
+    const previousDeal = enrichedDeals.find(d => d.id === dealId);
+    if (previousDeal && previousDeal.status === newStage) return;
+    const locationLabel = previousDeal?.property
+      ? `${previousDeal.property.county}, ${previousDeal.property.state}`
+      : `Deal #${dealId}`;
+    updateDealStage(
+      { id: dealId, status: newStage },
+      {
+        onSuccess: () => {
+          toast({
+            title: "Stage updated",
+            description: `${locationLabel} moved to ${stageDef.label}.`,
+          });
+        },
+        onError: (err: any) => {
+          toast({
+            title: "Couldn't move deal",
+            description: err?.message || "Your change didn't save. Try again in a moment.",
+            variant: "destructive",
+          });
+        },
+      },
+    );
   };
 
   // Bulk selection state for bulk stage update with undo
@@ -168,7 +193,7 @@ export default function DealsPage() {
     setIsExporting(true);
     try {
       const response = await fetch('/api/export/deals?format=csv', { credentials: 'include' });
-      if (!response.ok) throw new Error('Failed to export');
+      if (!response.ok) throw new Error(`Export failed (${response.status})`);
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -179,8 +204,16 @@ export default function DealsPage() {
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-    } catch (error) {
-      console.error('Export error:', error);
+      toast({
+        title: "Export ready",
+        description: `Downloaded ${filename}.`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Couldn't export deals",
+        description: error?.message || "Something went wrong while building the CSV. Try again.",
+        variant: "destructive",
+      });
     } finally {
       setIsExporting(false);
     }
@@ -192,30 +225,21 @@ export default function DealsPage() {
     try {
       const res = await apiRequest("POST", "/api/deals/bulk-delete", { ids: Array.from(selectedDealIds) });
       const result = await res.json();
-      toast({ title: "Deleted", description: `Deleted ${result.deletedCount} deal(s).` });
+      toast({
+        title: "Deals deleted",
+        description: `Removed ${plural(result.deletedCount ?? selectedDealIds.size, "deal")} from your pipeline.`,
+      });
       setSelectedDealIds(new Set());
       queryClient.invalidateQueries({ queryKey: ['/api/deals'] });
     } catch (err: any) {
-      toast({ title: "Error", description: err.message || "Failed to delete deals", variant: "destructive" });
+      toast({
+        title: "Couldn't delete deals",
+        description: err?.message || "Something went wrong. Your deals are unchanged.",
+        variant: "destructive",
+      });
     } finally {
       setIsBulkDeleting(false);
       setShowBulkDeleteConfirm(false);
-    }
-  };
-
-  const handleBulkStageChange = async (status: string) => {
-    if (selectedDealIds.size === 0) return;
-    setIsBulkUpdating(true);
-    try {
-      const res = await apiRequest("POST", "/api/deals/bulk-update", { ids: Array.from(selectedDealIds), updates: { status } });
-      const result = await res.json();
-      toast({ title: "Updated", description: `Updated ${result.updatedCount} deal(s) to "${status}".` });
-      setSelectedDealIds(new Set());
-      queryClient.invalidateQueries({ queryKey: ['/api/deals'] });
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message || "Failed to update deals", variant: "destructive" });
-    } finally {
-      setIsBulkUpdating(false);
     }
   };
 
@@ -489,18 +513,20 @@ export default function DealsPage() {
 
           {/* Pipeline Health Bar */}
           {enrichedDeals.length > 0 && (
-            <div className="rounded-xl border bg-card p-4 space-y-2">
+            <div className="rounded-xl border bg-card p-4 space-y-2" aria-labelledby="pipeline-distribution-heading">
               <div className="flex items-center justify-between text-xs">
-                <span className="font-medium text-muted-foreground uppercase tracking-wide">Pipeline Stage Distribution</span>
+                <span id="pipeline-distribution-heading" className="font-medium text-muted-foreground uppercase tracking-wide">
+                  Pipeline stage distribution
+                </span>
                 <div className="flex items-center gap-3">
                   {stalledCount > 0 && (
-                    <span className="flex items-center gap-1 text-red-500 font-medium">
-                      <AlertTriangle className="w-3 h-3" /> {stalledCount} stalled
+                    <span className="flex items-center gap-1 text-red-500 font-medium" role="status">
+                      <AlertTriangle className="w-3 h-3" aria-hidden="true" /> {stalledCount} stalled
                     </span>
                   )}
                   {warningCount > 0 && (
-                    <span className="flex items-center gap-1 text-amber-500 font-medium">
-                      <Clock className="w-3 h-3" /> {warningCount} slow
+                    <span className="flex items-center gap-1 text-amber-500 font-medium" role="status">
+                      <Clock className="w-3 h-3" aria-hidden="true" /> {warningCount} slow
                     </span>
                   )}
                   {stalledCount === 0 && warningCount === 0 && enrichedDeals.length > 0 && (
@@ -508,7 +534,18 @@ export default function DealsPage() {
                   )}
                 </div>
               </div>
-              <div className="flex h-2 rounded-full overflow-hidden gap-0.5">
+              <div
+                className="flex h-2 rounded-full overflow-hidden gap-0.5"
+                role="img"
+                aria-label={
+                  "Pipeline distribution: " +
+                  stageDistribution
+                    .filter(s => s.count > 0)
+                    .map(s => `${s.count} ${s.label}`)
+                    .join(", ") +
+                  "."
+                }
+              >
                 {stageDistribution.map((stage) => {
                   const pct = enrichedDeals.length > 0 ? (stage.count / enrichedDeals.length) * 100 : 0;
                   if (pct === 0) return null;
@@ -526,11 +563,12 @@ export default function DealsPage() {
                       className={`${stageBarColors[stage.value] ?? 'bg-muted'} transition-all`}
                       style={{ width: `${pct}%` }}
                       title={`${stage.label}: ${stage.count}`}
+                      aria-hidden="true"
                     />
                   );
                 })}
               </div>
-              <div className="flex flex-wrap gap-x-3 gap-y-1">
+              <div className="flex flex-wrap gap-x-3 gap-y-1" aria-hidden="true">
                 {stageDistribution.filter(s => s.count > 0).map((stage) => (
                   <span key={stage.value} className="text-[10px] text-muted-foreground">
                     {stage.label} <strong>{stage.count}</strong>
@@ -573,7 +611,7 @@ export default function DealsPage() {
                   onValueChange={setBulkTargetStage}
                 >
                   <SelectTrigger className="min-h-[44px] md:min-h-8 w-full md:w-[160px]" data-testid="select-bulk-stage-deals">
-                    <SelectValue placeholder={isBulkUpdating ? "Updating..." : "Change Stage"} />
+                    <SelectValue placeholder="Change stage" />
                   </SelectTrigger>
                   <SelectContent>
                     {dealStages.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
@@ -608,16 +646,21 @@ export default function DealsPage() {
             <>
               {isMobile && (
                 <div className="flex items-center justify-between gap-2 mb-4">
-                  <div className="flex items-center gap-1 bg-muted/50 rounded-lg p-1">
+                  <div
+                    className="flex items-center gap-1 bg-muted/50 rounded-lg p-1"
+                    role="group"
+                    aria-label="Pipeline view mode"
+                  >
                     <Button
                       size="sm"
                       variant={mobileViewMode === 'kanban' ? 'secondary' : 'ghost'}
                       onClick={() => setMobileViewMode('kanban')}
                       className="min-h-[44px] min-w-[44px]"
                       aria-label="Kanban view"
+                      aria-pressed={mobileViewMode === 'kanban'}
                       data-testid="button-view-kanban"
                     >
-                      <LayoutGrid className="w-4 h-4" />
+                      <LayoutGrid className="w-4 h-4" aria-hidden="true" />
                     </Button>
                     <Button
                       size="sm"
@@ -625,9 +668,10 @@ export default function DealsPage() {
                       onClick={() => setMobileViewMode('list')}
                       className="min-h-[44px] min-w-[44px]"
                       aria-label="List view"
+                      aria-pressed={mobileViewMode === 'list'}
                       data-testid="button-view-list"
                     >
-                      <List className="w-4 h-4" />
+                      <List className="w-4 h-4" aria-hidden="true" />
                     </Button>
                   </div>
                   
@@ -684,11 +728,13 @@ export default function DealsPage() {
                     const stageDeals = paginatedDeals.filter(d => d.status === stage.value);
                     if (stageDeals.length === 0) return null;
                     return (
-                      <div key={stage.value}>
+                      <section key={stage.value} aria-labelledby={`mobile-list-stage-${stage.value}`}>
                         <div className={`rounded-xl px-4 py-3 mb-2 ${stage.color}`}>
                           <div className="flex items-center justify-between gap-2">
-                            <h3 className="font-medium">{stage.label}</h3>
-                            <Badge variant="secondary" className="font-mono">
+                            <h2 id={`mobile-list-stage-${stage.value}`} className="font-medium text-sm">
+                              {stage.label}
+                            </h2>
+                            <Badge variant="secondary" className="font-mono" aria-label={`${stageDeals.length} ${stageDeals.length === 1 ? "deal" : "deals"}`}>
                               {stageDeals.length}
                             </Badge>
                           </div>
@@ -714,7 +760,7 @@ export default function DealsPage() {
                             </div>
                           ))}
                         </div>
-                      </div>
+                      </section>
                     );
                   })}
                   {serverDealTotal > dealPageSize && (
@@ -733,11 +779,13 @@ export default function DealsPage() {
                     const stage = dealStages[selectedStageIndex];
                     const stageDeals = enrichedDeals.filter(d => d.status === stage.value);
                     return (
-                      <div>
+                      <section aria-labelledby={`mobile-kanban-stage-${stage.value}`}>
                         <div className={`rounded-t-xl px-4 py-3 ${stage.color}`}>
                           <div className="flex items-center justify-between gap-2">
-                            <h3 className="font-medium">{stage.label}</h3>
-                            <Badge variant="secondary" className="font-mono">
+                            <h2 id={`mobile-kanban-stage-${stage.value}`} className="font-medium text-sm">
+                              {stage.label}
+                            </h2>
+                            <Badge variant="secondary" className="font-mono" aria-label={`${stageDeals.length} ${stageDeals.length === 1 ? "deal" : "deals"}`}>
                               {stageDeals.length}
                             </Badge>
                           </div>
@@ -763,21 +811,29 @@ export default function DealsPage() {
                             ))
                           )}
                         </div>
-                        <div className="flex justify-center gap-1.5 mt-3">
+                        <div
+                          className="flex justify-center gap-1.5 mt-3"
+                          role="tablist"
+                          aria-label="Jump to stage"
+                        >
                           {dealStages.map((s, idx) => (
                             <button
                               key={s.value}
+                              type="button"
                               onClick={() => setSelectedStageIndex(idx)}
-                              className={`w-2 h-2 rounded-full transition-colors ${
-                                idx === selectedStageIndex 
-                                  ? 'bg-primary' 
+                              role="tab"
+                              aria-selected={idx === selectedStageIndex}
+                              aria-label={`Show ${s.label}`}
+                              className={`w-3 h-3 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+                                idx === selectedStageIndex
+                                  ? 'bg-primary'
                                   : 'bg-muted-foreground/30 hover:bg-muted-foreground/50'
                               }`}
                               data-testid={`dot-stage-${s.value}`}
                             />
                           ))}
                         </div>
-                      </div>
+                      </section>
                     );
                   })()}
                 </div>
@@ -788,6 +844,42 @@ export default function DealsPage() {
                     onDragStart={(e) => setActiveDragId(e.active.id as number)}
                     onDragEnd={handleDragEnd}
                     onDragCancel={() => setActiveDragId(null)}
+                    accessibility={{
+                      screenReaderInstructions: {
+                        draggable:
+                          "To move a deal between stages: press Space or Enter to pick it up, use arrow keys to move between columns, press Space or Enter to drop it into the highlighted stage, or press Escape to cancel.",
+                      },
+                      announcements: {
+                        onDragStart: ({ active }) => {
+                          const d = enrichedDeals.find(x => x.id === active.id);
+                          const label = d?.property
+                            ? `${d.property.county}, ${d.property.state}`
+                            : `Deal ${String(active.id)}`;
+                          return `Picked up ${label}.`;
+                        },
+                        onDragOver: ({ over }) => {
+                          if (!over) return "Not over a stage.";
+                          const s = dealStages.find(x => x.value === over.id);
+                          return s ? `Over ${s.label}.` : "Not over a stage.";
+                        },
+                        onDragEnd: ({ active, over }) => {
+                          const d = enrichedDeals.find(x => x.id === active.id);
+                          const label = d?.property
+                            ? `${d.property.county}, ${d.property.state}`
+                            : `Deal ${String(active.id)}`;
+                          if (!over) return `Drop canceled for ${label}.`;
+                          const s = dealStages.find(x => x.value === over.id);
+                          return s ? `Moved ${label} to ${s.label}.` : `Drop canceled for ${label}.`;
+                        },
+                        onDragCancel: ({ active }) => {
+                          const d = enrichedDeals.find(x => x.id === active.id);
+                          const label = d?.property
+                            ? `${d.property.county}, ${d.property.state}`
+                            : `Deal ${String(active.id)}`;
+                          return `Drop canceled for ${label}.`;
+                        },
+                      },
+                    }}
                   >
                     <div className="overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent">
                       <div className="flex gap-4 min-w-max px-1">
@@ -877,16 +969,24 @@ function KanbanColumn({
   onSelect: (deal: DealWithProperty) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: stage.value });
+  const headingId = `kanban-stage-${stage.value}`;
   return (
-    <div className="w-72 flex-shrink-0">
+    <section className="w-72 flex-shrink-0" aria-labelledby={headingId}>
       <div className={`rounded-t-xl px-4 py-3 ${stage.color}`}>
         <div className="flex items-center justify-between gap-2">
-          <h3 className="font-medium">{stage.label}</h3>
-          <Badge variant="secondary" className="font-mono">{deals.length}</Badge>
+          <h2 id={headingId} className="font-medium text-sm">
+            {stage.label}
+          </h2>
+          <Badge variant="secondary" className="font-mono" aria-label={`${deals.length} ${deals.length === 1 ? "deal" : "deals"} in ${stage.label}`}>
+            {deals.length}
+          </Badge>
         </div>
       </div>
       <div
         ref={setNodeRef}
+        role="list"
+        aria-label={`${stage.label} drop zone`}
+        aria-describedby={headingId}
         className={`bg-muted/30 rounded-b-xl p-2 min-h-[400px] space-y-2 transition-colors ${isOver ? "bg-primary/5 ring-2 ring-primary/20 ring-inset" : ""}`}
         data-testid={`column-${stage.value}`}
       >
@@ -895,7 +995,9 @@ function KanbanColumn({
             <ListSkeleton count={2} variant="compact" />
           </div>
         ) : deals.length === 0 ? (
-          <div className="text-center py-8 text-muted-foreground text-sm">No deals</div>
+          <div className="text-center py-8 text-muted-foreground text-sm" role="status">
+            No deals in {stage.label}
+          </div>
         ) : (
           deals.map((deal) => (
             <DealCard
@@ -907,7 +1009,7 @@ function KanbanColumn({
           ))
         )}
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -941,12 +1043,20 @@ function DealCard({ deal, onSelect, isDragging = false, isSelected, onToggleSele
     >
       <CardContent className="p-4 min-h-[88px]">
         <div className="flex items-start gap-3">
-          <GripVertical
-            className="w-4 h-4 text-muted-foreground/50 mt-1 flex-shrink-0 hidden md:block cursor-grab active:cursor-grabbing"
+          <button
+            type="button"
+            aria-label={
+              deal.property
+                ? `Drag ${deal.property.county}, ${deal.property.state} to change stage`
+                : `Drag deal ${deal.id} to change stage`
+            }
+            className="mt-1 flex-shrink-0 hidden md:block cursor-grab active:cursor-grabbing text-muted-foreground/50 hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
             {...listeners}
             {...attributes}
             onClick={(e) => e.stopPropagation()}
-          />
+          >
+            <GripVertical className="w-4 h-4" aria-hidden="true" />
+          </button>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
               <Badge variant={deal.type === 'acquisition' ? 'default' : 'secondary'} className="text-xs">
@@ -1210,23 +1320,23 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
             <TabsList className="grid w-full grid-cols-5 h-auto p-1">
               <TabsTrigger value="details" className="min-h-[44px] flex-col gap-1 md:flex-row md:gap-2 text-xs md:text-sm px-1 md:px-3" data-testid="tab-deal-details">
                 <FileText className="w-4 h-4" />
-                <span className="hidden sm:inline">Details</span>
+                <span className="sr-only sm:not-sr-only sm:inline">Details</span>
               </TabsTrigger>
               <TabsTrigger value="documents" className="min-h-[44px] flex-col gap-1 md:flex-row md:gap-2 text-xs md:text-sm px-1 md:px-3" data-testid="tab-deal-documents">
                 <Package className="w-4 h-4" />
-                <span className="hidden sm:inline">Docs</span>
+                <span className="sr-only sm:not-sr-only sm:inline">Docs</span>
               </TabsTrigger>
               <TabsTrigger value="timeline" className="min-h-[44px] flex-col gap-1 md:flex-row md:gap-2 text-xs md:text-sm px-1 md:px-3" data-testid="tab-deal-timeline">
                 <Clock className="w-4 h-4" />
-                <span className="hidden sm:inline">Timeline</span>
+                <span className="sr-only sm:not-sr-only sm:inline">Timeline</span>
               </TabsTrigger>
               <TabsTrigger value="checklist" className="min-h-[44px] flex-col gap-1 md:flex-row md:gap-2 text-xs md:text-sm px-1 md:px-3" data-testid="tab-deal-checklist">
                 <ClipboardCheck className="w-4 h-4" />
-                <span className="hidden sm:inline">Tasks</span>
+                <span className="sr-only sm:not-sr-only sm:inline">Tasks</span>
               </TabsTrigger>
               <TabsTrigger value="analysis" className="min-h-[44px] flex-col gap-1 md:flex-row md:gap-2 text-xs md:text-sm px-1 md:px-3" data-testid="tab-deal-analysis">
                 <Calculator className="w-4 h-4" />
-                <span className="hidden sm:inline">ROI</span>
+                <span className="sr-only sm:not-sr-only sm:inline">ROI</span>
               </TabsTrigger>
             </TabsList>
 
@@ -1375,7 +1485,7 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                         ) : (
                           <Sparkles className="w-4 h-4" />
                         )}
-                        <span className="hidden sm:inline">Negotiate</span>
+                        <span className="sr-only sm:not-sr-only sm:inline">Negotiate</span>
                       </Button>
                     </div>
 
@@ -1542,7 +1652,7 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                 <Link href={`/documents?action=create-package&dealId=${deal.id}`}>
                   <Button size="sm" className="min-h-[44px]" data-testid="button-create-package-from-deal">
                     <FolderPlus className="w-4 h-4 mr-2" />
-                    <span className="hidden sm:inline">Create Package</span>
+                    <span className="sr-only sm:not-sr-only sm:inline">Create Package</span>
                     <span className="sm:hidden">New</span>
                   </Button>
                 </Link>
@@ -1606,7 +1716,7 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                               <Link href={`/documents?packageId=${pkg.id}`}>
                                 <Button variant="outline" size="sm" className="min-h-[44px]" data-testid={`button-view-deal-package-${pkg.id}`}>
                                   <Eye className="w-4 h-4 sm:mr-1" />
-                                  <span className="hidden sm:inline">View</span>
+                                  <span className="sr-only sm:not-sr-only sm:inline">View</span>
                                 </Button>
                               </Link>
                               {pkg.status === "draft" && docsCount > 0 && (
@@ -1622,7 +1732,7 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                                   ) : (
                                     <Play className="w-4 h-4 sm:mr-1" />
                                   )}
-                                  <span className="hidden sm:inline">Generate</span>
+                                  <span className="sr-only sm:not-sr-only sm:inline">Generate</span>
                                 </Button>
                               )}
                             </div>
