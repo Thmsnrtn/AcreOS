@@ -1,20 +1,21 @@
 # Elite-Team Refinement — Resume Point
 
-**Last session:** 2026-04-23 (session 6a — `/campaigns` list + create modal)
-**Last completed refinement:** `CampaignsContent` top-level +
-`CampaignForm` create modal in `components/campaigns-content.tsx` —
-error → `QueryErrorState`, sentence-case sweep on dialog/stats/tabs/
-labels/buttons, required-field asterisks, controlled schedule date
-with Invalid-Date guard, `$` currency adornment on budget (decimal
-inputMode + min=0 + tabular-nums), template cards converted from
-clickable div → `role="radiogroup"` + `role="radio"` buttons with
-Space/Enter activation + focus ring, SparklineTrend gets
-`role="img"` + dynamic aria-label, Lob price range copy $0.75–$1.45
-→ $0.75–$1.25 (fabricated max fixed), "Land-Academy-style blind
-offer" → "blind-offer formula" (competitor brand scrub),
-decorative-icon aria-hidden sweep, form field ids + label htmlFor,
-status badge gets `capitalize` so raw lowercase DB value renders
-title case.
+**Last session:** 2026-04-23 (sessions 6a + 6b — `/campaigns` full
+surface minus embedded AbTest/Variants/Analytics sub-panels)
+**Last completed refinement:** `CampaignDetailDrawer` +
+`SendMailDialog` + `OptimizerSuggestionsPanel` in
+`components/campaigns-content.tsx` — hand-rolled overlay got
+role=dialog + aria-modal + aria-labelledby + Esc handler (5l rule),
+close button aria-label, sentence-case sweep on drawer headers +
+sections + buttons + toasts, tabular-nums across all counters /
+percentages / currency, `toLocaleString()` on stat counters,
+send-confirmation banner now names recipient count alongside
+estimated cost, credit-balance copy uses en-dash + tabular-nums
+currency, estimate-error card gets role=alert with specific
+recovery copy, optimizer collapse toggle gets aria-expanded +
+aria-controls, status-badge capitalize extended to drawer header,
+header wraps cleanly at 375px via gap-4 flex-wrap, decorative-icon
+aria-hidden sweep across drawer + send dialog + optimizer.
 
 **Phase 1 inventory:** ✅ committed at `11d0e8c`
 **PropertyDetailDialog:** ✅ fully refined across all tabs.
@@ -23,7 +24,9 @@ title case.
 **/deals DealDetailDrawer (5 tabs):** ✅ slice 5l complete (`cc375b1`).
 **/deals DealForm (create modal):** ✅ slice 5m complete (`0707ee4`).
 **/campaigns list + create:** ✅ slice 6a complete (`ea096ec`).
-**/campaigns detail drawer + OptimizerSuggestions + SendMailDialog:** ⬜ slice 6b next
+**/campaigns detail drawer + OptimizerSuggestions + SendMailDialog:** ✅ slice 6b complete (`cf10579`).
+**/campaigns A/B test manager + variants panel + analytics:** ⬜ slice 6c next (or defer — these are separate embedded components)
+**/inbox:** ⬜ slice 7 — message rendering + thread navigation a11y
 
 ## How to continue
 
@@ -80,6 +83,13 @@ Session 6:
   input w/ Invalid-Date guard, currency adornment, template
   radiogroup a11y, SparklineTrend role=img, $0.75–$1.25 range fix,
   Land Academy brand scrub (commit `ea096ec`)
+- 6b. `/campaigns` CampaignDetailDrawer + SendMailDialog +
+  OptimizerSuggestionsPanel — role=dialog + aria-modal +
+  aria-labelledby + Esc handler (5l rule), sentence-case sweep,
+  tabular-nums across all counters/%/currency, send-confirmation
+  names recipient count alongside cost, aria-expanded/controls on
+  optimizer collapse, role=alert on estimate error, decorative-
+  icon aria-hidden sweep (commit `cf10579`)
 
 ## Cross-cutting gains this pass
 
@@ -212,31 +222,33 @@ Session 6:
 
 ## Next surface to refine
 
-**Next slice: `/campaigns` CampaignDetailDrawer + SendMailDialog +
-OptimizerSuggestionsPanel (6b).**
+**Next slice: either `/campaigns` 6c (embedded AbTestManager +
+CampaignVariantsPanel + CampaignAnalytics sub-panels) OR skip ahead
+to `/inbox` — a natural pause in the campaigns walk.**
 
-Scope for 6b:
-- `CampaignDetailDrawer` (hand-rolled overlay) — apply 5l dialog-Esc
-  rule: role=dialog + aria-modal + aria-labelledby + Esc handler. At
-  minimum — full Radix Sheet conversion is a bigger refactor (can
-  defer if commit gets large).
-- Sentence-case sweep on drawer: "Campaign Metrics", "Direct Mail
-  Performance", "Scheduled Date", "Response Analytics", "Total
-  Sent"/"Responses" stat cards.
-- `SendMailDialog`: sentence-case + currency adornment on estimated
-  cost display + cost-estimate trust state copy.
-- `OptimizerSuggestionsPanel`: sentence-case + "Run AI Analysis" /
-  "Mark Implemented" buttons + AI-output-structure review (Lens 5).
-- Drawer close button needs aria-label ("Close campaign detail").
-- Decorative-icon aria-hidden sweep across drawer.
-- Campaign Metrics progress bars should use `tabular-nums` on the
-  % labels for digit stability.
+Scope for 6c (if chosen):
+- `components/ab-test-manager.tsx` — A/B test create + stats +
+  winner declaration. Likely the same hand-rolled-dialog + sentence-
+  case + tabular-nums pattern as the drawer.
+- `components/campaign-variants-panel.tsx` — variant list + create
+  flow.
+- `components/campaign-analytics.tsx` — response analytics chart +
+  cohort breakdown.
+- If each file is <200 lines, group them into one commit; otherwise
+  split.
 
-After 6b: move per inventory to:
-1. `/inbox` — message rendering + thread navigation a11y
-2. `/documents` — upload + OCR trust signals
-3. `/sign/:docId` — **legal/trust surface** — signer flow
-4. `/portal/:accessToken` — borrower portal; **public link, mobile
+Scope for 7 (skip ahead, recommended — campaigns is the longest
+single surface in the inventory and the big usability wins have
+shipped in 6a/6b):
+- `/inbox` — message rendering, thread navigation, SR
+  announcements, unread badges, sentence-case, decorative icons.
+- Then `/documents`, `/sign/:docId` (legal/trust surface), and the
+  mobile-critical public `/portal/:accessToken` borrower flow.
+
+After that: move per inventory to:
+1. `/documents` — upload + OCR trust signals
+2. `/sign/:docId` — **legal/trust surface** — signer flow
+3. `/portal/:accessToken` — borrower portal; **public link, mobile
    critical** — no Clerk auth, must work at 320px
 
 ## Deferred / flagged for owner decision
@@ -260,9 +272,12 @@ After 6b: move per inventory to:
 - **DealDetailDrawer focus trap (new 5l):** hand-rolled overlay
   has no focus trap. Tab escapes to underlying page. Bigger refactor
   = convert to Radix Sheet/Dialog. Deferred.
-- **CampaignDetailDrawer** shares the same hand-rolled overlay
-  pattern as DealDetailDrawer — same deferred focus-trap and focus-
-  restoration issues will apply.
+- **CampaignDetailDrawer focus trap + focus restoration (6b):** same
+  larger-refactor decision as DealDetailDrawer from 5l. Min-viable
+  dialog a11y (role/aria-modal/labelledby/Esc) shipped in 6b; full
+  focus trap + return-focus-to-trigger needs a dedicated drawer-
+  refactor pass that converts both Deal + Campaign drawers to Radix
+  Sheet/Dialog in one commit.
 
 ## Session hygiene reminders
 
@@ -287,7 +302,8 @@ After 6b: move per inventory to:
   `storage`, `autonomousDealMachine`, `countyAssessorIngest`,
   `supportAgent`, etc. — not blocking client refinement work.
 
-## Expected HEAD after session 6a
+## Expected HEAD after session 6a+6b
 
-`ea096ec refine(campaigns/list+create): …` on top of `0707ee4`
-(DealForm create modal).
+`cf10579 refine(campaigns/drawer+send+optimizer): …` on top of
+`ea096ec` (campaigns list + create). Both commits shipped in a
+single elite-refinement session (6a+6b).
