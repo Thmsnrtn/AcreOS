@@ -42,16 +42,16 @@ function getErrorConfig(type: ErrorType, error: Error | null) {
     case "network":
       return {
         icon: WifiOff,
-        title: "Connection Problem",
-        description: "Unable to connect to the server. Please check your internet connection and try again.",
+        title: "Offline",
+        description: "AcreOS can't reach our servers right now. Check your connection and try again — your data is safe.",
         iconColor: "text-yellow-600",
         bgColor: "from-yellow-500/20 to-yellow-500/5",
       };
     case "server":
       return {
         icon: ServerCrash,
-        title: "Server Error",
-        description: "Our servers are experiencing issues. Please try again in a moment.",
+        title: "We're having a moment",
+        description: "AcreOS servers hit an issue loading this. Most retries succeed within a few seconds.",
         iconColor: "text-red-600",
         bgColor: "from-red-500/20 to-red-500/5",
       };
@@ -137,6 +137,8 @@ export function QueryErrorState({
       transition={{ duration: 0.4 }}
       className={`flex flex-col items-center justify-center py-12 px-4 ${className}`}
       data-testid={testId}
+      role="alert"
+      aria-live="polite"
     >
       <motion.div
         initial={{ scale: 0 }}

@@ -76,6 +76,7 @@ export function ThemeSettings() {
                   type="button"
                   onClick={() => setThemeConfig({ preset: "default" })}
                   className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
+                  data-testid="button-reset-theme"
                 >
                   Reset to Desert
                 </button>

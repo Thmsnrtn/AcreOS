@@ -140,3 +140,18 @@ Applies to every protected route during auth resolution + every
   restores the default.
 
 **Sign-off:** D ✓ M ✓ A ✓ E ✓ AI n/a LI ✓ CW ✓ I ✓ T ✓
+
+### 2026-04-23 — `QueryErrorState` (cross-cutting)
+Shown across every page when a query fails and the component is
+rendered inline (as opposed to the global toast).
+
+**Refinements made:**
+- [A] Accessibility: added `role="alert"` + `aria-live="polite"` so
+  screen readers announce the error when it appears.  Previously a
+  silent visual change.
+- [CW] Copywriter: softened the generic titles/descriptions.
+  "Connection Problem" → "Offline".  "Server Error" → "We're having
+  a moment" + the reassurance "your data is safe" on the network
+  case.  Reads as a product that cares, not a stack trace.
+
+**Sign-off:** D ✓ M ✓ A ✓ E ✓ AI n/a LI ✓ CW ✓ I ✓ T ✓
