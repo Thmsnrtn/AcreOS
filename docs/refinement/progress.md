@@ -155,3 +155,27 @@ rendered inline (as opposed to the global toast).
   case.  Reads as a product that cares, not a stack trace.
 
 **Sign-off:** D ✓ M ✓ A ✓ E ✓ AI n/a LI ✓ CW ✓ I ✓ T ✓
+
+### 2026-04-23 — `EmptyState` (cross-cutting)
+Rendered on every empty list across the app (leads, properties,
+deals, campaigns, notes, etc.).
+
+**Refinements made:**
+- [E] Engineer: action button always forced a Plus icon regardless of
+  whether the action was "create" (Plus makes sense) or "Connect
+  account" / "Import CSV" (Plus is wrong).  Added optional
+  `actionIcon` prop — caller can override or pass `null` to omit.
+- [A] Accessibility: tips list was using text `-` characters as
+  bullets — invisible to list-aware screen readers.  Converted to a
+  real `list-disc` ul with `marker:text-primary/60` so list semantics
+  are preserved.
+- [A] Accessibility: icon bubble wrapper now `aria-hidden`;
+  ExternalLink on Learn-more link also `aria-hidden`.
+- [D] Designer: icon color was `text-muted-foreground/50` (50%
+  opacity on an already-muted color) — reading as ghosted.  Bumped
+  to `text-muted-foreground` at full.  Background bubble
+  `bg-muted/50` → `bg-muted/60` for slightly more presence.
+- [D] Designer: Learn more link now has subtle `hover:underline` for
+  a clearer affordance.
+
+**Sign-off:** D ✓ M ✓ A ✓ E ✓ AI n/a LI ✓ CW ✓ I ✓ T ✓
