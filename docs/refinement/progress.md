@@ -2916,4 +2916,4 @@ decisions that make money surfaces feel deliberate.
   is folded into `usd()` itself: bare `usd(null)` returns
   `—`, not `$0.00`. Future call sites inherit this for free.
 
-**Commit:** (pending — will fill after commit)
+**Commit:** `39227e7`

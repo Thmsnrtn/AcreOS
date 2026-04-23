@@ -1,7 +1,55 @@
 # Elite-Team Refinement — Resume Point
 
-**Last session:** 2026-04-23 (session 10b — `<BorrowerDashboard>` full pass)
-**Last completed refinement:** `client/src/pages/borrower-portal.tsx`
+**Last session:** 2026-04-23 (session 12 — money-precision rule + /finance)
+**Last completed refinement:** `client/src/lib/format.ts` +
+`client/src/pages/finance.tsx`. Introduced the canonical
+`usd()` helper (slice-10b rule made concrete as a reusable
+formatter). Accepts `number | string | null | undefined`,
+returns `"—"` on null/empty/NaN (folding the slice-5l
+Money-unset display rule into the helper), 2-decimal cents
+by default, `noCents` + `showSign` opts. Swapped all 16
+bare `.toLocaleString()` money renders in /finance.tsx:
+portfolio/income/originated tiles, notes table, detail card,
+loan progress, payment collection, payment history table,
+dunning past-due, plus the recharts axis + tooltip. Full
+tabular-nums + sentence-case sweep + icon aria-hidden on the
+affected sections. Progress bar got aria-label; Stripe-
+connect loader got role=status + sr-only label. 72 other
+files with bare `${X.toLocaleString()}` left as per-surface
+follow-up (incremental with each page's 9-lens pass, not a
+mechanical sweep).
+
+---
+
+**Prior session:** 2026-04-23 (session 11 — public-form a11y grep sweep)
+**Prior completed refinement:** `/auth` + `/forgot-password`
++ `/reset-password` + `/beta-intake` — one commit applying
+the slice-10 public-form a11y checklist horizontally. All 5
+beta-intake Labels gained `htmlFor` + Input `id` (previously
+bare — SR users heard no label names on focus). Both
+beta-intake forms wrapped in `<form onSubmit>` so Enter
+submits. Mobile-keyboard checklist across all 3 email fields
+(main/check/referral). `autoComplete` set on given-name/
+family-name/email/organization. `autoCapitalize="characters"`
+on referral code. Feature highlights `<div>`s promoted to
+`<ul><li>`. 7 decorative beta-intake icons got aria-hidden.
+useDocumentTitle wired on /beta-intake, /forgot-password,
+/reset-password. sr-only `<h1>` on /auth (mode-swaps between
+"Sign in to X" / "Create a X account"); brand span + logo
+tile aria-hidden to avoid double-announcement. /auth loaders
+all wrapped role=status + aria-live. aria-invalid + aria-
+describedby wiring on all 4 files. role=alert on missing-
+token reset error. Error-message specificity across all four
+(password-mismatch warmer, min-length second-person, expired-
+link names cause + recovery, network-error names recovery).
+Sentence-case sweep across /beta-intake. 44px min-h-11 touch
+on all primary CTAs. No new cross-cutting rules — checklist
+confirmation only.
+
+---
+
+**Prior session:** 2026-04-23 (session 10b — `<BorrowerDashboard>` full pass)
+**Prior completed refinement:** `client/src/pages/borrower-portal.tsx`
 lines 188-end — the ~1000-line authenticated borrower dashboard.
 Two P0 money-surface trust bugs fixed:
 (1) **silent messaging failures**: `loadMessages` + `handle
@@ -116,7 +164,9 @@ to a dedicated 9b slice.
 **/portal/:accessToken entry (gate + landing):** ✅ slice 10 complete (commit `c6438ba`)
 **BorrowerDashboard (10b):** ✅ slice 10b complete (commit `cf01654`)
 **jsPDF statement/1098 generator (10b.ii):** ⬜ deferred — product+compliance question on IRS Form 1098 fidelity; own slice
-**/auth, /forgot-password, /reset-password public-form audit:** ⬜ candidate follow-up — apply slice 10 public-form a11y checklist (grep sweep)
+**Public-form a11y grep sweep (11):** ✅ complete across /auth + /forgot-password + /reset-password + /beta-intake (commit `37b8911`)
+**Money-precision: usd() helper + /finance (12):** ✅ complete (commit `39227e7`)
+**Money-precision grep sweep (remaining 72 files):** ⬜ deferred — apply per-surface as each page gets 9-lens pass
 
 ## How to continue
 
@@ -208,6 +258,33 @@ Session 10b:
   ellipsis + em-dash, Form-1098 faithful menu label,
   cancelled-payment reassurance. jsPDF generator deferred.
   (commit `cf01654`)
+
+Session 11:
+- Public-form a11y grep sweep — one atomic commit applying
+  the slice-10 checklist across /auth + /forgot-password +
+  /reset-password + /beta-intake. 5 beta-intake Labels
+  gained htmlFor + id, both beta-intake forms wrapped in
+  <form onSubmit>, mobile-keyboard checklist + autoComplete
+  across 3 email fields, feature highlights → <ul><li>, 7
+  aria-hidden icons, useDocumentTitle on 3 pages, sr-only h1
+  on /auth, role=status/aria-live on loaders, aria-invalid +
+  aria-describedby on all forms, role=alert on missing-token
+  reset error, warmer error fallbacks, sentence-case sweep,
+  44px CTAs. No new cross-cutting rules — checklist-
+  confirmation only. (commit `37b8911`)
+
+Session 12:
+- `usd()` money formatter added to client/src/lib/format.ts
+  (slice-10b rule as reusable helper; folds in slice-5l
+  Money-unset display rule via null → "—"). Applied across
+  all 16 bare .toLocaleString() money renders in /finance.tsx
+  (tiles, notes table, detail card, loan progress, payment
+  collection, payment history, dunning, chart axis +
+  tooltip). Tabular-nums + sentence-case + icon aria-hidden
+  on affected sections. Progress bar aria-labeled; Stripe-
+  connect loader role=status + sr-only label. 72 other files
+  with bare `${X.toLocaleString()}` left as per-surface
+  follow-up. (commit `39227e7`)
 
 ## Cross-cutting gains this pass
 
@@ -434,28 +511,31 @@ Session 10b:
 
 ## Next surface to refine
 
-**Next slice: public-form grep sweep.** Apply the slice-10
-public-form a11y checklist across the remaining public surfaces:
-`/auth` (Clerk widget — limited surface we control, but
-surrounding wrapper), `/forgot-password`, `/reset-password`,
-`beta-intake.tsx`. Likely one atomic commit. Use the checklist:
-`<Label htmlFor>` + Input `id`, `role="alert"` on validation,
-`aria-invalid` + `aria-describedby`, form `onSubmit`,
-mobile-keyboard attrs, h1 landmark, 44px touch, proper
-`useDocumentTitle`. Also grep for `.toLocaleString()` money
-rendering across the app per the slice-10b money-precision
-rule.
+**Recommended next slice: full `/finance` 9-lens pass (12b).**
+Slice 12 was narrow (money-precision rule application only).
+The remaining ~1500 lines of /finance.tsx have: create-note
+form dialog, delete-note confirmation, payment-record dialog,
+Stripe Connect configuration, dunning manager, multiple
+drawers and cards that weren't touched. Natural next target.
 
-After that slice, move per inventory to:
-1. Money-precision **grep sweep** — `/properties`, `/deals`,
-   `/campaigns`, `/finance` (apply the slice-10b rule).
-2. `SignatureCapture` component (slice 9b) — 372-line canvas /
-   typed / consent pad, own a11y + mobile-touch pass.
-3. jsPDF generator (slice 10b.ii) — Form 1098 + account
-   statement PDF body. Product+compliance question on IRS
-   form-field fidelity.
-4. `/campaigns` 6c (AbTestManager + CampaignVariantsPanel +
-   CampaignAnalytics sub-panels) — deferred, not blocking.
+Alternatives, any of which is valid:
+1. `SignatureCapture` component (slice 9b) — 372-line canvas
+   / typed / consent pad. Own a11y + mobile-touch pass.
+2. jsPDF 1098 generator (slice 10b.ii) — product+compliance
+   question on IRS form fidelity. Best paired with owner
+   clarification on e-filing goals.
+3. `/campaigns` 6c (AbTestManager + CampaignVariantsPanel +
+   CampaignAnalytics) — deferred component-set for campaigns.
+4. `/properties` money-precision pass — apply `usd()` across
+   /properties + do a light 9-lens pass on the pieces touched.
+5. `/deals` same pattern.
+6. `/today` or `/dashboard` — entry surface for authenticated
+   users; likely has its own trust + density concerns.
+
+**Pick the one that fits the next session's energy budget.**
+Components (9b, 10b.ii) are tight and well-defined. Full-
+page slices (/finance 12b, /today, /dashboard) are larger
+but higher visibility.
 
 ## Deferred / flagged for owner decision
 
@@ -498,12 +578,13 @@ After that slice, move per inventory to:
   `storage`, `autonomousDealMachine`, `countyAssessorIngest`,
   `supportAgent`, etc. — not blocking client refinement work.
 
-## Expected HEAD after session 10b
+## Expected HEAD after session 12
 
-Session 10b shipped `cf01654 refine(portal/dashboard): …` on
-top of `c6438ba refine(portal): …` (session 10). Slice 10b
-introduced four cross-cutting rules (money-precision rule,
-silent-mutation-on-messaging rule, definition-list semantic
-rule, unread-count badge min-width rule) and squashed two P0
-money-surface trust bugs (silent messaging failures + bare
-`.toLocaleString()` cent-dropping).
+Session 12 shipped `39227e7 refine(finance): …` on top of
+`37b8911 refine(public-forms): …` (session 11) on top of
+`cf01654 refine(portal/dashboard): …` (session 10b). Slices
+11-12 applied earlier cross-cutting rules horizontally (slice
+11: public-form a11y checklist across 4 files; slice 12:
+money-precision rule → canonical `usd()` helper + /finance).
+No new cross-cutting rules added in this pair — confirmation
+that the rule machinery from slices 8-10b is productive.
