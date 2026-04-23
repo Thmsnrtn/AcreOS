@@ -1,5 +1,5 @@
 import { PageShell } from "@/components/page-shell";
-import { plural } from "@/lib/format";
+import { plural, usd } from "@/lib/format";
 import { DealJourney } from "@/components/ui/deal-journey";
 import { PaxContextButton } from "@/components/pax-context-button";
 import { ListPagination, usePagination } from "@/components/list-pagination";
@@ -523,8 +523,8 @@ export default function DealsPage() {
                   </div>
                   <div className="min-w-0">
                     <p className="text-xs md:text-sm text-muted-foreground truncate">Pipeline</p>
-                    <p className="text-lg md:text-2xl font-bold font-mono truncate" data-testid="text-pipeline-value">
-                      ${totalPipelineValue.toLocaleString()}
+                    <p className="text-lg md:text-2xl font-bold font-mono tabular-nums truncate" data-testid="text-pipeline-value">
+                      {usd(totalPipelineValue, { noCents: true })}
                     </p>
                   </div>
                 </div>
@@ -539,8 +539,8 @@ export default function DealsPage() {
                   </div>
                   <div className="min-w-0">
                     <p className="text-xs md:text-sm text-muted-foreground truncate">Closed</p>
-                    <p className="text-lg md:text-2xl font-bold font-mono text-green-600 truncate" data-testid="text-closed-value">
-                      ${closedValue.toLocaleString()}
+                    <p className="text-lg md:text-2xl font-bold font-mono tabular-nums text-green-600 truncate" data-testid="text-closed-value">
+                      {usd(closedValue, { noCents: true })}
                     </p>
                   </div>
                 </div>
@@ -1130,9 +1130,9 @@ function DealCard({ deal, onSelect, isDragging = false, isSelected, onToggleSele
             </div>
             {(deal.offerAmount || deal.acceptedAmount) && (
               <div className="mt-2 flex items-center gap-1.5">
-                <DollarSign className="w-4 h-4 text-emerald-600" />
-                <span className="text-base font-mono font-medium text-emerald-600">
-                  ${Number(deal.acceptedAmount || deal.offerAmount || 0).toLocaleString()}
+                <DollarSign className="w-4 h-4 text-emerald-600" aria-hidden="true" />
+                <span className="text-base font-mono font-medium tabular-nums text-emerald-600">
+                  {usd(deal.acceptedAmount || deal.offerAmount, { noCents: true })}
                 </span>
               </div>
             )}
@@ -1249,7 +1249,7 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
         onSuccess: () => {
           toast({
             title: "Offer amount updated",
-            description: `Set to $${pricingRecommendation.suggestedOffer.toLocaleString()}`,
+            description: `Set to ${usd(pricingRecommendation.suggestedOffer, { noCents: true })}`,
           });
           setIsPricingPopoverOpen(false);
         },
@@ -1472,12 +1472,12 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                               </div>
                               <div className="p-4 space-y-4">
                                 <div className="text-center">
-                                  <p className="text-sm text-muted-foreground mb-1">Suggested Offer</p>
-                                  <p className="text-3xl font-bold font-mono text-primary" data-testid="text-suggested-offer">
-                                    ${pricingRecommendation.suggestedOffer.toLocaleString()}
+                                  <p className="text-sm text-muted-foreground mb-1">Suggested offer</p>
+                                  <p className="text-3xl font-bold font-mono tabular-nums text-primary" data-testid="text-suggested-offer">
+                                    {usd(pricingRecommendation.suggestedOffer, { noCents: true })}
                                   </p>
-                                  <p className="text-xs text-muted-foreground mt-1">
-                                    Range: ${pricingRecommendation.priceRangeMin.toLocaleString()} - ${pricingRecommendation.priceRangeMax.toLocaleString()}
+                                  <p className="text-xs text-muted-foreground mt-1 tabular-nums">
+                                    Range: {usd(pricingRecommendation.priceRangeMin, { noCents: true })} &ndash; {usd(pricingRecommendation.priceRangeMax, { noCents: true })}
                                   </p>
                                 </div>
                                 
@@ -1584,9 +1584,9 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                         )}
                       </DialogContent>
                     </Dialog>
-                    <p className="text-xl font-bold font-mono">
+                    <p className="text-xl font-bold font-mono tabular-nums">
                       {deal.offerAmount != null && deal.offerAmount !== ''
-                        ? `$${Number(deal.offerAmount).toLocaleString()}`
+                        ? usd(deal.offerAmount, { noCents: true })
                         : <span className="text-muted-foreground">—</span>}
                     </p>
                   </CardContent>
@@ -1594,9 +1594,9 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                 <Card className="glass-panel">
                   <CardContent className="p-4">
                     <p className="text-sm text-muted-foreground">Accepted amount</p>
-                    <p className="text-xl font-bold font-mono text-emerald-600">
+                    <p className="text-xl font-bold font-mono tabular-nums text-emerald-600">
                       {deal.acceptedAmount != null && deal.acceptedAmount !== ''
-                        ? `$${Number(deal.acceptedAmount).toLocaleString()}`
+                        ? usd(deal.acceptedAmount, { noCents: true })
                         : <span className="text-muted-foreground">—</span>}
                     </p>
                   </CardContent>
@@ -1626,7 +1626,7 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                       </div>
                       <div>
                         <p className="text-muted-foreground">Assessed value</p>
-                        <p className="font-mono">${Number(deal.property.assessedValue || 0).toLocaleString()}</p>
+                        <p className="font-mono tabular-nums">{usd(deal.property.assessedValue, { noCents: true })}</p>
                       </div>
                     </div>
                   </CardContent>
@@ -1681,7 +1681,7 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                       {deal.closingCosts && (
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">Closing costs</span>
-                          <span className="font-mono">${Number(deal.closingCosts).toLocaleString()}</span>
+                          <span className="font-mono tabular-nums">{usd(deal.closingCosts, { noCents: true })}</span>
                         </div>
                       )}
                     </div>

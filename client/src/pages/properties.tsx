@@ -1,4 +1,5 @@
 import { PageShell } from "@/components/page-shell";
+import { usd } from "@/lib/format";
 import { PaxContextButton } from "@/components/pax-context-button";
 import { ListPagination, usePagination } from "@/components/list-pagination";
 import { useProperties, usePropertiesPaginated, useCreateProperty, useDeleteProperty, useEnrichProperty } from "@/hooks/use-properties";
@@ -1032,17 +1033,17 @@ function PropertyCard({ property, onDelete }: {
             {/* r5 Eleanor: "$0" on a property card reads ambiguously
                 (free? missing? broken?) for a low-tech-comfort persona.
                 Show "—" when the value is unset, actual dollars when known. */}
-            <span>
+            <span className="tabular-nums">
               {property.marketValue && Number(property.marketValue) > 0
-                ? `$${Number(property.marketValue).toLocaleString()}`
+                ? usd(property.marketValue, { noCents: true })
                 : <span title="No market value on file yet">—</span>}
             </span>
           </div>
           {Number(property.marketValue) > 0 && Number(property.sizeAcres) > 0 && (
             <div className="flex items-center gap-1.5 col-span-2 pt-1 border-t border-border/50">
               <TrendingUp className="w-3.5 h-3.5 text-emerald-600" aria-hidden="true" />
-              <span className="text-emerald-700 dark:text-emerald-400 font-medium">
-                ${Math.round(Number(property.marketValue) / Number(property.sizeAcres)).toLocaleString()}/acre
+              <span className="text-emerald-700 dark:text-emerald-400 font-medium tabular-nums">
+                {usd(Math.round(Number(property.marketValue) / Number(property.sizeAcres)), { noCents: true })}/acre
               </span>
               {property.createdAt && (
                 <span className="ml-auto text-muted-foreground/70">
@@ -1393,10 +1394,10 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
   };
 
   const formatCurrency = (value: string | number | null | undefined) => {
-    if (value === null || value === undefined || value === "") return "N/A";
+    if (value === null || value === undefined || value === "") return "—";
     const num = Number(value);
-    if (isNaN(num) || num === 0) return "N/A";
-    return `$${num.toLocaleString()}`;
+    if (isNaN(num) || num === 0) return "—";
+    return usd(num, { noCents: true });
   };
 
   // Compute centroid from boundary if not present
@@ -1601,13 +1602,13 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                   )}
                 </div>
                 <div className="space-y-0.5">
-                  <span className="text-muted-foreground text-xs">Price/Acre</span>
-                  <p className="font-semibold" data-testid="verdict-price-per-acre">
-                    {verdictData.pricePerAcre ? `$${Math.round(verdictData.pricePerAcre).toLocaleString()}` : "N/A"}
+                  <span className="text-muted-foreground text-xs">Price per acre</span>
+                  <p className="font-semibold tabular-nums" data-testid="verdict-price-per-acre">
+                    {verdictData.pricePerAcre ? usd(Math.round(verdictData.pricePerAcre), { noCents: true }) : "—"}
                   </p>
                 </div>
                 <div className="space-y-0.5">
-                  <span className="text-muted-foreground text-xs">Tax Status</span>
+                  <span className="text-muted-foreground text-xs">Tax status</span>
                   <p className="font-semibold" data-testid="verdict-tax-status">
                     {(currentProperty.dueDiligenceData as any)?.taxesCurrent === true
                       ? "Current"
@@ -1618,8 +1619,8 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                 </div>
                 <div className="space-y-0.5">
                   <span className="text-muted-foreground text-xs">Acreage</span>
-                  <p className="font-semibold" data-testid="verdict-acreage">
-                    {currentProperty.sizeAcres ? `${Number(currentProperty.sizeAcres).toLocaleString()} ac` : "N/A"}
+                  <p className="font-semibold tabular-nums" data-testid="verdict-acreage">
+                    {currentProperty.sizeAcres ? `${Number(currentProperty.sizeAcres).toLocaleString()} ac` : "—"}
                   </p>
                 </div>
               </div>
@@ -2686,27 +2687,27 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
                 <div className="space-y-2 text-sm">
                   <div className="flex items-center justify-between" data-testid="population">
                     <span className="text-muted-foreground">Population</span>
-                    <span>{enrichmentData.demographics.population?.toLocaleString() || "N/A"}</span>
+                    <span className="tabular-nums">{enrichmentData.demographics.population?.toLocaleString() || "—"}</span>
                   </div>
                   <div className="flex items-center justify-between" data-testid="median-income">
-                    <span className="text-muted-foreground">Median Income</span>
-                    <span>
-                      {(enrichmentData.demographics.medianHouseholdIncome ?? enrichmentData.demographics.medianIncome)
-                        ? `$${(enrichmentData.demographics.medianHouseholdIncome ?? enrichmentData.demographics.medianIncome)!.toLocaleString()}`
-                        : "N/A"}
+                    <span className="text-muted-foreground">Median income</span>
+                    <span className="tabular-nums">
+                      {usd(
+                        enrichmentData.demographics.medianHouseholdIncome ?? enrichmentData.demographics.medianIncome,
+                        { noCents: true }
+                      )}
                     </span>
                   </div>
                   <div className="flex items-center justify-between" data-testid="median-home-value">
-                    <span className="text-muted-foreground">Median Home Value</span>
-                    <span>{enrichmentData.demographics.medianHomeValue 
-                      ? `$${enrichmentData.demographics.medianHomeValue.toLocaleString()}` 
-                      : "N/A"}
+                    <span className="text-muted-foreground">Median home value</span>
+                    <span className="tabular-nums">
+                      {usd(enrichmentData.demographics.medianHomeValue, { noCents: true })}
                     </span>
                   </div>
                   {enrichmentData.demographics.povertyRate !== undefined && (
                     <div className="flex items-center justify-between" data-testid="poverty-rate">
-                      <span className="text-muted-foreground">Poverty Rate</span>
-                      <span>{enrichmentData.demographics.povertyRate.toFixed(1)}%</span>
+                      <span className="text-muted-foreground">Poverty rate</span>
+                      <span className="tabular-nums">{enrichmentData.demographics.povertyRate.toFixed(1)}%</span>
                     </div>
                   )}
                   {enrichmentData.demographics.ownerOccupancyRate !== undefined && (
@@ -2901,30 +2902,30 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
                   <Wheat className="w-4 h-4 text-yellow-600" aria-hidden="true" />
-                  <h4 className="font-semibold">Agricultural Values</h4>
+                  <h4 className="font-semibold">Agricultural values</h4>
                 </div>
                 <div className="space-y-2 text-sm">
                   {enrichmentData.agriculturalValues.countyAvgPerAcre != null && (
                     <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground">County Avg / Acre</span>
-                      <span className="font-medium">${enrichmentData.agriculturalValues.countyAvgPerAcre.toLocaleString()}</span>
+                      <span className="text-muted-foreground">County avg / acre</span>
+                      <span className="font-medium tabular-nums">{usd(enrichmentData.agriculturalValues.countyAvgPerAcre, { noCents: true })}</span>
                     </div>
                   )}
                   {enrichmentData.agriculturalValues.stateAvgPerAcre != null && (
                     <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground">State Avg / Acre</span>
-                      <span>${enrichmentData.agriculturalValues.stateAvgPerAcre.toLocaleString()}</span>
+                      <span className="text-muted-foreground">State avg / acre</span>
+                      <span className="tabular-nums">{usd(enrichmentData.agriculturalValues.stateAvgPerAcre, { noCents: true })}</span>
                     </div>
                   )}
                   {enrichmentData.agriculturalValues.nationalAvgPerAcre != null && (
                     <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground">National Avg / Acre</span>
-                      <span>${enrichmentData.agriculturalValues.nationalAvgPerAcre.toLocaleString()}</span>
+                      <span className="text-muted-foreground">National avg / acre</span>
+                      <span className="tabular-nums">{usd(enrichmentData.agriculturalValues.nationalAvgPerAcre, { noCents: true })}</span>
                     </div>
                   )}
                   {enrichmentData.agriculturalValues.dataYear && (
                     <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground">Data Year</span>
+                      <span className="text-muted-foreground">Data year</span>
                       <span className="text-xs text-muted-foreground">{enrichmentData.agriculturalValues.dataYear} (USDA NASS)</span>
                     </div>
                   )}

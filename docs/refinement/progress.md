@@ -2917,3 +2917,206 @@ decisions that make money surfaces feel deliberate.
   `—`, not `$0.00`. Future call sites inherit this for free.
 
 **Commit:** `39227e7`
+
+---
+
+## Session 13 — 2026-04-23 — `SignatureCapture` component (slice 9b)
+
+**Surface:** `client/src/components/signature-capture.tsx`
+(372 lines). The drawing + typed-name + consent-checkbox
+component that ships inside `/sign/:docId` (slice 9) and any
+future embedded signing UI. Deferred from slice 9 as its own
+focused pass.
+
+**Lens sweep + refinements shipped:**
+
+- **A11y (canvas accessibility):** the `<canvas>` element
+  had no accessible name — SR users tabbing onto it heard
+  silence. Now `role="img"` + state-aware `aria-label` that
+  swaps between "Signature drawn. Use Clear to redraw, or
+  switch to the Type tab." (populated) and "Drawing canvas.
+  Sign with your finger, stylus, or mouse. For keyboard
+  access, switch to the Type tab." (empty). Explicit
+  discovery of the keyboard alternative — critical since a
+  canvas is inherently mouse/touch-only, and the Type tab
+  IS the keyboard-accessible path.
+
+- **A11y ("Sign here" pseudo-placeholder):** the visual
+  "Sign here" overlay was a positioned `<div>` with
+  `pointer-events-none` but no `aria-hidden` — SR could
+  potentially read it and announce twice with the canvas
+  aria-label. Now `aria-hidden="true"` so it's visual-only
+  decoration.
+
+- **A11y (typed-signature preview):** when user types their
+  name, it renders in italic-Georgia serif. Previously the
+  preview block had no semantic framing. Now `role="img"` +
+  `aria-label="Typed signature preview: {name}"`, inner `<p>`
+  aria-hidden to prevent double-announcement.
+
+- **A11y (decorative-icon aria-hidden sweep):** 4 lucide
+  icons — Pen (CardTitle + Draw-tab), Type (Type-tab),
+  RotateCcw (Clear), Check (Apply) — all `aria-hidden="true"`.
+
+- **Mobile (touch-target compliance):** Apply Signature was
+  default `h-10` (40px); Clear was `size="sm"` (36px). On a
+  legal-signature surface where a missed tap sends an empty
+  signature or re-opens canvas state, those are below the
+  44px baseline. Now both ship `min-h-11` (44px); Clear gets
+  `sm:min-h-9` to revert to 36px on desktop where cursor
+  precision makes the smaller target fine.
+
+- **Mobile (canvas height):** drawing canvas was fixed
+  `h-32` (128px) which is cramped on iPad or large phones.
+  Now `h-32 sm:h-40` — 160px at sm+ for noticeably more
+  room to draw a legible signature.
+
+- **Engineer (autocomplete polish):** signer-name Input
+  gained `autoComplete="name"` + `autoCapitalize="words"` +
+  `autoCorrect="off"`. Typed-signature Input gained
+  `autoComplete="off"` (avoid suggesting an unrelated name)
+  + `autoCapitalize="words"` + `autoCorrect="off"` +
+  `spellCheck={false}` so the browser doesn't underline the
+  user's surname as a typo.
+
+- **Copy (sentence-case sweep):** "Electronic Signature" →
+  "Electronic signature"; "Full Legal Name" → "Full legal
+  name"; "Type Your Signature" → "Type your signature";
+  "Apply Signature" → "Apply signature".
+
+- **Copy (description teaches the a11y path):** "Sign using
+  your finger, stylus, or mouse" → "Sign with your finger,
+  stylus, or mouse — or type your name on the Type tab for
+  a keyboard-only alternative." — makes the keyboard
+  fallback explicit and discoverable in plain sighted-user
+  copy, not just SR aria-label.
+
+- **Polish (checkbox alignment):** Checkbox got `mt-0.5`
+  so it aligns with the first line of the long consent
+  label instead of sitting above the baseline. Label got
+  `cursor-pointer` so the whole consent sentence is a
+  clickable hit target (consent-given remains guarded by
+  both the Checkbox semantics + the canSubmit check).
+
+- **SignatureDisplay polish:** signed-date display got
+  `tabular-nums` so the timestamp doesn't jitter when state
+  rerenders.
+
+**9-lens sign-off:**
+
+| Lens              | Status                                                                                                                           |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Designer          | PASS — sentence-case, tabular-nums on display date, canvas grows at sm+                                                          |
+| Mobile designer   | PASS — 44px touch on Apply + Clear, canvas h-32 sm:h-40 for more room, autocomplete + autoCapitalize on both inputs              |
+| Accessibility     | PASS — canvas role=img + state-aware aria-label, keyboard-alt path announced in copy, decorative icons aria-hidden, preview described |
+| Engineer          | PASS — autocomplete set appropriately, no type changes, no API changes                                                            |
+| AI systems        | N/A                                                                                                                                |
+| Land investor     | N/A (signer perspective): PASS — keyboard-only signers can discover the Type tab without experimenting                            |
+| Copywriter        | PASS — sentence-case sweep, description explicitly names keyboard path                                                             |
+| Infrastructure    | N/A — no network changes                                                                                                          |
+| Trust             | PASS — SR users get authoritative canvas state readouts, typed preview confirms what will be rendered                             |
+
+**Deferred / flagged for owner:**
+- **Canvas stroke + DPR scaling:** `initializeCanvas` sets
+  DPR-aware dimensions then scales the context, which is
+  correct. The `useEffect` guards re-init behind
+  `!hasSignature` on resize, but the guard fires from within
+  the same effect that includes `hasSignature` in deps —
+  theoretically fine, but could be tightened with a
+  `useLayoutEffect` + ResizeObserver. Deferred as an
+  engineering polish rather than a 9-lens refinement.
+- **Canvas keyboard-operable drawing:** conceptually,
+  keyboard users have zero canvas path; the Type tab
+  replaces it. Acceptable by design — any "keyboard draws"
+  solution would be a separate product decision.
+- **Signature download button** (`downloadSignatureImage`
+  helper at the bottom) is exported but not consumed by
+  this component. Left untouched — may have external
+  callers.
+
+**Commit:** (pending — will fill after commit)
+
+---
+
+## Session 14 — 2026-04-23 — Money-precision grep sweep continuation (`/properties`, `/deals`, `/campaigns-content`)
+
+**Scope:** Apply `usd()` helper across the remaining money-
+precision sites in `/properties`, `/deals`, and
+`components/campaigns-content.tsx`. One commit, focused
+targeted swap. Slice 12 shipped `usd()` + /finance; this
+slice propagates to the three surfaces explicitly named in
+the resume point. As with slice 12, this is NOT a full
+9-lens pass of each page — those pages are 3246, 1700+, and
+1500+ lines respectively and deserve their own dedicated
+passes. This slice is a surgical money-precision swap with
+small adjacent copy/a11y cleanup where it falls naturally.
+
+**`/properties.tsx` (3246 lines — targeted swap):**
+- 9 money sites routed through `usd()`:
+  marketValue on property card; price/acre on property card;
+  `formatCurrency` helper body (now returns "—" not "N/A"
+  for unset); verdict-strip price-per-acre; enrichment-tab
+  Median income; Median home value; County / State /
+  National Avg per acre (3 ag-value rows).
+- 2 non-money `.toLocaleString()` sites correctly left
+  alone: `sizeAcres` acreage (1623), `population`
+  demographics count (2690) — neither is a $ amount.
+- "N/A" → "—" on 3 verdict-strip fields (Price per acre,
+  Tax status, Acreage) matching the Money-unset display
+  rule's "—" convention.
+- Sentence-case sweep on the touched sections: "Price/Acre"
+  → "Price per acre"; "Tax Status" → "Tax status"; "Median
+  Income" → "Median income"; "Median Home Value" → "Median
+  home value"; "Poverty Rate" → "Poverty rate";
+  "Agricultural Values" → "Agricultural values"; "County
+  Avg / Acre" etc → sentence-case; "Data Year" → "Data
+  year".
+- tabular-nums on all touched $ values.
+
+**`/deals.tsx` (1700+ lines — targeted swap):**
+- 10 money sites through `usd()`:
+  Pipeline total; Closed total; deal-card offer+accepted
+  rendered amount; pricing-recommendation toast description;
+  pricing popover Suggested offer + Range min/max (2 lines);
+  DealDetailDrawer offer-amount tile; accepted-amount tile;
+  Property details Assessed value; Closing details Closing
+  costs.
+- Range display uses en-dash (&ndash;) instead of hyphen —
+  typographically correct for a numeric range.
+- tabular-nums on all touched $ values.
+- DollarSign icon on deal-card card-footer got aria-hidden.
+- "Suggested Offer" → "Suggested offer".
+
+**`components/campaigns-content.tsx` (1500+ lines — 1 site):**
+- Budget spent / total: `Spent ${spent} / ${budget}` →
+  `Spent {usd(spent, noCents)} / {usd(budget, noCents)}`.
+  Minor on its own but completes the campaigns surface for
+  the money-precision rule.
+
+**9-lens sign-off (applied only to touched sections):**
+
+| Lens              | Status                                                                            |
+| ----------------- | --------------------------------------------------------------------------------- |
+| Designer          | PASS — tabular-nums, sentence-case on touched sections, en-dash on deal range    |
+| Accessibility     | PASS — DollarSign icon aria-hidden on deal card                                   |
+| Engineer          | PASS — null/unset now flows through `usd() → "—"`; string-accepting signature     |
+| Trust             | PASS — money-precision rule now consistent across /finance + /properties + /deals |
+| Other lenses      | N/A — narrow swap, not a full page pass                                            |
+
+**Deferred:**
+- Full 9-lens pass on /properties, /deals, /campaigns each
+  remains their own future slice.
+- 72 client files still have bare `${X.toLocaleString()}`
+  on money contexts. Remaining files are lower-traffic or
+  founder-only dashboards — accept as per-surface follow-up.
+
+**Patterns reinforced:**
+- Money-precision rule + `usd()` helper now consistent
+  across the four highest-traffic money surfaces (/finance,
+  /properties, /deals, /campaigns, /portal).
+- "N/A" → "—" consistency tightens — the Money-unset
+  display rule (slice 5l) now applies beyond pure money
+  contexts (tax-status, acreage) where "N/A" was reading
+  bureaucratic; "—" is quieter.
+
+**Commit:** (pending — will fill after commit)

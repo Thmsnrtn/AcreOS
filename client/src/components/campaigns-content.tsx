@@ -1,4 +1,5 @@
 import { useCampaigns, useCreateCampaign, useUpdateCampaign, useDirectMailStatus, useUpdateMailMode, useSendDirectMail, useMailEstimate, useCampaignOptimizations, useOptimizeCampaign, useMarkOptimizationImplemented, useCampaignResponseTrend, useMailAttribution, useTestSendCampaign } from "@/hooks/use-campaigns";
+import { usd } from "@/lib/format";
 import { useLeads } from "@/hooks/use-leads";
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -1213,7 +1214,7 @@ function CampaignDetailDrawer({ campaign, onClose }: { campaign: Campaign; onClo
               <CardContent>
                 <div className="flex justify-between items-center">
                   <span className="text-muted-foreground">Spent</span>
-                  <span className="font-mono tabular-nums">${Number(campaign.spent || 0).toLocaleString()} / ${Number(campaign.budget).toLocaleString()}</span>
+                  <span className="font-mono tabular-nums">{usd(campaign.spent, { noCents: true })} / {usd(campaign.budget, { noCents: true })}</span>
                 </div>
                 <Progress
                   value={Number(campaign.budget) > 0 ? (Number(campaign.spent || 0) / Number(campaign.budget) * 100) : 0}
