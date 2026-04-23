@@ -3034,7 +3034,7 @@ focused pass.
   this component. Left untouched — may have external
   callers.
 
-**Commit:** (pending — will fill after commit)
+**Commit:** `252026c`
 
 ---
 
@@ -3119,4 +3119,4 @@ small adjacent copy/a11y cleanup where it falls naturally.
   contexts (tax-status, acreage) where "N/A" was reading
   bureaucratic; "—" is quieter.
 
-**Commit:** (pending — will fill after commit)
+**Commit:** `0ffdbde`

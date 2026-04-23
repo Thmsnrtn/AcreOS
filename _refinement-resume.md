@@ -1,23 +1,40 @@
 # Elite-Team Refinement — Resume Point
 
-**Last session:** 2026-04-23 (session 12 — money-precision rule + /finance)
-**Last completed refinement:** `client/src/lib/format.ts` +
-`client/src/pages/finance.tsx`. Introduced the canonical
-`usd()` helper (slice-10b rule made concrete as a reusable
-formatter). Accepts `number | string | null | undefined`,
-returns `"—"` on null/empty/NaN (folding the slice-5l
-Money-unset display rule into the helper), 2-decimal cents
-by default, `noCents` + `showSign` opts. Swapped all 16
-bare `.toLocaleString()` money renders in /finance.tsx:
-portfolio/income/originated tiles, notes table, detail card,
-loan progress, payment collection, payment history table,
-dunning past-due, plus the recharts axis + tooltip. Full
-tabular-nums + sentence-case sweep + icon aria-hidden on the
-affected sections. Progress bar got aria-label; Stripe-
-connect loader got role=status + sr-only label. 72 other
-files with bare `${X.toLocaleString()}` left as per-surface
-follow-up (incremental with each page's 9-lens pass, not a
-mechanical sweep).
+**Last session:** 2026-04-23 (session 14 — money sweep continuation: /properties + /deals + /campaigns)
+**Last completed refinement:** targeted `usd()` swap across
+three files. /properties (3246 lines): 9 money sites routed
+through usd(), sentence-case + "N/A" → "—" on touched
+sections, tabular-nums, non-money toLocaleString on acreage +
+population correctly left alone. /deals (1700+ lines): 10
+money sites including pipeline totals, deal cards, pricing
+popover, detail drawer, property details, closing costs;
+range uses &ndash;. /campaigns-content: budget spent/total
+line. All three NOT full 9-lens passes — surgical money-
+precision + small adjacent cleanup. Remaining 72 files with
+bare money `.toLocaleString()` are lower-traffic or
+founder-only — accept as per-surface follow-up.
+
+---
+
+**Prior session:** 2026-04-23 (session 13 — SignatureCapture 9b)
+**Prior completed refinement:** `client/src/components/signature-capture.tsx`
+(372 lines). Canvas gets role=img + state-aware aria-label
+(announces keyboard alternative on empty state). "Sign here"
+pseudo-placeholder aria-hidden. Typed-signature preview
+role=img + aria-label. 4 decorative icons aria-hidden.
+Apply/Clear buttons min-h-11 (Clear sm:min-h-9 for desktop).
+Canvas height grows h-32 sm:h-40. Full autocomplete /
+autoCapitalize / autoCorrect / spellCheck on both name
+inputs. Sentence-case sweep. CardDescription rewritten to
+explicitly name the keyboard path.
+
+---
+
+**Prior session:** 2026-04-23 (session 12 — money-precision rule + /finance)
+**Prior completed refinement:** `client/src/lib/format.ts` +
+`client/src/pages/finance.tsx`. `usd()` helper added;
+applied across all 16 bare `.toLocaleString()` money renders
+in /finance.
 
 ---
 
@@ -166,7 +183,9 @@ to a dedicated 9b slice.
 **jsPDF statement/1098 generator (10b.ii):** ⬜ deferred — product+compliance question on IRS Form 1098 fidelity; own slice
 **Public-form a11y grep sweep (11):** ✅ complete across /auth + /forgot-password + /reset-password + /beta-intake (commit `37b8911`)
 **Money-precision: usd() helper + /finance (12):** ✅ complete (commit `39227e7`)
-**Money-precision grep sweep (remaining 72 files):** ⬜ deferred — apply per-surface as each page gets 9-lens pass
+**SignatureCapture (9b):** ✅ complete (commit `252026c`)
+**Money sweep: /properties + /deals + /campaigns-content (14):** ✅ complete (commit `0ffdbde`)
+**Money-precision grep remaining (~70 files):** ⬜ deferred — apply per-surface as each page gets 9-lens pass
 
 ## How to continue
 
@@ -274,17 +293,28 @@ Session 11:
   confirmation only. (commit `37b8911`)
 
 Session 12:
-- `usd()` money formatter added to client/src/lib/format.ts
-  (slice-10b rule as reusable helper; folds in slice-5l
-  Money-unset display rule via null → "—"). Applied across
-  all 16 bare .toLocaleString() money renders in /finance.tsx
-  (tiles, notes table, detail card, loan progress, payment
-  collection, payment history, dunning, chart axis +
-  tooltip). Tabular-nums + sentence-case + icon aria-hidden
-  on affected sections. Progress bar aria-labeled; Stripe-
-  connect loader role=status + sr-only label. 72 other files
-  with bare `${X.toLocaleString()}` left as per-surface
-  follow-up. (commit `39227e7`)
+- `usd()` money formatter added to client/src/lib/format.ts;
+  applied across all 16 bare .toLocaleString() money renders
+  in /finance.tsx. (commit `39227e7`)
+
+Session 13:
+- `SignatureCapture` component (slice 9b, 372 lines) —
+  canvas role=img + state-aware aria-label announcing the
+  keyboard alternative, "Sign here" overlay aria-hidden,
+  typed preview role=img, 4 icons aria-hidden, 44px min
+  touch on Apply/Clear, canvas grows h-32 sm:h-40, full
+  autocomplete polish on both inputs, sentence-case sweep,
+  description explicitly names the keyboard path.
+  (commit `252026c`)
+
+Session 14:
+- Money-precision sweep continuation — targeted `usd()` swap
+  across /properties (9 sites), /deals (10 sites),
+  /campaigns-content (1 site). "N/A" → "—" on 3 verdict-
+  strip fields per Money-unset display rule. Sentence-case
+  + tabular-nums on touched sections. Non-money
+  toLocaleString on acreage + population correctly left
+  alone. NOT full 9-lens passes of any page. (commit `0ffdbde`)
 
 ## Cross-cutting gains this pass
 
@@ -511,31 +541,55 @@ Session 12:
 
 ## Next surface to refine
 
-**Recommended next slice: full `/finance` 9-lens pass (12b).**
-Slice 12 was narrow (money-precision rule application only).
-The remaining ~1500 lines of /finance.tsx have: create-note
-form dialog, delete-note confirmation, payment-record dialog,
-Stripe Connect configuration, dunning manager, multiple
-drawers and cards that weren't touched. Natural next target.
+**Recommended next slices:**
 
-Alternatives, any of which is valid:
-1. `SignatureCapture` component (slice 9b) — 372-line canvas
-   / typed / consent pad. Own a11y + mobile-touch pass.
-2. jsPDF 1098 generator (slice 10b.ii) — product+compliance
-   question on IRS form fidelity. Best paired with owner
-   clarification on e-filing goals.
-3. `/campaigns` 6c (AbTestManager + CampaignVariantsPanel +
-   CampaignAnalytics) — deferred component-set for campaigns.
-4. `/properties` money-precision pass — apply `usd()` across
-   /properties + do a light 9-lens pass on the pieces touched.
-5. `/deals` same pattern.
-6. `/today` or `/dashboard` — entry surface for authenticated
-   users; likely has its own trust + density concerns.
+1. **`/today` or `/dashboard` — authenticated entry surface.**
+   First thing customers see after sign-in. Likely dense
+   with widgets + stats + activity feed + CTAs. Primary
+   visibility surface for a 9-lens pass. Haven't been
+   touched since sessions 1-3 infrastructure work.
 
-**Pick the one that fits the next session's energy budget.**
-Components (9b, 10b.ii) are tight and well-defined. Full-
-page slices (/finance 12b, /today, /dashboard) are larger
-but higher visibility.
+2. **Full `/finance` 9-lens pass (12b)** — slice 12 was
+   narrow (money-precision only). Remaining ~1500 lines:
+   create-note form dialog, delete confirmation, payment-
+   record dialog, Stripe Connect configuration, dunning
+   manager, drawer + cards that weren't touched.
+
+3. **`/leads` full 9-lens pass** — lead capture is trust-
+   critical for acquisition. Last touched in session 3 for
+   mobile checkbox tap targets only. Dedupe flow was
+   covered in session 4, but main list view still
+   unreviewed.
+
+4. **jsPDF 1098 generator (slice 10b.ii)** — product +
+   compliance question on IRS form fidelity. Best paired
+   with owner clarification on e-filing goals.
+
+5. **`/campaigns` 6c (AbTestManager + CampaignVariantsPanel
+   + CampaignAnalytics)** — deferred component-set from
+   session 6.
+
+6. **`/settings` full 9-lens pass** — lightly touched in
+   session 3 (tier badges) but the full surface has
+   Profile / Billing / Team / API / Integrations /
+   Deletion flows that need attention.
+
+7. **`/onboarding-v2` full 9-lens pass** — lightly touched
+   in session 2. Multi-step flow, first-run critical.
+
+**Pick based on session energy budget.** /today and /finance
+12b are larger. /onboarding-v2, /settings, /leads are
+medium. Component-level slices (6c, 10b.ii) are tighter.
+
+**Grep candidates** (apply cross-cutting rules horizontally
+like slice 11 did for public forms):
+- `.toLocaleString()` on money still present in ~70 files;
+  highest value targets are `/offers`, `/investor-directory`,
+  `/tax-delinquent`, `/property-tax`, dashboard widgets.
+- `window.confirm()` ban rule — grep for any remaining
+  native confirms across the client.
+- Decorative-icon aria-hidden sweep — open-ended, apply
+  surface-by-surface.
 
 ## Deferred / flagged for owner decision
 
@@ -578,13 +632,34 @@ but higher visibility.
   `storage`, `autonomousDealMachine`, `countyAssessorIngest`,
   `supportAgent`, etc. — not blocking client refinement work.
 
-## Expected HEAD after session 12
+## Expected HEAD after session 14
 
-Session 12 shipped `39227e7 refine(finance): …` on top of
-`37b8911 refine(public-forms): …` (session 11) on top of
-`cf01654 refine(portal/dashboard): …` (session 10b). Slices
-11-12 applied earlier cross-cutting rules horizontally (slice
-11: public-form a11y checklist across 4 files; slice 12:
-money-precision rule → canonical `usd()` helper + /finance).
-No new cross-cutting rules added in this pair — confirmation
-that the rule machinery from slices 8-10b is productive.
+Session chain 8 → 14 cadence (all shipped atomic + docs):
+
+- `234dafa` slice 8  — /documents
+- `61f1469` slice 9  — /sign/:docId
+- `c6438ba` slice 10 — /portal/:accessToken entry
+- `cf01654` slice 10b — BorrowerDashboard
+- `37b8911` slice 11 — public-form a11y sweep
+- `39227e7` slice 12 — usd() helper + /finance
+- `252026c` slice 13 — SignatureCapture (9b)
+- `0ffdbde` slice 14 — money sweep: properties/deals/campaigns
+
+Cross-cutting rules introduced across this chain (all now
+documented in the cross-cutting patterns list):
+- Silent-query→toast trust-surface amplifier (8)
+- Restore-older-state ConfirmDialog (8)
+- Submit-error-must-not-unmount-form (9)
+- Focus-on-success-confirmation (9)
+- Legal-disclosure minimum-size (9)
+- Retry-on-load-error (9)
+- Public-form a11y checklist (10)
+- Trust-claim specificity (10)
+- Money-precision rule (10b, helper shipped in 12)
+- Silent-mutation-on-messaging (10b)
+- Definition-list semantic (10b)
+- Unread-count badge min-width (10b)
+
+~70 money-precision sites across non-critical surfaces
+remain deferred. All critical legal/trust/money surfaces
+now honor the cross-cutting rules.
