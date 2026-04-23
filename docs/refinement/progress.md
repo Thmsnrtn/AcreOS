@@ -2601,4 +2601,4 @@ fidelity requirements.
   Also: parent button gets `aria-label="X (N unread)"` so
   SR users don't double-announce the raw digit.
 
-**Commit:** (pending — will fill after commit)
+**Commit:** `cf01654`

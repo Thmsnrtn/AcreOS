@@ -1,7 +1,52 @@
 # Elite-Team Refinement — Resume Point
 
-**Last session:** 2026-04-23 (session 10 — `/portal/:accessToken` entry)
+**Last session:** 2026-04-23 (session 10b — `<BorrowerDashboard>` full pass)
 **Last completed refinement:** `client/src/pages/borrower-portal.tsx`
+lines 188-end — the ~1000-line authenticated borrower dashboard.
+Two P0 money-surface trust bugs fixed:
+(1) **silent messaging failures**: `loadMessages` + `handle
+SendMessage` used `// silently ignore` on error. User sends a
+loan question to their lender, composer clears, server never
+received it. Now both surface inline `role=alert` + retry
+button; composer input preserved on send-error;
+(2) **money precision cents loss**: bare `.toLocaleString()`
+drops cents on integer values — a borrower paying the
+displayed Total payoff amount could be short on their loan.
+All rendered $ amounts (payment-due, stat cards, loan details,
+payment history columns, payoff breakdown + total) now
+explicit `{ minimumFractionDigits: 2, maximumFractionDigits:
+2 }`.
+
+Also: role=alert/role=status wired across payment banners
+(assertive on errors). Autopay Switch got accessible name.
+Progress bar got descriptive aria-label. Scrollable tables
+are tabbable region landmarks. Message thread is role=log +
+aria-live=polite with SR-only "Sent —" / "Received —" bubble
+prefixes (slice 7 pattern). Mobile bottom bar → `<nav>`
+landmark. 20+ decorative icons aria-hidden. Loan-details +
+Property-info + Payoff-breakdown promoted from flex `<span>`
+pairs to `<dl>`/`<dt>`/`<dd>`. Unread-count badges:
+min-w-[16px] px-1 so two-digit counts don't clip; parent
+buttons got "(N unread)" aria-label; badges aria-hidden.
+Sentence-case sweep (AcreOS Portal → portal, Pay Now/Early →
+Pay now/early, Loan Progress/Details, Payment History/
+Schedule, Payoff Quote/Fee, all stat labels and dialog
+titles). Proper ellipsis + em-dash. "Form 1098 (mortgage
+interest — tax)" IRS-form-faithful menu label. Cancelled-
+payment says "no charge was made" to reassure borrowers
+backing out of Stripe checkout. N/A → —. Mobile-nav touch
+min-h-14; quick-action min-h-16. Tabular-nums sweep.
+
+Deferred: jsPDF statement/1098 generator (product +
+compliance question), Stripe-success reload hack (needs
+react-query refactor), payoff-dialog flash-on-error (minor
+polish), tab-click DOM hack (needs Radix Tabs controlled
+state).
+
+---
+
+**Prior session:** 2026-04-23 (session 10 — `/portal/:accessToken` entry)
+**Prior completed refinement:** `client/src/pages/borrower-portal.tsx`
 (lines 35-186 — `BorrowerPortal` verification gate +
 `BorrowerLandingPage` + the intermediate loading interstitial).
 Public no-auth surface, mobile-critical. Form a11y overhauled:
@@ -69,8 +114,9 @@ to a dedicated 9b slice.
 **/sign/:docId:** ✅ slice 9 complete (commit `61f1469`)
 **SignatureCapture component (9b):** ⬜ deferred — 372-line canvas/typed/consent component, own slice
 **/portal/:accessToken entry (gate + landing):** ✅ slice 10 complete (commit `c6438ba`)
-**BorrowerDashboard (10b):** ⬜ deferred — ~1000 lines, payment/autopay/payoff/statements/messaging — own slice
-**/auth, /forgot-password, /reset-password public-form audit:** ⬜ candidate follow-up from slice 10 "public-form a11y checklist" pattern grep
+**BorrowerDashboard (10b):** ✅ slice 10b complete (commit `cf01654`)
+**jsPDF statement/1098 generator (10b.ii):** ⬜ deferred — product+compliance question on IRS Form 1098 fidelity; own slice
+**/auth, /forgot-password, /reset-password public-form audit:** ⬜ candidate follow-up — apply slice 10 public-form a11y checklist (grep sweep)
 
 ## How to continue
 
@@ -145,11 +191,23 @@ Session 10:
 - `/portal/:accessToken` entry (lines 35-186) — public no-auth
   borrower verification gate + no-token landing + loading
   interstitial. Public-form a11y checklist introduced and
-  shipped (Label htmlFor, aria-invalid + aria-describedby,
-  role=alert, form onSubmit, mobile-keyboard attrs, h1
-  landmark). Trust-copy specificity ("encrypted in transit
-  and at rest"). Borrower-voice error fallbacks. BorrowerDashboard
-  (~1000 lines) deferred to 10b. (commit `c6438ba`)
+  shipped. Trust-copy specificity. Borrower-voice error
+  fallbacks. (commit `c6438ba`)
+
+Session 10b:
+- `<BorrowerDashboard>` (lines 188-end of borrower-portal.tsx)
+  — the full authenticated borrower experience. Two P0 money-
+  surface fixes: silent messaging failures + bare
+  .toLocaleString() cent-dropping. role=alert/status on
+  payment banners, Autopay Switch accessible name, Progress
+  bar labeled, tables become tabbable regions, message thread
+  role=log + aria-live + SR direction prefix, mobile bottom
+  bar → nav landmark, 20+ aria-hidden icons, fact-pair rows
+  → `<dl>`/`<dt>`/`<dd>`, unread badges handle two-digit
+  counts without clipping, sentence-case sweep, proper
+  ellipsis + em-dash, Form-1098 faithful menu label,
+  cancelled-payment reassurance. jsPDF generator deferred.
+  (commit `cf01654`)
 
 ## Cross-cutting gains this pass
 
@@ -346,26 +404,57 @@ Session 10:
   "Your information is encrypted in transit and at rest"
   reads as a system-design claim and calibrates trust
   better. Where the stronger claim is accurate, use it.
+- **Money-precision rule (new 10b):** on a money surface,
+  ALL rendered dollar amounts must explicitly set
+  `{ minimumFractionDigits: 2, maximumFractionDigits: 2 }`
+  via `.toLocaleString()`, or use a typed helper. Bare
+  `.toLocaleString()` is a trust bug: it drops cents on
+  integer values. **Grep candidate** across `/properties`,
+  `/deals`, `/campaigns`, `/finance` for bare
+  `.toLocaleString()` on money values.
+- **Silent-mutation-on-messaging rule (new 10b):** on any
+  conversation-thread UI (borrower ↔ lender, user ↔ support,
+  user ↔ agent), a message send that clears the composer on
+  client but fails on server is the worst-case trust bug.
+  User believes the message was sent. MUST surface inline
+  error + preserve the composer input on failure. Tighter
+  variant of the Submit-error-must-not-unmount-form rule (9)
+  specifically for conversational UIs.
+- **Definition-list semantic rule (new 10b):** fact-pair rows
+  showing `Label:` + `Value` should be `<dl>` + `<dt>`/`<dd>`,
+  not `<span>/<span>` in a flex row. SR users hear labeled
+  pairs instead of two unrelated text runs. Applies wherever
+  a page shows metadata card-style.
+- **Unread-count badge min-width rule (new 10b):** badges
+  showing `{count}` with fixed `w-4` (16px) clip at ≥10.
+  Use `min-w-[16px] px-1` + `tabular-nums` so badges grow
+  cleanly as the count crosses one/two/three digits. Parent
+  button must carry `aria-label="X (N unread)"`; badge span
+  must be `aria-hidden="true"` to avoid double-announcement.
 
 ## Next surface to refine
 
-**Next slice: 10b — `<BorrowerDashboard>` (lines 188-end of borrower-portal.tsx).**
-~1000 lines of dashboard: loan summary, payment flow (Stripe
-redirect), autopay toggle, payoff quote request, statement /
-1098 PDF generator, borrower ↔ lender messaging, payment
-history table. Each of those is its own trust+money concern;
-may need sub-slices (10b.i loan summary + payment, 10b.ii
-payoff + statements, 10b.iii messaging). Scan-and-slice on
-entry.
+**Next slice: public-form grep sweep.** Apply the slice-10
+public-form a11y checklist across the remaining public surfaces:
+`/auth` (Clerk widget — limited surface we control, but
+surrounding wrapper), `/forgot-password`, `/reset-password`,
+`beta-intake.tsx`. Likely one atomic commit. Use the checklist:
+`<Label htmlFor>` + Input `id`, `role="alert"` on validation,
+`aria-invalid` + `aria-describedby`, form `onSubmit`,
+mobile-keyboard attrs, h1 landmark, 44px touch, proper
+`useDocumentTitle`. Also grep for `.toLocaleString()` money
+rendering across the app per the slice-10b money-precision
+rule.
 
-After 10b, move per inventory to:
-1. Public-form a11y checklist **grep sweep** — apply the new
-   slice-10 checklist to `/auth`, `/forgot-password`,
-   `/reset-password`, `beta-intake.tsx` (1 commit, likely
-   small).
+After that slice, move per inventory to:
+1. Money-precision **grep sweep** — `/properties`, `/deals`,
+   `/campaigns`, `/finance` (apply the slice-10b rule).
 2. `SignatureCapture` component (slice 9b) — 372-line canvas /
    typed / consent pad, own a11y + mobile-touch pass.
-3. `/campaigns` 6c (AbTestManager + CampaignVariantsPanel +
+3. jsPDF generator (slice 10b.ii) — Form 1098 + account
+   statement PDF body. Product+compliance question on IRS
+   form-field fidelity.
+4. `/campaigns` 6c (AbTestManager + CampaignVariantsPanel +
    CampaignAnalytics sub-panels) — deferred, not blocking.
 
 ## Deferred / flagged for owner decision
@@ -409,11 +498,12 @@ After 10b, move per inventory to:
   `storage`, `autonomousDealMachine`, `countyAssessorIngest`,
   `supportAgent`, etc. — not blocking client refinement work.
 
-## Expected HEAD after session 10
+## Expected HEAD after session 10b
 
-Session 10 shipped `c6438ba refine(portal): …` on top of
-`61f1469 refine(sign): …` (session 9). Slice 10 introduced
-two cross-cutting rules (public-form a11y checklist,
-trust-claim specificity) and a public-form grep candidate
-follow-up across `/auth`, `/forgot-password`, `/reset-
-password`, `beta-intake`.
+Session 10b shipped `cf01654 refine(portal/dashboard): …` on
+top of `c6438ba refine(portal): …` (session 10). Slice 10b
+introduced four cross-cutting rules (money-precision rule,
+silent-mutation-on-messaging rule, definition-list semantic
+rule, unread-count badge min-width rule) and squashed two P0
+money-surface trust bugs (silent messaging failures + bare
+`.toLocaleString()` cent-dropping).
