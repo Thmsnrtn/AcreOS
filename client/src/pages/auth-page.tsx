@@ -62,9 +62,16 @@ export default function AuthPage() {
     // us a user and the accept POST is mid-flight.
     if (user && !isHandlingCallback) {
       return (
-        <div className="min-h-screen flex items-center justify-center bg-background">
+        <div
+          className="min-h-screen flex items-center justify-center bg-background"
+          role="status"
+          aria-live="polite"
+        >
           <div className="flex flex-col items-center gap-3">
-            <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" />
+            <div
+              className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full"
+              aria-hidden="true"
+            />
             <p className="text-sm text-muted-foreground">Joining organization…</p>
           </div>
         </div>
@@ -81,8 +88,16 @@ export default function AuthPage() {
   // Still resolving the server-side auth check after ticket/OAuth — loader.
   if (isLoading && !isHandlingCallback) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" />
+      <div
+        className="min-h-screen flex items-center justify-center bg-background"
+        role="status"
+        aria-live="polite"
+      >
+        <div
+          className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full"
+          aria-hidden="true"
+        />
+        <span className="sr-only">Signing you in…</span>
       </div>
     );
   }
@@ -102,13 +117,19 @@ export default function AuthPage() {
         aria-hidden="true"
       />
       <div className="w-full max-w-md flex flex-col items-center gap-6">
+        <h1 className="sr-only">
+          {mode === "sign-up" ? `Create a ${brandName} account` : `Sign in to ${brandName}`}
+        </h1>
         {/* Branding — swaps to white-label tenant name when configured */}
         <div className="flex flex-col items-center gap-3">
           <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-sm">
+            <div
+              className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-sm"
+              aria-hidden="true"
+            >
               <span className="text-white font-bold text-lg">{brandName.slice(0, 1)}</span>
             </div>
-            <span className="text-2xl font-bold tracking-tight">{brandName}</span>
+            <span className="text-2xl font-bold tracking-tight" aria-hidden="true">{brandName}</span>
           </div>
           <p className="text-sm text-muted-foreground text-center">
             The AI-powered platform for Land Investors
@@ -131,7 +152,7 @@ export default function AuthPage() {
             toggle still exists via route/hash if needed programmatically. */}
         <Link
           href="/"
-          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors px-3 py-2 -m-2 rounded-md"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors px-3 py-2 -m-2 rounded-md min-h-11"
         >
           <ArrowLeft className="w-3.5 h-3.5" aria-hidden="true" />
           Back to home

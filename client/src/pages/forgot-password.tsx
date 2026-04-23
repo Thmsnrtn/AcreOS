@@ -6,8 +6,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ArrowLeft, Loader2, CheckCircle } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 export default function ForgotPasswordPage() {
+  useDocumentTitle("Reset your password");
   const [email, setEmail] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [sent, setSent] = useState(false);
@@ -22,7 +24,7 @@ export default function ForgotPasswordPage() {
       await apiRequest("POST", "/api/auth/forgot-password", { email });
       setSent(true);
     } catch (err: any) {
-      setError(err.message || "Failed to send reset email");
+      setError(err?.message || "We couldn't send the reset email right now. Check your connection and try again.");
     } finally {
       setIsLoading(false);
     }
@@ -34,7 +36,7 @@ export default function ForgotPasswordPage() {
         <CardContent className="p-8 space-y-6">
           <div className="space-y-1">
             <Link href="/auth">
-              <Button variant="ghost" size="sm" className="-ml-2">
+              <Button variant="ghost" size="sm" className="-ml-2 min-h-11">
                 <ArrowLeft className="w-4 h-4 mr-2" aria-hidden="true" />
                 Back to sign in
               </Button>
@@ -46,20 +48,21 @@ export default function ForgotPasswordPage() {
           </div>
 
           {sent ? (
-            <div className="flex flex-col items-center gap-3 py-4" role="status">
+            <div className="flex flex-col items-center gap-3 py-4" role="status" aria-live="polite">
               <CheckCircle className="w-12 h-12 text-emerald-500" aria-hidden="true" />
               <p className="text-center text-sm text-muted-foreground">
                 If an account exists for <strong>{email}</strong>, you'll receive a
                 reset link within a few minutes.
               </p>
               <Link href="/auth">
-                <Button variant="outline" className="mt-2">Return to sign in</Button>
+                <Button variant="outline" className="mt-2 min-h-11">Return to sign in</Button>
               </Link>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
               {error && (
                 <p
+                  id="forgot-error"
                   className="text-sm text-destructive bg-destructive/10 rounded p-2"
                   role="alert"
                 >
@@ -76,10 +79,21 @@ export default function ForgotPasswordPage() {
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@example.com"
                   autoComplete="email"
+                  inputMode="email"
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  aria-invalid={error ? true : undefined}
+                  aria-describedby={error ? "forgot-error" : undefined}
                   data-testid="input-forgot-email"
                 />
               </div>
-              <Button type="submit" className="w-full" disabled={isLoading} data-testid="button-forgot-submit">
+              <Button
+                type="submit"
+                className="w-full min-h-11"
+                disabled={isLoading}
+                data-testid="button-forgot-submit"
+              >
                 {isLoading && <Loader2 className="w-4 h-4 animate-spin mr-2" aria-hidden="true" />}
                 Send reset link
               </Button>

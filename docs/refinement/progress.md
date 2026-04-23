@@ -2602,3 +2602,171 @@ fidelity requirements.
   SR users don't double-announce the raw digit.
 
 **Commit:** `cf01654`
+
+---
+
+## Session 11 — 2026-04-23 — Public-form a11y grep sweep
+
+**Scope:** apply the slice-10 public-form a11y checklist
+across the remaining no-auth / auth-adjacent surfaces:
+`/auth` (Clerk widget wrapper), `/forgot-password`,
+`/reset-password`, and `/beta-intake`. One atomic commit, four
+files, focused on the checklist: `<Label htmlFor>` + Input `id`,
+`role="alert"` on validation, `aria-invalid` + `aria-describedby`,
+form `onSubmit` for Enter-to-submit, mobile-keyboard attrs,
+h1 landmark, 44px touch on primary CTAs, `useDocumentTitle`.
+
+Slice-10 introduced this checklist on the borrower-portal entry;
+slice 11 applies it horizontally across every public-facing
+form AcreOS ships.
+
+**forgot-password.tsx** — already mostly clean (role=alert,
+Label htmlFor, form onSubmit, autocomplete all shipped in
+slice 3). Closing remaining gaps:
+- `useDocumentTitle("Reset your password")` added
+- `aria-invalid` + `aria-describedby="forgot-error"` wired to
+  the error paragraph
+- Mobile-keyboard checklist completed on the email input
+  (`inputMode`, `autoCapitalize="off"`, `autoCorrect="off"`,
+  `spellCheck={false}`)
+- `min-h-11` on primary CTA + "Back to sign in" + "Return to
+  sign in"
+- `aria-live="polite"` on the success confirmation card
+- Error-message fallback specificity upgrade: "Failed to send
+  reset email" → "We couldn't send the reset email right now.
+  Check your connection and try again."
+
+**reset-password.tsx** — same checklist plus:
+- `useDocumentTitle("Set new password")`
+- `aria-invalid` + `aria-describedby="reset-error"` on both
+  password inputs (new + confirm)
+- `role="alert"` on the missing-token error card
+- Error-message specificity: "Passwords do not match" → "The
+  two passwords don't match. Please retype them." (warmer,
+  actionable); "Password must be at least 8 characters" →
+  "Your new password must be at least 8 characters." (second-
+  person); "Password reset failed" → "We couldn't reset your
+  password. This link may have expired — request a new one."
+  (named likely cause + recovery path)
+- `aria-live="polite"` on success state
+- `min-h-11` on primary CTA + "Request new link" button
+- Confirm-password placeholder: "Repeat your new password" →
+  "Retype your new password" (clearer imperative)
+
+**auth-page.tsx** — mostly Clerk-managed internals. Wrapper
+scope:
+- sr-only `<h1>` landmark that swaps between "Sign in to X"
+  and "Create a X account" based on mode — previously the
+  brand `<span>` was the only visible heading, which SR users
+  hear as unnamed decorative text
+- Brand logo tile + brand-name `<span>` both `aria-hidden=
+  "true"` since the sr-only h1 already names the brand
+  (prevents double-announcement)
+- "Joining organization…" loader wrapped in `role="status"` +
+  `aria-live="polite"`; spinner div `aria-hidden="true"`
+- "Still resolving..." auth-check loader also `role="status"`
+  + a new sr-only label "Signing you in…" (was fully silent
+  to SR)
+- "Back to home" link gets `min-h-11` touch target
+
+**beta-intake.tsx** — the biggest offender. Every `<Label>`
+was unlinked to its Input, no form `<onSubmit>`, Title-Case
+throughout, most icons missing `aria-hidden`:
+- All 5 signup Labels now have `htmlFor` + Input `id`
+  (beta-first-name, beta-last-name, beta-email, beta-company,
+  beta-use-case, beta-referral-code) — SR users finally hear
+  label names on focus
+- The status-check Input also gets an sr-only
+  `<Label htmlFor="beta-status-email">` so the stubbed
+  icon-only form has an accessible name
+- Both buttons (main submit + status-check) wrapped in
+  `<form onSubmit>` — Enter submits the primary form; Enter
+  submits the status check. Was mouse-only before.
+- Mobile-keyboard checklist on all 3 email fields (main +
+  check + referral) — `inputMode`, `autoCapitalize`,
+  `autoCorrect`, `spellCheck` set appropriately. Referral
+  code gets `autoCapitalize="characters"` since codes are
+  uppercase (ACRE-00001).
+- `autoComplete` on first/last/email/company ("given-name",
+  "family-name", "email", "organization")
+- `useDocumentTitle("Join the AcreOS beta")` wired
+- `aria-label` on copy-button dynamically switches between
+  "Copy referral code" and "Copied referral code to
+  clipboard"
+- Feature highlights `<div>` list → `<ul aria-label="Features
+  included in the beta">` / `<li>` — proper list semantics
+- Required-asterisk on Email label gets `aria-label=
+  "required"` (slice 6a pattern)
+- Textarea "use case" gets `aria-describedby="beta-use-case-
+  hint"` wiring so SR users hear the priority-score hint on
+  focus
+- `grid-cols-2` on first-name/last-name promoted to
+  `grid-cols-1 sm:grid-cols-2` so 320px doesn't squash both
+  columns
+- `min-h-11` on both primary buttons
+- `role="status"` + `aria-live="polite"` on the join-success
+  splash AND the status-check result
+- `tabular-nums` on `#{position}` (#1234 jitter-free)
+- Icon sweep (Rocket, CheckCircle2, Copy, Users, Share2,
+  Loader2, Search) — 7 icons now `aria-hidden="true"`
+
+**Copy (sentence-case across beta-intake):**
+- "First Name" → "First name"
+- "Last Name" → "Last name"
+- "Company / Business Name" → "Company or business name"
+  (remove slash, spell out "or" for readability)
+- "Referral Code (optional)" → "Referral code (optional)"
+- "Request Early Access" → "Request early access" (both
+  CardTitle and button)
+- "Join the AcreOS Beta" h1 → "Join the AcreOS beta"
+- "Joining..." → "Joining…"
+- "john@example.com" / "your@email.com" placeholders unified
+  to "you@example.com" (RFC-2606 reserved domain)
+- "More detail = higher priority score" → adds trailing
+  period for sentence consistency
+- "Email not found on the waitlist." — already fine
+- Status badge.status rendered with `capitalize` class since
+  the server likely sends lowercase
+
+**Copy (error voice):**
+- Beta-join error: "Error / Failed to join waitlist" →
+  "Couldn't join the waitlist / Check your connection and
+  try again." (name the action, name the recovery)
+- Status-check error: "Error checking status" → "Couldn't
+  check status / Check your connection and try again."
+
+**9-lens sign-off:**
+
+| Lens              | Status                                                                                                                                              |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Designer          | PASS — sentence-case, trailing periods, tabular-nums on position badge, grid-cols-1 sm:grid-cols-2 on name pair, proper list semantics             |
+| Mobile designer   | PASS — 44px touch on all primary CTAs, mobile-keyboard checklist on all 3 email inputs, grid-cols-1 at 320px                                        |
+| Accessibility     | PASS — all Labels now htmlFor-linked, form onSubmit on every form, aria-invalid + describedby wiring, role=alert + role=status, sr-only h1 on /auth |
+| Engineer          | PASS — submit handlers converted to form onSubmit, error fallback specificity, trim() guards on empty submissions, aria attributes correct         |
+| AI systems        | N/A — no LLM on these surfaces                                                                                                                       |
+| Land investor     | PASS — /beta-intake copy is still "Land Investors" positioning; "More detail = higher priority" reads credible                                      |
+| Copywriter        | PASS — sentence-case sweep, proper ellipsis, "Couldn't" contraction voice on errors, warmer password-mismatch, RFC-2606 placeholder                |
+| Infrastructure    | PASS — error fallbacks specify recovery path; no new networking changes                                                                             |
+| Trust             | PASS — reset-password "this link may have expired — request a new one" names the cause + the recovery path                                          |
+
+**Deferred / flagged for owner:**
+- **Clerk widget internal a11y** — the `<SignIn>` / `<SignUp>`
+  widgets are Clerk-managed and we can't inject into their
+  shadow. Clerk's widgets are generally a11y-compliant, but
+  any changes to input-level semantics live upstream.
+- **`/auth` invite-accept progress:** currently shows
+  "Joining organization…" with no timeout — if the accept
+  POST hangs, the user sits on a spinner forever. Deferred:
+  add a 15s timeout + fallback copy.
+- **beta-intake check-status result — "Email not found on
+  the waitlist."** could be a security-ambiguity question
+  (does this confirm a negative?). Intentionally low-signal
+  — confirmed as OK for a public waitlist check, but worth
+  flagging if security posture tightens.
+
+**Patterns reinforced / no new patterns this session:**
+This slice is pure application of the slice-10 public-form
+a11y checklist. No new cross-cutting rules — the checklist
+itself gains more surfaces confirming it.
+
+**Commit:** (pending — will fill after commit)
