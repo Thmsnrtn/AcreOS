@@ -40,6 +40,16 @@ createRoot(document.getElementById("root")!).render(
     proxyUrl="/__clerk"
     signInFallbackRedirectUrl="/today"
     signUpFallbackRedirectUrl="/onboarding-v2"
+    appearance={{
+      // Clerk's default brand color is purple (#6c47ff). Override to our
+      // terracotta primary so the Sign In / Sign Up widgets match the
+      // rest of AcreOS. Hex mirrors hsl(18 48% 52%) = terracotta.
+      variables: {
+        colorPrimary: "#c17a4c",
+        borderRadius: "0.625rem",
+        fontFamily: "inherit",
+      },
+    }}
   >
     <App />
   </ClerkProvider>

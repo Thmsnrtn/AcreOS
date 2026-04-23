@@ -203,17 +203,17 @@ export default function LandingPage() {
           aria-hidden="true"
         />
         <div className="max-w-4xl mx-auto text-center space-y-6">
-          <h1 className="text-5xl sm:text-6xl font-bold tracking-tight">
+          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight">
             The AI-Powered Platform for{" "}
             <span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
               Land Investors
             </span>
           </h1>
-          <p className="text-xl text-foreground/80 max-w-2xl mx-auto">
+          <p className="text-lg sm:text-xl text-foreground/80 max-w-2xl mx-auto">
             Find motivated sellers. Analyze parcels. Send direct mail. Close deals.
             All in one platform.
           </p>
-          <div className="flex gap-3 justify-center pt-4">
+          <div className="flex flex-col sm:flex-row gap-3 justify-center items-stretch sm:items-center pt-4 max-w-xs sm:max-w-none mx-auto">
             <Button size="lg" asChild>
               <Link href="/auth?mode=register">
                 Get Started Free <ArrowRight className="ml-2 h-4 w-4" />
@@ -319,7 +319,7 @@ export default function LandingPage() {
           <p className="text-muted-foreground">
             Start free. Upgrade when you're ready. 14-day free trial on all paid plans.
           </p>
-          <div className="grid sm:grid-cols-4 gap-4 mt-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-8">
             {[
               { name: "Free", price: "$0", desc: "10 leads, 3 properties" },
               { name: "Starter", price: "$20/mo", desc: "250 leads, campaigns" },
