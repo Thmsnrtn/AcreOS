@@ -1426,3 +1426,159 @@ referenced by the inline error state that `QueryErrorState` replaced.
   `aria-hidden="true"` so SR users hear one selection state, not two.
 
 **Commit:** (this commit)
+
+
+## Slice 6b — `/campaigns` CampaignDetailDrawer + SendMailDialog + OptimizerSuggestionsPanel
+
+**Scope:** `client/src/components/campaigns-content.tsx` —
+`CampaignDetailDrawer` (the hand-rolled overlay that opens when a card
+is clicked), `SendMailDialog` (launched from the drawer header),
+`OptimizerSuggestionsPanel` (collapsible AI card inside the drawer).
+
+### Refinements shipped
+
+**Dialog semantics per 5l Esc rule (Accessibility, Engineer):**
+`CampaignDetailDrawer` was a hand-rolled overlay with no aria role, no
+aria-modal, no labelledby, and no Escape handler — same anti-pattern
+as DealDetailDrawer in 5l. Minimum-viable fix per the 5l rule:
+`role="dialog"`, `aria-modal="true"`, `aria-labelledby={titleId}` where
+`titleId` is a stable per-campaign id wired into the h2, and a
+`useEffect` that listens for `Escape` and calls `onClose()`. The Esc
+listener short-circuits when `SendMailDialog` is open so Esc closes
+the nested Radix Dialog first. Full Radix Sheet conversion (which
+would give focus-trap + focus-restoration for free) is deferred as a
+larger refactor — same as DealDetailDrawer.
+
+**Close button aria-label (Accessibility):**
+`<Button variant="ghost" onClick={onClose}>Close</Button>` — the
+visible label is "Close" but a SR user moving between drawers has no
+way to tell which drawer's close this is. Added
+`aria-label="Close campaign detail"`. Targeted label matches the
+pattern used on DealDetailDrawer close.
+
+**Sentence-case sweep on drawer (Copywriter):**
+"Total Sent" → "Total sent"; "Campaign Metrics" → "Campaign metrics";
+"Delivery Rate" / "Open Rate" / "Response Rate" → sentence case;
+"Direct Mail Performance" → "Direct mail performance"; "Pieces Sent"
+→ "Pieces sent"; "Responses Attributed" → "Responses attributed";
+"Scheduled Date" → "Scheduled date"; "Response Analytics" → "Response
+analytics". Header action buttons: "Send Mail" → "Send mail", "Send
+Test Email" → "Send test email", "Sending..." → "Sending…". Toast:
+"Test Mode Enabled" etc. already handled in 6a. `SendMailDialog`:
+"Send Direct Mail" → "Send direct mail"; "Mail Piece Type" → "Mail
+piece type"; "Test Mode Active" → "Test mode active"; "Send Test Mail"
+→ "Send test mail"; "Sending..." → "Sending…"; toasts "Test Mail
+Sent" / "Mail Sent" → sentence case. `OptimizerSuggestionsPanel`:
+"AI Optimization Suggestions" → "AI optimization suggestions"; "Run
+AI Analysis" → "Run AI analysis"; "Mark Implemented" → "Mark
+implemented"; toast "AI Optimizer Complete" → "AI analysis complete";
+"Optimizer failed" → "AI analysis failed" for consistency with the
+sentence-case button text.
+
+**Status-badge capitalize extension (Designer, Copywriter):**
+Drawer header also rendered raw lowercase status. Added `capitalize`
+utility to match the list-card badge from 6a.
+
+**Number formatting + tabular-nums (Designer):**
+Stat cards ("Total sent", "Responses"), mail-attribution cards
+("Pieces sent", "Responses attributed"), progress-bar %
+labels (Delivery / Open / Response rate; Direct-mail response rate;
+Industry benchmark range), cost fields (Cost per response, Total
+spend, Spent vs Budget), and optimization score all get
+`tabular-nums`. "Total sent" count now renders with
+`.toLocaleString()` (was raw integer) so 12,345 reads as "12,345"
+not "12345". Same for `totalResponded`, `attributedResponses`.
+Consistency fix: piece-type options in SendMailDialog were
+`$${cost}/piece` (raw number coerce) → `$${cost.toFixed(2)} each`,
+so "0.75" no longer reads as "$.75" on some number formatters.
+
+**Send-confirmation trust state (Trust, Copywriter):**
+Live-mode banner in `SendMailDialog` previously read "Real mail will
+be sent. Estimated cost: $X.XX" with no recipient count context.
+Upgraded to name the recipient count alongside the cost:
+`Real mail will be sent. Estimated cost: $X.XX (N recipients).`
+Credit-check line: "You have enough credits ($X.XX available)" →
+en-dash + `tabular-nums` currency: "You have enough credits — $X.XX
+available." Insufficient-credits line gets the same treatment.
+Balance-check error: "Failed to get estimate. Please try again." →
+"Couldn't check your credit balance. Please try again." — specific
+cause instead of generic failure. Added `role="alert"` on the
+estimate-error card so SR users are announced to.
+
+**Collapsible proper-aria (Accessibility, pre-existing pattern):**
+`OptimizerSuggestionsPanel` collapse toggle was a ghost button with
+just `aria-label` — no `aria-expanded`, no `aria-controls`, so SR
+users couldn't tell the button's state or what it controlled. Added
+`aria-expanded={expanded}`, `aria-controls={suggestionsRegionId}`,
+with matching `id` on the CardContent. Label upgraded from
+"Collapse"/"Expand" to "Collapse suggestions"/"Expand suggestions"
+(targeted, matches what it controls).
+
+**Decorative-icon aria-hidden sweep (Accessibility, 5j pattern):**
+Every lucide icon paired with a text label in drawer / send dialog /
+optimizer panel marked `aria-hidden="true"`: Mail, Pause, Play,
+TestTube, Loader2, DollarSign, Calendar in the drawer header and
+section titles; AlertTriangle, CheckCircle, Loader2 in SendMailDialog
+banner cards; Lightbulb, Sparkles, Loader2, ChevronUp/Down,
+CheckCircle in OptimizerSuggestionsPanel; FileText, Clock, Users,
+DollarSign in the shared `typeIcons` map.
+
+**Empty-suggestions copy (Copywriter):**
+`No suggestions yet. Click "Run AI Analysis" to generate
+recommendations.` → `No suggestions yet. Run AI analysis to generate
+recommendations.` Removes the redundant "Click" instruction (the
+button is visible and discoverable) and the stale title-case brand-
+like "AI Analysis" wrapped in quotes.
+
+**Mobile header wrap (Mobile Designer):**
+Drawer header `flex items-center justify-between` → added
+`gap-4 flex-wrap` so the action-button cluster wraps below the title
+at narrow viewports instead of forcing the h2 into a single-line
+truncate.
+
+### Nine-lens sign-off
+
+- **Designer (D):** ✓ — rhythm steady, tabular-nums consistent across
+  all counters and %, progress bars readable.
+- **Mobile (M):** ✓ — header now wraps cleanly at 375px; action
+  cluster stacks under title when too wide.
+- **Accessibility (A):** ✓ — drawer has role=dialog + aria-modal +
+  aria-labelledby + Esc handler; close button has targeted
+  aria-label; collapsible has aria-expanded + aria-controls; estimate
+  error has role=alert; decorative icons hidden from SR.
+- **Engineer (E):** ✓ — typecheck clean; Esc handler only active
+  while drawer open; nested-dialog Esc short-circuit working; no new
+  network paths.
+- **AI Systems (AI):** ✓ — Optimizer suggestions output is already
+  well-structured (type / priority / suggestion / reasoning /
+  implement-action). Button/toast copy now consistent ("AI analysis"
+  throughout).
+- **Land Investor (LI):** ✓ — cost-per-response, total spend, credit
+  balance all in tabular-nums currency; send-confirmation now names
+  recipient count alongside cost; "Real mail will be sent" framing
+  remains explicit.
+- **Copywriter (CW):** ✓ — sentence-case sweep across drawer, send
+  dialog, optimizer; ellipsis characters; en-dashes on currency
+  display lines; specific error copy ("Couldn't check your credit
+  balance"); targeted aria-labels.
+- **Infrastructure (I):** ✓ — estimate-error has visual error state,
+  role=alert, specific recovery copy; no silent failure.
+- **Trust (T):** ✓ — send-confirmation names both cost and recipient
+  count (the two numbers a practitioner cross-checks before clicking
+  Send); status-badge capitalize makes DB-value leakage less jarring.
+
+**Deferred to later slices:**
+- **CampaignDetailDrawer focus trap + focus restoration:** same
+  larger-refactor decision as DealDetailDrawer from 5l. Proper fix
+  is converting to Radix Sheet/Dialog, which hands focus trap +
+  return-focus-to-trigger for free. Punt to a dedicated
+  drawer-refactor pass that handles both drawers in one commit.
+- **Saved views / sort / filter chrome** on `/campaigns` list — the
+  tabs-only filtering (all/active/scheduled/completed) is adequate
+  for now; saved-views parity with `/deals` is a larger product
+  decision, not a refinement. Flag for owner.
+- **`AbTestManager`, `CampaignVariantsPanel`, `CampaignAnalytics`**
+  are embedded in the drawer as separate components — each has its
+  own surface and gets its own slice in a later session.
+
+**Commit:** (this commit)

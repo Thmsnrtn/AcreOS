@@ -254,10 +254,10 @@ const priorityConfig: Record<string, { label: string; className: string }> = {
 };
 
 const typeIcons: Record<string, React.ReactNode> = {
-  content: <FileText className="w-3.5 h-3.5" />,
-  timing: <Clock className="w-3.5 h-3.5" />,
-  audience: <Users className="w-3.5 h-3.5" />,
-  budget: <DollarSign className="w-3.5 h-3.5" />,
+  content: <FileText className="w-3.5 h-3.5" aria-hidden="true" />,
+  timing: <Clock className="w-3.5 h-3.5" aria-hidden="true" />,
+  audience: <Users className="w-3.5 h-3.5" aria-hidden="true" />,
+  budget: <DollarSign className="w-3.5 h-3.5" aria-hidden="true" />,
 };
 
 function OptimizerSuggestionsPanel({ campaign }: { campaign: Campaign }) {
@@ -274,11 +274,11 @@ function OptimizerSuggestionsPanel({ campaign }: { campaign: Campaign }) {
     try {
       const result = await optimizeMutation.mutateAsync(campaign.id);
       toast({
-        title: "AI Optimizer Complete",
+        title: "AI analysis complete",
         description: `Generated ${result.suggestionsGenerated} suggestions. Campaign score: ${result.score}/100.`,
       });
     } catch (err: any) {
-      toast({ title: "Optimizer failed", description: err.message, variant: "destructive" });
+      toast({ title: "AI analysis failed", description: err.message, variant: "destructive" });
     }
   };
 
@@ -291,15 +291,17 @@ function OptimizerSuggestionsPanel({ campaign }: { campaign: Campaign }) {
     }
   };
 
+  const suggestionsRegionId = `optimizer-suggestions-${campaign.id}`;
+
   return (
     <Card className="glass-panel">
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <CardTitle className="text-base flex items-center gap-2">
-            <Lightbulb className="w-4 h-4 text-amber-500" />
-            AI Optimization Suggestions
+            <Lightbulb className="w-4 h-4 text-amber-500" aria-hidden="true" />
+            AI optimization suggestions
             {pending.length > 0 && (
-              <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 ml-1">
+              <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 ml-1 tabular-nums">
                 {pending.length}
               </Badge>
             )}
@@ -313,19 +315,21 @@ function OptimizerSuggestionsPanel({ campaign }: { campaign: Campaign }) {
               data-testid="button-run-optimizer"
             >
               {optimizeMutation.isPending ? (
-                <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" aria-hidden="true" />
               ) : (
-                <Sparkles className="w-3.5 h-3.5 mr-1" />
+                <Sparkles className="w-3.5 h-3.5 mr-1" aria-hidden="true" />
               )}
-              {optimizeMutation.isPending ? "Analyzing…" : "Run AI Analysis"}
+              {optimizeMutation.isPending ? "Analyzing…" : "Run AI analysis"}
             </Button>
             <Button
               size="sm"
               variant="ghost"
               onClick={() => setExpanded(!expanded)}
-              aria-label={expanded ? "Collapse" : "Expand"}
+              aria-label={expanded ? "Collapse suggestions" : "Expand suggestions"}
+              aria-expanded={expanded}
+              aria-controls={suggestionsRegionId}
             >
-              {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              {expanded ? <ChevronUp className="w-4 h-4" aria-hidden="true" /> : <ChevronDown className="w-4 h-4" aria-hidden="true" />}
             </Button>
           </div>
         </div>
@@ -335,23 +339,23 @@ function OptimizerSuggestionsPanel({ campaign }: { campaign: Campaign }) {
             <div className="flex-1 max-w-[120px]">
               <Progress value={campaign.optimizationScore} className="h-1.5" />
             </div>
-            <span className="text-xs font-medium">{campaign.optimizationScore}/100</span>
+            <span className="text-xs font-medium tabular-nums">{campaign.optimizationScore}/100</span>
           </div>
         )}
       </CardHeader>
 
       {expanded && (
-        <CardContent className="pt-0 space-y-3">
+        <CardContent id={suggestionsRegionId} className="pt-0 space-y-3">
           {isLoading && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
-              <Loader2 className="w-4 h-4 animate-spin" />
+              <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
               Loading suggestions…
             </div>
           )}
 
           {!isLoading && pending.length === 0 && done.length === 0 && (
             <p className="text-sm text-muted-foreground py-2">
-              No suggestions yet. Click "Run AI Analysis" to generate recommendations.
+              No suggestions yet. Run AI analysis to generate recommendations.
             </p>
           )}
 
@@ -364,7 +368,7 @@ function OptimizerSuggestionsPanel({ campaign }: { campaign: Campaign }) {
                 data-testid={`suggestion-${s.id}`}
               >
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-muted-foreground">{typeIcons[s.type] ?? <Lightbulb className="w-3.5 h-3.5" />}</span>
+                  <span className="text-muted-foreground">{typeIcons[s.type] ?? <Lightbulb className="w-3.5 h-3.5" aria-hidden="true" />}</span>
                   <span className="text-xs capitalize font-medium text-muted-foreground">{s.type}</span>
                   <Badge className={`text-xs ${pc.className}`}>{pc.label} priority</Badge>
                 </div>
@@ -378,8 +382,8 @@ function OptimizerSuggestionsPanel({ campaign }: { campaign: Campaign }) {
                   disabled={implementMutation.isPending}
                   data-testid={`button-implement-${s.id}`}
                 >
-                  <CheckCircle className="w-3 h-3 mr-1" />
-                  Mark Implemented
+                  <CheckCircle className="w-3 h-3 mr-1" aria-hidden="true" />
+                  Mark implemented
                 </Button>
               </div>
             );
@@ -394,7 +398,7 @@ function OptimizerSuggestionsPanel({ campaign }: { campaign: Campaign }) {
                 {done.map((s) => (
                   <div key={s.id} className="rounded-lg border border-dashed p-2 opacity-60">
                     <div className="flex items-center gap-1.5 mb-1">
-                      <CheckCircle className="w-3 h-3 text-emerald-500" />
+                      <CheckCircle className="w-3 h-3 text-emerald-500" aria-hidden="true" />
                       <span className="capitalize">{s.type}</span>
                     </div>
                     <p className="leading-snug">{s.suggestion}</p>
@@ -807,9 +811,9 @@ function SendMailDialog({
         pieceType,
         leadIds: selectedLeadIds,
       });
-      
+
       toast({
-        title: result.isTestMode ? 'Test Mail Sent' : 'Mail Sent',
+        title: result.isTestMode ? 'Test mail sent' : 'Mail sent',
         description: result.message,
       });
       onClose();
@@ -830,7 +834,7 @@ function SendMailDialog({
     <Dialog open={true} onOpenChange={() => onClose()}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle>Send Direct Mail</DialogTitle>
+          <DialogTitle>Send direct mail</DialogTitle>
           <DialogDescription>
             Send mail pieces for campaign: {campaign.name}
           </DialogDescription>
@@ -838,15 +842,15 @@ function SendMailDialog({
 
         <div className="space-y-4 py-4">
           <div className="space-y-2">
-            <label className="text-sm font-medium">Mail Piece Type</label>
+            <label className="text-sm font-medium">Mail piece type</label>
             <Select value={pieceType} onValueChange={handlePieceTypeChange}>
-              <SelectTrigger data-testid="select-piece-type">
+              <SelectTrigger aria-label="Mail piece type" data-testid="select-piece-type">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {pieceTypes.map(type => (
                   <SelectItem key={type.value} value={type.value}>
-                    {type.label} (${type.cost}/piece)
+                    {type.label} (${type.cost.toFixed(2)} each)
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -857,18 +861,18 @@ function SendMailDialog({
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
                 {isTestMode ? (
-                  <TestTube className="w-5 h-5 text-blue-500" />
+                  <TestTube className="w-5 h-5 text-blue-500" aria-hidden="true" />
                 ) : (
-                  <AlertTriangle className="w-5 h-5 text-amber-500" />
+                  <AlertTriangle className="w-5 h-5 text-amber-500" aria-hidden="true" />
                 )}
                 <div>
                   <p className="font-medium">
-                    {isTestMode ? 'Test Mode Active' : 'Live Mode Active'}
+                    {isTestMode ? 'Test mode active' : 'Live mode active'}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    {isTestMode 
-                      ? 'No actual mail will be sent or charged.' 
-                      : `Real mail will be sent. Estimated cost: $${estimatedCost.toFixed(2)}`}
+                    {isTestMode
+                      ? 'No actual mail will be sent or charged.'
+                      : <>Real mail will be sent. Estimated cost: <span className="tabular-nums font-medium">${estimatedCost.toFixed(2)}</span> ({selectedLeadIds.length.toLocaleString()} recipients).</>}
                   </p>
                 </div>
               </div>
@@ -879,20 +883,20 @@ function SendMailDialog({
             <Card className="border-muted">
               <CardContent className="p-3">
                 <div className="flex items-center gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">Checking credit balance...</span>
+                  <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" aria-hidden="true" />
+                  <span className="text-sm text-muted-foreground">Checking credit balance…</span>
                 </div>
               </CardContent>
             </Card>
           )}
 
           {estimateMutation.error && (
-            <Card className="border-red-200 dark:border-red-800">
+            <Card className="border-red-200 dark:border-red-800" role="alert">
               <CardContent className="p-3">
                 <div className="flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 text-red-500" />
+                  <AlertTriangle className="w-4 h-4 text-red-500" aria-hidden="true" />
                   <span className="text-sm text-red-600 dark:text-red-400">
-                    Failed to get estimate. Please try again.
+                    Couldn't check your credit balance. Please try again.
                   </span>
                 </div>
               </CardContent>
@@ -904,14 +908,14 @@ function SendMailDialog({
               <CardContent className="p-3">
                 <div className="flex items-center gap-2">
                   {estimateMutation.data.hasEnoughCredits ? (
-                    <CheckCircle className="w-4 h-4 text-emerald-500" />
+                    <CheckCircle className="w-4 h-4 text-emerald-500" aria-hidden="true" />
                   ) : (
-                    <AlertTriangle className="w-4 h-4 text-red-500" />
+                    <AlertTriangle className="w-4 h-4 text-red-500" aria-hidden="true" />
                   )}
                   <span className="text-sm">
-                    {estimateMutation.data.hasEnoughCredits 
-                      ? `You have enough credits ($${(estimateMutation.data.creditBalance / 100).toFixed(2)} available)`
-                      : `Insufficient credits - need $${(estimateMutation.data.creditsNeeded / 100).toFixed(2)} more`}
+                    {estimateMutation.data.hasEnoughCredits
+                      ? <>You have enough credits — <span className="tabular-nums font-medium">${(estimateMutation.data.creditBalance / 100).toFixed(2)}</span> available.</>
+                      : <>Insufficient credits — need <span className="tabular-nums font-medium">${(estimateMutation.data.creditsNeeded / 100).toFixed(2)}</span> more.</>}
                   </span>
                 </div>
               </CardContent>
@@ -923,11 +927,11 @@ function SendMailDialog({
           <Button variant="outline" onClick={onClose} data-testid="button-cancel-send">
             Cancel
           </Button>
-          <Button 
+          <Button
             onClick={handleSend}
             disabled={
-              sendMutation.isPending || 
-              selectedLeadIds.length === 0 || 
+              sendMutation.isPending ||
+              selectedLeadIds.length === 0 ||
               estimateMutation.isPending ||
               !!estimateMutation.error ||
               (estimateMutation.data && !estimateMutation.data.hasEnoughCredits)
@@ -936,13 +940,13 @@ function SendMailDialog({
           >
             {sendMutation.isPending ? (
               <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Sending...
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
+                Sending…
               </>
             ) : (
               <>
-                <Send className="w-4 h-4 mr-2" />
-                {isTestMode ? 'Send Test Mail' : 'Send Mail'}
+                <Send className="w-4 h-4 mr-2" aria-hidden="true" />
+                {isTestMode ? 'Send test mail' : 'Send mail'}
               </>
             )}
           </Button>
@@ -960,6 +964,19 @@ function CampaignDetailDrawer({ campaign, onClose }: { campaign: Campaign; onClo
   const [showSendDialog, setShowSendDialog] = useState(false);
   const { toast } = useToast();
   const testSend = useTestSendCampaign();
+
+  // 6b: hand-rolled overlay a11y per 5l dialog-Esc rule — at minimum
+  // role=dialog + aria-modal + aria-labelledby + Escape handler. Full
+  // focus-trap + focus-restoration would require converting to Radix
+  // Sheet, deferred as a larger refactor.
+  const titleId = `campaign-detail-title-${campaign.id}`;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !showSendDialog) onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose, showSendDialog]);
 
   const toggleStatus = () => {
     const newStatus = campaign.status === 'active' ? 'paused' : 'active';
@@ -984,14 +1001,17 @@ function CampaignDetailDrawer({ campaign, onClose }: { campaign: Campaign; onClo
   return (
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" onClick={onClose}>
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
         className="fixed right-0 top-0 h-full w-full max-w-xl bg-background shadow-2xl overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
         <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b p-6">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
             <div>
-              <h2 className="text-xl font-bold">{campaign.name}</h2>
-              <Badge className={statusColors[campaign.status] || statusColors.draft}>
+              <h2 id={titleId} className="text-xl font-bold">{campaign.name}</h2>
+              <Badge className={`capitalize ${statusColors[campaign.status] || statusColors.draft}`}>
                 {campaign.status}
               </Badge>
             </div>
@@ -1004,9 +1024,9 @@ function CampaignDetailDrawer({ campaign, onClose }: { campaign: Campaign; onClo
                   data-testid="button-test-send-email"
                 >
                   {testSend.isPending ? (
-                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Sending...</>
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" /> Sending…</>
                   ) : (
-                    <><TestTube className="w-4 h-4 mr-2" /> Send Test Email</>
+                    <><TestTube className="w-4 h-4 mr-2" aria-hidden="true" /> Send test email</>
                   )}
                 </Button>
               )}
@@ -1015,28 +1035,28 @@ function CampaignDetailDrawer({ campaign, onClose }: { campaign: Campaign; onClo
                   onClick={() => setShowSendDialog(true)}
                   data-testid="button-send-mail"
                 >
-                  <Mail className="w-4 h-4 mr-2" /> Send Mail
+                  <Mail className="w-4 h-4 mr-2" aria-hidden="true" /> Send mail
                 </Button>
               )}
               {campaign.status !== 'completed' && (
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   onClick={toggleStatus}
                   disabled={isPending}
                   data-testid="button-toggle-status"
                 >
                   {campaign.status === 'active' ? (
                     <>
-                      <Pause className="w-4 h-4 mr-2" /> Pause
+                      <Pause className="w-4 h-4 mr-2" aria-hidden="true" /> Pause
                     </>
                   ) : (
                     <>
-                      <Play className="w-4 h-4 mr-2" /> Activate
+                      <Play className="w-4 h-4 mr-2" aria-hidden="true" /> Activate
                     </>
                   )}
                 </Button>
               )}
-              <Button variant="ghost" onClick={onClose}>Close</Button>
+              <Button variant="ghost" onClick={onClose} aria-label="Close campaign detail">Close</Button>
             </div>
           </div>
         </div>
@@ -1054,13 +1074,13 @@ function CampaignDetailDrawer({ campaign, onClose }: { campaign: Campaign; onClo
           <div className="grid grid-cols-2 gap-4">
             <Card className="glass-panel">
               <CardContent className="p-4 text-center">
-                <p className="text-3xl font-bold">{campaign.totalSent || 0}</p>
-                <p className="text-sm text-muted-foreground">Total Sent</p>
+                <p className="text-3xl font-bold tabular-nums">{(campaign.totalSent || 0).toLocaleString()}</p>
+                <p className="text-sm text-muted-foreground">Total sent</p>
               </CardContent>
             </Card>
             <Card className="glass-panel">
               <CardContent className="p-4 text-center">
-                <p className="text-3xl font-bold text-emerald-600">{campaign.totalResponded || 0}</p>
+                <p className="text-3xl font-bold text-emerald-600 tabular-nums">{(campaign.totalResponded || 0).toLocaleString()}</p>
                 <p className="text-sm text-muted-foreground">Responses</p>
               </CardContent>
             </Card>
@@ -1068,28 +1088,28 @@ function CampaignDetailDrawer({ campaign, onClose }: { campaign: Campaign; onClo
 
           <Card className="glass-panel">
             <CardHeader>
-              <CardTitle className="text-base">Campaign Metrics</CardTitle>
+              <CardTitle className="text-base">Campaign metrics</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
                 <div>
                   <div className="flex justify-between text-sm mb-1">
-                    <span>Delivery Rate</span>
-                    <span>{campaign.totalSent ? ((campaign.totalDelivered || 0) / campaign.totalSent * 100).toFixed(1) : 0}%</span>
+                    <span>Delivery rate</span>
+                    <span className="tabular-nums">{campaign.totalSent ? ((campaign.totalDelivered || 0) / campaign.totalSent * 100).toFixed(1) : 0}%</span>
                   </div>
                   <Progress value={campaign.totalSent ? ((campaign.totalDelivered || 0) / campaign.totalSent * 100) : 0} className="h-2" />
                 </div>
                 <div>
                   <div className="flex justify-between text-sm mb-1">
-                    <span>Open Rate</span>
-                    <span>{campaign.totalDelivered ? ((campaign.totalOpened || 0) / campaign.totalDelivered * 100).toFixed(1) : 0}%</span>
+                    <span>Open rate</span>
+                    <span className="tabular-nums">{campaign.totalDelivered ? ((campaign.totalOpened || 0) / campaign.totalDelivered * 100).toFixed(1) : 0}%</span>
                   </div>
                   <Progress value={campaign.totalDelivered ? ((campaign.totalOpened || 0) / campaign.totalDelivered * 100) : 0} className="h-2" />
                 </div>
                 <div>
                   <div className="flex justify-between text-sm mb-1">
-                    <span>Response Rate</span>
-                    <span>{campaign.totalSent ? ((campaign.totalResponded || 0) / campaign.totalSent * 100).toFixed(1) : 0}%</span>
+                    <span>Response rate</span>
+                    <span className="tabular-nums">{campaign.totalSent ? ((campaign.totalResponded || 0) / campaign.totalSent * 100).toFixed(1) : 0}%</span>
                   </div>
                   <Progress value={campaign.totalSent ? ((campaign.totalResponded || 0) / campaign.totalSent * 100) : 0} className="h-2" />
                 </div>
@@ -1101,37 +1121,37 @@ function CampaignDetailDrawer({ campaign, onClose }: { campaign: Campaign; onClo
             <Card className="glass-panel border-blue-200 dark:border-blue-800">
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2">
-                  <Mail className="w-4 h-4 text-blue-500" />
-                  Direct Mail Performance
+                  <Mail className="w-4 h-4 text-blue-500" aria-hidden="true" />
+                  Direct mail performance
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-2 gap-3">
                   <div className="bg-muted/50 rounded-lg p-3 text-center">
-                    <p className="text-2xl font-bold">{mailAttribution.totalSent.toLocaleString()}</p>
-                    <p className="text-xs text-muted-foreground">Pieces Sent</p>
+                    <p className="text-2xl font-bold tabular-nums">{mailAttribution.totalSent.toLocaleString()}</p>
+                    <p className="text-xs text-muted-foreground">Pieces sent</p>
                   </div>
                   <div className="bg-muted/50 rounded-lg p-3 text-center">
-                    <p className="text-2xl font-bold text-emerald-600">{mailAttribution.attributedResponses}</p>
-                    <p className="text-xs text-muted-foreground">Responses Attributed</p>
+                    <p className="text-2xl font-bold text-emerald-600 tabular-nums">{mailAttribution.attributedResponses.toLocaleString()}</p>
+                    <p className="text-xs text-muted-foreground">Responses attributed</p>
                   </div>
                 </div>
 
                 {mailAttribution.estimatedDeliveryDate && (
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Calendar className="w-4 h-4" />
+                    <Calendar className="w-4 h-4" aria-hidden="true" />
                     <span>Est. delivery: {format(new Date(mailAttribution.estimatedDeliveryDate), 'PPP')}</span>
                   </div>
                 )}
 
                 <div>
                   <div className="flex justify-between text-sm mb-1">
-                    <span>Response Rate</span>
-                    <span className="font-medium">{mailAttribution.responseRate.toFixed(1)}%</span>
+                    <span>Response rate</span>
+                    <span className="font-medium tabular-nums">{mailAttribution.responseRate.toFixed(1)}%</span>
                   </div>
                   <Progress value={Math.min(mailAttribution.responseRate, 10)} max={10} className="h-2" />
                   <p className="text-xs text-muted-foreground mt-1">
-                    Industry benchmark: {mailAttribution.industryBenchmarkMin}–{mailAttribution.industryBenchmarkMax}%
+                    Industry benchmark: <span className="tabular-nums">{mailAttribution.industryBenchmarkMin}–{mailAttribution.industryBenchmarkMax}%</span>
                     {mailAttribution.responseRate >= mailAttribution.industryBenchmarkMin && (
                       <span className="text-emerald-600 ml-1">— above average</span>
                     )}
@@ -1141,18 +1161,18 @@ function CampaignDetailDrawer({ campaign, onClose }: { campaign: Campaign; onClo
                 {mailAttribution.costPerResponse !== null && (
                   <div className="flex items-center justify-between text-sm border-t pt-3">
                     <span className="text-muted-foreground flex items-center gap-1">
-                      <DollarSign className="w-3.5 h-3.5" />
+                      <DollarSign className="w-3.5 h-3.5" aria-hidden="true" />
                       Cost per response
                     </span>
-                    <span className="font-mono font-medium">${mailAttribution.costPerResponse.toFixed(2)}</span>
+                    <span className="font-mono font-medium tabular-nums">${mailAttribution.costPerResponse.toFixed(2)}</span>
                   </div>
                 )}
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground flex items-center gap-1">
-                    <DollarSign className="w-3.5 h-3.5" />
+                    <DollarSign className="w-3.5 h-3.5" aria-hidden="true" />
                     Total spend
                   </span>
-                  <span className="font-mono">${(mailAttribution.totalCostCents / 100).toFixed(2)}</span>
+                  <span className="font-mono tabular-nums">${(mailAttribution.totalCostCents / 100).toFixed(2)}</span>
                 </div>
               </CardContent>
             </Card>
@@ -1175,9 +1195,9 @@ function CampaignDetailDrawer({ campaign, onClose }: { campaign: Campaign; onClo
             <Card className="glass-panel">
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
-                  <Calendar className="w-5 h-5 text-muted-foreground" />
+                  <Calendar className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
                   <div>
-                    <p className="text-sm text-muted-foreground">Scheduled Date</p>
+                    <p className="text-sm text-muted-foreground">Scheduled date</p>
                     <p className="font-medium">{format(new Date(campaign.scheduledDate), 'PPP')}</p>
                   </div>
                 </div>
@@ -1193,11 +1213,11 @@ function CampaignDetailDrawer({ campaign, onClose }: { campaign: Campaign; onClo
               <CardContent>
                 <div className="flex justify-between items-center">
                   <span className="text-muted-foreground">Spent</span>
-                  <span className="font-mono">${Number(campaign.spent || 0).toLocaleString()} / ${Number(campaign.budget).toLocaleString()}</span>
+                  <span className="font-mono tabular-nums">${Number(campaign.spent || 0).toLocaleString()} / ${Number(campaign.budget).toLocaleString()}</span>
                 </div>
-                <Progress 
-                  value={Number(campaign.budget) > 0 ? (Number(campaign.spent || 0) / Number(campaign.budget) * 100) : 0} 
-                  className="h-2 mt-2" 
+                <Progress
+                  value={Number(campaign.budget) > 0 ? (Number(campaign.spent || 0) / Number(campaign.budget) * 100) : 0}
+                  className="h-2 mt-2"
                 />
               </CardContent>
             </Card>
@@ -1214,7 +1234,7 @@ function CampaignDetailDrawer({ campaign, onClose }: { campaign: Campaign; onClo
           </div>
 
           <div className="pt-4 border-t">
-            <h3 className="text-lg font-semibold mb-4">Response Analytics</h3>
+            <h3 className="text-lg font-semibold mb-4">Response analytics</h3>
             <CampaignAnalytics campaignId={campaign.id} />
           </div>
         </div>
