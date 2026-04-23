@@ -846,3 +846,88 @@ Checklist / ROI), and DealForm deferred to 5k + 5l.
 `/deals` list view + bulk-ops toolbar polish (slice 5k), then
 DealDetailDrawer 5-tab surface (slice 5l), then DealForm (5m),
 then `/campaigns`.
+
+---
+
+## Slice 5k — `/deals` list view + bulk-actions toolbar
+
+**Commit:** `d157464`
+
+### Refinements (six, across five lenses)
+
+- **Engineer / SRE:** `handleBulkStageUpdate` had no `onError`
+  handler and no guard on the non-success branch of `onSuccess`.
+  A backend 500 or a soft-fail `{ success: false, message }`
+  payload both disappeared silently — the dialog would close with
+  no feedback and the cache invalidate would leave the UI in an
+  ambiguous state. Added both paths with specific copy
+  ("Couldn't update stage" / "Your changes didn't save. Try again
+  in a moment."). Matches the silent-mutation→toast pattern.
+- **Security / Engineer:** `handleBulkExport` CSV cell escaping was
+  broken for any value containing `"` (wrapped in quotes but did
+  not double embedded ones, so Excel would mis-parse). Also no
+  guard against CSV formula injection: a user-entered county or
+  state starting with `=`, `+`, `-`, `@`, `\t`, or `\r` would be
+  interpreted as a formula in Excel / Google Sheets on open.
+  Fixed: shared `escapeCell` helper doubles embedded quotes and
+  prepends `'` to neutralize leading formula triggers. Applied to
+  the header row too.
+- **Copywriter:** `handleBulkExport` silently produced a download
+  with no confirmation toast — divergent from the full-page
+  `handleExport` which already toasts. Added success toast
+  ("Downloaded N deals to deals-export-YYYY-MM-DD.csv") and an
+  error toast path wrapping the whole body. Also sentence-cased
+  "Deals Updated" → "Deals updated" and "Update Stage" → "Update
+  stage" to match the rest of the app's voice.
+- **Accessibility:** Decorative-icon sweep across this surface —
+  summary card icons (Building / TrendingUp / DollarSign /
+  CheckCircle), header Export & New Deal icons (Download /
+  Loader2 / Plus), bulk toolbar icons (CheckSquare / Download /
+  Loader2 / Trash2 / X / Undo2), and mobile stage nav icons
+  (ChevronLeft / ChevronRight) all lacked `aria-hidden="true"`.
+  They sit next to visible text labels or inside buttons with
+  aria-labels, so they are purely decorative — otherwise SR
+  users hear "graphic, Download, Export" instead of just "Export".
+- **Accessibility:** The desktop-only clear-selection `X` button
+  (`hidden md:flex`) had neither an aria-label nor a text label —
+  a bare icon button is unannounceable to screen readers. Added
+  `aria-label="Clear selection"` matching the mobile variant.
+- **Mobile / Accessibility:** Mobile list-view row checkbox was a
+  bare 20×20px Checkbox with no aria-label — SR would announce
+  "checkbox, not checked" with no clue which deal is being
+  selected, and the tap target was below the 44px minimum.
+  Wrapped in a `<label>` with `min-h-[44px] min-w-[44px]` padding
+  and an `aria-label` naming the deal ("Select Yavapai, AZ" /
+  fallback "Select Deal #123"). The surrounding padded label also
+  gives the checkbox a proper click-expansion area.
+
+### Nine-lens sign-off
+- **Designer:** rhythm / typography unchanged; copy casing
+  aligned. ✅
+- **Mobile:** list-row checkbox now hits 44px tap target. ✅
+- **Accessibility:** every decorative icon hidden from SR, every
+  icon-only button has an aria-label. ✅
+- **Engineer:** bulk mutations now handle all three paths
+  (success, soft-fail, hard-error) with specific copy. ✅
+- **AI systems:** n/a — no AI on list surface. ✅
+- **Land investor:** vocabulary unchanged; "Deal Pipeline" /
+  stage labels unchanged. ✅
+- **Copywriter:** sentence case, specific recovery copy in error
+  toasts. ✅
+- **Infrastructure:** bulk mutations now surface backend errors
+  instead of swallowing them. ✅
+- **Trust:** CSV export no longer silently produces
+  formula-injected files — a real trust/security concern for a
+  product that emails exports around. ✅
+
+### Cross-cutting additions
+
+- **CSV export escape rule (new 5k):** client-side CSV generation
+  must double embedded quotes AND neutralize formula-trigger
+  leading characters (`=`, `+`, `-`, `@`, `\t`, `\r`) with a `'`
+  prefix. Factor `escapeCell` out if a third surface needs CSV.
+- **Bulk-mutation triple-path rule (new 5k):** a bulk mutation
+  must handle `onSuccess: result.success=true`,
+  `onSuccess: result.success=false` (soft-fail payload), and
+  `onError` independently. Toasting only on the first leaves a
+  silent-failure hole on the other two.

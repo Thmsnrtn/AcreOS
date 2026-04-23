@@ -1,21 +1,19 @@
 # Elite-Team Refinement — Resume Point
 
-**Last session:** 2026-04-23 (session 5j — first /deals slice)
-**Last completed refinement:** `/deals` kanban — DndContext
-KeyboardSensor + accessibility announcements, KanbanColumn a11y
-(section + role=list + aria-labelledby), h3→h2 column headings,
-mobile dot paginator role=tablist, DealCard drag handle wrapped
-in proper button, view-mode toggle role=group + aria-pressed,
-pipeline distribution bar role=img + full aria-label, icon+label
-tabs gained `sr-only sm:not-sr-only` labels, dragEnd success +
-error toasts, CSV export error/success toasts, bulk-delete copy
-sweep, dead handleBulkStageChange removed.
+**Last session:** 2026-04-23 (session 5k — /deals list + bulk ops)
+**Last completed refinement:** `/deals` list + bulk-actions —
+bulk-stage-update onError + soft-fail toast, CSV escape/formula
+injection guard, bulk-export success toast, decorative-icon
+aria-hidden sweep (summary cards + header + bulk toolbar + mobile
+stage nav), desktop clear-selection aria-label, mobile list-row
+checkbox aria-label + 44px tap target, sentence-case copy sweep
+("Deals updated", "Update stage").
 
 **Phase 1 inventory:** ✅ committed at `11d0e8c`
 **PropertyDetailDialog:** ✅ fully refined across all tabs.
 **/deals kanban:** ✅ slice 5j complete (commit `f001623`).
-**/deals list + filters:** ⬜ slice 5k next
-**/deals DealDetailDrawer (5 tabs):** ⬜ slice 5l
+**/deals list + filters:** ✅ slice 5k complete (commit `d157464`).
+**/deals DealDetailDrawer (5 tabs):** ⬜ slice 5l next
 **/deals DealForm:** ⬜ slice 5m
 
 ## How to continue
@@ -58,7 +56,7 @@ Session 4:
   state conformance + mobile action-row stack + source badge
   promotion + token-based visuals
 
-Session 5 (ten slices so far — /properties and starting /deals):
+Session 5 (eleven slices so far — /properties and /deals):
 - 5a–5i. `/properties` (list, card/form, detail dialog all tabs,
   research summary, comps, AI offer, chat, intelligence,
   cross-cutting status.replace sweep)
@@ -66,6 +64,12 @@ Session 5 (ten slices so far — /properties and starting /deals):
   announcements, column semantics, h3→h2, drag toasts, CSV toasts,
   bulk-copy sweep, dead-code removal, icon-label sr-only fallback
   (commit `f001623`)
+- 5k. `/deals` list + bulk-actions slice — bulk-stage-update
+  onError + soft-fail toast, CSV escape + formula-injection guard,
+  bulk-export success toast, decorative-icon aria-hidden sweep
+  (summary / header / bulk / mobile-nav), desktop clear-selection
+  aria-label, mobile list-row checkbox aria-label + 44px tap
+  target, sentence-case copy (commit `d157464`)
 
 ## Cross-cutting gains this pass
 
@@ -119,24 +123,25 @@ Session 5 (ten slices so far — /properties and starting /deals):
 
 ## Next surface to refine
 
-**Next slice: `/deals` list view + bulk-actions toolbar (5k).**
+**Next slice: `/deals` DealDetailDrawer — 5-tab surface (5l).**
 
-Scope for 5k:
-- List view at 375px: checkbox tap target wrap, card rows,
-  pagination visibility, bulk-actions toolbar collapse behavior.
-- Header bar (page title + Export + New Deal) at 375px — does it
-  wrap sensibly?
-- Summary cards (4-up grid at md+, 2-up at mobile) — trust/CW:
-  "Pipeline" heading is ambiguous (see flagged note in progress
-  file); verify copy + number formatting.
-- SavedViewsSelector integration with typeFilter.
-- Empty states: `DealsEmptyState` component + in-column "No deals
-  in X" text.
-- Error state: already `QueryErrorState` ✓ — verify retry path.
-- Stage advancement via bulk dialog: copy + undo toast correctness.
+Scope for 5l:
+- Details tab: field ordering + currency formatting + status
+  badge + stage-gate messaging. Stage-gate block copy + link to
+  checklist.
+- Documents tab: upload interaction (drag-drop + browse),
+  per-file progress, OCR status chips, failure path.
+- Timeline tab: ActivityTimeline a11y (role=list, item spacing,
+  relative-time semantics).
+- Checklist tab: template apply flow + item check/uncheck toast
+  pattern + required vs optional visual distinction.
+- ROI tab: number formatting, negative-ROI color semantics,
+  DealCalculator embed responsive behavior.
+- Drawer mechanics: focus trap, Esc to close, scrollable body at
+  mobile, header safe-area on iOS, tab keyboard navigation.
+- Delete flow from drawer → parent deletion dialog.
 
-After 5k: slice 5l = DealDetailDrawer (Details, Documents,
-Timeline, Checklist, ROI tabs); slice 5m = DealForm.
+After 5l: slice 5m = DealForm (create / edit modal form).
 
 Then move per inventory:
 1. `/campaigns` — list + detail + create; AI-drafted letter copy
@@ -184,7 +189,7 @@ Then move per inventory:
   `storage`, `autonomousDealMachine`, `countyAssessorIngest`,
   `supportAgent`, etc. — not blocking client refinement work.
 
-## Expected HEAD after session 5j
+## Expected HEAD after session 5k
 
-New commit on top of `9485685` (properties/intelligence) →
-`f001623` (deals kanban).
+New commit on top of `f001623` (deals kanban) → `d157464`
+(deals list + bulk-actions).
