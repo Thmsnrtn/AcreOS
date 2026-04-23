@@ -1,8 +1,8 @@
 # Elite-Team Refinement — Resume Point
 
-**Last session:** 2026-04-23 (session 3 of N)
-**Last completed refinement:** customer-visible violet sweep
-(pipeline/tools/goals), commit `01c9b2a`
+**Last session:** 2026-04-23 (session 4 of N)
+**Last completed refinement:** `/leads/dedupe` cluster review / merge flow,
+commit `26fd606`
 **Phase 1 inventory:** ✅ committed at `11d0e8c`
 
 ## How to continue
@@ -32,52 +32,80 @@ Session 2:
 - `QueryErrorState` (cross-cutting)
 - `EmptyState` (cross-cutting)
 
-Session 3 (this one):
+Session 3:
 - `/leads` (mobile checkbox tap targets)
-- `/properties` + `/finance` (responsive grid pass)
+- `/properties` + `/finance` (responsive grid pass — partial,
+  grid only)
 - `/settings` (tier badges)
 - `/forgot-password` + `/reset-password`
 - `/pipeline`, `/tools`, `/goals` (violet sweep)
 
-### Cross-cutting gains this pass
-- **Purple/violet on customer surfaces is essentially gone.** Clerk
-  widget, today, leads, deals, onboarding, pipeline, tools, goals,
-  settings tier badges all normalized to theme primary.
-  `/goals` and `/tools` use cyan for the former-violet category so
-  differentiation survives.
-- **44pt tap targets** wherever a 20px checkbox was the sole hit
-  area on mobile.
-- **A11y**: role="alert" / role="status" / aria-hidden pushed into
-  cross-cutting components (QueryErrorState, EmptyState, PageLoader)
-  and the password flows.
-- **Copy**: "login" → "sign in" normalized on auth-adjacent pages.
+Session 4 (this one):
+- `/leads/dedupe` — confirm-before-merge + a11y radiogroup + error
+  state conformance + mobile action-row stack + source badge
+  promotion + token-based visuals
+
+## Cross-cutting gains this pass
+
+- **Destructive-merge confirmation pattern** established via
+  `ConfirmDialog` — reuse on any future bulk-archive / bulk-delete
+  surface (leads, properties, campaigns).
+- **QueryErrorState now load-bearing** on a real data page —
+  precedent for replacing any remaining raw `res.status/text-red`
+  error blobs in customer-facing views.
+- **Radiogroup-on-card** pattern (div with role="radio" + roving
+  tabIndex) proven out on dedupe — can be reused wherever we ask
+  an operator to pick one of N options presented as rich cards.
 
 ## Next surface to refine
 
-**`/leads/dedupe`** (cluster review / merge flow).
+**`/properties`** — full walk.
 
-Likely refinement targets:
-- Mobile behaviour of the cluster list + merge modal.
-- Confirmation patterns for destructive merges (trust lens).
-- Empty state when no clusters found.
+⚠️ This file is ~55k tokens. Strategy for the next session:
 
-## Queue after `/leads/dedupe`
+1. Start by reading `client/src/pages/properties.tsx` in chunks
+   (offset/limit) — don't Read the whole file at once.
+2. Consider splitting into multiple commits along natural seams:
+   list view, detail view, create modal, filters, empty state.
+3. If the page is already componentized, refine each subcomponent
+   file separately rather than the monolith.
+4. Prior session 3 pass only touched a responsive grid cell —
+   almost everything else on this surface is still untouched.
+
+Likely nine-lens targets on /properties:
+- [D] Information hierarchy on list cards; rhythm between filters,
+  list, and detail pane.
+- [M] 375px layout — properties are data-dense; likely needs
+  columnar collapse or card view on mobile.
+- [A] Filter controls keyboard operability; detail pane focus
+  management when a row is selected.
+- [E] React-query staleness / invalidation on create/edit/delete.
+- [AI] Any embedded AI evaluation / motivation-score outputs —
+  grounding + structure.
+- [LI] Vocabulary: "APN," "acreage," "frontage," "ingress/egress"
+  — confirm they appear where an investor would expect.
+- [CW] Empty state ("No properties yet — import a list") copy.
+- [I] Timeout/error behavior on provider-enriched fields.
+- [T] Delete confirmation and any irreversible field changes.
+
+## Queue after `/properties`
 
 In inventory order:
-1. `/properties` (full walk — only grid-cell fix done so far)
-2. `/deals` (kanban UX on 375px — earlier pass only touched colors)
-3. `/campaigns`
-4. `/inbox`
-5. `/documents`
-6. `/sign/:docId` — legal/trust surface; verify signer flow
-7. `/portal/:accessToken` — borrower portal; public link, mobile-
+1. `/deals` (kanban UX on 375px — earlier pass only touched colors)
+2. `/campaigns`
+3. `/inbox`
+4. `/documents`
+5. `/sign/:docId` — legal/trust surface; verify signer flow
+6. `/portal/:accessToken` — borrower portal; public link, mobile-
    critical
-8. `/ai`, `/atlas`, `/pax` — AI chat surfaces (AI-lens critical)
+7. `/ai`, `/atlas`, `/pax` — AI chat surfaces (AI-lens critical)
 
 ## Session hygiene reminders
 
 - Commit per surface (or tight batch).
 - Re-run 9-lens after each edit.
+- Large surfaces (>15k tokens): read in chunks, commit in slices;
+  don't try to inhabit the whole thing in one session.
 - Playwright Safari sessions die within ~5 minutes of a Clerk JWT
   refresh; fall back to code-only if cookies expire mid-audit.
 - Stop at ~85% context; rewrite this file before ending.
@@ -91,7 +119,10 @@ In inventory order:
 - **Red toast spam** — 404/403 globally suppressed.
 - **Fly deploy leases** occasionally linger ~90s after a transient
   fail; retry.
+- **Pre-existing server type errors** in `autonomousDealMachine`,
+  `countyAssessorIngest`, `supportAgent`, etc. — not blocking
+  client refinement work; out of scope for this pass.
 
-## Expected HEAD after session 3 deploy
+## Expected HEAD after session 4 deploy
 
-`01c9b2a` or later.
+`26fd606` or later.
