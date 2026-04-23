@@ -432,3 +432,38 @@ future sessions — see resume pointer.
   affordance.
 - `PropertyIntelligenceTab` (2490-end) — AI output grounding,
   lazy-load of heavy panels.
+
+### `/properties` — PropertyCard + PropertyForm slice (session 5b)
+
+- [I] PropertyCard: `handleDownloadDeed` silent console.error →
+  destructive toast with recovery copy.
+- [E] PropertyCard: `status.replace('_',' ')` → `/_/g`. Statuses
+  like "under_contract_signed" now render fully instead of
+  partially formatted.
+- [M] PropertyCard: hover-action icon buttons (delete / download /
+  refresh) bumped from 40px to 44px on mobile (h-11 w-11); desktop
+  stays compact at h-7 w-7. Previously tapped-adjacent by hair on
+  mobile.
+- [A] PropertyCard: eleven decorative icons made `aria-hidden` —
+  MapPin, Trash2, FileText, Loader2, RefreshCw, Ruler, DollarSign,
+  TrendingUp, Flame, ClipboardCheck, Calculator. Screen readers
+  were double-announcing the adjacent labels.
+- [I] PropertyForm: `useCreateProperty` now surfaces both success
+  and error. Previously create failures were entirely silent; the
+  user saw the dialog close with no "your property was saved" or
+  "something broke" signal. Error copy explicitly tells the user
+  their form values are still there.
+- [M] PropertyForm: mobile keyboard hints — APN `numeric`, Acres
+  `decimal`, State `maxLength=2` + `autoCapitalize="characters"` +
+  `autoComplete="address-level1"`, Purchase Price + Market Value
+  `type="number"` + `inputMode="decimal"` + `min=0`. Desktop
+  unchanged.
+- [A] PropertyForm: "Land Details (optional — APN, Acreage)"
+  collapsible replaced `▲`/`▼` character arrows with lucide
+  ChevronUp/ChevronDown plus `aria-expanded` and `aria-controls`
+  pointing at `#land-details-panel`. Toggle trigger gained
+  44px mobile height + focus-visible ring.
+- [A] PropertyForm: submit Loader2 spinner `aria-hidden`; submit
+  button `min-h-[44px]` on mobile.
+
+**Sign-off (this slice):** D ✓ M ✓ A ✓ E ✓ AI n/a LI ✓ CW ✓ I ✓ T ✓
