@@ -79,3 +79,28 @@ Inventory built. Beginning refinement walk with the highest-traffic surfaces.
 - Clerk widget `colorPrimary` already in place from session 1.
 
 **Sign-off:** D ✓ M ✓ A ✓ E ✓ AI n/a LI ✓ CW ✓ I ✓ T ✓
+
+### 2026-04-23 — `/onboarding-v2`
+**Refinements made:**
+- [D] Designer: onboarding CTAs were hardcoded to `bg-emerald-600`
+  (Beginner/Active paths) or `bg-purple-600` (Power User path). Both
+  bypassed the theme system — primary buttons read as "not AcreOS" on
+  the only screen a new user sees before the app.  Bulk-replaced all
+  13 occurrences with `bg-primary hover:bg-primary/90`.  Path
+  differentiation was doing work the H1 copy already does, so no
+  information was lost.
+- [D] Designer: the "AcreOS" header badge in the progress bar was
+  `text-emerald-400` — same drift.  Now `text-primary`.
+- [E] Engineer: Opportunity stat grid cells had no `min-w-0`, causing
+  long dollar strings ($1,200,000) to overflow the cell on very
+  narrow viewports.  Added `min-w-0` + `truncate` on the dollar
+  labels.
+
+**Sign-off:** D ✓ M ✓ A ✓ E ✓ AI n/a LI ✓ CW ✓ I ✓ T ✓
+
+Deferred (logged for a future pass, not this session):
+- The full onboarding shell is `bg-gray-950` / `text-white` hardcoded
+  instead of theme tokens.  Intentional "focused flow" decision; fine
+  in dark mode, but users on light theme get a dark onboarding that
+  clashes with the rest of the app.  Needs a broader theme-adaption
+  pass.

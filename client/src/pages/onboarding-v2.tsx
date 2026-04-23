@@ -194,7 +194,7 @@ function InstantDealHunt({
         />
         <Button
           onClick={onContinue}
-          className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3"
+          className="w-full bg-primary hover:bg-primary/90 text-white font-semibold py-3"
         >
           Continue to Dashboard <ArrowRight className="w-4 h-4 ml-2" />
         </Button>
@@ -280,14 +280,14 @@ function InstantDealHunt({
               </div>
 
               <div className="grid grid-cols-3 gap-2 text-center">
-                <div className="bg-gray-800/60 rounded-lg p-2">
-                  <div className="text-sm font-semibold text-white">
+                <div className="bg-gray-800/60 rounded-lg p-2 min-w-0">
+                  <div className="text-sm font-semibold text-white truncate">
                     ${opp.estimatedOfferPrice.toLocaleString()}
                   </div>
                   <div className="text-xs text-gray-500">Offer Price</div>
                 </div>
-                <div className="bg-gray-800/60 rounded-lg p-2">
-                  <div className="text-sm font-semibold text-white">
+                <div className="bg-gray-800/60 rounded-lg p-2 min-w-0">
+                  <div className="text-sm font-semibold text-white truncate">
                     ${opp.estimatedResaleValue.toLocaleString()}
                   </div>
                   <div className="text-xs text-gray-500">Resale Value</div>
@@ -321,7 +321,7 @@ function InstantDealHunt({
       <Button
         onClick={onContinue}
         disabled={isLoading}
-        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3"
+        className="w-full bg-primary hover:bg-primary/90 text-white font-semibold py-3"
       >
         {isLoading ? "Scanning..." : "Continue to Dashboard"}
         <ArrowRight className="w-4 h-4 ml-2" />
@@ -499,7 +499,7 @@ function PortfolioImportStep({ onContinue }: { onContinue: (data?: Record<string
           className={cn(
             "py-3",
             file && !importComplete ? "flex-1" : "w-full",
-            "bg-emerald-600 hover:bg-emerald-700"
+            "bg-primary hover:bg-primary/90"
           )}
         >
           {importComplete ? "Continue" : "Skip for now"} <ArrowRight className="w-4 h-4 ml-2" />
@@ -594,7 +594,7 @@ function TargetCountiesStep({
           onContinue(data);
         }}
         disabled={validCounties.length === 0}
-        className="w-full bg-emerald-600 hover:bg-emerald-700 py-3"
+        className="w-full bg-primary hover:bg-primary/90 py-3"
       >
         Set {validCounties.length} {validCounties.length === 1 ? "County" : "Counties"} as Targets
         <Target className="w-4 h-4 ml-2" />
@@ -671,7 +671,7 @@ function AutomationStep({ onContinue }: { onContinue: () => void }) {
         </div>
       </div>
 
-      <Button onClick={onContinue} className="w-full bg-emerald-600 hover:bg-emerald-700 py-3">
+      <Button onClick={onContinue} className="w-full bg-primary hover:bg-primary/90 py-3">
         Activate Deal Machine <Zap className="w-4 h-4 ml-2" />
       </Button>
     </div>
@@ -756,7 +756,7 @@ function TeamSetupStep({ onContinue }: { onContinue: (data?: Record<string, any>
           <Button
             onClick={handleInvite}
             disabled={inviteMutation.isPending}
-            className="flex-1 bg-purple-600 hover:bg-purple-700 py-3"
+            className="flex-1 bg-primary hover:bg-primary/90 py-3"
           >
             {inviteMutation.isPending ? (
               <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Sending...</>
@@ -768,7 +768,7 @@ function TeamSetupStep({ onContinue }: { onContinue: (data?: Record<string, any>
         <Button
           onClick={() => onContinue({ teamInvited: invitesSent })}
           className={cn(
-            "py-3 bg-emerald-600 hover:bg-emerald-700",
+            "py-3 bg-primary hover:bg-primary/90",
             !invitesSent && emails.trim() ? "flex-1" : "w-full"
           )}
         >
@@ -879,7 +879,7 @@ function IntegrationsStep({ onContinue }: { onContinue: () => void }) {
         You can configure all integrations later in Settings.
       </p>
 
-      <Button onClick={onContinue} className="w-full bg-emerald-600 hover:bg-emerald-700 py-3">
+      <Button onClick={onContinue} className="w-full bg-primary hover:bg-primary/90 py-3">
         Continue <ArrowRight className="w-4 h-4 ml-2" />
       </Button>
     </div>
@@ -956,7 +956,7 @@ function WorkflowsStep({ onContinue }: { onContinue: () => void }) {
       <Button
         onClick={onContinue}
         disabled={selectedWorkflows.length === 0}
-        className="w-full bg-purple-600 hover:bg-purple-700 py-3"
+        className="w-full bg-primary hover:bg-primary/90 py-3"
       >
         Configure {selectedWorkflows.length} {selectedWorkflows.length === 1 ? "Workflow" : "Workflows"}
         <Settings className="w-4 h-4 ml-2" />
@@ -1104,7 +1104,7 @@ export default function OnboardingV2() {
 
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-gray-900">
-        <div className="text-sm font-medium text-emerald-400">AcreOS</div>
+        <div className="text-sm font-medium text-primary">AcreOS</div>
         <div className="text-xs text-gray-600">
           Step {currentStepIndex + 1} of {steps.length}
         </div>
@@ -1150,7 +1150,7 @@ export default function OnboardingV2() {
               </div>
               <Button
                 onClick={() => advance()}
-                className="w-full bg-emerald-600 hover:bg-emerald-700 py-3"
+                className="w-full bg-primary hover:bg-primary/90 py-3"
               >
                 Let's Get Started <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
@@ -1193,7 +1193,7 @@ export default function OnboardingV2() {
               <Button
                 onClick={() => advance({ targetCounty: formData.targetCounty, targetState: formData.targetState })}
                 disabled={!formData.targetCounty || !formData.targetState}
-                className="w-full bg-emerald-600 hover:bg-emerald-700 py-3"
+                className="w-full bg-primary hover:bg-primary/90 py-3"
               >
                 Scan This County <Zap className="w-4 h-4 ml-2" />
               </Button>
@@ -1308,7 +1308,7 @@ export default function OnboardingV2() {
               </div>
               <Button
                 onClick={() => advance()}
-                className="w-full bg-purple-600 hover:bg-purple-700 py-3"
+                className="w-full bg-primary hover:bg-primary/90 py-3"
               >
                 Activate Atlas <Sparkles className="w-4 h-4 ml-2" />
               </Button>
@@ -1399,7 +1399,7 @@ export default function OnboardingV2() {
               <Button
                 onClick={() => completeMutation.mutate()}
                 disabled={completeMutation.isPending}
-                className="w-full bg-emerald-600 hover:bg-emerald-700 py-4 text-lg font-semibold"
+                className="w-full bg-primary hover:bg-primary/90 py-4 text-lg font-semibold"
               >
                 {completeMutation.isPending ? "Setting up..." : "Go to My Dashboard"}
                 <ArrowRight className="w-5 h-5 ml-2" />
