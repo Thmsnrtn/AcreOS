@@ -470,13 +470,13 @@ export default function DealsPage() {
               <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
                 <DialogTrigger asChild>
                   <Button data-testid="button-create-deal">
-                    <Plus className="w-4 h-4 mr-2" aria-hidden="true" /> New Deal
+                    <Plus className="w-4 h-4 mr-2" aria-hidden="true" /> New deal
                   </Button>
                 </DialogTrigger>
               <DialogContent className="sm:max-w-[500px] floating-window">
                 <DialogHeader>
-                  <DialogTitle>Create Deal</DialogTitle>
-                  <DialogDescription>Start tracking a new acquisition or disposition</DialogDescription>
+                  <DialogTitle>Create deal</DialogTitle>
+                  <DialogDescription>Start tracking a new acquisition or disposition.</DialogDescription>
                 </DialogHeader>
                 <DealForm onSuccess={() => setIsCreateOpen(false)} />
               </DialogContent>
@@ -2009,8 +2009,8 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
 
 function DealForm({ onSuccess }: { onSuccess: () => void }) {
   const { mutate, isPending } = useCreateDeal();
-  const { data: properties } = useProperties();
-  
+  const { data: properties, isLoading: propertiesLoading } = useProperties();
+
   const form = useForm<z.infer<typeof dealFormSchema>>({
     resolver: zodResolver(dealFormSchema),
     defaultValues: {
@@ -2037,16 +2037,18 @@ function DealForm({ onSuccess }: { onSuccess: () => void }) {
             name="type"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Deal Type</FormLabel>
+                <FormLabel>
+                  Deal type <span className="text-destructive" aria-hidden="true">*</span>
+                </FormLabel>
                 <Select onValueChange={field.onChange} value={field.value || "acquisition"}>
                   <FormControl>
-                    <SelectTrigger className="min-h-[44px]" data-testid="select-deal-type">
+                    <SelectTrigger className="min-h-[44px]" data-testid="select-deal-type" aria-label="Deal type">
                       <SelectValue />
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    <SelectItem value="acquisition">Acquisition (Buying)</SelectItem>
-                    <SelectItem value="disposition">Disposition (Selling)</SelectItem>
+                    <SelectItem value="acquisition">Acquisition (buying)</SelectItem>
+                    <SelectItem value="disposition">Disposition (selling)</SelectItem>
                   </SelectContent>
                 </Select>
                 <FormMessage />
@@ -2059,19 +2061,31 @@ function DealForm({ onSuccess }: { onSuccess: () => void }) {
             name="propertyId"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Property</FormLabel>
-                <Select onValueChange={(val) => field.onChange(parseInt(val))}>
+                <FormLabel>
+                  Property <span className="text-destructive" aria-hidden="true">*</span>
+                </FormLabel>
+                <Select
+                  onValueChange={(val) => field.onChange(parseInt(val, 10))}
+                  value={field.value ? field.value.toString() : undefined}
+                  disabled={propertiesLoading}
+                >
                   <FormControl>
-                    <SelectTrigger className="min-h-[44px]" data-testid="select-deal-property">
-                      <SelectValue placeholder="Select property" />
+                    <SelectTrigger className="min-h-[44px]" data-testid="select-deal-property" aria-label="Property">
+                      <SelectValue placeholder={propertiesLoading ? "Loading properties…" : "Select property"} />
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    {properties?.map((prop: any) => (
-                      <SelectItem key={prop.id} value={prop.id.toString()}>
-                        {prop.county}, {prop.state} ({prop.sizeAcres} ac)
-                      </SelectItem>
-                    ))}
+                    {properties && properties.length > 0 ? (
+                      properties.map((prop: any) => (
+                        <SelectItem key={prop.id} value={prop.id.toString()}>
+                          {prop.county}, {prop.state} ({prop.sizeAcres} ac)
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <div className="px-2 py-3 text-sm text-muted-foreground text-center">
+                        {propertiesLoading ? "Loading properties…" : "No properties yet — add one first."}
+                      </div>
+                    )}
                   </SelectContent>
                 </Select>
                 <FormMessage />
@@ -2086,16 +2100,27 @@ function DealForm({ onSuccess }: { onSuccess: () => void }) {
             name="offerAmount"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Offer Amount ($)</FormLabel>
+                <FormLabel>Offer amount</FormLabel>
                 <FormControl>
-                  <Input 
-                    {...field}
-                    value={field.value ?? ""}
-                    type="number" 
-                    placeholder="5000"
-                    className="min-h-[44px]"
-                    data-testid="input-offer-amount"
-                  />
+                  <div className="relative">
+                    <span
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
+                      aria-hidden="true"
+                    >
+                      $
+                    </span>
+                    <Input
+                      {...field}
+                      value={field.value ?? ""}
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      step="any"
+                      placeholder="5,000"
+                      className="min-h-[44px] pl-7 text-right tabular-nums"
+                      data-testid="input-offer-amount"
+                    />
+                  </div>
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -2106,12 +2131,13 @@ function DealForm({ onSuccess }: { onSuccess: () => void }) {
             name="offerDate"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Offer Date</FormLabel>
+                <FormLabel>Offer date</FormLabel>
                 <FormControl>
-                  <Input 
+                  <Input
                     type="date"
                     className="min-h-[44px]"
-                    onChange={(e) => field.onChange(new Date(e.target.value))} 
+                    value={field.value instanceof Date && !isNaN(field.value.getTime()) ? format(field.value, 'yyyy-MM-dd') : ''}
+                    onChange={(e) => field.onChange(e.target.value ? new Date(e.target.value) : undefined)}
                     data-testid="input-offer-date"
                   />
                 </FormControl>
@@ -2124,17 +2150,17 @@ function DealForm({ onSuccess }: { onSuccess: () => void }) {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FormField
             control={form.control}
-            name="titleCompany"
+            name="closingDate"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Title Company</FormLabel>
+                <FormLabel>Target closing</FormLabel>
                 <FormControl>
-                  <Input 
-                    {...field}
-                    value={field.value ?? ""}
-                    placeholder="ABC Title Co"
+                  <Input
+                    type="date"
                     className="min-h-[44px]"
-                    data-testid="input-title-company"
+                    value={field.value instanceof Date && !isNaN(field.value.getTime()) ? format(field.value, 'yyyy-MM-dd') : ''}
+                    onChange={(e) => field.onChange(e.target.value ? new Date(e.target.value) : undefined)}
+                    data-testid="input-closing-date"
                   />
                 </FormControl>
                 <FormMessage />
@@ -2143,16 +2169,18 @@ function DealForm({ onSuccess }: { onSuccess: () => void }) {
           />
           <FormField
             control={form.control}
-            name="closingDate"
+            name="titleCompany"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Target Closing</FormLabel>
+                <FormLabel>Title company</FormLabel>
                 <FormControl>
-                  <Input 
-                    type="date"
+                  <Input
+                    {...field}
+                    value={field.value ?? ""}
+                    placeholder="ABC Title Co"
+                    autoCapitalize="words"
                     className="min-h-[44px]"
-                    onChange={(e) => field.onChange(new Date(e.target.value))} 
-                    data-testid="input-closing-date"
+                    data-testid="input-title-company"
                   />
                 </FormControl>
                 <FormMessage />
@@ -2165,11 +2193,11 @@ function DealForm({ onSuccess }: { onSuccess: () => void }) {
           <Button type="submit" className="w-full min-h-[44px]" disabled={isPending} data-testid="button-create-deal-submit">
             {isPending ? (
               <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Creating...
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
+                Creating…
               </>
             ) : (
-              "Create Deal"
+              "Create deal"
             )}
           </Button>
         </div>

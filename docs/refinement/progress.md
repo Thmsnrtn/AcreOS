@@ -1121,3 +1121,91 @@ Tasks (checklist), ROI.
   `role="checkbox"` + `aria-checked`, not a bare `<button>`.
   Icon-only buttons with a toggle identity are a common a11y
   miss across the app — grep candidate for broader sweep.
+
+---
+
+### 2026-04-23 — `/deals` — `DealForm` (create-deal modal) (5m)
+
+**Refinements made:**
+- [D] Designer: sentence-case sweep — `Create Deal` → `Create deal`,
+  `New Deal` → `New deal`, labels `Deal Type/Offer Amount ($)/Offer
+  Date/Title Company/Target Closing` → sentence case; removed `($)`
+  from offer-amount label (adornment now visual).
+- [D] Designer: currency input gets a `$` prefix adornment +
+  `text-right tabular-nums` digit alignment — reads as money, not a
+  generic number.
+- [M] Mobile: offer amount `inputMode="decimal"` + `min={0}` +
+  `step="any"` — opens the decimal keypad on iOS/Android, prevents
+  negative offers.
+- [M] Mobile: title-company `autoCapitalize="words"` for proper case
+  on mobile input.
+- [A] Accessibility: required indicator added to `Deal type` and
+  `Property` labels (`*` aria-hidden because the Zod validator is
+  the SR-visible source of truth via `FormMessage`).
+- [A] Accessibility: `SelectTrigger` gets `aria-label` on both
+  selects (the visible `FormLabel` associates, but the trigger
+  itself exposes the name to SR).
+- [A] Accessibility: `Loader2` inside submit button hidden from SR
+  (decorative — "Creating…" text announces).
+- [E] Engineer: date inputs — `value` now bound, guards against
+  `new Date("")` producing `Invalid Date` when user clears the
+  field (`onChange` returns `undefined` for empty). Also handles
+  re-opening the form with pre-filled dates.
+- [E] Engineer: property `Select` now binds `value={field.value?.
+  toString()}` so selection persists across re-renders; was
+  previously uncontrolled.
+- [E] Engineer: `parseInt(val, 10)` — explicit radix.
+- [LI] Land investor: reordered row 3 to `closing date | title
+  company` (date-first, per practitioner workflow — offer amount →
+  offer date → closing date → title company is the chronological
+  flow).
+- [LI] Land investor: select option copy `Acquisition (Buying)` →
+  `Acquisition (buying)` — parenthetical descriptor is sentence
+  case, matches "(Selling)" sibling fix.
+- [CW] Copywriter: `Creating...` (3 ASCII dots) → `Creating…` (U+2026
+  ellipsis); DialogDescription gets terminal period.
+- [I] Infrastructure: `useProperties()` loading state now surfaces
+  in the property dropdown — `disabled` + "Loading properties…"
+  placeholder while fetching, and explicit "No properties yet — add
+  one first." empty state when the list is empty. Previously the
+  dropdown was silently empty during both states, indistinguishable
+  from each other and from a real network failure.
+- [T] Trust: empty-properties empty state gives the user a
+  specific next action ("add one first.") instead of an empty
+  dropdown that looks broken.
+
+**Not refined (scoped out / already good):**
+- Submit toasts — `useCreateDeal` hook already fires
+  success/destructive toasts via `useToast` (verified). No silent-
+  mutation hole.
+- Focus restoration — Radix `Dialog` handles return-focus to
+  trigger automatically.
+- Focus trap — Radix `Dialog` ships one out of the box (unlike the
+  hand-rolled `DealDetailDrawer` from 5l).
+- Form-level `notes` field — not in `deals` schema; dropped from 5m
+  plan.
+
+**Sign-off:** D ✓ M ✓ A ✓ E ✓ AI n/a LI ✓ CW ✓ I ✓ T ✓
+**Commit:** (this commit)
+
+### Cross-cutting additions
+
+- **Empty-properties-in-create-deal pattern (new 5m):** when a
+  creation form depends on a prerequisite entity (deal needs
+  property, package needs deal, etc.), the dependent `Select` must
+  distinguish three states explicitly: **loading** (disabled +
+  "Loading X…"), **empty** (message + next action: "No X yet — add
+  one first."), **populated** (options). A silently empty dropdown
+  is indistinguishable from a failed query or an unpopulated list,
+  and leaves the user stuck.
+- **Controlled-date-input rule (new 5m):** date inputs must bind
+  `value={date instanceof Date && !isNaN(date.getTime()) ? format(
+  date,'yyyy-MM-dd') : ''}` and `onChange={e => e.target.value ?
+  new Date(e.target.value) : undefined}`. Bare `new Date(e.target.
+  value)` silently produces `Invalid Date` when the user clears the
+  field, which then serializes to null/NaN downstream. Grep
+  candidate across all forms.
+- **Currency adornment rule (new 5m):** `$` should be a visual
+  prefix inside the input (`relative` wrapper + absolute-positioned
+  span + `pl-7`), not suffixed on the label as `Amount ($)`.
+  Combine with `text-right tabular-nums` for money readability.
