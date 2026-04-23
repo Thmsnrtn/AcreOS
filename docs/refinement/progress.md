@@ -1582,3 +1582,179 @@ truncate.
   own surface and gets its own slice in a later session.
 
 **Commit:** (this commit)
+
+---
+
+## Session 7 — `/inbox` unified view
+
+**Scope:** `client/src/pages/inbox.tsx` in full. Email thread list,
+SMS conversation list, unified "All channels" view, email detail,
+SMS detail, reply panel, send-SMS composer, status-filter tabs
+(all/unread/starred/archived), channel-filter tabs (all/email/sms).
+
+**9-lens refinements shipped (~20 distinct fixes):**
+
+- **A11y (row keyboard):** `EmailMessageRow` and
+  `SMSConversationRow` were `<div onClick>` — mouse-only. Converted
+  to `role="button"` + `tabIndex={0}` + `onKeyDown` handler
+  (Enter/Space → onSelect via shared `handleRowKeyDown` helper) +
+  `aria-current` for selection + `aria-label` naming the row's
+  purpose ("Unread email from X: subject", "SMS conversation with
+  Y"). Inner Star button kept as `<button>` with
+  `e.stopPropagation()`. Added `focus-visible:ring-2 ring-inset`
+  with `outline-none` so keyboard users see focus land.
+
+- **A11y (decorative icons):** `aria-hidden="true"` swept across
+  every icon paired with a text label — ChannelBadge
+  (Phone/Mail), tab icons (MessageSquare/Mail/Phone), button
+  glyphs (Loader2/Send/Star/Archive/Mail/MailOpen/ArrowLeft/
+  User/ExternalLink/Search), empty-state icon in SMS body, unread
+  dot indicator on row.
+
+- **A11y (toggle + expand semantics):** `aria-pressed` on
+  Mark-read/Mark-unread button (bound to `!isRead`) and on Star
+  button (bound to `isStarred`). `aria-expanded` + `aria-controls`
+  on Reply button → `id="inbox-reply-panel"` on the reply card.
+
+- **A11y (form):** Search input gained `aria-label="Search
+  messages"`. Reply textarea gained `aria-label="Reply message"`.
+  SMS textarea gained `aria-label="SMS message"`. Send-SMS icon
+  button gained `aria-label="Send SMS"`.
+
+- **A11y (status region):** SMS message list converted to
+  `role="log"` + `aria-live="polite"` + `aria-label="SMS
+  conversation with X"` so inbound messages announce without
+  interrupting. Loading spinner wrapped in `role="status"` +
+  `aria-live="polite"` + SR-only "Loading messages…" text.
+  Empty-panel "Select a message" uses EmptyState component instead
+  of raw text.
+
+- **A11y (SR direction cue):** SMS bubble timestamps prefixed with
+  SR-only `<span className="sr-only">Sent /Received </span>` so SR
+  users know authorship without relying on bubble position or
+  color.
+
+- **Engineer (error handling):** Every mutation got `onError`
+  with a specific destructive toast — row-level `starMutation`,
+  detail-level `starMutation`, `markReadMutation` (row-handler +
+  detail + page-level auto-mark-on-select), `markUnreadMutation`,
+  `archiveMutation`. Before: silent failure. After: user sees
+  "Couldn't star message — Please try again in a moment."
+
+- **Engineer (silent-query sweep extended):** SMS messages query
+  inside `SMSConversationDetail` was `useQuery` with no error
+  surfacing — a failure returned `data = []` which rendered as
+  "No messages yet." Indistinguishable from a genuinely empty
+  conversation. Added `useEffect` on `isError` → toast. Imported
+  `useEffect`.
+
+- **Engineer (dead code):** `sanitizeHtml` imported from
+  `@/lib/sanitize` but never called (the file uses `DOMPurify`
+  directly on L442). Removed.
+
+- **Designer (duplicate counter):** unread count was shown in the
+  header Badge AND in the Email tab (conditionally, when not on
+  Email tab). Two badges, same number, confusing. Removed from the
+  Email tab — the header badge is enough and is always visible
+  regardless of which tab is active. Kept on the Unread sub-tab
+  since that tab specifically filters to unread.
+
+- **Designer (counts + dates):** `tabular-nums` on unread badge,
+  row dates, SMS bubble dates, phone-number badge, phone-number
+  anchor in SMS detail, email received-at timestamp.
+  `toLocaleString()` on the unread badge so 1,234 doesn't render
+  as "1234".
+
+- **Designer (dead row content):** SMS row second line was a
+  static `<div>SMS Conversation</div>` — zero information, just
+  restates the badge below it. Removed. Row is now denser and less
+  falsely informative. A real last-message-preview would require
+  schema work (conversations table has no preview column) —
+  deferred as schema change, not refinement.
+
+- **Designer (empty state):** "Select a conversation to view" was
+  a hand-rolled centered div with a faded MessageSquare icon.
+  Replaced with the shared `EmptyState` component — "Select a
+  message / Choose a conversation from the list to read it here."
+  Matches the pattern used in every other list-detail surface.
+
+- **Copy (sentence-case sweep):** "All Channels" → "All channels".
+  "Mark Read" / "Mark Unread" → "Mark read" / "Mark unread".
+  "View Lead" → "View lead". Single-word buttons (Star, Archive,
+  Reply, Send, Cancel, All, Unread, Starred, Archived) already
+  sentence-case, untouched.
+
+- **Copy (error specificity):** every `onError` toast has a
+  specific title naming the action ("Couldn't star message",
+  "Couldn't mark as read", "Couldn't archive message", "Couldn't
+  load messages") with a specific recovery line ("Please try
+  again in a moment." / "Check your connection and try again.").
+  No "Something went wrong."
+
+- **Copy (em-dash + contraction):** "Cannot send SMS - no lead
+  associated with this conversation" → "Can't send SMS — no lead
+  is linked to this conversation." Proper en-dash per the en-dash
+  pattern from prior slices, contraction for a warmer voice,
+  clearer verb ("linked" vs "associated").
+
+- **Copy (row aria-label):** "Unread email from X: subject" /
+  "Read email from X: subject" — makes unread/read state part of
+  what SR users hear on row focus. Before: only the visible
+  `font-semibold` cue existed.
+
+- **Trust (affordances):** sender email in email detail rendered
+  as `mailto:` anchor (was plain text). Lead phone in SMS detail
+  header rendered as `tel:` anchor (was plain text). On mobile
+  these become tappable. Before: numbers that *look* tappable but
+  aren't — a subtle trust bug.
+
+- **Trust (DOMPurify retained):** email body continues to render
+  via `DOMPurify.sanitize(message.bodyHtml)` — already safe, kept
+  as-is. Double-sanitize consideration was checked; only
+  DOMPurify is called, `sanitizeHtml` helper was unused → removed.
+
+- **Infra (timeouts + fallbacks):** timeouts are handled at the
+  `apiRequest` layer (shared); no per-mutation timeout added.
+  `markReadMutation` / `markUnreadMutation` / `starMutation` /
+  `archiveMutation` all now have error paths (was missing before)
+  so network failures don't leave the UI in a "I clicked but
+  nothing happened" state.
+
+- **Mobile (header wrap):** detail-view action row is
+  `flex-wrap` — confirmed good wrap at 375px. SMS header info
+  column wrapped into `min-w-0` + `flex-wrap` on the inner badge
+  row so long contact names don't overflow.
+
+**9-lens sign-off:**
+
+| Lens                       | Status                                                                                                                                            |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Designer                   | PASS — rhythm, tabular-nums, empty state use EmptyState, duplicate counter resolved                                                               |
+| Mobile designer            | PASS — 44px touch targets on buttons, tel: anchor on phone, email mailto: anchor, detail view replaces list on mobile, back button visible        |
+| Accessibility              | PASS — row keyboard a11y, aria-label sweep, aria-pressed/expanded/controls, role=log + aria-live on chat, SR direction prefix, decorative icons   |
+| Engineer                   | PASS — onError on every mutation, silent-query→toast extended, dead import removed, no type errors                                                |
+| AI systems                 | N/A — no LLM output on this surface                                                                                                               |
+| Land investor              | PASS — lead name + phone + ChannelBadge give practitioner context; last-message-preview would require schema column (deferred, noted)             |
+| Copywriter                 | PASS — sentence-case, em-dash, contraction, error specificity, aria-label phrasing                                                                |
+| Infrastructure             | PASS — error toasts on every mutation, silent-query→toast added on messages query, apiRequest-layer timeout upstream                              |
+| Trust                      | PASS — mailto/tel affordances, DOMPurify on email HTML retained, per-mutation errors surfaced                                                      |
+
+**Deferred / flagged for owner:**
+- **Last-message preview on SMS rows** — requires schema column
+  (`conversations.lastMessagePreview` or denormalize from
+  messages). Not a refinement.
+- **Focus return on drawer dismiss** — same class as
+  DealDetailDrawer and CampaignDetailDrawer: hand-rolled overlay
+  with no trigger ref. Deferred to the cross-surface
+  drawer-refactor pass.
+- **Message-detail view on select → does not move focus to detail
+  pane** — debatable whether it should. On mobile, focus stays on
+  the activated row while the detail replaces the list, which is
+  OK because the Back button is visible. On desktop, focus
+  staying on the row is also OK (user can then continue arrow-
+  keying the list). Left as-is.
+- **SMS status icons (delivered/read/failed)** — not surfaced on
+  bubbles today. Would require `messages.deliveryStatus` rendering.
+  Product decision, deferred.
+
+**Commit:** `e052cf8`

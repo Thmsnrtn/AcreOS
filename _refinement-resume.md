@@ -1,21 +1,32 @@
 # Elite-Team Refinement — Resume Point
 
-**Last session:** 2026-04-23 (sessions 6a + 6b — `/campaigns` full
-surface minus embedded AbTest/Variants/Analytics sub-panels)
-**Last completed refinement:** `CampaignDetailDrawer` +
-`SendMailDialog` + `OptimizerSuggestionsPanel` in
-`components/campaigns-content.tsx` — hand-rolled overlay got
-role=dialog + aria-modal + aria-labelledby + Esc handler (5l rule),
-close button aria-label, sentence-case sweep on drawer headers +
-sections + buttons + toasts, tabular-nums across all counters /
-percentages / currency, `toLocaleString()` on stat counters,
-send-confirmation banner now names recipient count alongside
-estimated cost, credit-balance copy uses en-dash + tabular-nums
-currency, estimate-error card gets role=alert with specific
-recovery copy, optimizer collapse toggle gets aria-expanded +
-aria-controls, status-badge capitalize extended to drawer header,
-header wraps cleanly at 375px via gap-4 flex-wrap, decorative-icon
-aria-hidden sweep across drawer + send dialog + optimizer.
+**Last session:** 2026-04-23 (session 7 — `/inbox` unified view)
+**Last completed refinement:** `client/src/pages/inbox.tsx` — full
+9-lens pass on row rendering (EmailMessageRow, SMSConversationRow),
+detail views (EmailMessageDetail, SMSConversationDetail), and the
+page shell. Row divs converted to `role="button"` + `tabIndex={0}` +
+keyboard handler (Enter/Space) + `aria-current` for selection,
+`focus-visible:ring` added. Every mutation got an `onError` toast
+with specific copy: star, mark-read, mark-unread, archive, page-level
+autoread. SMS `messages` query now follows silent-query→toast via
+`useEffect` on `isError`. Sentence-case sweep on "All channels",
+"Mark read", "Mark unread", "View lead" (was Title Case). Decorative
+icons got `aria-hidden` across ChannelBadge, tab icons, button
+glyphs (Loader2, Send, Star, Archive, Mail/MailOpen, ArrowLeft,
+User, ExternalLink, Phone, MessageSquare, Search). Tabular-nums on
+all counts/dates/phone, `toLocaleString()` on unread badge. Unread
+count deduped — was shown in header badge AND Email-tab badge (same
+value, confusing); now only in header. Sender email rendered as
+`mailto:` anchor; lead phone as `tel:` anchor. EmptyState replaces
+hand-rolled "Select a conversation to view" div. SR-only "Sent" /
+"Received" prefix added to SMS bubble timestamps for SR users.
+`aria-pressed` on Mark-read/Star toggle buttons; `aria-expanded` +
+`aria-controls` on Reply button and panel. `aria-label` on Search
+input. "Cannot send SMS - no lead associated" → "Can't send SMS —
+no lead is linked" (en-dash, contraction). Dead "SMS Conversation"
+static line on SMS row removed (redundant with ChannelBadge). Dead
+`sanitizeHtml` import purged. SR-only loading label on SMS messages
+loader. SMS message log now `role="log"` + `aria-live="polite"`.
 
 **Phase 1 inventory:** ✅ committed at `11d0e8c`
 **PropertyDetailDialog:** ✅ fully refined across all tabs.
@@ -25,8 +36,11 @@ aria-hidden sweep across drawer + send dialog + optimizer.
 **/deals DealForm (create modal):** ✅ slice 5m complete (`0707ee4`).
 **/campaigns list + create:** ✅ slice 6a complete (`ea096ec`).
 **/campaigns detail drawer + OptimizerSuggestions + SendMailDialog:** ✅ slice 6b complete (`cf10579`).
-**/campaigns A/B test manager + variants panel + analytics:** ⬜ slice 6c next (or defer — these are separate embedded components)
-**/inbox:** ⬜ slice 7 — message rendering + thread navigation a11y
+**/campaigns A/B test manager + variants panel + analytics:** ⬜ slice 6c deferred — separate embedded components, not blocking /inbox walk
+**/inbox:** ✅ slice 7 complete (commit `e052cf8`)
+**/documents:** ⬜ slice 8 next — upload + OCR trust surface
+**/sign/:docId:** ⬜ slice 9 — legal/trust surface, signer flow
+**/portal/:accessToken:** ⬜ slice 10 — public borrower link, mobile critical at 320px
 
 ## How to continue
 
@@ -90,6 +104,23 @@ Session 6:
   names recipient count alongside cost, aria-expanded/controls on
   optimizer collapse, role=alert on estimate error, decorative-
   icon aria-hidden sweep (commit `cf10579`)
+
+Session 7:
+- `/inbox` full-surface — row keyboard a11y (role=button + Enter/
+  Space handler + aria-current + focus-visible ring), onError
+  toasts on every mutation (star/read/unread/archive × row + detail
+  + page-level), silent-query→toast on SMS messages query,
+  sentence-case sweep, decorative-icon aria-hidden sweep across 12+
+  lucide icons, tabular-nums + `toLocaleString()` on unread badge,
+  unread-count deduped from Email tab (was double-shown), mailto:
+  on sender email + tel: on lead phone, EmptyState replaces hand-
+  rolled detail-pane placeholder, SR-only "Sent/Received" prefix
+  on SMS bubble timestamps, aria-pressed on Mark-read/Star,
+  aria-expanded/controls on Reply, aria-label on Search, en-dash +
+  contraction on SMS-unavailable copy, dead "SMS Conversation"
+  static row line removed, dead `sanitizeHtml` import purged,
+  `role="log"` + `aria-live="polite"` on SMS message list
+  (commit `e052cf8`)
 
 ## Cross-cutting gains this pass
 
@@ -222,11 +253,16 @@ Session 6:
 
 ## Next surface to refine
 
-**Next slice: either `/campaigns` 6c (embedded AbTestManager +
-CampaignVariantsPanel + CampaignAnalytics sub-panels) OR skip ahead
-to `/inbox` — a natural pause in the campaigns walk.**
+**Next slice: 8 — `/documents` (upload + OCR trust signals).**
 
-Scope for 6c (if chosen):
+After /documents, move per inventory to:
+1. `/sign/:docId` — **legal/trust surface** — signer flow (slice 9)
+2. `/portal/:accessToken` — borrower portal; **public link, mobile
+   critical** — no Clerk auth, must work at 320px (slice 10)
+3. `/campaigns` 6c (AbTestManager + CampaignVariantsPanel +
+   CampaignAnalytics sub-panels) — deferred, not blocking
+
+Scope reference for eventual 6c:
 - `components/ab-test-manager.tsx` — A/B test create + stats +
   winner declaration. Likely the same hand-rolled-dialog + sentence-
   case + tabular-nums pattern as the drawer.
@@ -234,22 +270,6 @@ Scope for 6c (if chosen):
   flow.
 - `components/campaign-analytics.tsx` — response analytics chart +
   cohort breakdown.
-- If each file is <200 lines, group them into one commit; otherwise
-  split.
-
-Scope for 7 (skip ahead, recommended — campaigns is the longest
-single surface in the inventory and the big usability wins have
-shipped in 6a/6b):
-- `/inbox` — message rendering, thread navigation, SR
-  announcements, unread badges, sentence-case, decorative icons.
-- Then `/documents`, `/sign/:docId` (legal/trust surface), and the
-  mobile-critical public `/portal/:accessToken` borrower flow.
-
-After that: move per inventory to:
-1. `/documents` — upload + OCR trust signals
-2. `/sign/:docId` — **legal/trust surface** — signer flow
-3. `/portal/:accessToken` — borrower portal; **public link, mobile
-   critical** — no Clerk auth, must work at 320px
 
 ## Deferred / flagged for owner decision
 
@@ -302,8 +322,40 @@ After that: move per inventory to:
   `storage`, `autonomousDealMachine`, `countyAssessorIngest`,
   `supportAgent`, etc. — not blocking client refinement work.
 
-## Expected HEAD after session 6a+6b
+## Expected HEAD after session 7
 
-`cf10579 refine(campaigns/drawer+send+optimizer): …` on top of
-`ea096ec` (campaigns list + create). Both commits shipped in a
-single elite-refinement session (6a+6b).
+`e052cf8 refine(inbox): …` on top of `cf10579` (campaigns drawer
+batch) on top of `ea096ec` (campaigns list + create). Session 7
+shipped a single atomic inbox commit with ~20 refinements across
+all 9 lenses.
+
+## New cross-cutting patterns added in session 7
+
+- **Clickable-div row rule (new 7):** any `<div onClick>` used as a
+  selectable list row must also ship `role="button"`, `tabIndex={0}`,
+  a keyboard handler for Enter/Space (extracted as `handleRowKeyDown`
+  when repeated), `aria-label` that describes the row's content,
+  `aria-current` for selection state, and a `focus-visible:ring`
+  with `outline-none`. Inner controls (Star button, etc.) must
+  remain `<button>` and use `e.stopPropagation()`.
+- **Unread/count badge duplicate sweep (new 7):** when a stat is
+  shown in a page header AND inside a filter tab, only show it in
+  the place where the user can act on it. Header-level unread
+  count + Email-tab unread count was redundant because filtering
+  to Email doesn't add information.
+- **`mailto:` / `tel:` affordance rule (new 7):** any rendered
+  email address or phone number in a customer-facing surface
+  should be a `mailto:` or `tel:` anchor on mobile. Muted
+  secondary text that *looks* tappable but isn't is a trust bug.
+- **SR-only direction prefix on chat bubbles (new 7):** color-
+  coded bubble direction ("outbound right, inbound left") is
+  visual-only. Prefix timestamps with SR-only "Sent "/"Received "
+  so SR users understand authorship without visual cues.
+- **`role="log"` + `aria-live="polite"` on chat message lists
+  (new 7):** new inbound messages should announce to SR users
+  without interrupting.
+- **Silent-query→toast extended to sub-detail queries (new 7):**
+  pattern now applies to *any* query whose failure shows an empty
+  view indistinguishable from "genuinely empty" — including
+  message queries inside a conversation detail, not just list
+  pages.
