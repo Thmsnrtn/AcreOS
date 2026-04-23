@@ -240,10 +240,29 @@ const StatusPage = React.lazy(() => import("@/pages/status"));
 const ChangelogPage = React.lazy(() => import("@/pages/changelog"));
 
 // ─── Page loading fallback ──────────────────────────────────────────────────
+// Shown during route-level auth resolution and React.lazy() chunk loads.
+// Intentionally branded (not a bare spinner) — users bouncing off a blank
+// page with a tiny loader read the app as "is this still working?" A small
+// AcreOS moment with a subtle pulse keeps them oriented.
 function PageLoader() {
   return (
-    <div className="min-h-screen flex items-center justify-center" aria-label="Loading page">
-      <Loader2 className="w-8 h-8 animate-spin text-primary" aria-hidden="true" />
+    <div
+      className="min-h-screen flex items-center justify-center bg-background px-4"
+      role="status"
+      aria-label="Loading AcreOS"
+    >
+      <div className="flex flex-col items-center gap-4">
+        <div className="relative">
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-md">
+            <span className="text-white font-bold text-xl">A</span>
+          </div>
+          <div
+            className="absolute -inset-1 rounded-xl border-2 border-primary/30 animate-ping"
+            aria-hidden="true"
+          />
+        </div>
+        <p className="text-sm text-muted-foreground">Loading AcreOS…</p>
+      </div>
     </div>
   );
 }

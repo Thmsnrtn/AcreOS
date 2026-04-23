@@ -104,3 +104,20 @@ Deferred (logged for a future pass, not this session):
   in dark mode, but users on light theme get a dark onboarding that
   clashes with the rest of the app.  Needs a broader theme-adaption
   pass.
+
+### 2026-04-23 — `PageLoader` (cross-cutting)
+Applies to every protected route during auth resolution + every
+`React.lazy()` chunk boundary.
+
+**Refinements made:**
+- [D] Designer: bare spinner on empty page → branded loader.  Rounded
+  AcreOS "A" glyph with gradient (matches sign-in header) + animated
+  ping ring + subtle "Loading AcreOS…" caption.  Reads as "the app is
+  loading" not "is this page broken?"
+- [A] Accessibility: `role="status"` + `aria-label="Loading AcreOS"`
+  on the wrapper (was just `aria-label`, no role).  Ping ring
+  `aria-hidden`.
+- [T] Trust: users bouncing off Safari's 1-minute-JWT refresh window
+  saw a tiny spinner with no brand context — now they see AcreOS.
+
+**Sign-off:** D ✓ M ✓ A ✓ E ✓ AI n/a LI n/a CW ✓ I ✓ T ✓
