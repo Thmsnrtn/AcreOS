@@ -15,13 +15,13 @@
  * No login required — the HMAC in the URL is the credential.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { AlertTriangle, CheckCircle2, FileText, ShieldCheck } from "lucide-react";
+import { AlertTriangle, CheckCircle2, FileText, ShieldCheck, RefreshCw } from "lucide-react";
 import { SignatureCapture } from "@/components/signature-capture";
 import { AcreosLogo } from "@/components/acreos-logo";
 import { useDocumentTitle } from "@/hooks/use-document-title";
@@ -60,26 +60,30 @@ export default function SignDocumentPage() {
   const signerId = sp.get("s") || "";
   const token = sp.get("t") || "";
 
-  useDocumentTitle("Sign Document");
+  useDocumentTitle("Sign document");
 
   const [data, setData] = useState<PublicDoc | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [signed, setSigned] = useState(false);
   const [allSigned, setAllSigned] = useState(false);
+  const confirmationRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!Number.isFinite(docId) || !signerId || !token) {
-      setError("This signing link is missing required information. Please re-open the link from your email exactly as received.");
+      setLoadError("This signing link is missing required information. Please re-open the link from your email exactly as received.");
       setLoading(false);
       return;
     }
+    const controller = new AbortController();
     let cancelled = false;
     (async () => {
       try {
         const res = await fetch(
           `/api/public/sign/${docId}?s=${encodeURIComponent(signerId)}&t=${encodeURIComponent(token)}`,
+          { signal: controller.signal },
         );
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
@@ -90,20 +94,28 @@ export default function SignDocumentPage() {
         setData(json);
         if (json.signer.signedAt) setSigned(true);
       } catch (err: any) {
-        if (cancelled) return;
-        setError(err.message || "Could not load the document.");
+        if (cancelled || err?.name === "AbortError") return;
+        setLoadError(err.message || "Could not load the document.");
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [docId, signerId, token]);
+
+  useEffect(() => {
+    if (signed && confirmationRef.current) {
+      confirmationRef.current.focus();
+    }
+  }, [signed]);
 
   async function handleSubmit(capture: { data: string; type: "drawn" | "typed"; signerName: string }) {
     if (!data) return;
     setSubmitting(true);
+    setSubmitError(null);
     try {
       const res = await fetch(`/api/public/sign/${docId}`, {
         method: "POST",
@@ -124,7 +136,7 @@ export default function SignDocumentPage() {
       setSigned(true);
       setAllSigned(!!body.allSigned);
     } catch (err: any) {
-      setError(err.message || "Signature failed.");
+      setSubmitError(err.message || "We couldn't submit your signature. Your signing link is still valid — please try again.");
     } finally {
       setSubmitting(false);
     }
@@ -133,36 +145,47 @@ export default function SignDocumentPage() {
   return (
     <div className="min-h-screen bg-background">
       <SkipToContent />
-      <nav className="border-b bg-background/95 backdrop-blur">
-        <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
+      <nav className="border-b bg-background/95 backdrop-blur" aria-label="Signing header">
+        <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between gap-3">
           <AcreosLogo size={30} />
           <Badge variant="outline" className="text-xs">
-            <ShieldCheck className="h-3 w-3 mr-1" />
+            <ShieldCheck className="h-3 w-3 mr-1" aria-hidden="true" />
             Secure signing
           </Badge>
         </div>
       </nav>
 
-      <main id="main-content" className="max-w-3xl mx-auto px-6 py-10 space-y-6">
+      <main id="main-content" className="max-w-3xl mx-auto px-4 sm:px-6 py-8 sm:py-10 space-y-6">
         {loading ? (
           <Card>
             <CardContent className="p-8 space-y-4">
-              <Skeleton className="h-6 w-2/3" />
-              <Skeleton className="h-40 w-full" />
-              <Skeleton className="h-40 w-full" />
+              <Skeleton className="h-6 w-2/3" aria-hidden="true" />
+              <Skeleton className="h-40 w-full" aria-hidden="true" />
+              <Skeleton className="h-40 w-full" aria-hidden="true" />
+              <span className="sr-only">Loading document…</span>
             </CardContent>
           </Card>
-        ) : error ? (
-          <Card>
+        ) : loadError ? (
+          <Card role="alert">
             <CardContent className="p-8 flex items-start gap-3">
-              <AlertTriangle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
-              <div>
+              <AlertTriangle className="h-5 w-5 text-destructive shrink-0 mt-0.5" aria-hidden="true" />
+              <div className="flex-1 min-w-0">
                 <h2 className="font-semibold text-foreground">Can't load this document</h2>
-                <p className="text-sm text-muted-foreground mt-1">{error}</p>
+                <p className="text-sm text-muted-foreground mt-1">{loadError}</p>
                 <p className="text-xs text-muted-foreground mt-3">
-                  If you believe this is an error, reply to the email that sent you this link —
-                  the sender can re-issue it.
+                  If you believe this is a mistake, reply to the email that sent you this link — the sender can reissue it.
                 </p>
+                <div className="mt-4">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => window.location.reload()}
+                    data-testid="button-reload-sign"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
+                    Try again
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -173,33 +196,42 @@ export default function SignDocumentPage() {
                 Sent by <strong>{data.organization.name}</strong>
               </p>
               <h1 className="text-2xl font-semibold text-foreground mt-1 flex items-center gap-2">
-                <FileText className="h-5 w-5 text-muted-foreground" />
-                {data.document.name}
+                <FileText className="h-5 w-5 text-muted-foreground shrink-0" aria-hidden="true" />
+                <span className="min-w-0 break-words">{data.document.name}</span>
               </h1>
               <p className="text-sm text-muted-foreground mt-1">
                 Signing as <strong>{data.signer.name}</strong>
                 {data.signer.role ? ` (${data.signer.role})` : ""}.
-                {data.signersTotal > 1 &&
-                  ` ${data.signersCompleted} of ${data.signersTotal} signers complete.`}
+                {data.signersTotal > 1 && (
+                  <>
+                    {" "}
+                    <span className="tabular-nums">{data.signersCompleted}</span> of{" "}
+                    <span className="tabular-nums">{data.signersTotal}</span> signers complete.
+                  </>
+                )}
                 {data.document.expiresAt && !signed && (
-                  <> This link expires on {shortDateTime(data.document.expiresAt)}.</>
+                  <> This link expires on <span className="tabular-nums">{shortDateTime(data.document.expiresAt)}</span>.</>
                 )}
               </p>
             </div>
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Document</CardTitle>
+                <CardTitle className="text-base">Document to sign</CardTitle>
               </CardHeader>
               <CardContent>
                 {data.document.content ? (
-                  <div className="prose prose-sm dark:prose-invert max-w-none whitespace-pre-wrap rounded-md border bg-muted/30 p-4 max-h-[480px] overflow-auto">
+                  <div
+                    className="prose prose-sm dark:prose-invert max-w-none whitespace-pre-wrap rounded-md border bg-muted/30 p-4 max-h-[480px] overflow-auto"
+                    tabIndex={0}
+                    role="region"
+                    aria-label="Document contents"
+                  >
                     {data.document.content}
                   </div>
                 ) : (
                   <p className="text-sm text-muted-foreground">
-                    This document is available as a PDF. Your signature will be applied to the
-                    copy on file.
+                    This document is available as a PDF. Your signature will be applied to the copy on file.
                   </p>
                 )}
               </CardContent>
@@ -207,8 +239,14 @@ export default function SignDocumentPage() {
 
             {signed ? (
               <Card>
-                <CardContent className="p-8 text-center space-y-3">
-                  <CheckCircle2 className="h-10 w-10 text-emerald-500 mx-auto" />
+                <CardContent
+                  ref={confirmationRef}
+                  tabIndex={-1}
+                  role="status"
+                  aria-live="polite"
+                  className="p-8 text-center space-y-3 outline-none"
+                >
+                  <CheckCircle2 className="h-10 w-10 text-emerald-500 mx-auto" aria-hidden="true" />
                   <h2 className="text-lg font-semibold text-foreground">
                     Signed — thank you, {data.signer.name}
                   </h2>
@@ -220,20 +258,33 @@ export default function SignDocumentPage() {
                 </CardContent>
               </Card>
             ) : (
-              <SignatureCapture
-                signerName={data.signer.name}
-                onSignatureCapture={(capture) => {
-                  if (submitting) return;
-                  void handleSubmit(capture);
-                }}
-                disabled={submitting}
-              />
+              <>
+                {submitError && (
+                  <div
+                    role="alert"
+                    className="rounded-md border border-destructive/50 bg-destructive/5 p-4 flex items-start gap-3"
+                    data-testid="alert-submit-error"
+                  >
+                    <AlertTriangle className="h-5 w-5 text-destructive shrink-0 mt-0.5" aria-hidden="true" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground">Couldn't submit your signature</p>
+                      <p className="text-sm text-muted-foreground mt-1">{submitError}</p>
+                    </div>
+                  </div>
+                )}
+                <SignatureCapture
+                  signerName={data.signer.name}
+                  onSignatureCapture={(capture) => {
+                    if (submitting) return;
+                    void handleSubmit(capture);
+                  }}
+                  disabled={submitting}
+                />
+              </>
             )}
 
-            <p className="text-[11px] text-muted-foreground text-center max-w-md mx-auto">
-              By signing, you agree this electronic signature is legally binding and has the same
-              effect as a handwritten one. We log your IP address and browser as part of the
-              signing audit trail.
+            <p className="text-xs text-muted-foreground text-center max-w-md mx-auto leading-relaxed">
+              By signing, you agree this electronic signature is legally binding and has the same effect as a handwritten one. We log your IP address and browser as part of the signing audit trail.
             </p>
           </>
         ) : null}

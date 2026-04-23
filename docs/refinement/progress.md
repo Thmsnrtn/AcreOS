@@ -1955,3 +1955,179 @@ preview/version-history/create-package/package-detail dialogs,
   trash, etc.)
 
 **Commit:** `234dafa`
+
+---
+
+## Session 9 — 2026-04-23 — `/sign/:docId` (public legal signer flow)
+
+**Surface:** `client/src/pages/sign-document.tsx` — public signer
+page, no Clerk auth, HMAC URL token credential. Only the page
+shell is in scope for slice 9; the `<SignatureCapture>` component
+itself defers to slice 9b (372 lines, own focused pass).
+
+**Lens sweep + refinements shipped:**
+
+- **Engineer (P0 bug — submit error destroys signing UI):** the
+  page used a single `error` state for both load-failure and
+  submit-failure. If the user drew a signature, hit Sign, and
+  the submit POST failed (network blip, 5xx), `setError(...)`
+  flipped the render tree to the top-level error card —
+  unmounting `<SignatureCapture>` and throwing away the
+  signature they just drew. Catastrophic UX on a legal surface.
+  Fix: split into `loadError` and `submitError`. `submitError`
+  renders as an inline `role="alert"` above the signature pad
+  without tearing down the UI — the user sees a specific error,
+  their drawn signature is preserved, and they can retry.
+
+- **A11y (focus management on success):** after submission
+  succeeded, the confirmation card rendered but focus stayed on
+  the now-unmounted signature button. SR users had no signal
+  that the action completed. Added `ref={confirmationRef}` +
+  `tabIndex={-1}` + `useEffect` that `.focus()`es the
+  confirmation card when `signed` flips to true. Paired with
+  `role="status"` + `aria-live="polite"` so SR announces the
+  success copy.
+
+- **A11y (error card role="alert"):** top-level load-error card
+  now `role="alert"` so SR users immediately hear the problem
+  instead of silently landing on "Can't load this document."
+  Inline submit-error banner also `role="alert"` for the same
+  reason.
+
+- **A11y (decorative-icon aria-hidden sweep):** `ShieldCheck`
+  (nav badge), `FileText` (h1), `AlertTriangle` (error card x2),
+  `CheckCircle2` (success card), `RefreshCw` (new retry button)
+  — all aria-hidden. Skeleton blocks also aria-hidden since
+  they're visual placeholders (SR-only label added separately).
+
+- **A11y (skeleton SR label):** loading state was three
+  `<Skeleton>` blocks with no textual hint. Added
+  `<span class="sr-only">Loading document…</span>` so SR users
+  know something's in flight.
+
+- **A11y (nav labeled):** `<nav>` had no `aria-label` — now
+  `aria-label="Signing header"` to distinguish from the
+  non-existent main-app nav.
+
+- **A11y (document-content scrollable region):** the scrollable
+  document content `<div>` is now `tabIndex={0}` +
+  `role="region"` + `aria-label="Document contents"`. Keyboard
+  users can now enter the region with Tab and scroll; SR users
+  get a region landmark. Previously it was a focus-trapless
+  scroll div only reachable by mouse wheel.
+
+- **Trust (retry affordance on load error):** load-error card
+  previously told the signer to "reply to the email" with no
+  in-page recovery. Added a "Try again" button that reloads
+  the page with the same URL (HMAC intact). Transient 5xx
+  failures no longer require a fresh email round-trip.
+
+- **Copy (document title sentence case):** `useDocumentTitle(
+  "Sign Document")` → `"Sign document"` — the browser tab + SR
+  title now matches the app-wide sentence-case convention.
+
+- **Copy (CardTitle de-vague):** `<CardTitle>Document</CardTitle>`
+  was redundant (the whole page is *about* signing a document).
+  Renamed to **"Document to sign"** — specific, task-framed.
+
+- **Copy (error message voice):** submit-error fallback changed
+  from "Signature failed." to "We couldn't submit your signature.
+  Your signing link is still valid — please try again." —
+  specifically reassures the user that the link isn't burned
+  (a common anxiety on legal surfaces) and gives a specific
+  recovery.
+
+- **Copy (error card trust phrasing):** "If you believe this is
+  an error, reply to the email…" → "If you believe this is a
+  mistake, reply to the email that sent you this link — the
+  sender can reissue it." — "mistake" is warmer than "error";
+  "reissue" is the sender-side action word.
+
+- **Typography (legal fine print legibility):** audit-trail
+  disclosure was `text-[11px]` — below the Tailwind `text-xs`
+  scale (12px) and below the practical legibility floor for
+  body text. Promoted to `text-xs` + `leading-relaxed` so the
+  legally-material copy ("we log your IP and browser…") is
+  actually readable. 11px is fine for copyright footers; it is
+  not fine for an electronic-signature consent disclosure.
+
+- **Mobile (padding tuning):** `<main>` padding `px-6 py-10` →
+  `px-4 sm:px-6 py-8 sm:py-10` for 320-375px breathing room.
+  Nav header row gets `gap-3` between logo + badge so the
+  badge doesn't touch logo at tight widths. H1 row gets
+  `min-w-0 break-words` on the title span so a very long
+  document name wraps cleanly.
+
+- **Tabular-nums sweep:** `{signersCompleted} of {signersTotal}
+  signers complete` and the `expiresAt` date wrapped in
+  `tabular-nums` so counts + dates don't jiggle as state
+  changes.
+
+- **Engineer (AbortController):** the useEffect cleanup used a
+  boolean `cancelled` flag but never aborted the in-flight
+  fetch. On rapid unmount/remount the original request would
+  complete and its `.json()` promise would still fire (though
+  the setState was guarded). Added `AbortController`, wired
+  `signal` into `fetch`, `controller.abort()` in cleanup,
+  and an `AbortError` guard in the catch.
+
+**9-lens sign-off:**
+
+| Lens              | Status                                                                                                                        |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Designer          | PASS — rhythm tuned, CardTitle specific ("Document to sign"), legal fine print readable at text-xs                            |
+| Mobile designer   | PASS — 320px breathing room, title wraps cleanly, nav header has gap                                                          |
+| Accessibility     | PASS — focus moves to confirmation on success, role=alert on both errors, skeleton SR label, nav labeled, doc region tabbable |
+| Engineer          | PASS — submit error no longer tears down signing UI (P0 bug), AbortController for in-flight GET, dual error state             |
+| AI systems        | N/A — no LLM on this surface                                                                                                   |
+| Land investor     | PASS — signer sees "Sent by Acme" + "Signing as You (buyer)" + "2 of 3 signers complete" + expiration warning, all grounded    |
+| Copywriter        | PASS — sentence-case title, reassuring submit-error voice, "Document to sign" specific, "reissue" sender-side verb            |
+| Infrastructure    | PASS — load-error card now has a "Try again" button for transient 5xx, AbortController cleans up on remount                   |
+| Trust             | PASS — retry path avoids burning the signing link, drawn signature survives submit failure, legal disclosure is readable      |
+
+**Deferred / flagged for owner:**
+- **Slice 9b — `<SignatureCapture>` component** (~372 lines):
+  the canvas-drawing + typed-signature + consent-checkbox
+  component wasn't audited in this slice. Candidates: canvas
+  keyboard alternative (typed tab exists, good), touch-target
+  sizing on Clear/Done buttons, consent-checkbox aria, stroke
+  thickness on DPR≠1 screens, focus ring on canvas,
+  mobile-safari touch-event passive-listener behavior.
+- **Document PDF download** — signer sees the content inline
+  if `content` is set, but the "available as a PDF" branch has
+  no download link today. Legal best-practice: signers should
+  be able to download a copy *before* signing. Product + backend
+  decision (need a signed URL endpoint). Flagged as a potential
+  trust bug.
+- **Organization logo on signer page** — the page shows the
+  AcreOS logo, not the sending organization's logo. Signers
+  arrive from an email that *may* be branded with the sender;
+  landing on AcreOS branding could feel disjointed. Product
+  call on whether to white-label.
+
+**Patterns carried forward:**
+- **Submit-error-must-not-unmount-form rule (new 9):** when a
+  submission fails on a surface where the user has committed
+  input they can't easily redo (signature, signed document,
+  long-form copy, drawn content), error MUST render inline
+  above the form as `role="alert"`, not replace the form.
+  Tearing down the form wipes the user's input. Applies
+  anywhere a form owns irreplaceable user work.
+- **Focus-on-success-confirmation rule (new 9):** when a mutation
+  replaces the primary action UI with a confirmation card, the
+  confirmation card should receive keyboard focus (via
+  `ref.focus()` with `tabIndex={-1}`) and be wired
+  `role="status"` + `aria-live="polite"`. SR users otherwise
+  have no signal that the submission completed.
+- **Legal-disclosure minimum-size rule (new 9):** any legal
+  consent / audit-trail disclosure that could be cited in
+  dispute (e-sign consent, ToS agreement, arbitration notice)
+  must render at `text-xs` (12px) or larger. Sub-12px fine
+  print is a readability hazard AND potentially an
+  enforceability risk on some jurisdictions.
+- **Retry-on-load-error rule (new 9):** load-error cards that
+  tell users to "contact support" / "reply to email" should
+  offer an in-page retry first. Transient 5xx + network blips
+  don't need a round-trip to the sender to resolve.
+
+**Commit:** (pending — will fill after commit)
