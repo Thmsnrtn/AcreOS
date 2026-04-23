@@ -1,24 +1,29 @@
 # Elite-Team Refinement — Resume Point
 
-**Last session:** 2026-04-23 (session 5m — DealForm create-deal modal)
-**Last completed refinement:** `DealForm` (create-deal modal in
-`deals.tsx`) — sentence-case sweep on dialog/trigger/labels/copy,
-`$` prefix adornment + `text-right tabular-nums` on offer amount,
-`inputMode="decimal"` + `min=0` + `step=any` for mobile keypad,
-required-field asterisks (aria-hidden) on type/property, controlled
-date inputs with Invalid-Date guard + undefined-on-empty, property
-select value-binding + three-state render (loading/empty/populated),
-`autoCapitalize="words"` on title company, SelectTrigger aria-label,
-Loader2 aria-hidden, re-ordered to chronological practitioner flow
-(closing date | title company).
+**Last session:** 2026-04-23 (session 6a — `/campaigns` list + create modal)
+**Last completed refinement:** `CampaignsContent` top-level +
+`CampaignForm` create modal in `components/campaigns-content.tsx` —
+error → `QueryErrorState`, sentence-case sweep on dialog/stats/tabs/
+labels/buttons, required-field asterisks, controlled schedule date
+with Invalid-Date guard, `$` currency adornment on budget (decimal
+inputMode + min=0 + tabular-nums), template cards converted from
+clickable div → `role="radiogroup"` + `role="radio"` buttons with
+Space/Enter activation + focus ring, SparklineTrend gets
+`role="img"` + dynamic aria-label, Lob price range copy $0.75–$1.45
+→ $0.75–$1.25 (fabricated max fixed), "Land-Academy-style blind
+offer" → "blind-offer formula" (competitor brand scrub),
+decorative-icon aria-hidden sweep, form field ids + label htmlFor,
+status badge gets `capitalize` so raw lowercase DB value renders
+title case.
 
 **Phase 1 inventory:** ✅ committed at `11d0e8c`
 **PropertyDetailDialog:** ✅ fully refined across all tabs.
 **/deals kanban:** ✅ slice 5j complete (commit `f001623`).
 **/deals list + filters:** ✅ slice 5k complete (commit `d157464`).
-**/deals DealDetailDrawer (5 tabs):** ✅ slice 5l complete.
-**/deals DealForm (create modal):** ✅ slice 5m complete (commit `0707ee4`).
-**/campaigns (list + detail + create + AI letter):** ⬜ slice 6a next
+**/deals DealDetailDrawer (5 tabs):** ✅ slice 5l complete (`cc375b1`).
+**/deals DealForm (create modal):** ✅ slice 5m complete (`0707ee4`).
+**/campaigns list + create:** ✅ slice 6a complete (`ea096ec`).
+**/campaigns detail drawer + OptimizerSuggestions + SendMailDialog:** ⬜ slice 6b next
 
 ## How to continue
 
@@ -60,38 +65,27 @@ Session 4:
   state conformance + mobile action-row stack + source badge
   promotion + token-based visuals
 
-Session 5 (thirteen slices so far — /properties and /deals):
+Session 5 (thirteen slices — /properties and /deals):
 - 5a–5i. `/properties` (list, card/form, detail dialog all tabs,
   research summary, comps, AI offer, chat, intelligence,
   cross-cutting status.replace sweep)
-- 5j. `/deals` kanban slice — DndContext KeyboardSensor +
-  announcements, column semantics, h3→h2, drag toasts, CSV toasts,
-  bulk-copy sweep, dead-code removal, icon-label sr-only fallback
-  (commit `f001623`)
-- 5k. `/deals` list + bulk-actions slice — bulk-stage-update
-  onError + soft-fail toast, CSV escape + formula-injection guard,
-  bulk-export success toast, decorative-icon aria-hidden sweep
-  (summary / header / bulk / mobile-nav), desktop clear-selection
-  aria-label, mobile list-row checkbox aria-label + 44px tap
-  target, sentence-case copy (commit `d157464`)
-- 5l. `/deals` DealDetailDrawer — drawer role=dialog + Esc, AI
-  button a11y + 44px targets, checklist checkbox role=checkbox /
-  aria-checked / 44px, window.confirm → ConfirmDialog, dead-stub
-  button removal, money-unset → em-dash, silent fetch → toast,
-  DialogDescription binding, skeleton loading states,
-  decorative-icon aria-hidden sweep, sentence-case copy, shadow
-  rename (pkgStatusColors) (commit `cc375b1`)
-- 5m. `/deals` DealForm create modal — sentence case sweep,
-  currency adornment + tabular-nums, decimal inputMode + min=0,
-  required-field asterisks, controlled date inputs w/ Invalid-Date
-  guard, property select value-binding + three-state render
-  (loading/empty/populated), SelectTrigger aria-label, Loader2
-  aria-hidden, chronological row reorder (commit `0707ee4`)
+- 5j. `/deals` kanban slice (commit `f001623`)
+- 5k. `/deals` list + bulk-actions slice (commit `d157464`)
+- 5l. `/deals` DealDetailDrawer slice (commit `cc375b1`)
+- 5m. `/deals` DealForm create modal (commit `0707ee4`)
+
+Session 6:
+- 6a. `/campaigns` list + create modal — QueryErrorState, sentence-
+  case sweep, tabular-nums, required asterisks, controlled date
+  input w/ Invalid-Date guard, currency adornment, template
+  radiogroup a11y, SparklineTrend role=img, $0.75–$1.25 range fix,
+  Land Academy brand scrub (commit `ea096ec`)
 
 ## Cross-cutting gains this pass
 
 - **Single error-path pattern on list pages:** `QueryErrorState`
-  remains the one surface for list fetch failures.
+  remains the one surface for list fetch failures. /campaigns now
+  conforms.
 - **View toggle pattern:** grouped buttons, 44px mobile, 36px
   desktop, `role="group"`, `aria-pressed`, lucide icons.
 - **Silent-fetch → toast pattern:** any client `fetch`/`FormData`
@@ -163,7 +157,8 @@ Session 5 (thirteen slices so far — /properties and /deals):
   without Radix Dialog/Sheet backing must ship at minimum:
   `role="dialog"`, `aria-modal="true"`, `aria-labelledby={titleId}`,
   and a `useEffect` that listens for `Escape`. Better: convert to
-  Radix Sheet/Dialog.
+  Radix Sheet/Dialog. **/campaigns CampaignDetailDrawer next
+  candidate (6b).**
 - **Checklist-checkbox role rule (new 5l):** toggle buttons that
   semantically check/uncheck a list item should be
   `role="checkbox"` + `aria-checked={bool}` + named
@@ -175,46 +170,73 @@ Session 5 (thirteen slices so far — /properties and /deals):
 - **Prerequisite-select three-state rule (new 5m):** when a
   creation form depends on a prerequisite entity (deal → property,
   package → deal, etc.), the dependent `Select` must distinguish
-  three states: **loading** (disabled + "Loading X…" placeholder),
-  **empty** (explicit next-action message: "No X yet — add one
-  first."), **populated**. A silently empty dropdown is
-  indistinguishable from a failed query, a racing query, or a
-  genuinely empty list.
-- **Controlled-date-input rule (new 5m):** `<Input type="date">`
-  must bind both `value` AND `onChange`. Bind: `value={date
-  instanceof Date && !isNaN(date.getTime()) ? format(date,
-  'yyyy-MM-dd') : ''}`. Change: `onChange={(e) => field.onChange(
-  e.target.value ? new Date(e.target.value) : undefined)}`. Bare
-  `new Date(e.target.value)` silently produces `Invalid Date` when
-  the user clears the field, which then serializes to null/NaN
-  downstream. Grep candidate across all forms.
-- **Currency-adornment rule (new 5m):** `$` should be a visual
-  prefix inside the input (relative wrapper + absolute-positioned
-  span + `pl-7`), not suffixed on the label as `Amount ($)`.
-  Combine with `text-right tabular-nums` for money readability and
-  `inputMode="decimal"` + `min={0}` + `step="any"` for mobile.
+  three states: **loading**, **empty** (explicit next-action
+  message), **populated**. A silently empty dropdown is
+  indistinguishable from a failed query or a racing query.
+- **Controlled-date-input rule (new 5m, extended 6a):** `<Input
+  type="date">` must bind both `value` AND `onChange`. Bind:
+  `value={date instanceof Date && !isNaN(date.getTime()) ? format(
+  date,'yyyy-MM-dd') : ''}`. Change: `onChange={(e) =>
+  field.onChange(e.target.value ? new Date(e.target.value) :
+  undefined)}`. Bare `new Date(e.target.value)` silently produces
+  `Invalid Date` when the user clears the field, which then
+  serializes to null/NaN downstream. Now applied to
+  DealForm.closingDate AND CampaignForm.scheduledDate. Grep
+  candidate across remaining forms.
+- **Currency-adornment rule (new 5m, extended 6a):** `$` should be
+  a visual prefix inside the input (relative wrapper + absolute-
+  positioned span + `pl-7`), not suffixed on the label as "Amount
+  ($)" / "Budget ($)". Combine with `text-right tabular-nums` for
+  money readability and `inputMode="decimal"` + `min={0}` +
+  `step="any"` for mobile. Now applied to DealForm offer amount
+  AND CampaignForm budget.
+- **Competitor-brand hygiene (new 6a):** when a user-facing label
+  or help text names an external educational product or
+  competitor brand (Land Academy, Land Geek, etc.), replace with
+  a generic industry term. "Blind offer" is a standard industry
+  term; "Land-Academy-style blind offer" is brand-coupled.
+  Applies to all customer-facing copy — AcreOS stands on its own.
+- **Fabricated-price rule (new 6a):** any user-facing price range
+  that isn't sourced from a live object (pieceTypes,
+  provider.costCents, etc.) is a trust bug — practitioners cross-
+  check numbers against their own invoices. Either compute the
+  range from the source or remove the line. The "$0.75-$1.45"
+  line on CampaignForm was 20c over the actual max.
+- **Template/option-card radiogroup pattern (new 6a):** mutually-
+  exclusive selection cards built as clickable `<div>`s must
+  become `<button type="button" role="radio" aria-checked>` inside
+  `role="radiogroup"` with `aria-labelledby={groupLabelId}`. Add
+  `focus-visible:ring` so keyboard users see focus; make the
+  decorative radio-dot `aria-hidden="true"` so SR users hear one
+  selection state not two.
 
 ## Next surface to refine
 
-**Next slice: `/campaigns` — list + detail + create (6a).**
+**Next slice: `/campaigns` CampaignDetailDrawer + SendMailDialog +
+OptimizerSuggestionsPanel (6b).**
 
-Scope for 6a (campaigns list + create):
-- List page: sort/filter chrome parity with /deals (saved views?),
-  QueryErrorState on fetch failure, ListSkeleton on load, empty
-  state with meaningful CTA.
-- Create flow: AI-drafted letter copy is the hot spot — grounded
-  in property/owner data, output scannable, regeneration discoverable.
-- Provider-cost visibility: campaign cost preview before send.
-- Mobile: create form at 375px; send confirm at 320px.
-- Trust: send confirmation with recipient count + credits + recall
-  policy. Clear "mail goes to Lob" attribution.
+Scope for 6b:
+- `CampaignDetailDrawer` (hand-rolled overlay) — apply 5l dialog-Esc
+  rule: role=dialog + aria-modal + aria-labelledby + Esc handler. At
+  minimum — full Radix Sheet conversion is a bigger refactor (can
+  defer if commit gets large).
+- Sentence-case sweep on drawer: "Campaign Metrics", "Direct Mail
+  Performance", "Scheduled Date", "Response Analytics", "Total
+  Sent"/"Responses" stat cards.
+- `SendMailDialog`: sentence-case + currency adornment on estimated
+  cost display + cost-estimate trust state copy.
+- `OptimizerSuggestionsPanel`: sentence-case + "Run AI Analysis" /
+  "Mark Implemented" buttons + AI-output-structure review (Lens 5).
+- Drawer close button needs aria-label ("Close campaign detail").
+- Decorative-icon aria-hidden sweep across drawer.
+- Campaign Metrics progress bars should use `tabular-nums` on the
+  % labels for digit stability.
 
-After 6a: move per inventory to:
-1. `/campaigns` detail + per-recipient view
-2. `/inbox` — message rendering + thread navigation a11y
-3. `/documents` — upload + OCR trust signals
-4. `/sign/:docId` — **legal/trust surface** — signer flow
-5. `/portal/:accessToken` — borrower portal; **public link, mobile
+After 6b: move per inventory to:
+1. `/inbox` — message rendering + thread navigation a11y
+2. `/documents` — upload + OCR trust signals
+3. `/sign/:docId` — **legal/trust surface** — signer flow
+4. `/portal/:accessToken` — borrower portal; **public link, mobile
    critical** — no Clerk auth, must work at 320px
 
 ## Deferred / flagged for owner decision
@@ -238,14 +260,18 @@ After 6a: move per inventory to:
 - **DealDetailDrawer focus trap (new 5l):** hand-rolled overlay
   has no focus trap. Tab escapes to underlying page. Bigger refactor
   = convert to Radix Sheet/Dialog. Deferred.
+- **CampaignDetailDrawer** shares the same hand-rolled overlay
+  pattern as DealDetailDrawer — same deferred focus-trap and focus-
+  restoration issues will apply.
 
 ## Session hygiene reminders
 
 - Commit per surface (or tight batch).
 - Re-run 9-lens after each edit.
 - Large surfaces (>15k tokens): read in chunks, commit in slices;
-  don't try to inhabit the whole thing in one session. `/deals` is
-  now >2000 lines — DealForm is ~170 lines, self-contained slice.
+  don't try to inhabit the whole thing in one session.
+  `campaigns-content.tsx` is ~1500 lines — drawer is ~270 lines,
+  a reasonable 6b slice.
 - Playwright Safari sessions die within ~5 minutes of a Clerk JWT
   refresh; fall back to code-only if cookies expire mid-audit.
 - Stop at ~85% context; rewrite this file before ending.
@@ -261,6 +287,7 @@ After 6a: move per inventory to:
   `storage`, `autonomousDealMachine`, `countyAssessorIngest`,
   `supportAgent`, etc. — not blocking client refinement work.
 
-## Expected HEAD after session 5m
+## Expected HEAD after session 6a
 
-`0707ee4 refine(deals/form): …` on top of `cc375b1` (DealDetailDrawer).
+`ea096ec refine(campaigns/list+create): …` on top of `0707ee4`
+(DealForm create modal).
