@@ -2769,4 +2769,151 @@ This slice is pure application of the slice-10 public-form
 a11y checklist. No new cross-cutting rules — the checklist
 itself gains more surfaces confirming it.
 
+**Commit:** `37b8911`
+
+---
+
+## Session 12 — 2026-04-23 — Money-precision rule: `usd()` helper + `/finance`
+
+**Scope:** Introduce the canonical `usd()` dollar-value
+formatter in `client/src/lib/format.ts` (slice-10b rule made
+concrete as a reusable helper), and apply it across all 16
+money-rendering sites in `client/src/pages/finance.tsx`.
+Broader grep (76 files have bare `${X.toLocaleString()}`)
+is deferred as per-surface follow-up work — finance is the
+highest-value target since it's the note-servicing dashboard
+and drives payoff / balance / payment reporting.
+
+**Helper (`client/src/lib/format.ts`):**
+
+```ts
+export function usd(
+  amount: number | string | null | undefined,
+  opts: { noCents?: boolean; showSign?: boolean } = {}
+): string {
+  if (amount == null || amount === "") return "—";
+  const n = typeof amount === "string" ? Number(amount) : amount;
+  if (!Number.isFinite(n)) return "—";
+  const digits = opts.noCents ? 0 : 2;
+  // ... Intl.NumberFormat with minimumFractionDigits + maximumFractionDigits
+}
+```
+
+Key design decisions:
+- Accepts `number | string | null | undefined`. The existing
+  AcreOS money data model stores amounts as Postgres `numeric`,
+  which Drizzle surfaces as string. Consumers currently wrap
+  with `Number()` inline; the helper accepts strings directly
+  so call sites read cleanly.
+- Returns `"—"` (em-dash) for null/undefined/empty/NaN. This
+  is the Money-unset display rule from slice 5l made part of
+  the helper itself — no more ad-hoc `|| 0` that renders as
+  `$0.00` and signals "no value" ambiguously.
+- `noCents` opt for compact contexts (chart axes, tile
+  summaries where cents add noise).
+- `showSign` opt for delta displays ("+$1,234.56" for gains).
+- Distinct from existing `dollars()` helper which takes
+  cents; coexistence is intentional because the ecosystem
+  has both conventions.
+
+**`/finance.tsx` refinements (16 money sites + adjacent a11y/copy):**
+
+- **Money precision (P0 for a note-servicing surface):** all
+  16 sites swapped from `${Number(x).toLocaleString()}` to
+  `{usd(x)}`. Affected: portfolio-value tile, monthly-income
+  tile, total-originated tile, notes-table current-balance
+  column, notes-table monthly-payment column, detail-card
+  current-balance, detail-card monthly-payment, loan-progress
+  total-paid + remaining, payment-collection monthly-payment
+  strip, payment-history amount/principal/interest columns,
+  dunning past-due-amount. All now carry proper 2-decimal
+  cents precision. 8+ sites also pick up the null/unset
+  em-dash semantic for free (previously rendered `$0` for
+  unset values).
+
+- **Chart axis + tooltip:** recharts cash-flow chart YAxis
+  tickFormatter + Tooltip formatter both routed through
+  `usd()`. Tooltip label "Cash Flow" sentence-cased to
+  "Cash flow". Y-axis uses `{ noCents: true }` so ticks stay
+  compact ("$1,234" not "$1,234.00").
+
+- **Tabular-nums sweep** on all dollar amounts, percentages,
+  date strings, and term counts in the finance dashboard —
+  money surface baseline.
+
+- **Progress bar accessible:** `aria-label="Loan progress:
+  N percent complete, X of Y payments made"` added to the
+  stats-pane `<Progress>` instance (same fix as /portal
+  slice 10b).
+
+- **Stripe-status loader:** was a bare `Loader2` with no
+  text, no SR label. Now `role="status" + aria-live=polite
+  + sr-only "Checking Stripe connection…"` so SR users hear
+  the interstitial wait.
+
+- **Icon aria-hidden sweep:** `CreditCard`, `Settings`,
+  `ExternalLink`, `Loader2` in the payment-collection card
+  all got `aria-hidden="true"`.
+
+- **Copy (sentence-case + period polish):** "Portfolio
+  Value" → "Portfolio value"; "Monthly Income" → "Monthly
+  income"; "Total Originated" → "Total originated"; "Current
+  Balance" → "Current balance"; "Monthly Payment" →
+  "Monthly payment" (3 sites); "Interest Rate" → "Interest
+  rate"; "Loan Progress" → "Loan progress"; "Total Paid" →
+  "Total paid"; "Payment Collection" → "Payment collection";
+  "Past Due Amount" → "Past due amount"; "Missed Payments"
+  → "Missed payments"; "Connect Stripe to accept payments"
+  → period added; Stripe-CTA uses rsaquo (›) instead of
+  encoded &gt; for proper typography.
+
+- **Status-badge capitalize:** payment-history status badge
+  previously rendered raw `'completed'` lowercase. Added
+  `capitalize` class so "Completed" / "Failed" read
+  consistently with other status-badge surfaces.
+
+**Note on cross-page coverage:** this slice intentionally
+stops at `/finance`. The same helper is now available for
+`/properties`, `/deals`, `/campaigns`, `/borrower-portal`
+(already hand-refined in 10b with inline 2-decimal options),
+and ~72 other client files that render `${X.toLocaleString()}`.
+Per-surface application of `usd()` belongs in future 9-lens
+slices when those pages are refined end-to-end, not in a
+mechanical sweep — each swap should come with the
+accompanying null-semantic + tabular-nums + status-label
+decisions that make money surfaces feel deliberate.
+
+**9-lens sign-off:**
+
+| Lens              | Status                                                                                                                           |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Designer          | PASS — sentence-case + periods, tabular-nums, proper ›                                                                          |
+| Mobile designer   | N/A — no layout changes (deferred to a future /finance full 9-lens slice)                                                         |
+| Accessibility     | PASS — Progress bar labeled, Stripe loader has SR label, decorative icons aria-hidden                                             |
+| Engineer          | PASS — usd() helper covers null/undefined/NaN/empty-string; status and dollar accept both string and number                      |
+| AI systems        | N/A                                                                                                                                |
+| Land investor     | PASS — actual cents now show on all note-servicing columns; lender reading a payoff figure gets precision                        |
+| Copywriter        | PASS — sentence-case sweep                                                                                                          |
+| Infrastructure    | N/A                                                                                                                                |
+| Trust             | PASS — money-precision rule enforced across all 16 /finance renderings; null amounts render "—" not "$0" ambiguity                |
+
+**Deferred / flagged for owner:**
+- **Full /finance 9-lens pass** — this slice was narrow
+  (money-precision + shallow a11y/copy adjacencies). A
+  proper pass would cover the 1541-line file's 3+ dialogs,
+  Stripe-connect flow, dunning manager, create-note form,
+  deletion paths, etc. Flagged as 12b.
+- **Money-precision grep sweep remaining** — `/properties`,
+  `/deals`, `/campaigns`, plus the 72 other files with
+  bare `${X.toLocaleString()}`. Should be applied
+  incrementally as each surface gets its own 9-lens pass,
+  NOT as a mechanical sweep (see slice note above).
+
+**Patterns reinforced:**
+- Money-precision rule (slice 10b) now has a canonical
+  helper: `import { usd } from "@/lib/format"`.
+- The Money-unset display rule (slice 5l — `$0` ambiguity)
+  is folded into `usd()` itself: bare `usd(null)` returns
+  `—`, not `$0.00`. Future call sites inherit this for free.
+
 **Commit:** (pending — will fill after commit)

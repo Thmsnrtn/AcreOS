@@ -33,6 +33,40 @@ export function dollarsCompact(cents: number | null | undefined): string {
   return `$${Math.round(dollars)}`;
 }
 
+/**
+ * Format a dollar-valued amount (NOT cents) with explicit 2-decimal
+ * precision. Use when the underlying value is a dollar number (string
+ * parsed via Number(), currency column, etc.) — the standard path on
+ * most AcreOS surfaces that don't use cents storage.
+ *
+ * Accepts number | string | null | undefined. Returns "—" for
+ * null/undefined/empty/NaN, otherwise a currency-formatted string
+ * like "$1,234.56".
+ *
+ * This is the canonical replacement for bare `.toLocaleString()` on
+ * money values — bare toLocaleString drops cents on integer values,
+ * causing rendered totals to be short by up to $0.99. On a money
+ * surface a borrower paying the displayed number is cheated.
+ */
+export function usd(
+  amount: number | string | null | undefined,
+  opts: { noCents?: boolean; showSign?: boolean } = {}
+): string {
+  if (amount == null || amount === "") return "—";
+  const n = typeof amount === "string" ? Number(amount) : amount;
+  if (!Number.isFinite(n)) return "—";
+  const digits = opts.noCents ? 0 : 2;
+  const formatted = new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  }).format(Math.abs(n));
+  if (opts.showSign && n > 0) return `+${formatted}`;
+  if (n < 0) return `−${formatted}`;
+  return formatted;
+}
+
 // ── Counts ──────────────────────────────────────────────────────────
 
 /** Format integer counts. 1,234 style for normal, 1.2K/1.2M compact. */

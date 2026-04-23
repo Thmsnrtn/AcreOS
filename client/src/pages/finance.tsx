@@ -28,6 +28,7 @@ import { EmptyState } from "@/components/empty-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format, addMonths } from "date-fns";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { usd } from "@/lib/format";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { DisclaimerBanner } from "@/components/disclaimer-banner";
 import { QueryErrorState } from "@/components/query-error-state";
@@ -163,8 +164,8 @@ export default function FinancePage() {
                         </linearGradient>
                       </defs>
                       <XAxis dataKey="month" fontSize={10} tickLine={false} axisLine={false} />
-                      <YAxis fontSize={10} tickLine={false} axisLine={false} tickFormatter={(v: number) => `$${v.toLocaleString()}`} />
-                      <Tooltip formatter={((value: number) => [`$${value.toLocaleString()}`, "Cash Flow"]) as any} />
+                      <YAxis fontSize={10} tickLine={false} axisLine={false} tickFormatter={(v: number) => usd(v, { noCents: true })} />
+                      <Tooltip formatter={((value: number) => [usd(value), "Cash flow"]) as any} />
                       <Area type="monotone" dataKey="amount" stroke="hsl(var(--primary))" fill="url(#cashFlowGrad)" strokeWidth={2} />
                     </AreaChart>
                   </ResponsiveContainer>
@@ -253,9 +254,9 @@ export default function FinancePage() {
                     <DollarSign className="w-5 h-5 text-emerald-600" />
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Portfolio Value</p>
-                    <p className="text-2xl font-bold font-mono" data-testid="text-portfolio-value">
-                      ${totalPortfolio.toLocaleString()}
+                    <p className="text-sm text-muted-foreground">Portfolio value</p>
+                    <p className="text-2xl font-bold font-mono tabular-nums" data-testid="text-portfolio-value">
+                      {usd(totalPortfolio)}
                     </p>
                   </div>
                 </div>
@@ -269,9 +270,9 @@ export default function FinancePage() {
                     <TrendingUp className="w-5 h-5 text-blue-600" />
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Monthly Income</p>
-                    <p className="text-2xl font-bold font-mono text-emerald-600" data-testid="text-monthly-income">
-                      ${monthlyIncome.toLocaleString()}
+                    <p className="text-sm text-muted-foreground">Monthly income</p>
+                    <p className="text-2xl font-bold font-mono tabular-nums text-emerald-600" data-testid="text-monthly-income">
+                      {usd(monthlyIncome)}
                     </p>
                   </div>
                 </div>
@@ -285,9 +286,9 @@ export default function FinancePage() {
                     <Calculator className="w-5 h-5 text-accent-foreground" />
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Total Originated</p>
-                    <p className="text-2xl font-bold font-mono" data-testid="text-total-principal">
-                      ${totalPrincipal.toLocaleString()}
+                    <p className="text-sm text-muted-foreground">Total originated</p>
+                    <p className="text-2xl font-bold font-mono tabular-nums" data-testid="text-total-principal">
+                      {usd(totalPrincipal)}
                     </p>
                   </div>
                 </div>
@@ -372,11 +373,11 @@ export default function FinancePage() {
                               </span>
                             </div>
                           </TableCell>
-                          <TableCell className="text-right font-mono font-medium">
-                            ${Number(note.currentBalance || 0).toLocaleString()}
+                          <TableCell className="text-right font-mono font-medium tabular-nums">
+                            {usd(note.currentBalance)}
                           </TableCell>
-                          <TableCell className="text-right font-mono font-bold text-emerald-600">
-                            ${Number(note.monthlyPayment || 0).toLocaleString()}
+                          <TableCell className="text-right font-mono font-bold tabular-nums text-emerald-600">
+                            {usd(note.monthlyPayment)}
                           </TableCell>
                           <TableCell className="text-muted-foreground">
                             {note.nextPaymentDate ? format(new Date(note.nextPaymentDate), 'MMM d, yyyy') : '-'}
@@ -600,30 +601,30 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
           <div className="grid grid-cols-2 gap-4">
             <Card className="glass-panel">
               <CardContent className="p-4">
-                <p className="text-sm text-muted-foreground">Current Balance</p>
-                <p className="text-2xl font-bold font-mono" data-testid="text-current-balance">
-                  ${Number(note.currentBalance || 0).toLocaleString()}
+                <p className="text-sm text-muted-foreground">Current balance</p>
+                <p className="text-2xl font-bold font-mono tabular-nums" data-testid="text-current-balance">
+                  {usd(note.currentBalance)}
                 </p>
               </CardContent>
             </Card>
             <Card className="glass-panel">
               <CardContent className="p-4">
-                <p className="text-sm text-muted-foreground">Monthly Payment</p>
-                <p className="text-2xl font-bold font-mono text-emerald-600" data-testid="text-monthly-payment">
-                  ${Number(note.monthlyPayment || 0).toLocaleString()}
+                <p className="text-sm text-muted-foreground">Monthly payment</p>
+                <p className="text-2xl font-bold font-mono tabular-nums text-emerald-600" data-testid="text-monthly-payment">
+                  {usd(note.monthlyPayment)}
                 </p>
               </CardContent>
             </Card>
             <Card className="glass-panel">
               <CardContent className="p-4">
-                <p className="text-sm text-muted-foreground">Interest Rate</p>
-                <p className="text-2xl font-bold">{note.interestRate}%</p>
+                <p className="text-sm text-muted-foreground">Interest rate</p>
+                <p className="text-2xl font-bold tabular-nums">{note.interestRate}%</p>
               </CardContent>
             </Card>
             <Card className="glass-panel">
               <CardContent className="p-4">
                 <p className="text-sm text-muted-foreground">Term</p>
-                <p className="text-2xl font-bold">{note.termMonths} months</p>
+                <p className="text-2xl font-bold tabular-nums">{note.termMonths} months</p>
               </CardContent>
             </Card>
           </div>
@@ -631,13 +632,20 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
           <Card className="glass-panel">
             <CardContent className="p-4">
               <div className="flex items-center justify-between mb-2">
-                <p className="text-sm text-muted-foreground">Loan Progress</p>
-                <p className="text-sm font-medium">{paidPayments} of {totalPayments} payments</p>
+                <p className="text-sm text-muted-foreground">Loan progress</p>
+                <p className="text-sm font-medium">
+                  <span className="tabular-nums">{paidPayments}</span> of{" "}
+                  <span className="tabular-nums">{totalPayments}</span> payments
+                </p>
               </div>
-              <Progress value={progress} className="h-2" />
+              <Progress
+                value={progress}
+                className="h-2"
+                aria-label={`Loan progress: ${progress.toFixed(0)} percent complete, ${paidPayments} of ${totalPayments} payments made`}
+              />
               <div className="flex justify-between mt-2 text-xs text-muted-foreground">
-                <span>Total Paid: ${totalPaid.toLocaleString()}</span>
-                <span>Remaining: ${Number(note.currentBalance || 0).toLocaleString()}</span>
+                <span>Total paid: <span className="tabular-nums">{usd(totalPaid)}</span></span>
+                <span>Remaining: <span className="tabular-nums">{usd(note.currentBalance)}</span></span>
               </div>
             </CardContent>
           </Card>
@@ -645,27 +653,28 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
           <Card className="glass-panel">
             <CardHeader className="pb-2">
               <CardTitle className="text-base flex items-center gap-2">
-                <CreditCard className="w-4 h-4" />
-                Payment Collection
+                <CreditCard className="w-4 h-4" aria-hidden="true" />
+                Payment collection
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               {isStripeStatusLoading ? (
-                <div className="flex items-center justify-center py-4">
-                  <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                <div className="flex items-center justify-center py-4" role="status" aria-live="polite">
+                  <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" aria-hidden="true" />
+                  <span className="sr-only">Checking Stripe connection…</span>
                 </div>
               ) : !stripeConnectStatus?.isConnected || !stripeConnectStatus?.chargesEnabled ? (
                 <div className="text-center py-4">
                   <div className="p-3 rounded-full bg-muted/50 w-fit mx-auto mb-3">
-                    <Settings className="w-6 h-6 text-muted-foreground" />
+                    <Settings className="w-6 h-6 text-muted-foreground" aria-hidden="true" />
                   </div>
                   <p className="text-sm text-muted-foreground mb-3">
-                    Connect Stripe to accept payments
+                    Connect Stripe to accept payments.
                   </p>
                   <Link href="/settings?tab=payments">
                     <Button variant="outline" size="sm">
-                      <ExternalLink className="w-4 h-4 mr-2" />
-                      Settings &gt; Payments
+                      <ExternalLink className="w-4 h-4 mr-2" aria-hidden="true" />
+                      Settings &rsaquo; Payments
                     </Button>
                   </Link>
                 </div>
@@ -673,9 +682,9 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                 <>
                   <div className="bg-muted/50 rounded-lg p-3">
                     <div className="flex justify-between items-center">
-                      <span className="text-sm text-muted-foreground">Monthly Payment</span>
-                      <span className="font-bold font-mono text-emerald-600">
-                        ${Number(note.monthlyPayment || 0).toLocaleString()}
+                      <span className="text-sm text-muted-foreground">Monthly payment</span>
+                      <span className="font-bold font-mono tabular-nums text-emerald-600">
+                        {usd(note.monthlyPayment)}
                       </span>
                     </div>
                   </div>
@@ -783,20 +792,20 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                       ) : (
                         payments?.map((payment) => (
                           <TableRow key={payment.id} data-testid={`row-payment-${payment.id}`}>
-                            <TableCell>
+                            <TableCell className="tabular-nums">
                               {format(new Date(payment.paymentDate), 'MMM d, yyyy')}
                             </TableCell>
-                            <TableCell className="text-right font-mono font-medium">
-                              ${Number(payment.amount).toLocaleString()}
+                            <TableCell className="text-right font-mono font-medium tabular-nums">
+                              {usd(payment.amount)}
                             </TableCell>
-                            <TableCell className="text-right font-mono text-muted-foreground">
-                              ${Number(payment.principalAmount).toLocaleString()}
+                            <TableCell className="text-right font-mono text-muted-foreground tabular-nums">
+                              {usd(payment.principalAmount)}
                             </TableCell>
-                            <TableCell className="text-right font-mono text-muted-foreground">
-                              ${Number(payment.interestAmount).toLocaleString()}
+                            <TableCell className="text-right font-mono text-muted-foreground tabular-nums">
+                              {usd(payment.interestAmount)}
                             </TableCell>
                             <TableCell>
-                              <Badge variant={payment.status === 'completed' ? 'default' : 'secondary'}>
+                              <Badge variant={payment.status === 'completed' ? 'default' : 'secondary'} className="capitalize">
                                 {payment.status}
                               </Badge>
                             </TableCell>
@@ -942,15 +951,15 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                     </Card>
                     <Card className="glass-panel">
                       <CardContent className="p-4">
-                        <p className="text-xs text-muted-foreground mb-1">Past Due Amount</p>
-                        <p className="font-bold font-mono text-red-600" data-testid="text-past-due-amount">
-                          ${dunningData.pastDueAmount?.toLocaleString() || '0'}
+                        <p className="text-xs text-muted-foreground mb-1">Past due amount</p>
+                        <p className="font-bold font-mono tabular-nums text-red-600" data-testid="text-past-due-amount">
+                          {usd(dunningData.pastDueAmount ?? 0)}
                         </p>
                       </CardContent>
                     </Card>
                     <Card className="glass-panel">
                       <CardContent className="p-4">
-                        <p className="text-xs text-muted-foreground mb-1">Missed Payments</p>
+                        <p className="text-xs text-muted-foreground mb-1">Missed payments</p>
                         <p className="font-bold" data-testid="text-missed-payments">
                           {dunningData.missedPayments || 0}
                         </p>
