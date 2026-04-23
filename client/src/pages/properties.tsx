@@ -101,7 +101,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, MapPin, Ruler, DollarSign, Trash2, Loader2, Map as MapIcon, RefreshCw, FileText, Download, Upload, CheckCircle, AlertCircle, AlertTriangle, ClipboardCheck, Printer, Calculator, BarChart2, X, CheckSquare, Droplets, Leaf, Building2, Flame, Users, Brain, Shield, Zap, Mountain, TreePine, Car, TrendingUp, Thermometer, Cloud, Waves, Wheat, Factory, Grid3x3, Target, ThumbsUp, ThumbsDown, List as ListIcon, Filter as FilterIcon } from "lucide-react";
+import { Plus, MapPin, Ruler, DollarSign, Trash2, Loader2, Map as MapIcon, RefreshCw, FileText, Download, Upload, CheckCircle, AlertCircle, AlertTriangle, ClipboardCheck, Printer, Calculator, BarChart2, X, CheckSquare, Droplets, Leaf, Building2, Flame, Users, Brain, Shield, Zap, Mountain, TreePine, Car, TrendingUp, Thermometer, Cloud, Waves, Wheat, Factory, Grid3x3, Target, ThumbsUp, ThumbsDown, List as ListIcon, Filter as FilterIcon, ChevronDown, ChevronUp } from "lucide-react";
 import { LandCreditBadge } from "@/components/land-credit-badge";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -896,7 +896,8 @@ function PropertyCard({ property, onDelete }: {
   const [isDownloading, setIsDownloading] = useState(false);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
-  
+  const { toast } = useToast();
+
   // Compute centroid from boundary if not present
   const effectiveCentroid = property.parcelCentroid || computeCentroidFromBoundary(property.parcelBoundary as { type: string; coordinates: number[][][] | number[][][][] } | null);
   const hasMapData = property.parcelBoundary && effectiveCentroid;
@@ -918,8 +919,12 @@ function PropertyCard({ property, onDelete }: {
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-    } catch (error) {
-      console.error('Download error:', error);
+    } catch (error: any) {
+      toast({
+        title: "Couldn't download deed",
+        description: error?.message || "The PDF didn't generate. Try again in a moment.",
+        variant: "destructive",
+      });
     } finally {
       setIsDownloading(false);
     }
@@ -939,7 +944,7 @@ function PropertyCard({ property, onDelete }: {
         ) : (
           <div className="flex items-center justify-center h-full">
             <div className="text-center">
-              <MapPin className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
+              <MapPin className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" aria-hidden="true" />
               <Button
                 variant="outline"
                 className="min-h-[44px] sm:min-h-8"
@@ -951,9 +956,9 @@ function PropertyCard({ property, onDelete }: {
                 data-testid={`button-fetch-parcel-${property.id}`}
               >
                 {isFetchingParcel ? (
-                  <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Fetching...</>
+                  <><Loader2 className="w-4 h-4 mr-1 animate-spin" aria-hidden="true" /> Fetching...</>
                 ) : (
-                  <><MapIcon className="w-4 h-4 mr-1" /> Fetch Map</>
+                  <><MapIcon className="w-4 h-4 mr-1" aria-hidden="true" /> Fetch Map</>
                 )}
               </Button>
             </div>
@@ -962,14 +967,14 @@ function PropertyCard({ property, onDelete }: {
         <div className="absolute top-2 right-2 flex gap-1 z-10 items-center">
           <LandCreditBadge propertyId={property.id} size="sm" />
           <Badge variant={property.status === 'available' ? 'default' : 'secondary'} className="capitalize shadow-sm text-xs">
-            {property.status.replace('_', ' ')}
+            {property.status.replace(/_/g, ' ')}
           </Badge>
         </div>
         <div className="absolute top-2 left-2 flex gap-1 z-10 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
           <Button
             variant="destructive"
             size="icon"
-            className="h-10 w-10 sm:h-7 sm:w-7"
+            className="h-11 w-11 sm:h-7 sm:w-7"
             onClick={(e) => {
               e.stopPropagation();
               onDelete();
@@ -977,24 +982,26 @@ function PropertyCard({ property, onDelete }: {
             aria-label="Delete property"
             data-testid={`button-delete-property-${property.id}`}
           >
-            <Trash2 className="w-4 h-4 sm:w-3 sm:h-3" />
+            <Trash2 className="w-4 h-4 sm:w-3 sm:h-3" aria-hidden="true" />
           </Button>
           <Button
             variant="secondary"
             size="icon"
-            className="h-10 w-10 sm:h-7 sm:w-7"
+            className="h-11 w-11 sm:h-7 sm:w-7"
             onClick={handleDownloadDeed}
             disabled={isDownloading}
             aria-label="Download deed"
             data-testid={`button-download-deed-${property.id}`}
           >
-            {isDownloading ? <Loader2 className="w-4 h-4 sm:w-3 sm:h-3 animate-spin" /> : <FileText className="w-4 h-4 sm:w-3 sm:h-3" />}
+            {isDownloading
+              ? <Loader2 className="w-4 h-4 sm:w-3 sm:h-3 animate-spin" aria-hidden="true" />
+              : <FileText className="w-4 h-4 sm:w-3 sm:h-3" aria-hidden="true" />}
           </Button>
           {hasMapData && (
             <Button
               variant="secondary"
               size="icon"
-              className="h-10 w-10 sm:h-7 sm:w-7"
+              className="h-11 w-11 sm:h-7 sm:w-7"
               onClick={(e) => {
                 e.stopPropagation();
                 fetchParcel(property.id);
@@ -1003,7 +1010,10 @@ function PropertyCard({ property, onDelete }: {
               aria-label="Refresh parcel data"
               data-testid={`button-refresh-parcel-${property.id}`}
             >
-              <RefreshCw className={`w-4 h-4 sm:w-3 sm:h-3 ${isFetchingParcel ? 'animate-spin' : ''}`} />
+              <RefreshCw
+                className={`w-4 h-4 sm:w-3 sm:h-3 ${isFetchingParcel ? 'animate-spin' : ''}`}
+                aria-hidden="true"
+              />
             </Button>
           )}
         </div>
@@ -1023,11 +1033,11 @@ function PropertyCard({ property, onDelete }: {
         
         <div className="grid grid-cols-2 gap-3 text-xs">
           <div className="flex items-center gap-1.5 text-muted-foreground">
-            <Ruler className="w-3.5 h-3.5" />
+            <Ruler className="w-3.5 h-3.5" aria-hidden="true" />
             <span>{property.sizeAcres} Acres</span>
           </div>
           <div className="flex items-center gap-1.5 text-muted-foreground">
-            <DollarSign className="w-3.5 h-3.5" />
+            <DollarSign className="w-3.5 h-3.5" aria-hidden="true" />
             {/* r5 Eleanor: "$0" on a property card reads ambiguously
                 (free? missing? broken?) for a low-tech-comfort persona.
                 Show "—" when the value is unset, actual dollars when known. */}
@@ -1039,7 +1049,7 @@ function PropertyCard({ property, onDelete }: {
           </div>
           {Number(property.marketValue) > 0 && Number(property.sizeAcres) > 0 && (
             <div className="flex items-center gap-1.5 col-span-2 pt-1 border-t border-border/50">
-              <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
+              <TrendingUp className="w-3.5 h-3.5 text-emerald-600" aria-hidden="true" />
               <span className="text-emerald-700 dark:text-emerald-400 font-medium">
                 ${Math.round(Number(property.marketValue) / Number(property.sizeAcres)).toLocaleString()}/acre
               </span>
@@ -1064,20 +1074,20 @@ function PropertyCard({ property, onDelete }: {
           return (
             <div className="mt-2">
               <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium border ${color}`} data-testid={`badge-distress-${property.id}`}>
-                <Flame className="w-3 h-3" />
+                <Flame className="w-3 h-3" aria-hidden="true" />
                 Distress {label} {score}
               </span>
             </div>
           );
         })()}
         <div className="mt-3 pt-3 border-t flex items-center justify-between gap-2">
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             onClick={() => setIsDetailOpen(true)}
             className="flex-1 min-h-[44px] sm:min-h-8"
             data-testid={`button-view-details-${property.id}`}
           >
-            <ClipboardCheck className="w-4 h-4 sm:w-3.5 sm:h-3.5 mr-1.5" />
+            <ClipboardCheck className="w-4 h-4 sm:w-3.5 sm:h-3.5 mr-1.5" aria-hidden="true" />
             <span className="text-sm">Due Diligence</span>
           </Button>
           <Button
@@ -1088,7 +1098,7 @@ function PropertyCard({ property, onDelete }: {
             aria-label="Open calculator"
             data-testid={`button-calculator-${property.id}`}
           >
-            <Calculator className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+            <Calculator className="w-4 h-4 sm:w-3.5 sm:h-3.5" aria-hidden="true" />
           </Button>
         </div>
       </CardContent>
@@ -1130,6 +1140,7 @@ function PropertyForm({
   prefill?: { county?: string; state?: string; latitude?: string; longitude?: string };
 }) {
   const { mutate, isPending } = useCreateProperty();
+  const { toast } = useToast();
   const { data: organization } = useOrganization();
   const businessType = (organization?.onboardingData as any)?.businessType as string | undefined;
   const isLandType = !businessType || LAND_INVESTOR_TYPES.includes(businessType);
@@ -1166,8 +1177,16 @@ function PropertyForm({
     mutate(data, {
       onSuccess: () => {
         telemetry.actionCompleted('property_created', { county: data.county, state: data.state, acres: data.sizeAcres });
+        toast({ title: "Property added", description: `${data.county}, ${data.state} saved to your inventory.` });
         onSuccess();
-      }
+      },
+      onError: (error: any) => {
+        toast({
+          title: "Couldn't add property",
+          description: error?.message || "Something went wrong saving this property. Your form values are still here — try again.",
+          variant: "destructive",
+        });
+      },
     });
   };
 
@@ -1183,7 +1202,7 @@ function PropertyForm({
                 <FormItem>
                   <FormLabel>APN</FormLabel>
                   <FormControl>
-                    <Input {...field} placeholder="123-456-789" data-testid="input-apn" />
+                    <Input {...field} placeholder="123-456-789" inputMode="numeric" autoComplete="off" data-testid="input-apn" />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -1196,7 +1215,7 @@ function PropertyForm({
                 <FormItem>
                   <FormLabel>Acres</FormLabel>
                   <FormControl>
-                    <Input {...field} placeholder="5.0" data-testid="input-acres" />
+                    <Input {...field} placeholder="5.0" inputMode="decimal" autoComplete="off" data-testid="input-acres" />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -1208,14 +1227,18 @@ function PropertyForm({
           <div className="border rounded-md">
             <button
               type="button"
-              className="w-full flex items-center justify-between px-3 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+              className="w-full min-h-[44px] md:min-h-9 flex items-center justify-between px-3 text-sm text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-md"
               onClick={() => setShowLandDetails((v) => !v)}
+              aria-expanded={showLandDetails}
+              aria-controls="land-details-panel"
             >
               <span>Land Details (optional — APN, Acreage)</span>
-              <span className="text-xs">{showLandDetails ? "▲" : "▼"}</span>
+              {showLandDetails
+                ? <ChevronUp className="w-4 h-4" aria-hidden="true" />
+                : <ChevronDown className="w-4 h-4" aria-hidden="true" />}
             </button>
             {showLandDetails && (
-              <div className="grid grid-cols-2 gap-4 px-3 pb-3">
+              <div id="land-details-panel" className="grid grid-cols-2 gap-4 px-3 pb-3">
                 <FormField
                   control={form.control}
                   name="apn"
@@ -1223,7 +1246,7 @@ function PropertyForm({
                     <FormItem>
                       <FormLabel>APN</FormLabel>
                       <FormControl>
-                        <Input {...field} placeholder="123-456-789 or N/A" data-testid="input-apn" />
+                        <Input {...field} placeholder="123-456-789 or N/A" inputMode="numeric" autoComplete="off" data-testid="input-apn" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -1236,7 +1259,7 @@ function PropertyForm({
                     <FormItem>
                       <FormLabel>Acres</FormLabel>
                       <FormControl>
-                        <Input {...field} placeholder="5.0" data-testid="input-acres" />
+                        <Input {...field} placeholder="5.0" inputMode="decimal" autoComplete="off" data-testid="input-acres" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -1268,7 +1291,14 @@ function PropertyForm({
               <FormItem>
                 <FormLabel>State</FormLabel>
                 <FormControl>
-                  <Input {...field} placeholder="CA" data-testid="input-state" />
+                  <Input
+                    {...field}
+                    placeholder="CA"
+                    maxLength={2}
+                    autoCapitalize="characters"
+                    autoComplete="address-level1"
+                    data-testid="input-state"
+                  />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -1284,7 +1314,7 @@ function PropertyForm({
               <FormItem>
                 <FormLabel>Purchase Price (USD)</FormLabel>
                 <FormControl>
-                  <Input {...field} value={field.value ?? ""} placeholder="5000" type="number" data-testid="input-purchase-price" />
+                  <Input {...field} value={field.value ?? ""} placeholder="5000" type="number" inputMode="decimal" min="0" data-testid="input-purchase-price" />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -1297,7 +1327,7 @@ function PropertyForm({
               <FormItem>
                 <FormLabel>Market Value (USD)</FormLabel>
                 <FormControl>
-                  <Input {...field} value={field.value ?? ""} placeholder="15000" type="number" data-testid="input-market-value" />
+                  <Input {...field} value={field.value ?? ""} placeholder="15000" type="number" inputMode="decimal" min="0" data-testid="input-market-value" />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -1320,10 +1350,10 @@ function PropertyForm({
         />
 
         <div className="pt-2">
-          <Button type="submit" className="w-full" disabled={isPending} data-testid="button-submit-property">
+          <Button type="submit" className="w-full min-h-[44px] md:min-h-9" disabled={isPending} data-testid="button-submit-property">
             {isPending ? (
               <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
                 Adding...
               </>
             ) : (
