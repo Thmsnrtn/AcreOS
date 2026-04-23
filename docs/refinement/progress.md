@@ -760,3 +760,89 @@ AI offer → chat → due-diligence → research summary → intelligence).
 **PropertyDetailDialog now fully refined across all tabs.** Next
 surface per inventory: `/deals` kanban (375px UX), then `/campaigns`,
 `/inbox`, `/documents`, `/sign/:docId`, `/portal/:accessToken`.
+
+### `/deals` — kanban slice (session 5j)
+
+First of a multi-slice walk on `/deals` (1991 lines). This slice
+targets the kanban pipeline view (desktop + mobile kanban + mobile
+list) and cross-cutting toast/copy/a11y fixes. List-view/filter
+polish, DealDetailDrawer tabs (Details / Documents / Timeline /
+Checklist / ROI), and DealForm deferred to 5k + 5l.
+
+- [A-critical] DndContext gained KeyboardSensor. Previously only
+  PointerSensor — drag-to-change-stage was mouse-only. Keyboard
+  users can now Space/Enter to pick up, arrow keys to navigate
+  droppables, Space/Enter to drop, Escape to cancel.
+- [A-critical] DndContext `accessibility.announcements` +
+  `screenReaderInstructions` wired. SR users hear every transition
+  with full deal + stage context; previously silent.
+- [A] KanbanColumn restructured: outer `<section>` with
+  aria-labelledby, droppable div role=list + aria-label
+  "{stage} drop zone" + aria-describedby. Mobile-kanban and
+  mobile-list counterparts mirror the pattern.
+- [A] Column headings h3 → h2 (page hierarchy was h1 → h3 → skip h2).
+- [A] DealCard drag handle was bare `<svg>` with useDraggable
+  listeners spread. Now wrapped in `<button type=button>` with
+  contextual aria-label "Drag {county}, {state} to change stage",
+  `focus-visible:ring`; remains md+-only (mobile has discrete
+  stage view).
+- [A] Mobile kanban dot paginator → role=tablist with role=tab +
+  aria-selected + aria-label; dot size 2px → 3px (still discreet
+  but hittable).
+- [A] View-mode toggle group (kanban/list) gained role=group +
+  aria-label + aria-pressed.
+- [A] Pipeline distribution bar: outer role=img with full
+  aria-label ("Pipeline distribution: 3 Negotiating, 2 Offer
+  Sent, …"). Inner segments and mouse-only legend marked
+  aria-hidden to avoid triple-read.
+- [A] Icon+label tab/button pattern: `"hidden sm:inline"` entirely
+  hid labels on mobile (display:none removes from a11y tree).
+  Converted to `"sr-only sm:not-sr-only sm:inline"` — SR reads the
+  label on mobile, sighted users see icon-only layout unchanged.
+- [T] handleDragEnd mutation was silent on success + error.
+  Added success toast ("Stage updated — {county}, {state} moved
+  to {stage}") and destructive error toast ("Couldn't move deal").
+- [I/T] CSV export: console.error-only on failure replaced with
+  destructive toast; success confirms filename. Silent-fetch →
+  toast pattern.
+- [CW] Bulk delete toast: "Deleted" / "Deleted {N} deal(s)" →
+  "Deals deleted" / "Removed {N} deal(s) from your pipeline."
+  Generic "Error" title → "Couldn't delete deals" with reassurance
+  "Your deals are unchanged."
+- [E] Removed dead handleBulkStageChange function (never called;
+  bulk stage changes go through the confirm-dialog path via
+  handleBulkStageUpdate). Removed unused isBulkUpdating state.
+- [CW] Bulk-stage Select placeholder: "Change Stage" → "Change
+  stage" (sentence case), and dropped the dead spinner state.
+
+**Sign-off (this slice):** D ✓ M ✓ A ✓ E ✓ AI ✓ LI ✓ CW ✓ I ✓ T ✓
+
+### Flagged for owner decision (new this slice)
+
+- **`typeFilter` state has no UI affordance.** `const [typeFilter,
+  setTypeFilter] = useState("all")` is used only by
+  SavedViewsSelector (view-driven filtering). There is no visible
+  "Acquisitions / Dispositions / All" selector on the page. A real
+  investor looking at a pipeline would expect that filter to be
+  one click away. Not added (feature addition, out of scope for
+  refinement).
+- **"Pipeline" summary card sums `offerAmount || acceptedAmount`
+  across both acquisition and disposition deals.** For an
+  acquisition the figure is a cost; for a disposition it's
+  revenue. Aggregating mixes the two — potentially misleading.
+  Owner decision needed: separate acq-cost-in-flight vs
+  disposition-revenue-in-flight, or leave as a single "deal
+  volume" number?
+- **Stage-gate enforcement depends on `stageGate.canAdvance` from
+  the DealDetailDrawer path only.** Drag-to-move on the kanban
+  bypasses stage-gate checks entirely. A deal with an incomplete
+  required checklist can be dragged Negotiating → In Escrow with
+  no warning. Not changed (could be intentional — kanban is
+  "move quickly", drawer is "move carefully"). Owner should
+  decide if drag should also gate.
+
+### Next surface in the walk
+
+`/deals` list view + bulk-ops toolbar polish (slice 5k), then
+DealDetailDrawer 5-tab surface (slice 5l), then DealForm (5m),
+then `/campaigns`.

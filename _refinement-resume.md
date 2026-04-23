@@ -1,15 +1,22 @@
 # Elite-Team Refinement — Resume Point
 
-**Last session:** 2026-04-23 (session 5i — ninth slice)
-**Last completed refinement:** PropertyIntelligenceTab 9-lens —
-progressbar semantics on completeness bar, role=status on both
-empty states and errors card, 23 decorative icons aria-hidden,
-busy-aware aria-labels on Refresh/Fetch, AI/T grounding caveat on
-Investment Scores, FEMA NFHL attribution on Flood Zone, full copy
-sweep (ellipses + toast titles + empty state + errors heading),
-xl:grid-cols-3 for 1440px+ viewports.
+**Last session:** 2026-04-23 (session 5j — first /deals slice)
+**Last completed refinement:** `/deals` kanban — DndContext
+KeyboardSensor + accessibility announcements, KanbanColumn a11y
+(section + role=list + aria-labelledby), h3→h2 column headings,
+mobile dot paginator role=tablist, DealCard drag handle wrapped
+in proper button, view-mode toggle role=group + aria-pressed,
+pipeline distribution bar role=img + full aria-label, icon+label
+tabs gained `sr-only sm:not-sr-only` labels, dragEnd success +
+error toasts, CSV export error/success toasts, bulk-delete copy
+sweep, dead handleBulkStageChange removed.
+
 **Phase 1 inventory:** ✅ committed at `11d0e8c`
 **PropertyDetailDialog:** ✅ fully refined across all tabs.
+**/deals kanban:** ✅ slice 5j complete (commit `f001623`).
+**/deals list + filters:** ⬜ slice 5k next
+**/deals DealDetailDrawer (5 tabs):** ⬜ slice 5l
+**/deals DealForm:** ⬜ slice 5m
 
 ## How to continue
 
@@ -51,29 +58,14 @@ Session 4:
   state conformance + mobile action-row stack + source badge
   promotion + token-based visuals
 
-Session 5 (nine slices — full /properties surface):
-- 5a. `/properties` — list slice (commit `b70c9d6`)
-- 5b. `/properties` — PropertyCard + PropertyForm slice (commit
-  `29bd33f`)
-- 5c. `/properties` — PropertyDetailDialog header + Quick Verdict +
-  Overview tab (commit `796f8d6`)
-- 5d. `/properties` — dead-code sweep (DueDiligenceTab removal) +
-  DueDiligencePanel a11y pass (commit `b27128b`)
-- 5e. ResearchSummaryPanel 9-lens + cross-cutting status.replace
-  sweep across 22 client files (commit `3d0f564`)
-- 5f. CompsAnalysis 9-lens — Badge→Button a11y, sale-date
-  staleness, mobile filter grid, decorative icons (commit
-  `0c3bbec`)
-- 5g. AIOfferGenerator 9-lens — div→radiogroup, AI grounding
-  caveats, clipboard error handling, specific AI error toasts
-  (commit `8848f08`)
-- 5h. PropertyAnalysisChat 9-lens — role=log on messages
-  container, role=status on analyzing indicator, busy-aware send
-  button, 18 icons aria-hidden (commit `a7348fb`)
-- 5i. PropertyIntelligenceTab 9-lens — progressbar semantics, AI/T
-  Investment Scores caveat, FEMA NFHL attribution, 23 icons
-  aria-hidden, full copy sweep, xl:grid-cols-3 (commit TBD this
-  session)
+Session 5 (ten slices so far — /properties and starting /deals):
+- 5a–5i. `/properties` (list, card/form, detail dialog all tabs,
+  research summary, comps, AI offer, chat, intelligence,
+  cross-cutting status.replace sweep)
+- 5j. `/deals` kanban slice — DndContext KeyboardSensor +
+  announcements, column semantics, h3→h2, drag toasts, CSV toasts,
+  bulk-copy sweep, dead-code removal, icon-label sr-only fallback
+  (commit `f001623`)
 
 ## Cross-cutting gains this pass
 
@@ -85,128 +77,114 @@ Session 5 (nine slices — full /properties surface):
   handler that catches to `console.error` should surface a
   destructive toast with specific recovery copy.
 - **Silent-mutation → toast pattern (extended 5c):** mutations whose
-  result UI *replaces* the trigger (e.g. Pursue/Pass buttons → decision
-  badge) MUST surface both success and error toasts, because the
-  replaced UI is no longer there to show a state change.
-- **Cross-cutting bug sweep trigger (new 5e):** when a refinement
-  hits the *same* code-level bug in a fourth component, stop patching
-  it locally. Grep the whole client tree, fix all occurrences in one
-  sweep, and commit separately. Applied to `.replace('_', ' ')` —
-  any subsequent "I've seen this exact thing three times" pattern
-  should get the same treatment.
-- **Silent-query → toast pattern (new 5c):** a background query with
+  result UI *replaces* the trigger (e.g. Pursue/Pass buttons →
+  decision badge) MUST surface both success and error toasts.
+- **Silent-mutation → toast pattern (extended 5j):** drag-to-reorder
+  or drag-to-change-state mutations must surface both outcomes —
+  a react-query cache invalidate is not visible feedback, and on
+  failure the card silently snaps back with no explanation.
+- **Cross-cutting bug sweep trigger (5e):** when a refinement hits
+  the *same* code-level bug in a fourth component, stop patching
+  it locally; grep the client tree and fix everywhere in one sweep.
+- **Silent-query → toast pattern (5c):** background query with
   `staleTime: 0` that silently fails while showing cached data is a
-  trust bug. Wire an `isError` → toast via `useEffect` so the operator
-  knows they're viewing the last known version.
+  trust bug. Wire `isError` → toast via `useEffect`.
 - **Filter-reset empty state:** reset the full filter set when a
-  filter empties the list, not just one axis.
+  filter empties the list.
 - **Form mobile-keyboard checklist:** APN → `inputMode="numeric"`;
   acreage → `inputMode="decimal"`; state codes → `maxLength=2` +
   `autoCapitalize="characters"` + `autoComplete="address-level1"`;
   money → `type="number"` + `inputMode="decimal"` + `min=0`.
 - **Decorative-icon aria-hidden sweep:** any icon next to a text
-  label is decorative. Grep for `<Lucide.*className=` without an
-  `aria-` attribute on future surfaces. 5c: 16 more icons.
-- **Collapsible proper-aria pattern:** every "▲/▼ toggle details"
-  pattern needs lucide chevron + `aria-expanded` + `aria-controls`.
-- **Create-mutation success+error toast pattern:** any form that
-  mutates with `useCreateX` must surface both outcomes; silent
-  mutations are a trust bug.
-- **Tooltip-must-augment rule (new 5c):** if a tooltip only restates
-  the trigger's visible label, delete or rewrite it. Tooltips are
-  for the context the label can't hold.
-- **Spinner-copy-vs-first-load rule (new 5c):** copy on a loading
-  indicator cannot assume "updating" — if the same indicator appears
-  on first open, use "Loading latest X…" which reads correctly for
-  both initial load and background refetch.
+  label is decorative.
+- **Collapsible proper-aria pattern:** `aria-expanded` +
+  `aria-controls` + lucide chevron.
+- **Tooltip-must-augment rule (5c):** delete tooltips that restate
+  the visible label.
+- **Spinner-copy-vs-first-load rule (5c):** "Loading latest X…"
+  reads correctly for initial load AND background refetch.
+- **Icon-only tab labels (new 5j):** the pattern
+  `<span className="hidden sm:inline">Label</span>` hides the
+  label entirely from SR on mobile (display:none removes from
+  a11y tree). Convert to `sr-only sm:not-sr-only sm:inline`.
+- **Draggable a11y (new 5j):** `useDraggable` + PointerSensor alone
+  ships a mouse-only UX. Always add `KeyboardSensor` to the
+  sensors list AND wire `accessibility.announcements` /
+  `screenReaderInstructions` on DndContext. Draggable handle
+  should be a real `<button>`, not an svg with listeners spread.
+- **Droppable column semantics (new 5j):** droppable containers
+  need aria-label that names the target state, not just the
+  column heading. Screen reader hears "drop zone" once, not
+  "{heading} {heading} {heading}" as they arrow through.
 
 ## Next surface to refine
 
-**PropertyDetailDialog is complete.** The walk now moves to the
-next inventory section. Suggested order from inventory:
+**Next slice: `/deals` list view + bulk-actions toolbar (5k).**
 
-1. `/deals` — kanban UX on 375px (earlier pass only touched colors;
-   drag-and-drop accessibility is likely the critical gap)
-2. `/campaigns` — list + detail + create; AI-drafted letter copy
+Scope for 5k:
+- List view at 375px: checkbox tap target wrap, card rows,
+  pagination visibility, bulk-actions toolbar collapse behavior.
+- Header bar (page title + Export + New Deal) at 375px — does it
+  wrap sensibly?
+- Summary cards (4-up grid at md+, 2-up at mobile) — trust/CW:
+  "Pipeline" heading is ambiguous (see flagged note in progress
+  file); verify copy + number formatting.
+- SavedViewsSelector integration with typeFilter.
+- Empty states: `DealsEmptyState` component + in-column "No deals
+  in X" text.
+- Error state: already `QueryErrorState` ✓ — verify retry path.
+- Stage advancement via bulk dialog: copy + undo toast correctness.
+
+After 5k: slice 5l = DealDetailDrawer (Details, Documents,
+Timeline, Checklist, ROI tabs); slice 5m = DealForm.
+
+Then move per inventory:
+1. `/campaigns` — list + detail + create; AI-drafted letter copy
    is likely the AI/T hot spot
-3. `/inbox` — message rendering + thread navigation a11y
-4. `/documents` — upload + OCR trust signals
-5. `/sign/:docId` — **legal/trust surface** — verify signer flow
-   end-to-end; any copy that implies legal weight (typed signature,
-   consent checkbox) needs trust-architect review
-6. `/portal/:accessToken` — borrower portal; **public link, mobile
-   critical** — no Clerk auth, must work at 320px, copy tone should
-   reassure a borrower receiving this from a stranger
-
-Start next session with `/deals`.
-
-Note: the Accordion trigger content text in DueDiligencePanel still
-shows generic category icons but the items themselves (Tax Analysis,
-Environmental, Zoning, Access, Market Comps, Owner Research) were
-deferred — they are AI-generated output and the AI lens + LI lens
-together need a full pass on grounding (source attribution, comp
-date staleness, etc.). Flagging as a later slice.
-
-### Likely 9-lens targets carrying into next slice
-
-- [LI] Comps: sold date, $/acre, distance from subject — are these
-  the three primary columns? Any investor-critical fields missing?
-- [AI] AIOfferGenerator grounding: does the offer price cite comps
-  and taxes? If the LLM hallucinates, is the output bounded?
-- [I] Offer/chat API timeouts — 30s cap? fallback copy?
-- [T] DueDiligence checklist: completing items = trust-critical
-  claims. Any "mark complete" button should not be a single click
-  if it implies legal responsibility (e.g. "title verified").
-- [A] Checklist progress bar contrast in dark mode.
-- [M] Print CSS on DD panel — window.print() is wired but the
-  layout may reflow badly.
+2. `/inbox` — message rendering + thread navigation a11y
+3. `/documents` — upload + OCR trust signals
+4. `/sign/:docId` — **legal/trust surface** — signer flow
+5. `/portal/:accessToken` — borrower portal; **public link, mobile
+   critical** — no Clerk auth, must work at 320px
 
 ## Deferred / flagged for owner decision
 
-- **"Distress Score" filter mislabel.** On `/properties` the filter
-  control is labeled "Distress Score" but its source is
-  `enrichment.scores.overallScore ?? investmentScore` — these are
-  not the same concept. Either the label is wrong (should be
-  "Investment Score"), the data source is wrong (should read a
-  true distress signal), or both. Do not unilaterally rename;
-  Thomas should decide which side is authoritative.
-- **Pursue/Pass irreversibility (5c surfaced).** The Quick Verdict
-  buttons write `status` + `dueDiligenceData.verdictDecision` and
-  then permanently replace themselves with a "Pursuing" / "Passed"
-  badge. There is no UI path in this dialog to revert. Success
-  toast wording now implies reversibility ("You can still reopen
-  this record — nothing is deleted"), but there is no actual undo
-  control here. Owner decision needed: add explicit Revert button
-  beside the decision badge, or leave reversal to the main status
-  editor?
-- **Verdict `signalColors` use raw Tailwind (green/yellow/red)**
-  rather than design tokens. CLAUDE.md says never hardcode colors,
-  but semantic traffic-light colors are the natural exception —
-  green = Strong Buy, yellow = Investigate, red = Pass. Left as-is.
-  Revisit if a design-system "signal" palette is formalized.
+- **"Distress Score" filter mislabel** on `/properties` (see prior).
+- **Pursue/Pass irreversibility** on PropertyDetailDialog (see prior).
+- **Verdict `signalColors`** raw Tailwind traffic-light (see prior).
+- **`typeFilter` on `/deals`** has state but no visible UI control
+  to set it (only SavedViewsSelector can apply it indirectly).
+  Either hidden feature or missing affordance — needs owner call.
+- **"Pipeline" summary on `/deals`** aggregates acquisition-cost +
+  disposition-revenue into one number, arguably misleading. Owner
+  decision on whether to split.
+- **Drag-to-move kanban bypasses stage-gate checks.** Drawer path
+  respects `stageGate.canAdvance`; drag path does not. Intentional
+  or gap?
 
 ## Session hygiene reminders
 
 - Commit per surface (or tight batch).
 - Re-run 9-lens after each edit.
 - Large surfaces (>15k tokens): read in chunks, commit in slices;
-  don't try to inhabit the whole thing in one session.
+  don't try to inhabit the whole thing in one session. `/deals` is
+  1991 lines — budgeted across 4 slices (5j–5m).
 - Playwright Safari sessions die within ~5 minutes of a Clerk JWT
   refresh; fall back to code-only if cookies expire mid-audit.
 - Stop at ~85% context; rewrite this file before ending.
 
 ## Known in-flight issues
 
-- **Purple-on-Safari** — fixed at root and on every customer-
-  visible site touched.
+- **Purple-on-Safari** — fixed at root and on every customer-visible
+  site touched.
 - **Red toast spam** — 404/403 globally suppressed.
 - **Fly deploy leases** occasionally linger ~90s after a transient
   fail; retry.
 - **Pre-existing server type errors** in `workflow-engine`,
   `storage`, `autonomousDealMachine`, `countyAssessorIngest`,
-  `supportAgent`, etc. — not blocking client refinement work;
-  out of scope for this pass.
+  `supportAgent`, etc. — not blocking client refinement work.
 
-## Expected HEAD after session 5c deploy
+## Expected HEAD after session 5j
 
-New commit on top of `29bd33f` (card+form) → `b70c9d6` (list slice).
+New commit on top of `9485685` (properties/intelligence) →
+`f001623` (deals kanban).
