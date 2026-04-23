@@ -244,22 +244,44 @@ export default function DealsPage() {
   };
 
   const handleBulkExport = () => {
-    const selected = enrichedDeals.filter(d => selectedDealIds.has(d.id));
-    const headers = ["id", "type", "status", "offerAmount", "acceptedAmount", "county", "state"];
-    const rows = [headers.join(","), ...selected.map(d =>
-      [d.id, d.type, d.status, d.offerAmount || "", d.acceptedAmount || "", d.property?.county || "", d.property?.state || ""]
-        .map(v => `"${v || ""}"`)
-        .join(",")
-    )];
-    const blob = new Blob([rows.join("\n")], { type: "text/csv" });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `deals-export-${new Date().toISOString().split("T")[0]}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    window.URL.revokeObjectURL(url);
-    document.body.removeChild(a);
+    try {
+      const selected = enrichedDeals.filter(d => selectedDealIds.has(d.id));
+      if (selected.length === 0) return;
+      const headers = ["id", "type", "status", "offerAmount", "acceptedAmount", "county", "state"];
+      // CSV cell escape: wrap in quotes, double any embedded quotes, and
+      // neutralize leading formula characters (=, +, -, @, tab, CR) that
+      // spreadsheets interpret as formulas.
+      const escapeCell = (v: unknown) => {
+        let s = v == null ? "" : String(v);
+        if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+        return `"${s.replace(/"/g, '""')}"`;
+      };
+      const rows = [headers.map(escapeCell).join(","), ...selected.map(d =>
+        [d.id, d.type, d.status, d.offerAmount || "", d.acceptedAmount || "", d.property?.county || "", d.property?.state || ""]
+          .map(escapeCell)
+          .join(",")
+      )];
+      const filename = `deals-export-${new Date().toISOString().split("T")[0]}.csv`;
+      const blob = new Blob([rows.join("\n")], { type: "text/csv" });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      toast({
+        title: "Export ready",
+        description: `Downloaded ${plural(selected.length, "deal")} to ${filename}.`,
+      });
+    } catch (err: any) {
+      toast({
+        title: "Couldn't export selection",
+        description: err?.message || "Something went wrong while building the CSV. Try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   const enrichedDeals: DealWithProperty[] = (deals || [])
@@ -365,7 +387,7 @@ export default function DealsPage() {
             setBulkStageDialogOpen(false);
             setBulkTargetStage("");
             toast({
-              title: "Deals Updated",
+              title: "Deals updated",
               description: result.message,
               action: result.undoAvailable ? (
                 <Button
@@ -380,12 +402,27 @@ export default function DealsPage() {
                   }}
                   disabled={isUndoing}
                 >
-                  <Undo2 className="w-4 h-4 mr-1" />
+                  <Undo2 className="w-4 h-4 mr-1" aria-hidden="true" />
                   Undo
                 </Button>
               ) : undefined,
             });
+          } else {
+            toast({
+              title: "Couldn't update stage",
+              description: ('message' in data && typeof data.message === 'string')
+                ? data.message
+                : "Your changes didn't save. Try again in a moment.",
+              variant: "destructive",
+            });
           }
+        },
+        onError: (err: any) => {
+          toast({
+            title: "Couldn't update stage",
+            description: err?.message || "Your changes didn't save. Try again in a moment.",
+            variant: "destructive",
+          });
         },
       }
     );
@@ -427,13 +464,13 @@ export default function DealsPage() {
                 disabled={isExporting}
                 data-testid="button-export-deals"
               >
-                {isExporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
+                {isExporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" /> : <Download className="w-4 h-4 mr-2" aria-hidden="true" />}
                 Export CSV
               </Button>
               <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
                 <DialogTrigger asChild>
                   <Button data-testid="button-create-deal">
-                    <Plus className="w-4 h-4 mr-2" /> New Deal
+                    <Plus className="w-4 h-4 mr-2" aria-hidden="true" /> New Deal
                   </Button>
                 </DialogTrigger>
               <DialogContent className="sm:max-w-[500px] floating-window">
@@ -454,7 +491,7 @@ export default function DealsPage() {
               <CardContent className="p-4 md:p-6">
                 <div className="flex items-center gap-2 md:gap-3">
                   <div className="p-2 md:p-3 rounded-xl bg-blue-500/10 flex-shrink-0">
-                    <Building className="w-4 h-4 md:w-5 md:h-5 text-blue-600" />
+                    <Building className="w-4 h-4 md:w-5 md:h-5 text-blue-600" aria-hidden="true" />
                   </div>
                   <div className="min-w-0">
                     <p className="text-xs md:text-sm text-muted-foreground truncate">Acquisitions</p>
@@ -468,7 +505,7 @@ export default function DealsPage() {
               <CardContent className="p-4 md:p-6">
                 <div className="flex items-center gap-2 md:gap-3">
                   <div className="p-2 md:p-3 rounded-xl bg-emerald-500/10 flex-shrink-0">
-                    <TrendingUp className="w-4 h-4 md:w-5 md:h-5 text-emerald-600" />
+                    <TrendingUp className="w-4 h-4 md:w-5 md:h-5 text-emerald-600" aria-hidden="true" />
                   </div>
                   <div className="min-w-0">
                     <p className="text-xs md:text-sm text-muted-foreground truncate">Dispositions</p>
@@ -482,7 +519,7 @@ export default function DealsPage() {
               <CardContent className="p-4 md:p-6">
                 <div className="flex items-center gap-2 md:gap-3">
                   <div className="p-2 md:p-3 rounded-xl bg-primary/10 flex-shrink-0">
-                    <DollarSign className="w-4 h-4 md:w-5 md:h-5 text-primary" />
+                    <DollarSign className="w-4 h-4 md:w-5 md:h-5 text-primary" aria-hidden="true" />
                   </div>
                   <div className="min-w-0">
                     <p className="text-xs md:text-sm text-muted-foreground truncate">Pipeline</p>
@@ -498,7 +535,7 @@ export default function DealsPage() {
               <CardContent className="p-4 md:p-6">
                 <div className="flex items-center gap-2 md:gap-3">
                   <div className="p-2 md:p-3 rounded-xl bg-green-500/10 flex-shrink-0">
-                    <CheckCircle className="w-4 h-4 md:w-5 md:h-5 text-green-600" />
+                    <CheckCircle className="w-4 h-4 md:w-5 md:h-5 text-green-600" aria-hidden="true" />
                   </div>
                   <div className="min-w-0">
                     <p className="text-xs md:text-sm text-muted-foreground truncate">Closed</p>
@@ -596,15 +633,15 @@ export default function DealsPage() {
           {selectedDealIds.size > 0 && (
             <div className="p-3 bg-muted/50 border rounded-md space-y-3 md:space-y-0 md:flex md:flex-wrap md:items-center md:gap-3" data-testid="bulk-actions-toolbar-deals">
               <div className="flex items-center gap-2">
-                <CheckSquare className="w-4 h-4" />
+                <CheckSquare className="w-4 h-4" aria-hidden="true" />
                 <span className="text-sm font-medium">{plural(selectedDealIds.size, "deal")} selected</span>
                 <Button variant="ghost" size="icon" className="md:hidden min-h-[44px] min-w-[44px] ml-auto" onClick={() => setSelectedDealIds(new Set())} aria-label="Clear selection">
-                  <X className="w-4 h-4" />
+                  <X className="w-4 h-4" aria-hidden="true" />
                 </Button>
               </div>
               <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap md:items-center md:gap-2 md:ml-auto">
                 <Button variant="outline" className="min-h-[44px] md:min-h-8" onClick={handleBulkExport} data-testid="button-bulk-export-deals">
-                  <Download className="w-4 h-4 mr-1" /> Export
+                  <Download className="w-4 h-4 mr-1" aria-hidden="true" /> Export
                 </Button>
                 <Select
                   value={bulkTargetStage}
@@ -624,15 +661,15 @@ export default function DealsPage() {
                   data-testid="button-bulk-update"
                 >
                   {isBulkStageUpdating ? (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
                   ) : null}
-                  Update Stage
+                  Update stage
                 </Button>
                 <Button variant="destructive" className="min-h-[44px] md:min-h-8 col-span-2 md:col-span-1" onClick={() => setShowBulkDeleteConfirm(true)} disabled={isBulkDeleting} data-testid="button-bulk-delete-deals">
-                  <Trash2 className="w-4 h-4 mr-1" /> Delete
+                  <Trash2 className="w-4 h-4 mr-1" aria-hidden="true" /> Delete
                 </Button>
-                <Button variant="ghost" size="sm" className="hidden md:flex" onClick={() => setSelectedDealIds(new Set())}>
-                  <X className="w-4 h-4" />
+                <Button variant="ghost" size="sm" className="hidden md:flex" onClick={() => setSelectedDealIds(new Set())} aria-label="Clear selection">
+                  <X className="w-4 h-4" aria-hidden="true" />
                 </Button>
               </div>
             </div>
@@ -686,7 +723,7 @@ export default function DealsPage() {
                         aria-label="Previous stage"
                         data-testid="button-prev-stage"
                       >
-                        <ChevronLeft className="w-4 h-4" />
+                        <ChevronLeft className="w-4 h-4" aria-hidden="true" />
                       </Button>
                       <Select 
                         value={String(selectedStageIndex)} 
@@ -715,7 +752,7 @@ export default function DealsPage() {
                         aria-label="Next stage"
                         data-testid="button-next-stage"
                       >
-                        <ChevronRight className="w-4 h-4" />
+                        <ChevronRight className="w-4 h-4" aria-hidden="true" />
                       </Button>
                     </div>
                   )}
@@ -740,25 +777,33 @@ export default function DealsPage() {
                           </div>
                         </div>
                         <div className="space-y-2">
-                          {stageDeals.map((deal) => (
-                            <div key={deal.id} className="flex items-start gap-2">
-                              <Checkbox
-                                checked={selectedDealIds.has(deal.id)}
-                                onCheckedChange={(checked) => {
-                                  const next = new Set(selectedDealIds);
-                                  checked ? next.add(deal.id) : next.delete(deal.id);
-                                  setSelectedDealIds(next);
-                                }}
-                                className="mt-3 h-5 w-5"
-                              />
-                              <div className="flex-1 min-w-0">
-                                <DealCard
-                                  deal={deal}
-                                  onSelect={() => setSelectedDeal(deal)}
-                                />
+                          {stageDeals.map((deal) => {
+                            const dealLabel = deal.property
+                              ? `${deal.property.county}, ${deal.property.state}`
+                              : `Deal #${deal.id}`;
+                            return (
+                              <div key={deal.id} className="flex items-start gap-2">
+                                <label className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] -ml-2 cursor-pointer" aria-label={`Select ${dealLabel}`}>
+                                  <Checkbox
+                                    checked={selectedDealIds.has(deal.id)}
+                                    onCheckedChange={(checked) => {
+                                      const next = new Set(selectedDealIds);
+                                      checked ? next.add(deal.id) : next.delete(deal.id);
+                                      setSelectedDealIds(next);
+                                    }}
+                                    className="h-5 w-5"
+                                    aria-label={`Select ${dealLabel}`}
+                                  />
+                                </label>
+                                <div className="flex-1 min-w-0">
+                                  <DealCard
+                                    deal={deal}
+                                    onSelect={() => setSelectedDeal(deal)}
+                                  />
+                                </div>
                               </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       </section>
                     );
