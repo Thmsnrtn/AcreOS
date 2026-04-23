@@ -811,7 +811,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
             </TabsContent>
 
             <TabsContent value="schedule" className="mt-4 space-y-4">
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="bg-muted/50 rounded-lg p-3 text-center">
                   <p className="text-xs text-muted-foreground">Total Interest</p>
                   <p className="font-bold font-mono text-amber-600" data-testid="text-total-interest">
@@ -1435,7 +1435,7 @@ function NoteForm({ onSuccess }: { onSuccess: () => void }) {
           />
         </div>
 
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <FormField
             control={form.control}
             name="originalPrincipal"

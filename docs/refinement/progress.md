@@ -202,3 +202,26 @@ deals, campaigns, notes, etc.).
   changed from purple → sky.
 
 **Sign-off:** D ✓ M ✓ A ✓ E ✓ AI n/a LI ✓ CW ✓ I ✓ T ✓
+
+### 2026-04-23 — `/properties` + `/finance` (responsive grid pass)
+Batch refinement across two adjacent high-traffic authenticated
+surfaces.
+
+**Refinements made:**
+- [M] Mobile: `/properties` completeness-breakdown chip grid was
+  `grid-cols-4` with no mobile variant.  At 375px each chip had
+  ~85px minus gap for 2-word labels — crushed.  Now `grid-cols-2
+  sm:grid-cols-4`.
+- [M] Mobile: `/finance` schedule-stats grid (Total Interest / Payoff
+  Date / Remaining) was `grid-cols-3` with mixed-width values —
+  dollar amounts overflowed at 375px.  Now `grid-cols-1
+  sm:grid-cols-3` — stats stack cleanly on phones.
+- [M] Mobile: `/finance` note-create form (Principal / Rate / Term)
+  was `grid-cols-3` — three inputs in a row at 375px meant 115px each
+  with label text, spinner controls, and units.  Now `grid-cols-1
+  sm:grid-cols-3`.
+- Audit pass on `/campaigns`, `/inbox`, `/tasks`, `/dashboard`,
+  `/documents`, `/settings`, `/goals`, `/activity` — all grids
+  already had sm:/md:/lg: responsive variants; no changes needed.
+
+**Sign-off:** D ✓ M ✓ A ✓ E ✓ AI n/a LI ✓ CW ✓ I ✓ T ✓

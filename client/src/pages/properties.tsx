@@ -2577,7 +2577,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
               />
             </div>
             {(enrichmentData as any).completenessBreakdown && (
-              <div className="grid grid-cols-4 gap-1 mt-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 mt-2">
                 {Object.entries((enrichmentData as any).completenessBreakdown as Record<string, boolean>).map(
                   ([key, value]) => (
                     <div
