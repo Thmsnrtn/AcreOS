@@ -2325,4 +2325,4 @@ page affect the entire lending relationship.
   stronger claim is accurate, use it — it calibrates trust
   better than vague reassurance.
 
-**Commit:** (pending — will fill after commit)
+**Commit:** `c6438ba`

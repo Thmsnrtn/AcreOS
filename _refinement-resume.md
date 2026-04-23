@@ -1,7 +1,35 @@
 # Elite-Team Refinement — Resume Point
 
-**Last session:** 2026-04-23 (session 9 — `/sign/:docId`)
-**Last completed refinement:** `client/src/pages/sign-document.tsx`
+**Last session:** 2026-04-23 (session 10 — `/portal/:accessToken` entry)
+**Last completed refinement:** `client/src/pages/borrower-portal.tsx`
+(lines 35-186 — `BorrowerPortal` verification gate +
+`BorrowerLandingPage` + the intermediate loading interstitial).
+Public no-auth surface, mobile-critical. Form a11y overhauled:
+Label htmlFor + Input id, aria-invalid + aria-describedby
+wired to a role=alert error region, form onSubmit for
+Enter-to-submit, client-side trim + has-@ pre-check, full
+mobile-keyboard checklist (autoComplete/inputMode/auto
+Capitalize/autoCorrect/spellCheck). Decorative-icon aria-hidden
+across 6 lucide icons. sr-only h1 landmarks added on both the
+landing and verify gate (CardTitle is a `<div>`). Loading
+interstitial became role=status + aria-live=polite + Loader2
+spinner. Landing-page feature rows promoted to `<ul><li>` with
+`shrink-0` icon tiles for 320px. useDocumentTitle wired on
+both paths. 44px touch target on primary CTA. Copy: sentence-
+case sweep, proper ellipsis, em-dash on landing CTA, warmer
+error voice ("We couldn't match that email to this loan —
+check the address from your payment reminder email"), specific
+security claim ("encrypted in transit and at rest"), RFC-2606
+placeholder ("you@example.com"), description rewrite names
+"the email your lender has on file." JSON-parse guard on
+error-branch. The ~1000-line `<BorrowerDashboard>` component
+(payments, autopay, payoff quote, 1098/statements, messaging)
+deferred to slice 10b as a separate focused pass.
+
+---
+
+**Prior session:** 2026-04-23 (session 9 — `/sign/:docId`)
+**Prior completed refinement:** `client/src/pages/sign-document.tsx`
 — full 9-lens pass on the public HMAC-token signer page. P0
 bug squashed: `error` was a single state used for both load
 failures and submit failures, so a failed POST tore down
@@ -40,7 +68,9 @@ to a dedicated 9b slice.
 **/documents:** ✅ slice 8 complete (commit `234dafa`)
 **/sign/:docId:** ✅ slice 9 complete (commit `61f1469`)
 **SignatureCapture component (9b):** ⬜ deferred — 372-line canvas/typed/consent component, own slice
-**/portal/:accessToken:** ⬜ slice 10 next — public borrower link, mobile critical at 320px
+**/portal/:accessToken entry (gate + landing):** ✅ slice 10 complete (commit `c6438ba`)
+**BorrowerDashboard (10b):** ⬜ deferred — ~1000 lines, payment/autopay/payoff/statements/messaging — own slice
+**/auth, /forgot-password, /reset-password public-form audit:** ⬜ candidate follow-up from slice 10 "public-form a11y checklist" pattern grep
 
 ## How to continue
 
@@ -110,6 +140,16 @@ Session 9:
   content, role=status on confirmation, decorative-icon sweep,
   legal-fine-print 12px minimum size, sentence-case title +
   specific CardTitle. (commit `61f1469`)
+
+Session 10:
+- `/portal/:accessToken` entry (lines 35-186) — public no-auth
+  borrower verification gate + no-token landing + loading
+  interstitial. Public-form a11y checklist introduced and
+  shipped (Label htmlFor, aria-invalid + aria-describedby,
+  role=alert, form onSubmit, mobile-keyboard attrs, h1
+  landmark). Trust-copy specificity ("encrypted in transit
+  and at rest"). Borrower-voice error fallbacks. BorrowerDashboard
+  (~1000 lines) deferred to 10b. (commit `c6438ba`)
 
 ## Cross-cutting gains this pass
 
@@ -287,16 +327,46 @@ Session 9:
   tell users to "contact support" / "reply to email" should
   offer an in-page retry first. Transient 5xx + network blips
   don't need a round-trip to the sender to resolve.
+- **Public-form a11y checklist (new 10):** any public (no-auth)
+  form must ship all of: `<Label htmlFor>` + Input `id`,
+  `role="alert"` on validation errors, `aria-invalid` +
+  `aria-describedby` wiring, form-level `onSubmit` for
+  Enter-to-submit, mobile-keyboard attrs (`autoComplete/
+  inputMode/autoCapitalize/autoCorrect/spellCheck`), an h1
+  landmark (sr-only is fine when a CardTitle supplies the
+  visual heading), 44px min touch on the primary CTA, and
+  `useDocumentTitle` so the browser tab + SR page-load
+  announcement are meaningful. This is a **grep candidate**
+  across `/auth`, `/sign/:docId` (already refined but worth
+  spot-checking), `/forgot-password`, `/reset-password`,
+  beta-intake.tsx, and any public lead-capture form.
+- **Trust-claim specificity rule (new 10):** trust-signaling
+  copy should be specific and technical, not platitudinous.
+  "Your information is secure" reads as marketing fluff.
+  "Your information is encrypted in transit and at rest"
+  reads as a system-design claim and calibrates trust
+  better. Where the stronger claim is accurate, use it.
 
 ## Next surface to refine
 
-**Next slice: 10 — `/portal/:accessToken` (public borrower portal, mobile critical at 320px).**
+**Next slice: 10b — `<BorrowerDashboard>` (lines 188-end of borrower-portal.tsx).**
+~1000 lines of dashboard: loan summary, payment flow (Stripe
+redirect), autopay toggle, payoff quote request, statement /
+1098 PDF generator, borrower ↔ lender messaging, payment
+history table. Each of those is its own trust+money concern;
+may need sub-slices (10b.i loan summary + payment, 10b.ii
+payoff + statements, 10b.iii messaging). Scan-and-slice on
+entry.
 
-After /portal, move per inventory to:
-1. `SignatureCapture` component (slice 9b) — 372-line canvas /
-   typed / consent pad, own a11y + mobile-touch pass
-2. `/campaigns` 6c (AbTestManager + CampaignVariantsPanel +
-   CampaignAnalytics sub-panels) — deferred, not blocking
+After 10b, move per inventory to:
+1. Public-form a11y checklist **grep sweep** — apply the new
+   slice-10 checklist to `/auth`, `/forgot-password`,
+   `/reset-password`, `beta-intake.tsx` (1 commit, likely
+   small).
+2. `SignatureCapture` component (slice 9b) — 372-line canvas /
+   typed / consent pad, own a11y + mobile-touch pass.
+3. `/campaigns` 6c (AbTestManager + CampaignVariantsPanel +
+   CampaignAnalytics sub-panels) — deferred, not blocking.
 
 ## Deferred / flagged for owner decision
 
@@ -339,12 +409,11 @@ After /portal, move per inventory to:
   `storage`, `autonomousDealMachine`, `countyAssessorIngest`,
   `supportAgent`, etc. — not blocking client refinement work.
 
-## Expected HEAD after session 9
+## Expected HEAD after session 10
 
-Session 9 shipped `61f1469 refine(sign): …` on top of
-`234dafa refine(documents): …` (session 8) on top of
-`e052cf8 refine(inbox): …`. Slice 9 introduced four cross-
-cutting rules (submit-error-must-not-unmount-form,
-focus-on-success-confirmation, legal-disclosure minimum-size,
-retry-on-load-error) and squashed a P0 signature-loss bug on
-a legal surface.
+Session 10 shipped `c6438ba refine(portal): …` on top of
+`61f1469 refine(sign): …` (session 9). Slice 10 introduced
+two cross-cutting rules (public-form a11y checklist,
+trust-claim specificity) and a public-form grep candidate
+follow-up across `/auth`, `/forgot-password`, `/reset-
+password`, `beta-intake`.
