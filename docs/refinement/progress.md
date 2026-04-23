@@ -931,3 +931,193 @@ then `/campaigns`.
   `onSuccess: result.success=false` (soft-fail payload), and
   `onError` independently. Toasting only on the first leaves a
   silent-failure hole on the other two.
+
+---
+
+## Slice 5l — /deals DealDetailDrawer (5 tabs)
+
+**Surface:** `client/src/pages/deals.tsx` → `DealDetailDrawer`
+(lines ~1172–1975). Full-height slide-over drawer that opens on
+any deal row/card click. Five tabs: Details, Docs, Timeline,
+Tasks (checklist), ROI.
+
+### Refinements (one atomic commit)
+
+**Drawer mechanics (a11y + keyboard):**
+- Added `Escape` key handler (document-level) wired to `onClose`.
+  Previously the drawer trapped the user — no Esc close.
+- Added `role="dialog"`, `aria-modal="true"`,
+  `aria-labelledby="deal-drawer-title"` on the drawer panel, and
+  `id="deal-drawer-title"` on the `<h2>`. Screen readers now
+  announce "dialog" with the deal title, not an unnamed div.
+
+**Icon-only / AI buttons (a11y + mobile targets):**
+- AI pricing popover trigger (`Sparkles`/`Loader2` button) gained
+  `aria-label` (swaps between idle / generating copy) and
+  `min-h-[44px] min-w-[44px]`. Previously `size="sm"` (36px) with
+  only a `data-testid` — icon-only button had no accessible name.
+- AI negotiation-script button likewise gained `min-h-[44px]
+  min-w-[44px]` + dynamic `aria-label`. Removed the redundant
+  `title="AI Negotiation Coaching"` tooltip (restated visible
+  label — violates Tooltip-must-augment rule from 5c).
+- "Apply suggestion" pricing CTA: `min-h-[44px]`, decorative
+  icons `aria-hidden`.
+- Negotiation dialog: `<p>` subtitle moved to `DialogDescription`
+  so Radix wires `aria-describedby` automatically.
+
+**Decorative-icon aria-hidden sweep:**
+- All tab-trigger icons (`FileText`, `Package`, `Clock`,
+  `ClipboardCheck`, `Calculator`).
+- Header action icons (`Trash2`, `X`).
+- Card-section icons (`MapPin`, `Calendar`, `FileText`,
+  `ClipboardCheck`).
+- Pricing popover `Sparkles`.
+- Stage-gate `AlertTriangle`.
+- Checklist `CheckSquare`/`Square` + `Upload` inside
+  checklist-item buttons.
+- Package-list `Package`, `Eye`, `Play`, `Loader2`.
+
+**Checklist checkbox a11y (new 5l cross-cut):**
+- Raw `<button>` with only `data-testid` and a `w-6 h-6` icon
+  inside `p-2 -m-2` (effective ~40px target) → now `role="checkbox"`,
+  `aria-checked={!!item.checkedAt}`, dynamic `aria-label`
+  (`"Mark complete: {title}"` or `"Mark incomplete: {title}"`),
+  `min-h-[44px] min-w-[44px]`, and a visible focus ring. Screen
+  readers now announce "checkbox, checked/unchecked, {title}"
+  instead of nothing.
+- Upload button `aria-label` now names the item (`"Upload
+  document for {title}"`) instead of generic "Upload document" —
+  improves list-scan a11y when several items have the document
+  requirement.
+
+**Trust / data presentation:**
+- Offer amount and Accepted amount no longer display "`$0`"
+  when unset — renders an em-dash in muted foreground.
+  Rendering "$0" as if the deal were zero-priced is a trust bug
+  for a product displaying money amounts.
+
+**Silent failure → toast (cross-cut):**
+- `dealPackages` query previously returned `[]` on !ok,
+  producing a silent "no packages" empty state indistinguishable
+  from a genuinely empty deal. Now throws with the status code
+  and a `useEffect` watching `isError` surfaces a destructive
+  toast with specific recovery copy ("Check your connection and
+  reopen the Docs tab to retry").
+
+**Window.confirm → ConfirmDialog:**
+- "Change template" `Select`'s inline `window.confirm(...)` (line
+  1939 old) replaced with controlled `ConfirmDialog` state
+  (`pendingTemplateId`). Native confirm is inaccessible (bypasses
+  focus trap, no Radix aria wiring, platform-inconsistent). New
+  dialog uses destructive variant, named action "Replace
+  checklist", and respects `isApplyingTemplate` loading state.
+
+**Dead-code removal (trust):**
+- Removed the "Generate Documents" and "View Property" buttons at
+  the bottom of the Details tab. Both had zero `onClick`
+  handlers — clicks did nothing. Broken UI promises are a trust
+  cost. The Docs tab already has "Create package" CTA; property
+  detail does not have a stable route, so no wire-up was
+  available.
+
+**Loading-state refinement:**
+- Documents + Checklist tabs previously used a centered
+  `<Loader2>` spinner. Replaced with `ListSkeleton count={N}
+  variant="compact"` matching the list item shape.
+
+**Copy sentence-case sweep (Details + Docs + Checklist tabs):**
+- Card titles: "Update Status" → "Update status", "Property
+  Details" → "Property details", "Closing Details" → "Closing
+  details".
+- Field labels: "Offer Amount" → "Offer amount", "Accepted
+  Amount" → "Accepted amount", "Assessed Value" → "Assessed
+  value", "Offer Date" → "Offer date", "Closing Date" →
+  "Closing date", "Title Company" → "Title company", "Closing
+  Costs" → "Closing costs".
+- Headings + CTAs: "Document Packages" → "Document packages",
+  "Create Package" → "Create package", "No Document Packages" →
+  "No document packages", "No Checklist Applied" → "No
+  checklist applied", "Stage Advancement Blocked" → "Stage
+  advancement blocked", "AI Price Recommendation" → "AI price
+  recommendation", "AI Negotiation Coaching" → "AI negotiation
+  coaching", "Apply Suggestion" → "Apply suggestion", "Copy
+  Script" → "Copy script".
+- Trailing `...` → `…` on in-progress copy ("Updating…",
+  "Applying…", "Applying template…", "Change template…",
+  "Select a template…").
+- Pluralization: "Complete N required item(s)" → uses
+  `plural(n, 'item')` helper — never shipping "(s)" user-visible.
+
+**Shadow-name cleanup:**
+- Local `const statusColors` inside the package card `.map` was
+  shadowing the module-level `statusColors` used by the drawer
+  header badge. Renamed to `pkgStatusColors` — no behavior
+  change, but removes a foot-gun when editing.
+
+**Progress bar a11y:**
+- Checklist `<Progress>` gained `aria-label="Checklist N%
+  complete"` — Radix Progress exposes `role=progressbar` but no
+  name by default.
+
+**Stage-gate live region:**
+- Stage-gate warning Card gained `role="status"` so updates to
+  the incomplete-count are announced to assistive tech.
+
+### Deferred / flagged for owner
+
+- **Focus restoration on drawer close:** the drawer does not
+  return focus to the row/card that opened it. Proper fix
+  requires the parent (`DealsPage`) to hand a
+  `triggerRef`/`returnFocusTo` prop in. Larger change — deferred.
+- **Focus trap on drawer open:** Radix Dialog gives this for
+  free. Converting the hand-rolled `<div>` overlay to
+  `Sheet`/`Dialog` is the right long-term fix. Out-of-scope for
+  this slice.
+- **Drag-to-kanban bypasses stage-gate** (still open from 5j).
+
+### Nine-lens sign-off
+
+- **Designer:** rhythm unchanged; dead buttons removed cleans
+  Details tab bottom rag; sentence case aligns with 5j/5k sweep. ✅
+- **Mobile:** every icon-only button now 44×44px; no tap-target
+  regressions. ✅
+- **Accessibility:** drawer announces as a real dialog; every
+  checklist checkbox has a proper `role=checkbox`+
+  `aria-checked`; every decorative icon hidden from SR;
+  keyboard Esc closes. ✅
+- **Engineer:** shadow-variable cleanup; silent 200-on-error
+  path converted to proper error surface. ✅
+- **AI systems:** AI price/negotiation buttons clearly labeled
+  as AI-generated; confidence badge + range + reasoning stay
+  exposed. ✅
+- **Land investor:** "Offer amount", "Accepted amount", "Title
+  company", "Escrow #", "Closing costs" all read correctly. ✅
+- **Copywriter:** sentence case across all surfaces; specific
+  toast recovery copy; native `confirm()` replaced with voiced
+  "Replace checklist?" language. ✅
+- **Infrastructure:** Docs-tab fetch now surfaces failure
+  instead of falling back to empty array. ✅
+- **Trust:** money fields no longer render "`$0`" when unset;
+  dead buttons removed; confirm replaced with accessible
+  dialog. ✅
+
+### Cross-cutting additions
+
+- **Dead-stub rule (new 5l):** a button with no `onClick` and
+  no `type="submit"` is a broken UI promise, not a visual
+  placeholder. Either wire it up in the same commit or remove
+  it. Do not leave visible "future feature" buttons shipping.
+- **Money-unset display rule (new 5l):** `$0` rendered from a
+  nullable amount field reads as "this deal is worth nothing"
+  to users. Render "—" (muted) when the underlying value is
+  `null`/`undefined`/empty string — reserve `$0.00` for deals
+  where zero is the actual captured amount.
+- **Radix DialogDescription-over-p rule (new 5l):** subtitle
+  paragraphs inside `DialogHeader` should be
+  `<DialogDescription>` so Radix wires `aria-describedby` —
+  raw `<p>` loses that binding.
+- **Checklist-checkbox role rule (new 5l):** a toggle button
+  that semantically checks/unchecks a list item should be
+  `role="checkbox"` + `aria-checked`, not a bare `<button>`.
+  Icon-only buttons with a toggle identity are a common a11y
+  miss across the app — grep candidate for broader sweep.

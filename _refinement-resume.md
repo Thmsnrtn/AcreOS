@@ -1,20 +1,22 @@
 # Elite-Team Refinement — Resume Point
 
-**Last session:** 2026-04-23 (session 5k — /deals list + bulk ops)
-**Last completed refinement:** `/deals` list + bulk-actions —
-bulk-stage-update onError + soft-fail toast, CSV escape/formula
-injection guard, bulk-export success toast, decorative-icon
-aria-hidden sweep (summary cards + header + bulk toolbar + mobile
-stage nav), desktop clear-selection aria-label, mobile list-row
-checkbox aria-label + 44px tap target, sentence-case copy sweep
-("Deals updated", "Update stage").
+**Last session:** 2026-04-23 (session 5l — DealDetailDrawer)
+**Last completed refinement:** `DealDetailDrawer` (5-tab surface in
+`deals.tsx`) — drawer role=dialog + Esc key, pricing/negotiate
+buttons 44px + aria-label, decorative icon aria-hidden sweep,
+checklist checkbox → role=checkbox/aria-checked/44px, window.confirm
+→ ConfirmDialog for template replace, money unset → em-dash,
+dealPackages silent failure → toast, dead "Generate Documents" /
+"View Property" stub buttons removed, loading spinners → skeletons,
+sentence-case copy sweep, shadowed `statusColors` renamed,
+DialogDescription for a11y.
 
 **Phase 1 inventory:** ✅ committed at `11d0e8c`
 **PropertyDetailDialog:** ✅ fully refined across all tabs.
 **/deals kanban:** ✅ slice 5j complete (commit `f001623`).
 **/deals list + filters:** ✅ slice 5k complete (commit `d157464`).
-**/deals DealDetailDrawer (5 tabs):** ⬜ slice 5l next
-**/deals DealForm:** ⬜ slice 5m
+**/deals DealDetailDrawer (5 tabs):** ✅ slice 5l complete.
+**/deals DealForm:** ⬜ slice 5m next
 
 ## How to continue
 
@@ -56,7 +58,7 @@ Session 4:
   state conformance + mobile action-row stack + source badge
   promotion + token-based visuals
 
-Session 5 (eleven slices so far — /properties and /deals):
+Session 5 (twelve slices so far — /properties and /deals):
 - 5a–5i. `/properties` (list, card/form, detail dialog all tabs,
   research summary, comps, AI offer, chat, intelligence,
   cross-cutting status.replace sweep)
@@ -70,6 +72,13 @@ Session 5 (eleven slices so far — /properties and /deals):
   (summary / header / bulk / mobile-nav), desktop clear-selection
   aria-label, mobile list-row checkbox aria-label + 44px tap
   target, sentence-case copy (commit `d157464`)
+- 5l. `/deals` DealDetailDrawer — drawer role=dialog + Esc, AI
+  button a11y + 44px targets, checklist checkbox role=checkbox /
+  aria-checked / 44px, window.confirm → ConfirmDialog, dead-stub
+  button removal, money-unset → em-dash, silent fetch → toast,
+  DialogDescription binding, skeleton loading states,
+  decorative-icon aria-hidden sweep, sentence-case copy, shadow
+  rename (pkgStatusColors)
 
 ## Cross-cutting gains this pass
 
@@ -93,6 +102,10 @@ Session 5 (eleven slices so far — /properties and /deals):
 - **Silent-query → toast pattern (5c):** background query with
   `staleTime: 0` that silently fails while showing cached data is a
   trust bug. Wire `isError` → toast via `useEffect`.
+- **Silent-query → toast pattern (extended 5l):** a `queryFn` that
+  returns `[]` on `!response.ok` is also a trust bug — the user
+  sees an empty state indistinguishable from "genuinely empty."
+  Throw on !ok and surface via `isError` → toast.
 - **Filter-reset empty state:** reset the full filter set when a
   filter empties the list.
 - **Form mobile-keyboard checklist:** APN → `inputMode="numeric"`;
@@ -107,43 +120,70 @@ Session 5 (eleven slices so far — /properties and /deals):
   the visible label.
 - **Spinner-copy-vs-first-load rule (5c):** "Loading latest X…"
   reads correctly for initial load AND background refetch.
-- **Icon-only tab labels (new 5j):** the pattern
+- **Icon-only tab labels (5j):** the pattern
   `<span className="hidden sm:inline">Label</span>` hides the
   label entirely from SR on mobile (display:none removes from
   a11y tree). Convert to `sr-only sm:not-sr-only sm:inline`.
-- **Draggable a11y (new 5j):** `useDraggable` + PointerSensor alone
+- **Draggable a11y (5j):** `useDraggable` + PointerSensor alone
   ships a mouse-only UX. Always add `KeyboardSensor` to the
   sensors list AND wire `accessibility.announcements` /
   `screenReaderInstructions` on DndContext. Draggable handle
   should be a real `<button>`, not an svg with listeners spread.
-- **Droppable column semantics (new 5j):** droppable containers
+- **Droppable column semantics (5j):** droppable containers
   need aria-label that names the target state, not just the
-  column heading. Screen reader hears "drop zone" once, not
-  "{heading} {heading} {heading}" as they arrow through.
+  column heading.
+- **CSV export escape rule (5k):** double embedded quotes AND
+  neutralize formula-trigger leading characters (`=`, `+`, `-`,
+  `@`, `\t`, `\r`) with a `'` prefix. Factor `escapeCell` out if
+  a third surface needs CSV.
+- **Bulk-mutation triple-path rule (5k):** handle `success=true`,
+  `success=false` (soft-fail), and `onError` — independently. Any
+  bulk mutation that toasts only on one path leaves silent-failure
+  holes on the other two.
+- **Dead-stub rule (new 5l):** a button with no `onClick` and no
+  `type="submit"` is a broken UI promise, not a visual
+  placeholder. Wire it in the same commit or remove it — never
+  ship a "future feature" button.
+- **Money-unset display rule (new 5l):** `$0` rendered from a
+  nullable amount reads as "this deal is worth nothing." Render
+  "—" (muted) when the value is `null`/`undefined`/`""`; reserve
+  `$0.00` for deals where zero is the captured amount.
+- **Radix DialogDescription rule (new 5l):** subtitle paragraphs
+  inside `DialogHeader` should be `<DialogDescription>` so Radix
+  wires `aria-describedby`. Raw `<p>` loses that binding.
+- **Dialog Esc key rule (new 5l):** a hand-rolled drawer/overlay
+  without Radix Dialog/Sheet backing must ship at minimum:
+  `role="dialog"`, `aria-modal="true"`, `aria-labelledby={titleId}`,
+  and a `useEffect` that listens for `Escape`. Better: convert to
+  Radix Sheet/Dialog.
+- **Checklist-checkbox role rule (new 5l):** toggle buttons that
+  semantically check/uncheck a list item should be
+  `role="checkbox"` + `aria-checked={bool}` + named
+  `aria-label`. Not a bare `<button>` with an icon.
+- **Window.confirm ban (new 5l):** native `confirm()` is
+  inaccessible (no focus trap with surrounding Radix UI, no
+  aria wiring, inconsistent styling, blocks main thread). Always
+  use `ConfirmDialog` — it's already in the tree.
 
 ## Next surface to refine
 
-**Next slice: `/deals` DealDetailDrawer — 5-tab surface (5l).**
+**Next slice: `/deals` DealForm — create/edit modal form (5m).**
 
-Scope for 5l:
-- Details tab: field ordering + currency formatting + status
-  badge + stage-gate messaging. Stage-gate block copy + link to
-  checklist.
-- Documents tab: upload interaction (drag-drop + browse),
-  per-file progress, OCR status chips, failure path.
-- Timeline tab: ActivityTimeline a11y (role=list, item spacing,
-  relative-time semantics).
-- Checklist tab: template apply flow + item check/uncheck toast
-  pattern + required vs optional visual distinction.
-- ROI tab: number formatting, negative-ROI color semantics,
-  DealCalculator embed responsive behavior.
-- Drawer mechanics: focus trap, Esc to close, scrollable body at
-  mobile, header safe-area on iOS, tab keyboard navigation.
-- Delete flow from drawer → parent deletion dialog.
+Scope for 5m:
+- Field ordering: type → property → offer → dates → title → notes.
+- Form mobile-keyboard checklist applied (offer amount numeric /
+  decimal inputMode, close date proper native date picker).
+- Currency inputs: leading `$` adornment + right-align digits.
+- Validation states: visible error copy; aria-invalid wired.
+- Property combobox: confirm "searchable" + keyboard nav; loading
+  state while useProperties() is pending.
+- Submit button: disabled while `isPending`, 44px target, loading
+  indicator copy ("Saving…" not "Loading…").
+- Dialog-close focus restoration back to the triggering button.
+- Error recovery: server validation error surfaces which field
+  failed, not just a generic toast.
 
-After 5l: slice 5m = DealForm (create / edit modal form).
-
-Then move per inventory:
+After 5m: move per inventory to:
 1. `/campaigns` — list + detail + create; AI-drafted letter copy
    is likely the AI/T hot spot
 2. `/inbox` — message rendering + thread navigation a11y
@@ -166,6 +206,13 @@ Then move per inventory:
 - **Drag-to-move kanban bypasses stage-gate checks.** Drawer path
   respects `stageGate.canAdvance`; drag path does not. Intentional
   or gap?
+- **DealDetailDrawer focus restoration (new 5l):** drawer does not
+  return focus to the row/card that opened it. Proper fix = parent
+  hands a `triggerRef`/`returnFocusTo` prop in, or convert overlay
+  to Radix Sheet. Deferred as bigger refactor.
+- **DealDetailDrawer focus trap (new 5l):** hand-rolled overlay
+  has no focus trap. Tab escapes to underlying page. Bigger refactor
+  = convert to Radix Sheet/Dialog. Deferred.
 
 ## Session hygiene reminders
 
@@ -173,7 +220,7 @@ Then move per inventory:
 - Re-run 9-lens after each edit.
 - Large surfaces (>15k tokens): read in chunks, commit in slices;
   don't try to inhabit the whole thing in one session. `/deals` is
-  1991 lines — budgeted across 4 slices (5j–5m).
+  now >2000 lines — DealForm is ~170 lines, self-contained slice.
 - Playwright Safari sessions die within ~5 minutes of a Clerk JWT
   refresh; fall back to code-only if cookies expire mid-audit.
 - Stop at ~85% context; rewrite this file before ending.
@@ -189,7 +236,6 @@ Then move per inventory:
   `storage`, `autonomousDealMachine`, `countyAssessorIngest`,
   `supportAgent`, etc. — not blocking client refinement work.
 
-## Expected HEAD after session 5k
+## Expected HEAD after session 5l
 
-New commit on top of `f001623` (deals kanban) → `d157464`
-(deals list + bulk-actions).
+New commit on top of `d157464` (deals list + bulk-actions).

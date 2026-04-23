@@ -10,7 +10,7 @@ import { InlineError } from "@/components/inline-error";
 import { QueryErrorState } from "@/components/query-error-state";
 import { telemetry } from "@/lib/telemetry";
 import { useDealChecklist, useChecklistTemplates, useApplyChecklistTemplate, useUpdateChecklistItem, useStageGate } from "@/hooks/use-checklists";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import {
   DndContext,
   type DragEndEvent,
@@ -1183,6 +1183,15 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
   const [isPricingPopoverOpen, setIsPricingPopoverOpen] = useState(false);
   const [negotiationScript, setNegotiationScript] = useState<string | null>(null);
   const [isNegotiationOpen, setIsNegotiationOpen] = useState(false);
+  const [pendingTemplateId, setPendingTemplateId] = useState<number | null>(null);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
 
   const negotiationMutation = useMutation({
     mutationFn: async () => {
@@ -1270,14 +1279,24 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
     }
   };
 
-  const { data: dealPackages, isLoading: packagesLoading } = useQuery<DocumentPackage[]>({
+  const { data: dealPackages, isLoading: packagesLoading, isError: packagesError } = useQuery<DocumentPackage[]>({
     queryKey: ["/api/document-packages", "deal", deal.id],
     queryFn: async () => {
       const response = await fetch(`/api/document-packages/deal/${deal.id}`, { credentials: 'include' });
-      if (!response.ok) return [];
+      if (!response.ok) throw new Error(`Failed to load document packages (${response.status})`);
       return response.json();
     },
   });
+
+  useEffect(() => {
+    if (packagesError) {
+      toast({
+        title: "Couldn't load document packages",
+        description: "Check your connection and reopen the Docs tab to retry.",
+        variant: "destructive",
+      });
+    }
+  }, [packagesError, toast]);
 
   const generateAllMutation = useMutation({
     mutationFn: async ({ id, variables }: { id: number; variables?: Record<string, any> }) => {
@@ -1327,7 +1346,10 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" onClick={onClose}>
-      <div 
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="deal-drawer-title"
         className="fixed right-0 top-0 h-full w-full md:max-w-2xl bg-background shadow-2xl overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
@@ -1342,7 +1364,7 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                   {deal.status?.replace(/_/g, ' ')}
                 </Badge>
               </div>
-              <h2 className="text-lg md:text-xl font-bold mt-2 line-clamp-2" data-testid="text-deal-title">
+              <h2 id="deal-drawer-title" className="text-lg md:text-xl font-bold mt-2 line-clamp-2" data-testid="text-deal-title">
                 {deal.property ? `${deal.property.county}, ${deal.property.state}` : `Deal #${deal.id}`}
               </h2>
               <div className="mt-3 max-w-md">
@@ -1351,10 +1373,10 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
             </div>
             <div className="flex items-center gap-1 flex-shrink-0">
               <Button size="icon" variant="ghost" onClick={onDelete} className="min-h-[44px] min-w-[44px]" aria-label="Delete deal" data-testid="button-delete-deal">
-                <Trash2 className="w-5 h-5 text-destructive" />
+                <Trash2 className="w-5 h-5 text-destructive" aria-hidden="true" />
               </Button>
               <Button size="icon" variant="ghost" onClick={onClose} className="min-h-[44px] min-w-[44px]" aria-label="Close drawer">
-                <X className="w-5 h-5" />
+                <X className="w-5 h-5" aria-hidden="true" />
               </Button>
             </div>
           </div>
@@ -1364,23 +1386,23 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
           <Tabs defaultValue="details" className="space-y-4 md:space-y-6">
             <TabsList className="grid w-full grid-cols-5 h-auto p-1">
               <TabsTrigger value="details" className="min-h-[44px] flex-col gap-1 md:flex-row md:gap-2 text-xs md:text-sm px-1 md:px-3" data-testid="tab-deal-details">
-                <FileText className="w-4 h-4" />
+                <FileText className="w-4 h-4" aria-hidden="true" />
                 <span className="sr-only sm:not-sr-only sm:inline">Details</span>
               </TabsTrigger>
               <TabsTrigger value="documents" className="min-h-[44px] flex-col gap-1 md:flex-row md:gap-2 text-xs md:text-sm px-1 md:px-3" data-testid="tab-deal-documents">
-                <Package className="w-4 h-4" />
+                <Package className="w-4 h-4" aria-hidden="true" />
                 <span className="sr-only sm:not-sr-only sm:inline">Docs</span>
               </TabsTrigger>
               <TabsTrigger value="timeline" className="min-h-[44px] flex-col gap-1 md:flex-row md:gap-2 text-xs md:text-sm px-1 md:px-3" data-testid="tab-deal-timeline">
-                <Clock className="w-4 h-4" />
+                <Clock className="w-4 h-4" aria-hidden="true" />
                 <span className="sr-only sm:not-sr-only sm:inline">Timeline</span>
               </TabsTrigger>
               <TabsTrigger value="checklist" className="min-h-[44px] flex-col gap-1 md:flex-row md:gap-2 text-xs md:text-sm px-1 md:px-3" data-testid="tab-deal-checklist">
-                <ClipboardCheck className="w-4 h-4" />
+                <ClipboardCheck className="w-4 h-4" aria-hidden="true" />
                 <span className="sr-only sm:not-sr-only sm:inline">Tasks</span>
               </TabsTrigger>
               <TabsTrigger value="analysis" className="min-h-[44px] flex-col gap-1 md:flex-row md:gap-2 text-xs md:text-sm px-1 md:px-3" data-testid="tab-deal-analysis">
-                <Calculator className="w-4 h-4" />
+                <Calculator className="w-4 h-4" aria-hidden="true" />
                 <span className="sr-only sm:not-sr-only sm:inline">ROI</span>
               </TabsTrigger>
             </TabsList>
@@ -1388,7 +1410,7 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
             <TabsContent value="details" className="space-y-6">
               <Card className="glass-panel">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-base">Update Status</CardTitle>
+                  <CardTitle className="text-base">Update status</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <Select 
@@ -1410,7 +1432,7 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                   </Select>
                   {isPending && (
                     <p className="text-sm text-muted-foreground mt-2 flex items-center gap-2">
-                      <Loader2 className="w-3 h-3 animate-spin" /> Updating...
+                      <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" /> Updating…
                     </p>
                   )}
                 </CardContent>
@@ -1420,20 +1442,22 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                 <Card className="glass-panel">
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm text-muted-foreground">Offer Amount</p>
+                      <p className="text-sm text-muted-foreground">Offer amount</p>
                       <Popover open={isPricingPopoverOpen} onOpenChange={setIsPricingPopoverOpen}>
                         <PopoverTrigger asChild>
                           <Button
                             size="sm"
                             variant="outline"
+                            className="min-h-[44px] min-w-[44px]"
                             onClick={() => pricingMutation.mutate()}
                             disabled={pricingMutation.isPending || !deal.propertyId}
+                            aria-label={pricingMutation.isPending ? "Generating AI pricing recommendation" : "Get AI pricing recommendation"}
                             data-testid="button-ai-pricing"
                           >
                             {pricingMutation.isPending ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
+                              <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
                             ) : (
-                              <Sparkles className="w-4 h-4" />
+                              <Sparkles className="w-4 h-4" aria-hidden="true" />
                             )}
                           </Button>
                         </PopoverTrigger>
@@ -1442,8 +1466,8 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                             <div className="glass-panel rounded-lg overflow-hidden">
                               <div className="bg-gradient-to-r from-primary/10 to-primary/5 p-4 border-b">
                                 <div className="flex items-center gap-2">
-                                  <Sparkles className="w-5 h-5 text-primary" />
-                                  <h3 className="font-semibold">AI Price Recommendation</h3>
+                                  <Sparkles className="w-5 h-5 text-primary" aria-hidden="true" />
+                                  <h3 className="font-semibold">AI price recommendation</h3>
                                 </div>
                               </div>
                               <div className="p-4 space-y-4">
@@ -1492,21 +1516,21 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                                   </p>
                                 )}
                                 
-                                <Button 
-                                  className="w-full" 
+                                <Button
+                                  className="w-full min-h-[44px]"
                                   onClick={handleApplyPricingSuggestion}
                                   disabled={isPending}
                                   data-testid="button-apply-suggestion"
                                 >
                                   {isPending ? (
                                     <>
-                                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                      Applying...
+                                      <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
+                                      Applying…
                                     </>
                                   ) : (
                                     <>
-                                      <CheckCircle className="w-4 h-4 mr-2" />
-                                      Apply Suggestion
+                                      <CheckCircle className="w-4 h-4 mr-2" aria-hidden="true" />
+                                      Apply suggestion
                                     </>
                                   )}
                                 </Button>
@@ -1516,19 +1540,18 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                         </PopoverContent>
                       </Popover>
 
-                      {/* Negotiation Script Button */}
                       <Button
                         variant="outline"
                         size="sm"
-                        className="gap-1.5 text-primary border-primary/20 hover:bg-primary/5 dark:border-primary/30 dark:hover:bg-primary/10"
+                        className="gap-1.5 min-h-[44px] min-w-[44px] text-primary border-primary/20 hover:bg-primary/5 dark:border-primary/30 dark:hover:bg-primary/10"
                         onClick={() => negotiationMutation.mutate()}
                         disabled={negotiationMutation.isPending}
-                        title="AI Negotiation Coaching"
+                        aria-label={negotiationMutation.isPending ? "Generating negotiation script" : "Generate AI negotiation script"}
                       >
                         {negotiationMutation.isPending ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
                         ) : (
-                          <Sparkles className="w-4 h-4" />
+                          <Sparkles className="w-4 h-4" aria-hidden="true" />
                         )}
                         <span className="sr-only sm:not-sr-only sm:inline">Negotiate</span>
                       </Button>
@@ -1539,10 +1562,10 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                       <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
                         <DialogHeader>
                           <DialogTitle className="flex items-center gap-2">
-                            <Sparkles className="w-5 h-5 text-primary" />
-                            AI Negotiation Coaching
+                            <Sparkles className="w-5 h-5 text-primary" aria-hidden="true" />
+                            AI negotiation coaching
                           </DialogTitle>
-                          <p className="text-sm text-muted-foreground">AI-generated negotiation strategy and talking points for this deal</p>
+                          <DialogDescription>AI-generated negotiation strategy and talking points for this deal.</DialogDescription>
                         </DialogHeader>
                         {negotiationScript && (
                           <div className="space-y-4">
@@ -1552,25 +1575,29 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                             <Button
                               variant="outline"
                               size="sm"
-                              className="gap-2"
-                              onClick={() => { navigator.clipboard.writeText(negotiationScript); toast({ title: "Copied to clipboard" }); }}
+                              className="gap-2 min-h-[44px]"
+                              onClick={() => { navigator.clipboard.writeText(negotiationScript); toast({ title: "Script copied to clipboard" }); }}
                             >
-                              Copy Script
+                              Copy script
                             </Button>
                           </div>
                         )}
                       </DialogContent>
                     </Dialog>
                     <p className="text-xl font-bold font-mono">
-                      ${Number(deal.offerAmount || 0).toLocaleString()}
+                      {deal.offerAmount != null && deal.offerAmount !== ''
+                        ? `$${Number(deal.offerAmount).toLocaleString()}`
+                        : <span className="text-muted-foreground">—</span>}
                     </p>
                   </CardContent>
                 </Card>
                 <Card className="glass-panel">
                   <CardContent className="p-4">
-                    <p className="text-sm text-muted-foreground">Accepted Amount</p>
+                    <p className="text-sm text-muted-foreground">Accepted amount</p>
                     <p className="text-xl font-bold font-mono text-emerald-600">
-                      ${Number(deal.acceptedAmount || 0).toLocaleString()}
+                      {deal.acceptedAmount != null && deal.acceptedAmount !== ''
+                        ? `$${Number(deal.acceptedAmount).toLocaleString()}`
+                        : <span className="text-muted-foreground">—</span>}
                     </p>
                   </CardContent>
                 </Card>
@@ -1580,7 +1607,7 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                 <Card className="glass-panel">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-base flex items-center gap-2">
-                      <MapPin className="w-4 h-4" /> Property Details
+                      <MapPin className="w-4 h-4" aria-hidden="true" /> Property details
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
@@ -1598,7 +1625,7 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                         <p className="font-medium">{deal.property.sizeAcres} acres</p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground">Assessed Value</p>
+                        <p className="text-muted-foreground">Assessed value</p>
                         <p className="font-mono">${Number(deal.property.assessedValue || 0).toLocaleString()}</p>
                       </div>
                     </div>
@@ -1609,20 +1636,20 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
               <Card className="glass-panel">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base flex items-center gap-2">
-                    <Calendar className="w-4 h-4" /> Timeline
+                    <Calendar className="w-4 h-4" aria-hidden="true" /> Timeline
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3 text-sm">
                     {deal.offerDate && (
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">Offer Date</span>
+                        <span className="text-muted-foreground">Offer date</span>
                         <span>{format(new Date(deal.offerDate), 'MMM d, yyyy')}</span>
                       </div>
                     )}
                     {deal.closingDate && (
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">Closing Date</span>
+                        <span className="text-muted-foreground">Closing date</span>
                         <span>{format(new Date(deal.closingDate), 'MMM d, yyyy')}</span>
                       </div>
                     )}
@@ -1637,12 +1664,12 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
               {deal.titleCompany && (
                 <Card className="glass-panel">
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-base">Closing Details</CardTitle>
+                    <CardTitle className="text-base">Closing details</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">Title Company</span>
+                        <span className="text-muted-foreground">Title company</span>
                         <span>{deal.titleCompany}</span>
                       </div>
                       {deal.escrowNumber && (
@@ -1653,7 +1680,7 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                       )}
                       {deal.closingCosts && (
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">Closing Costs</span>
+                          <span className="text-muted-foreground">Closing costs</span>
                           <span className="font-mono">${Number(deal.closingCosts).toLocaleString()}</span>
                         </div>
                       )}
@@ -1666,7 +1693,7 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                 <Card className="glass-panel">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-base flex items-center gap-2">
-                      <FileText className="w-4 h-4" /> Notes
+                      <FileText className="w-4 h-4" aria-hidden="true" /> Notes
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
@@ -1681,44 +1708,34 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                 </CardContent>
               </Card>
 
-              <div className="flex flex-col sm:flex-row gap-2">
-                <Button variant="outline" className="flex-1 min-h-[44px]">
-                  Generate Documents
-                </Button>
-                <Button className="flex-1 min-h-[44px]">
-                  View Property
-                </Button>
-              </div>
             </TabsContent>
 
             <TabsContent value="documents" className="space-y-4 md:space-y-6">
               <div className="flex items-center justify-between gap-3">
-                <h3 className="font-medium text-sm md:text-base">Document Packages</h3>
+                <h3 className="font-medium text-sm md:text-base">Document packages</h3>
                 <Link href={`/documents?action=create-package&dealId=${deal.id}`}>
                   <Button size="sm" className="min-h-[44px]" data-testid="button-create-package-from-deal">
-                    <FolderPlus className="w-4 h-4 mr-2" />
-                    <span className="sr-only sm:not-sr-only sm:inline">Create Package</span>
+                    <FolderPlus className="w-4 h-4 mr-2" aria-hidden="true" />
+                    <span className="sr-only sm:not-sr-only sm:inline">Create package</span>
                     <span className="sm:hidden">New</span>
                   </Button>
                 </Link>
               </div>
 
               {packagesLoading ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="w-6 h-6 animate-spin" />
-                </div>
+                <ListSkeleton count={2} variant="compact" />
               ) : !dealPackages || dealPackages.length === 0 ? (
                 <Card className="glass-panel">
                   <CardContent className="p-6 text-center space-y-4">
-                    <Package className="w-12 h-12 mx-auto text-muted-foreground" />
+                    <Package className="w-12 h-12 mx-auto text-muted-foreground" aria-hidden="true" />
                     <div>
-                      <h3 className="font-medium">No Document Packages</h3>
+                      <h3 className="font-medium">No document packages</h3>
                       <p className="text-sm text-muted-foreground">Create a package to bundle documents for this deal.</p>
                     </div>
                     <Link href={`/documents?action=create-package&dealId=${deal.id}`}>
-                      <Button variant="outline" data-testid="button-create-first-package">
-                        <Plus className="w-4 h-4 mr-2" />
-                        Create Package
+                      <Button variant="outline" className="min-h-[44px]" data-testid="button-create-first-package">
+                        <Plus className="w-4 h-4 mr-2" aria-hidden="true" />
+                        Create package
                       </Button>
                     </Link>
                   </CardContent>
@@ -1728,7 +1745,7 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                   {dealPackages.map(pkg => {
                     const docsCount = (pkg.documents as any[] || []).length;
                     const generatedCount = (pkg.documents as any[] || []).filter((d: any) => d.documentId).length;
-                    const statusColors: Record<string, string> = {
+                    const pkgStatusColors: Record<string, string> = {
                       draft: "bg-muted text-muted-foreground",
                       complete: "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300",
                       sent: "bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300",
@@ -1741,14 +1758,14 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                             <div className="flex items-center gap-3 flex-1 min-w-0">
                               <div className="p-2 rounded-lg bg-muted flex-shrink-0">
-                                <Package className="w-4 h-4 text-muted-foreground" />
+                                <Package className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
                               </div>
                               <div className="flex-1 min-w-0">
                                 <h4 className="font-medium truncate text-sm md:text-base" data-testid={`text-deal-package-name-${pkg.id}`}>
                                   {pkg.name}
                                 </h4>
                                 <div className="flex items-center gap-2 mt-1 flex-wrap">
-                                  <Badge variant="outline" className={`text-xs ${statusColors[pkg.status] || ""}`}>
+                                  <Badge variant="outline" className={`text-xs ${pkgStatusColors[pkg.status] || ""}`}>
                                     {pkg.status}
                                   </Badge>
                                   <span className="text-xs text-muted-foreground">
@@ -1759,23 +1776,24 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                             </div>
                             <div className="flex items-center gap-2 ml-9 sm:ml-0">
                               <Link href={`/documents?packageId=${pkg.id}`}>
-                                <Button variant="outline" size="sm" className="min-h-[44px]" data-testid={`button-view-deal-package-${pkg.id}`}>
-                                  <Eye className="w-4 h-4 sm:mr-1" />
+                                <Button variant="outline" size="sm" className="min-h-[44px] min-w-[44px]" data-testid={`button-view-deal-package-${pkg.id}`} aria-label={`View package ${pkg.name}`}>
+                                  <Eye className="w-4 h-4 sm:mr-1" aria-hidden="true" />
                                   <span className="sr-only sm:not-sr-only sm:inline">View</span>
                                 </Button>
                               </Link>
                               {pkg.status === "draft" && docsCount > 0 && (
-                                <Button 
+                                <Button
                                   size="sm"
-                                  className="min-h-[44px]"
+                                  className="min-h-[44px] min-w-[44px]"
                                   onClick={() => generateAllMutation.mutate({ id: pkg.id })}
                                   disabled={generateAllMutation.isPending}
+                                  aria-label={generateAllMutation.isPending ? `Generating ${pkg.name}` : `Generate ${pkg.name}`}
                                   data-testid={`button-generate-deal-package-${pkg.id}`}
                                 >
                                   {generateAllMutation.isPending ? (
-                                    <Loader2 className="w-4 h-4 sm:mr-1 animate-spin" />
+                                    <Loader2 className="w-4 h-4 sm:mr-1 animate-spin" aria-hidden="true" />
                                   ) : (
-                                    <Play className="w-4 h-4 sm:mr-1" />
+                                    <Play className="w-4 h-4 sm:mr-1" aria-hidden="true" />
                                   )}
                                   <span className="sr-only sm:not-sr-only sm:inline">Generate</span>
                                 </Button>
@@ -1796,15 +1814,15 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
 
             <TabsContent value="checklist" className="space-y-6">
               {stageGate && !stageGate.canAdvance && (
-                <Card className="border-amber-500/50 bg-amber-500/10">
+                <Card role="status" className="border-amber-500/50 bg-amber-500/10">
                   <CardContent className="p-4 flex items-center gap-3">
-                    <AlertTriangle className="w-5 h-5 text-amber-500" />
+                    <AlertTriangle className="w-5 h-5 text-amber-500" aria-hidden="true" />
                     <div>
                       <p className="font-medium text-amber-700 dark:text-amber-400" data-testid="text-stage-gate-warning">
-                        Stage Advancement Blocked
+                        Stage advancement blocked
                       </p>
                       <p className="text-sm text-muted-foreground">
-                        Complete {stageGate.incompleteItems.length} required item(s) before advancing to the next stage.
+                        Complete {stageGate.incompleteItems.length} required {plural(stageGate.incompleteItems.length, 'item')} before advancing to the next stage.
                       </p>
                     </div>
                   </CardContent>
@@ -1812,23 +1830,21 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
               )}
 
               {isChecklistLoading ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="w-6 h-6 animate-spin" />
-                </div>
+                <ListSkeleton count={4} variant="compact" />
               ) : !checklist ? (
                 <Card className="glass-panel">
                   <CardContent className="p-6 text-center space-y-4">
-                    <ClipboardCheck className="w-12 h-12 mx-auto text-muted-foreground" />
+                    <ClipboardCheck className="w-12 h-12 mx-auto text-muted-foreground" aria-hidden="true" />
                     <div>
-                      <h3 className="font-medium">No Checklist Applied</h3>
+                      <h3 className="font-medium">No checklist applied</h3>
                       <p className="text-sm text-muted-foreground">Select a template to start tracking due diligence items.</p>
                     </div>
                     <Select
                       onValueChange={(templateId) => applyTemplate(Number(templateId))}
                       disabled={isApplyingTemplate}
                     >
-                      <SelectTrigger className="max-w-xs mx-auto" data-testid="select-checklist-template">
-                        <SelectValue placeholder="Select template..." />
+                      <SelectTrigger className="max-w-xs mx-auto min-h-[44px]" data-testid="select-checklist-template" aria-label="Select a checklist template">
+                        <SelectValue placeholder="Select a template…" />
                       </SelectTrigger>
                       <SelectContent>
                         {templates?.map((t) => (
@@ -1840,7 +1856,7 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                     </Select>
                     {isApplyingTemplate && (
                       <p className="text-sm text-muted-foreground flex items-center justify-center gap-2">
-                        <Loader2 className="w-3 h-3 animate-spin" /> Applying template...
+                        <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" /> Applying template…
                       </p>
                     )}
                   </CardContent>
@@ -1851,7 +1867,7 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                     <CardHeader className="pb-2">
                       <CardTitle className="text-base flex items-center justify-between gap-2">
                         <span className="flex items-center gap-2">
-                          <ClipboardCheck className="w-4 h-4" /> Progress
+                          <ClipboardCheck className="w-4 h-4" aria-hidden="true" /> Progress
                         </span>
                         <Badge variant="secondary" data-testid="badge-checklist-progress">
                           {checklist.completionStatus.completed} / {checklist.completionStatus.total}
@@ -1859,9 +1875,10 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <Progress 
-                        value={checklist.completionStatus.percentage} 
+                      <Progress
+                        value={checklist.completionStatus.percentage}
                         className="h-2"
+                        aria-label={`Checklist ${checklist.completionStatus.percentage}% complete`}
                         data-testid="progress-checklist"
                       />
                       <p className="text-sm text-muted-foreground mt-2">
@@ -1880,18 +1897,22 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                         <CardContent className="p-3 md:p-4">
                           <div className="flex items-start gap-3">
                             <button
-                              onClick={() => updateChecklistItem({ 
-                                itemId: item.id, 
-                                checked: !item.checkedAt 
+                              type="button"
+                              role="checkbox"
+                              aria-checked={!!item.checkedAt}
+                              aria-label={`${item.checkedAt ? 'Mark incomplete' : 'Mark complete'}: ${item.title}`}
+                              onClick={() => updateChecklistItem({
+                                itemId: item.id,
+                                checked: !item.checkedAt
                               })}
                               disabled={isUpdatingItem}
-                              className="shrink-0 p-2 -m-2 touch-manipulation"
+                              className="shrink-0 inline-flex items-center justify-center min-h-[44px] min-w-[44px] -m-2 touch-manipulation rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                               data-testid={`checkbox-item-${item.id}`}
                             >
                               {item.checkedAt ? (
-                                <CheckSquare className="w-6 h-6 text-emerald-500" />
+                                <CheckSquare className="w-6 h-6 text-emerald-500" aria-hidden="true" />
                               ) : (
-                                <Square className="w-6 h-6 text-muted-foreground" />
+                                <Square className="w-6 h-6 text-muted-foreground" aria-hidden="true" />
                               )}
                             </button>
                             <div className="flex-1 min-w-0 pt-0.5">
@@ -1921,10 +1942,10 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                                 variant="ghost"
                                 disabled={isUpdatingItem}
                                 className="min-h-[44px] min-w-[44px] flex-shrink-0"
-                                aria-label="Upload document"
+                                aria-label={`Upload document for ${item.title}`}
                                 data-testid={`button-upload-doc-${item.id}`}
                               >
-                                <Upload className="w-4 h-4" />
+                                <Upload className="w-4 h-4" aria-hidden="true" />
                               </Button>
                             )}
                           </div>
@@ -1935,15 +1956,11 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
 
                   <div className="pt-4 border-t">
                     <Select
-                      onValueChange={(templateId) => {
-                        if (confirm('This will replace the current checklist. Continue?')) {
-                          applyTemplate(Number(templateId));
-                        }
-                      }}
+                      onValueChange={(templateId) => setPendingTemplateId(Number(templateId))}
                       disabled={isApplyingTemplate}
                     >
-                      <SelectTrigger className="max-w-xs" data-testid="select-change-template">
-                        <SelectValue placeholder="Change template..." />
+                      <SelectTrigger className="max-w-xs min-h-[44px]" data-testid="select-change-template" aria-label="Change checklist template">
+                        <SelectValue placeholder="Change template…" />
                       </SelectTrigger>
                       <SelectContent>
                         {templates?.map((t) => (
@@ -1954,6 +1971,22 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                       </SelectContent>
                     </Select>
                   </div>
+                  <ConfirmDialog
+                    open={pendingTemplateId !== null}
+                    onOpenChange={(open) => { if (!open) setPendingTemplateId(null); }}
+                    title="Replace checklist?"
+                    description="This replaces the current checklist with the selected template. Completed items won't carry over."
+                    confirmLabel="Replace checklist"
+                    cancelLabel="Cancel"
+                    isLoading={isApplyingTemplate}
+                    variant="destructive"
+                    onConfirm={() => {
+                      if (pendingTemplateId !== null) {
+                        applyTemplate(pendingTemplateId);
+                        setPendingTemplateId(null);
+                      }
+                    }}
+                  />
                 </>
               )}
             </TabsContent>
