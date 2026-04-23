@@ -88,12 +88,24 @@ export default function AuthPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4">
+    <div className="relative min-h-screen flex items-center justify-center bg-background px-4 py-12 overflow-hidden">
+      {/* Subtle aerial backdrop — same asset as landing hero for visual
+          continuity when the user clicks "Sign in" from the landing
+          page.  Heavy gradient keeps copy readable on both themes. */}
+      <div
+        className="absolute inset-0 -z-10 bg-cover bg-center opacity-40 dark:opacity-25"
+        style={{ backgroundImage: "url(/images/aerial_view_wide_hor_0f1000c4.jpg)" }}
+        aria-hidden="true"
+      />
+      <div
+        className="absolute inset-0 -z-10 bg-gradient-to-b from-background/70 via-background/85 to-background"
+        aria-hidden="true"
+      />
       <div className="w-full max-w-md flex flex-col items-center gap-6">
         {/* Branding — swaps to white-label tenant name when configured */}
         <div className="flex flex-col items-center gap-3">
           <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
+            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-sm">
               <span className="text-white font-bold text-lg">{brandName.slice(0, 1)}</span>
             </div>
             <span className="text-2xl font-bold tracking-tight">{brandName}</span>
@@ -119,9 +131,9 @@ export default function AuthPage() {
             toggle still exists via route/hash if needed programmatically. */}
         <Link
           href="/"
-          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors px-3 py-2 -m-2 rounded-md"
         >
-          <ArrowLeft className="w-3.5 h-3.5" />
+          <ArrowLeft className="w-3.5 h-3.5" aria-hidden="true" />
           Back to home
         </Link>
       </div>

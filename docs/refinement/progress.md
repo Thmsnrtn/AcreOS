@@ -59,3 +59,23 @@ Inventory built. Beginning refinement walk with the highest-traffic surfaces.
   `flex-col sm:flex-row` so at 320px two stacked buttons fit cleanly.
 
 **Sign-off:** D ✓ M ✓ A ✓ E ✓ AI n/a LI ✓ CW ✓ I ✓ T ✓
+
+### 2026-04-23 — `/auth`
+**Refinements made:**
+- [D] Designer: desktop (1440px) felt lonely — single narrow card in
+  vast empty field.  Added subtle aerial-photo backdrop (same asset
+  as landing hero) with heavy gradient overlay for readability.
+  Creates continuity when user clicks "Sign in" from landing.
+- [D] Designer: added `py-12` vertical padding to the wrapper so the
+  card doesn't hug the top edge on short-height viewports.
+- [D] Designer: AcreOS "A" avatar now has `shadow-sm` for subtle
+  material cue consistent with other logos in the app.
+- [A] Accessibility: "Back to home" link now has `px-3 py-2` invisible
+  tap target (still visually compact via negative margin) so it hits
+  the 44pt minimum.  ArrowLeft marked `aria-hidden`.
+- [T] Trust: the aerial backdrop is the literal domain (land) — a
+  Land Investor signing in feels the brand story from the first
+  frame, not a generic SaaS auth page.
+- Clerk widget `colorPrimary` already in place from session 1.
+
+**Sign-off:** D ✓ M ✓ A ✓ E ✓ AI n/a LI ✓ CW ✓ I ✓ T ✓
