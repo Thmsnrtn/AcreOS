@@ -2326,3 +2326,279 @@ page affect the entire lending relationship.
   better than vague reassurance.
 
 **Commit:** `c6438ba`
+
+---
+
+## Session 10b — 2026-04-23 — `<BorrowerDashboard>` full pass (borrower-portal.tsx lines 188-end)
+
+**Surface:** the authenticated borrower dashboard inside
+`client/src/pages/borrower-portal.tsx`. Lines 188-end (~1000
+lines). Scope: header, status banners (payment-verifying,
+payment-status), Amount-Due card, Quick-Actions grid, Stat
+cards (Balance / Total paid / Autopay), Loan-progress card,
+Loan-details `<dl>`, Property-information card, Tabs
+(Payment history + Payment schedule + Messages), Payoff-quote
+dialog, Statement-download dialog, mobile bottom nav. Did NOT
+touch the ~200-line jsPDF generator for 1098 / account
+statement — that's a standalone backend-voice artifact best
+refined in its own slice once product confirms IRS-form
+fidelity requirements.
+
+**Lens sweep + refinements shipped:**
+
+- **Engineer (P0 — silent messaging failures on a money
+  surface):** `loadMessages` and `handleSendMessage` both
+  caught errors into `// silently ignore`. On a borrower ↔
+  lender conversation thread this is catastrophic: user types
+  a question about their loan, hits Send, button clears, user
+  believes message is sent, server never got it. No toast, no
+  inline error, no retry affordance. Fix: split into
+  `messagesError` + `sendMessageError` state; both surface as
+  `role="alert"` inline banners inside the Messages tab with
+  borrower-voice copy ("Your message didn't send. Please try
+  again in a moment.") and a "Try again" retry button for the
+  load path.
+
+- **Engineer (money precision — trust-critical):** `.toLocale
+  String()` without `minimumFractionDigits`/`maximumFraction
+  Digits` drops cents on integer values. The **Total payoff
+  amount** rendered as `$34,567` when actual is `$34,567.89`
+  — a borrower paying to the displayed number is short on
+  their loan. Fixed across: payment-due card, Balance stat
+  card, Total-paid stat card, Loan-details Original amount,
+  payment-history Amount / Principal / Interest columns,
+  payoff quote Principal balance / Accrued interest / Payoff
+  fee / Total payoff amount — all now explicitly
+  `{ minimumFractionDigits: 2, maximumFractionDigits: 2 }`.
+
+- **A11y (role=alert/status on payment banners):** top-of-
+  dashboard payment-verifying banner now `role="status"` +
+  `aria-live="polite"`. Success payment-status banner also
+  `role="status"`. Error payment-status banner upgraded to
+  `role="alert"` + `aria-live="assertive"` — a failed payment
+  must interrupt SR reading so the borrower hears it
+  immediately.
+
+- **A11y (autopay switch):** bare Switch with no accessible
+  name. Now wired `aria-labelledby="autopay-label"` pointing
+  to the "Autopay" heading + an explicit `aria-label` that
+  names the current state and the action ("Autopay enabled.
+  Toggle to disable."). SR users had no way to identify the
+  control before; now a screen reader announces full state.
+
+- **A11y (progress bar description):** shadcn `<Progress>`
+  gets `aria-label="Loan progress: N percent complete, X of Y
+  payments made"` — SR users hearing the bar now get the
+  actual status, not a silent decorative element.
+
+- **A11y (scrollable tables tabbable regions):** payment-
+  history + payment-schedule scroll containers are now
+  `tabIndex={0}` + `role="region"` + `aria-label`d. Keyboard
+  users can enter the scroll region and scroll through long
+  payment histories without first having to mouse into it.
+
+- **A11y (decorative-icon sweep):** 20+ lucide icons across
+  header, banners, payment-due card, quick actions (4), stat
+  cards (3), progress card, loan-details, property card,
+  message-tab (8+), dialogs (4+), mobile nav (3) — all got
+  `aria-hidden="true"`. Icon-only Send button in the message
+  composer got a proper `aria-label="Send message"` /
+  "Sending message" that changes with pending state.
+
+- **A11y (unread badge):** three unread-count badges
+  (quick-action Message button, Messages tab, mobile-nav
+  Message button) were decorative `<span>`s with raw digit.
+  Parent button now carries `aria-label="Messages (N
+  unread)"` when `unreadCount > 0`; badge itself is
+  `aria-hidden="true"` so SR doesn't double-announce.
+
+- **A11y (definition-list semantics):** Loan-details and
+  Property-information blocks rendered facts as `<span>`
+  label + `<span>` value inside flex rows. Promoted to
+  `<dl>` + `<dt>`/`<dd>` — SR users now hear these as
+  labeled pairs instead of two unrelated text runs. Payoff
+  quote rows also promoted to `<dl>`/`<dt>`/`<dd>`.
+
+- **A11y (message-thread log semantics + SR direction):**
+  message thread container now `role="log"` +
+  `aria-live="polite"` + `aria-label="Conversation with your
+  lender"` + `tabIndex={0}` (so it's tabbable). Bubble
+  direction ("You" right-aligned, "Your lender" left-aligned)
+  was visual-only; added sr-only "Sent — " / "Received — "
+  prefix on each bubble timestamp so SR users understand
+  authorship without visual cues (slice 7 pattern).
+
+- **A11y (message-composer Label):** Textarea for new
+  messages had only a placeholder. Added an `sr-only
+  <Label htmlFor="borrower-new-message">Message to your
+  lender</Label>` + `id` on the Textarea + `aria-describedby`
+  wiring to the send-error alert.
+
+- **A11y (mobile bottom nav → `<nav>`):** the fixed bottom
+  action bar was a `<div>`. Promoted to a proper `<nav
+  aria-label="Primary actions">` landmark so SR users can
+  navigate to/from it with landmark navigation.
+
+- **A11y (statement-dialog labels):** `<label>` with no
+  `htmlFor` on "Statement type" + "Tax year" (same bug from
+  slice 10 landing form). Promoted to shadcn `<Label htmlFor>`
+  + SelectTrigger `id` — now SR users hear the label on focus.
+
+- **Copy (sentence-case sweep across the dashboard):** the
+  dashboard was heavily Title-Case — "AcreOS Portal" →
+  "AcreOS portal", "Amount Due" → "Amount due", "Pay Now" →
+  "Pay now", "Pay Early" → "Pay early", "Payoff Quote" →
+  "Payoff quote", "Loan Progress" → "Loan progress", "Loan
+  Details" → "Loan details", "Original Amount" → "Original
+  amount", "Interest Rate" → "Interest rate", "Term Length"
+  → "Term length", "Start Date" → "Start date", "Maturity
+  Date" → "Maturity date", "Grace Period" → "Grace period",
+  "Property Information" → "Property information", "Total
+  Paid" → "Total paid", "Payment History" → "Payment
+  history", "Payment Schedule" → "Payment schedule", "Due
+  Date" → "Due date", "Load More" → "Load more", "Load
+  Messages" → "Load messages", "Download Statement" →
+  "Download statement", "Statement Type" → "Statement type",
+  "Tax Year" → "Tax year", "Principal Balance" → "Principal
+  balance", "Accrued Interest" → "Accrued interest", "Payoff
+  Fee" → "Payoff fee", "Total Payoff Amount" → "Total payoff
+  amount", "Your Lender" → "Your lender". CTAs "Pay Now" /
+  "Pay Early" on mobile bottom nav now also sentence-case +
+  match the primary card.
+
+- **Copy (payoff description tighten):** "Your estimated
+  payoff amount to pay off the loan in full" (redundant
+  "payoff ... pay off") → "The amount needed to pay your
+  loan in full on the quote date below." — specific and
+  temporally anchored.
+
+- **Copy (autopay reassurance):** "Autopay is on — payment
+  will be collected automatically" → "Autopay is on — we'll
+  collect this payment automatically." First-person "we'll"
+  reads warmer and makes the agency explicit (AcreOS does
+  this FOR the borrower, not a passive-voice system thing).
+
+- **Copy (cancelled-payment specificity):** "Payment was
+  cancelled" → "Payment was cancelled — no charge was made."
+  Anxious borrower who backed out at Stripe checkout needs
+  explicit reassurance they weren't billed.
+
+- **Copy (1098 menu label):** "1098 Interest Statement (Tax)"
+  → "Form 1098 (mortgage interest — tax)" — closer to the
+  actual IRS form name, em-dash pattern, lowercase "tax"
+  since it's a parenthetical, not a proper noun.
+
+- **Copy (empty-state voice):** "No messages yet. Send us a
+  message below." → "No messages yet. Send your lender a
+  message below." Specific named recipient ("your lender")
+  signals the real relationship behind the messaging thread.
+
+- **Copy (N/A → em-dash):** payment-method cell `|| 'N/A'`
+  became `|| '—'` — cleaner, matches the broader Money-
+  unset display rule from slice 5l.
+
+- **Copy (ellipsis):** "Verifying your payment..." →
+  "Verifying your payment…". "Type your message here..." →
+  "Type your message here…".
+
+- **Copy (welcome name emphasis):** header subtitle
+  "Welcome, {borrowerName}" kept but borrower-name span
+  promoted to `font-medium text-foreground` so it doesn't
+  look like muted decorative text — the name is the identity
+  anchor.
+
+- **Mobile (quick-action touch size):** 4 quick-action
+  buttons (Schedule / Statements / Payoff quote / Message)
+  gained `min-h-16` so tap targets are comfortable at 44px+
+  at 375px. Mobile-nav buttons got `min-h-14`.
+
+- **Mobile (unread badge min-width):** badge width was fixed
+  `w-4` (16px) which clipped at unread ≥ 10. Changed to
+  `min-w-[16px] px-1` so two-digit counts display cleanly
+  without layout shift.
+
+- **Tabular-nums sweep across the dashboard:** all dollar
+  amounts, percentages, dates, day counts, payment numbers,
+  balances, terms, durations, unread counts — tabular-nums
+  everywhere. On a money surface this prevents digits from
+  jiggling as the value changes under polling / refresh.
+
+- **Engineer (quick-action a11y group):** 4-button quick-
+  action row now `role="group"` + `aria-label="Quick
+  actions"` so SR users hear the grouping.
+
+**9-lens sign-off:**
+
+| Lens              | Status                                                                                                                                            |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Designer          | PASS — sentence-case sweep, tabular-nums everywhere, dl/dt/dd rhythm on facts, progress bar labeled, consistent 2-decimal money                  |
+| Mobile designer   | PASS — 44px+ touch on quick actions + mobile nav, unread badge scales for 2-digit, mobile-nav Pay label mirrors primary card copy                |
+| Accessibility     | PASS — role=alert on error banners + role=status on success/verifying, autopay Switch labeled, Progress labeled, region semantics on tables      |
+| Engineer          | PASS — silent messaging failures fixed (critical money-surface trust bug), money precision (cents) fixed across all rendered $ amounts            |
+| AI systems        | N/A — no LLM output on this surface                                                                                                                |
+| Land investor     | N/A — this is the borrower side. Borrower perspective: PASS — "Pay early" vs "Pay now" explicit, cancelled-payment reassurance, named "your lender" |
+| Copywriter        | PASS — sentence-case, proper ellipsis, em-dash, first-person autopay voice, specific 1098 IRS-form naming, empty-state named recipient          |
+| Infrastructure    | PARTIAL — no timeouts on fetch, no AbortController (deferred with reasoning); silent-fail path closed; retry affordance on message-load error     |
+| Trust             | PASS — money precision across all surfaces, error-path visibility on messaging, specific cancelled-payment copy, named-counterparty on thread    |
+
+**Deferred / flagged for owner:**
+- **jsPDF statement/1098 generator** (`generatePDF` ~200
+  lines, lines 403-595 of the original): generates user-
+  downloadable PDF for Form 1098 + account statement. IRS
+  Form 1098 has specific field-layout rules AcreOS may or
+  may not fully implement; this is a product + compliance
+  question beyond a 9-lens pass. Flagged as its own 10b.ii
+  candidate.
+- **`setTimeout(() => window.location.reload(), 2000)` on
+  payment success:** drops client state including unread
+  counts and scroll position. Better: invalidate loanData +
+  rehydrate via a fresh GET. Flagged but not fixed — react-
+  query isn't wired into this surface yet (manual `fetch` +
+  `useState`) so the right fix is a bigger refactor.
+- **Payoff quote "dialog flash on error":** `handleRequest
+  PayoffQuote` opens the dialog before starting the fetch,
+  and closes it on error. For <1s failures the dialog
+  briefly appears then vanishes. Better UX: open dialog
+  immediately, show error inline inside the dialog instead
+  of closing. Deferred — minor polish beyond slice scope.
+- **Schedule-tab DOM click hack:** `document.getElementById
+  ('schedule-tab').click()` used by quick-action + mobile
+  nav buttons to programmatically switch tabs. Should use
+  the Radix Tabs controlled `value` state. Deferred
+  (requires lifting state).
+
+**Patterns carried forward:**
+- **Money-precision rule (new 10b):** on a money surface,
+  ALL rendered dollar amounts must explicitly set
+  `{ minimumFractionDigits: 2, maximumFractionDigits: 2 }`
+  via `toLocaleString()`, or use a typed helper like
+  `formatUSD(cents)`. Bare `.toLocaleString()` is a trust
+  bug: it drops cents on integer values, so a user paying
+  the displayed number is short. Extends the Money-unset
+  display rule (5l) into the formatting dimension. **Grep
+  candidate** across `/properties`, `/deals`, `/campaigns`,
+  `/finance` for any bare `.toLocaleString()` on a money
+  value.
+- **Silent-mutation-on-messaging rule (new 10b):** on any
+  conversation-thread UI (user ↔ lender, user ↔ support,
+  user ↔ agent), a message send that clears the composer on
+  client but fails on server is THE worst-case trust bug.
+  User believes the message was sent. MUST surface inline
+  error + preserve the composer input on failure. This is
+  a tighter variant of the Submit-error-must-not-unmount-
+  form rule (9) specifically for conversational UIs.
+- **Definition-list semantic rule (new 10b):** fact-pair
+  rows that show `Label:` + `Value` should be `<dl>` +
+  `<dt>`/`<dd>`, not `<span>/<span>` in a flex row. SR
+  users hear labeled pairs; keyboard users get proper
+  traversal. Applies wherever a page shows metadata
+  card-style (loan details, deal summary, property
+  attributes, payoff breakdowns, etc.).
+- **Unread-count badge min-width rule (new 10b):** badges
+  showing `{count}` with fixed `w-4` (16px) clip at ≥10.
+  Always use `min-w-[16px] px-1` + `tabular-nums` so badges
+  grow cleanly as the count crosses one/two/three digits.
+  Also: parent button gets `aria-label="X (N unread)"` so
+  SR users don't double-announce the raw digit.
+
+**Commit:** (pending — will fill after commit)

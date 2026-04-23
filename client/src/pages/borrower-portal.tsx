@@ -257,21 +257,25 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
   // Messaging state
   const [messages, setMessages] = useState<BorrowerMessage[]>([]);
   const [messagesLoaded, setMessagesLoaded] = useState(false);
+  const [messagesError, setMessagesError] = useState<string | null>(null);
+  const [sendMessageError, setSendMessageError] = useState<string | null>(null);
   const [newMessage, setNewMessage] = useState("");
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const loadMessages = useCallback(async () => {
+    setMessagesError(null);
     try {
       const res = await fetch("/api/borrower/messages", { credentials: "include" });
-      if (res.ok) {
-        const data = await res.json();
-        setMessages(data);
-        setUnreadCount(0); // Messages are marked read on fetch
+      if (!res.ok) {
+        throw new Error("Couldn't load messages. Please try again.");
       }
-    } catch {
-      // silently ignore
+      const data = await res.json();
+      setMessages(data);
+      setUnreadCount(0); // Messages are marked read on fetch
+    } catch (err: any) {
+      setMessagesError(err?.message || "Couldn't load messages. Check your connection and try again.");
     } finally {
       setMessagesLoaded(true);
     }
@@ -280,6 +284,7 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
   const handleSendMessage = async () => {
     if (!newMessage.trim() || isSendingMessage) return;
     setIsSendingMessage(true);
+    setSendMessageError(null);
     try {
       const res = await fetch("/api/borrower/messages", {
         method: "POST",
@@ -287,14 +292,15 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
         credentials: "include",
         body: JSON.stringify({ content: newMessage.trim() }),
       });
-      if (res.ok) {
-        const msg = await res.json();
-        setMessages(prev => [...prev, msg]);
-        setNewMessage("");
-        setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+      if (!res.ok) {
+        throw new Error("Your message didn't send. Please try again in a moment.");
       }
-    } catch {
-      // silently ignore
+      const msg = await res.json();
+      setMessages(prev => [...prev, msg]);
+      setNewMessage("");
+      setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+    } catch (err: any) {
+      setSendMessageError(err?.message || "Your message didn't send. Check your connection and try again.");
     } finally {
       setIsSendingMessage(false);
     }
@@ -310,7 +316,7 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
       verifyPayment(sessionId);
       window.history.replaceState({}, '', window.location.pathname);
     } else if (paymentResult === 'cancelled') {
-      setPaymentStatusMessage({ type: 'error', message: 'Payment was cancelled' });
+      setPaymentStatusMessage({ type: 'error', message: 'Payment was cancelled — no charge was made.' });
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, []);
@@ -644,35 +650,49 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
       <header className="border-b bg-background/80 backdrop-blur sticky top-0 z-50">
         <div className="max-w-5xl mx-auto px-4 py-3 sm:py-4 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2 sm:gap-3">
-            <Building className="w-5 h-5 sm:w-6 sm:h-6 text-primary" />
+            <Building className="w-5 h-5 sm:w-6 sm:h-6 text-primary" aria-hidden="true" />
             <div>
-              <span className="font-bold text-base sm:text-lg">AcreOS Portal</span>
-              <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block">Welcome, {borrowerName}</p>
+              <span className="font-bold text-base sm:text-lg">AcreOS portal</span>
+              <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block">
+                Welcome, <span className="font-medium text-foreground">{borrowerName}</span>
+              </p>
             </div>
           </div>
-          <Badge className={paymentStatusBadge.color} data-testid="badge-payment-status">
-            {paymentStatusBadge.label}
+          <Badge className={paymentStatusBadge.color} data-testid="badge-payment-status" aria-label={`Payment status: ${paymentStatusBadge.label}`}>
+            <span className="tabular-nums">{paymentStatusBadge.label}</span>
           </Badge>
         </div>
       </header>
-      
+
       {isVerifyingPayment && (
         <div className="max-w-5xl mx-auto px-4 py-4">
-          <div className="p-4 rounded-lg bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-400 flex items-center gap-2">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            Verifying your payment...
+          <div
+            role="status"
+            aria-live="polite"
+            className="p-4 rounded-lg bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-400 flex items-center gap-2"
+          >
+            <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+            Verifying your payment…
           </div>
         </div>
       )}
-      
+
       {paymentStatusState.type && (
         <div className="max-w-5xl mx-auto px-4 py-4">
-          <div className={`p-4 rounded-lg flex items-center gap-2 ${
-            paymentStatusState.type === 'success' 
-              ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-400' 
-              : 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-400'
-          }`}>
-            {paymentStatusState.type === 'success' ? <CheckCircle className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
+          <div
+            role={paymentStatusState.type === "success" ? "status" : "alert"}
+            aria-live={paymentStatusState.type === "success" ? "polite" : "assertive"}
+            className={`p-4 rounded-lg flex items-center gap-2 ${
+              paymentStatusState.type === 'success'
+                ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-400'
+                : 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-400'
+            }`}
+          >
+            {paymentStatusState.type === 'success' ? (
+              <CheckCircle className="w-4 h-4" aria-hidden="true" />
+            ) : (
+              <AlertTriangle className="w-4 h-4" aria-hidden="true" />
+            )}
             {paymentStatusState.message}
           </div>
         </div>
@@ -683,18 +703,18 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
           <CardContent className="p-4 sm:p-6">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
               <div className="text-center sm:text-left">
-                <p className="text-sm text-muted-foreground font-medium uppercase tracking-wide">Amount Due</p>
-                <p className="text-4xl sm:text-5xl font-bold font-mono text-primary" data-testid="text-payment-amount">
-                  ${Number(note.monthlyPayment || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                <p className="text-sm text-muted-foreground font-medium uppercase tracking-wide">Amount due</p>
+                <p className="text-4xl sm:text-5xl font-bold font-mono tabular-nums text-primary" data-testid="text-payment-amount">
+                  ${Number(note.monthlyPayment || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>
                 {note.nextPaymentDate && (
-                  <p className={`text-sm mt-1 ${paymentStatusBadge.status === 'late' ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-muted-foreground'}`}>
+                  <p className={`text-sm mt-1 tabular-nums ${paymentStatusBadge.status === 'late' ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-muted-foreground'}`}>
                     Due {format(new Date(note.nextPaymentDate), 'MMMM d, yyyy')}
                   </p>
                 )}
                 {autopayEnabled && (
                   <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1 flex items-center gap-1 justify-center sm:justify-start">
-                    <CheckCircle className="w-3 h-3" /> Autopay is on — payment will be collected automatically
+                    <CheckCircle className="w-3 h-3" aria-hidden="true" /> Autopay is on — we'll collect this payment automatically.
                   </p>
                 )}
               </div>
@@ -708,15 +728,15 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
                   variant={autopayEnabled ? "outline" : "default"}
                 >
                   {isProcessingPayment ? (
-                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                    <Loader2 className="w-5 h-5 mr-2 animate-spin" aria-hidden="true" />
                   ) : (
-                    <CreditCard className="w-5 h-5 mr-2" />
+                    <CreditCard className="w-5 h-5 mr-2" aria-hidden="true" />
                   )}
-                  {autopayEnabled ? "Pay Early" : "Pay Now"}
+                  {autopayEnabled ? "Pay early" : "Pay now"}
                 </Button>
                 {!autopayEnabled && (
                   <p className="text-xs text-center text-muted-foreground">
-                    Enable autopay below to pay automatically each month
+                    Enable autopay below to pay automatically each month.
                   </p>
                 )}
               </div>
@@ -724,40 +744,40 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
           </CardContent>
         </Card>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4">
-          <Button 
-            variant="outline" 
-            className="flex flex-col items-center gap-1 h-auto py-4"
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4" role="group" aria-label="Quick actions">
+          <Button
+            variant="outline"
+            className="flex flex-col items-center gap-1 h-auto py-4 min-h-16"
             onClick={() => {
               const element = document.getElementById('schedule-tab');
               if (element) element.click();
             }}
             data-testid="button-view-schedule"
           >
-            <Calendar className="w-5 h-5" />
+            <Calendar className="w-5 h-5" aria-hidden="true" />
             <span className="text-xs sm:text-sm">Schedule</span>
-          </Button>
-          <Button 
-            variant="outline" 
-            className="flex flex-col items-center gap-1 h-auto py-4"
-            onClick={() => setShowStatementDialog(true)}
-            data-testid="button-download-statement"
-          >
-            <Download className="w-5 h-5" />
-            <span className="text-xs sm:text-sm">Statements</span>
-          </Button>
-          <Button 
-            variant="outline" 
-            className="flex flex-col items-center gap-1 h-auto py-4"
-            onClick={handleRequestPayoffQuote}
-            data-testid="button-payoff-quote"
-          >
-            <Calculator className="w-5 h-5" />
-            <span className="text-xs sm:text-sm">Payoff Quote</span>
           </Button>
           <Button
             variant="outline"
-            className="flex flex-col items-center gap-1 h-auto py-4 relative"
+            className="flex flex-col items-center gap-1 h-auto py-4 min-h-16"
+            onClick={() => setShowStatementDialog(true)}
+            data-testid="button-download-statement"
+          >
+            <Download className="w-5 h-5" aria-hidden="true" />
+            <span className="text-xs sm:text-sm">Statements</span>
+          </Button>
+          <Button
+            variant="outline"
+            className="flex flex-col items-center gap-1 h-auto py-4 min-h-16"
+            onClick={handleRequestPayoffQuote}
+            data-testid="button-payoff-quote"
+          >
+            <Calculator className="w-5 h-5" aria-hidden="true" />
+            <span className="text-xs sm:text-sm">Payoff quote</span>
+          </Button>
+          <Button
+            variant="outline"
+            className="flex flex-col items-center gap-1 h-auto py-4 min-h-16 relative"
             onClick={() => {
               const tab = document.querySelector('[data-testid="tab-messages"]') as HTMLElement | null;
               if (tab) tab.click();
@@ -765,11 +785,15 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
               window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
             }}
             data-testid="button-contact"
+            aria-label={unreadCount > 0 ? `Messages (${unreadCount} unread)` : "Messages"}
           >
-            <MessageSquare className="w-5 h-5" />
+            <MessageSquare className="w-5 h-5" aria-hidden="true" />
             <span className="text-xs sm:text-sm">Message</span>
             {unreadCount > 0 && (
-              <span className="absolute -top-1 -right-1 w-4 h-4 bg-primary text-primary-foreground text-xs rounded-full flex items-center justify-center">
+              <span
+                aria-hidden="true"
+                className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 bg-primary text-primary-foreground text-xs rounded-full flex items-center justify-center tabular-nums"
+              >
                 {unreadCount}
               </span>
             )}
@@ -781,12 +805,12 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
             <CardContent className="p-4 sm:p-6">
               <div className="flex items-center gap-3">
                 <div className="p-2 sm:p-3 rounded-xl bg-primary/10">
-                  <DollarSign className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
+                  <DollarSign className="w-4 h-4 sm:w-5 sm:h-5 text-primary" aria-hidden="true" />
                 </div>
                 <div>
                   <p className="text-xs sm:text-sm text-muted-foreground">Balance</p>
-                  <p className="text-lg sm:text-2xl font-bold font-mono" data-testid="text-balance">
-                    ${Number(note.currentBalance || 0).toLocaleString()}
+                  <p className="text-lg sm:text-2xl font-bold font-mono tabular-nums" data-testid="text-balance">
+                    ${Number(note.currentBalance || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </p>
                 </div>
               </div>
@@ -797,12 +821,12 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
             <CardContent className="p-4 sm:p-6">
               <div className="flex items-center gap-3">
                 <div className="p-2 sm:p-3 rounded-xl bg-emerald-500/10">
-                  <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-600" />
+                  <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-600" aria-hidden="true" />
                 </div>
                 <div>
-                  <p className="text-xs sm:text-sm text-muted-foreground">Total Paid</p>
-                  <p className="text-lg sm:text-2xl font-bold font-mono" data-testid="text-total-paid">
-                    ${totalPaid.toLocaleString()}
+                  <p className="text-xs sm:text-sm text-muted-foreground">Total paid</p>
+                  <p className="text-lg sm:text-2xl font-bold font-mono tabular-nums" data-testid="text-total-paid">
+                    ${totalPaid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </p>
                 </div>
               </div>
@@ -814,10 +838,10 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="p-2 sm:p-3 rounded-xl bg-blue-500/10">
-                    <RefreshCw className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
+                    <RefreshCw className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" aria-hidden="true" />
                   </div>
                   <div>
-                    <p className="text-xs sm:text-sm text-muted-foreground">Autopay</p>
+                    <p className="text-xs sm:text-sm text-muted-foreground" id="autopay-label">Autopay</p>
                     <p className="text-sm font-medium" data-testid="text-autopay-status">
                       {autopayEnabled ? 'Enabled' : 'Disabled'}
                     </p>
@@ -827,6 +851,8 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
                   checked={autopayEnabled}
                   onCheckedChange={handleToggleAutopay}
                   disabled={isTogglingAutopay}
+                  aria-labelledby="autopay-label"
+                  aria-label={`Autopay ${autopayEnabled ? 'enabled' : 'disabled'}. Toggle to ${autopayEnabled ? 'disable' : 'enable'}.`}
                   data-testid="switch-autopay"
                 />
               </div>
@@ -838,54 +864,61 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
           <CardContent className="p-4 sm:p-6">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h3 className="font-semibold">Loan Progress</h3>
+                <h3 className="font-semibold">Loan progress</h3>
                 <p className="text-xs sm:text-sm text-muted-foreground">
-                  {paidPayments} of {totalPayments} payments completed
+                  <span className="tabular-nums">{paidPayments}</span> of{" "}
+                  <span className="tabular-nums">{totalPayments}</span> payments completed
                 </p>
               </div>
-              <span className="text-base sm:text-lg font-bold">{progress.toFixed(0)}%</span>
+              <span className="text-base sm:text-lg font-bold tabular-nums">{progress.toFixed(0)}%</span>
             </div>
-            <Progress value={progress} className="h-2 sm:h-3" />
+            <Progress
+              value={progress}
+              className="h-2 sm:h-3"
+              aria-label={`Loan progress: ${progress.toFixed(0)} percent complete, ${paidPayments} of ${totalPayments} payments made`}
+            />
           </CardContent>
         </Card>
 
         <Card className="floating-window">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base sm:text-lg">Loan Details</CardTitle>
+            <CardTitle className="text-base sm:text-lg">Loan details</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid sm:grid-cols-2 gap-4 sm:gap-6">
+            <dl className="grid sm:grid-cols-2 gap-4 sm:gap-6">
               <div className="space-y-3">
                 <div className="flex justify-between py-2 border-b">
-                  <span className="text-sm text-muted-foreground">Original Amount</span>
-                  <span className="font-mono font-medium">${Number(note.originalPrincipal || 0).toLocaleString()}</span>
+                  <dt className="text-sm text-muted-foreground">Original amount</dt>
+                  <dd className="font-mono font-medium tabular-nums">
+                    ${Number(note.originalPrincipal || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </dd>
                 </div>
                 <div className="flex justify-between py-2 border-b">
-                  <span className="text-sm text-muted-foreground">Interest Rate</span>
-                  <span className="font-medium">{note.interestRate}% APR</span>
+                  <dt className="text-sm text-muted-foreground">Interest rate</dt>
+                  <dd className="font-medium tabular-nums">{note.interestRate}% APR</dd>
                 </div>
                 <div className="flex justify-between py-2 border-b">
-                  <span className="text-sm text-muted-foreground">Term Length</span>
-                  <span className="font-medium">{note.termMonths} months</span>
+                  <dt className="text-sm text-muted-foreground">Term length</dt>
+                  <dd className="font-medium tabular-nums">{note.termMonths} months</dd>
                 </div>
               </div>
               <div className="space-y-3">
                 <div className="flex justify-between py-2 border-b">
-                  <span className="text-sm text-muted-foreground">Start Date</span>
-                  <span className="font-medium">{format(new Date(note.startDate), 'MMM d, yyyy')}</span>
+                  <dt className="text-sm text-muted-foreground">Start date</dt>
+                  <dd className="font-medium tabular-nums">{format(new Date(note.startDate), 'MMM d, yyyy')}</dd>
                 </div>
                 {note.maturityDate && (
                   <div className="flex justify-between py-2 border-b">
-                    <span className="text-sm text-muted-foreground">Maturity Date</span>
-                    <span className="font-medium">{format(new Date(note.maturityDate), 'MMM d, yyyy')}</span>
+                    <dt className="text-sm text-muted-foreground">Maturity date</dt>
+                    <dd className="font-medium tabular-nums">{format(new Date(note.maturityDate), 'MMM d, yyyy')}</dd>
                   </div>
                 )}
                 <div className="flex justify-between py-2 border-b">
-                  <span className="text-sm text-muted-foreground">Grace Period</span>
-                  <span className="font-medium">{note.gracePeriodDays} days</span>
+                  <dt className="text-sm text-muted-foreground">Grace period</dt>
+                  <dd className="font-medium tabular-nums">{note.gracePeriodDays} days</dd>
                 </div>
               </div>
-            </div>
+            </dl>
           </CardContent>
         </Card>
 
@@ -893,36 +926,45 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
           <Card className="glass-panel">
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
-                <MapPin className="w-4 h-4 sm:w-5 sm:h-5" /> Property Information
+                <MapPin className="w-4 h-4 sm:w-5 sm:h-5" aria-hidden="true" /> Property information
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid sm:grid-cols-2 gap-4">
+              <dl className="grid sm:grid-cols-2 gap-4">
                 <div>
-                  <p className="text-xs sm:text-sm text-muted-foreground">Location</p>
-                  <p className="font-medium">{note.property.county}, {note.property.state}</p>
+                  <dt className="text-xs sm:text-sm text-muted-foreground">Location</dt>
+                  <dd className="font-medium">{note.property.county}, {note.property.state}</dd>
                 </div>
                 <div>
-                  <p className="text-xs sm:text-sm text-muted-foreground">APN</p>
-                  <p className="font-mono text-sm">{note.property.apn}</p>
+                  <dt className="text-xs sm:text-sm text-muted-foreground">APN</dt>
+                  <dd className="font-mono text-sm tabular-nums">{note.property.apn}</dd>
                 </div>
                 <div>
-                  <p className="text-xs sm:text-sm text-muted-foreground">Size</p>
-                  <p className="font-medium">{note.property.sizeAcres} acres</p>
+                  <dt className="text-xs sm:text-sm text-muted-foreground">Size</dt>
+                  <dd className="font-medium tabular-nums">{note.property.sizeAcres} acres</dd>
                 </div>
-              </div>
+              </dl>
             </CardContent>
           </Card>
         )}
 
         <Tabs defaultValue="history">
           <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="history" data-testid="tab-history">Payment History</TabsTrigger>
-            <TabsTrigger value="schedule" id="schedule-tab" data-testid="tab-schedule">Payment Schedule</TabsTrigger>
-            <TabsTrigger value="messages" data-testid="tab-messages" onClick={() => { if (!messagesLoaded) loadMessages(); }} className="relative">
+            <TabsTrigger value="history" data-testid="tab-history">Payment history</TabsTrigger>
+            <TabsTrigger value="schedule" id="schedule-tab" data-testid="tab-schedule">Payment schedule</TabsTrigger>
+            <TabsTrigger
+              value="messages"
+              data-testid="tab-messages"
+              onClick={() => { if (!messagesLoaded) loadMessages(); }}
+              className="relative"
+              aria-label={unreadCount > 0 ? `Messages (${unreadCount} unread)` : "Messages"}
+            >
               Messages
               {unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 w-4 h-4 bg-primary text-primary-foreground text-xs rounded-full flex items-center justify-center">
+                <span
+                  aria-hidden="true"
+                  className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 bg-primary text-primary-foreground text-xs rounded-full flex items-center justify-center tabular-nums"
+                >
                   {unreadCount}
                 </span>
               )}
@@ -932,10 +974,13 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
           <TabsContent value="history">
             <Card>
               <CardContent className="p-0">
-                <div 
+                <div
                   ref={paymentListRef}
                   className="max-h-96 overflow-y-auto"
                   data-testid="payment-history-list"
+                  tabIndex={0}
+                  role="region"
+                  aria-label="Payment history"
                 >
                   <Table>
                     <TableHeader className="sticky top-0 bg-card z-10">
@@ -952,26 +997,26 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
                       {payments.length === 0 ? (
                         <TableRow>
                           <TableCell colSpan={6} className="text-center h-24 text-muted-foreground">
-                            No payments recorded yet
+                            No payments recorded yet.
                           </TableCell>
                         </TableRow>
                       ) : (
                         <>
                           {payments.slice(0, visiblePayments).map((payment) => (
                             <TableRow key={payment.id} data-testid={`payment-row-${payment.id}`}>
-                              <TableCell className="text-xs sm:text-sm">{format(new Date(payment.paymentDate), 'MMM d, yyyy')}</TableCell>
-                              <TableCell className="text-right font-mono font-medium text-xs sm:text-sm">
-                                ${Number(payment.amount).toLocaleString()}
+                              <TableCell className="text-xs sm:text-sm tabular-nums">{format(new Date(payment.paymentDate), 'MMM d, yyyy')}</TableCell>
+                              <TableCell className="text-right font-mono font-medium text-xs sm:text-sm tabular-nums">
+                                ${Number(payment.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </TableCell>
-                              <TableCell className="text-right font-mono text-muted-foreground hidden sm:table-cell">
-                                ${Number(payment.principalAmount).toLocaleString()}
+                              <TableCell className="text-right font-mono text-muted-foreground hidden sm:table-cell tabular-nums">
+                                ${Number(payment.principalAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </TableCell>
-                              <TableCell className="text-right font-mono text-muted-foreground hidden sm:table-cell">
-                                ${Number(payment.interestAmount).toLocaleString()}
+                              <TableCell className="text-right font-mono text-muted-foreground hidden sm:table-cell tabular-nums">
+                                ${Number(payment.interestAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </TableCell>
-                              <TableCell className="capitalize hidden md:table-cell">{payment.paymentMethod || 'N/A'}</TableCell>
+                              <TableCell className="capitalize hidden md:table-cell">{payment.paymentMethod || '—'}</TableCell>
                               <TableCell>
-                                <Badge variant={payment.status === 'completed' ? 'default' : 'secondary'} className="text-xs">
+                                <Badge variant={payment.status === 'completed' ? 'default' : 'secondary'} className="text-xs capitalize">
                                   {payment.status}
                                 </Badge>
                               </TableCell>
@@ -988,11 +1033,11 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
                                   data-testid="button-load-more"
                                 >
                                   {isLoadingMore ? (
-                                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                                    <Loader2 className="w-4 h-4 animate-spin mr-2" aria-hidden="true" />
                                   ) : (
-                                    <ChevronDown className="w-4 h-4 mr-2" />
+                                    <ChevronDown className="w-4 h-4 mr-2" aria-hidden="true" />
                                   )}
-                                  Load More ({payments.length - visiblePayments} remaining)
+                                  Load more (<span className="tabular-nums">{payments.length - visiblePayments}</span> remaining)
                                 </Button>
                               </TableCell>
                             </TableRow>
@@ -1010,7 +1055,7 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
-                  <MessageSquare className="w-4 h-4 sm:w-5 sm:h-5" /> Messages
+                  <MessageSquare className="w-4 h-4 sm:w-5 sm:h-5" aria-hidden="true" /> Messages
                 </CardTitle>
                 <CardDescription>
                   Have a question or need to discuss your payment? Send us a message.
@@ -1020,48 +1065,88 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
                 {!messagesLoaded ? (
                   <div className="flex items-center justify-center py-8">
                     <Button variant="outline" onClick={loadMessages} data-testid="button-load-messages">
-                      <MessageSquare className="w-4 h-4 mr-2" />
-                      Load Messages
+                      <MessageSquare className="w-4 h-4 mr-2" aria-hidden="true" />
+                      Load messages
                     </Button>
                   </div>
                 ) : (
                   <>
-                    <div className="space-y-3 max-h-80 overflow-y-auto" data-testid="message-thread">
-                      {messages.length === 0 ? (
+                    {messagesError && (
+                      <div
+                        role="alert"
+                        className="p-3 rounded-md border border-destructive/50 bg-destructive/5 text-sm flex items-start gap-2"
+                        data-testid="alert-messages-error"
+                      >
+                        <AlertTriangle className="w-4 h-4 text-destructive shrink-0 mt-0.5" aria-hidden="true" />
+                        <div className="flex-1">
+                          <p className="text-foreground">{messagesError}</p>
+                          <Button size="sm" variant="outline" className="mt-2" onClick={loadMessages}>
+                            <RefreshCw className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" />
+                            Try again
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                    <div
+                      className="space-y-3 max-h-80 overflow-y-auto"
+                      data-testid="message-thread"
+                      role="log"
+                      aria-live="polite"
+                      aria-label="Conversation with your lender"
+                      tabIndex={0}
+                    >
+                      {messages.length === 0 && !messagesError ? (
                         <div className="text-center py-8 text-muted-foreground">
-                          <MessageSquare className="w-10 h-10 mx-auto mb-3 opacity-40" />
-                          <p className="text-sm">No messages yet. Send us a message below.</p>
+                          <MessageSquare className="w-10 h-10 mx-auto mb-3 opacity-40" aria-hidden="true" />
+                          <p className="text-sm">No messages yet. Send your lender a message below.</p>
                         </div>
                       ) : (
-                        messages.map((msg) => (
-                          <div
-                            key={msg.id}
-                            className={`flex ${msg.senderType === "borrower" ? "justify-end" : "justify-start"}`}
-                            data-testid={`message-${msg.id}`}
-                          >
-                            <div className={`max-w-[80%] rounded-lg px-4 py-2 text-sm ${
-                              msg.senderType === "borrower"
-                                ? "bg-primary text-primary-foreground"
-                                : "bg-muted text-foreground"
-                            }`}>
-                              <p className="whitespace-pre-wrap">{msg.content}</p>
-                              <p className={`text-xs mt-1 opacity-70 ${msg.senderType === "borrower" ? "text-right" : ""}`}>
-                                {msg.senderType === "borrower" ? "You" : "Your Lender"} · {format(new Date(msg.createdAt!), "MMM d, h:mm a")}
-                              </p>
+                        messages.map((msg) => {
+                          const isBorrower = msg.senderType === "borrower";
+                          return (
+                            <div
+                              key={msg.id}
+                              className={`flex ${isBorrower ? "justify-end" : "justify-start"}`}
+                              data-testid={`message-${msg.id}`}
+                            >
+                              <div className={`max-w-[80%] rounded-lg px-4 py-2 text-sm ${
+                                isBorrower
+                                  ? "bg-primary text-primary-foreground"
+                                  : "bg-muted text-foreground"
+                              }`}>
+                                <p className="whitespace-pre-wrap">{msg.content}</p>
+                                <p className={`text-xs mt-1 opacity-70 tabular-nums ${isBorrower ? "text-right" : ""}`}>
+                                  <span className="sr-only">{isBorrower ? "Sent" : "Received"} — </span>
+                                  {isBorrower ? "You" : "Your lender"} · {format(new Date(msg.createdAt!), "MMM d, h:mm a")}
+                                </p>
+                              </div>
                             </div>
-                          </div>
-                        ))
+                          );
+                        })
                       )}
                       <div ref={messagesEndRef} />
                     </div>
+                    {sendMessageError && (
+                      <div
+                        role="alert"
+                        className="p-3 rounded-md border border-destructive/50 bg-destructive/5 text-sm flex items-start gap-2"
+                        data-testid="alert-send-message-error"
+                      >
+                        <AlertTriangle className="w-4 h-4 text-destructive shrink-0 mt-0.5" aria-hidden="true" />
+                        <p className="text-foreground">{sendMessageError}</p>
+                      </div>
+                    )}
                     <div className="flex gap-2 pt-2 border-t">
+                      <Label htmlFor="borrower-new-message" className="sr-only">Message to your lender</Label>
                       <Textarea
-                        placeholder="Type your message here..."
+                        id="borrower-new-message"
+                        placeholder="Type your message here…"
                         value={newMessage}
                         onChange={(e) => setNewMessage(e.target.value)}
                         rows={2}
                         className="resize-none"
                         data-testid="input-message"
+                        aria-describedby={sendMessageError ? "alert-send-message-error" : undefined}
                         onKeyDown={(e) => {
                           if (e.key === "Enter" && !e.shiftKey) {
                             e.preventDefault();
@@ -1074,11 +1159,12 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
                         disabled={!newMessage.trim() || isSendingMessage}
                         className="self-end"
                         data-testid="button-send-message"
+                        aria-label={isSendingMessage ? "Sending message" : "Send message"}
                       >
                         {isSendingMessage ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
                         ) : (
-                          <Send className="w-4 h-4" />
+                          <Send className="w-4 h-4" aria-hidden="true" />
                         )}
                       </Button>
                     </div>
@@ -1090,52 +1176,59 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
 
           <TabsContent value="schedule">
             <Card>
-              <CardContent className="p-0 max-h-96 overflow-y-auto">
-                <Table>
-                  <TableHeader className="sticky top-0 bg-card z-10">
-                    <TableRow>
-                      <TableHead className="text-xs sm:text-sm">#</TableHead>
-                      <TableHead className="text-xs sm:text-sm">Due Date</TableHead>
-                      <TableHead className="text-right text-xs sm:text-sm">Payment</TableHead>
-                      <TableHead className="text-right hidden sm:table-cell">Principal</TableHead>
-                      <TableHead className="text-right hidden sm:table-cell">Interest</TableHead>
-                      <TableHead className="text-right hidden md:table-cell">Balance</TableHead>
-                      <TableHead>Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {schedule.length === 0 ? (
+              <CardContent className="p-0">
+                <div
+                  className="max-h-96 overflow-y-auto"
+                  tabIndex={0}
+                  role="region"
+                  aria-label="Payment schedule"
+                >
+                  <Table>
+                    <TableHeader className="sticky top-0 bg-card z-10">
                       <TableRow>
-                        <TableCell colSpan={7} className="text-center h-24 text-muted-foreground">
-                          No payment schedule available
-                        </TableCell>
+                        <TableHead className="text-xs sm:text-sm">#</TableHead>
+                        <TableHead className="text-xs sm:text-sm">Due date</TableHead>
+                        <TableHead className="text-right text-xs sm:text-sm">Payment</TableHead>
+                        <TableHead className="text-right hidden sm:table-cell">Principal</TableHead>
+                        <TableHead className="text-right hidden sm:table-cell">Interest</TableHead>
+                        <TableHead className="text-right hidden md:table-cell">Balance</TableHead>
+                        <TableHead>Status</TableHead>
                       </TableRow>
-                    ) : (
-                      schedule.map((row) => (
-                        <TableRow key={row.paymentNumber} data-testid={`schedule-row-${row.paymentNumber}`}>
-                          <TableCell className="font-medium text-xs sm:text-sm">{row.paymentNumber}</TableCell>
-                          <TableCell className="text-xs sm:text-sm">{format(new Date(row.dueDate), 'MMM d, yyyy')}</TableCell>
-                          <TableCell className="text-right font-mono text-xs sm:text-sm">${row.payment.toFixed(2)}</TableCell>
-                          <TableCell className="text-right font-mono text-muted-foreground hidden sm:table-cell">
-                            ${row.principal.toFixed(2)}
-                          </TableCell>
-                          <TableCell className="text-right font-mono text-muted-foreground hidden sm:table-cell">
-                            ${row.interest.toFixed(2)}
-                          </TableCell>
-                          <TableCell className="text-right font-mono hidden md:table-cell">${row.balance.toFixed(2)}</TableCell>
-                          <TableCell>
-                            <Badge 
-                              variant={row.status === 'paid' ? 'default' : row.status === 'late' ? 'destructive' : 'secondary'}
-                              className="text-xs"
-                            >
-                              {row.status}
-                            </Badge>
+                    </TableHeader>
+                    <TableBody>
+                      {schedule.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={7} className="text-center h-24 text-muted-foreground">
+                            No payment schedule available.
                           </TableCell>
                         </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
+                      ) : (
+                        schedule.map((row) => (
+                          <TableRow key={row.paymentNumber} data-testid={`schedule-row-${row.paymentNumber}`}>
+                            <TableCell className="font-medium text-xs sm:text-sm tabular-nums">{row.paymentNumber}</TableCell>
+                            <TableCell className="text-xs sm:text-sm tabular-nums">{format(new Date(row.dueDate), 'MMM d, yyyy')}</TableCell>
+                            <TableCell className="text-right font-mono text-xs sm:text-sm tabular-nums">${row.payment.toFixed(2)}</TableCell>
+                            <TableCell className="text-right font-mono text-muted-foreground hidden sm:table-cell tabular-nums">
+                              ${row.principal.toFixed(2)}
+                            </TableCell>
+                            <TableCell className="text-right font-mono text-muted-foreground hidden sm:table-cell tabular-nums">
+                              ${row.interest.toFixed(2)}
+                            </TableCell>
+                            <TableCell className="text-right font-mono hidden md:table-cell tabular-nums">${row.balance.toFixed(2)}</TableCell>
+                            <TableCell>
+                              <Badge
+                                variant={row.status === 'paid' ? 'default' : row.status === 'late' ? 'destructive' : 'secondary'}
+                                className="text-xs capitalize"
+                              >
+                                {row.status}
+                              </Badge>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
@@ -1146,44 +1239,51 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
         <DialogContent className="sm:max-w-md" data-testid="dialog-payoff-quote">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Calculator className="w-5 h-5" />
-              Payoff Quote
+              <Calculator className="w-5 h-5" aria-hidden="true" />
+              Payoff quote
             </DialogTitle>
             <DialogDescription>
-              Your estimated payoff amount to pay off the loan in full
+              The amount needed to pay your loan in full on the quote date below.
             </DialogDescription>
           </DialogHeader>
           {isLoadingPayoff ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            <div className="flex items-center justify-center py-8" role="status" aria-live="polite">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" aria-hidden="true" />
+              <span className="sr-only">Calculating your payoff quote…</span>
             </div>
           ) : payoffQuote ? (
             <div className="space-y-4">
-              <div className="space-y-2">
+              <dl className="space-y-2">
                 <div className="flex justify-between py-2 border-b">
-                  <span className="text-muted-foreground">Principal Balance</span>
-                  <span className="font-mono font-medium">${payoffQuote.principalBalance.toLocaleString()}</span>
+                  <dt className="text-muted-foreground">Principal balance</dt>
+                  <dd className="font-mono font-medium tabular-nums">
+                    ${payoffQuote.principalBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </dd>
                 </div>
                 <div className="flex justify-between py-2 border-b">
-                  <span className="text-muted-foreground">Accrued Interest</span>
-                  <span className="font-mono font-medium">${payoffQuote.accruedInterest.toLocaleString()}</span>
+                  <dt className="text-muted-foreground">Accrued interest</dt>
+                  <dd className="font-mono font-medium tabular-nums">
+                    ${payoffQuote.accruedInterest.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </dd>
                 </div>
                 {payoffQuote.payoffFee > 0 && (
                   <div className="flex justify-between py-2 border-b">
-                    <span className="text-muted-foreground">Payoff Fee</span>
-                    <span className="font-mono font-medium">${payoffQuote.payoffFee.toLocaleString()}</span>
+                    <dt className="text-muted-foreground">Payoff fee</dt>
+                    <dd className="font-mono font-medium tabular-nums">
+                      ${payoffQuote.payoffFee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </dd>
                   </div>
                 )}
                 <div className="flex justify-between py-3 bg-primary/10 rounded-lg px-3 mt-4">
-                  <span className="font-semibold">Total Payoff Amount</span>
-                  <span className="font-mono font-bold text-lg text-primary" data-testid="text-payoff-total">
-                    ${payoffQuote.totalPayoff.toLocaleString()}
-                  </span>
+                  <dt className="font-semibold">Total payoff amount</dt>
+                  <dd className="font-mono font-bold text-lg text-primary tabular-nums" data-testid="text-payoff-total">
+                    ${payoffQuote.totalPayoff.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </dd>
                 </div>
-              </div>
+              </dl>
               <div className="text-sm text-muted-foreground text-center">
-                <p>Quote valid through: {format(new Date(payoffQuote.goodThroughDate), 'MMMM d, yyyy')}</p>
-                <p className="text-xs mt-1">({payoffQuote.daysValid} days from quote date)</p>
+                <p className="tabular-nums">Quote valid through: {format(new Date(payoffQuote.goodThroughDate), 'MMMM d, yyyy')}</p>
+                <p className="text-xs mt-1 tabular-nums">({payoffQuote.daysValid} days from quote date)</p>
               </div>
             </div>
           ) : null}
@@ -1197,32 +1297,32 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
         <DialogContent className="sm:max-w-md" data-testid="dialog-statement">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <FileText className="w-5 h-5" />
-              Download Statement
+              <FileText className="w-5 h-5" aria-hidden="true" />
+              Download statement
             </DialogTitle>
             <DialogDescription>
-              Generate and download your loan documents
+              Generate and download your loan documents as a PDF.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Statement Type</label>
+              <Label htmlFor="select-statement-type">Statement type</Label>
               <Select value={statementType} onValueChange={(v) => setStatementType(v as 'statement' | '1098')}>
-                <SelectTrigger data-testid="select-statement-type">
+                <SelectTrigger id="select-statement-type" data-testid="select-statement-type">
                   <SelectValue placeholder="Select type" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="statement">Account Statement</SelectItem>
-                  <SelectItem value="1098">1098 Interest Statement (Tax)</SelectItem>
+                  <SelectItem value="statement">Account statement</SelectItem>
+                  <SelectItem value="1098">Form 1098 (mortgage interest — tax)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            
+
             {statementType === '1098' && (
               <div className="space-y-2">
-                <label className="text-sm font-medium">Tax Year</label>
+                <Label htmlFor="select-tax-year">Tax year</Label>
                 <Select value={statementYear.toString()} onValueChange={(v) => setStatementYear(Number(v))}>
-                  <SelectTrigger data-testid="select-tax-year">
+                  <SelectTrigger id="select-tax-year" data-testid="select-tax-year">
                     <SelectValue placeholder="Select year" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1239,9 +1339,9 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
             <Button variant="outline" onClick={() => setShowStatementDialog(false)}>Cancel</Button>
             <Button onClick={handleGenerateStatement} disabled={isGeneratingStatement} data-testid="button-generate-pdf">
               {isGeneratingStatement ? (
-                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                <Loader2 className="w-4 h-4 animate-spin mr-2" aria-hidden="true" />
               ) : (
-                <Download className="w-4 h-4 mr-2" />
+                <Download className="w-4 h-4 mr-2" aria-hidden="true" />
               )}
               Download PDF
             </Button>
@@ -1249,21 +1349,24 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
         </DialogContent>
       </Dialog>
 
-      <div className="fixed bottom-0 left-0 right-0 sm:hidden border-t bg-background/95 backdrop-blur">
+      <nav
+        className="fixed bottom-0 left-0 right-0 sm:hidden border-t bg-background/95 backdrop-blur"
+        aria-label="Primary actions"
+      >
         <div className="grid grid-cols-3 gap-1 p-2">
-          <Button 
-            variant="ghost" 
-            className="flex flex-col items-center gap-1 h-auto py-2"
+          <Button
+            variant="ghost"
+            className="flex flex-col items-center gap-1 h-auto py-2 min-h-14"
             onClick={handleMakePayment}
             disabled={isProcessingPayment}
             data-testid="mobile-button-pay"
           >
-            <CreditCard className="w-5 h-5" />
-            <span className="text-xs">Pay Now</span>
+            <CreditCard className="w-5 h-5" aria-hidden="true" />
+            <span className="text-xs">{autopayEnabled ? "Pay early" : "Pay now"}</span>
           </Button>
-          <Button 
-            variant="ghost" 
-            className="flex flex-col items-center gap-1 h-auto py-2"
+          <Button
+            variant="ghost"
+            className="flex flex-col items-center gap-1 h-auto py-2 min-h-14"
             onClick={() => {
               const element = document.getElementById('schedule-tab');
               if (element) element.click();
@@ -1271,12 +1374,12 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
             }}
             data-testid="mobile-button-schedule"
           >
-            <Calendar className="w-5 h-5" />
+            <Calendar className="w-5 h-5" aria-hidden="true" />
             <span className="text-xs">Schedule</span>
           </Button>
           <Button
             variant="ghost"
-            className="flex flex-col items-center gap-1 h-auto py-2 relative"
+            className="flex flex-col items-center gap-1 h-auto py-2 min-h-14 relative"
             onClick={() => {
               const tab = document.querySelector('[data-testid="tab-messages"]') as HTMLElement | null;
               if (tab) tab.click();
@@ -1284,18 +1387,22 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
               window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
             }}
             data-testid="mobile-button-contact"
+            aria-label={unreadCount > 0 ? `Messages (${unreadCount} unread)` : "Messages"}
           >
-            <MessageSquare className="w-5 h-5" />
+            <MessageSquare className="w-5 h-5" aria-hidden="true" />
             <span className="text-xs">Message</span>
             {unreadCount > 0 && (
-              <span className="absolute top-0 right-1 w-4 h-4 bg-primary text-primary-foreground text-xs rounded-full flex items-center justify-center">
+              <span
+                aria-hidden="true"
+                className="absolute top-0 right-1 min-w-[16px] h-4 px-1 bg-primary text-primary-foreground text-xs rounded-full flex items-center justify-center tabular-nums"
+              >
                 {unreadCount}
               </span>
             )}
           </Button>
         </div>
-      </div>
-      
+      </nav>
+
       <div className="h-16 sm:hidden" />
     </div>
   );
