@@ -196,22 +196,25 @@ export function SignatureCapture({
     <Card className={cn("w-full max-w-lg", className)}>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Pen className="h-5 w-5" />
-          Electronic Signature
+          <Pen className="h-5 w-5" aria-hidden="true" />
+          Electronic signature
         </CardTitle>
         <CardDescription>
-          Sign using your finger, stylus, or mouse
+          Sign with your finger, stylus, or mouse — or type your name on the Type tab for a keyboard-only alternative.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2">
-          <Label htmlFor="signer-name">Full Legal Name</Label>
+          <Label htmlFor="signer-name">Full legal name</Label>
           <Input
             id="signer-name"
             data-testid="input-signer-name"
             value={signerName}
             onChange={(e) => setSignerName(e.target.value)}
             placeholder="Enter your full legal name"
+            autoComplete="name"
+            autoCapitalize="words"
+            autoCorrect="off"
             disabled={disabled}
           />
         </div>
@@ -219,11 +222,11 @@ export function SignatureCapture({
         <Tabs value={signatureType} onValueChange={(v) => setSignatureType(v as "drawn" | "typed")}>
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="drawn" data-testid="tab-draw-signature">
-              <Pen className="h-4 w-4 mr-2" />
+              <Pen className="h-4 w-4 mr-2" aria-hidden="true" />
               Draw
             </TabsTrigger>
             <TabsTrigger value="typed" data-testid="tab-type-signature">
-              <Type className="h-4 w-4 mr-2" />
+              <Type className="h-4 w-4 mr-2" aria-hidden="true" />
               Type
             </TabsTrigger>
           </TabsList>
@@ -232,9 +235,15 @@ export function SignatureCapture({
             <div className="relative">
               <canvas
                 ref={canvasRef}
-                className="w-full h-32 border rounded-md bg-white cursor-crosshair touch-none"
+                className="w-full h-32 sm:h-40 border rounded-md bg-white cursor-crosshair touch-none"
                 style={{ touchAction: "none" }}
                 data-testid="canvas-signature"
+                role="img"
+                aria-label={
+                  hasSignature
+                    ? "Signature drawn. Use Clear to redraw, or switch to the Type tab."
+                    : "Drawing canvas. Sign with your finger, stylus, or mouse. For keyboard access, switch to the Type tab."
+                }
                 onMouseDown={(e) => startDrawing(e.nativeEvent)}
                 onMouseMove={(e) => draw(e.nativeEvent)}
                 onMouseUp={stopDrawing}
@@ -250,7 +259,10 @@ export function SignatureCapture({
                 onTouchEnd={stopDrawing}
               />
               {!hasSignature && (
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none text-muted-foreground">
+                <div
+                  className="absolute inset-0 flex items-center justify-center pointer-events-none text-muted-foreground"
+                  aria-hidden="true"
+                >
                   Sign here
                 </div>
               )}
@@ -258,18 +270,19 @@ export function SignatureCapture({
             <Button
               variant="outline"
               size="sm"
+              className="min-h-11 sm:min-h-9"
               onClick={clearSignature}
               disabled={!hasSignature || disabled}
               data-testid="button-clear-signature"
             >
-              <RotateCcw className="h-4 w-4 mr-2" />
+              <RotateCcw className="h-4 w-4 mr-2" aria-hidden="true" />
               Clear
             </Button>
           </TabsContent>
 
           <TabsContent value="typed" className="space-y-3">
             <div className="space-y-2">
-              <Label htmlFor="typed-signature">Type Your Signature</Label>
+              <Label htmlFor="typed-signature">Type your signature</Label>
               <Input
                 id="typed-signature"
                 data-testid="input-typed-signature"
@@ -277,12 +290,20 @@ export function SignatureCapture({
                 onChange={(e) => setTypedSignature(e.target.value)}
                 placeholder={signerName || "Your signature"}
                 className="font-serif italic text-xl"
+                autoComplete="off"
+                autoCapitalize="words"
+                autoCorrect="off"
+                spellCheck={false}
                 disabled={disabled}
               />
             </div>
             {typedSignature && (
-              <div className="p-4 border rounded-md bg-white">
-                <p className="font-serif italic text-2xl text-center text-foreground">
+              <div
+                className="p-4 border rounded-md bg-white"
+                role="img"
+                aria-label={`Typed signature preview: ${typedSignature}`}
+              >
+                <p className="font-serif italic text-2xl text-center text-foreground" aria-hidden="true">
                   {typedSignature}
                 </p>
               </div>
@@ -297,20 +318,21 @@ export function SignatureCapture({
             checked={consentGiven}
             onCheckedChange={(checked) => setConsentGiven(checked === true)}
             disabled={disabled}
+            className="mt-0.5"
           />
-          <Label htmlFor="consent" className="text-sm text-muted-foreground leading-relaxed">
+          <Label htmlFor="consent" className="text-sm text-muted-foreground leading-relaxed cursor-pointer">
             {consentText}
           </Label>
         </div>
 
         <Button
-          className="w-full"
+          className="w-full min-h-11"
           onClick={handleSubmit}
           disabled={!canSubmit || disabled}
           data-testid="button-submit-signature"
         >
-          <Check className="h-4 w-4 mr-2" />
-          Apply Signature
+          <Check className="h-4 w-4 mr-2" aria-hidden="true" />
+          Apply signature
         </Button>
       </CardContent>
     </Card>
@@ -343,8 +365,8 @@ export function SignatureDisplay({
   return (
     <div className={cn("border rounded-md p-4 bg-muted/30", className)}>
       <div className="flex flex-col items-center gap-2">
-        <img 
-          src={signatureData} 
+        <img
+          src={signatureData}
           alt={`Signature of ${signerName}`}
           className="max-h-16 w-auto"
           data-testid="img-signature-display"
@@ -352,7 +374,7 @@ export function SignatureDisplay({
         <div className="border-t w-48 pt-2 text-center">
           <p className="font-medium text-sm" data-testid="text-signer-name">{signerName}</p>
           {formattedDate && (
-            <p className="text-xs text-muted-foreground" data-testid="text-signed-date">
+            <p className="text-xs text-muted-foreground tabular-nums" data-testid="text-signed-date">
               Signed: {formattedDate}
             </p>
           )}
