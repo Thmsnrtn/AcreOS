@@ -467,3 +467,48 @@ future sessions — see resume pointer.
   button `min-h-[44px]` on mobile.
 
 **Sign-off (this slice):** D ✓ M ✓ A ✓ E ✓ AI n/a LI ✓ CW ✓ I ✓ T ✓
+
+### `/properties` — PropertyDetailDialog header + Quick Verdict + Overview (session 5c)
+
+- [E] Two `status.replace('_', ' ')` occurrences (DialogDescription
+  Badge copy + its `title` fallback) now use `/_/g`. Statuses like
+  `under_contract_signed` were rendering as `under contract_signed`.
+- [I] `verdictMutation.onError` added. Previously a failed Pursue /
+  Pass write was silent — operator could not tell whether their
+  decision landed. Now surfaces destructive toast with recovery
+  copy that explicitly says existing data is unchanged.
+- [CW] `verdictMutation.onSuccess` now surfaces a confirming toast
+  ("Moved to Due Diligence" for pursue, "Marked as Passed" for pass)
+  with one-line next-action copy. The decision badge replaces the
+  buttons, so the toast is the user's only positive feedback channel.
+- [I] `freshProperty` query gained `isError` handling via `useEffect`
+  that toasts when the dialog cannot refresh and explains the user
+  is viewing the cached version. Previously fetch failures showed
+  nothing and the user could not tell the data was stale.
+- [A] Eleven decorative icons in header/verdict/tabs area made
+  `aria-hidden`: MapPin (title), Bot (Analyze with AI), Target
+  (verdict indicator), Loader2 + ThumbsUp + ThumbsDown (Pursue/Pass
+  states), CheckCircle + AlertCircle (verdict factor rows), Brain +
+  BarChart2 + Calculator (tab glyphs).
+- [A] Five decorative heading icons in Overview tab made
+  `aria-hidden`: MapPin (Location), Ruler (Characteristics),
+  DollarSign (Financial), AlertTriangle (Distress), FileText (Owner).
+- [A] Property-refresh spinner wrapped in `role="status"
+  aria-live="polite"` so screen readers announce the refresh state.
+- [CW] Spinner copy "Updating property details..." → "Loading
+  latest property details…" — runs on initial open too, so "Updating"
+  was misleading. "Loading latest" reads correctly for both first
+  load and refetch, and uses real ellipsis.
+- [CW] Tab tooltips no longer duplicate the tab label text.
+  "Property Intelligence" → "Market signals, enrichment data, and
+  scoring." "Comparable Sales Analysis" → "Recent nearby sales with
+  $/acre benchmarks." "AI-Powered Offer Generator" → "Draft an offer
+  price grounded in comps and taxes." "Due Diligence Checklist" →
+  "Title, taxes, hazards, and access checklist." Tooltips now add
+  context rather than restate the trigger.
+- [CW] Header "Copy JSON" button relabeled "Copy data" — the button
+  still copies JSON (and `aria-label`/`title` still say so for power
+  users) but investor operators should not need to know the wire
+  format. Button width + touch target unchanged.
+
+**Sign-off (this slice):** D ✓ M ✓ A ✓ E ✓ AI n/a LI ✓ CW ✓ I ✓ T ✓

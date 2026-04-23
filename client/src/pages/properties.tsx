@@ -1374,12 +1374,22 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
   const [isAnalysisChatOpen, setIsAnalysisChatOpen] = useState(false);
   const { toast } = useToast();
 
-  const { data: freshProperty, isLoading: isLoadingProperty } = useQuery<Property>({
+  const { data: freshProperty, isLoading: isLoadingProperty, isError: isFreshPropertyError } = useQuery<Property>({
     queryKey: ['/api/properties', property.id],
     enabled: open,
     staleTime: 0,
     gcTime: 0,
   });
+
+  useEffect(() => {
+    if (isFreshPropertyError && open) {
+      toast({
+        title: "Couldn't refresh property",
+        description: "Showing the last known version. Close and reopen to retry.",
+        variant: "destructive",
+      });
+    }
+  }, [isFreshPropertyError, open, toast]);
 
   const currentProperty = freshProperty || property;
 
@@ -1473,9 +1483,22 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
       if (!res.ok) throw new Error("Failed to update property decision");
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (_data, decision) => {
       queryClient.invalidateQueries({ queryKey: ["/api/properties"] });
       queryClient.invalidateQueries({ queryKey: ["/api/properties", currentProperty.id] });
+      toast({
+        title: decision === "pursue" ? "Moved to Due Diligence" : "Marked as Passed",
+        description: decision === "pursue"
+          ? "This property is now in Due Diligence. Continue verifying title, taxes, and hazards."
+          : "You can still reopen this record — nothing is deleted.",
+      });
+    },
+    onError: (_err, decision) => {
+      toast({
+        title: "Couldn't save your decision",
+        description: `The ${decision === "pursue" ? "Pursue" : "Pass"} action didn't go through. Try again — your existing data is unchanged.`,
+        variant: "destructive",
+      });
     },
   });
 
@@ -1495,7 +1518,7 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
         <DialogHeader>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4">
             <DialogTitle className="flex items-center gap-2 text-lg sm:text-xl">
-              <MapPin className="w-5 h-5 flex-shrink-0" />
+              <MapPin className="w-5 h-5 flex-shrink-0" aria-hidden="true" />
               <span className="truncate">{currentProperty.address || `${currentProperty.county}, ${currentProperty.state}`}</span>
             </DialogTitle>
             <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
@@ -1516,7 +1539,7 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                 aria-label="Copy property data as JSON"
                 title="Copy all property fields as JSON"
               >
-                Copy JSON
+                Copy data
               </Button>
               <Button
                 variant="default"
@@ -1524,7 +1547,7 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                 onClick={() => setIsAnalysisChatOpen(true)}
                 data-testid="button-analyze-with-ai"
               >
-                <Bot className="w-4 h-4 mr-2" />
+                <Bot className="w-4 h-4 mr-2" aria-hidden="true" />
                 Analyze with AI
               </Button>
             </div>
@@ -1544,10 +1567,10 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                   ? "Prospect: under consideration, not yet owned"
                   : currentProperty.status === "owned"
                   ? "Owned: in your portfolio"
-                  : String(currentProperty.status).replace("_", " ")
+                  : String(currentProperty.status).replace(/_/g, " ")
               }
             >
-              {currentProperty.status.replace('_', ' ')}
+              {currentProperty.status.replace(/_/g, ' ')}
             </Badge>
           </DialogDescription>
         </DialogHeader>
@@ -1569,7 +1592,7 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                     </div>
                   </div>
                 </div>
-                <Target className={`w-5 h-5 ${sc.text} hidden sm:block`} />
+                <Target className={`w-5 h-5 ${sc.text} hidden sm:block`} aria-hidden="true" />
               </div>
 
               {/* Key metrics */}
@@ -1632,9 +1655,9 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                       data-testid="verdict-pursue-button"
                     >
                       {verdictMutation.isPending ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                        <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" aria-hidden="true" />
                       ) : (
-                        <ThumbsUp className="w-3.5 h-3.5 mr-1" />
+                        <ThumbsUp className="w-3.5 h-3.5 mr-1" aria-hidden="true" />
                       )}
                       Pursue
                     </Button>
@@ -1648,9 +1671,9 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                       data-testid="verdict-pass-button"
                     >
                       {verdictMutation.isPending ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                        <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" aria-hidden="true" />
                       ) : (
-                        <ThumbsDown className="w-3.5 h-3.5 mr-1" />
+                        <ThumbsDown className="w-3.5 h-3.5 mr-1" aria-hidden="true" />
                       )}
                       Pass
                     </Button>
@@ -1664,9 +1687,9 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
               {verdictData.factors.map((f) => (
                 <span key={f.label} className={`flex items-center gap-1 ${f.met ? "text-foreground" : "text-muted-foreground"}`}>
                   {f.met ? (
-                    <CheckCircle className="w-3 h-3 text-green-500" />
+                    <CheckCircle className="w-3 h-3 text-green-500" aria-hidden="true" />
                   ) : (
-                    <AlertCircle className="w-3 h-3 text-muted-foreground/50" />
+                    <AlertCircle className="w-3 h-3 text-muted-foreground/50" aria-hidden="true" />
                   )}
                   {f.label}
                 </span>
@@ -1683,31 +1706,31 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <TabsTrigger value="intelligence" className="min-h-[40px] px-3 sm:px-2 whitespace-nowrap" data-testid="tab-intelligence">
-                      <Brain className="w-3.5 h-3.5 mr-1 hidden sm:inline" />
+                      <Brain className="w-3.5 h-3.5 mr-1 hidden sm:inline" aria-hidden="true" />
                       <span className="hidden md:inline">Intelligence</span>
                       <span className="md:hidden">Intel</span>
                     </TabsTrigger>
                   </TooltipTrigger>
-                  <TooltipContent>Property Intelligence</TooltipContent>
+                  <TooltipContent>Market signals, enrichment data, and scoring</TooltipContent>
                 </Tooltip>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <TabsTrigger value="comps" className="min-h-[40px] px-3 sm:px-2 whitespace-nowrap" data-testid="tab-comps">
-                      <BarChart2 className="w-3.5 h-3.5 mr-1 hidden sm:inline" />
+                      <BarChart2 className="w-3.5 h-3.5 mr-1 hidden sm:inline" aria-hidden="true" />
                       <span className="hidden md:inline">Comparables</span>
                       <span className="md:hidden">Comps</span>
                     </TabsTrigger>
                   </TooltipTrigger>
-                  <TooltipContent>Comparable Sales Analysis</TooltipContent>
+                  <TooltipContent>Recent nearby sales with $/acre benchmarks</TooltipContent>
                 </Tooltip>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <TabsTrigger value="ai-offer" className="min-h-[40px] px-3 sm:px-2 whitespace-nowrap" data-testid="tab-ai-offer">
-                      <Calculator className="w-3.5 h-3.5 mr-1 hidden sm:inline" />
+                      <Calculator className="w-3.5 h-3.5 mr-1 hidden sm:inline" aria-hidden="true" />
                       AI Offer
                     </TabsTrigger>
                   </TooltipTrigger>
-                  <TooltipContent>AI-Powered Offer Generator</TooltipContent>
+                  <TooltipContent>Draft an offer price grounded in comps and taxes</TooltipContent>
                 </Tooltip>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -1716,16 +1739,21 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                       <span className="md:hidden">DD</span>
                     </TabsTrigger>
                   </TooltipTrigger>
-                  <TooltipContent>Due Diligence Checklist</TooltipContent>
+                  <TooltipContent>Title, taxes, hazards, and access checklist</TooltipContent>
                 </Tooltip>
               </TabsList>
             </TooltipProvider>
           </div>
           
           {isLoadingProperty && (
-            <div className="flex items-center justify-center py-8 gap-2" data-testid="skeleton-property-detail-loading">
-              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-              <span className="text-muted-foreground">Updating property details...</span>
+            <div
+              className="flex items-center justify-center py-8 gap-2"
+              data-testid="skeleton-property-detail-loading"
+              role="status"
+              aria-live="polite"
+            >
+              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" aria-hidden="true" />
+              <span className="text-muted-foreground">Loading latest property details…</span>
             </div>
           )}
           
@@ -1753,7 +1781,7 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
             <div className="space-y-4">
               <div>
                 <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                  <MapPin className="w-4 h-4" />
+                  <MapPin className="w-4 h-4" aria-hidden="true" />
                   Location Details
                 </h4>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
@@ -1800,7 +1828,7 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
 
               <div className="border-t pt-4">
                 <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                  <Ruler className="w-4 h-4" />
+                  <Ruler className="w-4 h-4" aria-hidden="true" />
                   Property Characteristics
                 </h4>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
@@ -1836,7 +1864,7 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
 
               <div className="border-t pt-4">
                 <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                  <DollarSign className="w-4 h-4" />
+                  <DollarSign className="w-4 h-4" aria-hidden="true" />
                   Financial Information
                 </h4>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
@@ -1956,7 +1984,7 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                 return (
                   <div className="border-t pt-4" data-testid="section-distress-indicators">
                     <h4 className="text-sm font-semibold mb-3 flex items-center gap-2 text-amber-700 dark:text-amber-400">
-                      <AlertTriangle className="w-4 h-4" />
+                      <AlertTriangle className="w-4 h-4" aria-hidden="true" />
                       Distress Indicators
                     </h4>
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
@@ -2059,7 +2087,7 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
               {hasOwnerData && (
                 <div className="border-t pt-4">
                   <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                    <FileText className="w-4 h-4" />
+                    <FileText className="w-4 h-4" aria-hidden="true" />
                     Owner Information
                   </h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
