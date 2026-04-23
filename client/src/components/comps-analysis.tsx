@@ -133,10 +133,18 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
     return new Date(dateStr).toLocaleDateString();
   };
 
+  const saleDateStaleness = (dateStr: string | null): "fresh" | "aging" | "stale" | null => {
+    if (!dateStr) return null;
+    const ageMonths = (Date.now() - new Date(dateStr).getTime()) / (1000 * 60 * 60 * 24 * 30.44);
+    if (ageMonths < 12) return "fresh";
+    if (ageMonths < 24) return "aging";
+    return "stale";
+  };
+
   if (!hasCoordinates) {
     return (
       <div className="text-center py-8">
-        <MapPin className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+        <MapPin className="w-12 h-12 mx-auto text-muted-foreground mb-4" aria-hidden="true" />
         <h3 className="font-medium mb-2">Location Data Required</h3>
         <p className="text-sm text-muted-foreground">
           Please fetch parcel data first to enable comparable property analysis.
@@ -147,23 +155,27 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-        <span className="ml-3 text-muted-foreground">Searching for comparable properties...</span>
+      <div
+        className="flex items-center justify-center py-12"
+        role="status"
+        aria-live="polite"
+      >
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" aria-hidden="true" />
+        <span className="ml-3 text-muted-foreground">Searching for comparable properties…</span>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="text-center py-8">
-        <AlertCircle className="w-12 h-12 mx-auto text-destructive mb-4" />
-        <h3 className="font-medium mb-2">Error Loading Comps</h3>
+      <div className="text-center py-8" role="alert">
+        <AlertCircle className="w-12 h-12 mx-auto text-destructive mb-4" aria-hidden="true" />
+        <h3 className="font-medium mb-2">Couldn't load comps</h3>
         <p className="text-sm text-muted-foreground mb-4">
           {error instanceof Error ? error.message : "Failed to fetch comparable properties"}
         </p>
         <Button variant="outline" onClick={() => refetch()}>
-          <RefreshCw className="w-4 h-4 mr-2" />
+          <RefreshCw className="w-4 h-4 mr-2" aria-hidden="true" />
           Try Again
         </Button>
       </div>
@@ -172,8 +184,8 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
 
   if (!data?.success && data?.error) {
     return (
-      <div className="text-center py-8">
-        <AlertCircle className="w-12 h-12 mx-auto text-yellow-500 mb-4" />
+      <div className="text-center py-8" role="alert">
+        <AlertCircle className="w-12 h-12 mx-auto text-yellow-500 mb-4" aria-hidden="true" />
         <h3 className="font-medium mb-2">Comps Data Unavailable</h3>
         <p className="text-sm text-muted-foreground mb-4">{data.error}</p>
         {data.limitedData && (
@@ -197,8 +209,10 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
             size="sm"
             onClick={() => setShowFilters(!showFilters)}
             data-testid="button-toggle-filters"
+            aria-expanded={showFilters}
+            aria-controls="comps-filters-panel"
           >
-            <Search className="w-4 h-4 mr-1" />
+            <Search className="w-4 h-4 mr-1" aria-hidden="true" />
             {showFilters ? "Hide Filters" : "Filters"}
           </Button>
           <div className="flex flex-col items-center gap-0.5">
@@ -208,8 +222,9 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
               onClick={() => refetch()}
               disabled={isFetching}
               data-testid="button-refresh-comps"
+              aria-label={isFetching ? "Refreshing comps…" : "Refresh comps"}
             >
-              <RefreshCw className={`w-4 h-4 mr-1 ${isFetching ? "animate-spin" : ""}`} />
+              <RefreshCw className={`w-4 h-4 mr-1 ${isFetching ? "animate-spin" : ""}`} aria-hidden="true" />
               Refresh
             </Button>
             <span className="text-[10px] text-muted-foreground" data-testid="text-cost-comps">$0.10 per query</span>
@@ -217,16 +232,16 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
         </div>
         {data?.message && (
           <Badge variant="outline" className="text-yellow-600">
-            <AlertCircle className="w-3 h-3 mr-1" />
+            <AlertCircle className="w-3 h-3 mr-1" aria-hidden="true" />
             {data.message}
           </Badge>
         )}
       </div>
 
       {showFilters && (
-        <Card>
+        <Card id="comps-filters-panel">
           <CardContent className="pt-4">
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <Label htmlFor="radius" className="text-xs">Search Radius (miles)</Label>
                 <Input
@@ -271,7 +286,7 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
           <Card>
             <CardContent className="pt-4">
               <div className="flex items-center gap-2">
-                <BarChart3 className="w-4 h-4 text-muted-foreground" />
+                <BarChart3 className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
                 <span className="text-xs text-muted-foreground">Avg $/Acre</span>
               </div>
               <p className="text-lg font-bold mt-1" data-testid="text-avg-price">
@@ -283,7 +298,7 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
           <Card>
             <CardContent className="pt-4">
               <div className="flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-muted-foreground" />
+                <TrendingUp className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
                 <span className="text-xs text-muted-foreground">Median $/Acre</span>
               </div>
               <p className="text-lg font-bold mt-1" data-testid="text-median-price">
@@ -295,7 +310,7 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
           <Card>
             <CardContent className="pt-4">
               <div className="flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-green-500" />
+                <TrendingUp className="w-4 h-4 text-green-500" aria-hidden="true" />
                 <span className="text-xs text-muted-foreground">High $/Acre</span>
               </div>
               <p className="text-lg font-bold mt-1 text-green-600" data-testid="text-high-price">
@@ -307,7 +322,7 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
           <Card>
             <CardContent className="pt-4">
               <div className="flex items-center gap-2">
-                <TrendingDown className="w-4 h-4 text-red-500" />
+                <TrendingDown className="w-4 h-4 text-red-500" aria-hidden="true" />
                 <span className="text-xs text-muted-foreground">Low $/Acre</span>
               </div>
               <p className="text-lg font-bold mt-1 text-red-600" data-testid="text-low-price">
@@ -323,7 +338,7 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
         <Card className="border-primary/50 bg-primary/5">
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2">
-              <DollarSign className="w-4 h-4" />
+              <DollarSign className="w-4 h-4" aria-hidden="true" />
               Estimated Market Value
             </CardTitle>
           </CardHeader>
@@ -350,7 +365,7 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
         <Card data-testid="card-offer-suggestions">
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2">
-              <Target className="w-4 h-4" />
+              <Target className="w-4 h-4" aria-hidden="true" />
               Offer Suggestions
             </CardTitle>
           </CardHeader>
@@ -402,14 +417,15 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
-                <Star className="w-4 h-4" />
+                <Star className="w-4 h-4" aria-hidden="true" />
                 Property Desirability Score
               </div>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Badge
+                  <button
+                    type="button"
                     data-testid="badge-desirability-score"
-                    className={`cursor-pointer text-base px-3 py-1 ${
+                    className={`inline-flex items-center rounded-md text-base px-3 py-1 font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
                       data.desirabilityScore.totalScore >= 70
                         ? "bg-green-500 hover:bg-green-600 text-white"
                         : data.desirabilityScore.totalScore >= 40
@@ -417,18 +433,20 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
                         : "bg-red-500 hover:bg-red-600 text-white"
                     }`}
                     onClick={() => setShowScoreBreakdown(!showScoreBreakdown)}
+                    aria-expanded={showScoreBreakdown}
+                    aria-controls="desirability-score-breakdown"
                   >
                     {data.desirabilityScore.totalScore}/100 ({data.desirabilityScore.grade})
-                  </Badge>
+                  </button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>Click to {showScoreBreakdown ? "hide" : "show"} score breakdown</p>
+                  <p>{showScoreBreakdown ? "Hide" : "Show"} score breakdown</p>
                 </TooltipContent>
               </Tooltip>
             </CardTitle>
           </CardHeader>
           {showScoreBreakdown && (
-            <CardContent data-testid="score-breakdown">
+            <CardContent data-testid="score-breakdown" id="desirability-score-breakdown">
               <div className="space-y-3">
                 {data.desirabilityScore.factors.map((factor, idx) => (
                   <div key={idx} className="space-y-1">
@@ -486,7 +504,28 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
                         <div className="text-xs text-muted-foreground font-mono">{comp.apn}</div>
                       </TableCell>
                       <TableCell className="text-right">{comp.acreage?.toFixed(2) || "N/A"}</TableCell>
-                      <TableCell className="text-right">{formatDate(comp.saleDate)}</TableCell>
+                      <TableCell className="text-right">
+                        {(() => {
+                          const staleness = saleDateStaleness(comp.saleDate);
+                          const tone =
+                            staleness === "stale"
+                              ? "text-amber-600 dark:text-amber-400"
+                              : staleness === "aging"
+                              ? "text-muted-foreground"
+                              : "";
+                          const title =
+                            staleness === "stale"
+                              ? "Sold more than 2 years ago — may not reflect current market"
+                              : staleness === "aging"
+                              ? "Sold more than 1 year ago"
+                              : undefined;
+                          return (
+                            <span className={tone} title={title}>
+                              {formatDate(comp.saleDate)}
+                            </span>
+                          );
+                        })()}
+                      </TableCell>
                       <TableCell className="text-right">
                         <span className="font-medium">{comp.salePrice ? formatCurrency(comp.salePrice) : "N/A"}</span>
                         {comp.salePrice && (
@@ -512,7 +551,7 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
         </Card>
       ) : (
         <div className="text-center py-8">
-          <MapPin className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+          <MapPin className="w-12 h-12 mx-auto text-muted-foreground mb-4" aria-hidden="true" />
           <h3 className="font-medium mb-2">No Comparable Properties Found</h3>
           <p className="text-sm text-muted-foreground">
             Try expanding the search radius or adjusting filters.

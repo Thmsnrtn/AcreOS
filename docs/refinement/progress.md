@@ -597,3 +597,35 @@ future sessions — see resume pointer.
   suffix on each so screen reader users know the target behavior.
 
 **Sign-off (this slice):** D ✓ M ✓ A ✓ E ✓ AI n/a LI ✓ CW ✓ I ✓ T ✓
+
+### `/properties` — CompsAnalysis (session 5f)
+
+- [A-critical] Desirability Score badge was a shadcn `Badge` element
+  styled with `cursor-pointer` + onClick. Badges are `<div>` spans —
+  not keyboard-operable, no focus ring, no `aria-expanded`. Converted
+  to a real `<button type="button">` with `aria-expanded` +
+  `aria-controls` pointing at `#desirability-score-breakdown`. Kept
+  the green/yellow/red colorway + hover states; added focus-visible
+  ring matching the design system. Tooltip copy dropped the verb
+  "Click" so keyboard users aren't excluded.
+- [A] Filters and Refresh buttons gained `aria-expanded` /
+  `aria-controls` (filters panel) and `aria-label` that changes with
+  busy state (Refresh).
+- [A] 13 decorative icons made `aria-hidden` (MapPin x2, Loader2,
+  AlertCircle x3, RefreshCw x2, Search, BarChart3, TrendingUp x2,
+  TrendingDown, DollarSign, Target, Star).
+- [A] Loading state: `role="status" aria-live="polite"`. Error and
+  "Comps Data Unavailable" states: `role="alert"`.
+- [M] Filters grid `grid-cols-3` → `grid-cols-1 sm:grid-cols-3`. On
+  375px the three inputs were ~90px wide each; values clipped.
+- [LI] Sale Date staleness flag: comps sold >24 months ago render
+  in amber with a tooltip ("Sold more than 2 years ago — may not
+  reflect current market"); >12 months render in muted; <12 months
+  render normal. Stale comps are a common source of bad valuation —
+  calling them out protects the operator's offer math.
+- [CW] "Error Loading Comps" → "Couldn't load comps" (title case
+  drops, tone matches rest of app).
+- [CW] Ellipsis normalization — "Searching for comparable
+  properties..." → "…".
+
+**Sign-off (this slice):** D ✓ M ✓ A ✓ E ✓ AI n/a LI ✓ CW ✓ I ✓ T ✓

@@ -1,11 +1,10 @@
 # Elite-Team Refinement — Resume Point
 
-**Last session:** 2026-04-23 (session 5e — fifth slice)
-**Last completed refinement:** ResearchSummaryPanel 9-lens
-(status.replace bug, 11 decorative icons aria-hidden, aria-live
-regions on Saving/Saved + comps-loading, window.open noopener,
-descriptive error toast) plus a cross-cutting sweep of the
-status.replace bug across 22 client files / 59 call sites.
+**Last session:** 2026-04-23 (session 5f — sixth slice)
+**Last completed refinement:** CompsAnalysis 9-lens
+(Badge→Button a11y fix for Desirability Score, filters grid
+mobile fix, sale-date staleness flag, 13 decorative icons
+aria-hidden, live regions, copy polish).
 **Phase 1 inventory:** ✅ committed at `11d0e8c`
 
 ## How to continue
@@ -57,7 +56,10 @@ Session 5 (five slices):
 - 5d. `/properties` — dead-code sweep (DueDiligenceTab removal) +
   DueDiligencePanel a11y pass (commit `b27128b`)
 - 5e. ResearchSummaryPanel 9-lens + cross-cutting status.replace
-  sweep across 22 client files (commit TBD this session)
+  sweep across 22 client files (commit `3d0f564`)
+- 5f. CompsAnalysis 9-lens — Badge→Button a11y, sale-date
+  staleness, mobile filter grid, decorative icons (commit TBD
+  this session)
 
 ## Cross-cutting gains this pass
 
@@ -108,20 +110,15 @@ Session 5 (five slices):
 
 **`/properties` — continued.** Remaining detail-dialog tab contents:
 
-1. `PropertyIntelligenceTab` (defined inline in `properties.tsx`
+1. `AIOfferGenerator` (`client/src/components/ai-offer-generator.tsx`)
+   — AI grounding, cost controls, failure modes on slow LLM calls,
+   output structure (headline + data + caveats). 729 lines.
+2. `PropertyAnalysisChat` (`client/src/components/property-analysis-chat.tsx`)
+   — AI chat surface, streaming states, error paths, accessibility
+   of live region updates. 617 lines.
+3. `PropertyIntelligenceTab` (defined inline in `properties.tsx`
    near end of file) — AI output grounding, lazy-load of heavy
    analytics, data provenance on scores.
-2. `CompsAnalysis` (`client/src/components/comps-analysis.tsx`) —
-   LI-critical. Investors need sold-date, $/acre, distance. Verify
-   those are front-and-center. Also grounding/source quality of
-   whatever backs the comps.
-3. `AIOfferGenerator` (`client/src/components/ai-offer-generator.tsx`)
-   — AI grounding, cost controls, failure modes on slow LLM calls,
-   output structure (headline + data + caveats).
-4. `PropertyAnalysisChat` (separate component, opens when the
-   "Analyze with AI" button is clicked) — AI chat surface, streaming
-   states, error paths, accessibility of live region updates.
-5. `ResearchSummaryPanel` — referenced but not yet 9-lens'd.
 
 Note: the Accordion trigger content text in DueDiligencePanel still
 shows generic category icons but the items themselves (Tax Analysis,
