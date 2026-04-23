@@ -3,7 +3,9 @@ import { useParams } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -41,28 +43,35 @@ export default function BorrowerPortal() {
   const [error, setError] = useState("");
   const [verifiedEmail, setVerifiedEmail] = useState("");
 
+  useDocumentTitle("Borrower portal");
+
   const handleVerify = async () => {
+    const trimmed = email.trim();
+    if (!trimmed || !trimmed.includes("@")) {
+      setError("Enter the email address your lender has on file for you.");
+      return;
+    }
     setIsVerifying(true);
     setError("");
-    
+
     try {
       const res = await fetch(`/api/borrower/verify`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accessToken, email }),
+        body: JSON.stringify({ accessToken, email: trimmed }),
       });
-      
+
       if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.message || "Verification failed");
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.message || "We couldn't match that email to this loan. Check the address from your payment reminder email and try again.");
       }
-      
+
       const data = await res.json();
       setLoanData(data);
       setIsVerified(true);
-      setVerifiedEmail(email);
+      setVerifiedEmail(trimmed);
     } catch (err: any) {
-      setError(err.message || "Unable to verify. Please check your email address.");
+      setError(err.message || "We couldn't verify your access right now. Check your connection and try again.");
     } finally {
       setIsVerifying(false);
     }
@@ -75,45 +84,75 @@ export default function BorrowerPortal() {
   if (!isVerified) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-[#F5E6D3] to-[#E8D4C4] dark:from-[#2D2118] dark:to-[#1A130D] flex items-center justify-center p-4">
+        <h1 className="sr-only">Borrower portal sign-in</h1>
         <Card className="w-full max-w-md floating-window">
           <CardHeader className="text-center">
             <div className="mx-auto mb-4 p-4 rounded-full bg-primary/10">
-              <Shield className="w-8 h-8 text-primary" />
+              <Shield className="w-8 h-8 text-primary" aria-hidden="true" />
             </div>
-            <CardTitle>Borrower Portal</CardTitle>
+            <CardTitle>Borrower portal</CardTitle>
             <CardDescription>
-              Enter your email address to access your loan information
+              Enter the email address your lender has on file to view your loan.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Email Address</label>
-              <Input
-                type="email"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                placeholder="your@email.com"
-                data-testid="input-borrower-email"
-              />
-            </div>
-            
-            {error && (
-              <div className="p-3 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-400 text-sm">
-                {error}
-              </div>
-            )}
-            
-            <Button 
-              className="w-full" 
-              onClick={handleVerify}
-              disabled={isVerifying || !email}
-              data-testid="button-verify-email"
+            <form
+              className="space-y-4"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!isVerifying && email.trim()) {
+                  void handleVerify();
+                }
+              }}
             >
-              {isVerifying ? "Verifying..." : "Access My Loan"}
-            </Button>
-            
+              <div className="space-y-2">
+                <Label htmlFor="borrower-email">Email address</Label>
+                <Input
+                  id="borrower-email"
+                  type="email"
+                  autoComplete="email"
+                  inputMode="email"
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  aria-invalid={error ? true : undefined}
+                  aria-describedby={error ? "borrower-email-error" : undefined}
+                  data-testid="input-borrower-email"
+                />
+              </div>
+
+              {error && (
+                <div
+                  id="borrower-email-error"
+                  role="alert"
+                  className="p-3 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-400 text-sm"
+                >
+                  {error}
+                </div>
+              )}
+
+              <Button
+                type="submit"
+                className="w-full min-h-11"
+                disabled={isVerifying || !email.trim()}
+                data-testid="button-verify-email"
+              >
+                {isVerifying ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
+                    Verifying…
+                  </>
+                ) : (
+                  "Access my loan"
+                )}
+              </Button>
+            </form>
+
             <p className="text-xs text-center text-muted-foreground">
-              Your information is secure and encrypted
+              Your information is encrypted in transit and at rest.
             </p>
           </CardContent>
         </Card>
@@ -123,8 +162,13 @@ export default function BorrowerPortal() {
 
   if (!loanData) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-muted-foreground">Loading loan information...</p>
+      <div
+        className="min-h-screen flex items-center justify-center"
+        role="status"
+        aria-live="polite"
+      >
+        <Loader2 className="w-5 h-5 mr-2 animate-spin text-muted-foreground" aria-hidden="true" />
+        <p className="text-muted-foreground">Loading your loan…</p>
       </div>
     );
   }
@@ -133,51 +177,53 @@ export default function BorrowerPortal() {
 }
 
 function BorrowerLandingPage() {
+  useDocumentTitle("Borrower portal — AcreOS");
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#F5E6D3] to-[#E8D4C4] dark:from-[#2D2118] dark:to-[#1A130D] flex items-center justify-center p-4">
+      <h1 className="sr-only">AcreOS borrower portal</h1>
       <Card className="w-full max-w-lg floating-window text-center">
         <CardHeader>
           <div className="mx-auto mb-4 p-4 rounded-full bg-primary/10">
-            <Building className="w-10 h-10 text-primary" />
+            <Building className="w-10 h-10 text-primary" aria-hidden="true" />
           </div>
-          <CardTitle className="text-2xl">AcreOS Borrower Portal</CardTitle>
+          <CardTitle className="text-2xl">AcreOS borrower portal</CardTitle>
           <CardDescription className="text-base">
-            Access your loan information and make payments securely
+            Access your loan information and make payments securely.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="grid gap-4 text-left">
-            <div className="flex items-start gap-3">
-              <div className="p-2 rounded-lg bg-emerald-100 dark:bg-emerald-900/30">
-                <FileText className="w-4 h-4 text-emerald-600" />
+          <ul className="grid gap-4 text-left">
+            <li className="flex items-start gap-3">
+              <div className="p-2 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 shrink-0">
+                <FileText className="w-4 h-4 text-emerald-600" aria-hidden="true" />
               </div>
               <div>
-                <p className="font-medium">View Loan Details</p>
-                <p className="text-sm text-muted-foreground">See your balance, payment schedule, and loan terms</p>
+                <p className="font-medium">View loan details</p>
+                <p className="text-sm text-muted-foreground">See your balance, payment schedule, and loan terms.</p>
               </div>
-            </div>
-            <div className="flex items-start gap-3">
-              <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30">
-                <CreditCard className="w-4 h-4 text-blue-600" />
-              </div>
-              <div>
-                <p className="font-medium">Make Payments</p>
-                <p className="text-sm text-muted-foreground">Pay online with ACH or credit card</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-3">
-              <div className="p-2 rounded-lg bg-amber-100 dark:bg-amber-900/30">
-                <Download className="w-4 h-4 text-amber-600" />
+            </li>
+            <li className="flex items-start gap-3">
+              <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30 shrink-0">
+                <CreditCard className="w-4 h-4 text-blue-600" aria-hidden="true" />
               </div>
               <div>
-                <p className="font-medium">Download Documents</p>
-                <p className="text-sm text-muted-foreground">Access your contract and payment history</p>
+                <p className="font-medium">Make payments</p>
+                <p className="text-sm text-muted-foreground">Pay online with ACH or credit card.</p>
               </div>
-            </div>
-          </div>
-          
+            </li>
+            <li className="flex items-start gap-3">
+              <div className="p-2 rounded-lg bg-amber-100 dark:bg-amber-900/30 shrink-0">
+                <Download className="w-4 h-4 text-amber-600" aria-hidden="true" />
+              </div>
+              <div>
+                <p className="font-medium">Download documents</p>
+                <p className="text-sm text-muted-foreground">Access your contract and payment history.</p>
+              </div>
+            </li>
+          </ul>
+
           <div className="p-4 rounded-lg bg-muted/50 text-sm text-muted-foreground">
-            To access your loan portal, use the link provided in your payment reminder email or contact your lender.
+            To open your portal, use the link in your payment reminder email — or contact your lender.
           </div>
         </CardContent>
       </Card>

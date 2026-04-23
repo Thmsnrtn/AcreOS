@@ -2131,3 +2131,198 @@ itself defers to slice 9b (372 lines, own focused pass).
   don't need a round-trip to the sender to resolve.
 
 **Commit:** `61f1469`
+
+---
+
+## Session 10 — 2026-04-23 — `/portal/:accessToken` (public borrower portal — entry surfaces)
+
+**Surface:** `client/src/pages/borrower-portal.tsx` (lines 35-186)
+— top-level `BorrowerPortal` (verification gate) + the no-token
+`BorrowerLandingPage` + intermediate "loading" state between
+verify and dashboard. The 1000+-line `BorrowerDashboard`
+component (lines 188-end) defers to slice 10b; it's a separate
+surface with its own payment / autopay / payoff / statements /
+messaging UX concerns that don't fit in one slice.
+
+**Why this surface matters:** public route, no Clerk auth —
+the borrower's first impression of the lender's portal. Mobile-
+critical, must work at 320px. Borrowers arrive anxious (payment
+due, payoff question, 1098 request), often on a phone, often
+from an SMS or email link. Trust-signaling and clarity on this
+page affect the entire lending relationship.
+
+**Lens sweep + refinements shipped:**
+
+- **A11y (form semantics — P1 on a public form):** the email
+  label was a bare `<label>` with no `htmlFor`, unassociated
+  with the input. SR users didn't hear "Email address" on
+  focus. Swapped to the shadcn `<Label htmlFor="borrower-email">`
+  + Input `id="borrower-email"`. Added `aria-invalid` + wired
+  `aria-describedby="borrower-email-error"` when the error
+  state is shown, so SR users hear the validation message.
+
+- **A11y (error region):** validation-error `<div>` now
+  `role="alert"` — previously appeared silently on failed
+  verify, leaving SR users with no feedback after hitting
+  Submit.
+
+- **A11y (decorative-icon sweep):** `Shield`, `Building`,
+  `FileText`, `CreditCard`, `Download`, `Loader2` — all 6
+  icons now `aria-hidden="true"`. All are visual decoration
+  paired with visible text labels.
+
+- **A11y (h1 landmark):** neither the landing page nor the
+  verify gate had a proper top-level heading — CardTitle
+  renders as a `<div>`. SR users had no page-level landmark.
+  Added an `sr-only <h1>` on both surfaces ("AcreOS borrower
+  portal" on landing; "Borrower portal sign-in" on the
+  verify gate). Visual CardTitle unchanged.
+
+- **A11y (loading state):** "Loading loan information…"
+  intermediate state was a plain `<p>` with no aria-live.
+  Now wrapped in a parent with `role="status"` +
+  `aria-live="polite"` + a spinning `<Loader2>` so SR users
+  hear the wait state.
+
+- **A11y (landing-page list semantics):** the three feature
+  rows on the landing page were `<div>`s with no list
+  semantics. Promoted the container to `<ul>` and rows to
+  `<li>` so SR users hear "list, 3 items" — conveys "here's
+  what you can do" structure.
+
+- **Engineer (form-level submit):** the email + button were
+  two loose elements; hitting Enter in the input did nothing.
+  Wrapped in `<form onSubmit={…}>` with `type="submit"` on
+  the button — Enter now submits. Added a trim + has-`@`
+  client-side pre-check before the network request so the
+  user gets immediate feedback on obvious typos without
+  waiting for the server round-trip.
+
+- **Engineer (error-message fallback):** generic "Verification
+  failed" replaced with a borrower-voice specific fallback:
+  "We couldn't match that email to this loan. Check the
+  address from your payment reminder email and try again."
+  Also a separate network-error fallback: "We couldn't verify
+  your access right now. Check your connection and try again."
+
+- **Engineer (email input mobile keyboard):** input got the
+  full mobile-keyboard checklist — `autoComplete="email"`,
+  `inputMode="email"`, `autoCapitalize="off"`, `autoCorrect=
+  "off"`, `spellCheck={false}`. Typing a borrower email on
+  mobile Safari previously triggered auto-capitalize on the
+  first character, which the user would then have to backspace
+  every time.
+
+- **Engineer (JSON parse defense):** `await res.json()` inside
+  the error branch could itself throw if the server returned
+  HTML (e.g. a Fly.io cold-start 502). Wrapped in
+  `.catch(() => ({}))` so the fallback error message surfaces
+  instead of an unhandled promise rejection.
+
+- **Engineer (document title):** no `useDocumentTitle()` was
+  wired. Now "Borrower portal" on the verify gate +
+  "Borrower portal — AcreOS" on the landing page. Tab label
+  + SR page-load announcement both benefit.
+
+- **Copy (sentence-case sweep):** "Borrower Portal" →
+  "Borrower portal"; "Email Address" → "Email address";
+  "Access My Loan" → "Access my loan"; "View Loan Details"
+  → "View loan details"; "Make Payments" → "Make payments";
+  "Download Documents" → "Download documents"; "AcreOS
+  Borrower Portal" → "AcreOS borrower portal"; "Verifying…"
+  proper ellipsis (was "Verifying..."); "Loading loan
+  information…" → "Loading your loan…" (tighter, borrower-
+  centric).
+
+- **Copy (description rewrite on verify gate):** "Enter your
+  email address to access your loan information" → "Enter
+  the email address your lender has on file to view your
+  loan." Specifies *which* email (borrowers on multiple
+  addresses get clarity), names the fact that the lender
+  has an email on file (trust signal — the system knows
+  who you are).
+
+- **Copy (secure-copy precision):** "Your information is
+  secure and encrypted" → "Your information is encrypted in
+  transit and at rest." Before: generic SaaS trust platitude;
+  after: specific, technical, signals actual security posture.
+
+- **Copy (landing CTA clarity):** "To access your loan
+  portal, use the link provided in your payment reminder
+  email or contact your lender." → "To open your portal, use
+  the link in your payment reminder email — or contact your
+  lender." Tighter, em-dash per house style.
+
+- **Copy (placeholder voice):** "your@email.com" →
+  "you@example.com" — more universally-readable placeholder
+  that follows the RFC-2606 reserved-domain convention.
+
+- **Mobile (touch target):** "Access my loan" button gets
+  `min-h-11` — 44px minimum touch target per a11y baseline.
+  Was default shadcn Button h-10 (40px).
+
+- **Mobile (landing icon shrink-0):** the three feature-row
+  icon tiles on the landing page gained `shrink-0` so they
+  don't squash at 320px when the copy wraps. Before: at
+  very narrow widths the colored icon tiles could compress
+  to ~20px width, distorting the icon.
+
+**9-lens sign-off:**
+
+| Lens              | Status                                                                                                                                        |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Designer          | PASS — rhythm unchanged, feature-row icon tiles stay square on narrow widths, copy hierarchy tightened                                        |
+| Mobile designer   | PASS — 44px touch on primary CTA, mobile-keyboard attrs on email input, icons shrink-0 at 320px                                               |
+| Accessibility     | PASS — Label htmlFor, aria-describedby wired to error, role=alert on error, role=status on loading, h1 landmark both paths, icon aria-hidden |
+| Engineer          | PASS — form onSubmit + Enter-to-submit, client pre-check, JSON-parse guarded, document title set, specific error fallbacks                   |
+| AI systems        | N/A — no LLM on this surface                                                                                                                   |
+| Land investor     | N/A — this is the borrower side. Borrower perspective: PASS — warmer error voice, "lender on file" trust signal, "your loan" ownership       |
+| Copywriter        | PASS — sentence-case sweep, proper ellipsis, em-dash, specific security claim, placeholder-RFC                                                |
+| Infrastructure    | PASS — JSON-parse defense against HTML/502 fall-through; no timeout (deferred, verify is idempotent and user-driven)                         |
+| Trust             | PASS — public no-auth surface now has h1 landmark, aria-described error state, specific security posture, borrower-centric error voice       |
+
+**Deferred / flagged for owner:**
+- **Slice 10b — `<BorrowerDashboard>`** (~1000 lines): contains
+  payment flow (Stripe redirect), autopay toggle, payoff quote
+  flow, statements/1098 PDF generator, borrower-lender messaging,
+  payment history table. Each of those is its own focused
+  trust+money surface — attempting in one slice would under-
+  refine. Slated for 10b.
+- **Hard-coded gradient colors** (`#F5E6D3 / #E8D4C4`): not
+  using design tokens. Brand-deliberate earth/cream palette,
+  probably by design. Flagged for owner confirmation — either
+  adopt as token or keep as per-surface literal.
+- **Account-enumeration consideration:** intentionally vague
+  error copy on a *server* response ("We couldn't match that
+  email…") is still more specific than the previous
+  "Verification failed" — if the sec team wants tighter
+  enumeration protection, they can standardize server-side to
+  always return 200 + generic message and rate-limit aggressively.
+  Client-side we'd then drop the email-specific phrasing.
+  Flagged for owner call.
+- **Rate-limit messaging:** if the server returns 429, the
+  generic "We couldn't verify…" copy is fine but doesn't tell
+  the user how long to wait. Server-side improvement would be
+  to include a retry-after window the client could display.
+  Deferred.
+
+**Patterns carried forward:**
+- **Public-form a11y checklist (new 10):** any public
+  (no-auth) form must ship: `Label htmlFor` + Input `id`,
+  `role="alert"` on validation errors, `aria-invalid` +
+  `aria-describedby` wiring, form-level `onSubmit` for
+  Enter-to-submit, mobile-keyboard attrs
+  (`autoComplete/inputMode/autoCapitalize/autoCorrect/spellCheck`),
+  and a proper h1 landmark (sr-only is fine). This was found
+  missing across the borrower portal entry; worth grepping
+  the public pages (`/auth`, `/sign/:docId`, `/forgot-password`,
+  `/reset-password`) for similar gaps.
+- **"Trust claim specificity" rule (new 10):** trust-
+  signaling copy should be specific and technical, not
+  platitudinous. "Your information is secure" reads as
+  marketing fluff; "Your information is encrypted in transit
+  and at rest" reads as a system-design claim. Where the
+  stronger claim is accurate, use it — it calibrates trust
+  better than vague reassurance.
+
+**Commit:** (pending — will fill after commit)
