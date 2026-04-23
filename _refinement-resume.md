@@ -1,11 +1,15 @@
 # Elite-Team Refinement — Resume Point
 
-**Last session:** 2026-04-23 (session 5h — eighth slice)
-**Last completed refinement:** PropertyAnalysisChat 9-lens — added
-role=log + aria-live on messages container (the core chat a11y
-fix), role=status on Analyzing indicator, busy-aware send button
-label, 18 decorative icons aria-hidden.
+**Last session:** 2026-04-23 (session 5i — ninth slice)
+**Last completed refinement:** PropertyIntelligenceTab 9-lens —
+progressbar semantics on completeness bar, role=status on both
+empty states and errors card, 23 decorative icons aria-hidden,
+busy-aware aria-labels on Refresh/Fetch, AI/T grounding caveat on
+Investment Scores, FEMA NFHL attribution on Flood Zone, full copy
+sweep (ellipses + toast titles + empty state + errors heading),
+xl:grid-cols-3 for 1440px+ viewports.
 **Phase 1 inventory:** ✅ committed at `11d0e8c`
+**PropertyDetailDialog:** ✅ fully refined across all tabs.
 
 ## How to continue
 
@@ -47,7 +51,7 @@ Session 4:
   state conformance + mobile action-row stack + source badge
   promotion + token-based visuals
 
-Session 5 (five slices):
+Session 5 (nine slices — full /properties surface):
 - 5a. `/properties` — list slice (commit `b70c9d6`)
 - 5b. `/properties` — PropertyCard + PropertyForm slice (commit
   `29bd33f`)
@@ -65,7 +69,11 @@ Session 5 (five slices):
   (commit `8848f08`)
 - 5h. PropertyAnalysisChat 9-lens — role=log on messages
   container, role=status on analyzing indicator, busy-aware send
-  button, 18 icons aria-hidden (commit TBD this session)
+  button, 18 icons aria-hidden (commit `a7348fb`)
+- 5i. PropertyIntelligenceTab 9-lens — progressbar semantics, AI/T
+  Investment Scores caveat, FEMA NFHL attribution, 23 icons
+  aria-hidden, full copy sweep, xl:grid-cols-3 (commit TBD this
+  session)
 
 ## Cross-cutting gains this pass
 
@@ -114,22 +122,23 @@ Session 5 (five slices):
 
 ## Next surface to refine
 
-**`/properties` — continued.** Remaining detail-dialog tab contents:
+**PropertyDetailDialog is complete.** The walk now moves to the
+next inventory section. Suggested order from inventory:
 
-1. `PropertyIntelligenceTab` (defined inline in `properties.tsx`
-   near end of file) — AI output grounding, lazy-load of heavy
-   analytics, data provenance on scores. This is the last piece
-   of the PropertyDetailDialog surface.
+1. `/deals` — kanban UX on 375px (earlier pass only touched colors;
+   drag-and-drop accessibility is likely the critical gap)
+2. `/campaigns` — list + detail + create; AI-drafted letter copy
+   is likely the AI/T hot spot
+3. `/inbox` — message rendering + thread navigation a11y
+4. `/documents` — upload + OCR trust signals
+5. `/sign/:docId` — **legal/trust surface** — verify signer flow
+   end-to-end; any copy that implies legal weight (typed signature,
+   consent checkbox) needs trust-architect review
+6. `/portal/:accessToken` — borrower portal; **public link, mobile
+   critical** — no Clerk auth, must work at 320px, copy tone should
+   reassure a borrower receiving this from a stranger
 
-After that the detail dialog is done and the walk moves to the
-next inventory section. Likely order from inventory:
-- `/deals` (kanban UX on 375px — earlier pass only touched colors)
-- `/campaigns`
-- `/inbox`
-- `/documents`
-- `/sign/:docId` — legal/trust surface; verify signer flow
-- `/portal/:accessToken` — borrower portal; public link, mobile
-  critical
+Start next session with `/deals`.
 
 Note: the Accordion trigger content text in DueDiligencePanel still
 shows generic category icons but the items themselves (Tax Analysis,

@@ -2365,14 +2365,14 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
       {
         onSuccess: () => {
           toast({
-            title: "Property Enriched",
-            description: "Property intelligence data has been updated successfully.",
+            title: "Intelligence updated",
+            description: "Fetched fresh environmental, hazard, and demographic data for this property.",
           });
         },
         onError: (error: any) => {
           toast({
-            title: "Enrichment Failed",
-            description: error.message || "Failed to enrich property. Please try again.",
+            title: "Couldn't refresh intelligence",
+            description: error.message || "One or more data sources didn't respond. Your existing data is unchanged — try again in a moment.",
             variant: "destructive",
           });
         },
@@ -2385,7 +2385,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h3 className="text-lg font-semibold flex items-center gap-2">
-            <Brain className="w-5 h-5" />
+            <Brain className="w-5 h-5" aria-hidden="true" />
             Property Intelligence
           </h3>
           {lastEnrichedAt && (
@@ -2394,15 +2394,16 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
             </p>
           )}
         </div>
-        <Button 
+        <Button
           onClick={handleRefresh}
           disabled={isEnriching || !property.latitude || !property.longitude}
           data-testid="button-refresh-intelligence"
+          aria-label={isEnriching ? "Refreshing intelligence data…" : "Refresh intelligence data"}
         >
           {isEnriching ? (
-            <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Enriching...</>
+            <><Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" /> Enriching…</>
           ) : (
-            <><RefreshCw className="w-4 h-4 mr-2" /> Refresh Intelligence</>
+            <><RefreshCw className="w-4 h-4 mr-2" aria-hidden="true" /> Refresh Intelligence</>
           )}
         </Button>
       </div>
@@ -2413,14 +2414,22 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
-                <CheckCircle className="w-4 h-4 text-primary" />
-                <h4 className="font-semibold text-sm">Data Completeness</h4>
+                <CheckCircle className="w-4 h-4 text-primary" aria-hidden="true" />
+                <h4 className="font-semibold text-sm" id="completeness-label">Data Completeness</h4>
               </div>
-              <span className="text-lg font-bold tabular-nums">
+              <span className="text-lg font-bold tabular-nums" aria-hidden="true">
                 {(enrichmentData as any).completenessScore}%
               </span>
             </div>
-            <div className="w-full bg-muted rounded-full h-2 mb-3">
+            <div
+              className="w-full bg-muted rounded-full h-2 mb-3"
+              role="progressbar"
+              aria-labelledby="completeness-label"
+              aria-valuenow={(enrichmentData as any).completenessScore}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuetext={`${(enrichmentData as any).completenessScore}% of data sources populated`}
+            >
               <div
                 className={`h-2 rounded-full transition-all ${
                   (enrichmentData as any).completenessScore >= 80
@@ -2454,9 +2463,9 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
       )}
 
       {!property.latitude || !property.longitude ? (
-        <Card className="border-dashed">
+        <Card className="border-dashed" role="status">
           <CardContent className="py-8 text-center">
-            <MapPin className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+            <MapPin className="w-12 h-12 mx-auto text-muted-foreground mb-4" aria-hidden="true" />
             <h4 className="font-medium mb-2">Missing Coordinates</h4>
             <p className="text-sm text-muted-foreground">
               This property needs GPS coordinates to fetch intelligence data.
@@ -2465,33 +2474,34 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
           </CardContent>
         </Card>
       ) : !hasData ? (
-        <Card className="border-dashed">
+        <Card className="border-dashed" role="status">
           <CardContent className="py-8 text-center">
-            <Brain className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+            <Brain className="w-12 h-12 mx-auto text-muted-foreground mb-4" aria-hidden="true" />
             <h4 className="font-medium mb-2">No Intelligence Data</h4>
             <p className="text-sm text-muted-foreground mb-4">
-              Click "Refresh Intelligence" to fetch environmental, hazard, and demographic data for this property.
+              Fetch environmental, hazard, and demographic data for this property.
             </p>
-            <Button 
+            <Button
               onClick={handleRefresh}
               disabled={isEnriching}
               data-testid="button-fetch-intelligence"
+              aria-label={isEnriching ? "Fetching intelligence data…" : "Fetch intelligence data"}
             >
               {isEnriching ? (
-                <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Fetching...</>
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" /> Fetching…</>
               ) : (
-                <><Brain className="w-4 h-4 mr-2" /> Fetch Intelligence</>
+                <><Brain className="w-4 h-4 mr-2" aria-hidden="true" /> Fetch Intelligence</>
               )}
             </Button>
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {enrichmentData?.scores && (
             <Card data-testid="card-scores">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <TrendingUp className="w-4 h-4 text-primary" />
+                  <TrendingUp className="w-4 h-4 text-primary" aria-hidden="true" />
                   <h4 className="font-semibold">Investment Scores</h4>
                 </div>
                 <div className="grid grid-cols-2 gap-3 text-sm">
@@ -2514,6 +2524,9 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
                     </p>
                   </div>
                 </div>
+                <p className="text-xs text-muted-foreground mt-3 pt-3 border-t">
+                  Derived from the data below — not an appraisal. Use alongside your own diligence.
+                </p>
               </CardContent>
             </Card>
           )}
@@ -2522,13 +2535,13 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
             <Card data-testid="card-flood-zone">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Droplets className="w-4 h-4 text-blue-500" />
+                  <Droplets className="w-4 h-4 text-blue-500" aria-hidden="true" />
                   <h4 className="font-semibold">Flood & Water Risk</h4>
                 </div>
                 <div className="space-y-2 text-sm">
                   <div className="flex items-center justify-between" data-testid="flood-zone-code">
                     <span className="text-muted-foreground">Flood Zone</span>
-                    <Badge variant="outline">{enrichmentData.hazards.floodZone || "Unknown"}</Badge>
+                    <Badge variant="outline" title="FEMA National Flood Hazard Layer designation">{enrichmentData.hazards.floodZone || "Unknown"}</Badge>
                   </div>
                   <div className="flex items-center justify-between" data-testid="flood-risk-level">
                     <span className="text-muted-foreground">Flood Risk</span>
@@ -2542,6 +2555,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
                       {enrichmentData.hazards.wetlandsPresent ? `Yes (${enrichmentData.hazards.wetlandsPercentage}%)` : "No"}
                     </span>
                   </div>
+                  <p className="text-xs text-muted-foreground pt-1">FEMA NFHL</p>
                 </div>
               </CardContent>
             </Card>
@@ -2551,13 +2565,13 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
             <Card data-testid="card-natural-hazards">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Flame className="w-4 h-4 text-orange-500" />
+                  <Flame className="w-4 h-4 text-orange-500" aria-hidden="true" />
                   <h4 className="font-semibold">Natural Hazards</h4>
                 </div>
                 <div className="space-y-2 text-sm">
                   <div className="flex items-center justify-between" data-testid="earthquake-risk">
                     <span className="text-muted-foreground flex items-center gap-1">
-                      <Mountain className="w-3 h-3" /> Earthquake
+                      <Mountain className="w-3 h-3" aria-hidden="true" /> Earthquake
                     </span>
                     <Badge variant={getRiskBadgeVariant(enrichmentData.hazards.earthquakeRisk)} className="capitalize">
                       {enrichmentData.hazards.earthquakeRisk || "Unknown"}
@@ -2565,7 +2579,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
                   </div>
                   <div className="flex items-center justify-between" data-testid="wildfire-risk">
                     <span className="text-muted-foreground flex items-center gap-1">
-                      <Flame className="w-3 h-3" /> Wildfire
+                      <Flame className="w-3 h-3" aria-hidden="true" /> Wildfire
                     </span>
                     <Badge variant={getRiskBadgeVariant(enrichmentData.hazards.wildfireRisk)} className="capitalize">
                       {enrichmentData.hazards.wildfireRisk || "Unknown"}
@@ -2588,7 +2602,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
             <Card data-testid="card-environmental">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Leaf className="w-4 h-4 text-green-600" />
+                  <Leaf className="w-4 h-4 text-green-600" aria-hidden="true" />
                   <h4 className="font-semibold">Environmental Factors</h4>
                 </div>
                 <div className="space-y-2 text-sm">
@@ -2635,7 +2649,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
             <Card data-testid="card-infrastructure">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Building2 className="w-4 h-4 text-muted-foreground" />
+                  <Building2 className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
                   <h4 className="font-semibold">Infrastructure</h4>
                 </div>
                 <div className="space-y-2 text-sm">
@@ -2666,7 +2680,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
             <Card data-testid="card-demographics">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Users className="w-4 h-4 text-indigo-500" />
+                  <Users className="w-4 h-4 text-indigo-500" aria-hidden="true" />
                   <h4 className="font-semibold">Demographics</h4>
                 </div>
                 <div className="space-y-2 text-sm">
@@ -2722,7 +2736,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
             <Card data-testid="card-transportation">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Car className="w-4 h-4 text-muted-foreground" />
+                  <Car className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
                   <h4 className="font-semibold">Transportation</h4>
                 </div>
                 <div className="space-y-2 text-sm">
@@ -2766,7 +2780,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
             <Card data-testid="card-public-lands">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <TreePine className="w-4 h-4 text-green-700" />
+                  <TreePine className="w-4 h-4 text-green-700" aria-hidden="true" />
                   <h4 className="font-semibold">Public Lands</h4>
                 </div>
                 <div className="space-y-2 text-sm">
@@ -2791,7 +2805,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
             <Card data-testid="card-water-resources">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Droplets className="w-4 h-4 text-cyan-500" />
+                  <Droplets className="w-4 h-4 text-cyan-500" aria-hidden="true" />
                   <h4 className="font-semibold">Water Resources</h4>
                 </div>
                 <div className="space-y-2 text-sm">
@@ -2818,7 +2832,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
             <Card data-testid="card-elevation">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Mountain className="w-4 h-4 text-slate-500" />
+                  <Mountain className="w-4 h-4 text-slate-500" aria-hidden="true" />
                   <h4 className="font-semibold">Elevation & Terrain</h4>
                 </div>
                 <div className="space-y-2 text-sm">
@@ -2849,7 +2863,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
             <Card data-testid="card-climate">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Thermometer className="w-4 h-4 text-orange-400" />
+                  <Thermometer className="w-4 h-4 text-orange-400" aria-hidden="true" />
                   <h4 className="font-semibold">Climate & Growing</h4>
                 </div>
                 <div className="space-y-2 text-sm">
@@ -2886,7 +2900,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
             <Card data-testid="card-agricultural-values">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Wheat className="w-4 h-4 text-yellow-600" />
+                  <Wheat className="w-4 h-4 text-yellow-600" aria-hidden="true" />
                   <h4 className="font-semibold">Agricultural Values</h4>
                 </div>
                 <div className="space-y-2 text-sm">
@@ -2923,7 +2937,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
             <Card data-testid="card-land-cover">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Leaf className="w-4 h-4 text-emerald-500" />
+                  <Leaf className="w-4 h-4 text-emerald-500" aria-hidden="true" />
                   <h4 className="font-semibold">Land Cover</h4>
                 </div>
                 <div className="space-y-2 text-sm">
@@ -2954,7 +2968,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
             <Card data-testid="card-cropland">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Wheat className="w-4 h-4 text-amber-500" />
+                  <Wheat className="w-4 h-4 text-amber-500" aria-hidden="true" />
                   <h4 className="font-semibold">Cropland Data</h4>
                 </div>
                 <div className="space-y-2 text-sm">
@@ -2985,7 +2999,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
             <Card data-testid="card-epa-facilities">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Factory className="w-4 h-4 text-gray-500" />
+                  <Factory className="w-4 h-4 text-gray-500" aria-hidden="true" />
                   <h4 className="font-semibold">EPA Facilities Nearby</h4>
                 </div>
                 <div className="space-y-2 text-sm">
@@ -3029,7 +3043,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
             <Card data-testid="card-storm-history">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Cloud className="w-4 h-4 text-blue-400" />
+                  <Cloud className="w-4 h-4 text-blue-400" aria-hidden="true" />
                   <h4 className="font-semibold">Storm Risk</h4>
                 </div>
                 <div className="space-y-2 text-sm">
@@ -3057,7 +3071,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
             <Card data-testid="card-plss">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Grid3x3 className="w-4 h-4 text-teal-600" />
+                  <Grid3x3 className="w-4 h-4 text-teal-600" aria-hidden="true" />
                   <h4 className="font-semibold">PLSS Legal Description</h4>
                 </div>
                 <div className="space-y-2 text-sm">
@@ -3095,7 +3109,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
             <Card data-testid="card-watershed">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Waves className="w-4 h-4 text-blue-500" />
+                  <Waves className="w-4 h-4 text-blue-500" aria-hidden="true" />
                   <h4 className="font-semibold">Watershed</h4>
                 </div>
                 <div className="space-y-2 text-sm">
@@ -3127,7 +3141,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
             <Card data-testid="card-fema-nri">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Shield className="w-4 h-4 text-red-500" />
+                  <Shield className="w-4 h-4 text-red-500" aria-hidden="true" />
                   <h4 className="font-semibold">FEMA National Risk Index</h4>
                 </div>
                 <div className="space-y-2 text-sm">
@@ -3173,7 +3187,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
             <Card data-testid="card-usda-clu">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Wheat className="w-4 h-4 text-green-600" />
+                  <Wheat className="w-4 h-4 text-green-600" aria-hidden="true" />
                   <h4 className="font-semibold">USDA Farm Records (CLU)</h4>
                 </div>
                 <div className="space-y-2 text-sm">
@@ -3210,11 +3224,11 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
       )}
 
       {enrichmentData?.errors && Object.keys(enrichmentData.errors).length > 0 && (
-        <Card className="border-yellow-200 dark:border-yellow-800" data-testid="card-errors">
+        <Card className="border-yellow-200 dark:border-yellow-800" data-testid="card-errors" role="status">
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-2">
-              <AlertCircle className="w-4 h-4 text-yellow-600" />
-              <h4 className="font-semibold text-yellow-700 dark:text-yellow-400">Some data could not be fetched</h4>
+              <AlertCircle className="w-4 h-4 text-yellow-600" aria-hidden="true" />
+              <h4 className="font-semibold text-yellow-700 dark:text-yellow-400">Some data couldn't be fetched</h4>
             </div>
             <ul className="text-sm text-muted-foreground space-y-1">
               {Object.entries(enrichmentData.errors).map(([category, error]) => (

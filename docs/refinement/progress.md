@@ -699,3 +699,64 @@ future sessions — see resume pointer.
 - [CW] "Analyzing..." → "Analyzing…".
 
 **Sign-off (this slice):** D ✓ M ✓ A ✓ E ✓ AI ✓ LI ✓ CW ✓ I ✓ T ✓
+
+### `/properties` — PropertyIntelligenceTab (session 5i)
+
+This closes out the PropertyDetailDialog surface (overview → comps →
+AI offer → chat → due-diligence → research summary → intelligence).
+
+- [A-critical] Completeness bar was a styled `<div>` with no ARIA —
+  SR users heard only the heading. Added `role="progressbar"` +
+  `aria-labelledby` → heading, `aria-valuemin/max/now`, and
+  `aria-valuetext` ("{N}% of data sources populated"). The percentage
+  text beside it is now `aria-hidden` to avoid a double-read.
+- [A] Two empty-state cards (Missing Coordinates, No Intelligence
+  Data) gained `role="status"` and icon `aria-hidden`. Errors card
+  also `role="status"` (non-blocking — data was returned, some
+  sources just failed) rather than `role="alert"`.
+- [A] 23 decorative icons made `aria-hidden` across the component:
+  header Brain + Loader2 + RefreshCw, completeness CheckCircle,
+  empty-state MapPin/Brain x2/Loader2, and 16 card-header icons
+  (TrendingUp, Droplets x2, Flame, Leaf x2, Building2, Users, Car,
+  TreePine, Mountain, Thermometer, Wheat x3, Factory, Cloud, Grid3x3,
+  Waves, Shield) + row icons (Mountain + Flame inside Natural Hazards)
+  + AlertCircle in errors card.
+- [A] Refresh Intelligence + Fetch Intelligence buttons gained
+  busy-aware `aria-label`s ("Refreshing…" / "Fetching…" vs
+  idle verbs). Previously screen readers announced the same label
+  regardless of state.
+- [AI/T-critical] Investment Scores card now carries a grounding
+  caveat under the four numbers: "Derived from the data below — not
+  an appraisal. Use alongside your own diligence." Operators were
+  seeing Overall/Investment/Development/Risk bold numbers with no
+  reminder they're heuristic composites, not appraised values.
+- [LI] Flood Zone code Badge gained a `title` tooltip naming the
+  source ("FEMA National Flood Hazard Layer designation"). Flood Zone
+  card also gained a "FEMA NFHL" footer attribution. Standard FEMA
+  codes (AE, X, VE…) are opaque to operators new to land — naming
+  the source lets them cross-check on the FEMA map.
+- [CW] "Enriching..." → "Enriching…". "Fetching..." → "Fetching…".
+- [CW] Success toast "Property Enriched" → "Intelligence updated"
+  with specific body ("Fetched fresh environmental, hazard, and
+  demographic data for this property"). Error toast "Enrichment
+  Failed" → "Couldn't refresh intelligence" with trust-preserving
+  body ("One or more data sources didn't respond. Your existing
+  data is unchanged"). The old copy implied binary success/failure
+  when in practice individual providers can fail independently.
+- [CW] Empty state copy trimmed — "Click 'Refresh Intelligence' to
+  fetch…" → direct "Fetch environmental, hazard, and demographic
+  data for this property" (button is right below — no need to
+  reference it by label).
+- [CW] Errors heading "Some data could not be fetched" → "Some
+  data couldn't be fetched" (contraction matches the conversational
+  tone of the rest of the app).
+- [D] Grid `md:grid-cols-2` → `md:grid-cols-2 xl:grid-cols-3`. At
+  1440px+ the 20+ enrichment cards left significant empty gutters
+  — three columns at XL better fills the dialog without requiring
+  a redesign.
+
+**Sign-off (this slice):** D ✓ M ✓ A ✓ E ✓ AI ✓ LI ✓ CW ✓ I ✓ T ✓
+
+**PropertyDetailDialog now fully refined across all tabs.** Next
+surface per inventory: `/deals` kanban (375px UX), then `/campaigns`,
+`/inbox`, `/documents`, `/sign/:docId`, `/portal/:accessToken`.
