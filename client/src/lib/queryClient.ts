@@ -58,14 +58,25 @@ async function throwIfResNotOk(res: Response) {
 
 function handleQueryError(error: unknown): void {
   const err = error instanceof Error ? error : new Error(String(error));
-  
+
   if (isAuthError(err)) {
     return;
   }
-  
+
+  // 404s on background queries are almost always "optional data that
+  // wasn't there" (founder-only endpoints on non-founder accounts,
+  // flags not yet set, etc.) and should NOT surface a red error toast
+  // to the user. Log to console for diagnosis, but don't interrupt.
+  // Same for 403 — silent permission boundaries. Real failures (500,
+  // network) still toast.
+  if (err.message.includes("404") || err.message.includes("403")) {
+    console.error("[Query Error — suppressed toast]", err);
+    return;
+  }
+
   const title = getErrorTitle(err);
   const description = getErrorMessage(err);
-  
+
   toast({
     title,
     description,

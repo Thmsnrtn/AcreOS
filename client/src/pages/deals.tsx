@@ -99,7 +99,7 @@ const statusColors: Record<string, string> = {
   offer_sent: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
   countered: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400',
   accepted: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400',
-  in_escrow: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400',
+  in_escrow: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400',
   closed: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
   cancelled: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
 };
@@ -1285,9 +1285,9 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                         <PopoverContent className="w-80 p-0" align="end">
                           {pricingRecommendation && (
                             <div className="glass-panel rounded-lg overflow-hidden">
-                              <div className="bg-gradient-to-r from-violet-500/10 to-purple-500/10 p-4 border-b">
+                              <div className="bg-gradient-to-r from-primary/10 to-primary/5 p-4 border-b">
                                 <div className="flex items-center gap-2">
-                                  <Sparkles className="w-5 h-5 text-violet-500" />
+                                  <Sparkles className="w-5 h-5 text-primary" />
                                   <h3 className="font-semibold">AI Price Recommendation</h3>
                                 </div>
                               </div>
@@ -1365,7 +1365,7 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                       <Button
                         variant="outline"
                         size="sm"
-                        className="gap-1.5 text-violet-600 border-violet-200 hover:bg-violet-50 dark:border-violet-800 dark:hover:bg-violet-950"
+                        className="gap-1.5 text-primary border-primary/20 hover:bg-primary/5 dark:border-primary/30 dark:hover:bg-primary/10"
                         onClick={() => negotiationMutation.mutate()}
                         disabled={negotiationMutation.isPending}
                         title="AI Negotiation Coaching"
@@ -1384,14 +1384,14 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                       <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
                         <DialogHeader>
                           <DialogTitle className="flex items-center gap-2">
-                            <Sparkles className="w-5 h-5 text-violet-500" />
+                            <Sparkles className="w-5 h-5 text-primary" />
                             AI Negotiation Coaching
                           </DialogTitle>
                           <p className="text-sm text-muted-foreground">AI-generated negotiation strategy and talking points for this deal</p>
                         </DialogHeader>
                         {negotiationScript && (
                           <div className="space-y-4">
-                            <div className="bg-violet-50 dark:bg-violet-950/30 rounded-lg p-4 border border-violet-200 dark:border-violet-800">
+                            <div className="bg-primary/5 dark:bg-primary/10 rounded-lg p-4 border border-primary/20">
                               <pre className="text-sm whitespace-pre-wrap font-sans leading-relaxed">{negotiationScript}</pre>
                             </div>
                             <Button

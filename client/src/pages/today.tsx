@@ -740,7 +740,7 @@ export default function TodayPage() {
             </div>
             <div className="bg-background/60 rounded-lg p-3 text-center">
               <div className="flex items-center justify-center gap-1 mb-1">
-                <BarChart3 className="w-3.5 h-3.5 text-violet-500" />
+                <BarChart3 className="w-3.5 h-3.5 text-primary" />
                 <span className="text-[10px] text-muted-foreground uppercase tracking-wide">Avg Win Prob</span>
               </div>
               <p className="text-lg font-bold text-foreground">
@@ -958,9 +958,9 @@ export default function TodayPage() {
         <div data-testid="section-pax-noticed">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-violet-500" />
+              <Sparkles className="w-4 h-4 text-primary" />
               <h2 className="text-lg font-semibold">Pax Noticed</h2>
-              <Badge variant="secondary" className="bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300 text-xs">
+              <Badge variant="secondary" className="bg-primary/10 text-primary text-xs">
                 AI
               </Badge>
               {paxItemCount > 0 && (
@@ -998,7 +998,7 @@ export default function TodayPage() {
                 : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400";
               return (
                 <div key={`obs-${obs.id}`} className={`flex items-start gap-3 rounded-lg border p-3 ${borderClass}`}>
-                  <Sparkles className="w-4 h-4 shrink-0 mt-0.5 text-violet-500" />
+                  <Sparkles className="w-4 h-4 shrink-0 mt-0.5 text-primary" />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-sm font-medium">{obs.title}</p>
