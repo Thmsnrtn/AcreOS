@@ -1,32 +1,31 @@
 # Elite-Team Refinement — Resume Point
 
-**Last session:** 2026-04-23 (session 7 — `/inbox` unified view)
-**Last completed refinement:** `client/src/pages/inbox.tsx` — full
-9-lens pass on row rendering (EmailMessageRow, SMSConversationRow),
-detail views (EmailMessageDetail, SMSConversationDetail), and the
-page shell. Row divs converted to `role="button"` + `tabIndex={0}` +
-keyboard handler (Enter/Space) + `aria-current` for selection,
-`focus-visible:ring` added. Every mutation got an `onError` toast
-with specific copy: star, mark-read, mark-unread, archive, page-level
-autoread. SMS `messages` query now follows silent-query→toast via
-`useEffect` on `isError`. Sentence-case sweep on "All channels",
-"Mark read", "Mark unread", "View lead" (was Title Case). Decorative
-icons got `aria-hidden` across ChannelBadge, tab icons, button
-glyphs (Loader2, Send, Star, Archive, Mail/MailOpen, ArrowLeft,
-User, ExternalLink, Phone, MessageSquare, Search). Tabular-nums on
-all counts/dates/phone, `toLocaleString()` on unread badge. Unread
-count deduped — was shown in header badge AND Email-tab badge (same
-value, confusing); now only in header. Sender email rendered as
-`mailto:` anchor; lead phone as `tel:` anchor. EmptyState replaces
-hand-rolled "Select a conversation to view" div. SR-only "Sent" /
-"Received" prefix added to SMS bubble timestamps for SR users.
-`aria-pressed` on Mark-read/Star toggle buttons; `aria-expanded` +
-`aria-controls` on Reply button and panel. `aria-label` on Search
-input. "Cannot send SMS - no lead associated" → "Can't send SMS —
-no lead is linked" (en-dash, contraction). Dead "SMS Conversation"
-static line on SMS row removed (redundant with ChannelBadge). Dead
-`sanitizeHtml` import purged. SR-only loading label on SMS messages
-loader. SMS message log now `role="log"` + `aria-live="polite"`.
+**Last session:** 2026-04-23 (session 8 — `/documents`)
+**Last completed refinement:** `client/src/pages/documents.tsx`
+— full 9-lens pass on all three tabs (templates / generated
+documents / packages) + 6 dialogs (create template, edit
+template, generate document, preview, version history, create
+package, package detail). Shared `safeFetch` returned `[]` on
+!ok which silently masked transport failures on a legal/trust
+surface — replaced with `strictFetch` that throws + `isError` →
+destructive toast on all 5 list queries + `QueryErrorState` +
+retry into three tabs. Destructive actions (delete template,
+delete package, restore version) now gated by `ConfirmDialog`
+with explicit scope-naming descriptions. 30+ decorative lucide
+icons got `aria-hidden`. Filter-buttons row now `role="group"` +
+`aria-pressed` + `min-h-11 sm:min-h-9` + `flex-wrap`. Package
+card promoted to `role="button"` + Enter/Space handler per
+clickable-div-row rule (slice 7). STATUS_BADGES labels
+sentence-cased ("Pending signature", "Partially signed",
+"Awaiting signatures"). Page subtitle + empty-state copy
+benefit-led + Land-investor vocab ("closing packet"). New
+`humanizeType()` helper capitalizes first letter of
+`type.replace(/_/g, " ")` badges (5 spots). Deal-select +
+property-select inside create dialogs honor prerequisite-select
+3-state (loading/error/empty/populated). Form grids
+`grid-cols-1 sm:grid-cols-2` for mobile. Version-history
+loader gained SR-only label. Required asterisks gained
+`aria-label="required"`.
 
 **Phase 1 inventory:** ✅ committed at `11d0e8c`
 **PropertyDetailDialog:** ✅ fully refined across all tabs.
@@ -38,8 +37,8 @@ loader. SMS message log now `role="log"` + `aria-live="polite"`.
 **/campaigns detail drawer + OptimizerSuggestions + SendMailDialog:** ✅ slice 6b complete (`cf10579`).
 **/campaigns A/B test manager + variants panel + analytics:** ⬜ slice 6c deferred — separate embedded components, not blocking /inbox walk
 **/inbox:** ✅ slice 7 complete (commit `e052cf8`)
-**/documents:** ⬜ slice 8 next — upload + OCR trust surface
-**/sign/:docId:** ⬜ slice 9 — legal/trust surface, signer flow
+**/documents:** ✅ slice 8 complete (this session — commit pending)
+**/sign/:docId:** ⬜ slice 9 next — legal/trust surface, signer flow
 **/portal/:accessToken:** ⬜ slice 10 — public borrower link, mobile critical at 320px
 
 ## How to continue
@@ -92,41 +91,31 @@ Session 5 (thirteen slices — /properties and /deals):
 - 5m. `/deals` DealForm create modal (commit `0707ee4`)
 
 Session 6:
-- 6a. `/campaigns` list + create modal — QueryErrorState, sentence-
-  case sweep, tabular-nums, required asterisks, controlled date
-  input w/ Invalid-Date guard, currency adornment, template
-  radiogroup a11y, SparklineTrend role=img, $0.75–$1.25 range fix,
-  Land Academy brand scrub (commit `ea096ec`)
+- 6a. `/campaigns` list + create modal (commit `ea096ec`)
 - 6b. `/campaigns` CampaignDetailDrawer + SendMailDialog +
-  OptimizerSuggestionsPanel — role=dialog + aria-modal +
-  aria-labelledby + Esc handler (5l rule), sentence-case sweep,
-  tabular-nums across all counters/%/currency, send-confirmation
-  names recipient count alongside cost, aria-expanded/controls on
-  optimizer collapse, role=alert on estimate error, decorative-
-  icon aria-hidden sweep (commit `cf10579`)
+  OptimizerSuggestionsPanel (commit `cf10579`)
 
 Session 7:
-- `/inbox` full-surface — row keyboard a11y (role=button + Enter/
-  Space handler + aria-current + focus-visible ring), onError
-  toasts on every mutation (star/read/unread/archive × row + detail
-  + page-level), silent-query→toast on SMS messages query,
-  sentence-case sweep, decorative-icon aria-hidden sweep across 12+
-  lucide icons, tabular-nums + `toLocaleString()` on unread badge,
-  unread-count deduped from Email tab (was double-shown), mailto:
-  on sender email + tel: on lead phone, EmptyState replaces hand-
-  rolled detail-pane placeholder, SR-only "Sent/Received" prefix
-  on SMS bubble timestamps, aria-pressed on Mark-read/Star,
-  aria-expanded/controls on Reply, aria-label on Search, en-dash +
-  contraction on SMS-unavailable copy, dead "SMS Conversation"
-  static row line removed, dead `sanitizeHtml` import purged,
-  `role="log"` + `aria-live="polite"` on SMS message list
-  (commit `e052cf8`)
+- `/inbox` full-surface (commit `e052cf8`)
+
+Session 8:
+- `/documents` — all 3 tabs + 6 dialogs — silent-query→toast
+  extended to a legal/trust surface (5 queries), ConfirmDialog
+  gates on 3 destructive actions (delete-template, delete-
+  package, restore-version), aria-hidden sweep on 30+ icons,
+  filter-group view-toggle pattern, package-card role=button
+  keyboard a11y, humanizeType() helper for badge capitalization,
+  sentence-case sweep across every dialog title + form label,
+  prerequisite-select 3-state on deal/property selects inside
+  creation dialogs, mobile stack on action rows + form grids,
+  tabular-nums sweep on all counts/versions/dates, benefit-led
+  page subtitle + Land-investor vocab ("closing packet"),
+  required-asterisk aria-label sweep. (commit pending)
 
 ## Cross-cutting gains this pass
 
 - **Single error-path pattern on list pages:** `QueryErrorState`
-  remains the one surface for list fetch failures. /campaigns now
-  conforms.
+  remains the one surface for list fetch failures. /campaigns + /documents now conform.
 - **View toggle pattern:** grouped buttons, 44px mobile, 36px
   desktop, `role="group"`, `aria-pressed`, lucide icons.
 - **Silent-fetch → toast pattern:** any client `fetch`/`FormData`
@@ -149,6 +138,12 @@ Session 7:
   returns `[]` on `!response.ok` is also a trust bug — the user
   sees an empty state indistinguishable from "genuinely empty."
   Throw on !ok and surface via `isError` → toast.
+- **Silent-query → toast pattern (extended 8, trust-surface amplifier):**
+  on a legal/trust surface (documents, contracts, signatures,
+  payments), silent-empty-on-!ok is doubly bad — the user may
+  sign a deal assuming "no templates yet" when the service is
+  actually down. When the surface is trust-critical, the pattern
+  upgrades from "should fix" to "must fix at surface audit time."
 - **Filter-reset empty state:** reset the full filter set when a
   filter empties the list.
 - **Form mobile-keyboard checklist:** APN → `inputMode="numeric"`;
@@ -198,8 +193,7 @@ Session 7:
   without Radix Dialog/Sheet backing must ship at minimum:
   `role="dialog"`, `aria-modal="true"`, `aria-labelledby={titleId}`,
   and a `useEffect` that listens for `Escape`. Better: convert to
-  Radix Sheet/Dialog. **/campaigns CampaignDetailDrawer next
-  candidate (6b).**
+  Radix Sheet/Dialog.
 - **Checklist-checkbox role rule (new 5l):** toggle buttons that
   semantically check/uncheck a list item should be
   `role="checkbox"` + `aria-checked={bool}` + named
@@ -208,96 +202,99 @@ Session 7:
   inaccessible (no focus trap with surrounding Radix UI, no
   aria wiring, inconsistent styling, blocks main thread). Always
   use `ConfirmDialog` — it's already in the tree.
-- **Prerequisite-select three-state rule (new 5m):** when a
-  creation form depends on a prerequisite entity (deal → property,
-  package → deal, etc.), the dependent `Select` must distinguish
-  three states: **loading**, **empty** (explicit next-action
-  message), **populated**. A silently empty dropdown is
-  indistinguishable from a failed query or a racing query.
+- **Prerequisite-select three-state rule (new 5m, extended 8):**
+  when a creation form depends on a prerequisite entity (deal →
+  property, package → deal, etc.), the dependent `Select` must
+  distinguish three states: **loading**, **empty** (explicit
+  next-action message), **populated** — AND a fourth
+  **unavailable** state when the underlying query is `isError`
+  ("Deals unavailable" / "Properties unavailable"). A silently
+  empty dropdown is indistinguishable from a failed query or a
+  racing query.
 - **Controlled-date-input rule (new 5m, extended 6a):** `<Input
   type="date">` must bind both `value` AND `onChange`. Bind:
   `value={date instanceof Date && !isNaN(date.getTime()) ? format(
   date,'yyyy-MM-dd') : ''}`. Change: `onChange={(e) =>
   field.onChange(e.target.value ? new Date(e.target.value) :
-  undefined)}`. Bare `new Date(e.target.value)` silently produces
-  `Invalid Date` when the user clears the field, which then
-  serializes to null/NaN downstream. Now applied to
-  DealForm.closingDate AND CampaignForm.scheduledDate. Grep
-  candidate across remaining forms.
+  undefined)}`.
 - **Currency-adornment rule (new 5m, extended 6a):** `$` should be
-  a visual prefix inside the input (relative wrapper + absolute-
-  positioned span + `pl-7`), not suffixed on the label as "Amount
-  ($)" / "Budget ($)". Combine with `text-right tabular-nums` for
-  money readability and `inputMode="decimal"` + `min={0}` +
-  `step="any"` for mobile. Now applied to DealForm offer amount
-  AND CampaignForm budget.
+  a visual prefix inside the input, not suffixed on the label.
 - **Competitor-brand hygiene (new 6a):** when a user-facing label
   or help text names an external educational product or
   competitor brand (Land Academy, Land Geek, etc.), replace with
-  a generic industry term. "Blind offer" is a standard industry
-  term; "Land-Academy-style blind offer" is brand-coupled.
-  Applies to all customer-facing copy — AcreOS stands on its own.
+  a generic industry term.
 - **Fabricated-price rule (new 6a):** any user-facing price range
-  that isn't sourced from a live object (pieceTypes,
-  provider.costCents, etc.) is a trust bug — practitioners cross-
-  check numbers against their own invoices. Either compute the
-  range from the source or remove the line. The "$0.75-$1.45"
-  line on CampaignForm was 20c over the actual max.
+  that isn't sourced from a live object is a trust bug.
 - **Template/option-card radiogroup pattern (new 6a):** mutually-
   exclusive selection cards built as clickable `<div>`s must
   become `<button type="button" role="radio" aria-checked>` inside
-  `role="radiogroup"` with `aria-labelledby={groupLabelId}`. Add
-  `focus-visible:ring` so keyboard users see focus; make the
-  decorative radio-dot `aria-hidden="true"` so SR users hear one
-  selection state not two.
+  `role="radiogroup"` with `aria-labelledby={groupLabelId}`.
+- **Clickable-div row rule (new 7):** any `<div onClick>` used as a
+  selectable list row must also ship `role="button"`, `tabIndex={0}`,
+  a keyboard handler for Enter/Space, `aria-label` that describes
+  the row's content, `aria-current` for selection state, and a
+  `focus-visible:ring` with `outline-none`. Extended 8: applies
+  to `<Card onClick>` patterns used as clickable rows too
+  (package cards in /documents).
+- **Unread/count badge duplicate sweep (new 7):** when a stat is
+  shown in a page header AND inside a filter tab, only show it in
+  the place where the user can act on it.
+- **`mailto:` / `tel:` affordance rule (new 7):** any rendered
+  email address or phone number in a customer-facing surface
+  should be a `mailto:` or `tel:` anchor on mobile.
+- **SR-only direction prefix on chat bubbles (new 7):** color-
+  coded bubble direction is visual-only; prefix timestamps with
+  SR-only "Sent "/"Received ".
+- **`role="log"` + `aria-live="polite"` on chat message lists
+  (new 7):** new inbound messages should announce to SR users.
+- **Silent-query→toast extended to sub-detail queries (new 7):**
+  pattern applies to *any* query whose failure shows an empty
+  view indistinguishable from "genuinely empty."
+- **Humanized-type capitalization rule (new 8):** when rendering
+  a snake_case `type` field as a badge (e.g. `quit_claim_deed`),
+  use a `humanizeType()` helper that capitalizes the first
+  letter of the humanized form. Raw `.replace(/_/g, " ")`
+  produces lowercase badges that look broken next to Title-Case
+  neighbors. Applies wherever `type.replace(/_/g, " ")` appears
+  in rendered output — grep candidate across `/deals`, `/properties`,
+  and any package/template/classification surface.
+- **Restore-older-state ConfirmDialog rule (new 8):** any "restore
+  previous version" / "revert" / "undo from trash" action that
+  overwrites current state with older state must be gated by
+  `ConfirmDialog`. The description must explicitly note whether
+  current state is preserved in history or lost, so users
+  understand reversibility. Unlike delete, this is not about
+  preventing data loss — it's about communicating the swap.
 
 ## Next surface to refine
 
-**Next slice: 8 — `/documents` (upload + OCR trust signals).**
+**Next slice: 9 — `/sign/:docId` (signer flow, public legal surface).**
 
-After /documents, move per inventory to:
-1. `/sign/:docId` — **legal/trust surface** — signer flow (slice 9)
-2. `/portal/:accessToken` — borrower portal; **public link, mobile
+After /sign, move per inventory to:
+1. `/portal/:accessToken` — borrower portal; **public link, mobile
    critical** — no Clerk auth, must work at 320px (slice 10)
-3. `/campaigns` 6c (AbTestManager + CampaignVariantsPanel +
+2. `/campaigns` 6c (AbTestManager + CampaignVariantsPanel +
    CampaignAnalytics sub-panels) — deferred, not blocking
-
-Scope reference for eventual 6c:
-- `components/ab-test-manager.tsx` — A/B test create + stats +
-  winner declaration. Likely the same hand-rolled-dialog + sentence-
-  case + tabular-nums pattern as the drawer.
-- `components/campaign-variants-panel.tsx` — variant list + create
-  flow.
-- `components/campaign-analytics.tsx` — response analytics chart +
-  cohort breakdown.
 
 ## Deferred / flagged for owner decision
 
-- **"Distress Score" filter mislabel** on `/properties` (see prior).
-- **Pursue/Pass irreversibility** on PropertyDetailDialog (see prior).
-- **Verdict `signalColors`** raw Tailwind traffic-light (see prior).
-- **`typeFilter` on `/deals`** has state but no visible UI control
-  to set it (only SavedViewsSelector can apply it indirectly).
-  Either hidden feature or missing affordance — needs owner call.
-- **"Pipeline" summary on `/deals`** aggregates acquisition-cost +
-  disposition-revenue into one number, arguably misleading. Owner
-  decision on whether to split.
-- **Drag-to-move kanban bypasses stage-gate checks.** Drawer path
-  respects `stageGate.canAdvance`; drag path does not. Intentional
-  or gap?
-- **DealDetailDrawer focus restoration (new 5l):** drawer does not
-  return focus to the row/card that opened it. Proper fix = parent
-  hands a `triggerRef`/`returnFocusTo` prop in, or convert overlay
-  to Radix Sheet. Deferred as bigger refactor.
-- **DealDetailDrawer focus trap (new 5l):** hand-rolled overlay
-  has no focus trap. Tab escapes to underlying page. Bigger refactor
-  = convert to Radix Sheet/Dialog. Deferred.
-- **CampaignDetailDrawer focus trap + focus restoration (6b):** same
-  larger-refactor decision as DealDetailDrawer from 5l. Min-viable
-  dialog a11y (role/aria-modal/labelledby/Esc) shipped in 6b; full
-  focus trap + return-focus-to-trigger needs a dedicated drawer-
-  refactor pass that converts both Deal + Campaign drawers to Radix
-  Sheet/Dialog in one commit.
+- **TemplateEditor internal surface** (slice 8): `<TemplateEditor>`
+  runs inside Create + Edit template dialogs. Not audited in this
+  slice — follow-up pass candidate.
+- **Package-doc drag-to-reorder** (slice 8): `GripVertical` icon
+  is visual-only in package detail; no drag handler. Either wire
+  dnd-kit with 5j draggable-a11y rule, or remove the icon.
+- **System-template read-only explanation** (slice 8): Edit +
+  Delete buttons simply absent on system templates. No tooltip
+  explaining *why*. Minor.
+- **"Distress Score" filter mislabel** on `/properties` (prior).
+- **Pursue/Pass irreversibility** on PropertyDetailDialog (prior).
+- **Verdict `signalColors`** raw Tailwind traffic-light (prior).
+- **`typeFilter` on `/deals`** has state but no visible UI control.
+- **"Pipeline" summary on `/deals`** aggregates acquisition + disposition.
+- **Drag-to-move kanban bypasses stage-gate checks.**
+- **DealDetailDrawer / CampaignDetailDrawer focus trap + return**
+  — deferred to cross-surface drawer-refactor pass.
 
 ## Session hygiene reminders
 
@@ -305,8 +302,6 @@ Scope reference for eventual 6c:
 - Re-run 9-lens after each edit.
 - Large surfaces (>15k tokens): read in chunks, commit in slices;
   don't try to inhabit the whole thing in one session.
-  `campaigns-content.tsx` is ~1500 lines — drawer is ~270 lines,
-  a reasonable 6b slice.
 - Playwright Safari sessions die within ~5 minutes of a Clerk JWT
   refresh; fall back to code-only if cookies expire mid-audit.
 - Stop at ~85% context; rewrite this file before ending.
@@ -322,40 +317,9 @@ Scope reference for eventual 6c:
   `storage`, `autonomousDealMachine`, `countyAssessorIngest`,
   `supportAgent`, etc. — not blocking client refinement work.
 
-## Expected HEAD after session 7
+## Expected HEAD after session 8
 
-`e052cf8 refine(inbox): …` on top of `cf10579` (campaigns drawer
-batch) on top of `ea096ec` (campaigns list + create). Session 7
-shipped a single atomic inbox commit with ~20 refinements across
-all 9 lenses.
-
-## New cross-cutting patterns added in session 7
-
-- **Clickable-div row rule (new 7):** any `<div onClick>` used as a
-  selectable list row must also ship `role="button"`, `tabIndex={0}`,
-  a keyboard handler for Enter/Space (extracted as `handleRowKeyDown`
-  when repeated), `aria-label` that describes the row's content,
-  `aria-current` for selection state, and a `focus-visible:ring`
-  with `outline-none`. Inner controls (Star button, etc.) must
-  remain `<button>` and use `e.stopPropagation()`.
-- **Unread/count badge duplicate sweep (new 7):** when a stat is
-  shown in a page header AND inside a filter tab, only show it in
-  the place where the user can act on it. Header-level unread
-  count + Email-tab unread count was redundant because filtering
-  to Email doesn't add information.
-- **`mailto:` / `tel:` affordance rule (new 7):** any rendered
-  email address or phone number in a customer-facing surface
-  should be a `mailto:` or `tel:` anchor on mobile. Muted
-  secondary text that *looks* tappable but isn't is a trust bug.
-- **SR-only direction prefix on chat bubbles (new 7):** color-
-  coded bubble direction ("outbound right, inbound left") is
-  visual-only. Prefix timestamps with SR-only "Sent "/"Received "
-  so SR users understand authorship without visual cues.
-- **`role="log"` + `aria-live="polite"` on chat message lists
-  (new 7):** new inbound messages should announce to SR users
-  without interrupting.
-- **Silent-query→toast extended to sub-detail queries (new 7):**
-  pattern now applies to *any* query whose failure shows an empty
-  view indistinguishable from "genuinely empty" — including
-  message queries inside a conversation detail, not just list
-  pages.
+One atomic commit `refine(documents): …` on top of `e052cf8`
+(inbox). Session 8 shipped ~25 refinements across all 9 lenses
+on a legal/trust surface, with the silent-query→toast pattern
+now upgraded to a trust-surface amplifier cross-cutting rule.

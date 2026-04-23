@@ -1758,3 +1758,200 @@ SMS detail, reply panel, send-SMS composer, status-filter tabs
   Product decision, deferred.
 
 **Commit:** `e052cf8`
+**Commit:** `e052cf8`
+
+---
+
+## Session 8 — 2026-04-23 — `/documents` (legal/trust surface)
+
+**Surface:** `client/src/pages/documents.tsx` — templates,
+generated documents, packages (3 tabs), create/edit/generate/
+preview/version-history/create-package/package-detail dialogs,
++ RequestSignaturesDialog wired to draft docs.
+
+**Lens sweep + refinements shipped:**
+
+- **Trust (silent-query→toast P0):** 5 list queries used a
+  shared `safeFetch` that returned `[]` on !ok (templates,
+  generated-documents, deals, properties, packages). On a legal/
+  trust surface this is a double-bad — when the documents service
+  is down, the user sees "No templates yet" with a create CTA and
+  assumes empty state. Replaced with `strictFetch` that throws on
+  !ok, wired `isError` → destructive toast for each of the 5
+  queries via `useEffect` (extended 5l silent-query→toast rule),
+  and wired `QueryErrorState` + retry into each of the three
+  list tabs (templates / documents / packages). Deals + properties
+  errors also surface as sparse toasts because they're dependent
+  selects inside create dialogs — the dialogs degrade gracefully
+  via 3-state placeholder ("Deals unavailable" / "No deals yet"
+  / "Select deal") per prerequisite-select rule from 5m.
+
+- **Trust (destructive-action confirmations):** three destructive
+  actions had no confirmation: Delete template, Delete package,
+  Restore version (overwrites current content with older copy).
+  All three now gated by `ConfirmDialog` with destructive variant,
+  specific title ("Delete this template?" / "Delete this package?"
+  / "Restore version N?"), and description that names the scope
+  of the action. Version-restore description explicitly notes
+  that the current version will be preserved in history so users
+  understand it's non-destructive on re-save, just overwrites
+  active content.
+
+- **A11y (decorative-icon aria-hidden sweep):** 30+ lucide icons
+  were missing `aria-hidden` (Plus, FileText, FileCheck, Package,
+  FolderPlus, Eye, Edit, Trash2, History, RotateCcw, Loader2,
+  Send, Clock, CheckCircle, Shield, FilePenLine, GripVertical,
+  Play, StatusIcon dynamic, tab-bar icons, badge icons). All
+  icons paired with visible labels now have `aria-hidden=true`.
+  "Version history" icon-only buttons got `aria-label`d with
+  the template/document name so SR users hear the target.
+
+- **A11y (template filter group):** three filter buttons
+  ("All templates", "My templates", "System") now in
+  `role="group"` with `aria-label="Filter templates"` + each
+  button `aria-pressed`. Mobile touch size `min-h-11 sm:min-h-9`
+  per view-toggle pattern from 6a. Row now `flex-wrap` for 375px
+  (was `flex items-center gap-2` and clipped at narrow widths).
+
+- **A11y (package card keyboard):** `onClick={handleViewPackage}`
+  was on a `<Card>` div — mouse-only. Added `role="button"`,
+  `tabIndex={0}`, Enter/Space handler, `aria-label="View package
+  X"`, and `focus-visible:ring` per clickable-div-row rule from
+  slice 7. View button inside still uses `e.stopPropagation()`.
+
+- **Copy (sentence-case sweep):** STATUS_BADGES labels "Pending
+  Signature" → "Pending signature", "Partially Signed" →
+  "Partially signed". Page-level sweeps: "Generated Documents"
+  tab → "Generated documents"; "New Template" button → "New
+  template"; "Create Package" → "Create package"; "Generate
+  All" → "Generate all"; "Generate All Documents" → "Generate
+  all documents"; "Awaiting Signatures" → "Awaiting signatures";
+  dialog titles "Create New Template" → "Create template";
+  "Edit Template" → "Edit template"; "Generate Document" →
+  "Generate document"; "Version History: X" → "Version history:
+  X"; "Create Document Package" → "Create document package".
+  Form labels: "Document Name", "Link to Deal", "Link to
+  Property", "Package Name", "Select Templates to Include",
+  "Documents in Package", "Fill in Variables", "Variables in
+  this template:" → all sentence-case, colons dropped on
+  standalone labels per pattern.
+
+- **Copy (type label capitalization):** template type + doc type
+  rendered raw as `template.type.replace(/_/g, " ")` e.g.
+  "purchase agreement" — lowercase and looked broken next to
+  other Title-case badges. Extracted `humanizeType()` helper that
+  capitalizes first letter of the humanized form: "Purchase
+  agreement". Applied in 5 spots (template card badge, document
+  card type line, package detail item type, create-package
+  template list, deal select label).
+
+- **Copy (benefit-led subtitle):** page subtitle "Manage document
+  templates, packages, and generated documents" → "Build reusable
+  templates, generate deal-ready documents, and bundle them into
+  packages." — benefit-led and action-led.
+
+- **Copy (empty-state voice):** package empty state "Create a
+  package to bundle multiple documents together" → "Bundle
+  multiple documents together — like a closing packet — to save
+  time on every deal." Land-investor vocabulary + benefit framing.
+  Template empty state + documents empty state got sentence-case
+  CTAs and trailing periods.
+
+- **Copy (required asterisk + aria-label):** "Package name" is
+  required but had no visual `*` indicator. Added
+  `<span class="text-destructive" aria-label="required">*</span>`.
+  Required-variable markers in generate dialog + preview dialog
+  also got `aria-label="required"` so SR users hear "required"
+  not just punctuation.
+
+- **Copy (placeholder voice + ellipsis):** "Describe this
+  package..." → "Describe this package…" (proper ellipsis);
+  example text "e.g., Closing Package, Offer Package" →
+  "e.g., Closing packet, Offer packet" (industry-standard
+  "packet" term for closing binder).
+
+- **Engineer (error path, dead code, prerequisite-select):**
+  `safeFetch` helper removed (was unreachable fallback); `deals?.map`
+  / `properties?.map` / `templates?.filter` defensive `?` on
+  defaulted-`[]` state removed; deal-select + property-select in
+  generate dialog + create-package dialog now honor the three-
+  state rule (loading / error / empty / populated) via dynamic
+  placeholder; `value={field.value?.toString()}` → `value={field.
+  value?.toString() ?? ""}` for Radix Select controlled-value
+  correctness; "no active templates" path added to the package
+  create-templates list (was an empty scroll box).
+
+- **Mobile (action rows stack):** document card, package card,
+  version card all had `flex items-center justify-between` with
+  content left + actions right — at 375px actions wrapped awkwardly
+  or overflowed. All three now `flex flex-col sm:flex-row` with
+  `flex-wrap` action rows + `min-h-11 sm:min-h-9` touch-size on
+  buttons. Generate + create-package form grids `grid-cols-2` →
+  `grid-cols-1 sm:grid-cols-2` (variable-fill grid + link-deal/
+  link-property grid + package link-deal/link-property grid).
+  Package-detail footer `flex justify-between` → `flex flex-col
+  sm:flex-row sm:justify-between` so Delete doesn't overlap
+  Generate-all + Close on narrow screens.
+
+- **Tabular-nums sweep:** version badge ("v1"), counts in filter
+  buttons, package docs-count + generated-count, deal/property
+  badge numbers in package detail, version number heading, ISO
+  dates, selected-templates count, deal/property badges in package
+  card — all now `tabular-nums`.
+
+- **A11y (version-history loader):** `<Loader2>` had no label —
+  SR users heard nothing. Added `<span class="sr-only">Loading
+  version history</span>`.
+
+- **A11y (selected-templates live region):** selected-count
+  helper text gained `aria-live="polite"` so SR users hear
+  updates as they tick boxes.
+
+- **A11y (latest version button label):** restore button on
+  latest version was disabled with no explanation. `aria-label`
+  now reads "This is the latest version" when disabled, or
+  "Restore version N" when enabled.
+
+- **A11y (package-templates group):** "Select templates to
+  include" section now `role="group"` with `aria-labelledby`.
+
+**9-lens sign-off:**
+
+| Lens              | Status                                                                                                                                              |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Designer          | PASS — sentence-case sweep, tabular-nums, type-label capitalization, benefit-led subtitle, mobile stack/wrap on action rows                         |
+| Mobile designer   | PASS — 44px touch targets, flex-wrap action rows, grid-cols-1 sm:grid-cols-2 on form grids, stacked package-detail footer                           |
+| Accessibility     | PASS — aria-hidden sweep on 30+ icons, role=group + aria-pressed on filter, role=button + Enter/Space on package card, live region on counter, SR loader label |
+| Engineer          | PASS — strictFetch + isError + QueryErrorState + retry on 3 list tabs, prerequisite-select 3-state on deal/property selects, dead code purged      |
+| AI systems        | N/A — document generation is template interpolation, no LLM output                                                                                  |
+| Land investor     | PASS — "closing packet" vocab, humanized types ("Quit claim deed" not "quit_claim_deed"), deal-id + property-id badges preserved                   |
+| Copywriter        | PASS — sentence-case, proper ellipsis, aria-label="required" on asterisks, benefit-led subtitle + empty state                                      |
+| Infrastructure    | PASS — strictFetch surfaces transport failures via toast + inline error state, 3 independent retries via QueryErrorState                           |
+| Trust             | PASS — legal surface now errors loudly when service is down, destructive actions gated by ConfirmDialog, version-restore description explicit     |
+
+**Deferred / flagged for owner:**
+- **TemplateEditor internal refinement** — the `<TemplateEditor>`
+  component (imported from `@/components/template-editor`) runs
+  inside the Create + Edit dialogs. Its internal surface wasn't
+  audited in this slice — deferred as a follow-up pass.
+- **Drag-to-reorder on package documents list** — the
+  `GripVertical` icon is decorative in package-detail today (no
+  drag wiring). Either wire it via dnd-kit with the draggable-a11y
+  rule from 5j, or remove the grip. Owner call.
+- **System templates read-only lock** — visible today via absence
+  of Edit/Delete buttons; no visible lock affordance (tooltip or
+  badge) explaining *why* edit is unavailable. Minor — left as-is.
+- **Package-detail focus return** — hand-rolled Radix Dialog
+  already handles this via Radix. OK, no refinement needed.
+
+**Patterns carried forward:**
+- silent-query→toast extended to a legal/trust surface (documents)
+- prerequisite-select 3-state applies to deal/property selects
+  inside any creation dialog
+- humanizeType() utility — needed anywhere `type.replace(/_/g, " ")`
+  rendering shows up on a badge
+- ConfirmDialog for version-restore is a new pattern — applies
+  to any "restore older state" action (history revert, undo-from-
+  trash, etc.)
+
+**Commit:** (pending — will fill after commit)

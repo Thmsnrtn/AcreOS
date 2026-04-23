@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import DOMPurify from "isomorphic-dompurify";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
@@ -11,6 +11,8 @@ import { ListSkeleton } from "@/components/list-skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { TemplateEditor } from "@/components/template-editor";
 import { RequestSignaturesDialog } from "@/components/request-signatures-dialog";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { QueryErrorState } from "@/components/query-error-state";
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -49,12 +51,15 @@ const DOCUMENT_CATEGORIES = [
 
 const STATUS_BADGES: Record<string, { color: string; icon: typeof Clock; label: string }> = {
   draft: { color: "bg-muted text-muted-foreground", icon: FilePenLine, label: "Draft" },
-  pending_signature: { color: "bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300", icon: Clock, label: "Pending Signature" },
-  partially_signed: { color: "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300", icon: FilePenLine, label: "Partially Signed" },
+  pending_signature: { color: "bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300", icon: Clock, label: "Pending signature" },
+  partially_signed: { color: "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300", icon: FilePenLine, label: "Partially signed" },
   signed: { color: "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300", icon: FileCheck, label: "Signed" },
   completed: { color: "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300", icon: CheckCircle, label: "Completed" },
   cancelled: { color: "bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300", icon: XCircle, label: "Cancelled" },
 };
+
+const capitalizeFirst = (s: string) => (s.length === 0 ? s : s.charAt(0).toUpperCase() + s.slice(1));
+const humanizeType = (s: string) => capitalizeFirst(s.replace(/_/g, " "));
 
 const templateFormSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -98,43 +103,64 @@ export default function DocumentsPage() {
   const [packageDealId, setPackageDealId] = useState<number | undefined>();
   const [packagePropertyId, setPackagePropertyId] = useState<number | undefined>();
   const [selectedTemplatesForPackage, setSelectedTemplatesForPackage] = useState<number[]>([]);
+  const [templateToDelete, setTemplateToDelete] = useState<DocumentTemplate | null>(null);
+  const [packageToDelete, setPackageToDelete] = useState<DocumentPackage | null>(null);
+  const [versionToRestore, setVersionToRestore] = useState<DocumentVersion | null>(null);
 
-  const safeFetch = async (path: string) => {
+  const strictFetch = async (path: string) => {
     const res = await fetch(path, { credentials: "include" });
-    if (!res.ok) return [];
+    if (!res.ok) {
+      throw new Error(`Request failed (${res.status})`);
+    }
     const json = await res.json();
     return Array.isArray(json) ? json : Array.isArray(json.data) ? json.data : [];
   };
 
-  const { data: templates = [], isLoading: templatesLoading } = useQuery<DocumentTemplate[]>({
+  const { data: templates = [], isLoading: templatesLoading, isError: templatesError, refetch: refetchTemplates } = useQuery<DocumentTemplate[]>({
     queryKey: ["/api/document-templates"],
-    queryFn: () => safeFetch("/api/document-templates"),
+    queryFn: () => strictFetch("/api/document-templates"),
     retry: false,
   });
 
-  const { data: documents = [], isLoading: documentsLoading } = useQuery<GeneratedDocument[]>({
+  const { data: documents = [], isLoading: documentsLoading, isError: documentsError, refetch: refetchDocuments } = useQuery<GeneratedDocument[]>({
     queryKey: ["/api/generated-documents"],
-    queryFn: () => safeFetch("/api/generated-documents"),
+    queryFn: () => strictFetch("/api/generated-documents"),
     retry: false,
   });
 
-  const { data: deals = [] } = useQuery<Deal[]>({
+  const { data: deals = [], isError: dealsError } = useQuery<Deal[]>({
     queryKey: ["/api/deals"],
-    queryFn: () => safeFetch("/api/deals?page=1&pageSize=100"),
+    queryFn: () => strictFetch("/api/deals?page=1&pageSize=100"),
     retry: false,
   });
 
-  const { data: properties = [] } = useQuery<Property[]>({
+  const { data: properties = [], isError: propertiesError } = useQuery<Property[]>({
     queryKey: ["/api/properties"],
-    queryFn: () => safeFetch("/api/properties?page=1&pageSize=100"),
+    queryFn: () => strictFetch("/api/properties?page=1&pageSize=100"),
     retry: false,
   });
 
-  const { data: packages = [], isLoading: packagesLoading } = useQuery<DocumentPackage[]>({
+  const { data: packages = [], isLoading: packagesLoading, isError: packagesError, refetch: refetchPackages } = useQuery<DocumentPackage[]>({
     queryKey: ["/api/document-packages"],
-    queryFn: () => safeFetch("/api/document-packages"),
+    queryFn: () => strictFetch("/api/document-packages"),
     retry: false,
   });
+
+  useEffect(() => {
+    if (templatesError) toast({ title: "Couldn't load templates", description: "Check your connection and try again.", variant: "destructive" });
+  }, [templatesError, toast]);
+  useEffect(() => {
+    if (documentsError) toast({ title: "Couldn't load generated documents", description: "Check your connection and try again.", variant: "destructive" });
+  }, [documentsError, toast]);
+  useEffect(() => {
+    if (packagesError) toast({ title: "Couldn't load packages", description: "Check your connection and try again.", variant: "destructive" });
+  }, [packagesError, toast]);
+  useEffect(() => {
+    if (dealsError) toast({ title: "Couldn't load deals", description: "Linking to a deal is unavailable right now.", variant: "destructive" });
+  }, [dealsError, toast]);
+  useEffect(() => {
+    if (propertiesError) toast({ title: "Couldn't load properties", description: "Linking to a property is unavailable right now.", variant: "destructive" });
+  }, [propertiesError, toast]);
 
   const { data: versions, isLoading: versionsLoading, refetch: refetchVersions } = useQuery<DocumentVersion[]>({
     queryKey: versionHistoryTarget
@@ -436,13 +462,25 @@ export default function DocumentsPage() {
       return <ListSkeleton count={3} />;
     }
 
+    if (templatesError) {
+      return (
+        <QueryErrorState
+          error={new Error("Failed to load templates")}
+          onRetry={() => refetchTemplates()}
+          title="Couldn't load templates"
+          description="We couldn't reach the documents service. Try again in a moment."
+          testId="error-templates"
+        />
+      );
+    }
+
     if (!templates || templates.length === 0) {
       return (
         <EmptyState
           icon={FileText}
           title="No templates yet"
-          description="Create your first document template to get started"
-          actionLabel="Create Template"
+          description="Create your first document template to get started."
+          actionLabel="Create template"
           onAction={() => setIsCreateTemplateOpen(true)}
         />
       );
@@ -467,20 +505,20 @@ export default function DocumentsPage() {
                 <CardTitle className="text-base truncate">{template.name}</CardTitle>
                 <div className="flex items-center gap-2 mt-1 flex-wrap">
                   <Badge variant={isSystem ? "secondary" : "outline"} className="text-xs">
-                    {template.type.replace(/_/g, " ")}
+                    {humanizeType(template.type)}
                   </Badge>
-                  <Badge variant="outline" className="text-xs">
+                  <Badge variant="outline" className="text-xs capitalize">
                     {template.category}
                   </Badge>
                   {isSystem && (
                     <Badge variant="secondary" className="text-xs">
-                      <Shield className="w-3 h-3 mr-1" />
+                      <Shield className="w-3 h-3 mr-1" aria-hidden="true" />
                       System
                     </Badge>
                   )}
                 </div>
               </div>
-              <span className="text-xs text-muted-foreground" data-testid={`text-template-version-${template.id}`}>
+              <span className="text-xs text-muted-foreground tabular-nums" data-testid={`text-template-version-${template.id}`}>
                 v{template.version || 1}
               </span>
             </div>
@@ -493,31 +531,31 @@ export default function DocumentsPage() {
             </p>
           </CardContent>
           <CardFooter className="flex gap-2 flex-wrap">
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               size="sm"
               onClick={() => handlePreviewTemplate(template)}
               data-testid={`button-preview-template-${template.id}`}
             >
-              <Eye className="w-3 h-3 mr-1" />
+              <Eye className="w-3 h-3 mr-1" aria-hidden="true" />
               Preview
             </Button>
-            <Button 
+            <Button
               size="sm"
               onClick={() => handleOpenGenerate(template)}
               data-testid={`button-generate-from-template-${template.id}`}
             >
-              <Plus className="w-3 h-3 mr-1" />
+              <Plus className="w-3 h-3 mr-1" aria-hidden="true" />
               Generate
             </Button>
             <Button
               variant="outline"
               size="icon"
               onClick={() => handleOpenVersionHistory(template.id, "template", template.name)}
-              aria-label="Version history"
+              aria-label={`Version history for ${template.name}`}
               data-testid={`button-version-history-template-${template.id}`}
             >
-              <History className="w-4 h-4" />
+              <History className="w-4 h-4" aria-hidden="true" />
             </Button>
             {!isSystem && (
               <>
@@ -525,20 +563,20 @@ export default function DocumentsPage() {
                   variant="outline"
                   size="icon"
                   onClick={() => handleEditTemplate(template)}
-                  aria-label="Edit template"
+                  aria-label={`Edit ${template.name}`}
                   data-testid={`button-edit-template-${template.id}`}
                 >
-                  <Edit className="w-4 h-4" />
+                  <Edit className="w-4 h-4" aria-hidden="true" />
                 </Button>
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={() => deleteTemplateMutation.mutate(template.id)}
+                  onClick={() => setTemplateToDelete(template)}
                   disabled={deleteTemplateMutation.isPending}
-                  aria-label="Delete template"
+                  aria-label={`Delete ${template.name}`}
                   data-testid={`button-delete-template-${template.id}`}
                 >
-                  <Trash2 className="w-4 h-4 text-destructive" />
+                  <Trash2 className="w-4 h-4 text-destructive" aria-hidden="true" />
                 </Button>
               </>
             )}
@@ -549,31 +587,41 @@ export default function DocumentsPage() {
 
     return (
       <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <Button 
-            variant={templateFilter === "all" ? "default" : "outline"} 
+        <div
+          className="flex items-center gap-2 flex-wrap"
+          role="group"
+          aria-label="Filter templates"
+        >
+          <Button
+            variant={templateFilter === "all" ? "default" : "outline"}
             size="sm"
+            className="min-h-11 sm:min-h-9"
+            aria-pressed={templateFilter === "all"}
             onClick={() => setTemplateFilter("all")}
             data-testid="button-filter-all"
           >
-            All Templates ({templates.length})
+            All templates (<span className="tabular-nums">{templates.length}</span>)
           </Button>
-          <Button 
-            variant={templateFilter === "my" ? "default" : "outline"} 
+          <Button
+            variant={templateFilter === "my" ? "default" : "outline"}
             size="sm"
+            className="min-h-11 sm:min-h-9"
+            aria-pressed={templateFilter === "my"}
             onClick={() => setTemplateFilter("my")}
             data-testid="button-filter-my"
           >
-            My Templates ({customTemplates.length})
+            My templates (<span className="tabular-nums">{customTemplates.length}</span>)
           </Button>
-          <Button 
-            variant={templateFilter === "system" ? "default" : "outline"} 
+          <Button
+            variant={templateFilter === "system" ? "default" : "outline"}
             size="sm"
+            className="min-h-11 sm:min-h-9"
+            aria-pressed={templateFilter === "system"}
             onClick={() => setTemplateFilter("system")}
             data-testid="button-filter-system"
           >
-            <Shield className="w-3 h-3 mr-1" />
-            System ({systemTemplates.length})
+            <Shield className="w-3 h-3 mr-1" aria-hidden="true" />
+            System (<span className="tabular-nums">{systemTemplates.length}</span>)
           </Button>
         </div>
 
@@ -581,8 +629,8 @@ export default function DocumentsPage() {
           <EmptyState
             icon={FileText}
             title={templateFilter === "my" ? "No custom templates" : "No templates found"}
-            description={templateFilter === "my" ? "Create your own custom template" : "No templates match the current filter"}
-            actionLabel={templateFilter === "my" ? "Create Template" : undefined}
+            description={templateFilter === "my" ? "Create your own custom template to speed up future deals." : "No templates match the current filter."}
+            actionLabel={templateFilter === "my" ? "Create template" : undefined}
             onAction={templateFilter === "my" ? () => setIsCreateTemplateOpen(true) : undefined}
           />
         ) : (
@@ -599,13 +647,25 @@ export default function DocumentsPage() {
       return <ListSkeleton count={3} />;
     }
 
+    if (documentsError) {
+      return (
+        <QueryErrorState
+          error={new Error("Failed to load generated documents")}
+          onRetry={() => refetchDocuments()}
+          title="Couldn't load generated documents"
+          description="We couldn't reach the documents service. Try again in a moment."
+          testId="error-documents"
+        />
+      );
+    }
+
     if (!documents || documents.length === 0) {
       return (
         <EmptyState
           icon={FileCheck}
           title="No documents generated"
-          description="Generate your first document from a template"
-          actionLabel="View Templates"
+          description="Generate your first document from a template."
+          actionLabel="View templates"
           onAction={() => setActiveTab("templates")}
         />
       );
@@ -616,69 +676,72 @@ export default function DocumentsPage() {
         {documents.map(doc => {
           const statusInfo = STATUS_BADGES[doc.status] || STATUS_BADGES.draft;
           const StatusIcon = statusInfo.icon;
-          
+
           return (
             <Card key={doc.id} data-testid={`card-document-${doc.id}`}>
-              <CardContent className="flex items-center justify-between gap-4 p-4">
+              <CardContent className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4">
                 <div className="flex items-center gap-4 flex-1 min-w-0">
-                  <div className="p-2 rounded-lg bg-muted">
-                    <FileText className="w-5 h-5 text-muted-foreground" />
+                  <div className="p-2 rounded-lg bg-muted shrink-0">
+                    <FileText className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <h4 className="font-medium truncate" data-testid={`text-document-name-${doc.id}`}>
                       {doc.name}
                     </h4>
                     <div className="flex items-center gap-2 mt-1 flex-wrap">
-                      <Badge 
-                        variant="outline" 
+                      <Badge
+                        variant="outline"
                         className={`text-xs ${statusInfo.color}`}
                         data-testid={`badge-document-status-${doc.id}`}
                       >
-                        <StatusIcon className="w-3 h-3 mr-1" />
+                        <StatusIcon className="w-3 h-3 mr-1" aria-hidden="true" />
                         {statusInfo.label}
                       </Badge>
                       <span className="text-xs text-muted-foreground">
-                        {doc.type.replace(/_/g, " ")}
+                        {humanizeType(doc.type)}
                       </span>
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-xs text-muted-foreground tabular-nums">
                         {doc.createdAt && new Date(doc.createdAt).toLocaleDateString()}
                       </span>
                     </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Button 
-                    variant="outline" 
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Button
+                    variant="outline"
                     size="sm"
+                    className="min-h-11 sm:min-h-9"
                     onClick={() => handlePreviewDocument(doc)}
                     data-testid={`button-view-document-${doc.id}`}
                   >
-                    <Eye className="w-3 h-3 mr-1" />
+                    <Eye className="w-3 h-3 mr-1" aria-hidden="true" />
                     View
                   </Button>
                   <Button
                     variant="outline"
                     size="icon"
+                    className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9"
                     onClick={() => handleOpenVersionHistory(doc.id, "generated", doc.name)}
-                    aria-label="Version history"
+                    aria-label={`Version history for ${doc.name}`}
                     data-testid={`button-version-history-document-${doc.id}`}
                   >
-                    <History className="w-4 h-4" />
+                    <History className="w-4 h-4" aria-hidden="true" />
                   </Button>
                   {doc.status === "draft" && (
                     <Button
                       size="sm"
+                      className="min-h-11 sm:min-h-9"
                       onClick={() => setSignaturesFor(doc)}
                       data-testid={`button-send-for-signature-${doc.id}`}
                     >
-                      <Send className="w-3 h-3 mr-1" />
+                      <Send className="w-3 h-3 mr-1" aria-hidden="true" />
                       Request signatures
                     </Button>
                   )}
                   {doc.status === "pending_signature" && (
                     <Badge variant="outline" className="text-yellow-600 dark:text-yellow-400">
-                      <Clock className="w-3 h-3 mr-1" />
-                      Awaiting Signatures
+                      <Clock className="w-3 h-3 mr-1" aria-hidden="true" />
+                      Awaiting signatures
                     </Badge>
                   )}
                 </div>
@@ -702,13 +765,25 @@ export default function DocumentsPage() {
       return <ListSkeleton count={3} />;
     }
 
+    if (packagesError) {
+      return (
+        <QueryErrorState
+          error={new Error("Failed to load packages")}
+          onRetry={() => refetchPackages()}
+          title="Couldn't load packages"
+          description="We couldn't reach the documents service. Try again in a moment."
+          testId="error-packages"
+        />
+      );
+    }
+
     if (!packages || packages.length === 0) {
       return (
         <EmptyState
           icon={Package}
           title="No document packages"
-          description="Create a package to bundle multiple documents together"
-          actionLabel="Create Package"
+          description="Bundle multiple documents together — like a closing packet — to save time on every deal."
+          actionLabel="Create package"
           onAction={() => setIsCreatePackageOpen(true)}
         />
       );
@@ -723,34 +798,49 @@ export default function DocumentsPage() {
           const generatedCount = (pkg.documents as any[] || []).filter((d: any) => d.documentId).length;
           
           return (
-            <Card key={pkg.id} data-testid={`card-package-${pkg.id}`} className="hover-elevate cursor-pointer" onClick={() => handleViewPackage(pkg)}>
-              <CardContent className="flex items-center justify-between gap-4 p-4">
+            <Card
+              key={pkg.id}
+              data-testid={`card-package-${pkg.id}`}
+              className="hover-elevate cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              role="button"
+              tabIndex={0}
+              aria-label={`View package ${pkg.name}`}
+              onClick={() => handleViewPackage(pkg)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  handleViewPackage(pkg);
+                }
+              }}
+            >
+              <CardContent className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4">
                 <div className="flex items-center gap-4 flex-1 min-w-0">
-                  <div className="p-2 rounded-lg bg-muted">
-                    <Package className="w-5 h-5 text-muted-foreground" />
+                  <div className="p-2 rounded-lg bg-muted shrink-0">
+                    <Package className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <h4 className="font-medium truncate" data-testid={`text-package-name-${pkg.id}`}>
                       {pkg.name}
                     </h4>
                     <div className="flex items-center gap-2 mt-1 flex-wrap">
-                      <Badge 
-                        variant="outline" 
+                      <Badge
+                        variant="outline"
                         className={`text-xs ${statusInfo.color}`}
                         data-testid={`badge-package-status-${pkg.id}`}
                       >
-                        <StatusIcon className="w-3 h-3 mr-1" />
+                        <StatusIcon className="w-3 h-3 mr-1" aria-hidden="true" />
                         {statusInfo.label}
                       </Badge>
                       <span className="text-xs text-muted-foreground">
-                        {docsCount} document{docsCount !== 1 ? "s" : ""} ({generatedCount} generated)
+                        <span className="tabular-nums">{docsCount}</span> document{docsCount !== 1 ? "s" : ""}
+                        {" "}(<span className="tabular-nums">{generatedCount}</span> generated)
                       </span>
                       {pkg.dealId && (
-                        <Badge variant="secondary" className="text-xs">
+                        <Badge variant="secondary" className="text-xs tabular-nums">
                           Deal #{pkg.dealId}
                         </Badge>
                       )}
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-xs text-muted-foreground tabular-nums">
                         {pkg.createdAt && new Date(pkg.createdAt).toLocaleDateString()}
                       </span>
                     </div>
@@ -759,29 +849,31 @@ export default function DocumentsPage() {
                     )}
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Button 
-                    variant="outline" 
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Button
+                    variant="outline"
                     size="sm"
+                    className="min-h-11 sm:min-h-9"
                     onClick={(e) => { e.stopPropagation(); handleViewPackage(pkg); }}
                     data-testid={`button-view-package-${pkg.id}`}
                   >
-                    <Eye className="w-3 h-3 mr-1" />
+                    <Eye className="w-3 h-3 mr-1" aria-hidden="true" />
                     View
                   </Button>
                   {pkg.status === "draft" && docsCount > 0 && (
-                    <Button 
+                    <Button
                       size="sm"
+                      className="min-h-11 sm:min-h-9"
                       onClick={(e) => { e.stopPropagation(); generateAllDocsMutation.mutate({ id: pkg.id }); }}
                       disabled={generateAllDocsMutation.isPending}
                       data-testid={`button-generate-all-${pkg.id}`}
                     >
                       {generateAllDocsMutation.isPending ? (
-                        <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                        <Loader2 className="w-3 h-3 mr-1 animate-spin" aria-hidden="true" />
                       ) : (
-                        <Play className="w-3 h-3 mr-1" />
+                        <Play className="w-3 h-3 mr-1" aria-hidden="true" />
                       )}
-                      Generate All
+                      Generate all
                     </Button>
                   )}
                 </div>
@@ -798,19 +890,19 @@ export default function DocumentsPage() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h1 className="text-2xl font-bold" data-testid="text-page-title">Documents</h1>
-              <p className="text-muted-foreground">Manage document templates, packages, and generated documents</p>
+              <p className="text-muted-foreground">Build reusable templates, generate deal-ready documents, and bundle them into packages.</p>
             </div>
             <div className="flex gap-2">
               {activeTab === "templates" && (
                 <Button onClick={() => setIsCreateTemplateOpen(true)} data-testid="button-create-template">
-                  <Plus className="w-4 h-4 mr-2" />
-                  New Template
+                  <Plus className="w-4 h-4 mr-2" aria-hidden="true" />
+                  New template
                 </Button>
               )}
               {activeTab === "packages" && (
                 <Button onClick={() => setIsCreatePackageOpen(true)} data-testid="button-create-package">
-                  <FolderPlus className="w-4 h-4 mr-2" />
-                  Create Package
+                  <FolderPlus className="w-4 h-4 mr-2" aria-hidden="true" />
+                  Create package
                 </Button>
               )}
             </div>
@@ -819,15 +911,15 @@ export default function DocumentsPage() {
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList data-testid="tabs-documents">
               <TabsTrigger value="templates" data-testid="tab-templates">
-                <FileText className="w-4 h-4 mr-2" />
+                <FileText className="w-4 h-4 mr-2" aria-hidden="true" />
                 Templates
               </TabsTrigger>
               <TabsTrigger value="documents" data-testid="tab-documents">
-                <FileCheck className="w-4 h-4 mr-2" />
-                Generated Documents
+                <FileCheck className="w-4 h-4 mr-2" aria-hidden="true" />
+                Generated documents
               </TabsTrigger>
               <TabsTrigger value="packages" data-testid="tab-packages">
-                <Package className="w-4 h-4 mr-2" />
+                <Package className="w-4 h-4 mr-2" aria-hidden="true" />
                 Packages
               </TabsTrigger>
             </TabsList>
@@ -848,9 +940,9 @@ export default function DocumentsPage() {
       <Dialog open={isCreateTemplateOpen} onOpenChange={setIsCreateTemplateOpen}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle>Create New Template</DialogTitle>
+            <DialogTitle>Create template</DialogTitle>
             <DialogDescription>
-              Create a custom document template with variable placeholders and custom fields.
+              Create a reusable document template with variable placeholders and custom fields.
             </DialogDescription>
           </DialogHeader>
           <ScrollArea className="flex-1 pr-4">
@@ -872,9 +964,9 @@ export default function DocumentsPage() {
       }}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle>Edit Template</DialogTitle>
+            <DialogTitle>Edit template</DialogTitle>
             <DialogDescription>
-              Update your document template. Version will increment automatically.
+              Update your document template. The version increments automatically on save.
             </DialogDescription>
           </DialogHeader>
           <ScrollArea className="flex-1 pr-4">
@@ -898,9 +990,9 @@ export default function DocumentsPage() {
       <Dialog open={isGenerateOpen} onOpenChange={setIsGenerateOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle>Generate Document</DialogTitle>
+            <DialogTitle>Generate document</DialogTitle>
             <DialogDescription>
-              Fill in the required variables to generate a document from "{selectedTemplateForGenerate?.name}"
+              Fill in the required variables to generate a document from &ldquo;{selectedTemplateForGenerate?.name}&rdquo;.
             </DialogDescription>
           </DialogHeader>
           <ScrollArea className="flex-1 pr-4">
@@ -912,7 +1004,7 @@ export default function DocumentsPage() {
                     name="name"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Document Name (optional)</FormLabel>
+                        <FormLabel>Document name (optional)</FormLabel>
                         <FormControl>
                           <Input placeholder="Leave blank to auto-generate" {...field} data-testid="input-document-name" />
                         </FormControl>
@@ -921,23 +1013,23 @@ export default function DocumentsPage() {
                     )}
                   />
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <FormField
                       control={generateDocForm.control}
                       name="dealId"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Link to Deal (optional)</FormLabel>
-                          <Select onValueChange={(v) => field.onChange(v ? parseInt(v) : undefined)} value={field.value?.toString()}>
+                          <FormLabel>Link to deal (optional)</FormLabel>
+                          <Select onValueChange={(v) => field.onChange(v ? parseInt(v) : undefined)} value={field.value?.toString() ?? ""}>
                             <FormControl>
                               <SelectTrigger data-testid="select-deal">
-                                <SelectValue placeholder="Select deal" />
+                                <SelectValue placeholder={dealsError ? "Deals unavailable" : deals.length === 0 ? "No deals yet" : "Select deal"} />
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              {deals?.map(deal => (
+                              {deals.map(deal => (
                                 <SelectItem key={deal.id} value={deal.id.toString()}>
-                                  {`${deal.type} Deal #${deal.id} (${deal.status})`}
+                                  {`${humanizeType(deal.type)} deal #${deal.id} (${deal.status})`}
                                 </SelectItem>
                               ))}
                             </SelectContent>
@@ -952,15 +1044,15 @@ export default function DocumentsPage() {
                       name="propertyId"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Link to Property (optional)</FormLabel>
-                          <Select onValueChange={(v) => field.onChange(v ? parseInt(v) : undefined)} value={field.value?.toString()}>
+                          <FormLabel>Link to property (optional)</FormLabel>
+                          <Select onValueChange={(v) => field.onChange(v ? parseInt(v) : undefined)} value={field.value?.toString() ?? ""}>
                             <FormControl>
                               <SelectTrigger data-testid="select-property">
-                                <SelectValue placeholder="Select property" />
+                                <SelectValue placeholder={propertiesError ? "Properties unavailable" : properties.length === 0 ? "No properties yet" : "Select property"} />
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              {properties?.map(prop => (
+                              {properties.map(prop => (
                                 <SelectItem key={prop.id} value={prop.id.toString()}>
                                   {prop.address || prop.apn || `Property #${prop.id}`}
                                 </SelectItem>
@@ -977,16 +1069,18 @@ export default function DocumentsPage() {
 
               {selectedTemplateForGenerate?.variables && Array.isArray(selectedTemplateForGenerate.variables) && selectedTemplateForGenerate.variables.length > 0 && (
                 <div className="space-y-4">
-                  <Label className="text-sm font-medium">Fill in Variables</Label>
-                  <div className="grid grid-cols-2 gap-4">
+                  <Label className="text-sm font-medium">Fill in variables</Label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {selectedTemplateForGenerate.variables.map((variable: any) => (
                       <div key={variable.name} className="space-y-1">
-                        <Label className="text-xs capitalize">
+                        <Label htmlFor={`input-variable-${variable.name}`} className="text-xs capitalize">
                           {variable.name.replace(/_/g, " ")}
-                          {variable.required && <span className="text-destructive ml-1">*</span>}
+                          {variable.required && <span className="text-destructive ml-1" aria-label="required">*</span>}
                         </Label>
                         <Input
+                          id={`input-variable-${variable.name}`}
                           type={variable.type === "date" ? "date" : "text"}
+                          inputMode={variable.type === "currency" ? "decimal" : undefined}
                           placeholder={variable.defaultValue || `Enter ${variable.name.replace(/_/g, " ")}`}
                           value={variableValues[variable.name] || ""}
                           onChange={(e) => setVariableValues(prev => ({ ...prev, [variable.name]: e.target.value }))}
@@ -1004,8 +1098,8 @@ export default function DocumentsPage() {
               Cancel
             </Button>
             <Button onClick={handleGenerateDocument} disabled={generateDocMutation.isPending} data-testid="button-generate-document">
-              {generateDocMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              Generate Document
+              {generateDocMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />}
+              Generate document
             </Button>
           </div>
         </DialogContent>
@@ -1022,21 +1116,21 @@ export default function DocumentsPage() {
             </DialogDescription>
           </DialogHeader>
           <ScrollArea className="flex-1">
-            <div 
+            <div
               className="prose dark:prose-invert max-w-none p-4 bg-background rounded-lg"
               dangerouslySetInnerHTML={{
                 __html: DOMPurify.sanitize(previewTemplate?.content || previewDocument?.content || "")
               }}
             />
           </ScrollArea>
-          {previewTemplate && previewTemplate.variables && Array.isArray(previewTemplate.variables) && (
+          {previewTemplate && previewTemplate.variables && Array.isArray(previewTemplate.variables) && previewTemplate.variables.length > 0 && (
             <div className="pt-4 border-t">
-              <Label className="text-sm font-medium">Variables in this template:</Label>
+              <Label className="text-sm font-medium">Variables in this template</Label>
               <div className="flex flex-wrap gap-2 mt-2">
                 {previewTemplate.variables.map((v: any) => (
                   <Badge key={v.name} variant="secondary" className="font-mono text-xs">
                     {`{{${v.name}}}`}
-                    {v.required && <span className="text-destructive ml-1">*</span>}
+                    {v.required && <span className="text-destructive ml-1" aria-label="required">*</span>}
                   </Badge>
                 ))}
               </div>
@@ -1052,7 +1146,7 @@ export default function DocumentsPage() {
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle data-testid="text-version-history-title">
-              Version History: {versionHistoryTarget?.name}
+              Version history: {versionHistoryTarget?.name}
             </DialogTitle>
             <DialogDescription>
               View and restore previous versions of this {versionHistoryTarget?.type === "template" ? "template" : "document"}.
@@ -1061,67 +1155,76 @@ export default function DocumentsPage() {
           <ScrollArea className="flex-1">
             {versionsLoading ? (
               <div className="flex items-center justify-center py-8">
-                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" aria-hidden="true" />
+                <span className="sr-only">Loading version history</span>
               </div>
             ) : !versions || versions.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground" data-testid="text-no-versions">
-                <History className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                <History className="w-12 h-12 mx-auto mb-3 opacity-50" aria-hidden="true" />
                 <p>No version history available</p>
-                <p className="text-sm mt-1">Versions are created when documents are saved or updated</p>
+                <p className="text-sm mt-1">Versions are created when this {versionHistoryTarget?.type === "template" ? "template" : "document"} is saved or updated.</p>
               </div>
             ) : (
               <div className="space-y-3">
-                {versions.map((version) => (
-                  <Card key={version.id} data-testid={`card-version-${version.id}`}>
-                    <CardContent className="flex items-center justify-between gap-4 p-4">
-                      <div className="flex items-center gap-4 flex-1 min-w-0">
-                        <div className="p-2 rounded-lg bg-muted">
-                          <History className="w-4 h-4 text-muted-foreground" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <h4 className="font-medium" data-testid={`text-version-number-${version.id}`}>
-                              Version {version.version}
-                            </h4>
-                            {version.version === Math.max(...(versions?.map(v => v.version) || [0])) && (
-                              <Badge variant="outline" className="text-xs">Latest</Badge>
-                            )}
+                {(() => {
+                  const latestVersion = Math.max(...versions.map(v => v.version));
+                  return versions.map((version) => {
+                    const isLatest = version.version === latestVersion;
+                    return (
+                      <Card key={version.id} data-testid={`card-version-${version.id}`}>
+                        <CardContent className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4">
+                          <div className="flex items-center gap-4 flex-1 min-w-0">
+                            <div className="p-2 rounded-lg bg-muted shrink-0">
+                              <History className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <h4 className="font-medium tabular-nums" data-testid={`text-version-number-${version.id}`}>
+                                  Version {version.version}
+                                </h4>
+                                {isLatest && (
+                                  <Badge variant="outline" className="text-xs">Latest</Badge>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2 mt-1 flex-wrap text-xs text-muted-foreground">
+                                <span className="tabular-nums" data-testid={`text-version-date-${version.id}`}>
+                                  {version.createdAt && new Date(version.createdAt).toLocaleString()}
+                                </span>
+                                {version.createdBy && (
+                                  <>
+                                    <span>by</span>
+                                    <span data-testid={`text-version-author-${version.id}`}>{version.createdBy}</span>
+                                  </>
+                                )}
+                              </div>
+                              {version.changes && (
+                                <p className="text-sm text-muted-foreground mt-1 line-clamp-1" data-testid={`text-version-changes-${version.id}`}>
+                                  {version.changes}
+                                </p>
+                              )}
+                            </div>
                           </div>
-                          <div className="flex items-center gap-2 mt-1 flex-wrap text-xs text-muted-foreground">
-                            <span data-testid={`text-version-date-${version.id}`}>
-                              {version.createdAt && new Date(version.createdAt).toLocaleString()}
-                            </span>
-                            {version.createdBy && (
-                              <>
-                                <span>by</span>
-                                <span data-testid={`text-version-author-${version.id}`}>{version.createdBy}</span>
-                              </>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="min-h-11 sm:min-h-9"
+                            onClick={() => setVersionToRestore(version)}
+                            disabled={restoreVersionMutation.isPending || isLatest}
+                            aria-label={isLatest ? "This is the latest version" : `Restore version ${version.version}`}
+                            data-testid={`button-restore-version-${version.id}`}
+                          >
+                            {restoreVersionMutation.isPending ? (
+                              <Loader2 className="w-3 h-3 mr-1 animate-spin" aria-hidden="true" />
+                            ) : (
+                              <RotateCcw className="w-3 h-3 mr-1" aria-hidden="true" />
                             )}
-                          </div>
-                          {version.changes && (
-                            <p className="text-sm text-muted-foreground mt-1 line-clamp-1" data-testid={`text-version-changes-${version.id}`}>
-                              {version.changes}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={() => restoreVersionMutation.mutate(version.id)}
-                        disabled={restoreVersionMutation.isPending || version.version === Math.max(...(versions?.map(v => v.version) || [0]))}
-                        data-testid={`button-restore-version-${version.id}`}
-                      >
-                        {restoreVersionMutation.isPending ? (
-                          <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                        ) : (
-                          <RotateCcw className="w-3 h-3 mr-1" />
-                        )}
-                        Restore
-                      </Button>
-                    </CardContent>
-                  </Card>
-                ))}
+                            Restore
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    );
+                  });
+                })()}
               </div>
             )}
           </ScrollArea>
@@ -1139,7 +1242,7 @@ export default function DocumentsPage() {
       }}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle data-testid="text-create-package-title">Create Document Package</DialogTitle>
+            <DialogTitle data-testid="text-create-package-title">Create document package</DialogTitle>
             <DialogDescription>
               Bundle multiple document templates together for a deal or property.
             </DialogDescription>
@@ -1147,10 +1250,12 @@ export default function DocumentsPage() {
           <ScrollArea className="flex-1 pr-4">
             <div className="space-y-4 pb-4">
               <div className="space-y-2">
-                <Label htmlFor="package-name">Package Name</Label>
+                <Label htmlFor="package-name">
+                  Package name <span className="text-destructive" aria-label="required">*</span>
+                </Label>
                 <Input
                   id="package-name"
-                  placeholder="e.g., Closing Package, Offer Package"
+                  placeholder="e.g., Closing packet, Offer packet"
                   value={packageName}
                   onChange={(e) => setPackageName(e.target.value)}
                   data-testid="input-package-name"
@@ -1161,28 +1266,28 @@ export default function DocumentsPage() {
                 <Label htmlFor="package-description">Description (optional)</Label>
                 <Textarea
                   id="package-description"
-                  placeholder="Describe this package..."
+                  placeholder="Describe this package…"
                   value={packageDescription}
                   onChange={(e) => setPackageDescription(e.target.value)}
                   data-testid="input-package-description"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Link to Deal (optional)</Label>
+                  <Label htmlFor="select-package-deal">Link to deal (optional)</Label>
                   <Select
                     value={packageDealId?.toString() || "none"}
                     onValueChange={(v) => setPackageDealId(v && v !== "none" ? parseInt(v) : undefined)}
                   >
-                    <SelectTrigger data-testid="select-package-deal">
-                      <SelectValue placeholder="Select deal" />
+                    <SelectTrigger id="select-package-deal" data-testid="select-package-deal">
+                      <SelectValue placeholder={dealsError ? "Deals unavailable" : deals.length === 0 ? "No deals yet" : "Select deal"} />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">No deal</SelectItem>
-                      {deals?.map((deal: any) => (
+                      {deals.map((deal: any) => (
                         <SelectItem key={deal.id} value={deal.id.toString()}>
-                          Deal #{deal.id} - {deal.name || deal.type}
+                          Deal #{deal.id} — {deal.name || humanizeType(deal.type)}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -1190,17 +1295,17 @@ export default function DocumentsPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Link to Property (optional)</Label>
+                  <Label htmlFor="select-package-property">Link to property (optional)</Label>
                   <Select
                     value={packagePropertyId?.toString() || "none"}
                     onValueChange={(v) => setPackagePropertyId(v && v !== "none" ? parseInt(v) : undefined)}
                   >
-                    <SelectTrigger data-testid="select-package-property">
-                      <SelectValue placeholder="Select property" />
+                    <SelectTrigger id="select-package-property" data-testid="select-package-property">
+                      <SelectValue placeholder={propertiesError ? "Properties unavailable" : properties.length === 0 ? "No properties yet" : "Select property"} />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">No property</SelectItem>
-                      {properties?.map(prop => (
+                      {properties.map(prop => (
                         <SelectItem key={prop.id} value={prop.id.toString()}>
                           {prop.address || prop.apn || `Property #${prop.id}`}
                         </SelectItem>
@@ -1210,40 +1315,46 @@ export default function DocumentsPage() {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label>Select Templates to Include</Label>
+              <div className="space-y-2" role="group" aria-labelledby="package-templates-label">
+                <Label id="package-templates-label">Select templates to include</Label>
                 <div className="border rounded-md p-3 max-h-60 overflow-y-auto space-y-2">
-                  {templates?.filter(t => t.isActive).map(template => (
-                    <label 
-                      key={template.id}
-                      className="flex items-center gap-3 p-2 rounded-md hover-elevate cursor-pointer"
-                      data-testid={`checkbox-template-${template.id}`}
-                    >
-                      <input
-                        type="checkbox"
-                        className="rounded"
-                        checked={selectedTemplatesForPackage.includes(template.id)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setSelectedTemplatesForPackage(prev => [...prev, template.id]);
-                          } else {
-                            setSelectedTemplatesForPackage(prev => prev.filter(id => id !== template.id));
-                          }
-                        }}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm truncate">{template.name}</p>
-                        <p className="text-xs text-muted-foreground">{template.type.replace(/_/g, " ")}</p>
-                      </div>
-                      {template.isSystemTemplate && (
-                        <Badge variant="secondary" className="text-xs">System</Badge>
-                      )}
-                    </label>
-                  ))}
+                  {templates.filter(t => t.isActive).length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-4">
+                      No active templates yet. Create one first.
+                    </p>
+                  ) : (
+                    templates.filter(t => t.isActive).map(template => (
+                      <label
+                        key={template.id}
+                        className="flex items-center gap-3 p-2 rounded-md hover-elevate cursor-pointer"
+                        data-testid={`checkbox-template-${template.id}`}
+                      >
+                        <input
+                          type="checkbox"
+                          className="rounded"
+                          checked={selectedTemplatesForPackage.includes(template.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedTemplatesForPackage(prev => [...prev, template.id]);
+                            } else {
+                              setSelectedTemplatesForPackage(prev => prev.filter(id => id !== template.id));
+                            }
+                          }}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm truncate">{template.name}</p>
+                          <p className="text-xs text-muted-foreground">{humanizeType(template.type)}</p>
+                        </div>
+                        {template.isSystemTemplate && (
+                          <Badge variant="secondary" className="text-xs">System</Badge>
+                        )}
+                      </label>
+                    ))
+                  )}
                 </div>
                 {selectedTemplatesForPackage.length > 0 && (
-                  <p className="text-xs text-muted-foreground">
-                    {selectedTemplatesForPackage.length} template{selectedTemplatesForPackage.length !== 1 ? "s" : ""} selected
+                  <p className="text-xs text-muted-foreground" aria-live="polite">
+                    <span className="tabular-nums">{selectedTemplatesForPackage.length}</span> template{selectedTemplatesForPackage.length !== 1 ? "s" : ""} selected
                   </p>
                 )}
               </div>
@@ -1253,13 +1364,13 @@ export default function DocumentsPage() {
             <Button variant="outline" onClick={() => setIsCreatePackageOpen(false)} data-testid="button-cancel-create-package">
               Cancel
             </Button>
-            <Button 
-              onClick={handleCreatePackage} 
+            <Button
+              onClick={handleCreatePackage}
               disabled={createPackageMutation.isPending || !packageName.trim()}
               data-testid="button-save-package"
             >
-              {createPackageMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              Create Package
+              {createPackageMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />}
+              Create package
             </Button>
           </div>
         </DialogContent>
@@ -1272,61 +1383,62 @@ export default function DocumentsPage() {
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2" data-testid="text-package-detail-title">
-              <Package className="w-5 h-5" />
+              <Package className="w-5 h-5" aria-hidden="true" />
               {selectedPackage?.name}
             </DialogTitle>
             <DialogDescription>
-              {selectedPackage?.description || "View and manage documents in this package"}
+              {selectedPackage?.description || "View and manage documents in this package."}
             </DialogDescription>
           </DialogHeader>
           <ScrollArea className="flex-1 pr-4">
             {selectedPackage && (
               <div className="space-y-4 pb-4">
                 <div className="flex items-center gap-4 flex-wrap">
-                  <Badge 
-                    variant="outline" 
+                  <Badge
+                    variant="outline"
                     className={PACKAGE_STATUS_BADGES[selectedPackage.status]?.color || ""}
                     data-testid="badge-selected-package-status"
                   >
-                    {PACKAGE_STATUS_BADGES[selectedPackage.status]?.label || selectedPackage.status}
+                    {PACKAGE_STATUS_BADGES[selectedPackage.status]?.label || capitalizeFirst(selectedPackage.status)}
                   </Badge>
                   {selectedPackage.dealId && (
-                    <Badge variant="secondary">Deal #{selectedPackage.dealId}</Badge>
+                    <Badge variant="secondary" className="tabular-nums">Deal #{selectedPackage.dealId}</Badge>
                   )}
                   {selectedPackage.propertyId && (
-                    <Badge variant="secondary">Property #{selectedPackage.propertyId}</Badge>
+                    <Badge variant="secondary" className="tabular-nums">Property #{selectedPackage.propertyId}</Badge>
                   )}
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-xs text-muted-foreground tabular-nums">
                     Created {selectedPackage.createdAt && new Date(selectedPackage.createdAt).toLocaleDateString()}
                   </span>
                 </div>
 
                 <div className="space-y-2">
                   <Label className="flex items-center gap-2">
-                    <FileText className="w-4 h-4" />
-                    Documents in Package ({(selectedPackage.documents as any[] || []).length})
+                    <FileText className="w-4 h-4" aria-hidden="true" />
+                    Documents in package (<span className="tabular-nums">{(selectedPackage.documents as any[] || []).length}</span>)
                   </Label>
                   <div className="border rounded-md divide-y">
                     {(selectedPackage.documents as any[] || []).length === 0 ? (
                       <div className="p-4 text-center text-muted-foreground">
                         <p>No documents in this package</p>
-                        <p className="text-xs mt-1">Add templates when creating the package</p>
+                        <p className="text-xs mt-1">Add templates when creating the package.</p>
                       </div>
                     ) : (
                       (selectedPackage.documents as any[]).map((doc, index) => {
-                        const template = templates?.find(t => t.id === doc.templateId);
-                        const generatedDoc = doc.documentId ? documents?.find(d => d.id === doc.documentId) : null;
-                        
+                        const template = templates.find(t => t.id === doc.templateId);
+                        const generatedDoc = doc.documentId ? documents.find(d => d.id === doc.documentId) : null;
+                        const isGenerated = doc.status === "generated";
+
                         return (
-                          <div 
+                          <div
                             key={index}
                             className="flex items-center gap-3 p-3"
                             data-testid={`package-doc-item-${index}`}
                           >
-                            <div className="p-1.5 rounded bg-muted">
-                              <GripVertical className="w-4 h-4 text-muted-foreground" />
+                            <div className="p-1.5 rounded bg-muted shrink-0">
+                              <GripVertical className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
                             </div>
-                            <span className="text-sm font-medium text-muted-foreground w-6">
+                            <span className="text-sm font-medium text-muted-foreground w-6 tabular-nums">
                               {doc.order}
                             </span>
                             <div className="flex-1 min-w-0">
@@ -1334,28 +1446,28 @@ export default function DocumentsPage() {
                                 {doc.name || template?.name || `Template #${doc.templateId}`}
                               </p>
                               <p className="text-xs text-muted-foreground">
-                                {template?.type.replace(/_/g, " ") || "Unknown type"}
+                                {template ? humanizeType(template.type) : "Unknown type"}
                               </p>
                             </div>
-                            <Badge 
-                              variant="outline" 
-                              className={doc.status === "generated" ? "text-green-600 dark:text-green-400" : "text-muted-foreground"}
+                            <Badge
+                              variant="outline"
+                              className={isGenerated ? "text-green-600 dark:text-green-400" : "text-muted-foreground"}
                             >
-                              {doc.status === "generated" ? (
-                                <CheckCircle className="w-3 h-3 mr-1" />
+                              {isGenerated ? (
+                                <CheckCircle className="w-3 h-3 mr-1" aria-hidden="true" />
                               ) : (
-                                <Clock className="w-3 h-3 mr-1" />
+                                <Clock className="w-3 h-3 mr-1" aria-hidden="true" />
                               )}
-                              {doc.status}
+                              {capitalizeFirst(doc.status)}
                             </Badge>
                             {generatedDoc && (
-                              <Button 
-                                variant="outline" 
+                              <Button
+                                variant="outline"
                                 size="sm"
                                 onClick={() => handlePreviewDocument(generatedDoc)}
                                 data-testid={`button-view-generated-doc-${index}`}
                               >
-                                <Eye className="w-3 h-3 mr-1" />
+                                <Eye className="w-3 h-3 mr-1" aria-hidden="true" />
                                 View
                               </Button>
                             )}
@@ -1368,34 +1480,34 @@ export default function DocumentsPage() {
               </div>
             )}
           </ScrollArea>
-          <div className="flex justify-between gap-2 pt-4 border-t">
-            <Button 
-              variant="destructive" 
+          <div className="flex flex-col sm:flex-row sm:justify-between gap-2 pt-4 border-t">
+            <Button
+              variant="destructive"
               size="sm"
-              onClick={() => selectedPackage && deletePackageMutation.mutate(selectedPackage.id)}
+              onClick={() => selectedPackage && setPackageToDelete(selectedPackage)}
               disabled={deletePackageMutation.isPending}
               data-testid="button-delete-package"
             >
               {deletePackageMutation.isPending ? (
-                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                <Loader2 className="w-3 h-3 mr-1 animate-spin" aria-hidden="true" />
               ) : (
-                <Trash2 className="w-3 h-3 mr-1" />
+                <Trash2 className="w-3 h-3 mr-1" aria-hidden="true" />
               )}
               Delete
             </Button>
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2">
               {selectedPackage?.status === "draft" && (selectedPackage.documents as any[] || []).length > 0 && (
-                <Button 
+                <Button
                   onClick={() => selectedPackage && generateAllDocsMutation.mutate({ id: selectedPackage.id })}
                   disabled={generateAllDocsMutation.isPending}
                   data-testid="button-generate-all-detail"
                 >
                   {generateAllDocsMutation.isPending ? (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
                   ) : (
-                    <Play className="w-4 h-4 mr-2" />
+                    <Play className="w-4 h-4 mr-2" aria-hidden="true" />
                   )}
-                  Generate All Documents
+                  Generate all documents
                 </Button>
               )}
               <Button variant="outline" onClick={() => setIsPackageDetailOpen(false)} data-testid="button-close-package-detail">
@@ -1422,6 +1534,54 @@ export default function DocumentsPage() {
           onSuccess={() => queryClient.invalidateQueries({ queryKey: ["/api/generated-documents"] })}
         />
       )}
+
+      <ConfirmDialog
+        open={!!templateToDelete}
+        onOpenChange={(v) => { if (!v) setTemplateToDelete(null); }}
+        title="Delete this template?"
+        description={templateToDelete ? `"${templateToDelete.name}" will be permanently removed. Documents already generated from this template will not be affected. This cannot be undone.` : ""}
+        confirmLabel="Delete template"
+        variant="destructive"
+        isLoading={deleteTemplateMutation.isPending}
+        onConfirm={() => {
+          if (!templateToDelete) return;
+          deleteTemplateMutation.mutate(templateToDelete.id, {
+            onSettled: () => setTemplateToDelete(null),
+          });
+        }}
+      />
+
+      <ConfirmDialog
+        open={!!packageToDelete}
+        onOpenChange={(v) => { if (!v) setPackageToDelete(null); }}
+        title="Delete this package?"
+        description={packageToDelete ? `"${packageToDelete.name}" will be permanently removed. Documents already generated from this package will not be affected. This cannot be undone.` : ""}
+        confirmLabel="Delete package"
+        variant="destructive"
+        isLoading={deletePackageMutation.isPending}
+        onConfirm={() => {
+          if (!packageToDelete) return;
+          deletePackageMutation.mutate(packageToDelete.id, {
+            onSettled: () => setPackageToDelete(null),
+          });
+        }}
+      />
+
+      <ConfirmDialog
+        open={!!versionToRestore}
+        onOpenChange={(v) => { if (!v) setVersionToRestore(null); }}
+        title={versionToRestore ? `Restore version ${versionToRestore.version}?` : ""}
+        description="The current content will be replaced with this older version. Your current version will be preserved in history so you can restore it again later."
+        confirmLabel="Restore this version"
+        variant="default"
+        isLoading={restoreVersionMutation.isPending}
+        onConfirm={() => {
+          if (!versionToRestore) return;
+          restoreVersionMutation.mutate(versionToRestore.id, {
+            onSettled: () => setVersionToRestore(null),
+          });
+        }}
+      />
     </PageShell>
   );
 }
