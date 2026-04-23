@@ -157,7 +157,7 @@ export default function TitleSearchPage() {
                     <div key={i} className={`rounded-md p-3 ${config.bg}`}>
                       <div className={`flex items-center gap-2 text-xs font-medium ${config.color}`}>
                         <Icon className="w-3.5 h-3.5" />
-                        {issue.type.replace("_", " ").toUpperCase()}
+                        {issue.type.replace(/_/g, " ").toUpperCase()}
                       </div>
                       <p className="text-xs mt-1">{issue.description}</p>
                       <div className="flex gap-3 mt-1 text-xs text-muted-foreground">

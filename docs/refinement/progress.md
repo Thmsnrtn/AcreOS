@@ -558,3 +558,42 @@ future sessions — see resume pointer.
   and Requesting button copy.
 
 **Sign-off (this slice):** D ✓ M ✓ A ✓ E ✓ AI n/a LI ✓ CW ✓ I ✓ T ✓
+
+### `/properties` — ResearchSummaryPanel + cross-cutting status-replace sweep (session 5e)
+
+- [E] Cross-cutting bugfix: `.replace('_', ' ')` → `.replace(/_/g, ' ')`
+  across 22 client files (59 call sites). This bug has now been hit
+  four times in four different components during the refinement pass
+  — status strings like `under_contract_signed`, `sent_for_signature`,
+  and `tax_deed_sold` were all rendering with only the first underscore
+  replaced. Swept the client tree so we stop patching it file by file.
+  Files touched: calendar-widget, campaigns-content, command-palette,
+  environmental-intelligence-card, offer-wizard, onboarding-wizard,
+  property-analysis-chat, property-map, tax-delinquent-importer, and
+  pages beta-dashboard, closing-costs, deals, direct-mail-campaigns,
+  founder-dashboard, land-credit, listings, market-watchlist,
+  marketplace, offers, regulatory-intel, tasks, title-search.
+- [E] ResearchSummaryPanel: status.replace bug fixed inline alongside
+  the cross-cutting sweep.
+- [I/CW] ResearchSummaryPanel `saveNotesMutation.onError` copy now
+  specific: "Couldn't save research notes" + "Your text is still
+  here — try editing again to retry." Was generic "Error" with no
+  reassurance that the text isn't lost.
+- [A] ResearchSummaryPanel: 11 decorative icons made `aria-hidden`
+  (FileText x2, CheckCircle2, Circle, TrendingUp, Loader2 x2,
+  AlertTriangle, Save, ExternalLink, and each external-link
+  `link.icon`).
+- [A] ResearchSummaryPanel: compsLoading wrapper gains
+  `role="status" aria-live="polite"`; Saving/Saved indicator gets
+  the same live-region treatment. Hazard warning block gets
+  `role="alert"`.
+- [CW] ResearchSummaryPanel ellipsis normalization: "Loading
+  comps..." → "…", "Saving..." → "Saving…".
+- [T] ResearchSummaryPanel external-link buttons now call
+  `window.open(url, "_blank", "noopener,noreferrer")`. Without
+  `noopener` the opened site can reach `window.opener` and
+  tab-nab back to our tab (redirect to phishing, etc). Minor but
+  trivial to fix. Also added `aria-label` with "(opens in new tab)"
+  suffix on each so screen reader users know the target behavior.
+
+**Sign-off (this slice):** D ✓ M ✓ A ✓ E ✓ AI n/a LI ✓ CW ✓ I ✓ T ✓

@@ -204,8 +204,10 @@ export function ResearchSummaryPanel({ property }: ResearchSummaryPanelProps) {
     },
     onError: (error: Error) => {
       toast({
-        title: "Error",
-        description: error.message || "Failed to save research notes",
+        title: "Couldn't save research notes",
+        description: error.message
+          ? `${error.message}. Your text is still here — try editing again to retry.`
+          : "Your text is still here — try editing again to retry.",
         variant: "destructive",
       });
     },
@@ -246,7 +248,7 @@ export function ResearchSummaryPanel({ property }: ResearchSummaryPanelProps) {
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-base flex items-center gap-2">
-            <FileText className="w-4 h-4" />
+            <FileText className="w-4 h-4" aria-hidden="true" />
             Research Summary
           </CardTitle>
           <Tooltip>
@@ -282,9 +284,9 @@ export function ResearchSummaryPanel({ property }: ResearchSummaryPanelProps) {
               return (
                 <div key={key} className="flex items-center gap-1" data-testid={`checklist-${key}`}>
                   {effective ? (
-                    <CheckCircle2 className="w-3 h-3 text-green-500" />
+                    <CheckCircle2 className="w-3 h-3 text-green-500" aria-hidden="true" />
                   ) : (
-                    <Circle className="w-3 h-3 text-muted-foreground" />
+                    <Circle className="w-3 h-3 text-muted-foreground" aria-hidden="true" />
                   )}
                   <span className={effective ? "text-foreground" : "text-muted-foreground"}>
                     {label}
@@ -300,13 +302,17 @@ export function ResearchSummaryPanel({ property }: ResearchSummaryPanelProps) {
         {/* Quick Comps Summary */}
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-sm font-medium">
-            <TrendingUp className="w-4 h-4" />
+            <TrendingUp className="w-4 h-4" aria-hidden="true" />
             Comps Quick View
           </div>
           {compsLoading ? (
-            <div className="flex items-center gap-2 text-muted-foreground text-sm">
-              <Loader2 className="w-3 h-3 animate-spin" />
-              Loading comps...
+            <div
+              className="flex items-center gap-2 text-muted-foreground text-sm"
+              role="status"
+              aria-live="polite"
+            >
+              <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />
+              Loading comps…
             </div>
           ) : compsData ? (
             <div className="grid grid-cols-2 gap-3 text-sm">
@@ -344,8 +350,8 @@ export function ResearchSummaryPanel({ property }: ResearchSummaryPanelProps) {
         {hasHazardWarnings && (
           <>
             <Separator />
-            <div className="flex items-start gap-2 p-2 bg-destructive/10 rounded-md text-sm" data-testid="hazard-warning">
-              <AlertTriangle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
+            <div className="flex items-start gap-2 p-2 bg-destructive/10 rounded-md text-sm" data-testid="hazard-warning" role="alert">
+              <AlertTriangle className="w-4 h-4 text-destructive shrink-0 mt-0.5" aria-hidden="true" />
               <div>
                 <span className="font-medium text-destructive">High Risk Factors Detected</span>
                 <p className="text-muted-foreground text-xs mt-0.5">
@@ -364,18 +370,22 @@ export function ResearchSummaryPanel({ property }: ResearchSummaryPanelProps) {
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium flex items-center gap-2">
-              <FileText className="w-4 h-4" />
+              <FileText className="w-4 h-4" aria-hidden="true" />
               Research Notes
             </span>
-            <span className="text-xs text-muted-foreground flex items-center gap-1">
+            <span
+              className="text-xs text-muted-foreground flex items-center gap-1"
+              role="status"
+              aria-live="polite"
+            >
               {isSaving ? (
                 <>
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                  Saving...
+                  <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />
+                  Saving…
                 </>
               ) : lastSaved ? (
                 <>
-                  <Save className="w-3 h-3" />
+                  <Save className="w-3 h-3" aria-hidden="true" />
                   Saved
                 </>
               ) : (
@@ -397,7 +407,7 @@ export function ResearchSummaryPanel({ property }: ResearchSummaryPanelProps) {
         {/* External Links */}
         <div className="space-y-2">
           <span className="text-sm font-medium flex items-center gap-2">
-            <ExternalLink className="w-4 h-4" />
+            <ExternalLink className="w-4 h-4" aria-hidden="true" />
             Quick Research Links
           </span>
           <div className="flex flex-wrap gap-2">
@@ -407,10 +417,11 @@ export function ResearchSummaryPanel({ property }: ResearchSummaryPanelProps) {
                 variant="outline"
                 size="sm"
                 className="h-8 text-xs"
-                onClick={() => window.open(link.url, "_blank")}
+                onClick={() => window.open(link.url, "_blank", "noopener,noreferrer")}
                 data-testid={`link-${link.label.toLowerCase().replace(/\s+/g, "-")}`}
+                aria-label={`${link.label} (opens in new tab)`}
               >
-                <link.icon className="w-3 h-3 mr-1" />
+                <link.icon className="w-3 h-3 mr-1" aria-hidden="true" />
                 {link.label}
               </Button>
             ))}
@@ -431,7 +442,7 @@ export function ResearchSummaryPanel({ property }: ResearchSummaryPanelProps) {
           <div className="space-y-0.5">
             <span className="text-muted-foreground">Status</span>
             <Badge variant="outline" className="text-xs capitalize">
-              {property.status.replace("_", " ")}
+              {property.status.replace(/_/g, " ")}
             </Badge>
           </div>
         </div>

@@ -388,7 +388,7 @@ export default function BetaDashboardPage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-medium">{fb.email}</span>
-                        <Badge variant="outline" className="text-xs">{fb.type.replace("_", " ")}</Badge>
+                        <Badge variant="outline" className="text-xs">{fb.type.replace(/_/g, " ")}</Badge>
                         {fb.feature && <Badge variant="secondary" className="text-xs">{fb.feature}</Badge>}
                         {fb.rating != null && (
                           <span className="text-xs font-medium text-amber-600 flex items-center gap-0.5">

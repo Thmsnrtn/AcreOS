@@ -373,7 +373,7 @@ export default function MarketWatchlistPage() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-medium text-sm">{alert.title}</span>
                         <Badge variant="outline" className="text-xs">{alert.county}, {alert.state}</Badge>
-                        <Badge variant="outline" className="text-xs">{alert.type.replace("_", " ")}</Badge>
+                        <Badge variant="outline" className="text-xs">{alert.type.replace(/_/g, " ")}</Badge>
                         {!alert.read && <div className="w-2 h-2 rounded-full bg-primary" />}
                         <span className="text-xs text-muted-foreground ml-auto">
                           {relative(alert.createdAt)}

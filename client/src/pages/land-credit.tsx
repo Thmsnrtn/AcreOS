@@ -489,7 +489,7 @@ export default function LandCreditPage() {
                       </div>
                     </div>
                     <p className="text-xs text-muted-foreground mt-2">
-                      Adjusted by weighting factors most relevant to {investorStrategy.replace('_', ' ')} strategy.
+                      Adjusted by weighting factors most relevant to {investorStrategy.replace(/_/g, ' ')} strategy.
                     </p>
                   </CardContent>
                 </Card>

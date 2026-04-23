@@ -730,7 +730,7 @@ export function OnboardingWizard() {
               </div>
               <div className="flex items-center gap-3 text-sm">
                 <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
-                <span>Business type: <strong className="capitalize">{businessType?.replace("_", " ")}</strong></span>
+                <span>Business type: <strong className="capitalize">{businessType?.replace(/_/g, " ")}</strong></span>
               </div>
               <div className="flex items-center gap-3 text-sm">
                 <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />

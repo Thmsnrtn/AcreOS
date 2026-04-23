@@ -2525,7 +2525,7 @@ export function PropertyMap({
                                     className="w-2 h-2 rounded-full" 
                                     style={{ backgroundColor: color }}
                                   />
-                                  <span className="text-[10px] text-muted-foreground capitalize">{status.replace("_", " ")}</span>
+                                  <span className="text-[10px] text-muted-foreground capitalize">{status.replace(/_/g, " ")}</span>
                                 </div>
                               ))}
                             </div>

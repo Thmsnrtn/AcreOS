@@ -263,7 +263,7 @@ export function OfferWizard({ dealId, trigger }: OfferWizardProps) {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-sm font-medium">Delivery</span>
-                      <span className="text-sm capitalize">{deliveryMethod.replace("_", " ")}</span>
+                      <span className="text-sm capitalize">{deliveryMethod.replace(/_/g, " ")}</span>
                     </div>
                   </CardContent>
                 </Card>

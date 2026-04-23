@@ -706,7 +706,7 @@ function CampaignList({ campaigns, isLoading, onSelect, onCreateNew }: {
                   </div>
                   <div>
                     <h3 className="font-semibold text-lg">{campaign.name}</h3>
-                    <p className="text-sm text-muted-foreground capitalize">{campaign.type?.replace('_', ' ')}</p>
+                    <p className="text-sm text-muted-foreground capitalize">{campaign.type?.replace(/_/g, ' ')}</p>
                   </div>
                 </div>
                 <Badge className={statusColors[campaign.status] || statusColors.draft}>

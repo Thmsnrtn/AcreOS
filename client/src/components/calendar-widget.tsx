@@ -105,7 +105,7 @@ export function CalendarWidget() {
           {Object.entries(EVENT_COLORS).map(([type, colors]) => (
             <div key={type} className="flex items-center gap-1">
               <span className={`h-2 w-2 rounded-full ${colors.dot}`} />
-              <span className="text-[10px] text-muted-foreground capitalize">{type.replace("_", " ")}</span>
+              <span className="text-[10px] text-muted-foreground capitalize">{type.replace(/_/g, " ")}</span>
             </div>
           ))}
         </div>

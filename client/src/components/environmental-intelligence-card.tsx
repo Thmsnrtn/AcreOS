@@ -111,7 +111,7 @@ function RiskRow({ label, risk }: { label: string; risk: RiskDetail }) {
       <span className="text-sm text-muted-foreground">{label}</span>
       <div className="flex items-center gap-2">
         <Badge variant={riskBadgeVariant(risk.level)} className="text-xs">
-          {risk.level.replace("_", " ")}
+          {risk.level.replace(/_/g, " ")}
         </Badge>
         <span className="text-xs text-muted-foreground">{risk.score}/100</span>
       </div>
@@ -228,7 +228,7 @@ export function EnvironmentalIntelligenceCard({
                 <Droplets className="h-4 w-4 text-blue-500" />
                 <h4 className="text-sm font-medium">Water Rights</h4>
                 <Badge variant="outline" className="text-xs">
-                  {waterData.doctrine.replace("_", " ")}
+                  {waterData.doctrine.replace(/_/g, " ")}
                 </Badge>
               </div>
               <p className="text-sm text-muted-foreground">
@@ -259,7 +259,7 @@ export function EnvironmentalIntelligenceCard({
                 <div className="flex flex-wrap gap-1">
                   {mineralData.dominantMinerals.map((mineral) => (
                     <Badge key={mineral} variant="secondary" className="text-xs">
-                      {mineral.replace("_", " ")}
+                      {mineral.replace(/_/g, " ")}
                     </Badge>
                   ))}
                 </div>
@@ -289,7 +289,7 @@ export function EnvironmentalIntelligenceCard({
                 <div className="flex flex-wrap gap-1">
                   {carbonData.programTypes.map((program) => (
                     <Badge key={program} variant="outline" className="text-xs">
-                      {program.replace("_", " ")}
+                      {program.replace(/_/g, " ")}
                     </Badge>
                   ))}
                 </div>
@@ -305,7 +305,7 @@ export function EnvironmentalIntelligenceCard({
                 <CloudRain className="h-4 w-4 text-muted-foreground" />
                 <h4 className="text-sm font-medium">Climate Risk Assessment</h4>
                 <Badge variant={riskBadgeVariant(climateData.overallRisk)} className="text-xs">
-                  {climateData.overallRisk.replace("_", " ")} overall
+                  {climateData.overallRisk.replace(/_/g, " ")} overall
                 </Badge>
               </div>
               <div className="space-y-0.5">

@@ -198,7 +198,7 @@ export default function DirectMailCampaignsPage() {
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
                       <span className="font-medium text-sm">{c.name}</span>
-                      <Badge variant="outline" className="text-xs capitalize">{c.mailType.replace("_", " ")}</Badge>
+                      <Badge variant="outline" className="text-xs capitalize">{c.mailType.replace(/_/g, " ")}</Badge>
                       <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_COLORS[c.status]}`}>
                         {c.status}
                       </span>

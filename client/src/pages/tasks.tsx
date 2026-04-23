@@ -605,7 +605,7 @@ export default function TasksPage() {
                             )}
                             <span className="flex items-center gap-1">
                               <StatusIcon className="w-3 h-3" />
-                              {task.status.replace("_", " ")}
+                              {task.status.replace(/_/g, " ")}
                             </span>
                           </div>
                         </div>

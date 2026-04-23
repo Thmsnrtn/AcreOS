@@ -2515,7 +2515,7 @@ export default function FounderDashboard() {
                   <div className="flex gap-2 flex-wrap">
                     {Object.entries(dashboardData?.revenueAtRisk.dunningByStage || {}).map(([stage, count]) => (
                       <Badge key={stage} variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/20">
-                        {stage.replace('_', ' ')}: {count}
+                        {stage.replace(/_/g, ' ')}: {count}
                       </Badge>
                     ))}
                     {Object.keys(dashboardData?.revenueAtRisk.dunningByStage || {}).length === 0 && (
@@ -3715,7 +3715,7 @@ export default function FounderDashboard() {
                       >
                         {getEventTypeIcon(event.eventType)}
                         <div className="flex-1">
-                          <span className="text-sm font-medium capitalize">{event.eventType.replace('_', ' ')}</span>
+                          <span className="text-sm font-medium capitalize">{event.eventType.replace(/_/g, ' ')}</span>
                           {event.fromTier && event.toTier && (
                             <span className="text-xs text-muted-foreground ml-2">
                               {event.fromTier} to {event.toTier}
@@ -4423,7 +4423,7 @@ export default function FounderDashboard() {
                       </thead>
                       <tbody>
                         {Object.entries(dashboardData?.revenueAtRisk.dunningByStage || {}).map(([stage, count]) => (
-                          <tr key={stage}><td className="py-1 capitalize">{stage.replace('_', ' ')}</td><td className="text-right">{count}</td></tr>
+                          <tr key={stage}><td className="py-1 capitalize">{stage.replace(/_/g, ' ')}</td><td className="text-right">{count}</td></tr>
                         ))}
                         {Object.keys(dashboardData?.revenueAtRisk.dunningByStage || {}).length === 0 && (
                           <tr><td colSpan={2} className="py-2 text-center text-muted-foreground">No organizations in dunning</td></tr>

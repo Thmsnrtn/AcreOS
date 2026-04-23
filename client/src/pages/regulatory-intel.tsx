@@ -410,7 +410,7 @@ export default function RegulatoryIntelPage() {
                           <RiskBadge risk={state.sellerFinancingRisk} />
                           <Badge variant="outline" className="text-xs">
                             <Droplets className="w-3 h-3 mr-1" />
-                            {state.waterRightsSystem.replace("_", " ")}
+                            {state.waterRightsSystem.replace(/_/g, " ")}
                           </Badge>
                           <Badge variant="outline" className="text-xs">
                             {state.subdivisionRegulations}
@@ -439,14 +439,14 @@ export default function RegulatoryIntelPage() {
                           <div><span className="text-muted-foreground">SF Risk</span><br /><RiskBadge risk={stateDetail.sellerFinancingRisk} /></div>
                           <div><span className="text-muted-foreground">Property Tax</span><br /><span className="font-medium">{stateDetail.propertyTaxRate ?? "—"}</span></div>
                           <div><span className="text-muted-foreground">Transfer Tax</span><br /><span className="font-medium">{stateDetail.transferTax ?? "—"}</span></div>
-                          <div><span className="text-muted-foreground">Water Rights</span><br /><span className="font-medium">{stateDetail.waterRightsSystem.replace("_", " ")}</span></div>
+                          <div><span className="text-muted-foreground">Water Rights</span><br /><span className="font-medium">{stateDetail.waterRightsSystem.replace(/_/g, " ")}</span></div>
                           <div><span className="text-muted-foreground">Usury Ceiling</span><br /><span className="font-medium">{stateDetail.usuryCeiling ? `${stateDetail.usuryCeiling}%` : "None"}</span></div>
                         </div>
 
                         <div>
                           <div className="text-xs font-medium text-muted-foreground mb-1">Deed Types</div>
                           <div className="flex flex-wrap gap-1">
-                            {stateDetail.deedTypes.map(d => <Badge key={d} variant="outline" className="text-xs">{d.replace("_", " ")}</Badge>)}
+                            {stateDetail.deedTypes.map(d => <Badge key={d} variant="outline" className="text-xs">{d.replace(/_/g, " ")}</Badge>)}
                             {stateDetail.todDeedAvailable && <Badge variant="secondary" className="text-xs">TOD Deed ✓</Badge>}
                           </div>
                         </div>
@@ -492,7 +492,7 @@ export default function RegulatoryIntelPage() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-medium text-sm">{alert.title}</span>
                         {alert.state && <Badge variant="outline" className="text-xs">{alert.state}</Badge>}
-                        <Badge variant="outline" className="text-xs">{alert.category.replace("_", " ")}</Badge>
+                        <Badge variant="outline" className="text-xs">{alert.category.replace(/_/g, " ")}</Badge>
                         <span className="text-xs text-muted-foreground ml-auto">Effective {alert.effectiveDate}</span>
                       </div>
                       <p className="text-sm text-muted-foreground">{alert.summary}</p>

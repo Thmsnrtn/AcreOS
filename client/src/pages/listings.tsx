@@ -556,7 +556,7 @@ export default function ListingsPage() {
                           className={`absolute top-2 right-2 ${STATUS_COLORS[listing.status] || ""}`}
                           data-testid={`badge-status-${listing.id}`}
                         >
-                          {listing.status.replace("_", " ")}
+                          {listing.status.replace(/_/g, " ")}
                         </Badge>
                       </div>
                       <CardHeader className="pb-2">
@@ -661,7 +661,7 @@ export default function ListingsPage() {
                                 )}
                               </div>
                               <Badge className={STATUS_COLORS[listing.status] || ""}>
-                                {listing.status.replace("_", " ")}
+                                {listing.status.replace(/_/g, " ")}
                               </Badge>
                             </div>
                             
@@ -695,7 +695,7 @@ export default function ListingsPage() {
                                       key={index}
                                       variant={target.status === "active" ? "default" : "secondary"}
                                     >
-                                      {target.platform.replace("_", " ")}
+                                      {target.platform.replace(/_/g, " ")}
                                     </Badge>
                                   ))}
                                 </div>

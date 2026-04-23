@@ -216,7 +216,7 @@ function buildQuickAnalysisPrompt(property: Property): string {
     property.sizeAcres ? `- Size: ${property.sizeAcres} acres` : null,
     property.marketValue ? `- Market Value: $${Number(property.marketValue).toLocaleString()}` : null,
     property.listPrice ? `- List Price: $${Number(property.listPrice).toLocaleString()}` : null,
-    property.status ? `- Status: ${property.status.replace("_", " ")}` : null,
+    property.status ? `- Status: ${property.status.replace(/_/g, " ")}` : null,
     property.zoning ? `- Zoning: ${property.zoning}` : null,
     ``,
     `Provide the analysis using these exact section headings (use ## for each):`,
@@ -387,7 +387,7 @@ export function PropertyAnalysisChat({ property, open, onOpenChange }: PropertyA
                   </span>
                 )}
                 <Badge variant="outline" className="capitalize text-xs">
-                  {property.status.replace("_", " ")}
+                  {property.status.replace(/_/g, " ")}
                 </Badge>
               </div>
             </div>

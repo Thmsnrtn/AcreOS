@@ -402,7 +402,7 @@ export default function OffersPage() {
                             <TableCell>{getStatusBadge(offer.status)}</TableCell>
                             <TableCell>
                               <Badge variant="outline" className="capitalize">
-                                {offer.deliveryMethod?.replace("_", " ") || "Direct Mail"}
+                                {offer.deliveryMethod?.replace(/_/g, " ") || "Direct Mail"}
                               </Badge>
                             </TableCell>
                             <TableCell>
@@ -749,7 +749,7 @@ export default function OffersPage() {
                           <div>
                             <CardTitle className="text-base">{template.name}</CardTitle>
                             <Badge variant="outline" className="mt-1 capitalize">
-                              {template.type.replace("_", " ")}
+                              {template.type.replace(/_/g, " ")}
                             </Badge>
                           </div>
                           {template.isDefault && (

@@ -581,7 +581,7 @@ export function CommandPalette() {
                                   {deal.property?.county ? `${deal.property.county}, ${deal.property.state}` : deal.type}
                                 </span>
                                 <span className="text-xs text-muted-foreground capitalize">
-                                  {deal.type} {"\u00b7"} {deal.status.replace('_', ' ')}
+                                  {deal.type} {"\u00b7"} {deal.status.replace(/_/g, ' ')}
                                 </span>
                               </div>
                               <ArrowRight className="ml-auto h-4 w-4 text-muted-foreground" />

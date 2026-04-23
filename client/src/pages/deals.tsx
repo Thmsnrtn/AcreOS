@@ -1184,7 +1184,7 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                   {deal.type === 'acquisition' ? 'Acquisition' : 'Disposition'}
                 </Badge>
                 <Badge className={statusColors[deal.status] || statusColors.negotiating}>
-                  {deal.status?.replace('_', ' ')}
+                  {deal.status?.replace(/_/g, ' ')}
                 </Badge>
               </div>
               <h2 className="text-lg md:text-xl font-bold mt-2 line-clamp-2" data-testid="text-deal-title">

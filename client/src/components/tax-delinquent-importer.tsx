@@ -87,9 +87,9 @@ export function TaxDelinquentImporter({ open, onOpenChange }: TaxDelinquentImpor
       const autoMapping: ColumnMapping = {};
       TAX_DELINQUENT_COLUMNS.forEach(col => {
         const match = headers.find(h => 
-          h.toLowerCase().includes(col.key.replace('_', ' ')) ||
+          h.toLowerCase().includes(col.key.replace(/_/g, ' ')) ||
           h.toLowerCase().includes(col.key.replace('_', '')) ||
-          h.toLowerCase() === col.key.replace('_', ' ') ||
+          h.toLowerCase() === col.key.replace(/_/g, ' ') ||
           h.toLowerCase() === col.key
         );
         if (match) {

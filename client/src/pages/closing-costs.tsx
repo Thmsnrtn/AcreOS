@@ -167,7 +167,7 @@ export default function ClosingCostsPage() {
                 </div>
                 <div>
                   <p className="text-muted-foreground">Source</p>
-                  <p className="font-medium">{feeInfo.source.replace("_", " ")}</p>
+                  <p className="font-medium">{feeInfo.source.replace(/_/g, " ")}</p>
                 </div>
               </div>
               {feeInfo.specialNotes.length > 0 && (

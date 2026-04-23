@@ -1,11 +1,11 @@
 # Elite-Team Refinement — Resume Point
 
-**Last session:** 2026-04-23 (session 5d — fourth slice on /properties in one day)
-**Last completed refinement:** `/properties` — dead-code sweep
-(DueDiligenceTab function + orphaned imports, 196 lines deleted)
-plus DueDiligencePanel a11y pass (StatusButton descriptive aria-label,
-icon-only lookup button labeled, 17 decorative icons aria-hidden,
-loading state aria-live, CardTitle de-duplicated).
+**Last session:** 2026-04-23 (session 5e — fifth slice)
+**Last completed refinement:** ResearchSummaryPanel 9-lens
+(status.replace bug, 11 decorative icons aria-hidden, aria-live
+regions on Saving/Saved + comps-loading, window.open noopener,
+descriptive error toast) plus a cross-cutting sweep of the
+status.replace bug across 22 client files / 59 call sites.
 **Phase 1 inventory:** ✅ committed at `11d0e8c`
 
 ## How to continue
@@ -48,14 +48,16 @@ Session 4:
   state conformance + mobile action-row stack + source badge
   promotion + token-based visuals
 
-Session 5 (four slices):
+Session 5 (five slices):
 - 5a. `/properties` — list slice (commit `b70c9d6`)
 - 5b. `/properties` — PropertyCard + PropertyForm slice (commit
   `29bd33f`)
 - 5c. `/properties` — PropertyDetailDialog header + Quick Verdict +
   Overview tab (commit `796f8d6`)
 - 5d. `/properties` — dead-code sweep (DueDiligenceTab removal) +
-  DueDiligencePanel a11y pass (commit TBD this session)
+  DueDiligencePanel a11y pass (commit `b27128b`)
+- 5e. ResearchSummaryPanel 9-lens + cross-cutting status.replace
+  sweep across 22 client files (commit TBD this session)
 
 ## Cross-cutting gains this pass
 
@@ -70,6 +72,12 @@ Session 5 (four slices):
   result UI *replaces* the trigger (e.g. Pursue/Pass buttons → decision
   badge) MUST surface both success and error toasts, because the
   replaced UI is no longer there to show a state change.
+- **Cross-cutting bug sweep trigger (new 5e):** when a refinement
+  hits the *same* code-level bug in a fourth component, stop patching
+  it locally. Grep the whole client tree, fix all occurrences in one
+  sweep, and commit separately. Applied to `.replace('_', ' ')` —
+  any subsequent "I've seen this exact thing three times" pattern
+  should get the same treatment.
 - **Silent-query → toast pattern (new 5c):** a background query with
   `staleTime: 0` that silently fails while showing cached data is a
   trust bug. Wire an `isError` → toast via `useEffect` so the operator
