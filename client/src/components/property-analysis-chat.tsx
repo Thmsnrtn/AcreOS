@@ -118,11 +118,11 @@ function AnalysisMarkdown({ content }: { content: string }) {
 
 // ─── Section icons for structured analysis ────────────────────────────────────
 const SECTION_ICONS: Record<string, React.ReactNode> = {
-  "property summary": <BarChart3 className="w-4 h-4 text-blue-500" />,
-  "market position": <TrendingUp className="w-4 h-4 text-green-500" />,
-  "key risks": <AlertTriangle className="w-4 h-4 text-amber-500" />,
-  "investment recommendation": <Target className="w-4 h-4 text-purple-500" />,
-  "suggested offer range": <DollarSign className="w-4 h-4 text-emerald-500" />,
+  "property summary": <BarChart3 className="w-4 h-4 text-blue-500" aria-hidden="true" />,
+  "market position": <TrendingUp className="w-4 h-4 text-green-500" aria-hidden="true" />,
+  "key risks": <AlertTriangle className="w-4 h-4 text-amber-500" aria-hidden="true" />,
+  "investment recommendation": <Target className="w-4 h-4 text-purple-500" aria-hidden="true" />,
+  "suggested offer range": <DollarSign className="w-4 h-4 text-emerald-500" aria-hidden="true" />,
 };
 
 function getSectionIcon(heading: string): React.ReactNode {
@@ -130,7 +130,7 @@ function getSectionIcon(heading: string): React.ReactNode {
   for (const [key, icon] of Object.entries(SECTION_ICONS)) {
     if (lower.includes(key)) return icon;
   }
-  return <BarChart3 className="w-4 h-4 text-muted-foreground" />;
+  return <BarChart3 className="w-4 h-4 text-muted-foreground" aria-hidden="true" />;
 }
 
 // ─── Parse structured analysis into section cards ────────────────────────────
@@ -363,26 +363,26 @@ export function PropertyAnalysisChat({ property, open, onOpenChange }: PropertyA
       <SheetContent side="right" className="w-full sm:max-w-lg flex flex-col p-0" data-testid="panel-property-analysis-chat">
         <SheetHeader className="p-4 border-b space-y-3">
           <SheetTitle className="flex items-center gap-2" data-testid="text-chat-title">
-            <Bot className="w-5 h-5" />
+            <Bot className="w-5 h-5" aria-hidden="true" />
             Analyze Property with AI
           </SheetTitle>
           <SheetDescription asChild>
             <div className="space-y-2" data-testid="property-context-summary">
               <div className="flex items-center gap-2 text-sm">
-                <MapPin className="w-4 h-4 text-muted-foreground" />
+                <MapPin className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
                 <span className="font-medium">{property.address || `${property.county}, ${property.state}`}</span>
               </div>
               <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                 <span>APN: {property.apn}</span>
                 {property.sizeAcres && (
                   <span className="flex items-center gap-1">
-                    <Ruler className="w-3 h-3" />
+                    <Ruler className="w-3 h-3" aria-hidden="true" />
                     {property.sizeAcres} acres
                   </span>
                 )}
                 {formatCurrency(property.marketValue) && (
                   <span className="flex items-center gap-1">
-                    <DollarSign className="w-3 h-3" />
+                    <DollarSign className="w-3 h-3" aria-hidden="true" />
                     {formatCurrency(property.marketValue)}
                   </span>
                 )}
@@ -395,13 +395,18 @@ export function PropertyAnalysisChat({ property, open, onOpenChange }: PropertyA
         </SheetHeader>
 
         <ScrollArea className="flex-1 p-4" ref={scrollAreaRef as any}>
-          <div className="space-y-4">
+          <div
+            className="space-y-4"
+            role="log"
+            aria-live="polite"
+            aria-label="Property analysis conversation"
+          >
             {messages.length === 0 && (
               <div className="space-y-5" data-testid="empty-chat-state">
                 {/* Primary CTA: Run Quick Analysis */}
                 <div className="text-center py-6 space-y-4">
                   <div className="mx-auto w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                    <Sparkles className="w-6 h-6 text-primary" />
+                    <Sparkles className="w-6 h-6 text-primary" aria-hidden="true" />
                   </div>
                   <div className="space-y-1">
                     <h3 className="font-semibold text-sm">Property Analysis</h3>
@@ -415,11 +420,12 @@ export function PropertyAnalysisChat({ property, open, onOpenChange }: PropertyA
                     onClick={runQuickAnalysis}
                     disabled={isLoading}
                     data-testid="button-run-quick-analysis"
+                    aria-label={isLoading ? "Running analysis…" : "Run Quick Analysis"}
                   >
                     {isLoading ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
                     ) : (
-                      <Sparkles className="w-4 h-4" />
+                      <Sparkles className="w-4 h-4" aria-hidden="true" />
                     )}
                     Run Quick Analysis
                   </Button>
@@ -440,7 +446,7 @@ export function PropertyAnalysisChat({ property, open, onOpenChange }: PropertyA
                         disabled={isLoading}
                         data-testid={`button-quick-action-${index}`}
                       >
-                        <action.icon className="w-4 h-4 shrink-0 text-muted-foreground" />
+                        <action.icon className="w-4 h-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                         <span className="text-sm">{action.label}</span>
                       </Button>
                     ))}
@@ -461,12 +467,12 @@ export function PropertyAnalysisChat({ property, open, onOpenChange }: PropertyA
                   <div key={index} className="flex gap-3 justify-end" data-testid={`message-user-${index}`}>
                     <div className="max-w-[80%] rounded-lg p-3 bg-primary text-primary-foreground">
                       <p className="text-sm flex items-center gap-1.5">
-                        <Sparkles className="w-3.5 h-3.5" />
+                        <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
                         Run Quick Analysis
                       </p>
                     </div>
-                    <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center shrink-0">
-                      <User className="w-4 h-4" />
+                    <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center shrink-0" aria-hidden="true">
+                      <User className="w-4 h-4" aria-hidden="true" />
                     </div>
                   </div>
                 );
@@ -479,8 +485,8 @@ export function PropertyAnalysisChat({ property, open, onOpenChange }: PropertyA
                   data-testid={`message-${message.role}-${index}`}
                 >
                   {message.role === "assistant" && !isStructuredAnalysis && (
-                    <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                      <Bot className="w-4 h-4 text-primary" />
+                    <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0" aria-hidden="true">
+                      <Bot className="w-4 h-4 text-primary" aria-hidden="true" />
                     </div>
                   )}
                   {isStructuredAnalysis ? (
@@ -543,8 +549,8 @@ export function PropertyAnalysisChat({ property, open, onOpenChange }: PropertyA
                     </div>
                   )}
                   {message.role === "user" && !(hasRunAnalysis && index === 0) && (
-                    <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center shrink-0">
-                      <User className="w-4 h-4" />
+                    <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center shrink-0" aria-hidden="true">
+                      <User className="w-4 h-4" aria-hidden="true" />
                     </div>
                   )}
                 </div>
@@ -552,14 +558,19 @@ export function PropertyAnalysisChat({ property, open, onOpenChange }: PropertyA
             })}
 
             {isLoading && (
-              <div className="flex gap-3 justify-start" data-testid="loading-state">
-                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                  <Bot className="w-4 h-4 text-primary" />
+              <div
+                className="flex gap-3 justify-start"
+                data-testid="loading-state"
+                role="status"
+                aria-live="polite"
+              >
+                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0" aria-hidden="true">
+                  <Bot className="w-4 h-4 text-primary" aria-hidden="true" />
                 </div>
                 <div className="bg-muted rounded-lg p-3">
                   <div className="flex items-center gap-2">
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span className="text-sm text-muted-foreground">Analyzing...</span>
+                    <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                    <span className="text-sm text-muted-foreground">Analyzing…</span>
                   </div>
                 </div>
               </div>
@@ -578,17 +589,17 @@ export function PropertyAnalysisChat({ property, open, onOpenChange }: PropertyA
               className="flex-1"
               data-testid="input-chat-message"
             />
-            <Button 
-              type="submit" 
-              size="icon" 
+            <Button
+              type="submit"
+              size="icon"
               disabled={!inputValue.trim() || isLoading}
-              aria-label="Send message"
+              aria-label={isLoading ? "Waiting for analysis…" : "Send message"}
               data-testid="button-send-message"
             >
               {isLoading ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
+                <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
               ) : (
-                <Send className="w-4 h-4" />
+                <Send className="w-4 h-4" aria-hidden="true" />
               )}
             </Button>
           </form>
@@ -604,7 +615,7 @@ export function PropertyAnalysisChat({ property, open, onOpenChange }: PropertyA
                   disabled={isLoading}
                   data-testid={`button-bottom-action-${index}`}
                 >
-                  <action.icon className="w-3 h-3 mr-1" />
+                  <action.icon className="w-3 h-3 mr-1" aria-hidden="true" />
                   {action.label}
                 </Button>
               ))}

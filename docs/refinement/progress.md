@@ -673,3 +673,29 @@ future sessions — see resume pointer.
   screen readers announce both idle and busy states.
 
 **Sign-off (this slice):** D ✓ M ✓ A ✓ E ✓ AI ✓ LI ✓ CW ✓ I ✓ T ✓
+
+### `/properties` — PropertyAnalysisChat (session 5h)
+
+- [A-critical] Messages container was a plain `<div>`. Screen reader
+  users received no announcement when the AI response arrived. Added
+  `role="log" aria-live="polite" aria-label="Property analysis
+  conversation"` to the message list container. For a chat interface
+  this is the single most impactful a11y fix.
+- [A] Loading indicator ("Analyzing…") wrapped in `role="status"
+  aria-live="polite"` so assistive tech announces that the AI is
+  working. Previously SR users had no indication of busy state.
+- [A] Send button `aria-label` is now busy-aware — "Send message"
+  idle, "Waiting for analysis…" while loading.
+- [A] Run-Quick-Analysis button gained busy-aware aria-label.
+- [A] 18 decorative icons made `aria-hidden`:
+  SECTION_ICONS (5: BarChart3, TrendingUp, AlertTriangle, Target,
+  DollarSign) + fallback BarChart3, plus header Bot + MapPin + Ruler
+  + DollarSign + empty-state Sparkles + Loader2/Sparkles on run
+  button + quick-action icons + user/bot avatars + sent-message
+  Sparkles + loading Bot+Loader2 + Send/Loader2 on submit + bottom
+  action icons. Avatar wrappers themselves also aria-hidden since
+  the message sender is already conveyed by positional layout +
+  markdown structure.
+- [CW] "Analyzing..." → "Analyzing…".
+
+**Sign-off (this slice):** D ✓ M ✓ A ✓ E ✓ AI ✓ LI ✓ CW ✓ I ✓ T ✓

@@ -1,11 +1,10 @@
 # Elite-Team Refinement — Resume Point
 
-**Last session:** 2026-04-23 (session 5g — seventh slice)
-**Last completed refinement:** AIOfferGenerator 9-lens
-(div→radiogroup for offer strategies, AI grounding caveats on
-reasoning and prediction outputs, clipboard error handling,
-specific AI error toasts with reassurance, 22 icons aria-hidden,
-busy-aware button labels).
+**Last session:** 2026-04-23 (session 5h — eighth slice)
+**Last completed refinement:** PropertyAnalysisChat 9-lens — added
+role=log + aria-live on messages container (the core chat a11y
+fix), role=status on Analyzing indicator, busy-aware send button
+label, 18 decorative icons aria-hidden.
 **Phase 1 inventory:** ✅ committed at `11d0e8c`
 
 ## How to continue
@@ -63,7 +62,10 @@ Session 5 (five slices):
   `0c3bbec`)
 - 5g. AIOfferGenerator 9-lens — div→radiogroup, AI grounding
   caveats, clipboard error handling, specific AI error toasts
-  (commit TBD this session)
+  (commit `8848f08`)
+- 5h. PropertyAnalysisChat 9-lens — role=log on messages
+  container, role=status on analyzing indicator, busy-aware send
+  button, 18 icons aria-hidden (commit TBD this session)
 
 ## Cross-cutting gains this pass
 
@@ -114,12 +116,20 @@ Session 5 (five slices):
 
 **`/properties` — continued.** Remaining detail-dialog tab contents:
 
-1. `PropertyAnalysisChat` (`client/src/components/property-analysis-chat.tsx`)
-   — AI chat surface, streaming states, error paths, accessibility
-   of live region updates. 617 lines.
-2. `PropertyIntelligenceTab` (defined inline in `properties.tsx`
+1. `PropertyIntelligenceTab` (defined inline in `properties.tsx`
    near end of file) — AI output grounding, lazy-load of heavy
-   analytics, data provenance on scores.
+   analytics, data provenance on scores. This is the last piece
+   of the PropertyDetailDialog surface.
+
+After that the detail dialog is done and the walk moves to the
+next inventory section. Likely order from inventory:
+- `/deals` (kanban UX on 375px — earlier pass only touched colors)
+- `/campaigns`
+- `/inbox`
+- `/documents`
+- `/sign/:docId` — legal/trust surface; verify signer flow
+- `/portal/:accessToken` — borrower portal; public link, mobile
+  critical
 
 Note: the Accordion trigger content text in DueDiligencePanel still
 shows generic category icons but the items themselves (Tax Analysis,
