@@ -143,8 +143,10 @@ export function AIOfferGenerator({ property }: AIOfferGeneratorProps) {
     },
     onError: (error: Error) => {
       toast({
-        title: "Error",
-        description: error.message || "Failed to generate offer suggestions",
+        title: "Couldn't generate offer suggestions",
+        description: error.message
+          ? `${error.message}. No credit charged.`
+          : "The AI provider didn't respond. No credit charged — try again.",
         variant: "destructive",
       });
     },
@@ -179,8 +181,10 @@ export function AIOfferGenerator({ property }: AIOfferGeneratorProps) {
     },
     onError: (error: Error) => {
       toast({
-        title: "Error",
-        description: error.message || "Failed to generate offer letter",
+        title: "Couldn't generate letter",
+        description: error.message
+          ? `${error.message}. Your form values are kept.`
+          : "The AI provider didn't respond. Your form values are kept — try again.",
         variant: "destructive",
       });
     },
@@ -205,8 +209,10 @@ export function AIOfferGenerator({ property }: AIOfferGeneratorProps) {
     },
     onError: (error: Error) => {
       toast({
-        title: "Error",
-        description: error.message || "Failed to predict acceptance probability",
+        title: "Couldn't predict acceptance",
+        description: error.message
+          ? `${error.message}. Your inputs are kept.`
+          : "The AI provider didn't respond. Your inputs are kept — try again.",
         variant: "destructive",
       });
     },
@@ -221,12 +227,20 @@ export function AIOfferGenerator({ property }: AIOfferGeneratorProps) {
     }).format(value);
   };
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    toast({
-      title: "Copied",
-      description: "Letter copied to clipboard",
-    });
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast({
+        title: "Letter copied",
+        description: "Paste it into your email or document.",
+      });
+    } catch {
+      toast({
+        title: "Couldn't copy letter",
+        description: "Clipboard permission was denied. Select the text manually to copy.",
+        variant: "destructive",
+      });
+    }
   };
 
   const getConfidenceBadge = (confidence: number) => {
@@ -236,9 +250,9 @@ export function AIOfferGenerator({ property }: AIOfferGeneratorProps) {
   };
 
   const getImpactIcon = (impact: "positive" | "negative" | "neutral") => {
-    if (impact === "positive") return <TrendingUp className="w-4 h-4 text-green-500" />;
-    if (impact === "negative") return <TrendingDown className="w-4 h-4 text-red-500" />;
-    return <ArrowRight className="w-4 h-4 text-muted-foreground" />;
+    if (impact === "positive") return <TrendingUp className="w-4 h-4 text-green-500" aria-hidden="true" />;
+    if (impact === "negative") return <TrendingDown className="w-4 h-4 text-red-500" aria-hidden="true" />;
+    return <ArrowRight className="w-4 h-4 text-muted-foreground" aria-hidden="true" />;
   };
 
   const getProbabilityColor = (probability: number) => {
@@ -252,7 +266,7 @@ export function AIOfferGenerator({ property }: AIOfferGeneratorProps) {
       <Card>
         <CardContent className="py-8">
           <div className="text-center">
-            <AlertCircle className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+            <AlertCircle className="w-12 h-12 mx-auto text-muted-foreground mb-4" aria-hidden="true" />
             <h3 className="font-medium mb-2">Location Data Required</h3>
             <p className="text-sm text-muted-foreground">
               Please fetch parcel data first to enable AI offer analysis.
@@ -268,7 +282,7 @@ export function AIOfferGenerator({ property }: AIOfferGeneratorProps) {
       <Card data-testid="ai-offer-generator">
         <CardContent className="py-8">
           <div className="text-center">
-            <AlertCircle className="w-12 h-12 mx-auto text-amber-500 mb-4" />
+            <AlertCircle className="w-12 h-12 mx-auto text-amber-500 mb-4" aria-hidden="true" />
             <h3 className="font-medium mb-2">AI Provider Not Configured</h3>
             <p className="text-sm text-muted-foreground">
               Configure an AI provider in Settings → Providers to enable offer analysis.
@@ -283,26 +297,26 @@ export function AIOfferGenerator({ property }: AIOfferGeneratorProps) {
     <Card data-testid="ai-offer-generator">
       <CardHeader>
         <div className="flex items-center gap-2">
-          <Sparkles className="w-5 h-5 text-primary" />
+          <Sparkles className="w-5 h-5 text-primary" aria-hidden="true" />
           <CardTitle data-testid="text-ai-offer-title">AI Offer Generator</CardTitle>
         </div>
         <CardDescription>
-          Get AI-powered offer suggestions, generate personalized letters, and predict acceptance probability.
+          AI-assisted offer suggestions, letters, and acceptance estimates. Review every output before sending — the AI's price and probability figures are estimates, not appraisals.
         </CardDescription>
       </CardHeader>
       <CardContent>
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="grid w-full grid-cols-3" data-testid="tabs-ai-offer">
             <TabsTrigger value="suggestions" data-testid="tab-suggestions">
-              <DollarSign className="w-4 h-4 mr-2" />
+              <DollarSign className="w-4 h-4 mr-2" aria-hidden="true" />
               Suggestions
             </TabsTrigger>
             <TabsTrigger value="letter" data-testid="tab-letter">
-              <FileText className="w-4 h-4 mr-2" />
+              <FileText className="w-4 h-4 mr-2" aria-hidden="true" />
               Letter
             </TabsTrigger>
             <TabsTrigger value="prediction" data-testid="tab-prediction">
-              <Target className="w-4 h-4 mr-2" />
+              <Target className="w-4 h-4 mr-2" aria-hidden="true" />
               Prediction
             </TabsTrigger>
           </TabsList>
@@ -310,20 +324,21 @@ export function AIOfferGenerator({ property }: AIOfferGeneratorProps) {
           <TabsContent value="suggestions" className="space-y-4 mt-4">
             {!offerData ? (
               <div className="text-center py-8">
-                <Brain className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                <Brain className="w-12 h-12 mx-auto text-muted-foreground mb-4" aria-hidden="true" />
                 <h3 className="font-medium mb-2">Generate AI Offer Suggestions</h3>
                 <p className="text-sm text-muted-foreground mb-4">
                   Analyze comparable sales and property characteristics to get strategic offer recommendations.
                 </p>
-                <Button 
-                  onClick={() => generateOfferMutation.mutate()} 
+                <Button
+                  onClick={() => generateOfferMutation.mutate()}
                   disabled={generateOfferMutation.isPending}
                   data-testid="button-generate-offers"
+                  aria-label={generateOfferMutation.isPending ? "Analyzing property…" : "Analyze property with AI"}
                 >
                   {generateOfferMutation.isPending ? (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
                   ) : (
-                    <Sparkles className="w-4 h-4 mr-2" />
+                    <Sparkles className="w-4 h-4 mr-2" aria-hidden="true" />
                   )}
                   Analyze Property
                 </Button>
@@ -355,57 +370,70 @@ export function AIOfferGenerator({ property }: AIOfferGeneratorProps) {
 
                 <div>
                   <h4 className="font-medium mb-3 flex items-center gap-2">
-                    <Lightbulb className="w-4 h-4" />
+                    <Lightbulb className="w-4 h-4" aria-hidden="true" />
                     AI Offer Strategies
                   </h4>
-                  <div className="grid grid-cols-1 gap-3">
-                    {offerData.suggestions.map((suggestion, index) => (
-                      <div
-                        key={index}
-                        className={`p-4 rounded-md border cursor-pointer transition-colors ${
-                          selectedOffer?.strategyName === suggestion.strategyName
-                            ? "border-primary bg-primary/5"
-                            : "hover:bg-muted/50"
-                        }`}
-                        onClick={() => {
-                          setSelectedOffer(suggestion);
-                          setCustomOfferAmount(String(suggestion.offerAmount));
-                        }}
-                        data-testid={`card-offer-suggestion-${index}`}
-                      >
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="font-medium">{suggestion.strategyName}</span>
-                              {getConfidenceBadge(suggestion.confidence)}
+                  <div
+                    className="grid grid-cols-1 gap-3"
+                    role="radiogroup"
+                    aria-label="Select an offer strategy"
+                  >
+                    {offerData.suggestions.map((suggestion, index) => {
+                      const isSelected = selectedOffer?.strategyName === suggestion.strategyName;
+                      return (
+                        <button
+                          key={index}
+                          type="button"
+                          role="radio"
+                          aria-checked={isSelected}
+                          className={`text-left p-4 rounded-md border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+                            isSelected
+                              ? "border-primary bg-primary/5"
+                              : "hover:bg-muted/50"
+                          }`}
+                          onClick={() => {
+                            setSelectedOffer(suggestion);
+                            setCustomOfferAmount(String(suggestion.offerAmount));
+                          }}
+                          data-testid={`card-offer-suggestion-${index}`}
+                        >
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                <span className="font-medium">{suggestion.strategyName}</span>
+                                {getConfidenceBadge(suggestion.confidence)}
+                              </div>
+                              <div className="text-2xl font-bold text-primary" data-testid={`text-offer-amount-${index}`}>
+                                {formatCurrency(suggestion.offerAmount)}
+                              </div>
+                              <div className="text-sm text-muted-foreground mt-1">
+                                {suggestion.marketValuePercent}% of market value
+                              </div>
                             </div>
-                            <div className="text-2xl font-bold text-primary" data-testid={`text-offer-amount-${index}`}>
-                              {formatCurrency(suggestion.offerAmount)}
-                            </div>
-                            <div className="text-sm text-muted-foreground mt-1">
-                              {suggestion.marketValuePercent}% of market value
+                            <div className="text-right">
+                              <div className="text-sm text-muted-foreground">Confidence</div>
+                              <div className="text-lg font-semibold" data-testid={`text-confidence-${index}`}>
+                                {suggestion.confidence}%
+                              </div>
                             </div>
                           </div>
-                          <div className="text-right">
-                            <div className="text-sm text-muted-foreground">Confidence</div>
-                            <div className="text-lg font-semibold" data-testid={`text-confidence-${index}`}>
-                              {suggestion.confidence}%
-                            </div>
-                          </div>
-                        </div>
-                        <p className="text-sm text-muted-foreground mt-2">{suggestion.reasoning}</p>
-                      </div>
-                    ))}
+                          <p className="text-sm text-muted-foreground mt-2">{suggestion.reasoning}</p>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
                 <div className="bg-muted/30 p-4 rounded-md">
                   <h4 className="font-medium mb-2 flex items-center gap-2">
-                    <BarChart3 className="w-4 h-4" />
+                    <BarChart3 className="w-4 h-4" aria-hidden="true" />
                     AI Analysis
                   </h4>
                   <p className="text-sm text-muted-foreground" data-testid="text-ai-reasoning">
                     {offerData.aiReasoning}
+                  </p>
+                  <p className="text-xs text-muted-foreground/80 mt-2 italic">
+                    AI-generated analysis based on {offerData.marketAnalysis.comparablesCount} comparable sales. Verify figures against your own research before making an offer.
                   </p>
                 </div>
 
@@ -429,13 +457,14 @@ export function AIOfferGenerator({ property }: AIOfferGeneratorProps) {
                   </div>
                 )}
 
-                <Button 
-                  variant="outline" 
-                  onClick={() => generateOfferMutation.mutate()} 
+                <Button
+                  variant="outline"
+                  onClick={() => generateOfferMutation.mutate()}
                   disabled={generateOfferMutation.isPending}
                   data-testid="button-refresh-offers"
+                  aria-label={generateOfferMutation.isPending ? "Refreshing analysis…" : "Refresh analysis"}
                 >
-                  <RefreshCw className={`w-4 h-4 mr-2 ${generateOfferMutation.isPending ? "animate-spin" : ""}`} />
+                  <RefreshCw className={`w-4 h-4 mr-2 ${generateOfferMutation.isPending ? "animate-spin" : ""}`} aria-hidden="true" />
                   Refresh Analysis
                 </Button>
               </div>
@@ -565,9 +594,9 @@ export function AIOfferGenerator({ property }: AIOfferGeneratorProps) {
               data-testid="button-generate-letter"
             >
               {generateLetterMutation.isPending ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
               ) : (
-                <FileText className="w-4 h-4 mr-2" />
+                <FileText className="w-4 h-4 mr-2" aria-hidden="true" />
               )}
               Generate Offer Letter
             </Button>
@@ -576,13 +605,14 @@ export function AIOfferGenerator({ property }: AIOfferGeneratorProps) {
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <h4 className="font-medium">Generated Letter</h4>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
+                  <Button
+                    variant="outline"
+                    size="sm"
                     onClick={() => copyToClipboard(letterContent)}
                     data-testid="button-copy-letter"
+                    aria-label="Copy generated letter to clipboard"
                   >
-                    <Copy className="w-4 h-4 mr-2" />
+                    <Copy className="w-4 h-4 mr-2" aria-hidden="true" />
                     Copy
                   </Button>
                 </div>
@@ -652,9 +682,9 @@ export function AIOfferGenerator({ property }: AIOfferGeneratorProps) {
               data-testid="button-predict-acceptance"
             >
               {predictAcceptanceMutation.isPending ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
               ) : (
-                <Target className="w-4 h-4 mr-2" />
+                <Target className="w-4 h-4 mr-2" aria-hidden="true" />
               )}
               Predict Acceptance Probability
             </Button>
@@ -677,10 +707,13 @@ export function AIOfferGenerator({ property }: AIOfferGeneratorProps) {
 
                 <div className="bg-muted/30 p-4 rounded-md">
                   <h4 className="font-medium mb-2 flex items-center gap-2">
-                    <CheckCircle className="w-4 h-4" />
+                    <CheckCircle className="w-4 h-4" aria-hidden="true" />
                     Recommendation
                   </h4>
                   <p className="text-sm" data-testid="text-recommendation">{acceptanceData.recommendation}</p>
+                  <p className="text-xs text-muted-foreground/80 mt-2 italic">
+                    This probability is the AI's estimate based on the inputs above. Real outcomes depend on factors the AI can't observe.
+                  </p>
                 </div>
 
                 <div>
@@ -710,13 +743,14 @@ export function AIOfferGenerator({ property }: AIOfferGeneratorProps) {
                   </div>
                 </div>
 
-                <Button 
-                  variant="outline" 
-                  onClick={() => predictAcceptanceMutation.mutate()} 
+                <Button
+                  variant="outline"
+                  onClick={() => predictAcceptanceMutation.mutate()}
                   disabled={predictAcceptanceMutation.isPending}
                   data-testid="button-refresh-prediction"
+                  aria-label={predictAcceptanceMutation.isPending ? "Recalculating…" : "Recalculate acceptance probability"}
                 >
-                  <RefreshCw className={`w-4 h-4 mr-2 ${predictAcceptanceMutation.isPending ? "animate-spin" : ""}`} />
+                  <RefreshCw className={`w-4 h-4 mr-2 ${predictAcceptanceMutation.isPending ? "animate-spin" : ""}`} aria-hidden="true" />
                   Recalculate
                 </Button>
               </div>

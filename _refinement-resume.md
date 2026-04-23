@@ -1,10 +1,11 @@
 # Elite-Team Refinement — Resume Point
 
-**Last session:** 2026-04-23 (session 5f — sixth slice)
-**Last completed refinement:** CompsAnalysis 9-lens
-(Badge→Button a11y fix for Desirability Score, filters grid
-mobile fix, sale-date staleness flag, 13 decorative icons
-aria-hidden, live regions, copy polish).
+**Last session:** 2026-04-23 (session 5g — seventh slice)
+**Last completed refinement:** AIOfferGenerator 9-lens
+(div→radiogroup for offer strategies, AI grounding caveats on
+reasoning and prediction outputs, clipboard error handling,
+specific AI error toasts with reassurance, 22 icons aria-hidden,
+busy-aware button labels).
 **Phase 1 inventory:** ✅ committed at `11d0e8c`
 
 ## How to continue
@@ -58,8 +59,11 @@ Session 5 (five slices):
 - 5e. ResearchSummaryPanel 9-lens + cross-cutting status.replace
   sweep across 22 client files (commit `3d0f564`)
 - 5f. CompsAnalysis 9-lens — Badge→Button a11y, sale-date
-  staleness, mobile filter grid, decorative icons (commit TBD
-  this session)
+  staleness, mobile filter grid, decorative icons (commit
+  `0c3bbec`)
+- 5g. AIOfferGenerator 9-lens — div→radiogroup, AI grounding
+  caveats, clipboard error handling, specific AI error toasts
+  (commit TBD this session)
 
 ## Cross-cutting gains this pass
 
@@ -110,13 +114,10 @@ Session 5 (five slices):
 
 **`/properties` — continued.** Remaining detail-dialog tab contents:
 
-1. `AIOfferGenerator` (`client/src/components/ai-offer-generator.tsx`)
-   — AI grounding, cost controls, failure modes on slow LLM calls,
-   output structure (headline + data + caveats). 729 lines.
-2. `PropertyAnalysisChat` (`client/src/components/property-analysis-chat.tsx`)
+1. `PropertyAnalysisChat` (`client/src/components/property-analysis-chat.tsx`)
    — AI chat surface, streaming states, error paths, accessibility
    of live region updates. 617 lines.
-3. `PropertyIntelligenceTab` (defined inline in `properties.tsx`
+2. `PropertyIntelligenceTab` (defined inline in `properties.tsx`
    near end of file) — AI output grounding, lazy-load of heavy
    analytics, data provenance on scores.
 

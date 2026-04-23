@@ -629,3 +629,47 @@ future sessions — see resume pointer.
   properties..." → "…".
 
 **Sign-off (this slice):** D ✓ M ✓ A ✓ E ✓ AI n/a LI ✓ CW ✓ I ✓ T ✓
+
+### `/properties` — AIOfferGenerator (session 5g)
+
+- [A-critical] Offer suggestion cards were `<div onClick>` with
+  `cursor-pointer`. Keyboard users could not select a strategy at
+  all. Converted to `<button type="button" role="radio"
+  aria-checked>` inside a `role="radiogroup" aria-label="Select an
+  offer strategy"`. Added focus-visible ring matching the design
+  system. Visual styling preserved.
+- [AI/T] CardDescription rewritten to set trust expectations
+  upfront: "AI-assisted offer suggestions, letters, and acceptance
+  estimates. Review every output before sending — the AI's price
+  and probability figures are estimates, not appraisals." The
+  previous copy was marketing-leaning and created implicit
+  authority the model doesn't have.
+- [AI/T] AI Analysis block gained a grounding caveat footer: "AI-
+  generated analysis based on {N} comparable sales. Verify figures
+  against your own research before making an offer." Now the comp
+  count is visibly tied to the reasoning.
+- [AI/T] Acceptance Recommendation block gained a caveat: "This
+  probability is the AI's estimate based on the inputs above.
+  Real outcomes depend on factors the AI can't observe." Operators
+  saw a bold percentage with no reminder that the model can't
+  actually know motivation, competition, or market psychology.
+- [I] Copy-to-clipboard was fire-and-forget: `navigator.clipboard.
+  writeText(text)` without awaiting or try/catch, immediately toasting
+  success. In restricted contexts (iframe, no user gesture, Safari
+  denied permission) the write rejects and the user sees "Copied"
+  with nothing actually copied. Now awaited inside try/catch with
+  specific recovery copy if denied.
+- [CW] Three onError toasts (generate, letter, predict) had title
+  "Error". All three now title specifically and add reassurance
+  about state: offer suggestions say "No credit charged"; letter
+  says "Your form values are kept"; predict says "Your inputs are
+  kept". These AI calls can fail for cost/rate-limit reasons; the
+  user needs to know whether to retry or walk away.
+- [A] 22 decorative icons made `aria-hidden` across header, tabs,
+  empty states, strategy section, analysis section, prediction
+  tab, and impact-direction icons in the getImpactIcon helper.
+- [A] Four action buttons (Analyze Property, Refresh Analysis,
+  Copy letter, Recalculate) gained busy-aware `aria-label`s so
+  screen readers announce both idle and busy states.
+
+**Sign-off (this slice):** D ✓ M ✓ A ✓ E ✓ AI ✓ LI ✓ CW ✓ I ✓ T ✓
