@@ -1583,7 +1583,10 @@ export default function LeadsPage() {
                       )}
                       {filteredLeads && filteredLeads.length > 0 && (
                         <div className="p-3 border-b flex items-center justify-between">
-                          <div className="flex items-center gap-2">
+                          {/* Tap-friendly label wraps the checkbox so the
+                              whole "☐ Select all" region (≥44pt tall) is
+                              the hit target, not just the 20px box. */}
+                          <label className="flex items-center gap-2 min-h-[44px] -my-2 px-2 -ml-2 rounded-md cursor-pointer">
                             <Checkbox
                               checked={filteredLeads.length > 0 && selectedLeadIds.size === filteredLeads.length}
                               onCheckedChange={(checked) => handleSelectAll(checked === true)}
@@ -1591,7 +1594,7 @@ export default function LeadsPage() {
                               data-testid="checkbox-select-all-leads-mobile"
                             />
                             <span className="text-sm text-muted-foreground">Select all</span>
-                          </div>
+                          </label>
                           <button
                             type="button"
                             onClick={handleSortByScore}
@@ -1610,13 +1613,24 @@ export default function LeadsPage() {
                             className="p-4 hover-elevate"
                             data-testid={`card-lead-${lead.id}`}
                           >
-                            <div className="flex items-start gap-3">
-                              <Checkbox
-                                checked={selectedLeadIds.has(lead.id)}
-                                onCheckedChange={(checked) => handleSelectLead(lead.id, checked === true)}
-                                className="mt-1 min-h-[20px] min-w-[20px]"
-                                data-testid={`checkbox-lead-mobile-${lead.id}`}
-                              />
+                            <div className="flex items-start gap-1">
+                              {/* Checkbox gets a 44pt invisible tap zone
+                                  via the wrapping label — taps slightly
+                                  off the 20px box still select, and the
+                                  card body remains the "view lead"
+                                  affordance. */}
+                              <label
+                                className="flex items-center justify-center min-h-[44px] min-w-[44px] -ml-2 rounded-md cursor-pointer shrink-0"
+                                onClick={(e) => e.stopPropagation()}
+                                aria-label={`Select ${lead.firstName} ${lead.lastName}`}
+                              >
+                                <Checkbox
+                                  checked={selectedLeadIds.has(lead.id)}
+                                  onCheckedChange={(checked) => handleSelectLead(lead.id, checked === true)}
+                                  className="min-h-[20px] min-w-[20px]"
+                                  data-testid={`checkbox-lead-mobile-${lead.id}`}
+                                />
+                              </label>
                               <div className="flex-1 min-w-0" onClick={() => setViewingLead(lead)}>
                                 <div className="flex items-center justify-between gap-2">
                                   <h3 className="font-medium truncate" data-testid={`text-lead-name-${lead.id}`}>

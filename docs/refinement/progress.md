@@ -179,3 +179,26 @@ deals, campaigns, notes, etc.).
   a clearer affordance.
 
 **Sign-off:** D ✓ M ✓ A ✓ E ✓ AI n/a LI ✓ CW ✓ I ✓ T ✓
+
+### 2026-04-23 — `/leads` (mobile card view)
+**Refinements made:**
+- [A] Accessibility / [M] Mobile: per-row selection checkbox had only
+  its intrinsic ~20px hit area — taps off-center landed on the card
+  body and opened the lead instead of toggling selection.  Wrapped
+  the Checkbox in a `<label>` with `min-h-[44px] min-w-[44px]` invisible
+  tap zone on the card's left edge, and `stopPropagation` so the card's
+  "view lead" onClick doesn't hijack selection taps.  Label also has
+  `aria-label="Select {name}"` so screen readers know what the
+  checkbox controls.
+- [A] Accessibility: "Select all" bulk-action row wrapped in a
+  `<label>` with `min-h-[44px]` so the whole "☐ Select all" region is
+  tappable, not just the 20px box.
+- [D] Designer: verified desktop table wrapper already has
+  `overflow-x-auto`; mobile uses dedicated card view — no layout
+  refinement needed.
+- [M] Mobile: filter bar & search input already use `min-h-[44px]` —
+  no change needed.
+- Previously shipped (earlier session): `contacting` status badge
+  changed from purple → sky.
+
+**Sign-off:** D ✓ M ✓ A ✓ E ✓ AI n/a LI ✓ CW ✓ I ✓ T ✓
