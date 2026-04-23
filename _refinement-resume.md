@@ -37,7 +37,7 @@ loader gained SR-only label. Required asterisks gained
 **/campaigns detail drawer + OptimizerSuggestions + SendMailDialog:** ✅ slice 6b complete (`cf10579`).
 **/campaigns A/B test manager + variants panel + analytics:** ⬜ slice 6c deferred — separate embedded components, not blocking /inbox walk
 **/inbox:** ✅ slice 7 complete (commit `e052cf8`)
-**/documents:** ✅ slice 8 complete (this session — commit pending)
+**/documents:** ✅ slice 8 complete (commit `234dafa`)
 **/sign/:docId:** ⬜ slice 9 next — legal/trust surface, signer flow
 **/portal/:accessToken:** ⬜ slice 10 — public borrower link, mobile critical at 320px
 
