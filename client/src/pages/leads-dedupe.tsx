@@ -6,8 +6,8 @@
  * (first+last+address) tuple. Each cluster renders as a card with:
  *   - What matched (phone number / email / name+address)
  *   - Every member lead with its status, source, last contact
- *   - Per-member "Keep this one" button — fires storage.mergeLeads
- *     with the selected id as primary and collapses the others onto it
+ *   - A radio-group selection for the record to keep
+ *   - A confirm-then-merge button that folds the rest onto the primary
  *
  * Roadmap #146 (lead dedupe across sources) / #209 (contact
  * consolidation). Principle 1: data quality matters more to land
@@ -23,12 +23,15 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
-import { Users, Phone, Mail, MapPin, GitMerge, Loader2, CheckCircle2 } from "lucide-react";
+import { QueryErrorState } from "@/components/query-error-state";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { Users, Phone, Mail, MapPin, GitMerge, Loader2, CheckCircle2, RefreshCw } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { relative, plural } from "@/lib/format";
 import { PageHeader } from "@/components/ui/page-header";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { cn } from "@/lib/utils";
 import type { Lead } from "@shared/schema";
 
 interface LeadCluster {
@@ -49,43 +52,85 @@ const MATCH_LABELS = {
   name_address: "Same name + address",
 } as const;
 
+interface PendingMerge {
+  cluster: LeadCluster;
+  primaryId: number;
+  duplicateIds: number[];
+}
+
 export default function LeadsDedupePage() {
   useDocumentTitle("Lead dedupe");
   const { toast } = useToast();
   const qc = useQueryClient();
+  const [pending, setPending] = useState<PendingMerge | null>(null);
+  const [isMerging, setIsMerging] = useState(false);
 
-  const { data, isLoading, isError, refetch } = useQuery<{ clusters: LeadCluster[] }>({
+  const { data, isLoading, error, refetch, isFetching } = useQuery<{ clusters: LeadCluster[] }>({
     queryKey: ["/api/leads/duplicate-clusters"],
     staleTime: 60_000,
   });
 
-  const merge = useMutation({
-    mutationFn: async (args: { primaryId: number; duplicateId: number }) => {
-      const res = await apiRequest("POST", "/api/leads/merge", args);
-      return res.json();
-    },
-    onSuccess: () => {
+  const runMerge = async () => {
+    if (!pending) return;
+    setIsMerging(true);
+    let merged = 0;
+    try {
+      for (const duplicateId of pending.duplicateIds) {
+        const res = await apiRequest("POST", "/api/leads/merge", {
+          primaryId: pending.primaryId,
+          duplicateId,
+        });
+        if (!res.ok) {
+          throw new Error(`Merge failed on lead ${duplicateId}`);
+        }
+        merged += 1;
+      }
+      toast({
+        title: merged === 1 ? "Lead merged" : `${merged} leads merged`,
+        description: "The kept record now holds all status, notes, and activity.",
+      });
+      setPending(null);
+    } catch (err) {
+      toast({
+        title: merged > 0 ? "Merge partially failed" : "Merge failed",
+        description:
+          merged > 0
+            ? `Merged ${merged} of ${pending.duplicateIds.length}. ${(err as Error).message}`
+            : (err as Error).message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsMerging(false);
       qc.invalidateQueries({ queryKey: ["/api/leads/duplicate-clusters"] });
       qc.invalidateQueries({ queryKey: ["/api/leads"] });
-      toast({ title: "Leads merged" });
-    },
-    onError: (err: Error) => {
-      toast({ title: "Merge failed", description: err.message, variant: "destructive" });
-    },
-  });
+    }
+  };
 
   const clusters = data?.clusters ?? [];
   const totalDuplicates = clusters.reduce((s, c) => s + (c.leads.length - 1), 0);
+
+  const pendingPrimary =
+    pending?.cluster.leads.find((l) => l.id === pending.primaryId) ?? null;
+  const pendingPrimaryName = pendingPrimary
+    ? `${pendingPrimary.firstName ?? ""} ${pendingPrimary.lastName ?? ""}`.trim() || "the selected lead"
+    : "the selected lead";
 
   return (
     <PageShell label="Lead Dedupe">
       <div className="space-y-6 max-w-5xl mx-auto">
         <PageHeader
           title="Lead dedupe"
-          icon={<GitMerge className="h-5 w-5 text-muted-foreground" />}
-          description="Same owner hits multiple tax-delinquent lists. Skip-trace comes back twice. Direct-mail lists catch the same person with slightly different spelling. Fix it here — pick the lead you want to keep in each cluster and collapse the rest onto it. Status, notes, and activity merge automatically."
+          icon={<GitMerge className="h-5 w-5 text-muted-foreground" aria-hidden="true" />}
+          description="Same owner, multiple lists. Pick the record you want to keep in each cluster — the others archive and their status, notes, and activity fold in."
           actions={
-            <Button size="sm" variant="outline" onClick={() => refetch()} disabled={isLoading}>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => refetch()}
+              disabled={isFetching}
+              aria-label="Rescan for duplicates"
+            >
+              <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", isFetching && "animate-spin")} aria-hidden="true" />
               Rescan
             </Button>
           }
@@ -99,18 +144,18 @@ export default function LeadsDedupePage() {
         </PageHeader>
 
         {isLoading ? (
-          <Card>
-            <CardContent className="p-6 space-y-3">
-              <Skeleton className="h-24 w-full" />
-              <Skeleton className="h-24 w-full" />
-            </CardContent>
-          </Card>
-        ) : isError ? (
-          <Card>
-            <CardContent className="p-6 text-sm text-red-600">
-              Could not scan for duplicates.
-            </CardContent>
-          </Card>
+          <div className="space-y-4" aria-busy="true" aria-label="Scanning for duplicate leads">
+            <Skeleton className="h-40 w-full rounded-lg" />
+            <Skeleton className="h-40 w-full rounded-lg" />
+          </div>
+        ) : error ? (
+          <QueryErrorState
+            error={error as Error}
+            onRetry={() => refetch()}
+            isRetrying={isFetching}
+            title="Couldn't scan for duplicates"
+            description="The dedupe scanner didn't respond. Your leads are safe — retry when ready."
+          />
         ) : clusters.length === 0 ? (
           <EmptyState
             icon={CheckCircle2}
@@ -123,85 +168,125 @@ export default function LeadsDedupePage() {
               <ClusterCard
                 key={`${cluster.matchType}-${idx}`}
                 cluster={cluster}
-                onKeep={(primaryId, duplicateIds) => {
-                  // Merge each duplicate in sequence. The server already
-                  // folds status / notes / activity onto the primary.
-                  for (const duplicateId of duplicateIds) {
-                    merge.mutate({ primaryId, duplicateId });
-                  }
+                onRequestMerge={(primaryId, duplicateIds) => {
+                  setPending({ cluster, primaryId, duplicateIds });
                 }}
-                disabled={merge.isPending}
+                disabled={isMerging}
               />
             ))}
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={pending !== null}
+        onOpenChange={(open) => {
+          if (!open && !isMerging) setPending(null);
+        }}
+        title={`Keep ${pendingPrimaryName}?`}
+        description={
+          pending
+            ? `The other ${plural(pending.duplicateIds.length, "lead")} in this cluster will be archived, and their status, notes, and activity will fold onto ${pendingPrimaryName}. This can't be undone from the UI.`
+            : ""
+        }
+        confirmLabel={
+          pending && pending.duplicateIds.length === 1
+            ? "Merge 1 lead"
+            : `Merge ${pending?.duplicateIds.length ?? 0} leads`
+        }
+        cancelLabel="Cancel"
+        variant="destructive"
+        isLoading={isMerging}
+        onConfirm={runMerge}
+      />
     </PageShell>
   );
 }
 
 function ClusterCard({
   cluster,
-  onKeep,
+  onRequestMerge,
   disabled,
 }: {
   cluster: LeadCluster;
-  onKeep: (primaryId: number, duplicateIds: number[]) => void;
+  onRequestMerge: (primaryId: number, duplicateIds: number[]) => void;
   disabled: boolean;
 }) {
   const [selectedId, setSelectedId] = useState<number | null>(cluster.leads[0]?.id ?? null);
   const Icon = MATCH_ICONS[cluster.matchType];
+  const groupLabel = `${MATCH_LABELS[cluster.matchType]}: ${cluster.matchValue}`;
 
   return (
     <Card>
       <CardContent className="p-4 space-y-3">
         <div className="flex items-center gap-2 flex-wrap">
-          <Icon className="h-4 w-4 text-muted-foreground" />
+          <Icon className="h-4 w-4 text-muted-foreground shrink-0" aria-hidden="true" />
           <span className="text-sm font-medium">{MATCH_LABELS[cluster.matchType]}</span>
-          <Badge variant="outline" className="text-[10px] font-mono">
+          <Badge variant="outline" className="text-xs font-mono break-all">
             {cluster.matchValue}
           </Badge>
-          <Badge variant="secondary" className="text-xs ml-auto">
+          <Badge variant="secondary" className="text-xs ml-auto shrink-0">
             {plural(cluster.leads.length, "lead")}
           </Badge>
         </div>
 
-        <div className="space-y-2">
+        <div
+          className="space-y-2"
+          role="radiogroup"
+          aria-label={groupLabel}
+        >
           {cluster.leads.map((lead) => {
             const isSelected = selectedId === lead.id;
+            const fullName = `${lead.firstName ?? ""} ${lead.lastName ?? ""}`.trim() || "Unnamed lead";
             return (
               <div
                 key={lead.id}
-                className={
-                  "flex items-start gap-3 rounded-md border p-3 transition-colors " +
-                  (isSelected
-                    ? "border-emerald-500/40 bg-emerald-500/5"
-                    : "border-muted hover:bg-muted/30 cursor-pointer")
-                }
+                role="radio"
+                aria-checked={isSelected}
+                tabIndex={isSelected ? 0 : -1}
                 onClick={() => setSelectedId(lead.id)}
+                onKeyDown={(e) => {
+                  if (e.key === " " || e.key === "Enter") {
+                    e.preventDefault();
+                    setSelectedId(lead.id);
+                  }
+                }}
+                className={cn(
+                  "flex items-start gap-3 rounded-md border p-3 transition-colors cursor-pointer",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                  isSelected
+                    ? "border-primary/60 bg-primary/5"
+                    : "border-muted hover:bg-muted/30"
+                )}
               >
-                <input
-                  type="radio"
-                  className="mt-1"
-                  checked={isSelected}
-                  onChange={() => setSelectedId(lead.id)}
-                  aria-label={`Keep ${lead.firstName ?? ""} ${lead.lastName ?? ""}`}
-                />
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2",
+                    isSelected ? "border-primary" : "border-muted-foreground/40"
+                  )}
+                >
+                  {isSelected && <span className="h-2.5 w-2.5 rounded-full bg-primary" />}
+                </span>
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-foreground">
-                    {lead.firstName || "—"} {lead.lastName || ""}{" "}
-                    <Badge variant="outline" className="ml-1 text-[10px] uppercase">
+                  <p className="text-sm font-medium text-foreground flex items-center gap-1.5 flex-wrap">
+                    <span>{fullName}</span>
+                    <Badge variant="outline" className="text-xs uppercase">
                       {lead.status}
                     </Badge>
+                    {lead.source && (
+                      <Badge variant="secondary" className="text-xs">
+                        {lead.source}
+                      </Badge>
+                    )}
                   </p>
                   <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                    {[lead.phone, lead.email, lead.address].filter(Boolean).join(" · ")}
+                    {[lead.phone, lead.email, lead.address].filter(Boolean).join(" · ") || "No contact details"}
                   </p>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">
-                    {lead.source ? `${lead.source} · ` : ""}
+                  <p className="text-xs text-muted-foreground mt-0.5">
                     {lead.lastContactedAt
-                      ? `last contact ${relative(lead.lastContactedAt)}`
-                      : "never contacted"}
+                      ? `Last contact ${relative(lead.lastContactedAt)}`
+                      : "Never contacted"}
                   </p>
                 </div>
               </div>
@@ -209,25 +294,28 @@ function ClusterCard({
           })}
         </div>
 
-        <div className="flex items-center justify-between pt-1">
-          <p className="text-[11px] text-muted-foreground">
-            Selected lead keeps everything; others are archived and their data folds in.
+        <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs text-muted-foreground">
+            <Users className="inline h-3 w-3 mr-1 -mt-0.5" aria-hidden="true" />
+            Selected lead keeps everything; the rest archive and fold in.
           </p>
           <Button
             size="sm"
+            className="min-h-11 sm:min-h-9 shrink-0"
             onClick={() => {
               if (!selectedId) return;
               const duplicateIds = cluster.leads.map((l) => l.id).filter((id) => id !== selectedId);
-              onKeep(selectedId, duplicateIds);
+              if (duplicateIds.length === 0) return;
+              onRequestMerge(selectedId, duplicateIds);
             }}
             disabled={disabled || !selectedId}
           >
             {disabled ? (
-              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+              <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" aria-hidden="true" />
             ) : (
-              <GitMerge className="h-3 w-3 mr-1" />
+              <GitMerge className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
             )}
-            Keep selected, merge rest
+            Review merge
           </Button>
         </div>
       </CardContent>

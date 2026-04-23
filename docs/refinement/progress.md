@@ -280,3 +280,80 @@ Founder-only pages (`/founder-dashboard`, `/night-cap`,
 — deferred; customer-invisible.
 
 **Sign-off:** D ✓ M ✓ A ✓ E ✓ AI n/a LI ✓ CW ✓ I ✓ T ✓
+
+---
+
+## Session 4 — 2026-04-23
+
+### 2026-04-23 — `/leads/dedupe` (cluster review / merge flow)
+
+**Refinements made:**
+- [T] Trust: destructive merge now routes through `ConfirmDialog`
+  before firing. Prior flow: one tap → N leads archived instantly,
+  no review, no undo affordance. New flow: "Review merge" opens a
+  dialog naming the kept record ("Keep John Smith?") and stating
+  what happens to the others; confirm button says "Merge 3 leads"
+  (or "Merge 1 lead") so the blast radius is legible at click time.
+  Destructive variant uses the `bg-destructive` button; cancel is
+  the default action. The memory says AcreOS treats data quality
+  as Principle 1 — a silent destructive action violates that.
+- [E] Engineer: merges were `merge.mutate()` fired in a loop,
+  firing N parallel requests; `isPending` only tracked the most
+  recent mutation, so the batch UI state was unreliable and partial
+  failure was silent. Replaced with a sequential async loop using
+  `apiRequest` directly, a single `isMerging` state, and a toast
+  that reports partial progress ("Merged 2 of 3. …") on mid-batch
+  failure. Query invalidation runs in `finally` so cache refreshes
+  either way.
+- [E] Engineer: raw `<div>Could not scan for duplicates.</div>`
+  replaced with `QueryErrorState` per CLAUDE.md UI patterns —
+  provides typed network/server/auth error copy, retry button with
+  spinner, dev-mode debug. Now visually consistent with every
+  other error state in the app.
+- [M] Mobile: action row at the bottom of each cluster was
+  `flex items-center justify-between`, which at 375px crammed the
+  helper paragraph against the "Keep selected" button. Now
+  `flex-col gap-2 sm:flex-row sm:justify-between`, and the merge
+  button picks up `min-h-11` for a 44pt tap target.
+- [M] Mobile: match-value badge was a 10px mono pill; long phone
+  numbers could overflow its container without wrapping. Bumped to
+  `text-xs` and added `break-all`.
+- [A] Accessibility: each cluster now a proper `role="radiogroup"`
+  with `aria-label` naming the match. Lead rows are `role="radio"`
+  with `aria-checked`, roving `tabIndex`, `Space`/`Enter`
+  activation, and a visible focus ring. Previous flow relied on a
+  native `<input type="radio">` that the surrounding clickable div
+  didn't keyboard-activate.
+- [A] Accessibility: loading state carries `aria-busy` + label;
+  decorative icons (GitMerge, Phone, Mail, MapPin, Loader2, Users,
+  RefreshCw) now `aria-hidden`.
+- [D] Designer: custom radio visual replaces native input — a 20px
+  ring with 10px dot fill in `primary`; container selected state
+  swapped from hardcoded `emerald-500/40` + `emerald-500/5` to
+  `primary/60` + `primary/5` so it follows theme tokens (the
+  earlier emerald on terracotta primary was jarring).
+- [D] Designer: arbitrary text sizes (`text-[10px]`, `text-[11px]`)
+  replaced with `text-xs` token; Rescan now leads with a
+  `RefreshCw` icon that spins during `isFetching` — previously a
+  bare text button with no affordance signal.
+- [LI] Land investor: each lead row now renders the *source* as a
+  secondary badge next to status, not buried in the third-line
+  metadata. For an investor deciding which record to keep,
+  "this one came from my paid tax-delinquent list" vs "this one
+  came from cold scrape" is the most load-bearing fact on the
+  card. Also swapped "last contact X" → "Last contact X" and
+  "never contacted" → "Never contacted" (sentence case, consistent
+  with the rest of the app's metadata strings).
+- [CW] Copywriter: header description compressed from 58 words to
+  28 — same meaning, half the wall. "Could not scan for
+  duplicates." → "Couldn't scan for duplicates" + recovery copy
+  ("Your leads are safe — retry when ready.") via QueryErrorState.
+  Primary CTA renamed "Keep selected, merge rest" → "Review
+  merge" — more honest about what the click does now that it opens
+  a confirm dialog.
+- [I] Infrastructure: sequential await means a 500 on merge #2
+  doesn't cascade into N failed in-flight requests; the server
+  isn't being stampeded. Error toast surfaces partial progress so
+  the operator knows exactly where to pick up.
+
+**Sign-off:** D ✓ M ✓ A ✓ E ✓ AI n/a LI ✓ CW ✓ I ✓ T ✓
