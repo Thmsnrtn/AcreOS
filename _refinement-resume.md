@@ -1,98 +1,97 @@
 # Elite-Team Refinement — Resume Point
 
-**Last session:** 2026-04-23 (session 2 of N)
-**Last completed surface:** `EmptyState` (cross-cutting, commit `50624fb`)
+**Last session:** 2026-04-23 (session 3 of N)
+**Last completed refinement:** customer-visible violet sweep
+(pipeline/tools/goals), commit `01c9b2a`
 **Phase 1 inventory:** ✅ committed at `11d0e8c`
 
 ## How to continue
 
-Paste the original Elite-Team prompt into a fresh Claude Code session. The
-session will:
+Paste the original Elite-Team prompt into a fresh Claude Code session.
+The next session will:
 
-1. Read `docs/refinement/surface-inventory.md` — the ordered list of ~500
-   surfaces with known issues and priority.
-2. Read `docs/refinement/progress.md` — log of surfaces already signed-off.
-3. Read this file for the immediate next surface.
-4. Continue the walk.
+1. Read `docs/refinement/surface-inventory.md`
+2. Read `docs/refinement/progress.md` (newest entries at bottom)
+3. Read this file for the next surface
+4. Continue the walk
 
 ## Progress summary
 
-### Completed this pass (8 surfaces)
-- `/` landing — hero responsive, CTAs stack, pricing teaser grid
-- `/not-found` — warmer copy, secondary recovery path, muted tone
-- `/auth` — aerial backdrop, Clerk `colorPrimary` branded, a11y tap
-  target on back-link
-- `/onboarding-v2` — brand-color CTAs (13 instances), dollar-cell
-  overflow fix, primary header color
-- `PageLoader` (cross-cutting) — branded A-tile loader replaces bare
-  spinner
-- `ThemeSettings` (cross-cutting, `/settings`) — responsive preset
-  grid, "Reset to Desert" escape hatch, aria-pressed
-- `QueryErrorState` (cross-cutting) — role="alert" a11y announce,
-  warmer copy
-- `EmptyState` (cross-cutting) — action icon opt-out, real list
-  semantics, a11y
+### Surfaces refined to date (all 9 specialists sign-off)
 
-### Major cross-cutting gains
-- Root-level Clerk `colorPrimary` override kills default purple on
-  every Clerk widget across auth.
-- Global 404/403 toast suppression in `queryClient.ts` (from earlier
-  session) means no more red error spam.
-- Branded loader replaces every tiny-spinner-on-empty-background moment.
+Session 1:
+- `/` landing
+- `/not-found`
+- `/auth` (widget colorPrimary)
+
+Session 2:
+- `/auth` (backdrop + a11y)
+- `/onboarding-v2`
+- `PageLoader` (cross-cutting)
+- `ThemeSettings` (cross-cutting)
+- `QueryErrorState` (cross-cutting)
+- `EmptyState` (cross-cutting)
+
+Session 3 (this one):
+- `/leads` (mobile checkbox tap targets)
+- `/properties` + `/finance` (responsive grid pass)
+- `/settings` (tier badges)
+- `/forgot-password` + `/reset-password`
+- `/pipeline`, `/tools`, `/goals` (violet sweep)
+
+### Cross-cutting gains this pass
+- **Purple/violet on customer surfaces is essentially gone.** Clerk
+  widget, today, leads, deals, onboarding, pipeline, tools, goals,
+  settings tier badges all normalized to theme primary.
+  `/goals` and `/tools` use cyan for the former-violet category so
+  differentiation survives.
+- **44pt tap targets** wherever a 20px checkbox was the sole hit
+  area on mobile.
+- **A11y**: role="alert" / role="status" / aria-hidden pushed into
+  cross-cutting components (QueryErrorState, EmptyState, PageLoader)
+  and the password flows.
+- **Copy**: "login" → "sign in" normalized on auth-adjacent pages.
 
 ## Next surface to refine
 
-**`/leads`** — table-heavy, core authenticated workflow.
+**`/leads/dedupe`** (cluster review / merge flow).
 
-Likely refinement targets (from inventory + code scan):
-- Mobile: ~2000-line file with complex table; verify horizontal
-  overflow handling, filter drawer on 375px, bulk-select row UX.
-- Status badges already recolored in earlier pass; verify other
-  interactive elements still on-brand.
-- Empty state uses the new `EmptyState` primitive — verify it reads
-  well with the refinements.
-- Detail drawer: Radix `<Sheet>`? Verify it takes full-screen on mobile.
-- Bulk actions bar: tap target sizing.
+Likely refinement targets:
+- Mobile behaviour of the cluster list + merge modal.
+- Confirmation patterns for destructive merges (trust lens).
+- Empty state when no clusters found.
 
-## Queue after `/leads`
+## Queue after `/leads/dedupe`
 
 In inventory order:
-1. `/leads/dedupe`
-2. `/properties` (map + list split — notorious mobile complexity)
-3. `/deals` (kanban — verify on 375px)
-4. `/finance`
-5. `/settings` (1700 lines; tabs and forms)
-6. `/campaigns`
-7. `/inbox`
-8. `/documents`
-9. `/dashboard`
+1. `/properties` (full walk — only grid-cell fix done so far)
+2. `/deals` (kanban UX on 375px — earlier pass only touched colors)
+3. `/campaigns`
+4. `/inbox`
+5. `/documents`
+6. `/sign/:docId` — legal/trust surface; verify signer flow
+7. `/portal/:accessToken` — borrower portal; public link, mobile-
+   critical
+8. `/ai`, `/atlas`, `/pax` — AI chat surfaces (AI-lens critical)
 
 ## Session hygiene reminders
 
-- Commit per surface (or tight batch). One commit = one logical unit.
-- Re-run 9-lens after each edit, not just at start/end.
-- Verify via Playwright MCP at 375px AND 1440px where appropriate.
-- Update `docs/refinement/progress.md` with every sign-off.
+- Commit per surface (or tight batch).
+- Re-run 9-lens after each edit.
+- Playwright Safari sessions die within ~5 minutes of a Clerk JWT
+  refresh; fall back to code-only if cookies expire mid-audit.
 - Stop at ~85% context; rewrite this file before ending.
-- **Playwright auth expires fast.** If the session was using a
-  user-signed-in Playwright state and cookies die, fall back to
-  code-only refinement of authenticated pages and ask the user to
-  re-sign the Playwright browser.
 
 ## Known in-flight issues
 
-- **Purple-on-Safari** — addressed via:
-  - Clerk `colorPrimary` (main.tsx)
-  - Violet/purple → primary on today/leads/deals/onboarding
-  - `ThemeSettings` "Reset to Desert" escape hatch
-  If user reports purple persists, they're probably on `midnight`
-  preset in Safari's `localStorage['acreos-theme-config']`. The
-  Reset link now fixes it in one tap.
-- **Red error notifications** — 404/403 suppressed globally. Real
-  500s still surface.
-- **Fly deploy leases** can linger ~90s after a failure; retry if the
-  lease-held error appears.
+- **Purple-on-Safari** — fixed at root (Clerk colorPrimary) and on
+  every customer-visible site touched. Users still on a `midnight`
+  preset can one-tap fix via "Reset to Desert" link in
+  Settings → Theme.
+- **Red toast spam** — 404/403 globally suppressed.
+- **Fly deploy leases** occasionally linger ~90s after a transient
+  fail; retry.
 
-## Expected HEAD after session 2 deploy
+## Expected HEAD after session 3 deploy
 
-`50624fb` or later.
+`01c9b2a` or later.
