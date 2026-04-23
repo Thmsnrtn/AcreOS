@@ -357,3 +357,78 @@ Founder-only pages (`/founder-dashboard`, `/night-cap`,
   the operator knows exactly where to pick up.
 
 **Sign-off:** D ✓ M ✓ A ✓ E ✓ AI n/a LI ✓ CW ✓ I ✓ T ✓
+
+---
+
+## Session 5
+
+### `/properties` — list header/toolbar/error/empty-state slice
+
+Scope note: `properties.tsx` is 3376 lines. This session refined the
+main `PropertiesPage` surface (header, view toggle, toolbar, error
+path, filtered-empty state, export/import error UX). Subcomponents
+(`PropertyCard`, `PropertyForm`, `PropertyDetailDialog`,
+`DueDiligenceTab`, `PropertyIntelligenceTab`) remain queued for
+future sessions — see resume pointer.
+
+- [E] Engineer: removed the dead early-return error block at the top
+  of `PropertiesPage` that preempted the cleaner `QueryErrorState`
+  already wired into the list render branch. Two error paths → one.
+  Also dropped the now-dead `{isError && <InlineError>}` inner
+  branch and its import; `isError` destructure no longer needed.
+- [D] Designer: replaced the `☰ List` hamburger glyph (and
+  `style={{display:"none"}}` MapIcon stub) with a proper `List`
+  lucide icon; both view-toggle buttons now render matching 4×4
+  icons and identical spacing rhythm. Group wrapped in
+  `role="group"` + `aria-label="View mode"`.
+- [M] Mobile: view-toggle buttons were ~31px tall (py-1.5 text-sm)
+  — below the WCAG 2.2 44px target. Added `min-h-[44px] md:min-h-9`
+  so mobile users can actually hit them; desktop rhythm preserved.
+- [A] Accessibility: view-toggle buttons gained
+  `focus-visible:ring-2 focus-visible:ring-ring` — previously
+  relied on browser default focus which this app elsewhere
+  suppresses. Test IDs added so Playwright can target the pair.
+- [CW] Copywriter: "Add Property" button on mobile was rendering
+  as just "Property" (the `<span className="hidden sm:inline">
+  Add</span>` hid the verb at narrow widths, leaving an
+  incomplete label). Restored full "Add Property" at all
+  breakpoints — the icon carries enough affordance that we don't
+  need to hide text.
+- [I] Infrastructure: `handleExport`, `handleFileSelect`, and
+  `handleImport` silently swallowed failures via `console.error`
+  — users got no feedback when a CSV export or import failed.
+  Added destructive toasts with specific recovery copy ("Your
+  existing properties weren't changed" for import; "We couldn't
+  build your CSV. Try again in a moment." for export). Also
+  added a success toast on export with the downloaded filename
+  so the action has a visible landing.
+- [D/CW] Filtered-empty state: the "No properties match the
+  current GIS filters" message was an ad-hoc `<div
+  className="text-center py-12">` with no action — operators had
+  to hunt for the reset control in GisFilters. Replaced with the
+  shared `EmptyState` pattern (Filter icon, reset action wired to
+  `resetGisFilters` + `setStatusFilter("all")` +
+  `setDistressFilter("any")` so all three filter surfaces clear
+  together). Copy now tells the operator *how many* properties
+  are hidden: `"${N} properties are hidden by your current
+  filters. Reset to see them again."`
+
+**Sign-off (this slice):** D ✓ M ✓ A ✓ E ✓ AI n/a LI ✓ CW ✓ I ✓ T ✓
+
+### Deferred on `/properties` (for next session)
+
+- [LI] The "Distress Score" filter is computed off
+  `enrichment.scores.overallScore ?? investmentScore` — the field
+  name says distress but the source is investment score. Mislabeled
+  or mis-sourced; needs a data-model check before renaming either
+  side.
+- `PropertyCard` full nine-lens walk (density, metadata hierarchy,
+  touch targets on inline actions, aria for decorative icons).
+- `PropertyForm` (1120-1333) — validation surfacing, field rhythm,
+  mobile keyboard types.
+- `PropertyDetailDialog` (1334-2102) — the largest seam; tabs,
+  comps, AI offer generator.
+- `DueDiligenceTab` (2103-2465) — checklist a11y, progress
+  affordance.
+- `PropertyIntelligenceTab` (2490-end) — AI output grounding,
+  lazy-load of heavy panels.

@@ -1,8 +1,9 @@
 # Elite-Team Refinement — Resume Point
 
-**Last session:** 2026-04-23 (session 4 of N)
-**Last completed refinement:** `/leads/dedupe` cluster review / merge flow,
-commit `26fd606`
+**Last session:** 2026-04-23 (session 5 of N)
+**Last completed refinement:** `/properties` — list header / view
+toggle / toolbar / error path / filtered-empty state / export+import
+error UX (partial — subcomponents deferred)
 **Phase 1 inventory:** ✅ committed at `11d0e8c`
 
 ## How to continue
@@ -40,65 +41,71 @@ Session 3:
 - `/forgot-password` + `/reset-password`
 - `/pipeline`, `/tools`, `/goals` (violet sweep)
 
-Session 4 (this one):
+Session 4:
 - `/leads/dedupe` — confirm-before-merge + a11y radiogroup + error
   state conformance + mobile action-row stack + source badge
   promotion + token-based visuals
 
+Session 5 (this one):
+- `/properties` (list header slice) — dead error-path collapse;
+  view toggle icon + 44px targets + focus ring; "Add Property"
+  full label at all widths; export/import silent-failure toasts;
+  filtered-empty state → shared EmptyState + reset CTA
+
 ## Cross-cutting gains this pass
 
-- **Destructive-merge confirmation pattern** established via
-  `ConfirmDialog` — reuse on any future bulk-archive / bulk-delete
-  surface (leads, properties, campaigns).
-- **QueryErrorState now load-bearing** on a real data page —
-  precedent for replacing any remaining raw `res.status/text-red`
-  error blobs in customer-facing views.
-- **Radiogroup-on-card** pattern (div with role="radio" + roving
-  tabIndex) proven out on dedupe — can be reused wherever we ask
-  an operator to pick one of N options presented as rich cards.
+- **Single error-path pattern on list pages:** `QueryErrorState`
+  remains the one surface for list fetch failures — duplicated
+  early-return blocks should be hunted down on any remaining list
+  pages.
+- **View toggle pattern** (grouped buttons, 44px mobile, 36px
+  desktop, `role="group"`, `aria-pressed`, lucide icons): reusable
+  on any page offering list/map/kanban toggles.
+- **Silent-fetch → toast pattern:** any client-side
+  `fetch`/`FormData` handler that catches to `console.error`
+  should surface a destructive toast with specific recovery copy
+  ("Your existing X weren't changed").
+- **Filter-reset empty state:** when a filter empties the list,
+  reset the *full* filter set (status + distress + GIS), not just
+  one axis — users don't remember which filter hid things.
 
 ## Next surface to refine
 
-**`/properties`** — full walk.
+**`/properties` — continued.** Pick up at `PropertyCard`
+(lines ~886-1117 of `client/src/pages/properties.tsx`).
 
-⚠️ This file is ~55k tokens. Strategy for the next session:
+The rest of `properties.tsx`, in order:
+1. `PropertyCard` (886-1117) — list-item density, metadata
+   hierarchy, inline delete affordance, icon aria.
+2. `PropertyForm` (1120-1333) — validation surfacing, mobile
+   keyboard types (inputMode="decimal" on price/acreage), county
+   autocomplete trust.
+3. `PropertyDetailDialog` (1334-2102) — largest seam; tabs
+   rhythm, comps analysis, AI offer generator grounding.
+4. `DueDiligenceTab` (2103-2465) — checklist a11y
+   (role="checkbox" semantics), progress bar contrast.
+5. `PropertyIntelligenceTab` (2490-end) — AI output structure,
+   lazy-load of heavy analytics.
 
-1. Start by reading `client/src/pages/properties.tsx` in chunks
-   (offset/limit) — don't Read the whole file at once.
-2. Consider splitting into multiple commits along natural seams:
-   list view, detail view, create modal, filters, empty state.
-3. If the page is already componentized, refine each subcomponent
-   file separately rather than the monolith.
-4. Prior session 3 pass only touched a responsive grid cell —
-   almost everything else on this surface is still untouched.
+Then:
+6. `/deals` (kanban UX on 375px — earlier pass only touched colors)
+7. `/campaigns`
+8. `/inbox`
+9. `/documents`
+10. `/sign/:docId` — legal/trust surface; verify signer flow
+11. `/portal/:accessToken` — borrower portal; public link, mobile-
+    critical
+12. `/ai`, `/atlas`, `/pax` — AI chat surfaces (AI-lens critical)
 
-Likely nine-lens targets on /properties:
-- [D] Information hierarchy on list cards; rhythm between filters,
-  list, and detail pane.
-- [M] 375px layout — properties are data-dense; likely needs
-  columnar collapse or card view on mobile.
-- [A] Filter controls keyboard operability; detail pane focus
-  management when a row is selected.
-- [E] React-query staleness / invalidation on create/edit/delete.
-- [AI] Any embedded AI evaluation / motivation-score outputs —
-  grounding + structure.
-- [LI] Vocabulary: "APN," "acreage," "frontage," "ingress/egress"
-  — confirm they appear where an investor would expect.
-- [CW] Empty state ("No properties yet — import a list") copy.
-- [I] Timeout/error behavior on provider-enriched fields.
-- [T] Delete confirmation and any irreversible field changes.
+## Deferred / flagged for owner decision
 
-## Queue after `/properties`
-
-In inventory order:
-1. `/deals` (kanban UX on 375px — earlier pass only touched colors)
-2. `/campaigns`
-3. `/inbox`
-4. `/documents`
-5. `/sign/:docId` — legal/trust surface; verify signer flow
-6. `/portal/:accessToken` — borrower portal; public link, mobile-
-   critical
-7. `/ai`, `/atlas`, `/pax` — AI chat surfaces (AI-lens critical)
+- **"Distress Score" filter mislabel.** On `/properties` the filter
+  control is labeled "Distress Score" but its source is
+  `enrichment.scores.overallScore ?? investmentScore` — these are
+  not the same concept. Either the label is wrong (should be
+  "Investment Score"), the data source is wrong (should read a
+  true distress signal), or both. Do not unilaterally rename;
+  Thomas should decide which side is authoritative.
 
 ## Session hygiene reminders
 
@@ -113,16 +120,15 @@ In inventory order:
 ## Known in-flight issues
 
 - **Purple-on-Safari** — fixed at root (Clerk colorPrimary) and on
-  every customer-visible site touched. Users still on a `midnight`
-  preset can one-tap fix via "Reset to Desert" link in
-  Settings → Theme.
+  every customer-visible site touched.
 - **Red toast spam** — 404/403 globally suppressed.
 - **Fly deploy leases** occasionally linger ~90s after a transient
   fail; retry.
-- **Pre-existing server type errors** in `autonomousDealMachine`,
-  `countyAssessorIngest`, `supportAgent`, etc. — not blocking
-  client refinement work; out of scope for this pass.
+- **Pre-existing server type errors** in `workflow-engine`,
+  `storage`, `autonomousDealMachine`, `countyAssessorIngest`,
+  `supportAgent`, etc. — not blocking client refinement work;
+  out of scope for this pass.
 
-## Expected HEAD after session 4 deploy
+## Expected HEAD after session 5 deploy
 
-`26fd606` or later.
+One commit above `26fd606` (the session-4 surface commit).

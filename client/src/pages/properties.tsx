@@ -5,7 +5,6 @@ import { useProperties, usePropertiesPaginated, useCreateProperty, useDeleteProp
 import { queryClient } from "@/lib/queryClient";
 import { telemetry } from "@/lib/telemetry";
 import { ListSkeleton } from "@/components/list-skeleton";
-import { InlineError } from "@/components/inline-error";
 import { useDelayedLoading } from "@/hooks/use-delayed-loading";
 import { useFetchPropertyParcel, useFetchAllParcels } from "@/hooks/use-parcels";
 import { useState, useMemo, useEffect } from "react";
@@ -102,7 +101,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, MapPin, Ruler, DollarSign, Trash2, Loader2, Map as MapIcon, RefreshCw, FileText, Download, Upload, CheckCircle, AlertCircle, AlertTriangle, ClipboardCheck, Printer, Calculator, BarChart2, X, CheckSquare, Droplets, Leaf, Building2, Flame, Users, Brain, Shield, Zap, Mountain, TreePine, Car, TrendingUp, Thermometer, Cloud, Waves, Wheat, Factory, Grid3x3, Target, ThumbsUp, ThumbsDown } from "lucide-react";
+import { Plus, MapPin, Ruler, DollarSign, Trash2, Loader2, Map as MapIcon, RefreshCw, FileText, Download, Upload, CheckCircle, AlertCircle, AlertTriangle, ClipboardCheck, Printer, Calculator, BarChart2, X, CheckSquare, Droplets, Leaf, Building2, Flame, Users, Brain, Shield, Zap, Mountain, TreePine, Car, TrendingUp, Thermometer, Cloud, Waves, Wheat, Factory, Grid3x3, Target, ThumbsUp, ThumbsDown, List as ListIcon, Filter as FilterIcon } from "lucide-react";
 import { LandCreditBadge } from "@/components/land-credit-badge";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -140,7 +139,7 @@ export default function PropertiesPage() {
   const propertiesResponse = propertiesQuery.data;
   const properties = propertiesResponse?.data;
   const serverTotal = propertiesResponse?.total ?? 0;
-  const { isLoading, isError, error, isRefetching } = propertiesQuery;
+  const { isLoading, error, isRefetching } = propertiesQuery;
   const refetch = propertiesQuery.refetch;
   const delayedLoading = useDelayedLoading(isLoading, 200);
   const searchString = useSearch();
@@ -332,8 +331,13 @@ export default function PropertiesPage() {
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-    } catch (error) {
-      console.error('Export error:', error);
+      toast({ title: "Export ready", description: `Downloaded ${filename}.` });
+    } catch (error: any) {
+      toast({
+        title: "Export failed",
+        description: error?.message || "We couldn't build your CSV. Try again in a moment.",
+        variant: "destructive",
+      });
     } finally {
       setIsExporting(false);
     }
@@ -365,9 +369,13 @@ export default function PropertiesPage() {
       
       const preview = await response.json();
       setImportPreview(preview);
-    } catch (error) {
-      console.error('Preview error:', error);
+    } catch (error: any) {
       setImportPreview(null);
+      toast({
+        title: "Couldn't read that CSV",
+        description: error?.message || "The file couldn't be parsed. Check the column headers and try again.",
+        variant: "destructive",
+      });
     } finally {
       setIsLoadingPreview(false);
     }
@@ -396,8 +404,12 @@ export default function PropertiesPage() {
       setImportResult(result);
       setImportPreview(null);
       queryClient.invalidateQueries({ queryKey: ['/api/properties'] });
-    } catch (error) {
-      console.error('Import error:', error);
+    } catch (error: any) {
+      toast({
+        title: "Import failed",
+        description: error?.message || "We couldn't import this file. Your existing properties weren't changed.",
+        variant: "destructive",
+      });
     } finally {
       setIsImporting(false);
     }
@@ -429,19 +441,6 @@ export default function PropertiesPage() {
     }
   };
 
-  if (error) {
-    return (
-      <PageShell>
-        <div className="flex flex-col items-center justify-center py-16 text-center" data-testid="error-state-properties">
-          <AlertCircle className="w-12 h-12 text-destructive mb-4" />
-          <h3 className="text-lg font-semibold mb-2">Failed to load properties</h3>
-          <p className="text-muted-foreground mb-4">{(error as Error).message || 'Something went wrong'}</p>
-          <Button onClick={() => refetch()} variant="outline">Try again</Button>
-        </div>
-      </PageShell>
-    );
-  }
-
   return (
     <PageShell>
 
@@ -452,21 +451,22 @@ export default function PropertiesPage() {
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {/* List / Map view toggle */}
-              <div className="flex items-center rounded-lg border overflow-hidden">
+              <div className="flex items-center rounded-lg border overflow-hidden" role="group" aria-label="View mode">
                 <button
                   onClick={() => { setViewMode("list"); try { localStorage.setItem("properties-view-mode", "list"); } catch {} }}
-                  className={`px-3 py-1.5 text-sm font-medium transition-colors flex items-center gap-1.5 ${viewMode === "list" ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`}
+                  className={`min-h-[44px] md:min-h-9 px-3 text-sm font-medium transition-colors flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${viewMode === "list" ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`}
                   aria-pressed={viewMode === "list"}
+                  data-testid="button-view-list"
                 >
-                  <MapIcon className="w-4 h-4 rotate-0" style={{ display: "none" }} />
-                  ☰ List
+                  <ListIcon className="w-4 h-4" /> List
                 </button>
                 <button
                   onClick={() => { setViewMode("map"); try { localStorage.setItem("properties-view-mode", "map"); } catch {} }}
-                  className={`px-3 py-1.5 text-sm font-medium transition-colors flex items-center gap-1.5 ${viewMode === "map" ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`}
+                  className={`min-h-[44px] md:min-h-9 px-3 text-sm font-medium transition-colors flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${viewMode === "map" ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`}
                   aria-pressed={viewMode === "map"}
+                  data-testid="button-view-map"
                 >
-                  <MapPin className="w-3.5 h-3.5" /> Map
+                  <MapPin className="w-4 h-4" /> Map
                 </button>
               </div>
               <Button 
@@ -501,7 +501,7 @@ export default function PropertiesPage() {
               <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
                 <DialogTrigger asChild>
                   <Button className="shadow-lg hover:shadow-primary/25 min-h-[44px] md:min-h-9" data-testid="button-add-property">
-                    <Plus className="w-4 h-4 mr-2" /> <span className="hidden sm:inline">Add</span> Property
+                    <Plus className="w-4 h-4 mr-2" /> Add Property
                   </Button>
                 </DialogTrigger>
                 <DialogContent className="sm:max-w-[500px]">
@@ -657,13 +657,6 @@ export default function PropertiesPage() {
             />
           ) : (
             <>
-              {isError && (
-                <InlineError 
-                  message={(error as Error)?.message || "Failed to load properties."}
-                  onRetry={() => refetch()}
-                  testId="inline-error-properties"
-                />
-              )}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {paginatedProperties.map((property) => (
                 <div key={property.id} className="relative">
@@ -682,8 +675,20 @@ export default function PropertiesPage() {
                 </div>
               ))}
               {filteredProperties.length === 0 && properties && properties.length > 0 && (
-                <div className="col-span-full text-center py-12 text-muted-foreground">
-                  No properties match the current GIS filters. Try adjusting your filter criteria.
+                <div className="col-span-full">
+                  <EmptyState
+                    icon={FilterIcon}
+                    title="No properties match these filters"
+                    description={`${properties.length} ${properties.length === 1 ? "property is" : "properties are"} hidden by your current filters. Reset to see them again.`}
+                    actionLabel="Reset filters"
+                    actionIcon={null}
+                    onAction={() => {
+                      resetGisFilters();
+                      setStatusFilter("all");
+                      setDistressFilter("any");
+                    }}
+                    testId="empty-state-properties-filtered"
+                  />
                 </div>
               )}
               {properties?.length === 0 && (
