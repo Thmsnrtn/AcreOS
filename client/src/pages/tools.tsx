@@ -60,7 +60,7 @@ export default function ToolsPage() {
                 {[
                   { href: "/tax-optimizer", icon: Receipt, title: "Tax Optimizer", desc: "Capital gains analysis, 1031 exchanges, and year-end tax planning.", color: "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600" },
                   { href: "/goals", icon: Target, title: "Goals & OKRs", desc: "Track revenue targets, deal counts, and organizational KPIs.", color: "bg-blue-50 dark:bg-blue-900/20 text-blue-600" },
-                  { href: "/syndication", icon: Share2, title: "Listing Syndication", desc: "Publish properties to Land.com, LandWatch, LandFlip, and more.", color: "bg-violet-50 dark:bg-violet-900/20 text-violet-600" },
+                  { href: "/syndication", icon: Share2, title: "Listing Syndication", desc: "Publish properties to Land.com, LandWatch, LandFlip, and more.", color: "bg-cyan-50 dark:bg-cyan-900/20 text-cyan-600" },
                   { href: "/model-training", icon: Brain, title: "Valuation Model", desc: "AcreOS Market Value™ training data, accuracy metrics, and predictions.", color: "bg-amber-50 dark:bg-amber-900/20 text-amber-600" },
                   { href: "/webhooks", icon: Webhook, title: "Webhooks", desc: "HMAC-signed webhooks for Zapier, Make, and custom integrations.", color: "bg-gray-50 dark:bg-gray-900/20 text-gray-600" },
                   { href: "/investor-network", icon: UserCheck, title: "Investor Network", desc: "Browse verified investors and manage your investor profile.", color: "bg-pink-50 dark:bg-pink-900/20 text-pink-600" },

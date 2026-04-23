@@ -168,8 +168,8 @@ function PipelineIntelligenceHeader({ leads, deals }: { leads: Lead[]; deals: De
           </div>
         )}
         {avgScore !== null && (
-          <div className="flex items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 dark:border-violet-800 dark:bg-violet-900/20 px-3 py-2">
-            <TrendingUp className="w-4 h-4 text-violet-500 shrink-0" />
+          <div className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 dark:border-primary/30 dark:bg-primary/10 px-3 py-2">
+            <TrendingUp className="w-4 h-4 text-primary shrink-0" aria-hidden="true" />
             <div>
               <p className="text-xs font-semibold">Score {avgScore}</p>
               <p className="text-[10px] text-muted-foreground">avg lead quality</p>

@@ -258,3 +258,25 @@ surfaces.
   or expired" — more actionable.
 
 **Sign-off:** D ✓ M ✓ A ✓ E ✓ AI n/a LI ✓ CW ✓ I ✓ T ✓
+
+### 2026-04-23 — customer-visible violet removal batch
+Last sweep of customer-visible violet on core product surfaces.
+
+**Refinements made:**
+- [D] Designer: `/pipeline` avg-lead-score stat tile was full violet
+  (border + bg + icon).  Converted to theme primary (terracotta
+  border, bg-primary/5 + bg-primary/10 dark, icon text-primary).
+- [D] Designer: `/tools` "Listing Syndication" category tile was
+  violet; swapped to cyan so the tool still has a differentiating
+  color but it's no longer one of the "weird purple" cases.
+- [D] Designer: `/goals` "Leads" category config entry was violet;
+  same cyan swap — still distinct from the other category colors
+  (emerald/blue/amber/gray).
+- [A] Accessibility: TrendingUp decorative icon on `/pipeline` stat
+  tile got `aria-hidden`.
+
+Founder-only pages (`/founder-dashboard`, `/night-cap`,
+`/founder-ai-observatory`, `/model-training`) still contain violet
+— deferred; customer-invisible.
+
+**Sign-off:** D ✓ M ✓ A ✓ E ✓ AI n/a LI ✓ CW ✓ I ✓ T ✓

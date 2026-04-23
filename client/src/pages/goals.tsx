@@ -54,7 +54,7 @@ interface Goal {
 const CATEGORY_CONFIG = {
   revenue: { label: "Revenue", icon: DollarSign, color: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-900/20" },
   deals: { label: "Deals", icon: TrendingUp, color: "text-blue-600", bg: "bg-blue-50 dark:bg-blue-900/20" },
-  leads: { label: "Leads", icon: Users, color: "text-violet-600", bg: "bg-violet-50 dark:bg-violet-900/20" },
+  leads: { label: "Leads", icon: Users, color: "text-cyan-600", bg: "bg-cyan-50 dark:bg-cyan-900/20" },
   properties: { label: "Properties", icon: Home, color: "text-amber-600", bg: "bg-amber-50 dark:bg-amber-900/20" },
   custom: { label: "Custom", icon: Target, color: "text-gray-600", bg: "bg-gray-50 dark:bg-gray-900/20" },
 };
