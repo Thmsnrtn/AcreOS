@@ -1,31 +1,31 @@
 # Elite-Team Refinement — Resume Point
 
-**Last session:** 2026-04-23 (session 8 — `/documents`)
-**Last completed refinement:** `client/src/pages/documents.tsx`
-— full 9-lens pass on all three tabs (templates / generated
-documents / packages) + 6 dialogs (create template, edit
-template, generate document, preview, version history, create
-package, package detail). Shared `safeFetch` returned `[]` on
-!ok which silently masked transport failures on a legal/trust
-surface — replaced with `strictFetch` that throws + `isError` →
-destructive toast on all 5 list queries + `QueryErrorState` +
-retry into three tabs. Destructive actions (delete template,
-delete package, restore version) now gated by `ConfirmDialog`
-with explicit scope-naming descriptions. 30+ decorative lucide
-icons got `aria-hidden`. Filter-buttons row now `role="group"` +
-`aria-pressed` + `min-h-11 sm:min-h-9` + `flex-wrap`. Package
-card promoted to `role="button"` + Enter/Space handler per
-clickable-div-row rule (slice 7). STATUS_BADGES labels
-sentence-cased ("Pending signature", "Partially signed",
-"Awaiting signatures"). Page subtitle + empty-state copy
-benefit-led + Land-investor vocab ("closing packet"). New
-`humanizeType()` helper capitalizes first letter of
-`type.replace(/_/g, " ")` badges (5 spots). Deal-select +
-property-select inside create dialogs honor prerequisite-select
-3-state (loading/error/empty/populated). Form grids
-`grid-cols-1 sm:grid-cols-2` for mobile. Version-history
-loader gained SR-only label. Required asterisks gained
-`aria-label="required"`.
+**Last session:** 2026-04-23 (session 9 — `/sign/:docId`)
+**Last completed refinement:** `client/src/pages/sign-document.tsx`
+— full 9-lens pass on the public HMAC-token signer page. P0
+bug squashed: `error` was a single state used for both load
+failures and submit failures, so a failed POST tore down
+`<SignatureCapture>` and wiped the signature the user just
+drew — catastrophic on a legal surface. Split into `loadError`
+vs `submitError`; submit errors now render as an inline
+`role="alert"` above the pad, preserving all user input.
+Focus moves to confirmation card on success (`ref.focus()` +
+`tabIndex=-1` + `role="status"` + `aria-live="polite"`) so SR
+users hear completion. Load-error card gains `role="alert"`
+AND a "Try again" button so transient 5xx don't require an
+email round-trip to the sender. `AbortController` replaces the
+`cancelled` flag. Decorative-icon aria-hidden sweep (6 lucide
+icons). Skeleton gets sr-only "Loading document…" label. Nav
+`aria-label="Signing header"`. Document-content scroll div
+gets `tabIndex=0` + `role="region"` + `aria-label`. Document
+title sentence-cased. `CardTitle` "Document" → "Document to
+sign". Audit-trail legal fine print promoted from
+`text-[11px]` to `text-xs` + `leading-relaxed` (12px minimum
+legibility floor for legal disclosures). Mobile padding
+tuned (`px-4 sm:px-6 py-8 sm:py-10`). Tabular-nums on signer
+counts + expiry date. The `<SignatureCapture>` internal
+component (372 lines of canvas/typed/consent logic) deferred
+to a dedicated 9b slice.
 
 **Phase 1 inventory:** ✅ committed at `11d0e8c`
 **PropertyDetailDialog:** ✅ fully refined across all tabs.
@@ -38,8 +38,9 @@ loader gained SR-only label. Required asterisks gained
 **/campaigns A/B test manager + variants panel + analytics:** ⬜ slice 6c deferred — separate embedded components, not blocking /inbox walk
 **/inbox:** ✅ slice 7 complete (commit `e052cf8`)
 **/documents:** ✅ slice 8 complete (commit `234dafa`)
-**/sign/:docId:** ⬜ slice 9 next — legal/trust surface, signer flow
-**/portal/:accessToken:** ⬜ slice 10 — public borrower link, mobile critical at 320px
+**/sign/:docId:** ✅ slice 9 complete (commit `61f1469`)
+**SignatureCapture component (9b):** ⬜ deferred — 372-line canvas/typed/consent component, own slice
+**/portal/:accessToken:** ⬜ slice 10 next — public borrower link, mobile critical at 320px
 
 ## How to continue
 
@@ -99,18 +100,16 @@ Session 7:
 - `/inbox` full-surface (commit `e052cf8`)
 
 Session 8:
-- `/documents` — all 3 tabs + 6 dialogs — silent-query→toast
-  extended to a legal/trust surface (5 queries), ConfirmDialog
-  gates on 3 destructive actions (delete-template, delete-
-  package, restore-version), aria-hidden sweep on 30+ icons,
-  filter-group view-toggle pattern, package-card role=button
-  keyboard a11y, humanizeType() helper for badge capitalization,
-  sentence-case sweep across every dialog title + form label,
-  prerequisite-select 3-state on deal/property selects inside
-  creation dialogs, mobile stack on action rows + form grids,
-  tabular-nums sweep on all counts/versions/dates, benefit-led
-  page subtitle + Land-investor vocab ("closing packet"),
-  required-asterisk aria-label sweep. (commit pending)
+- `/documents` — all 3 tabs + 6 dialogs (commit `234dafa`).
+
+Session 9:
+- `/sign/:docId` — public HMAC-token signer flow. Submit-error-
+  must-not-unmount-form P0 fix, focus-on-success-confirmation
+  (SR-announced), load-error retry affordance, AbortController
+  cleanup, role=alert on errors, role=region on document
+  content, role=status on confirmation, decorative-icon sweep,
+  legal-fine-print 12px minimum size, sentence-case title +
+  specific CardTitle. (commit `61f1469`)
 
 ## Cross-cutting gains this pass
 
@@ -265,14 +264,37 @@ Session 8:
   current state is preserved in history or lost, so users
   understand reversibility. Unlike delete, this is not about
   preventing data loss — it's about communicating the swap.
+- **Submit-error-must-not-unmount-form rule (new 9):** when a
+  submission fails on a surface where the user has committed
+  input they can't easily redo (signature, long-form copy,
+  drawn content, multi-step wizard state), error MUST render
+  inline above the form as `role="alert"`, not replace the
+  form. A single shared `error` state for load + submit is an
+  antipattern — split into `loadError` + `submitError`.
+- **Focus-on-success-confirmation rule (new 9):** when a mutation
+  replaces the primary action UI with a confirmation card, the
+  confirmation card should receive keyboard focus (via
+  `ref.focus()` with `tabIndex={-1}`) and be wired
+  `role="status"` + `aria-live="polite"`. SR users otherwise
+  have no signal that the submission completed.
+- **Legal-disclosure minimum-size rule (new 9):** any legal
+  consent / audit-trail disclosure that could be cited in
+  dispute (e-sign consent, ToS agreement, arbitration notice)
+  must render at `text-xs` (12px) or larger. Sub-12px fine
+  print is a readability hazard AND potentially an
+  enforceability risk in some jurisdictions.
+- **Retry-on-load-error rule (new 9):** load-error cards that
+  tell users to "contact support" / "reply to email" should
+  offer an in-page retry first. Transient 5xx + network blips
+  don't need a round-trip to the sender to resolve.
 
 ## Next surface to refine
 
-**Next slice: 9 — `/sign/:docId` (signer flow, public legal surface).**
+**Next slice: 10 — `/portal/:accessToken` (public borrower portal, mobile critical at 320px).**
 
-After /sign, move per inventory to:
-1. `/portal/:accessToken` — borrower portal; **public link, mobile
-   critical** — no Clerk auth, must work at 320px (slice 10)
+After /portal, move per inventory to:
+1. `SignatureCapture` component (slice 9b) — 372-line canvas /
+   typed / consent pad, own a11y + mobile-touch pass
 2. `/campaigns` 6c (AbTestManager + CampaignVariantsPanel +
    CampaignAnalytics sub-panels) — deferred, not blocking
 
@@ -317,9 +339,12 @@ After /sign, move per inventory to:
   `storage`, `autonomousDealMachine`, `countyAssessorIngest`,
   `supportAgent`, etc. — not blocking client refinement work.
 
-## Expected HEAD after session 8
+## Expected HEAD after session 9
 
-One atomic commit `refine(documents): …` on top of `e052cf8`
-(inbox). Session 8 shipped ~25 refinements across all 9 lenses
-on a legal/trust surface, with the silent-query→toast pattern
-now upgraded to a trust-surface amplifier cross-cutting rule.
+Session 9 shipped `61f1469 refine(sign): …` on top of
+`234dafa refine(documents): …` (session 8) on top of
+`e052cf8 refine(inbox): …`. Slice 9 introduced four cross-
+cutting rules (submit-error-must-not-unmount-form,
+focus-on-success-confirmation, legal-disclosure minimum-size,
+retry-on-load-error) and squashed a P0 signature-loss bug on
+a legal surface.

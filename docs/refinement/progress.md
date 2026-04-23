@@ -2130,4 +2130,4 @@ itself defers to slice 9b (372 lines, own focused pass).
   offer an in-page retry first. Transient 5xx + network blips
   don't need a round-trip to the sender to resolve.
 
-**Commit:** (pending — will fill after commit)
+**Commit:** `61f1469`
