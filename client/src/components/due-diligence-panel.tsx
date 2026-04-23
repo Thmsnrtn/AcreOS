@@ -284,14 +284,14 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
     }
   };
 
-  const StatusButton = ({ status, itemId }: { status: ItemStatus; itemId: string }) => {
+  const StatusButton = ({ status, itemId, itemName }: { status: ItemStatus; itemId: string; itemName: string }) => {
     const { icon: Icon, className } = statusIcons[status];
     return (
       <Button
         variant="ghost"
         size="icon"
         className="shrink-0"
-        aria-label="Cycle status"
+        aria-label={`${itemName} — status ${status}. Click to advance status.`}
         onClick={() => {
           const statusOrder: ItemStatus[] = ["pending", "passed", "warning", "failed", "skipped"];
           const nextIndex = (statusOrder.indexOf(status) + 1) % statusOrder.length;
@@ -299,7 +299,7 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
         }}
         data-testid={`button-status-${itemId}`}
       >
-        <Icon className={`w-5 h-5 ${className}`} />
+        <Icon className={`w-5 h-5 ${className}`} aria-hidden="true" />
       </Button>
     );
   };
@@ -309,7 +309,7 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <CardTitle className="flex items-center gap-2 text-lg">
-            Due Diligence Checklist
+            Checklist
             <Badge variant="outline" data-testid="text-progress-percent">
               {checklist.completedPercent}% Complete
             </Badge>
@@ -322,9 +322,9 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
             data-testid="button-run-all-lookups"
           >
             {runningAll ? (
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
             ) : (
-              <PlayCircle className="w-4 h-4 mr-2" />
+              <PlayCircle className="w-4 h-4 mr-2" aria-hidden="true" />
             )}
             Run All Lookups
           </Button>
@@ -335,7 +335,7 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
         <Card className="border-2 border-dashed" data-testid="ai-dossier-section">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-base">
-              <Brain className="w-5 h-5 text-primary" />
+              <Brain className="w-5 h-5 text-primary" aria-hidden="true" />
               AI Dossier
             </CardTitle>
             <CardDescription>
@@ -352,12 +352,12 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
               >
                 {isRequestingDossier ? (
                   <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Requesting...
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
+                    Requesting…
                   </>
                 ) : (
                   <>
-                    <Brain className="w-4 h-4 mr-2" />
+                    <Brain className="w-4 h-4 mr-2" aria-hidden="true" />
                     Generate AI Dossier
                   </>
                 )}
@@ -365,10 +365,15 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
             )}
             
             {dossierId && (isDossierLoading || dossier?.status === "queued" || dossier?.status === "running") && (
-              <div className="flex flex-col items-center justify-center py-6 space-y-3" data-testid="dossier-loading">
-                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+              <div
+                className="flex flex-col items-center justify-center py-6 space-y-3"
+                data-testid="dossier-loading"
+                role="status"
+                aria-live="polite"
+              >
+                <Loader2 className="w-8 h-8 animate-spin text-primary" aria-hidden="true" />
                 <p className="text-sm text-muted-foreground">
-                  {dossier?.status === "running" ? "Generating comprehensive analysis..." : "Queued for processing..."}
+                  {dossier?.status === "running" ? "Generating comprehensive analysis…" : "Queued for processing…"}
                 </p>
                 {dossier?.agentsAssigned && (
                   <div className="flex flex-wrap gap-1 justify-center">
@@ -379,8 +384,8 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
                         className="text-xs"
                       >
                         {key.replace(/([A-Z])/g, ' $1').trim()}
-                        {agent?.status === "running" && <Loader2 className="w-3 h-3 ml-1 animate-spin" />}
-                        {agent?.status === "completed" && <CheckCircle className="w-3 h-3 ml-1" />}
+                        {agent?.status === "running" && <Loader2 className="w-3 h-3 ml-1 animate-spin" aria-hidden="true" />}
+                        {agent?.status === "completed" && <CheckCircle className="w-3 h-3 ml-1" aria-hidden="true" />}
                       </Badge>
                     ))}
                   </div>
@@ -389,8 +394,8 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
             )}
 
             {dossierError && (
-              <div className="text-center py-4" data-testid="dossier-error">
-                <AlertTriangle className="w-8 h-8 text-destructive mx-auto mb-2" />
+              <div className="text-center py-4" data-testid="dossier-error" role="alert">
+                <AlertTriangle className="w-8 h-8 text-destructive mx-auto mb-2" aria-hidden="true" />
                 <p className="text-sm text-destructive">Failed to load dossier</p>
                 <Button 
                   variant="outline" 
@@ -405,8 +410,8 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
             )}
 
             {dossier?.status === "failed" && (
-              <div className="text-center py-4" data-testid="dossier-failed">
-                <XCircle className="w-8 h-8 text-destructive mx-auto mb-2" />
+              <div className="text-center py-4" data-testid="dossier-failed" role="alert">
+                <XCircle className="w-8 h-8 text-destructive mx-auto mb-2" aria-hidden="true" />
                 <p className="text-sm text-destructive">Dossier generation failed</p>
                 <Button 
                   variant="outline" 
@@ -429,11 +434,11 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
                   </div>
                   <div className="flex items-center gap-4 text-sm">
                     <div className="flex items-center gap-1">
-                      <ShieldCheck className="w-4 h-4 text-green-600" />
+                      <ShieldCheck className="w-4 h-4 text-green-600" aria-hidden="true" />
                       <span>Investability: {dossier.investabilityScore}%</span>
                     </div>
                     <div className="flex items-center gap-1">
-                      <ShieldAlert className="w-4 h-4 text-yellow-600" />
+                      <ShieldAlert className="w-4 h-4 text-yellow-600" aria-hidden="true" />
                       <span>Risk: {dossier.riskScore}%</span>
                     </div>
                   </div>
@@ -456,7 +461,7 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
                     <div className="flex flex-wrap gap-1">
                       {(dossier.greenFlags as string[]).map((flag, i) => (
                         <Badge key={i} variant="outline" className="text-xs text-green-600 border-green-200">
-                          <CheckCircle className="w-3 h-3 mr-1" />
+                          <CheckCircle className="w-3 h-3 mr-1" aria-hidden="true" />
                           {flag}
                         </Badge>
                       ))}
@@ -470,7 +475,7 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
                     <div className="flex flex-wrap gap-1">
                       {(dossier.redFlags as string[]).map((flag, i) => (
                         <Badge key={i} variant="outline" className="text-xs text-red-600 border-red-200">
-                          <AlertTriangle className="w-3 h-3 mr-1" />
+                          <AlertTriangle className="w-3 h-3 mr-1" aria-hidden="true" />
                           {flag}
                         </Badge>
                       ))}
@@ -485,7 +490,7 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
                     <AccordionItem value="title" data-testid="dossier-title-section">
                       <AccordionTrigger className="hover:no-underline">
                         <div className="flex items-center gap-2">
-                          <FileSearch className="w-4 h-4" />
+                          <FileSearch className="w-4 h-4" aria-hidden="true" />
                           <span>Title Search</span>
                           <Badge variant={dossier.findings.titleStatus.clear ? "default" : "destructive"} className="text-xs">
                             {dossier.findings.titleStatus.clear ? "Clear" : "Issues Found"}
@@ -526,7 +531,7 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
                     <AccordionItem value="tax" data-testid="dossier-tax-section">
                       <AccordionTrigger className="hover:no-underline">
                         <div className="flex items-center gap-2">
-                          <DollarSign className="w-4 h-4" />
+                          <DollarSign className="w-4 h-4" aria-hidden="true" />
                           <span>Tax Analysis</span>
                           <Badge variant={dossier.findings.taxStatus.current ? "default" : "destructive"} className="text-xs">
                             {dossier.findings.taxStatus.current ? "Current" : "Delinquent"}
@@ -563,7 +568,7 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
                     <AccordionItem value="environmental" data-testid="dossier-environmental-section">
                       <AccordionTrigger className="hover:no-underline">
                         <div className="flex items-center gap-2">
-                          <Leaf className="w-4 h-4" />
+                          <Leaf className="w-4 h-4" aria-hidden="true" />
                           <span>Environmental</span>
                           <Badge variant={dossier.findings.environmental.clean ? "default" : "secondary"} className="text-xs">
                             {dossier.findings.environmental.clean ? "Clean" : "Concerns"}
@@ -600,7 +605,7 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
                     <AccordionItem value="zoning" data-testid="dossier-zoning-section">
                       <AccordionTrigger className="hover:no-underline">
                         <div className="flex items-center gap-2">
-                          <Building className="w-4 h-4" />
+                          <Building className="w-4 h-4" aria-hidden="true" />
                           <span>Zoning</span>
                           <Badge variant="outline" className="text-xs">{dossier.findings.zoning.current}</Badge>
                         </div>
@@ -636,7 +641,7 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
                     <AccordionItem value="access" data-testid="dossier-access-section">
                       <AccordionTrigger className="hover:no-underline">
                         <div className="flex items-center gap-2">
-                          <Route className="w-4 h-4" />
+                          <Route className="w-4 h-4" aria-hidden="true" />
                           <span>Access</span>
                           <Badge variant={dossier.findings.access.legal ? "default" : "destructive"} className="text-xs">
                             {dossier.findings.access.legal ? "Legal Access" : "Access Issues"}
@@ -668,7 +673,7 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
                     <AccordionItem value="comps" data-testid="dossier-comps-section">
                       <AccordionTrigger className="hover:no-underline">
                         <div className="flex items-center gap-2">
-                          <TrendingUp className="w-4 h-4" />
+                          <TrendingUp className="w-4 h-4" aria-hidden="true" />
                           <span>Market Comps</span>
                           {dossier.findings.comps.trend && (
                             <Badge variant="outline" className="text-xs">{dossier.findings.comps.trend}</Badge>
@@ -695,7 +700,7 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
                     <AccordionItem value="owner" data-testid="dossier-owner-section">
                       <AccordionTrigger className="hover:no-underline">
                         <div className="flex items-center gap-2">
-                          <Users className="w-4 h-4" />
+                          <Users className="w-4 h-4" aria-hidden="true" />
                           <span>Owner Research</span>
                           <Badge variant="outline" className="text-xs">{dossier.findings.owner.type}</Badge>
                         </div>
@@ -743,7 +748,7 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
               <AccordionItem key={categoryKey} value={categoryKey} data-testid={`accordion-${categoryKey}`}>
                 <AccordionTrigger className="hover:no-underline">
                   <div className="flex items-center gap-2">
-                    <CategoryIcon className="w-4 h-4" />
+                    <CategoryIcon className="w-4 h-4" aria-hidden="true" />
                     <span>{categoryLabel}</span>
                     <Badge variant="secondary" className="text-xs">
                       {completedInCategory}/{categoryItems.length}
@@ -759,7 +764,7 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
                         data-testid={`checklist-item-${item.id}`}
                       >
                         <div className="flex items-start gap-2">
-                          <StatusButton status={item.status} itemId={item.id} />
+                          <StatusButton status={item.status} itemId={item.id} itemName={item.name} />
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between gap-2 flex-wrap">
                               <span className="font-medium">{item.name}</span>
@@ -773,37 +778,36 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
                               <p className="text-sm text-muted-foreground mt-1">{item.notes}</p>
                             )}
                           </div>
-                          {(item.id === "env-flood" || item.id === "env-wetlands" || item.id === "env-soil" || item.id === "env-epa" || item.id === "tax-history") && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                if (item.id === "env-flood") runLookup("flood");
-                                else if (item.id === "env-wetlands") runLookup("wetlands");
-                                else if (item.id === "env-soil") runLookup("soil");
-                                else if (item.id === "env-epa") runLookup("environmental");
-                                else runLookup("tax");
-                              }}
-                              disabled={
-                                (item.id === "env-flood" && isLookingUpFlood) ||
-                                (item.id === "env-wetlands" && isLookingUpWetlands) ||
-                                (item.id === "env-soil" && isLookingUpSoil) ||
-                                (item.id === "env-epa" && isLookingUpEnvironmental) ||
-                                (item.id === "tax-history" && isLookingUpTax)
-                              }
-                              data-testid={`button-lookup-${item.id}`}
-                            >
-                              {((item.id === "env-flood" && isLookingUpFlood) ||
-                                (item.id === "env-wetlands" && isLookingUpWetlands) ||
-                                (item.id === "env-soil" && isLookingUpSoil) ||
-                                (item.id === "env-epa" && isLookingUpEnvironmental) ||
-                                (item.id === "tax-history" && isLookingUpTax)) ? (
-                                <Loader2 className="w-3 h-3 animate-spin" />
-                              ) : (
-                                <Search className="w-3 h-3" />
-                              )}
-                            </Button>
-                          )}
+                          {(item.id === "env-flood" || item.id === "env-wetlands" || item.id === "env-soil" || item.id === "env-epa" || item.id === "tax-history") && (() => {
+                            const isBusy =
+                              (item.id === "env-flood" && isLookingUpFlood) ||
+                              (item.id === "env-wetlands" && isLookingUpWetlands) ||
+                              (item.id === "env-soil" && isLookingUpSoil) ||
+                              (item.id === "env-epa" && isLookingUpEnvironmental) ||
+                              (item.id === "tax-history" && isLookingUpTax);
+                            return (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  if (item.id === "env-flood") runLookup("flood");
+                                  else if (item.id === "env-wetlands") runLookup("wetlands");
+                                  else if (item.id === "env-soil") runLookup("soil");
+                                  else if (item.id === "env-epa") runLookup("environmental");
+                                  else runLookup("tax");
+                                }}
+                                disabled={isBusy}
+                                data-testid={`button-lookup-${item.id}`}
+                                aria-label={isBusy ? `Looking up ${item.name}…` : `Run lookup for ${item.name}`}
+                              >
+                                {isBusy ? (
+                                  <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />
+                                ) : (
+                                  <Search className="w-3 h-3" aria-hidden="true" />
+                                )}
+                              </Button>
+                            );
+                          })()}
                         </div>
                         <div className="pl-9">
                           <Textarea

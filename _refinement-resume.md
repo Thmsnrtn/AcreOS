@@ -1,8 +1,11 @@
 # Elite-Team Refinement — Resume Point
 
-**Last session:** 2026-04-23 (session 5c — third slice on /properties in one day)
-**Last completed refinement:** `/properties` — PropertyDetailDialog
-header + Quick Verdict + Overview tab. Commit forthcoming.
+**Last session:** 2026-04-23 (session 5d — fourth slice on /properties in one day)
+**Last completed refinement:** `/properties` — dead-code sweep
+(DueDiligenceTab function + orphaned imports, 196 lines deleted)
+plus DueDiligencePanel a11y pass (StatusButton descriptive aria-label,
+icon-only lookup button labeled, 17 decorative icons aria-hidden,
+loading state aria-live, CardTitle de-duplicated).
 **Phase 1 inventory:** ✅ committed at `11d0e8c`
 
 ## How to continue
@@ -45,12 +48,14 @@ Session 4:
   state conformance + mobile action-row stack + source badge
   promotion + token-based visuals
 
-Session 5 (three slices):
+Session 5 (four slices):
 - 5a. `/properties` — list slice (commit `b70c9d6`)
 - 5b. `/properties` — PropertyCard + PropertyForm slice (commit
   `29bd33f`)
 - 5c. `/properties` — PropertyDetailDialog header + Quick Verdict +
-  Overview tab (commit TBD this session)
+  Overview tab (commit `796f8d6`)
+- 5d. `/properties` — dead-code sweep (DueDiligenceTab removal) +
+  DueDiligencePanel a11y pass (commit TBD this session)
 
 ## Cross-cutting gains this pass
 
@@ -93,27 +98,29 @@ Session 5 (three slices):
 
 ## Next surface to refine
 
-**`/properties` — continued.** Next slice picks up at the inner
-tab components:
+**`/properties` — continued.** Remaining detail-dialog tab contents:
 
-1. `PropertyIntelligenceTab` (`client/src/pages/properties.tsx`
+1. `PropertyIntelligenceTab` (defined inline in `properties.tsx`
    near end of file) — AI output grounding, lazy-load of heavy
    analytics, data provenance on scores.
-2. `CompsAnalysis` (imported — likely own file) — LI-critical.
-   Investors need sold-date, $/acre, distance. Verify those are
-   front-and-center.
-3. `AIOfferGenerator` (imported — likely own file) — AI grounding,
-   cost controls, failure modes on slow LLM calls.
-4. `DueDiligencePanel` / `DueDiligenceTab` — checklist a11y,
-   progress bar contrast, print-mode.
-5. `PropertyAnalysisChat` — AI chat surface, streaming states,
-   error paths.
+2. `CompsAnalysis` (`client/src/components/comps-analysis.tsx`) —
+   LI-critical. Investors need sold-date, $/acre, distance. Verify
+   those are front-and-center. Also grounding/source quality of
+   whatever backs the comps.
+3. `AIOfferGenerator` (`client/src/components/ai-offer-generator.tsx`)
+   — AI grounding, cost controls, failure modes on slow LLM calls,
+   output structure (headline + data + caveats).
+4. `PropertyAnalysisChat` (separate component, opens when the
+   "Analyze with AI" button is clicked) — AI chat surface, streaming
+   states, error paths, accessibility of live region updates.
+5. `ResearchSummaryPanel` — referenced but not yet 9-lens'd.
 
-Suggested order for next session: do each tab as its own slice so
-commits stay atomic. Start with `DueDiligenceTab` (lines 2138+ of
-properties.tsx — it's inline in the file) because it's directly
-visible and the a11y work is concrete. Then move to the imported
-tab components.
+Note: the Accordion trigger content text in DueDiligencePanel still
+shows generic category icons but the items themselves (Tax Analysis,
+Environmental, Zoning, Access, Market Comps, Owner Research) were
+deferred — they are AI-generated output and the AI lens + LI lens
+together need a full pass on grounding (source attribution, comp
+date staleness, etc.). Flagging as a later slice.
 
 ### Likely 9-lens targets carrying into next slice
 

@@ -512,3 +512,49 @@ future sessions — see resume pointer.
   format. Button width + touch target unchanged.
 
 **Sign-off (this slice):** D ✓ M ✓ A ✓ E ✓ AI n/a LI ✓ CW ✓ I ✓ T ✓
+
+### `/properties` — Dead-code sweep + DueDiligencePanel a11y (session 5d)
+
+- [E] Removed 196 lines of dead code: `DueDiligenceTab` function in
+  `properties.tsx` (lines 2157-2353). The file defined both
+  `DueDiligenceTab` and imported `DueDiligencePanel` from
+  `@/components/due-diligence-panel`, but only `DueDiligencePanel` was
+  ever rendered. Prior resume notes had queued `DueDiligenceTab` for
+  a11y work — it was a ghost. Along with the function, removed five
+  orphaned imports: `useDueDiligenceTemplates`,
+  `usePropertyDueDiligence`, `useApplyDueDiligenceTemplate`,
+  `useUpdateDueDiligenceItem`, `useCreateDueDiligenceItem` (all from
+  `@/hooks/use-due-diligence`); types `DueDiligenceItem` and
+  `DueDiligenceTemplate` from `@shared/schema`; lucide `Printer`; and
+  UI components `Textarea` and `Progress`.
+- [A] DueDiligencePanel `StatusButton` aria-label upgraded. Every
+  status button previously announced literally "Cycle status" with
+  no item context — so a screen-reader user tabbing through the
+  checklist would hear "Button, Cycle status" fifteen times in a row.
+  Now announces "{itemName} — status {status}. Click to advance
+  status." Icon inside the button gained `aria-hidden`.
+- [A] DueDiligencePanel per-item lookup button (Search icon) was
+  icon-only with no accessible name. Added `aria-label` that switches
+  between "Run lookup for {itemName}" and "Looking up {itemName}…"
+  during fetch. Icons made `aria-hidden`. Busy computation
+  consolidated into one `isBusy` local so the same boolean drives
+  `disabled`, spinner render, and aria copy.
+- [A] DueDiligencePanel: 17 more decorative icons made `aria-hidden`
+  across the surface (Run All Lookups button, AI Dossier CardTitle +
+  Generate button, dossier-loading spinner, agent-status badges,
+  dossier error/failed icons, Investability/Risk row icons, Green/Red
+  Flags badges, and all eight accordion-trigger icons: FileSearch,
+  DollarSign, Leaf, Building, Route, TrendingUp, Users, CategoryIcon).
+- [A] DueDiligencePanel loading state wrapper gained `role="status"
+  aria-live="polite"` so the "Generating comprehensive analysis…" /
+  "Queued for processing…" copy is announced. Error and failed
+  blocks gained `role="alert"`.
+- [CW] DueDiligencePanel CardTitle "Due Diligence Checklist" →
+  "Checklist". The panel renders inside a tab already labeled "Due
+  Diligence"; the repeated phrase crowds the title and pushes the
+  "% Complete" badge below the Run-All-Lookups button on narrow
+  viewports.
+- [CW] Ellipsis-dot cleanup — "..." → "…" in dossier loading copy
+  and Requesting button copy.
+
+**Sign-off (this slice):** D ✓ M ✓ A ✓ E ✓ AI n/a LI ✓ CW ✓ I ✓ T ✓

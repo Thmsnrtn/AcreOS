@@ -13,15 +13,8 @@ import { useSearch } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertPropertySchema, type Property, type DueDiligenceItem, type DueDiligenceTemplate } from "@shared/schema";
+import { insertPropertySchema, type Property } from "@shared/schema";
 import { z } from "zod";
-import {
-  useDueDiligenceTemplates,
-  usePropertyDueDiligence,
-  useApplyDueDiligenceTemplate,
-  useUpdateDueDiligenceItem,
-  useCreateDueDiligenceItem,
-} from "@/hooks/use-due-diligence";
 
 // APN validation pattern - supports common formats like 123-456-789, 123-45-678-901, 12345678
 const apnPattern = /^[\d]+([-][\d]+)*$/;
@@ -101,7 +94,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, MapPin, Ruler, DollarSign, Trash2, Loader2, Map as MapIcon, RefreshCw, FileText, Download, Upload, CheckCircle, AlertCircle, AlertTriangle, ClipboardCheck, Printer, Calculator, BarChart2, X, CheckSquare, Droplets, Leaf, Building2, Flame, Users, Brain, Shield, Zap, Mountain, TreePine, Car, TrendingUp, Thermometer, Cloud, Waves, Wheat, Factory, Grid3x3, Target, ThumbsUp, ThumbsDown, List as ListIcon, Filter as FilterIcon, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, MapPin, Ruler, DollarSign, Trash2, Loader2, Map as MapIcon, RefreshCw, FileText, Download, Upload, CheckCircle, AlertCircle, AlertTriangle, ClipboardCheck, Calculator, BarChart2, X, CheckSquare, Droplets, Leaf, Building2, Flame, Users, Brain, Shield, Zap, Mountain, TreePine, Car, TrendingUp, Thermometer, Cloud, Waves, Wheat, Factory, Grid3x3, Target, ThumbsUp, ThumbsDown, List as ListIcon, Filter as FilterIcon, ChevronDown, ChevronUp } from "lucide-react";
 import { LandCreditBadge } from "@/components/land-credit-badge";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -116,8 +109,6 @@ import { PropertyMap, SinglePropertyMap, StaticPropertyMap } from "@/components/
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Textarea } from "@/components/ui/textarea";
-import { Progress } from "@/components/ui/progress";
 import { CompsAnalysis } from "@/components/comps-analysis";
 import { AIOfferGenerator } from "@/components/ai-offer-generator";
 import { CustomFieldValuesEditor } from "@/components/custom-fields";
@@ -2160,204 +2151,6 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
       onOpenChange={setIsAnalysisChatOpen} 
     />
     </>
-  );
-}
-
-function DueDiligenceTab({ propertyId }: { propertyId: number }) {
-  const { data: items, isLoading: isLoadingItems } = usePropertyDueDiligence(propertyId);
-  const { data: templates, isLoading: isLoadingTemplates } = useDueDiligenceTemplates();
-  const { mutate: applyTemplate, isPending: isApplyingTemplate } = useApplyDueDiligenceTemplate();
-  const { mutate: updateItem, isPending: isUpdating } = useUpdateDueDiligenceItem();
-  const [selectedTemplate, setSelectedTemplate] = useState<string>("");
-  const [editingNotes, setEditingNotes] = useState<{ [key: number]: string }>({});
-
-  const itemsByCategory = items?.reduce((acc, item) => {
-    if (!acc[item.category]) acc[item.category] = [];
-    acc[item.category].push(item);
-    return acc;
-  }, {} as Record<string, DueDiligenceItem[]>) || {};
-
-  const completedCount = items?.filter(item => item.completed).length || 0;
-  const totalCount = items?.length || 0;
-  const progressPercent = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
-
-  const handleApplyTemplate = () => {
-    if (selectedTemplate) {
-      applyTemplate({ propertyId, templateId: Number(selectedTemplate) });
-    }
-  };
-
-  const handleToggleComplete = (item: DueDiligenceItem) => {
-    updateItem({
-      itemId: item.id,
-      propertyId,
-      updates: { completed: !item.completed },
-    });
-  };
-
-  const handleSaveNotes = (item: DueDiligenceItem) => {
-    const notes = editingNotes[item.id];
-    if (notes !== undefined) {
-      updateItem({
-        itemId: item.id,
-        propertyId,
-        updates: { notes },
-      });
-      setEditingNotes(prev => {
-        const next = { ...prev };
-        delete next[item.id];
-        return next;
-      });
-    }
-  };
-
-  const handlePrint = () => {
-    window.print();
-  };
-
-  if (isLoadingItems || isLoadingTemplates) {
-    return (
-      <div className="flex items-center justify-center py-8">
-        <Loader2 className="w-6 h-6 animate-spin" />
-      </div>
-    );
-  }
-
-  if (!items || items.length === 0) {
-    return (
-      <div className="space-y-4">
-        <div className="text-center py-8">
-          <ClipboardCheck className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-          <h3 className="font-medium mb-2">No Due Diligence Checklist</h3>
-          <p className="text-sm text-muted-foreground mb-4">
-            Select a template to create a checklist for this property
-          </p>
-          <div className="flex items-center gap-2 justify-center flex-wrap">
-            <Select value={selectedTemplate} onValueChange={setSelectedTemplate}>
-              <SelectTrigger className="w-[200px]" data-testid="select-template">
-                <SelectValue placeholder="Select template" />
-              </SelectTrigger>
-              <SelectContent>
-                {templates?.map(template => (
-                  <SelectItem key={template.id} value={String(template.id)}>
-                    {template.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button 
-              onClick={handleApplyTemplate} 
-              disabled={!selectedTemplate || isApplyingTemplate}
-              data-testid="button-apply-template"
-            >
-              {isApplyingTemplate ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : (
-                <Plus className="w-4 h-4 mr-2" />
-              )}
-              Apply Template
-            </Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex-1 min-w-[200px]">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-sm font-medium">{completedCount} of {totalCount} completed</span>
-            <span className="text-xs text-muted-foreground">({Math.round(progressPercent)}%)</span>
-          </div>
-          <Progress value={progressPercent} className="h-2" data-testid="progress-due-diligence" />
-        </div>
-        <Button variant="outline" size="sm" onClick={handlePrint} data-testid="button-print-checklist">
-          <Printer className="w-4 h-4 mr-2" />
-          Print
-        </Button>
-      </div>
-
-      <div className="space-y-6 print:space-y-4">
-        {Object.entries(itemsByCategory).map(([category, categoryItems]) => (
-          <div key={category} className="space-y-2">
-            <h4 className="font-semibold text-sm border-b pb-1">{category}</h4>
-            <div className="space-y-2">
-              {categoryItems.map(item => (
-                <div 
-                  key={item.id} 
-                  className={`flex items-start gap-3 p-3 rounded-md border ${item.completed ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800' : 'bg-muted/50'}`}
-                  data-testid={`dd-item-${item.id}`}
-                >
-                  <Checkbox
-                    checked={item.completed}
-                    onCheckedChange={() => handleToggleComplete(item)}
-                    disabled={isUpdating}
-                    data-testid={`checkbox-${item.id}`}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`text-sm font-medium ${item.completed ? 'line-through text-muted-foreground' : ''}`}>
-                        {item.itemName}
-                      </span>
-                      {item.completed && item.completedAt && (
-                        <Badge variant="outline" className="text-xs">
-                          <CheckCircle className="w-3 h-3 mr-1 text-green-600" />
-                          {new Date(item.completedAt).toLocaleDateString()}
-                        </Badge>
-                      )}
-                    </div>
-                    {editingNotes[item.id] !== undefined ? (
-                      <div className="mt-2 space-y-2">
-                        <Textarea
-                          value={editingNotes[item.id]}
-                          onChange={(e) => setEditingNotes(prev => ({ ...prev, [item.id]: e.target.value }))}
-                          placeholder="Add notes..."
-                          className="text-xs min-h-[60px]"
-                          data-testid={`textarea-notes-${item.id}`}
-                        />
-                        <div className="flex gap-2">
-                          <Button 
-                            size="sm" 
-                            variant="outline" 
-                            onClick={() => setEditingNotes(prev => { const n = {...prev}; delete n[item.id]; return n; })}
-                          >
-                            Cancel
-                          </Button>
-                          <Button 
-                            size="sm" 
-                            onClick={() => handleSaveNotes(item)}
-                            disabled={isUpdating}
-                            data-testid={`button-save-notes-${item.id}`}
-                          >
-                            Save Notes
-                          </Button>
-                        </div>
-                      </div>
-                    ) : item.notes ? (
-                      <p 
-                        className="text-xs text-muted-foreground mt-1 cursor-pointer hover:text-foreground"
-                        onClick={() => setEditingNotes(prev => ({ ...prev, [item.id]: item.notes || "" }))}
-                      >
-                        {item.notes}
-                      </p>
-                    ) : (
-                      <button 
-                        className="text-xs text-muted-foreground mt-1 hover:text-foreground"
-                        onClick={() => setEditingNotes(prev => ({ ...prev, [item.id]: "" }))}
-                      >
-                        + Add notes
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
   );
 }
 
