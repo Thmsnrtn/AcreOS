@@ -1,18 +1,48 @@
 # Elite-Team Refinement — Resume Point
 
-**Last session:** 2026-04-23 (session 14 — money sweep continuation: /properties + /deals + /campaigns)
-**Last completed refinement:** targeted `usd()` swap across
-three files. /properties (3246 lines): 9 money sites routed
-through usd(), sentence-case + "N/A" → "—" on touched
-sections, tabular-nums, non-money toLocaleString on acreage +
-population correctly left alone. /deals (1700+ lines): 10
-money sites including pipeline totals, deal cards, pricing
-popover, detail drawer, property details, closing costs;
-range uses &ndash;. /campaigns-content: budget spent/total
-line. All three NOT full 9-lens passes — surgical money-
-precision + small adjacent cleanup. Remaining 72 files with
-bare money `.toLocaleString()` are lower-traffic or
-founder-only — accept as per-surface follow-up.
+**Last session:** 2026-04-23 (session 16 — `/dashboard`)
+**Last completed refinement:** `client/src/pages/dashboard.tsx`
+(734 lines) — the alternate dashboard entry surface. Full
+horizontal application of the cross-cutting rules stack.
+useDocumentTitle wired. Monthly cashflow + Pipeline value
+StatCards routed through usd() (was bare .toLocaleString()
+dropping cents). Loading "-" → "—" on 3 stat cards.
+Sentence-case sweep across ~15 section headers / stat-card
+titles / CTAs. 12+ decorative icons aria-hidden. Funnel
+stage progress bars got role=progressbar + aria-label + aria-
+valuenow/min/max. Tip banners stack flex-col sm:flex-row for
+320px with 44px touch on CTAs. Aging-lead score separator
+promoted from hyphen to em-dash. Tabular-nums sweep on all
+counts/%. No new cross-cutting rules.
+
+---
+
+**Prior session:** 2026-04-23 (session 15 — `/today`)
+**Prior completed refinement:** `client/src/pages/today.tsx`
+(1324 lines) — the primary authenticated entry surface.
+Sentence-case sweep across 20+ section headers + CTAs (alert
+link labels, welcome-back stat tiles, getting-started hero
+CTAs, agent-activity labels, business-pulse labels, every
+section heading, stat cards). 30+ decorative icons aria-
+hidden. goal-progress revenue + cash-position projected
+tiles + next3 payments all routed through usd(). Business
+Pulse Pipeline + This Month replaced hand-rolled compact
+format with dollarsCompact() helper. Expiring-offer cards
+got role=alert; system alerts role=alert/status by severity.
+Progress bars on goal cards aria-labeled. Mobile: banner
+stacking flex-col sm:flex-row, 44px touch on all CTAs.
+Tabular-nums sweep on every number. Severity/priority
+badges capitalize.
+
+---
+
+**Prior session:** 2026-04-23 (session 14 — money sweep: /properties + /deals + /campaigns)
+**Prior completed refinement:** targeted `usd()` swap across
+three files. /properties (3246 lines): 9 money sites
+routed through usd(). /deals (1700+ lines): 10 money sites.
+/campaigns-content: budget spent/total line. NOT full 9-lens
+passes of any page — surgical money-precision + small
+adjacent cleanup.
 
 ---
 
@@ -185,7 +215,9 @@ to a dedicated 9b slice.
 **Money-precision: usd() helper + /finance (12):** ✅ complete (commit `39227e7`)
 **SignatureCapture (9b):** ✅ complete (commit `252026c`)
 **Money sweep: /properties + /deals + /campaigns-content (14):** ✅ complete (commit `0ffdbde`)
-**Money-precision grep remaining (~70 files):** ⬜ deferred — apply per-surface as each page gets 9-lens pass
+**/today (15):** ✅ complete (commit `fb24811`)
+**/dashboard (16):** ✅ complete (commit `a73dfee`)
+**Money-precision grep remaining (~68 files):** ⬜ deferred — apply per-surface as each page gets 9-lens pass
 
 ## How to continue
 
@@ -310,11 +342,24 @@ Session 13:
 Session 14:
 - Money-precision sweep continuation — targeted `usd()` swap
   across /properties (9 sites), /deals (10 sites),
-  /campaigns-content (1 site). "N/A" → "—" on 3 verdict-
-  strip fields per Money-unset display rule. Sentence-case
-  + tabular-nums on touched sections. Non-money
-  toLocaleString on acreage + population correctly left
-  alone. NOT full 9-lens passes of any page. (commit `0ffdbde`)
+  /campaigns-content (1 site). (commit `0ffdbde`)
+
+Session 15:
+- `/today` full 9-lens pass — primary authenticated entry.
+  20+ sentence-case sweeps, 30+ aria-hidden icons, goal/
+  cash money-precision with usd() + dollarsCompact(),
+  role=alert on expiring offers, aria-label on progress
+  bars, mobile banner stacking, full tabular-nums sweep.
+  useDocumentTitle wired. (commit `fb24811`)
+
+Session 16:
+- `/dashboard` 9-lens pass — alternate entry surface. usd()
+  on Monthly cashflow + Pipeline value stat cards, 15+
+  sentence-case sweeps, 12+ aria-hidden icons, funnel
+  progress bars role=progressbar + aria-label/valuenow,
+  mobile tip-banner stacking, em-dash on aging-lead score
+  separator, tabular-nums. useDocumentTitle wired.
+  (commit `a73dfee`)
 
 ## Cross-cutting gains this pass
 
@@ -541,13 +586,14 @@ Session 14:
 
 ## Next surface to refine
 
-**Recommended next slices:**
+**Recommended next slices (entry surfaces now done, shifting
+to list / workflow pages):**
 
-1. **`/today` or `/dashboard` — authenticated entry surface.**
-   First thing customers see after sign-in. Likely dense
-   with widgets + stats + activity feed + CTAs. Primary
-   visibility surface for a 9-lens pass. Haven't been
-   touched since sessions 1-3 infrastructure work.
+1. **`/leads` full 9-lens pass** — lead capture is trust-
+   critical for acquisition. Last touched in session 3 for
+   mobile checkbox tap targets only. Dedupe flow was
+   covered in session 4, but main list view still
+   unreviewed.
 
 2. **Full `/finance` 9-lens pass (12b)** — slice 12 was
    narrow (money-precision only). Remaining ~1500 lines:
@@ -555,41 +601,35 @@ Session 14:
    record dialog, Stripe Connect configuration, dunning
    manager, drawer + cards that weren't touched.
 
-3. **`/leads` full 9-lens pass** — lead capture is trust-
-   critical for acquisition. Last touched in session 3 for
-   mobile checkbox tap targets only. Dedupe flow was
-   covered in session 4, but main list view still
-   unreviewed.
-
-4. **jsPDF 1098 generator (slice 10b.ii)** — product +
-   compliance question on IRS form fidelity. Best paired
-   with owner clarification on e-filing goals.
-
-5. **`/campaigns` 6c (AbTestManager + CampaignVariantsPanel
-   + CampaignAnalytics)** — deferred component-set from
-   session 6.
-
-6. **`/settings` full 9-lens pass** — lightly touched in
+3. **`/settings` full 9-lens pass** — lightly touched in
    session 3 (tier badges) but the full surface has
    Profile / Billing / Team / API / Integrations /
    Deletion flows that need attention.
 
-7. **`/onboarding-v2` full 9-lens pass** — lightly touched
+4. **`/onboarding-v2` full 9-lens pass** — lightly touched
    in session 2. Multi-step flow, first-run critical.
 
-**Pick based on session energy budget.** /today and /finance
-12b are larger. /onboarding-v2, /settings, /leads are
-medium. Component-level slices (6c, 10b.ii) are tighter.
+5. **`/pipeline` 9-lens pass** — high-traffic workflow
+   surface, lightly touched in session 3 for violet sweep.
 
-**Grep candidates** (apply cross-cutting rules horizontally
-like slice 11 did for public forms):
-- `.toLocaleString()` on money still present in ~70 files;
+6. **jsPDF 1098 generator (slice 10b.ii)** — product +
+   compliance question on IRS form fidelity. Best paired
+   with owner clarification on e-filing goals.
+
+7. **`/campaigns` 6c (AbTestManager + CampaignVariantsPanel
+   + CampaignAnalytics)** — deferred component-set from
+   session 6.
+
+**Grep candidates** (apply cross-cutting rules horizontally):
+- `.toLocaleString()` on money still present in ~68 files;
   highest value targets are `/offers`, `/investor-directory`,
-  `/tax-delinquent`, `/property-tax`, dashboard widgets.
+  `/tax-delinquent`, `/property-tax`, dashboard child widgets.
 - `window.confirm()` ban rule — grep for any remaining
   native confirms across the client.
 - Decorative-icon aria-hidden sweep — open-ended, apply
   surface-by-surface.
+- `useDocumentTitle` — grep for pages that don't call it
+  and add one.
 
 ## Deferred / flagged for owner decision
 
@@ -632,9 +672,9 @@ like slice 11 did for public forms):
   `storage`, `autonomousDealMachine`, `countyAssessorIngest`,
   `supportAgent`, etc. — not blocking client refinement work.
 
-## Expected HEAD after session 14
+## Expected HEAD after session 16
 
-Session chain 8 → 14 cadence (all shipped atomic + docs):
+Session chain 8 → 16 cadence (all shipped atomic + docs):
 
 - `234dafa` slice 8  — /documents
 - `61f1469` slice 9  — /sign/:docId
@@ -643,10 +683,19 @@ Session chain 8 → 14 cadence (all shipped atomic + docs):
 - `37b8911` slice 11 — public-form a11y sweep
 - `39227e7` slice 12 — usd() helper + /finance
 - `252026c` slice 13 — SignatureCapture (9b)
-- `0ffdbde` slice 14 — money sweep: properties/deals/campaigns
+- `0ffdbde` slice 14 — money sweep: /properties + /deals + /campaigns
+- `fb24811` slice 15 — /today
+- `a73dfee` slice 16 — /dashboard
 
-Cross-cutting rules introduced across this chain (all now
-documented in the cross-cutting patterns list):
+**Coverage to date** (surfaces with explicit 9-lens pass):
+legal/trust (documents, sign, portal, signature-capture) +
+money (finance, portal dashboard, today, dashboard) +
+public forms (auth, forgot-password, reset-password,
+beta-intake) + core workflows (inbox, campaigns, deals,
+properties-card partials, documents) + entry surfaces
+(today, dashboard) + helpers (usd, formatUSD).
+
+Cross-cutting rules introduced across this chain:
 - Silent-query→toast trust-surface amplifier (8)
 - Restore-older-state ConfirmDialog (8)
 - Submit-error-must-not-unmount-form (9)
@@ -660,6 +709,8 @@ documented in the cross-cutting patterns list):
 - Definition-list semantic (10b)
 - Unread-count badge min-width (10b)
 
-~70 money-precision sites across non-critical surfaces
-remain deferred. All critical legal/trust/money surfaces
-now honor the cross-cutting rules.
+Slices 15-16 introduced zero new cross-cutting rules —
+pure horizontal application of the existing stack. That
+is the goal state: the rule machinery is now productive
+and each new surface confirms the cross-cutting patterns
+rather than inventing new ones.

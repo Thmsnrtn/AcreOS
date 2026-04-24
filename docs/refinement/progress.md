@@ -3227,7 +3227,7 @@ goal-progress section, Pax / alerts / tasks / AI-action cards
 that may deserve their own deep pass — but the horizontal
 rules were the priority and are now cleanly applied.
 
-**Commit:** (pending)
+**Commit:** `fb24811`
 
 ---
 
@@ -3308,4 +3308,4 @@ PredictiveInsights, NextBestActions, TasksDueWidget child
 components — each is its own slice. StatCard internals (which
 render sparklines) also deferred.
 
-**Commit:** (pending)
+**Commit:** `a73dfee`
