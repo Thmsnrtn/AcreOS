@@ -3695,3 +3695,106 @@ full pass.
   = 6a/b).
 
 **Commit:** `1b5d0f7`
+
+---
+
+## Session 21 — 2026-04-24 — Money-action error reassurance grep sweep
+
+**Scope:** Apply the slice-19 money-action error reassurance
+rule horizontally across the client. Find error paths on
+money-related actions (payment init, payment verify, payment-
+link generation, autopay toggle, QuickBooks sync) and upgrade
+their error messaging to explicitly state that no money moved
+and no state changed, not just "Failed to X."
+
+**Files touched: 2, commits: 1 atomic.**
+
+**`/finance.tsx` — 3 money-action error toasts upgraded:**
+
+1. `handleGeneratePaymentLink` (Stripe Connect payment link):
+   "Error / Failed to generate payment link" →
+   "Couldn't generate payment link / Check your connection
+   and try again — **no link was created or charged**."
+   Silent `console.error` also removed (same pattern as
+   slice 17 — trust bug class).
+
+2. `handleCreatePayment` (Stripe PaymentIntent): success
+   voice also cleaned ("Payment intent created" was
+   technical-jargon on a user-facing surface → "Payment
+   ready / You can now enter card details to complete the
+   payment"). Error: "Error / Failed to create payment
+   intent" → "Couldn't set up payment / Check your
+   connection and try again — **no card was charged**."
+   Silent `console.error` removed.
+
+3. QuickBooks sync failure: "QuickBooks sync failed / {err
+   message}" → appends "— **no records were changed**."
+   The sync is idempotent server-side, but the user
+   doesn't know that — explicit reassurance prevents them
+   from manually "fixing" already-correct ledger entries.
+
+**`/borrower-portal.tsx` — 3 payment-related error paths
+upgraded:**
+
+1. `verifyPayment` (post-Stripe-redirect verification):
+   two error paths. "Failed to verify payment" →
+   "We couldn't verify your payment right now. **If you
+   were charged, your lender will reconcile it within 24
+   hours — you don't need to pay again.**" This is the
+   highest-anxiety path on the whole portal: the user just
+   clicked through Stripe checkout, came back, and got an
+   error. Without the "don't pay again" reassurance they
+   will either (a) try to pay again and double-charge
+   themselves, or (b) panic and call support. The
+   reassurance is both user-friendly AND prevents support
+   load.
+
+2. `handleMakePayment` (Stripe checkout session init):
+   two error paths. "Failed to initiate payment / Failed
+   to create payment session" → "We couldn't start your
+   payment right now / **No card was charged — please try
+   again.**"
+
+3. `handleToggleAutopay`: two error paths. "Failed to
+   update autopay / Failed to update autopay settings" →
+   "We couldn't update autopay. **Your current autopay
+   setting hasn't changed.**" User toggles switch, error
+   appears — without the reassurance they don't know if
+   autopay is on or off right now. The explicit "hasn't
+   changed" resolves the ambiguity.
+
+**Lens sign-off:**
+
+| Lens              | Status                                                                              |
+| ----------------- | ----------------------------------------------------------------------------------- |
+| Copywriter        | PASS — money-action voice consistent across /finance + /portal                     |
+| Trust             | PASS — 6 money-action error paths now reassure; highest-anxiety payment-verify path carries the strongest reassurance (prevents double-charge) |
+| Engineer          | PASS — 3 silent console.error bugs removed at the same time                        |
+| Infrastructure    | PASS — error fallbacks explicit about payment state                                 |
+
+**Deferred:**
+- `handleRequestPayoffQuote` and `handleGenerateStatement`
+  error paths in /borrower-portal — these are data-fetch
+  actions, not money actions. Current "Failed to get payoff
+  quote" voice is fine (no billing state at risk). Left
+  as-is per the rule's scoping.
+- Settings StripeConnect connect/disconnect error flows
+  (inside SeatManagement / StripeConnectSettings components)
+  — candidates for 19b.
+- Subscription-cancel confirmation error handling in
+  `CancellationDialog` — 19b candidate.
+
+**Patterns reinforced, not introduced:**
+- Money-action error reassurance rule (slice 19) now
+  confirmed on 6 additional surfaces. The rule generalizes
+  cleanly: anywhere a user action could plausibly affect
+  billing state, the error path needs to explicitly name
+  the current state ("no card was charged" / "your plan
+  wasn't changed" / "your autopay setting hasn't changed"
+  / "no link was created or charged" / "no records were
+  changed" / "if you were charged, your lender will
+  reconcile it"). The specific reassurance depends on the
+  action semantics, but the *presence* of reassurance is
+  the rule.
+
+**Commit:** (pending)

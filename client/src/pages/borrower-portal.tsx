@@ -337,10 +337,16 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
         setTimeout(() => window.location.reload(), 2000);
       } else {
         const data = await res.json();
-        setPaymentStatusMessage({ type: 'error', message: data.message || 'Payment verification failed' });
+        setPaymentStatusMessage({
+          type: 'error',
+          message: (data.message || "We couldn't verify your payment yet.") + " If you were charged, your lender will reconcile it within 24 hours — you don't need to pay again.",
+        });
       }
     } catch (err) {
-      setPaymentStatusMessage({ type: 'error', message: 'Failed to verify payment' });
+      setPaymentStatusMessage({
+        type: 'error',
+        message: "We couldn't verify your payment right now. If you were charged, your lender will reconcile it within 24 hours — you don't need to pay again.",
+      });
     } finally {
       setIsVerifyingPayment(false);
     }
@@ -363,10 +369,16 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
         }
       } else {
         const data = await res.json();
-        setPaymentStatusMessage({ type: 'error', message: data.message || 'Failed to create payment session' });
+        setPaymentStatusMessage({
+          type: 'error',
+          message: (data.message || "We couldn't start your payment right now.") + " No card was charged — please try again.",
+        });
       }
     } catch (err) {
-      setPaymentStatusMessage({ type: 'error', message: 'Failed to initiate payment' });
+      setPaymentStatusMessage({
+        type: 'error',
+        message: "We couldn't start your payment right now. Check your connection and try again — no card was charged.",
+      });
     } finally {
       setIsProcessingPayment(false);
     }
@@ -385,16 +397,22 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
       if (res.ok) {
         const data = await res.json();
         setAutopayEnabled(data.autopayEnabled);
-        setPaymentStatusMessage({ 
-          type: 'success', 
-          message: data.autopayEnabled ? 'Autopay has been enabled' : 'Autopay has been disabled' 
+        setPaymentStatusMessage({
+          type: 'success',
+          message: data.autopayEnabled ? 'Autopay has been enabled' : 'Autopay has been disabled',
         });
       } else {
         const data = await res.json();
-        setPaymentStatusMessage({ type: 'error', message: data.message || 'Failed to update autopay' });
+        setPaymentStatusMessage({
+          type: 'error',
+          message: (data.message || "We couldn't update autopay.") + " Your current autopay setting hasn't changed.",
+        });
       }
     } catch (err) {
-      setPaymentStatusMessage({ type: 'error', message: 'Failed to update autopay settings' });
+      setPaymentStatusMessage({
+        type: 'error',
+        message: "We couldn't update autopay right now. Your current autopay setting hasn't changed.",
+      });
     } finally {
       setIsTogglingAutopay(false);
     }

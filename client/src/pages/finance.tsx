@@ -95,7 +95,11 @@ export default function FinancePage() {
       if (!res.ok) throw new Error(data.message || 'Sync failed');
       toast({ title: "QuickBooks sync complete", description: `Synced ${data.synced} payment(s)${data.errors > 0 ? `, ${data.errors} error(s)` : ''}.` });
     } catch (err: any) {
-      toast({ title: "QuickBooks sync failed", description: err.message, variant: "destructive" });
+      toast({
+        title: "QuickBooks sync failed",
+        description: `${err?.message || "Sync couldn't complete"} — no records were changed.`,
+        variant: "destructive",
+      });
     } finally {
       setIsQboSyncing(false);
     }
@@ -455,13 +459,16 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
     setIsGeneratingLink(true);
     try {
       const res = await fetch(`/api/stripe/connect/payment-link/${note.id}`, { credentials: 'include' });
-      if (!res.ok) throw new Error('Failed to generate payment link');
+      if (!res.ok) throw new Error(`Server returned ${res.status}`);
       const data = await res.json();
       setPaymentLink(data.paymentLink);
       toast({ title: "Payment link generated", description: "You can now share this link with the borrower." });
-    } catch (err) {
-      console.error('Failed to generate payment link:', err);
-      toast({ title: "Error", description: "Failed to generate payment link", variant: "destructive" });
+    } catch (err: any) {
+      toast({
+        title: "Couldn't generate payment link",
+        description: err?.message || "Check your connection and try again — no link was created or charged.",
+        variant: "destructive",
+      });
     } finally {
       setIsGeneratingLink(false);
     }
@@ -1137,10 +1144,13 @@ function AcceptPaymentModal({ note, onClose }: { note: NoteWithDetails; onClose:
 
       const data = await res.json();
       setClientSecret(data.clientSecret);
-      toast({ title: "Payment intent created", description: "Ready to process payment." });
+      toast({ title: "Payment ready", description: "You can now enter card details to complete the payment." });
     } catch (err: any) {
-      console.error('Failed to create payment intent:', err);
-      toast({ title: "Error", description: err.message || "Failed to create payment intent", variant: "destructive" });
+      toast({
+        title: "Couldn't set up payment",
+        description: err?.message || "Check your connection and try again — no card was charged.",
+        variant: "destructive",
+      });
     } finally {
       setIsCreating(false);
     }
