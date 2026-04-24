@@ -1,18 +1,45 @@
 # Elite-Team Refinement — Resume Point
 
-**Last session:** 2026-04-23 (session 18 — `/onboarding-v2` targeted)
-**Last completed refinement:** `client/src/pages/onboarding-v2.tsx`
+**Last session:** 2026-04-23 (session 20 — `/pipeline` full 9-lens)
+**Last completed refinement:** `client/src/pages/pipeline.tsx`
+(307 lines) — full pass. Three hand-rolled compact $
+formatters replaced with canonical `dollarsCompact()` helper
+(slice 12). Sentence-case on funnel header + velocity-metric
+labels. 10+ decorative icons aria-hidden. Velocity-metric
+grid gets role=group + aria-label. Tab-fallback Suspense
+loader promoted to role=status + aria-live=polite. Tabular-
+nums across counts + money + avg score.
+useDocumentTitle("Pipeline — AcreOS") wired.
+
+---
+
+**Prior session:** 2026-04-23 (session 19 — `/settings` targeted)
+**Prior completed refinement:** `client/src/pages/settings.tsx`
+(2658 lines) — targeted pass on General tab + tab list
+labels + 4 top-level mutation error toasts. Error-voice
+upgraded: "Error / Failed to X" → "Couldn't X" with recovery
+guidance. handleUpgrade explicitly states "your plan wasn't
+changed" — new money-action error reassurance rule. Sentence-
+case sweep on General-tab labels + tab list (Refer & Earn,
+AI Tasks). 18+ decorative icons aria-hidden across all 15
+TabsTrigger icons + CardTitle icons + button glyphs. Limit-
+warning banner promoted to role=status. Usage Progress bars
+gain aria-label naming item, current, limit, percentage.
+Subscription period range uses &ndash; + tabular-nums.
+useDocumentTitle wired. ~2400 lines deferred to 19b (Team,
+Payments, Communications, Notifications, AI, Data,
+Integrations, Developer, Goals, Security, Privacy, Refer,
+Automations, AI Tasks, Appearance tabs; StripeConnect,
+SeatMgmt, 2FA, PasswordChange, Referral, Goals, ApiKey,
+ActivityLog, PrivacyData components).
+
+---
+
+**Prior session:** 2026-04-23 (session 18 — `/onboarding-v2` targeted)
+**Prior completed refinement:** `client/src/pages/onboarding-v2.tsx`
 (1469 lines) — targeted pass: sentence-case sweep on all 18
-STEPS_BY_PATH step titles + subtitles (beginner/active/
-enterprise × 6 steps each), money-precision applied to the
-#1 aha-moment InstantDealHunt opportunity tiles (3 money
-sites through usd() noCents), tile labels sentence-cased,
-proper ellipsis on scanning messages, "Continue to dashboard"
-CTA min-h-11 + ArrowRight aria-hidden, tabular-nums on
-counts, useDocumentTitle("Welcome to AcreOS") wired. ~1100
-lines deferred to slice 18b (portfolio-import, county form,
-strategy cards, atlas tour, team/integrations/workflows
-steps, completion celebration).
+STEPS_BY_PATH step titles + subtitles, money-precision on
+opportunity tiles, useDocumentTitle.
 
 ---
 
@@ -256,8 +283,10 @@ to a dedicated 9b slice.
 **/dashboard (16):** ✅ complete (commit `a73dfee`)
 **/leads targeted (17):** ✅ complete (commit `3fb7dcb`) — 17b deferred
 **/onboarding-v2 targeted (18):** ✅ complete (commit `70df779`) — 18b deferred
-**window.confirm ban grep:** ✅ clean across the client (only remaining reference is an explanatory comment)
-**Money-precision grep remaining (~65 files):** ⬜ deferred — apply per-surface as each page gets 9-lens pass
+**/settings targeted (19):** ✅ complete (commit `809044c`) — 19b deferred
+**/pipeline (20):** ✅ complete (commit `1b5d0f7`)
+**window.confirm ban grep:** ✅ clean across the client
+**Money-precision grep remaining (~63 files):** ⬜ deferred — apply per-surface as each page gets 9-lens pass
 
 ## How to continue
 
@@ -419,6 +448,25 @@ Session 18:
   proper ellipsis, CTA min-h-11, tabular-nums,
   useDocumentTitle. ~1100 lines deferred to 18b.
   (commit `70df779`)
+
+Session 19:
+- `/settings` targeted — 2658-line file. 4 mutation error
+  toasts upgraded to "Couldn't X" voice with recovery
+  guidance; handleUpgrade explicitly states "your plan
+  wasn't changed" (money-action reassurance). Sentence-case
+  on General-tab labels + 2 tab-list labels. 18+ decorative
+  icons aria-hidden. role=status + aria-live on limit
+  warning. Progress bars aria-labeled. &ndash; + tabular-
+  nums on subscription period. useDocumentTitle.
+  (commit `809044c`)
+
+Session 20:
+- `/pipeline` — 307-line file, full pass. 3 hand-rolled
+  compact $ formatters replaced with dollarsCompact()
+  helper. Sentence-case + spaced slash on velocity labels.
+  10+ aria-hidden icons. role=group on velocity metrics,
+  role=status on Suspense fallback. Tabular-nums sweep.
+  useDocumentTitle. (commit `1b5d0f7`)
 
 ## Cross-cutting gains this pass
 
@@ -642,46 +690,59 @@ Session 18:
   cleanly as the count crosses one/two/three digits. Parent
   button must carry `aria-label="X (N unread)"`; badge span
   must be `aria-hidden="true"` to avoid double-announcement.
+- **Money-action error reassurance rule (new 19):** error
+  toasts on money-related actions (checkout, charge, plan
+  change, refund, payment submit) should explicitly state
+  that no money moved / no state changed. Generic "Couldn't
+  X / try again" is fine for non-money actions, but on a
+  money action an anxious user wants explicit reassurance
+  they weren't charged. Example: handleUpgrade error toast
+  says "Check your connection and try again — your plan
+  wasn't changed." Applies anywhere an error toast fires
+  on an action that could plausibly affect the user's
+  billing state.
 
 ## Next surface to refine
 
 **Recommended next slices:**
 
-1. **`/settings` full 9-lens pass** — lightly touched in
-   session 3 (tier badges) but the full surface has
-   Profile / Billing / Team / API / Integrations /
-   Deletion flows that need attention.
+1. **`/settings` 19b** — remaining ~2400 lines of settings.
+   StripeConnect / SeatMgmt / 2FA / PasswordChange /
+   Referral / Goals / ApiKey / ActivityLog / PrivacyData
+   components plus the 14 other tabs. Big surface — likely
+   needs a sub-slice plan (one group of tabs at a time).
 
-2. **`/pipeline` 9-lens pass** — high-traffic workflow
-   surface, lightly touched in session 3 for violet sweep.
-
-3. **Full `/finance` 9-lens pass (12b)** — slice 12 was
+2. **Full `/finance` 9-lens pass (12b)** — slice 12 was
    narrow (money-precision only). Remaining ~1500 lines:
    create-note form dialog, delete confirmation, payment-
    record dialog, Stripe Connect configuration, dunning
    manager, drawer + cards that weren't touched.
 
-4. **`/leads` 17b** — remaining ~2000 lines (LeadForm,
+3. **`/leads` 17b** — remaining ~2000 lines (LeadForm,
    LeadDetailDrawer, table rows, bulk-delete dialog, import
    preview, tax-delinquent importer).
 
-5. **`/onboarding-v2` 18b** — remaining ~1100 lines
+4. **`/onboarding-v2` 18b** — remaining ~1100 lines
    (portfolio-import, county form, strategy cards, atlas
    tour, team/integrations/workflows steps, completion
    celebration).
 
-6. **jsPDF 1098 generator (slice 10b.ii)** — product +
+5. **jsPDF 1098 generator (slice 10b.ii)** — product +
    compliance question on IRS form fidelity.
 
-7. **`/campaigns` 6c** — AbTestManager + CampaignVariantsPanel
+6. **`/campaigns` 6c** — AbTestManager + CampaignVariantsPanel
    + CampaignAnalytics deferred component-set.
 
+7. **Money-action error reassurance grep (new 19 rule):**
+   find other mutation error toasts on money-related
+   actions and apply the "your X wasn't changed"
+   reassurance pattern. Candidates: payment flows in
+   /finance, payoff/statement requests in /portal, checkout
+   in other surfaces, refund/cancel handlers.
+
 **Grep candidates** (apply cross-cutting rules horizontally):
-- `.toLocaleString()` on money still present in ~65 files;
-  highest value targets are `/offers`, `/investor-directory`,
-  `/tax-delinquent`, `/property-tax`, dashboard child widgets.
-- Decorative-icon aria-hidden sweep — open-ended, apply
-  surface-by-surface.
+- `.toLocaleString()` on money still present in ~63 files.
+- Decorative-icon aria-hidden sweep — open-ended.
 - `useDocumentTitle` — grep for pages that don't call it.
 - **`window.confirm()` ban:** ✅ clean as of slice 17.
 
@@ -726,9 +787,9 @@ Session 18:
   `storage`, `autonomousDealMachine`, `countyAssessorIngest`,
   `supportAgent`, etc. — not blocking client refinement work.
 
-## Expected HEAD after session 18
+## Expected HEAD after session 20
 
-Session chain 8 → 18 cadence (all shipped atomic + docs):
+Session chain 8 → 20 cadence (all shipped atomic + docs):
 
 - `234dafa` slice 8  — /documents
 - `61f1469` slice 9  — /sign/:docId
@@ -740,8 +801,14 @@ Session chain 8 → 18 cadence (all shipped atomic + docs):
 - `0ffdbde` slice 14 — money sweep: /properties + /deals + /campaigns
 - `fb24811` slice 15 — /today
 - `a73dfee` slice 16 — /dashboard
-- `3fb7dcb` slice 17 — /leads targeted (trust + CSV-injection + confirm ban)
-- `70df779` slice 18 — /onboarding-v2 targeted (step titles + aha-moment money)
+- `3fb7dcb` slice 17 — /leads targeted
+- `70df779` slice 18 — /onboarding-v2 targeted
+- `809044c` slice 19 — /settings targeted (money-action reassurance rule)
+- `1b5d0f7` slice 20 — /pipeline full
+
+Cross-cutting rule added in this pair: Money-action error
+reassurance (slice 19). Brings total introduced in this
+chain to 13 rules.
 
 **Coverage to date** (surfaces with explicit 9-lens pass):
 legal/trust (documents, sign, portal, signature-capture) +

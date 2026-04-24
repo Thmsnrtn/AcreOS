@@ -3521,3 +3521,177 @@ flow-level copy + the $ opportunity tiles.
   preview; slice-5k CSV-escape rule may apply.
 
 **Commit:** `70df779`
+
+---
+
+## Session 19 — 2026-04-23 — `/settings` targeted trust + copy pass
+
+**Surface:** `client/src/pages/settings.tsx` (2658 lines).
+Too big for full 9-lens in one slice; targeted pass on the
+General tab surface area + tab-list labels + error-toast
+voice across the top-level mutations.
+
+**Lens sweep + refinements shipped:**
+
+- **Copy (error-toast voice — 4 sites):** generic "Error /
+  Failed to X" pattern replaced with specific "Couldn't X"
+  voice + recovery guidance. Applied to:
+  - seedDataMutation: "Error / Failed to create demo data"
+    → "Couldn't create demo data / Check your connection
+    and try again."
+  - clearDataMutation: same treatment.
+  - handleUpgrade: "Error / Failed to create checkout
+    session" → "Couldn't start checkout / Check your
+    connection and try again — **your plan wasn't
+    changed**." (the reassurance clause matters on a money
+    action — user fears a charge on error.)
+  - handleManageSubscription: "Error / Failed to open
+    customer portal" → "Couldn't open the billing portal
+    / Check your connection and try again."
+
+- **Copy (sentence-case sweep on General tab):**
+  "Organization Details" → "Organization details";
+  "Organization Name" → "Organization name";
+  "Subscription Tier" → "Subscription tier";
+  "Current Period" → "Current period";
+  "Manage Subscription" → "Manage subscription";
+  "Usage & Limits" → "Usage and limits";
+  "View Upgrade Options" → "View upgrade options";
+  "7-Day Free Trial Available" → "7-day free trial
+  available"; usage-item label "AI Requests" → "AI
+  requests"; description "Active seller finance notes" →
+  "Active seller-finance notes" (hyphenated compound
+  modifier).
+
+- **Copy (sentence-case on tab labels):** "Refer & Earn" →
+  "Refer & earn"; "AI Tasks" → "AI tasks".
+
+- **A11y (decorative-icon aria-hidden sweep — 18+ icons):**
+  every TabsTrigger icon (General / Team / Payments /
+  Communications / Notifications / AI / Data / Appearance /
+  Integrations / Developer / Goals / Security / Privacy /
+  Refer&Earn / Automations / AI Tasks), CardTitle icons
+  (Building2, BarChart3), button icons (CreditCard,
+  ExternalLink, Loader2, XCircle, Crown × 2, Gift, Trending
+  Up, IconComponent × N usage items).
+
+- **A11y (role=status on usage-warning banner):** the
+  "You're approaching your limits" amber banner was an
+  unlabeled div. Promoted to `role="status" +
+  aria-live="polite"` so SR users get the warning when it
+  appears on state change.
+
+- **A11y (Progress aria-label):** usage Progress bars
+  unlabeled. Now each gets aria-label naming the item,
+  current value, limit, and percentage. Keyboard/SR users
+  can hear actual usage instead of silent bars.
+
+- **Typography: `–` (en-dash):** subscription current-period
+  range used hyphen; promoted to `&ndash;` for proper typo.
+
+- **Tabular-nums** on subscription-period date range.
+
+- **useDocumentTitle("Settings — AcreOS")** wired.
+
+**9-lens sign-off (applied to touched sections):**
+
+| Lens              | Status                                                                                          |
+| ----------------- | ----------------------------------------------------------------------------------------------- |
+| Designer          | PASS — sentence-case, en-dash on date range, tabular-nums                                      |
+| Accessibility     | PASS — 18+ decorative icons aria-hidden, role=status on limit warning, Progress aria-labeled  |
+| Engineer          | PASS — no type changes, mutation error-voice tightened with specific fallbacks                 |
+| Copywriter        | PASS — "Couldn't X" voice, money-action reassurance ("your plan wasn't changed")              |
+| Trust             | PASS — money-action error reassurance pattern introduced (reassure no charge/state-change)     |
+
+**Deferred (slice 19b):**
+- The remaining ~2400 lines of settings — every other Tab
+  (Team, Payments, Communications, Notifications, AI, Data,
+  Integrations, Developer, Goals, Security, Privacy, Refer,
+  Automations, AI Tasks, Appearance). Each is its own
+  focused surface with its own a11y + copy concerns.
+  StripeConnectSettings (lines 107-376), SeatManagement
+  (377-553), TwoFactorAuthSettings (1607-1743),
+  PasswordChangeSettings (1744-1821), ReferralSettings
+  (1822-1941), GoalsSettings (1942-2123), ApiKeyManager
+  (2124-2368), ActivityLogPanel (2369-2440),
+  PrivacyDataSettings (2441+).
+- Goal progress row has a bare `.toLocaleString()` money
+  render (line 2096) — apply usd() in 19b.
+
+**Patterns reinforced:**
+- **Money-action error reassurance rule (new 19):** error
+  toasts on money-related actions (checkout, charge, plan
+  change, refund, payment submit) should explicitly state
+  that no money moved / no state changed. Anxious users on
+  a money path need reassurance, not just apology.
+
+**Commit:** `809044c`
+
+---
+
+## Session 20 — 2026-04-23 — `/pipeline` full 9-lens pass
+
+**Surface:** `client/src/pages/pipeline.tsx` (307 lines —
+the unified workflow surface that composes Board + Leads +
+Properties + Deals + Outreach as tabs). Small enough for a
+full pass.
+
+**Lens sweep + refinements shipped:**
+
+- **Copy (sentence-case + semantic):** "Pipeline Funnel" →
+  "Pipeline funnel"; velocity-metric labels "Hot" /
+  "Stalled" switched to sentence-case; "accepted/escrow" →
+  "accepted / in escrow" (spaced slash).
+
+- **Money-precision:** two hand-rolled compact formatters
+  (`$${total >= 1M ? (X / 1M).toFixed(1)+'M' : (X /
+  1000).toFixed(0)+'K'}`) replaced with canonical
+  `dollarsCompact()` helper (slice 12). Applies to total-
+  pipeline + closed-value displays (3 sites). Consistent
+  formatting across pages.
+
+- **A11y (decorative-icon aria-hidden sweep):** TrendingUp
+  × 3 (funnel header + avg-score tile + closed-value
+  tile), Flame (hot tile), AlertTriangle (stalled tile),
+  DollarSign (pipeline tile), plus all 5 TabsTrigger icons
+  (GitBranch / Users / Map / Briefcase / Mail).
+
+- **A11y (velocity-metric group):** 4-tile velocity grid
+  gets `role="group"` + `aria-label="Pipeline velocity
+  metrics"` so SR users hear the grouping relationship.
+
+- **A11y (tab-fallback Suspense loader):** loader was an
+  unlabeled pulse div; now `role="status"` +
+  `aria-live="polite"` so SR users hear the wait state
+  when a lazy tab is loading.
+
+- **Tabular-nums sweep:** all counts (totalLeads,
+  hotDeals, stalledDeals, closedDeals.length, active lead
+  badges, active deals badges), money (dollarsCompact
+  output), and avg score. Every number on the pipeline
+  intelligence header.
+
+- **useDocumentTitle("Pipeline — AcreOS")** wired.
+
+**9-lens sign-off:**
+
+| Lens              | Status                                                                                          |
+| ----------------- | ----------------------------------------------------------------------------------------------- |
+| Designer          | PASS — sentence-case, tabular-nums, consistent money formatting                                  |
+| Mobile designer   | N/A — no new mobile changes, the file already had proper grid-cols-2 sm:grid-cols-4            |
+| Accessibility     | PASS — 10+ decorative icons aria-hidden, role=group on metrics, role=status on tab fallback    |
+| Engineer          | PASS — 3 hand-rolled compact formatters replaced with canonical helper                         |
+| AI systems        | N/A — pipeline intelligence is server-aggregated                                                 |
+| Land investor     | PASS — "Pipeline funnel" + "in escrow" + "14+ days idle" read credible                         |
+| Copywriter        | PASS — tightened spacing on slash separators, sentence-case                                      |
+| Infrastructure    | N/A — no network changes                                                                         |
+| Trust             | PASS — money-precision now consistent with /today + /dashboard + /finance                      |
+
+**Deferred:**
+- Child pages loaded via Suspense (Leads / Properties /
+  Deals / Campaigns) are each their own surface; pipeline
+  just composes them. Each child has its own slice
+  (Leads = 17, Deals = 5j-m, Properties = 5a-i, Campaigns
+  = 6a/b).
+
+**Commit:** `1b5d0f7`
