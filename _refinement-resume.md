@@ -1,6 +1,33 @@
 # Elite-Team Refinement — Resume Point
 
-**Last session:** 2026-04-24 (session 31 — /onboarding-v2 18b: 6 deferred step components)
+**Last session:** 2026-04-24 (session 32 — SafeBulkDeleteDialog + TaxDelinquentImporter)
+**Last completed refinement:** Two shared dialog components
+used by /leads — closes the remaining /leads dialog work
+deferred from slice 17b. `SafeBulkDeleteDialog`: DELETE
+confirm input upgraded per slice-24 placeholder disambiguation
+(placeholder="DELETE" → "Type DELETE here") plus full mobile-
+keyboard guard (autoComplete=off + autoCapitalize=characters +
+autoCorrect=off + spellCheck=false) so iOS doesn't auto-correct
+the verification phrase. Label htmlFor + useId. Lead preview
+list → ul/li. 4 error-toast paths (delete + restore, 2
+locations each) upgraded to state-change reassurance voice
+("no leads were deleted" / "the leads are still in trash").
+Sentence-case on title + CTAs. 10+ aria-hidden icons. Undo
+buttons gain descriptive aria-label. 44px touch. tabular-
+nums on counts. `TaxDelinquentImporter`: 5 column labels
+sentence-cased. Title + 4 CTAs sentence-case. Expected-columns
+stack → ul/li. Mapping Select gains descriptive aria-label.
+Required asterisks gain aria-label. Preview region tabIndex +
+aria-label. 8 aria-hidden icons. Importing view role=status +
+Progress aria-label. Complete view role=status. Errors list
+role=alert. Stats grid → dl/dt/dd. 3 error-toast paths
+reassurance voice ("no data was imported"). File input aria-
+label. tabular-nums on every count. 44px touch on 6 CTAs
+across 4 steps. Zero new cross-cutting rules.
+
+---
+
+**Prior session:** 2026-04-24 (session 31 — /onboarding-v2 18b: 6 deferred step components)
 **Last completed refinement:** 6 deferred onboarding step
 components in `client/src/pages/onboarding-v2.tsx` — closes
 the /onboarding-v2 arc. `PortfolioImportStep`: drop zone
@@ -482,7 +509,7 @@ to a dedicated 9b slice.
 **/leads targeted (17):** ✅ complete (commit `3fb7dcb`)
 **/leads 17b (30):** ✅ complete — LeadForm + LeadDetailDrawer + import CSV + ScoreBreakdown (commit `aa6ff78`)
 **/onboarding-v2 18b (31):** ✅ complete — 6 deferred step components, closes /onboarding-v2 arc (commit `cd35c33`)
-**/leads remaining (SafeBulkDeleteDialog + TaxDelinquentImporter shared components):** ⬜ deferred — separate component files, not in leads.tsx scope
+**SafeBulkDeleteDialog + TaxDelinquentImporter (32):** ✅ complete — closes /leads dialog arc (commit `b06bbff`)
 **/onboarding-v2 targeted (18):** ✅ complete (commit `70df779`) — 18b deferred
 **/settings targeted (19):** ✅ complete (commit `809044c`) — 19b remaining components deferred
 **/pipeline (20):** ✅ complete (commit `1b5d0f7`)
@@ -1055,25 +1082,23 @@ Session 24:
 
 ## Next surface to refine
 
-**Settings + /finance + /leads-in-file + /onboarding-v2
-arcs complete.** Shift focus:
+**Settings + /finance + /leads + /onboarding-v2 arcs
+complete.** Shift focus:
 
-1. **`SafeBulkDeleteDialog` + `TaxDelinquentImporter`**
-   (shared components used by /leads; standalone files,
-   never had a 9-lens pass). Both are dialogs — focus on
-   Esc/aria-modal/focus-return parity with the patterns
-   from slices 5l + 30.
-
-2. **`/campaigns` 6c** — AbTestManager +
+1. **`/campaigns` 6c** — AbTestManager +
    CampaignVariantsPanel + CampaignAnalytics deferred
    component-set.
 
-3. **jsPDF 1098 generator (slice 10b.ii)** — product +
+2. **jsPDF 1098 generator (slice 10b.ii)** — product +
    compliance question on IRS form fidelity.
 
-4. **Teach-via-option-label grep sweep (slice 25 rule)**
+3. **Teach-via-option-label grep sweep (slice 25 rule)**
    — find other `<Select>` options across the app with
    bare permission/mode/tier labels.
+
+4. **Placeholder-disambiguation grep sweep (slice 24
+   rule)** — find other confirmation Inputs that show
+   the verification token in the placeholder.
 
 3. **`/onboarding-v2` 18b** — remaining ~1100 lines
    (portfolio-import, county form, strategy cards, atlas
