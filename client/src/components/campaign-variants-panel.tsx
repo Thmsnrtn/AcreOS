@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useId } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Campaign } from "@shared/schema";
@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
@@ -54,6 +55,11 @@ export function CampaignVariantsPanel({ campaign }: CampaignVariantsPanelProps) 
   const [newTrafficSplit, setNewTrafficSplit] = useState(50);
   const [aiAnalysis, setAiAnalysis] = useState<AbAnalysis | null>(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
+  const nameId = useId();
+  const subjectId = useId();
+  const bodyId = useId();
+  const trafficId = useId();
+  const trafficHintId = useId();
 
   const { data: variants, isLoading } = useQuery<CampaignVariant[]>({
     queryKey: [`/api/campaigns/${campaign.id}/variants`],
@@ -74,7 +80,11 @@ export function CampaignVariantsPanel({ campaign }: CampaignVariantsPanelProps) 
       toast({ title: "Variant added successfully" });
     },
     onError: (err: any) => {
-      toast({ title: "Failed to add variant", description: err.message, variant: "destructive" });
+      toast({
+        title: "Couldn't add variant",
+        description: `${err.message} — no variant was created. Check your input and try again.`,
+        variant: "destructive",
+      });
     },
   });
 
@@ -85,10 +95,14 @@ export function CampaignVariantsPanel({ campaign }: CampaignVariantsPanelProps) 
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaign.id}/variants`] });
-      toast({ title: `Winner declared: ${data.winner?.name}`, description: `Response rate: ${data.winnerResponseRate}%` });
+      toast({ title: `Winner declared: ${data.winner?.name}`, description: `Response rate: ${data.winnerResponseRate}%.` });
     },
     onError: (err: any) => {
-      toast({ title: "Cannot declare winner", description: err.message, variant: "destructive" });
+      toast({
+        title: "Couldn't declare winner",
+        description: `${err.message} — the current winner (if any) is unchanged.`,
+        variant: "destructive",
+      });
     },
   });
 
@@ -99,7 +113,11 @@ export function CampaignVariantsPanel({ campaign }: CampaignVariantsPanelProps) 
       const data: AbAnalysis = await res.json();
       setAiAnalysis(data);
     } catch (err: any) {
-      toast({ title: "Failed to get AI analysis", description: err.message, variant: "destructive" });
+      toast({
+        title: "Couldn't get AI analysis",
+        description: `${err.message} — your variants and their stats are unchanged. Try again in a moment.`,
+        variant: "destructive",
+      });
     } finally {
       setIsAiLoading(false);
     }
@@ -107,9 +125,9 @@ export function CampaignVariantsPanel({ campaign }: CampaignVariantsPanelProps) 
 
   if (isLoading) {
     return (
-      <div className="flex items-center gap-2 text-muted-foreground py-4">
-        <Loader2 className="w-4 h-4 animate-spin" />
-        <span className="text-sm">Loading variants...</span>
+      <div className="flex items-center gap-2 text-muted-foreground py-4" role="status" aria-live="polite">
+        <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+        <span className="text-sm">Loading variants…</span>
       </div>
     );
   }
@@ -120,8 +138,8 @@ export function CampaignVariantsPanel({ campaign }: CampaignVariantsPanelProps) 
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <TestTube className="w-5 h-5 text-muted-foreground" />
-          <h3 className="font-semibold text-base">A/B Test Variants</h3>
+          <TestTube className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
+          <h3 className="font-semibold text-base">A/B test variants</h3>
         </div>
         <div className="flex items-center gap-2">
           {hasVariants && (
@@ -133,40 +151,57 @@ export function CampaignVariantsPanel({ campaign }: CampaignVariantsPanelProps) 
               data-testid="button-ai-pick-winner"
             >
               {isAiLoading ? (
-                <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                <Loader2 className="w-4 h-4 mr-1 animate-spin" aria-hidden="true" />
               ) : (
-                <Sparkles className="w-4 h-4 mr-1" />
+                <Sparkles className="w-4 h-4 mr-1" aria-hidden="true" />
               )}
-              AI Pick Winner
+              AI pick winner
             </Button>
           )}
           <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
             <DialogTrigger asChild>
               <Button size="sm" data-testid="button-add-variant">
-                <Plus className="w-4 h-4 mr-1" />
-                {hasVariants ? "Add Variant" : "Add Variant B"}
+                <Plus className="w-4 h-4 mr-1" aria-hidden="true" />
+                {hasVariants ? "Add variant" : "Add variant B"}
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-lg">
               <DialogHeader>
-                <DialogTitle>Add A/B Test Variant</DialogTitle>
+                <DialogTitle>Add A/B test variant</DialogTitle>
                 <DialogDescription>
                   Create a new variant to test against the original campaign.
                 </DialogDescription>
               </DialogHeader>
-              <div className="space-y-4 py-4">
+              <form
+                className="space-y-4 py-4"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (addVariantMutation.isPending) return;
+                  addVariantMutation.mutate({
+                    name: newName || "Variant B",
+                    subject: newSubject,
+                    body: newBody,
+                    trafficSplit: newTrafficSplit,
+                  });
+                }}
+              >
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Variant Name</label>
+                  <Label htmlFor={nameId}>
+                    Variant name <span className="text-destructive" aria-label="required">*</span>
+                  </Label>
                   <Input
+                    id={nameId}
                     placeholder="e.g., Variant B"
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
+                    autoCapitalize="words"
                     data-testid="input-variant-name"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Subject (optional)</label>
+                  <Label htmlFor={subjectId}>Subject (optional)</Label>
                   <Input
+                    id={subjectId}
                     placeholder="Alternative subject line"
                     value={newSubject}
                     onChange={(e) => setNewSubject(e.target.value)}
@@ -174,8 +209,9 @@ export function CampaignVariantsPanel({ campaign }: CampaignVariantsPanelProps) 
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Body / Content (optional)</label>
+                  <Label htmlFor={bodyId}>Body / content (optional)</Label>
                   <Textarea
+                    id={bodyId}
                     placeholder="Alternative message body"
                     value={newBody}
                     onChange={(e) => setNewBody(e.target.value)}
@@ -184,40 +220,37 @@ export function CampaignVariantsPanel({ campaign }: CampaignVariantsPanelProps) 
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Traffic Split (%)</label>
+                  <Label htmlFor={trafficId}>Traffic split (%)</Label>
                   <Input
+                    id={trafficId}
                     type="number"
+                    inputMode="numeric"
                     min={1}
                     max={99}
                     value={newTrafficSplit}
                     onChange={(e) => setNewTrafficSplit(Number(e.target.value))}
+                    aria-describedby={trafficHintId}
                     data-testid="input-variant-traffic-split"
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Percentage of audience that receives this variant when campaign is sent.
+                  <p id={trafficHintId} className="text-xs text-muted-foreground">
+                    Percentage of audience that receives this variant when the campaign is sent.
                   </p>
                 </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
-                  Cancel
-                </Button>
-                <Button
-                  onClick={() =>
-                    addVariantMutation.mutate({
-                      name: newName || "Variant B",
-                      subject: newSubject,
-                      body: newBody,
-                      trafficSplit: newTrafficSplit,
-                    })
-                  }
-                  disabled={addVariantMutation.isPending}
-                  data-testid="button-submit-variant"
-                >
-                  {addVariantMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                  Add Variant
-                </Button>
-              </DialogFooter>
+                <DialogFooter>
+                  <Button type="button" variant="outline" className="min-h-11" onClick={() => setIsAddDialogOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={addVariantMutation.isPending || !newName.trim()}
+                    className="min-h-11"
+                    data-testid="button-submit-variant"
+                  >
+                    {addVariantMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />}
+                    Add variant
+                  </Button>
+                </DialogFooter>
+              </form>
             </DialogContent>
           </Dialog>
         </div>
@@ -225,19 +258,23 @@ export function CampaignVariantsPanel({ campaign }: CampaignVariantsPanelProps) 
 
       {/* AI Analysis result */}
       {aiAnalysis && (
-        <Card className={aiAnalysis.isSignificant ? "border-emerald-500" : "border-amber-400"}>
+        <Card
+          className={aiAnalysis.isSignificant ? "border-emerald-500" : "border-amber-400"}
+          role="status"
+          aria-live="polite"
+        >
           <CardHeader className="pb-2">
             <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-violet-500" />
-              <CardTitle className="text-sm">AI Analysis</CardTitle>
+              <Sparkles className="w-4 h-4 text-violet-500" aria-hidden="true" />
+              <CardTitle className="text-sm">AI analysis</CardTitle>
             </div>
           </CardHeader>
           <CardContent className="space-y-2">
             {aiAnalysis.hasVariants && aiAnalysis.leadingVariant && (
               <div className="flex items-center gap-2">
-                <Trophy className="w-4 h-4 text-amber-500" />
+                <Trophy className="w-4 h-4 text-amber-500" aria-hidden="true" />
                 <span className="text-sm font-medium">
-                  Leading: {aiAnalysis.leadingVariant.name} ({aiAnalysis.leadingVariant.responseRatePct}% response rate)
+                  Leading: {aiAnalysis.leadingVariant.name} (<span className="tabular-nums">{aiAnalysis.leadingVariant.responseRatePct}%</span> response rate)
                 </span>
               </div>
             )}
@@ -257,124 +294,130 @@ export function CampaignVariantsPanel({ campaign }: CampaignVariantsPanelProps) 
 
       {!hasVariants && (
         <div className="text-center py-8 text-muted-foreground border-2 border-dashed rounded-lg">
-          <TestTube className="w-10 h-10 mx-auto mb-2 opacity-40" />
+          <TestTube className="w-10 h-10 mx-auto mb-2 opacity-40" aria-hidden="true" />
           <p className="text-sm font-medium mb-1">No variants yet</p>
           <p className="text-xs">Add a Variant B to start A/B testing this campaign.</p>
         </div>
       )}
 
       {hasVariants && (
-        <div className="space-y-3">
+        <ul className="space-y-3" aria-label="Campaign variants">
           {variants!.map((variant, index) => {
             const hasEnoughData = variant.sentCount >= 50;
             const isSignificantCandidate = hasEnoughData && variant.responseRate > 0;
 
             return (
-              <Card
-                key={variant.id}
-                data-testid={`variant-card-${variant.id}`}
-                className={variant.isWinner ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/10" : ""}
-              >
-                <CardHeader className="pb-2">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-2">
-                      <Badge variant="secondary">{String.fromCharCode(65 + index)}</Badge>
-                      <CardTitle className="text-sm">{variant.name}</CardTitle>
-                      {variant.isWinner && (
-                        <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400">
-                          <Trophy className="w-3 h-3 mr-1" />
-                          Winner
-                        </Badge>
-                      )}
-                    </div>
-                    {/* Statistical significance indicator */}
-                    <div className="flex items-center gap-1">
-                      {!hasEnoughData ? (
-                        <Badge variant="outline" className="text-xs gap-1 bg-amber-50 text-amber-700 border-amber-300">
-                          <AlertTriangle className="w-3 h-3" />
-                          Need more data
-                        </Badge>
-                      ) : isSignificantCandidate ? (
-                        <Badge variant="outline" className="text-xs gap-1 bg-emerald-50 text-emerald-700 border-emerald-300">
-                          <CheckCircle className="w-3 h-3" />
-                          Enough data
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className="text-xs gap-1 bg-amber-50 text-amber-700 border-amber-300">
-                          <AlertTriangle className="w-3 h-3" />
-                          Waiting
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                  {variant.subject && (
-                    <CardDescription className="truncate text-xs mt-1">
-                      Subject: {variant.subject}
-                    </CardDescription>
-                  )}
-                  {variant.body && (
-                    <CardDescription className="truncate text-xs">
-                      Body: {variant.body.slice(0, 80)}{variant.body.length > 80 ? "…" : ""}
-                    </CardDescription>
-                  )}
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {/* Stats row */}
-                  <div className="grid grid-cols-4 gap-2 text-center">
-                    <div>
-                      <p className="text-lg font-bold" data-testid={`stat-sent-${variant.id}`}>{variant.sentCount}</p>
-                      <p className="text-xs text-muted-foreground">Sent</p>
-                    </div>
-                    <div>
-                      <p className="text-lg font-bold">{variant.openRate}%</p>
-                      <p className="text-xs text-muted-foreground">Open Rate</p>
-                    </div>
-                    <div>
-                      <p className="text-lg font-bold">{variant.clickRate}%</p>
-                      <p className="text-xs text-muted-foreground">Click Rate</p>
-                    </div>
-                    <div>
-                      <p className="text-lg font-bold" data-testid={`stat-response-rate-${variant.id}`}>{variant.responseRate}%</p>
-                      <p className="text-xs text-muted-foreground">Response Rate</p>
-                    </div>
-                  </div>
-
-                  {/* Response rate bar */}
-                  <div>
-                    <div className="flex justify-between text-xs text-muted-foreground mb-1">
-                      <span>Response Rate</span>
-                      <span>{variant.responseRate}%</span>
-                    </div>
-                    <Progress value={variant.responseRate} className="h-1.5" />
-                  </div>
-
-                  {/* Traffic split */}
-                  <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>Traffic split: {variant.trafficSplit}%</span>
-                    {!variant.isWinner && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 text-xs"
-                        disabled={declareWinnerMutation.isPending || !hasEnoughData}
-                        onClick={() => declareWinnerMutation.mutate(variant.id)}
-                        data-testid={`button-declare-winner-${variant.id}`}
-                        title={!hasEnoughData ? "Need at least 50 sends to declare a winner" : "Declare this variant as winner"}
-                      >
-                        {declareWinnerMutation.isPending ? (
-                          <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                        ) : (
-                          <Trophy className="w-3 h-3 mr-1" />
+              <li key={variant.id}>
+                <Card
+                  data-testid={`variant-card-${variant.id}`}
+                  className={variant.isWinner ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/10" : ""}
+                >
+                  <CardHeader className="pb-2">
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="secondary" aria-label={`Variant ${String.fromCharCode(65 + index)}`}>{String.fromCharCode(65 + index)}</Badge>
+                        <CardTitle className="text-sm">{variant.name}</CardTitle>
+                        {variant.isWinner && (
+                          <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400">
+                            <Trophy className="w-3 h-3 mr-1" aria-hidden="true" />
+                            Winner
+                          </Badge>
                         )}
-                        Declare Winner
-                      </Button>
+                      </div>
+                      {/* Statistical significance indicator */}
+                      <div className="flex items-center gap-1">
+                        {!hasEnoughData ? (
+                          <Badge variant="outline" className="text-xs gap-1 bg-amber-50 text-amber-700 border-amber-300">
+                            <AlertTriangle className="w-3 h-3" aria-hidden="true" />
+                            Need more data
+                          </Badge>
+                        ) : isSignificantCandidate ? (
+                          <Badge variant="outline" className="text-xs gap-1 bg-emerald-50 text-emerald-700 border-emerald-300">
+                            <CheckCircle className="w-3 h-3" aria-hidden="true" />
+                            Enough data
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-xs gap-1 bg-amber-50 text-amber-700 border-amber-300">
+                            <AlertTriangle className="w-3 h-3" aria-hidden="true" />
+                            Waiting
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                    {variant.subject && (
+                      <CardDescription className="truncate text-xs mt-1">
+                        Subject: {variant.subject}
+                      </CardDescription>
                     )}
-                  </div>
-                </CardContent>
-              </Card>
+                    {variant.body && (
+                      <CardDescription className="truncate text-xs">
+                        Body: {variant.body.slice(0, 80)}{variant.body.length > 80 ? "…" : ""}
+                      </CardDescription>
+                    )}
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {/* Stats row */}
+                    <dl className="grid grid-cols-4 gap-2 text-center">
+                      <div>
+                        <dd className="text-lg font-bold tabular-nums" data-testid={`stat-sent-${variant.id}`}>{variant.sentCount}</dd>
+                        <dt className="text-xs text-muted-foreground">Sent</dt>
+                      </div>
+                      <div>
+                        <dd className="text-lg font-bold tabular-nums">{variant.openRate}%</dd>
+                        <dt className="text-xs text-muted-foreground">Open rate</dt>
+                      </div>
+                      <div>
+                        <dd className="text-lg font-bold tabular-nums">{variant.clickRate}%</dd>
+                        <dt className="text-xs text-muted-foreground">Click rate</dt>
+                      </div>
+                      <div>
+                        <dd className="text-lg font-bold tabular-nums" data-testid={`stat-response-rate-${variant.id}`}>{variant.responseRate}%</dd>
+                        <dt className="text-xs text-muted-foreground">Response rate</dt>
+                      </div>
+                    </dl>
+
+                    {/* Response rate bar */}
+                    <div>
+                      <div className="flex justify-between text-xs text-muted-foreground mb-1">
+                        <span>Response rate</span>
+                        <span className="tabular-nums">{variant.responseRate}%</span>
+                      </div>
+                      <Progress
+                        value={variant.responseRate}
+                        className="h-1.5"
+                        aria-label={`${variant.name} response rate: ${variant.responseRate}%`}
+                      />
+                    </div>
+
+                    {/* Traffic split */}
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span>Traffic split: <span className="tabular-nums">{variant.trafficSplit}%</span></span>
+                      {!variant.isWinner && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-9 sm:h-7 text-xs min-h-9 sm:min-h-7"
+                          disabled={declareWinnerMutation.isPending || !hasEnoughData}
+                          onClick={() => declareWinnerMutation.mutate(variant.id)}
+                          data-testid={`button-declare-winner-${variant.id}`}
+                          title={!hasEnoughData ? "Need at least 50 sends to declare a winner" : undefined}
+                          aria-label={`Declare ${variant.name} as the A/B test winner`}
+                        >
+                          {declareWinnerMutation.isPending ? (
+                            <Loader2 className="w-3 h-3 mr-1 animate-spin" aria-hidden="true" />
+                          ) : (
+                            <Trophy className="w-3 h-3 mr-1" aria-hidden="true" />
+                          )}
+                          Declare winner
+                        </Button>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </li>
             );
           })}
-        </div>
+        </ul>
       )}
     </div>
   );

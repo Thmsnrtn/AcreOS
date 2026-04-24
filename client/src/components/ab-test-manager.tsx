@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useId } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { AbTest, AbTestVariant, Campaign } from "@shared/schema";
@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogFooter } from "@/components/ui/dialog";
@@ -40,9 +41,9 @@ const statusIcons: Record<string, any> = {
 };
 
 const testTypeLabels: Record<string, string> = {
-  subject: 'Subject Line',
+  subject: 'Subject line',
   content: 'Content',
-  offer: 'Offer Amount',
+  offer: 'Offer amount',
 };
 
 const confidenceBadge = (level: number) => {
@@ -62,6 +63,12 @@ export function AbTestManager({ campaign, showCreateButton = true, onTestCreated
   const [variantAContent, setVariantAContent] = useState("");
   const [variantBSubject, setVariantBSubject] = useState("");
   const [variantBContent, setVariantBContent] = useState("");
+  const testNameId = useId();
+  const testTypeId = useId();
+  const variantASubjectId = useId();
+  const variantAContentId = useId();
+  const variantBSubjectId = useId();
+  const variantBContentId = useId();
 
   const { data: abTestsRaw, isLoading } = useQuery<AbTestWithVariants[] | { tests: AbTestWithVariants[] }>({
     queryKey: ['/api/ab-tests'],
@@ -100,7 +107,11 @@ export function AbTestManager({ campaign, showCreateButton = true, onTestCreated
       onTestCreated?.();
     },
     onError: (err: any) => {
-      toast({ title: "Failed to create test", description: err.message, variant: "destructive" });
+      toast({
+        title: "Couldn't create A/B test",
+        description: `${err.message} — no test was created. Check your input and try again.`,
+        variant: "destructive",
+      });
     },
   });
 
@@ -114,7 +125,11 @@ export function AbTestManager({ campaign, showCreateButton = true, onTestCreated
       toast({ title: "A/B test started" });
     },
     onError: (err: any) => {
-      toast({ title: "Failed to start test", description: err.message, variant: "destructive" });
+      toast({
+        title: "Couldn't start A/B test",
+        description: `${err.message} — the test is still in draft and no messages have been sent.`,
+        variant: "destructive",
+      });
     },
   });
 
@@ -125,10 +140,14 @@ export function AbTestManager({ campaign, showCreateButton = true, onTestCreated
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/ab-tests'] });
-      toast({ title: "A/B test completed", description: "Winner has been determined" });
+      toast({ title: "A/B test completed", description: "Winner has been determined." });
     },
     onError: (err: any) => {
-      toast({ title: "Failed to complete test", description: err.message, variant: "destructive" });
+      toast({
+        title: "Couldn't complete A/B test",
+        description: `${err.message} — the test is still running.`,
+        variant: "destructive",
+      });
     },
   });
 
@@ -140,10 +159,14 @@ export function AbTestManager({ campaign, showCreateButton = true, onTestCreated
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/ab-tests'] });
       queryClient.invalidateQueries({ queryKey: ['/api/campaigns'] });
-      toast({ title: "Winning variant applied to campaign" });
+      toast({ title: "Winning variant applied to campaign." });
     },
     onError: (err: any) => {
-      toast({ title: "Failed to apply winner", description: err.message, variant: "destructive" });
+      toast({
+        title: "Couldn't apply winner",
+        description: `${err.message} — the campaign still uses its original variant.`,
+        variant: "destructive",
+      });
     },
   });
 
@@ -154,10 +177,14 @@ export function AbTestManager({ campaign, showCreateButton = true, onTestCreated
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/ab-tests'] });
       setSelectedTestId(null);
-      toast({ title: "A/B test deleted" });
+      toast({ title: "A/B test deleted." });
     },
     onError: (err: any) => {
-      toast({ title: "Failed to delete test", description: err.message, variant: "destructive" });
+      toast({
+        title: "Couldn't delete A/B test",
+        description: `${err.message} — the test still exists.`,
+        variant: "destructive",
+      });
     },
   });
 
@@ -202,8 +229,9 @@ export function AbTestManager({ campaign, showCreateButton = true, onTestCreated
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center p-8">
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+      <div className="flex items-center justify-center p-8" role="status" aria-live="polite">
+        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" aria-hidden="true" />
+        <span className="sr-only">Loading A/B tests…</span>
       </div>
     );
   }
@@ -213,8 +241,8 @@ export function AbTestManager({ campaign, showCreateButton = true, onTestCreated
       {showCreateButton && campaign && (
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <TestTube className="w-5 h-5 text-muted-foreground" />
-            <h3 className="font-semibold">A/B Testing</h3>
+            <TestTube className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
+            <h3 className="font-semibold">A/B testing</h3>
           </div>
           <Dialog open={isCreateDialogOpen} onOpenChange={(open) => {
             setIsCreateDialogOpen(open);
@@ -224,100 +252,126 @@ export function AbTestManager({ campaign, showCreateButton = true, onTestCreated
             }
           }}>
             <DialogTrigger asChild>
-              <Button 
+              <Button
                 data-testid="button-create-ab-test"
                 disabled={!!activeTest}
+                title={activeTest ? "Complete the active test before creating a new one" : undefined}
               >
-                <Plus className="w-4 h-4 mr-2" />
-                Create A/B Test
+                <Plus className="w-4 h-4 mr-2" aria-hidden="true" />
+                Create A/B test
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-2xl">
               <DialogHeader>
-                <DialogTitle>Create A/B Test</DialogTitle>
+                <DialogTitle>Create A/B test</DialogTitle>
                 <DialogDescription>
                   Test different variations of your campaign to find what works best.
                 </DialogDescription>
               </DialogHeader>
-              <div className="space-y-4 py-4">
+              <form
+                className="space-y-4 py-4"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (createTestMutation.isPending) return;
+                  handleCreateTest();
+                }}
+              >
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Test Name</label>
+                  <Label htmlFor={testNameId}>Test name</Label>
                   <Input
+                    id={testNameId}
                     data-testid="input-test-name"
-                    placeholder="e.g., Subject Line Test Q1"
+                    placeholder="e.g., Subject line test Q1"
                     value={newTestName}
                     onChange={(e) => setNewTestName(e.target.value)}
                   />
                 </div>
-                
+
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Test Type</label>
+                  <Label htmlFor={testTypeId}>Test type</Label>
                   <Select value={newTestType} onValueChange={(v: any) => setNewTestType(v)}>
-                    <SelectTrigger data-testid="select-test-type">
+                    <SelectTrigger id={testTypeId} data-testid="select-test-type">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="subject">Subject Line</SelectItem>
-                      <SelectItem value="content">Content</SelectItem>
-                      <SelectItem value="offer">Offer Amount</SelectItem>
+                      <SelectItem value="subject">Subject line — the email subject users see first</SelectItem>
+                      <SelectItem value="content">Content — body copy of the message</SelectItem>
+                      <SelectItem value="offer">Offer amount — the price or discount offered</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-3">
                     <h4 className="font-medium text-sm flex items-center gap-2">
-                      <Badge variant="secondary">A</Badge>
+                      <Badge variant="secondary" aria-label="Variant A">A</Badge>
                       Control
                     </h4>
-                    <Input
-                      data-testid="input-variant-a-subject"
-                      placeholder="Subject line"
-                      value={variantASubject}
-                      onChange={(e) => setVariantASubject(e.target.value)}
-                    />
-                    <Textarea
-                      data-testid="input-variant-a-content"
-                      placeholder="Content"
-                      value={variantAContent}
-                      onChange={(e) => setVariantAContent(e.target.value)}
-                      className="min-h-[100px]"
-                    />
+                    <div className="space-y-1">
+                      <Label htmlFor={variantASubjectId} className="sr-only">Variant A subject line</Label>
+                      <Input
+                        id={variantASubjectId}
+                        data-testid="input-variant-a-subject"
+                        placeholder="Subject line"
+                        value={variantASubject}
+                        onChange={(e) => setVariantASubject(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor={variantAContentId} className="sr-only">Variant A content</Label>
+                      <Textarea
+                        id={variantAContentId}
+                        data-testid="input-variant-a-content"
+                        placeholder="Content"
+                        value={variantAContent}
+                        onChange={(e) => setVariantAContent(e.target.value)}
+                        className="min-h-[100px]"
+                      />
+                    </div>
                   </div>
                   <div className="space-y-3">
                     <h4 className="font-medium text-sm flex items-center gap-2">
-                      <Badge variant="secondary">B</Badge>
+                      <Badge variant="secondary" aria-label="Variant B">B</Badge>
                       Variant
                     </h4>
-                    <Input
-                      data-testid="input-variant-b-subject"
-                      placeholder="Subject line"
-                      value={variantBSubject}
-                      onChange={(e) => setVariantBSubject(e.target.value)}
-                    />
-                    <Textarea
-                      data-testid="input-variant-b-content"
-                      placeholder="Content"
-                      value={variantBContent}
-                      onChange={(e) => setVariantBContent(e.target.value)}
-                      className="min-h-[100px]"
-                    />
+                    <div className="space-y-1">
+                      <Label htmlFor={variantBSubjectId} className="sr-only">Variant B subject line</Label>
+                      <Input
+                        id={variantBSubjectId}
+                        data-testid="input-variant-b-subject"
+                        placeholder="Subject line"
+                        value={variantBSubject}
+                        onChange={(e) => setVariantBSubject(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor={variantBContentId} className="sr-only">Variant B content</Label>
+                      <Textarea
+                        id={variantBContentId}
+                        data-testid="input-variant-b-content"
+                        placeholder="Content"
+                        value={variantBContent}
+                        onChange={(e) => setVariantBContent(e.target.value)}
+                        className="min-h-[100px]"
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
-                  Cancel
-                </Button>
-                <Button 
-                  data-testid="button-submit-ab-test"
-                  onClick={handleCreateTest}
-                  disabled={createTestMutation.isPending}
-                >
-                  {createTestMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                  Create Test
-                </Button>
-              </DialogFooter>
+                <DialogFooter>
+                  <Button type="button" variant="outline" className="min-h-11" onClick={() => setIsCreateDialogOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    data-testid="button-submit-ab-test"
+                    disabled={createTestMutation.isPending}
+                    className="min-h-11"
+                  >
+                    {createTestMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />}
+                    Create test
+                  </Button>
+                </DialogFooter>
+              </form>
             </DialogContent>
           </Dialog>
         </div>
@@ -328,16 +382,16 @@ export function AbTestManager({ campaign, showCreateButton = true, onTestCreated
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
-                <Play className="w-4 h-4 text-blue-500" />
-                <CardTitle className="text-base">Active Test</CardTitle>
+                <Play className="w-4 h-4 text-blue-500" aria-hidden="true" />
+                <CardTitle className="text-base">Active test</CardTitle>
               </div>
               <Badge className={statusColors.running}>Running</Badge>
             </div>
             <CardDescription>{activeTest.name}</CardDescription>
           </CardHeader>
           <CardContent>
-            <AbTestCard 
-              test={activeTest} 
+            <AbTestCard
+              test={activeTest}
               onComplete={() => completeTestMutation.mutate(activeTest.id)}
               isCompletePending={completeTestMutation.isPending}
             />
@@ -348,63 +402,76 @@ export function AbTestManager({ campaign, showCreateButton = true, onTestCreated
       {campaignTests && campaignTests.length > 0 && (
         <div className="space-y-4">
           <h4 className="font-medium text-sm text-muted-foreground flex items-center gap-2">
-            <BarChart3 className="w-4 h-4" />
-            Test History
+            <BarChart3 className="w-4 h-4" aria-hidden="true" />
+            Test history
           </h4>
-          <div className="space-y-3">
+          <ul className="space-y-3" aria-label="A/B test history">
             {campaignTests
               .filter(t => t.status !== 'running')
-              .map((test) => (
-                <Card 
-                  key={test.id} 
-                  data-testid={`card-ab-test-${test.id}`}
-                  className="cursor-pointer hover-elevate"
-                  onClick={() => setSelectedTestId(selectedTestId === test.id ? null : test.id)}
-                >
-                  <CardHeader className="pb-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        {(() => {
-                          const Icon = statusIcons[test.status] || Clock;
-                          return <Icon className="w-4 h-4 text-muted-foreground" />;
-                        })()}
-                        <CardTitle className="text-base">{test.name}</CardTitle>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge className={statusColors[test.status]}>{test.status}</Badge>
-                        <Badge variant="outline">{testTypeLabels[test.testType]}</Badge>
-                        <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform ${selectedTestId === test.id ? 'rotate-90' : ''}`} />
-                      </div>
-                    </div>
-                    {test.completedAt && (
-                      <CardDescription>
-                        Completed {format(new Date(test.completedAt), 'MMM d, yyyy')}
-                      </CardDescription>
-                    )}
-                  </CardHeader>
-                  {selectedTestId === test.id && (
-                    <CardContent>
-                      <AbTestCard 
-                        test={test} 
-                        onApplyWinner={() => applyWinnerMutation.mutate(test.id)}
-                        onDelete={() => deleteTestMutation.mutate(test.id)}
-                        onStart={() => startTestMutation.mutate(test.id)}
-                        isApplyPending={applyWinnerMutation.isPending}
-                        isDeletePending={deleteTestMutation.isPending}
-                        isStartPending={startTestMutation.isPending}
-                      />
-                    </CardContent>
-                  )}
-                </Card>
-              ))}
-          </div>
+              .map((test) => {
+                const isExpanded = selectedTestId === test.id;
+                const toggle = () => setSelectedTestId(isExpanded ? null : test.id);
+                const Icon = statusIcons[test.status] || Clock;
+                return (
+                  <li key={test.id}>
+                    <Card
+                      data-testid={`card-ab-test-${test.id}`}
+                      role="button"
+                      tabIndex={0}
+                      aria-expanded={isExpanded}
+                      aria-label={`${test.name}, ${test.status}, ${testTypeLabels[test.testType]} test`}
+                      className="cursor-pointer hover-elevate focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      onClick={toggle}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          toggle();
+                        }
+                      }}
+                    >
+                      <CardHeader className="pb-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <Icon className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
+                            <CardTitle className="text-base">{test.name}</CardTitle>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge className={`${statusColors[test.status]} capitalize`}>{test.status}</Badge>
+                            <Badge variant="outline">{testTypeLabels[test.testType]}</Badge>
+                            <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform ${isExpanded ? 'rotate-90' : ''}`} aria-hidden="true" />
+                          </div>
+                        </div>
+                        {test.completedAt && (
+                          <CardDescription className="tabular-nums">
+                            Completed {format(new Date(test.completedAt), 'MMM d, yyyy')}
+                          </CardDescription>
+                        )}
+                      </CardHeader>
+                      {isExpanded && (
+                        <CardContent>
+                          <AbTestCard
+                            test={test}
+                            onApplyWinner={() => applyWinnerMutation.mutate(test.id)}
+                            onDelete={() => deleteTestMutation.mutate(test.id)}
+                            onStart={() => startTestMutation.mutate(test.id)}
+                            isApplyPending={applyWinnerMutation.isPending}
+                            isDeletePending={deleteTestMutation.isPending}
+                            isStartPending={startTestMutation.isPending}
+                          />
+                        </CardContent>
+                      )}
+                    </Card>
+                  </li>
+                );
+              })}
+          </ul>
         </div>
       )}
 
       {(!campaignTests || campaignTests.length === 0) && !showCreateButton && (
         <div className="text-center py-8 text-muted-foreground">
-          <TestTube className="w-12 h-12 mx-auto mb-4 opacity-50" />
-          <p>No A/B tests found</p>
+          <TestTube className="w-12 h-12 mx-auto mb-4 opacity-50" aria-hidden="true" />
+          <p>No A/B tests found.</p>
         </div>
       )}
     </div>
@@ -439,7 +506,7 @@ function AbTestCard({
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-4">
+      <ul className="grid gap-4" aria-label="Test variants">
         {test.variants.map((variant, index) => {
           const isWinner = variant.id === test.winnerId;
           const sent = variant.sent || 0;
@@ -449,14 +516,14 @@ function AbTestCard({
           const confidenceInfo = confidenceBadge(confidence);
 
           return (
-            <div 
+            <li
               key={variant.id}
               data-testid={`variant-card-${variant.id}`}
               className={`p-4 rounded-lg border ${isWinner ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/10' : 'border-border'}`}
             >
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <Badge variant="secondary">
+                  <Badge variant="secondary" aria-label={`Variant ${String.fromCharCode(65 + index)}`}>
                     {String.fromCharCode(65 + index)}
                   </Badge>
                   <span className="font-medium">{variant.name}</span>
@@ -465,7 +532,7 @@ function AbTestCard({
                   )}
                   {isWinner && (
                     <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400">
-                      <Trophy className="w-3 h-3 mr-1" />
+                      <Trophy className="w-3 h-3 mr-1" aria-hidden="true" />
                       Winner
                     </Badge>
                   )}
@@ -484,42 +551,46 @@ function AbTestCard({
                 </div>
               )}
 
-              <div className="grid grid-cols-5 gap-3 mt-3">
+              <dl className="grid grid-cols-5 gap-3 mt-3">
                 <div className="text-center">
-                  <p className="text-2xl font-semibold" data-testid={`text-sent-${variant.id}`}>{sent}</p>
-                  <p className="text-xs text-muted-foreground">Sent</p>
+                  <dd className="text-2xl font-semibold tabular-nums" data-testid={`text-sent-${variant.id}`}>{sent}</dd>
+                  <dt className="text-xs text-muted-foreground">Sent</dt>
                 </div>
                 <div className="text-center">
-                  <p className="text-2xl font-semibold" data-testid={`text-delivered-${variant.id}`}>{variant.delivered || 0}</p>
-                  <p className="text-xs text-muted-foreground">Delivered</p>
+                  <dd className="text-2xl font-semibold tabular-nums" data-testid={`text-delivered-${variant.id}`}>{variant.delivered || 0}</dd>
+                  <dt className="text-xs text-muted-foreground">Delivered</dt>
                 </div>
                 <div className="text-center">
-                  <p className="text-2xl font-semibold" data-testid={`text-opened-${variant.id}`}>{variant.opened || 0}</p>
-                  <p className="text-xs text-muted-foreground">Opened</p>
+                  <dd className="text-2xl font-semibold tabular-nums" data-testid={`text-opened-${variant.id}`}>{variant.opened || 0}</dd>
+                  <dt className="text-xs text-muted-foreground">Opened</dt>
                 </div>
                 <div className="text-center">
-                  <p className="text-2xl font-semibold" data-testid={`text-clicked-${variant.id}`}>{variant.clicked || 0}</p>
-                  <p className="text-xs text-muted-foreground">Clicked</p>
+                  <dd className="text-2xl font-semibold tabular-nums" data-testid={`text-clicked-${variant.id}`}>{variant.clicked || 0}</dd>
+                  <dt className="text-xs text-muted-foreground">Clicked</dt>
                 </div>
                 <div className="text-center">
-                  <p className="text-2xl font-semibold" data-testid={`text-responded-${variant.id}`}>{responded}</p>
-                  <p className="text-xs text-muted-foreground">Responded</p>
+                  <dd className="text-2xl font-semibold tabular-nums" data-testid={`text-responded-${variant.id}`}>{responded}</dd>
+                  <dt className="text-xs text-muted-foreground">Responded</dt>
                 </div>
-              </div>
+              </dl>
 
               <div className="mt-3">
                 <div className="flex items-center justify-between text-sm mb-1">
-                  <span className="text-muted-foreground">Response Rate</span>
-                  <span className="font-medium" data-testid={`text-response-rate-${variant.id}`}>
+                  <span className="text-muted-foreground">Response rate</span>
+                  <span className="font-medium tabular-nums" data-testid={`text-response-rate-${variant.id}`}>
                     {responseRate.toFixed(1)}%
                   </span>
                 </div>
-                <Progress value={responseRate} className="h-2" />
+                <Progress
+                  value={responseRate}
+                  className="h-2"
+                  aria-label={`${variant.name} response rate: ${responseRate.toFixed(1)}%`}
+                />
               </div>
-            </div>
+            </li>
           );
         })}
-      </div>
+      </ul>
 
       <div className="flex items-center justify-end gap-2 pt-2 border-t">
         {test.status === 'draft' && onStart && (
@@ -527,20 +598,22 @@ function AbTestCard({
             data-testid="button-start-test"
             onClick={(e) => { e.stopPropagation(); onStart(); }}
             disabled={isStartPending}
+            className="min-h-11"
           >
-            {isStartPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Play className="w-4 h-4 mr-2" />}
-            Start Test
+            {isStartPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" /> : <Play className="w-4 h-4 mr-2" aria-hidden="true" />}
+            Start test
           </Button>
         )}
-        
+
         {test.status === 'running' && onComplete && (
           <Button
             data-testid="button-complete-test"
             onClick={(e) => { e.stopPropagation(); onComplete(); }}
             disabled={isCompletePending}
+            className="min-h-11"
           >
-            {isCompletePending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Square className="w-4 h-4 mr-2" />}
-            Complete Test
+            {isCompletePending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" /> : <Square className="w-4 h-4 mr-2" aria-hidden="true" />}
+            Complete test
           </Button>
         )}
 
@@ -549,9 +622,10 @@ function AbTestCard({
             data-testid="button-apply-winner"
             onClick={(e) => { e.stopPropagation(); onApplyWinner(); }}
             disabled={isApplyPending}
+            className="min-h-11"
           >
-            {isApplyPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trophy className="w-4 h-4 mr-2" />}
-            Apply Winner to Campaign
+            {isApplyPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" /> : <Trophy className="w-4 h-4 mr-2" aria-hidden="true" />}
+            Apply winner to campaign
           </Button>
         )}
 
@@ -559,12 +633,13 @@ function AbTestCard({
           <Button
             variant="outline"
             size="icon"
-            aria-label="Delete test"
+            aria-label={`Delete A/B test: ${test.name}`}
             data-testid="button-delete-test"
             onClick={(e) => { e.stopPropagation(); onDelete(); }}
             disabled={isDeletePending}
+            className="min-h-11 min-w-11"
           >
-            {isDeletePending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+            {isDeletePending ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : <Trash2 className="w-4 h-4" aria-hidden="true" />}
           </Button>
         )}
       </div>
@@ -579,8 +654,9 @@ export function AbTestHistoryList() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center p-8">
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+      <div className="flex items-center justify-center p-8" role="status" aria-live="polite">
+        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" aria-hidden="true" />
+        <span className="sr-only">Loading A/B test results…</span>
       </div>
     );
   }
@@ -599,75 +675,83 @@ export function AbTestHistoryList() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2 mb-4">
-        <Beaker className="w-5 h-5 text-muted-foreground" />
-        <h2 className="text-xl font-semibold">A/B Test Results</h2>
+        <Beaker className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
+        <h2 className="text-xl font-semibold">A/B test results</h2>
       </div>
 
       {runningTests.length > 0 && (
         <div className="space-y-3">
-          <h3 className="text-sm font-medium text-muted-foreground">Running Tests</h3>
-          {runningTests.map(test => (
-            <Card key={test.id} data-testid={`card-running-test-${test.id}`}>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-base">{test.name}</CardTitle>
-                  <Badge className={statusColors.running}>Running</Badge>
-                </div>
-                <CardDescription>
-                  {testTypeLabels[test.testType]} test - {test.variants.length} variants
-                </CardDescription>
-              </CardHeader>
-            </Card>
-          ))}
+          <h3 className="text-sm font-medium text-muted-foreground">Running tests</h3>
+          <ul className="space-y-3" aria-label="Running A/B tests">
+            {runningTests.map(test => (
+              <li key={test.id}>
+                <Card data-testid={`card-running-test-${test.id}`}>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-base">{test.name}</CardTitle>
+                      <Badge className={statusColors.running}>Running</Badge>
+                    </div>
+                    <CardDescription>
+                      {testTypeLabels[test.testType]} test — <span className="tabular-nums">{test.variants.length}</span> variants
+                    </CardDescription>
+                  </CardHeader>
+                </Card>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
       {completedTests.length > 0 ? (
         <div className="space-y-3">
-          <h3 className="text-sm font-medium text-muted-foreground">Completed Tests</h3>
-          {completedTests.map(test => {
-            const winner = test.variants.find(v => v.id === test.winnerId);
-            return (
-              <Card key={test.id} data-testid={`card-completed-test-${test.id}`}>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-base">{test.name}</CardTitle>
-                    <Badge className={statusColors.completed}>Completed</Badge>
-                  </div>
-                  <CardDescription>
-                    {testTypeLabels[test.testType]} test - Completed {test.completedAt ? format(new Date(test.completedAt), 'MMM d, yyyy') : ''}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center gap-2 mb-2">
-                    <Trophy className="w-4 h-4 text-amber-500" />
-                    <span className="font-medium">Winner: {winner?.name || 'N/A'}</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    {test.variants.map(v => {
-                      const sent = v.sent || 0;
-                      const responseRate = sent > 0 ? ((v.responded || 0) / sent * 100).toFixed(1) : '0';
-                      return (
-                        <div key={v.id} className="flex items-center justify-between p-2 rounded bg-muted/50">
-                          <span className="flex items-center gap-2">
-                            {v.name}
-                            {v.id === test.winnerId && <Trophy className="w-3 h-3 text-amber-500" />}
-                          </span>
-                          <span className="text-muted-foreground">{responseRate}% response</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+          <h3 className="text-sm font-medium text-muted-foreground">Completed tests</h3>
+          <ul className="space-y-3" aria-label="Completed A/B tests">
+            {completedTests.map(test => {
+              const winner = test.variants.find(v => v.id === test.winnerId);
+              return (
+                <li key={test.id}>
+                  <Card data-testid={`card-completed-test-${test.id}`}>
+                    <CardHeader>
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-base">{test.name}</CardTitle>
+                        <Badge className={statusColors.completed}>Completed</Badge>
+                      </div>
+                      <CardDescription className="tabular-nums">
+                        {testTypeLabels[test.testType]} test — Completed {test.completedAt ? format(new Date(test.completedAt), 'MMM d, yyyy') : ''}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex items-center gap-2 mb-2">
+                        <Trophy className="w-4 h-4 text-amber-500" aria-hidden="true" />
+                        <span className="font-medium">Winner: {winner?.name || '—'}</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        {test.variants.map(v => {
+                          const sent = v.sent || 0;
+                          const responseRate = sent > 0 ? ((v.responded || 0) / sent * 100).toFixed(1) : '0';
+                          return (
+                            <div key={v.id} className="flex items-center justify-between p-2 rounded bg-muted/50">
+                              <span className="flex items-center gap-2">
+                                {v.name}
+                                {v.id === test.winnerId && <Trophy className="w-3 h-3 text-amber-500" aria-hidden="true" />}
+                              </span>
+                              <span className="text-muted-foreground tabular-nums">{responseRate}% response</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </li>
+              );
+            })}
+          </ul>
         </div>
       ) : (
         <div className="text-center py-12 text-muted-foreground">
-          <BarChart3 className="w-12 h-12 mx-auto mb-4 opacity-50" />
-          <p>No completed A/B tests yet</p>
-          <p className="text-sm mt-1">Create a test on any campaign to get started</p>
+          <BarChart3 className="w-12 h-12 mx-auto mb-4 opacity-50" aria-hidden="true" />
+          <p>No completed A/B tests yet.</p>
+          <p className="text-sm mt-1">Create a test on any campaign to get started.</p>
         </div>
       )}
     </div>

@@ -87,8 +87,10 @@ export function CampaignAnalytics({ campaignId }: CampaignAnalyticsProps) {
   if (error || !data) {
     return (
       <Card>
-        <CardContent className="p-6">
-          <p className="text-muted-foreground">Failed to load analytics data</p>
+        <CardContent className="p-6" role="alert">
+          <p className="text-muted-foreground">
+            Couldn't load campaign analytics. Check your connection and reload — campaign data itself is unchanged.
+          </p>
         </CardContent>
       </Card>
     );
@@ -103,12 +105,12 @@ export function CampaignAnalytics({ campaignId }: CampaignAnalyticsProps) {
       {campaign.trackingCode && (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Tracking Code</CardTitle>
+            <CardTitle className="text-base">Tracking code</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-2">
-              <Target className="h-4 w-4 text-muted-foreground" />
-              <code 
+              <Target className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+              <code
                 className="bg-muted px-2 py-1 rounded text-sm font-mono"
                 data-testid="text-tracking-code"
               >
@@ -116,7 +118,7 @@ export function CampaignAnalytics({ campaignId }: CampaignAnalyticsProps) {
               </code>
             </div>
             <p className="text-xs text-muted-foreground mt-2">
-              Use this code in your marketing materials to track responses
+              Use this code in your marketing materials to track responses.
             </p>
           </CardContent>
         </Card>
@@ -125,54 +127,54 @@ export function CampaignAnalytics({ campaignId }: CampaignAnalyticsProps) {
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Response Rate</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Response rate</CardTitle>
+            <TrendingUp className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
           </CardHeader>
           <CardContent>
-            <div 
-              className="text-2xl font-bold" 
+            <div
+              className="text-2xl font-bold tabular-nums"
               data-testid="text-response-rate"
             >
               {metrics.responseRate}%
             </div>
             <p className="text-xs text-muted-foreground">
-              {metrics.responsesCount} responses from {metrics.sent} sent
+              <span className="tabular-nums">{metrics.responsesCount}</span> response{metrics.responsesCount === 1 ? "" : "s"} from <span className="tabular-nums">{metrics.sent}</span> sent
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Cost per Response</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Cost per response</CardTitle>
+            <DollarSign className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
           </CardHeader>
           <CardContent>
-            <div 
-              className="text-2xl font-bold" 
+            <div
+              className="text-2xl font-bold tabular-nums"
               data-testid="text-cost-per-response"
             >
               ${metrics.costPerResponse}
             </div>
             <p className="text-xs text-muted-foreground">
-              ${(metrics.spent / 100).toFixed(2)} total spent
+              <span className="tabular-nums">${(metrics.spent / 100).toFixed(2)}</span> total spent
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Cost per Acquisition</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Cost per acquisition</CardTitle>
+            <Users className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
           </CardHeader>
           <CardContent>
-            <div 
-              className="text-2xl font-bold" 
+            <div
+              className="text-2xl font-bold tabular-nums"
               data-testid="text-cost-per-acquisition"
             >
               ${metrics.costPerAcquisition}
             </div>
             <p className="text-xs text-muted-foreground">
-              {metrics.dealCount} deal{metrics.dealCount !== 1 ? 's' : ''} from campaign
+              <span className="tabular-nums">{metrics.dealCount}</span> deal{metrics.dealCount !== 1 ? 's' : ''} from campaign
             </p>
           </CardContent>
         </Card>
@@ -180,72 +182,78 @@ export function CampaignAnalytics({ campaignId }: CampaignAnalyticsProps) {
 
       <Card>
         <CardHeader>
-          <CardTitle>Conversion Funnel</CardTitle>
+          <CardTitle>Conversion funnel</CardTitle>
           <CardDescription>
-            Track how recipients move through each stage
+            Track how recipients move through each stage.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-4" data-testid="conversion-funnel">
-            {funnel.map((stage, index) => (
-              <div key={stage.stage} className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">{stage.stage}</span>
-                    {index < funnel.length - 1 && (
-                      <ArrowRight className="h-3 w-3 text-muted-foreground" />
-                    )}
+            {funnel.map((stage, index) => {
+              const conversionPct = index > 0 && funnel[index - 1].count > 0
+                ? ((stage.count / funnel[index - 1].count) * 100).toFixed(1)
+                : null;
+              return (
+                <div key={stage.stage} className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium capitalize">{stage.stage}</span>
+                      {index < funnel.length - 1 && (
+                        <ArrowRight className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
+                      )}
+                    </div>
+                    <span
+                      className="text-sm text-muted-foreground tabular-nums"
+                      data-testid={`text-funnel-${stage.stage.toLowerCase()}`}
+                    >
+                      {stage.count.toLocaleString()}
+                      {conversionPct && (
+                        <span className="ml-1 text-xs">
+                          ({conversionPct}%)
+                        </span>
+                      )}
+                    </span>
                   </div>
-                  <span 
-                    className="text-sm text-muted-foreground"
-                    data-testid={`text-funnel-${stage.stage.toLowerCase()}`}
-                  >
-                    {stage.count.toLocaleString()}
-                    {index > 0 && funnel[index - 1].count > 0 && (
-                      <span className="ml-1 text-xs">
-                        ({((stage.count / funnel[index - 1].count) * 100).toFixed(1)}%)
-                      </span>
-                    )}
-                  </span>
+                  <Progress
+                    value={(stage.count / maxFunnelValue) * 100}
+                    className="h-2"
+                    aria-label={`${stage.stage}: ${stage.count.toLocaleString()}${conversionPct ? ` (${conversionPct}% conversion from previous stage)` : ""}`}
+                  />
                 </div>
-                <Progress 
-                  value={(stage.count / maxFunnelValue) * 100} 
-                  className="h-2"
-                />
-              </div>
-            ))}
+              );
+            })}
           </div>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Recent Responses</CardTitle>
+          <CardTitle>Recent responses</CardTitle>
           <CardDescription>
-            Inbound responses attributed to this campaign
+            Inbound responses attributed to this campaign.
           </CardDescription>
         </CardHeader>
         <CardContent>
           {responses.length === 0 ? (
             <p className="text-muted-foreground text-center py-8">
-              No responses recorded yet
+              No responses recorded yet.
             </p>
           ) : (
-            <div className="space-y-3" data-testid="responses-list">
+            <ul className="space-y-3" data-testid="responses-list" aria-label="Recent responses">
               {responses.slice(0, 10).map((response) => {
                 const IconComponent = channelIcons[response.channel] || MessageSquare;
                 return (
-                  <div 
-                    key={response.id} 
+                  <li
+                    key={response.id}
                     className="flex items-start gap-3 p-3 rounded-lg bg-muted/50"
                     data-testid={`response-item-${response.id}`}
                   >
-                    <div className="p-2 rounded-full bg-background">
+                    <div className="p-2 rounded-full bg-background" aria-hidden="true">
                       <IconComponent className="h-4 w-4" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <Badge variant="outline" className="text-xs">
+                        <Badge variant="outline" className="text-xs capitalize">
                           {response.channel}
                         </Badge>
                         {response.isAttributed && (
@@ -253,7 +261,7 @@ export function CampaignAnalytics({ campaignId }: CampaignAnalyticsProps) {
                             Attributed
                           </Badge>
                         )}
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-xs text-muted-foreground tabular-nums">
                           {format(new Date(response.responseDate), 'MMM d, yyyy h:mm a')}
                         </span>
                       </div>
@@ -268,15 +276,16 @@ export function CampaignAnalytics({ campaignId }: CampaignAnalyticsProps) {
                         )}
                         {(response.contactEmail || response.contactPhone) && (
                           <p className="text-xs text-muted-foreground mt-1">
-                            {response.contactEmail} {response.contactPhone && `• ${response.contactPhone}`}
+                            {response.contactEmail && <a href={`mailto:${response.contactEmail}`} className="underline-offset-2 hover:underline">{response.contactEmail}</a>}
+                            {response.contactPhone && <> • <a href={`tel:${response.contactPhone.replace(/[^\d+]/g, '')}`} className="tabular-nums underline-offset-2 hover:underline">{response.contactPhone}</a></>}
                           </p>
                         )}
                       </div>
                     </div>
-                  </div>
+                  </li>
                 );
               })}
-            </div>
+            </ul>
           )}
         </CardContent>
       </Card>
