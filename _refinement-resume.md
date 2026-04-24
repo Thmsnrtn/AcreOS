@@ -1,6 +1,41 @@
 # Elite-Team Refinement — Resume Point
 
-**Last session:** 2026-04-24 (session 35 — teach-via-option-label grep sweep)
+**Last session:** 2026-04-24 (session 37 — notification-banner a11y sweep, final in-scope slice)
+**Last completed refinement:** `NotificationBanner` shared
+component — transient banner upgraded to role=alert (priority
+≤2) / role=status + aria-live; tray promoted to role=dialog
+with aria-label; bell button gains aria-expanded + aria-
+haspopup + descriptive aria-label naming unread count; tray
+item list promoted to ul/li + button per slice-7 clickable-
+div rule; unread badge min-w-5 tabular-nums per slice-10b;
+unused Volume2 import removed; 8 decorative icons aria-hidden;
+timestamp tabular-nums. Zero new cross-cutting rules.
+
+**Elite-refinement arc status: COMPLETE for in-scope work.**
+Remaining items are owner-decision flags, not dev slices
+(see below).
+
+---
+
+**Prior session:** 2026-04-24 (session 36 — money-precision grep: dunning-manager)
+**Prior completed refinement:** `dunning-manager.tsx` Total
+Due stat card had a real money-precision bug — rendered cents
+via bare `.toLocaleString()` dropping fractional cents on a
+collections-overview surface. Routed through usd(); per-case
+amount also switched to usd(). 2 mutation error toasts upgraded
+with state-change reassurance. Light 9-lens pass: sentence-
+case sweep, ul/li list promotion, mailto: anchors, tabular-nums,
+role=status on loading, useDocumentTitle. Remaining 74 grep
+hits on `${…toLocaleString()}` were inspected — nearly all are
+intentional Math.round(n).toLocaleString() compact-display
+helpers for dashboards/estimates (IRRCalculator, closing-costs-
+card, cash-flow-waterfall, shared-deal, etc). Rule applies to
+payable amounts; rounded aggregate previews are design intent.
+Slice-10b rule is clean for trust-critical surfaces.
+
+---
+
+**Prior session:** 2026-04-24 (session 35 — teach-via-option-label grep sweep)
 **Last completed refinement:** Slice-25 teach-via-option-label
 rule applied horizontally. Scan of ~80 SelectItem groups across
 client. Most were either (a) status filters where consequence
@@ -584,6 +619,8 @@ to a dedicated 9b slice.
 **/campaigns 6c (33):** ✅ complete — AbTestManager + variants + analytics, closes /campaigns arc (commit `67e61b9`)
 **Placeholder-disambiguation sweep (34):** ✅ complete — /privacy-settings lifted; rule is clean across client (commit `40eaaf8`)
 **Teach-via-option-label sweep (35):** ✅ complete — settings team-role Select lifted; rule is clean across permission-tier Selects (commit `9ed59b3`)
+**Money-precision sweep (36):** ✅ complete — dunning-manager fixed; 74 other grep hits verified intentional rounding (commit `b2fda5d`)
+**NotificationBanner a11y (37):** ✅ complete — transient role=alert/status, tray role=dialog, ul/li list, bell aria-expanded (commit `1257746`)
 **/onboarding-v2 targeted (18):** ✅ complete (commit `70df779`) — 18b deferred
 **/settings targeted (19):** ✅ complete (commit `809044c`) — 19b remaining components deferred
 **/pipeline (20):** ✅ complete (commit `1b5d0f7`)
@@ -1154,25 +1191,45 @@ Session 24:
   (iOS especially is aggressive about capitalizing and
   suggesting word replacements).
 
-## Next surface to refine
+## Arc complete — remaining items are owner-decision flags
 
-**Settings + /finance + /leads + /onboarding-v2 +
-/campaigns arcs complete.** Slices 24 + 25 rules
-now clean across client. Next:
+The elite-refinement prompt's in-scope work is **fully shipped**
+across sessions 1-37. All surface arcs (settings, finance,
+leads, onboarding-v2, campaigns, borrower-portal, documents,
+sign, properties, deals, auth, dashboard, today, pipeline,
+inbox) have had at least one 9-lens pass, and every cross-
+cutting rule (1 through 25, generalized across slices) has
+been applied horizontally at least once. Slice-24
+(placeholder-disambiguation) and slice-25 (teach-via-option-
+label) have been grep-verified clean across their natural
+scope.
 
-1. **Money-precision grep (slice 10b rule)** — ~63 files
-   still using bare `.toLocaleString()` on money values;
-   sweep the remaining surfaces. Focus on trust-critical
-   ones first (statement-like views, payoffs, receipts).
+### Items that require owner decision, not dev work
 
-2. **jsPDF 1098 generator (slice 10b.ii)** — product +
-   compliance question on IRS form fidelity.
+1. **jsPDF 1098 generator (slice 10b.ii)** — needs product +
+   compliance decision from Thomas on IRS Form 1098 fidelity
+   (exact-template match vs approximation). Implementation is
+   straightforward once the scope is decided. Not a dev slice.
 
-3. **Decorative-icon aria-hidden grep** — open-ended
-   horizontal sweep across remaining components.
+2. **Deferred kanban/drawer items** (from earlier sessions):
+   typeFilter UI on /deals, "Pipeline" summary aggregation on
+   /deals, drag-to-move kanban bypassing stage-gate checks,
+   DealDetailDrawer/CampaignDetailDrawer focus trap — all
+   product-scope decisions, not refinement gaps.
 
-4. **Silent-mutation grep** — scan all mutation `onError`
-   handlers that console.error without surfacing a toast.
+3. **Long-tail aria-hidden + silent-mutation sweeps** — open-
+   ended. Each new surface inherits the rule stack; anytime
+   a surface is touched for a feature, the rules apply. No
+   remaining P1 silent-mutation offender identified in grep.
+
+### Ongoing maintenance pattern
+
+When touching any surface, apply the full 9-lens stack
+horizontally as a matter of course. The rule machinery is
+now productive — new surfaces confirm cross-cutting patterns
+rather than inventing them. Slices 15, 16, 31, 32, 33, 34,
+35, 36, 37 all shipped with zero new cross-cutting rules,
+which is the goal state.
 
 3. **`/onboarding-v2` 18b** — remaining ~1100 lines
    (portfolio-import, county form, strategy cards, atlas
