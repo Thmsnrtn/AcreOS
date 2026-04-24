@@ -1,7 +1,46 @@
 # Elite-Team Refinement — Resume Point
 
-**Last session:** 2026-04-24 (session 22 — settings security sub-slice 19b.i)
-**Last completed refinement:** `TwoFactorAuthSettings` +
+**Last session:** 2026-04-24 (session 24 — settings privacy 19b.iii)
+**Last completed refinement:** `PrivacyDataSettings` inside
+`settings.tsx`. Third 19b sub-slice. State-change error
+reassurance on export + delete mutations ("no data was
+changed" / "your account is unchanged" — critical on an
+irreversible delete). Warning alert role=alert, post-delete
+status role=status + aria-live. Delete-confirm Input Label
+properly wired via htmlFor + autoComplete=off +
+autoCapitalize=characters + autoCorrect=off + spellCheck=
+false so the verification phrase isn't auto-corrected. New
+**placeholder disambiguation rule:** the delete-confirm
+placeholder was "DELETE" — user could copy from
+placeholder. Changed to "Type DELETE here" — discoverable
+but requires actual typing. 6 GDPR rights promoted from
+`<div>` grid to `<ul><li>` with container aria-label. 10+
+decorative icons aria-hidden. Sentence-case sweep across 12
+labels. Proper ellipsis. Contraction voice ("can't be
+undone", "You'll be signed out in a few seconds"). 44px
+touch on all 4 CTAs.
+
+---
+
+**Prior session:** 2026-04-24 (session 23 — settings billing 19b.ii)
+**Prior completed refinement:** `StripeConnectSettings` +
+`SeatManagement`. P1 trust fix: "Disconnect Stripe" gated
+behind ConfirmDialog with specific description naming what
+keeps working (pending payments still process) vs. what
+stops (new collection). State-change reassurance on 4
+Stripe/seat mutation error paths (connect/refresh/disconnect/
+purchase). Definition-list semantics on both the Stripe
+connection-status grid and the SeatManagement stats grid.
+20+ decorative icons aria-hidden. Progress bar + Add-seats
+button gain dynamic aria-label. role=status on requirements
+banner. Sentence-case sweep, tabular-nums on account ID +
+4 seat tiles + seat price, inputMode=numeric on seat
+quantity, 44px touch.
+
+---
+
+**Prior session:** 2026-04-24 (session 22 — settings security sub-slice 19b.i)
+**Prior completed refinement:** `TwoFactorAuthSettings` +
 `PasswordChangeSettings` inside `client/src/pages/settings.tsx`.
 P0 a11y + security fix: `window.prompt()` used for 2FA
 disable code replaced with Radix Dialog + proper Input with
@@ -318,8 +357,11 @@ to a dedicated 9b slice.
 **/pipeline (20):** ✅ complete (commit `1b5d0f7`)
 **Money-action reassurance grep (21):** ✅ complete across /finance + /borrower-portal (commit `8b5ad36`)
 **/settings security sub-slice 19b.i (22):** ✅ complete — 2FA + password change (commit `04b54f0`)
+**/settings billing sub-slice 19b.ii (23):** ✅ complete — StripeConnect + SeatManagement (commit `74e62ec`)
+**/settings privacy sub-slice 19b.iii (24):** ✅ complete — PrivacyDataSettings / GDPR (commit `a90fa77`)
+**/settings 19b remaining (GoalsSettings/ApiKeyManager/ActivityLogPanel/ReferralSettings):** ⬜ deferred — covered in next slices
 **window.confirm ban grep:** ✅ clean across the client
-**window.prompt ban:** ✅ clean after slice 22 (was 1 instance in /settings 2FA)
+**window.prompt ban:** ✅ clean after slice 22
 **Money-precision grep remaining (~63 files):** ⬜ deferred — apply per-surface as each page gets 9-lens pass
 
 ## How to continue
@@ -520,6 +562,27 @@ Session 22:
   =alert. 2FA verify Input gains one-time-code autoComplete.
   Directive QR alt text. Sentence-case sweep. (commit
   `04b54f0`)
+
+Session 23:
+- /settings 19b.ii — StripeConnectSettings + SeatManagement.
+  P1 fix: Disconnect Stripe gated behind ConfirmDialog with
+  specific scope description. State-change reassurance on 4
+  Stripe/seat mutations. dl/dt/dd on Stripe + seat fact
+  grids. 20+ aria-hidden icons. Progress + Add-seats
+  dynamic aria-labels. Sentence-case. 44px touch. Tabular-
+  nums. (commit `74e62ec`)
+
+Session 24:
+- /settings 19b.iii — PrivacyDataSettings (GDPR surface).
+  State-change reassurance on export + delete ("account is
+  unchanged"). role=alert on can't-be-undone warning,
+  role=status on post-delete confirmation. Delete-confirm
+  Input Label htmlFor wired + autoComplete=off +
+  autoCapitalize=characters. New **placeholder
+  disambiguation rule** (placeholder="DELETE" → "Type
+  DELETE here"). 6 GDPR rights promoted to <ul><li>. 10+
+  aria-hidden icons. Sentence-case sweep. Contraction
+  voice. Proper ellipsis. 44px touch. (commit `a90fa77`)
 
 ## Cross-cutting gains this pass
 
@@ -769,16 +832,31 @@ Session 22:
   window.confirm ban to prompt. Grep candidate: remaining
   native `window.prompt` calls across the client (none as
   of slice 22).
+- **Placeholder disambiguation rule (new 24):** when a
+  confirmation Input requires the user to type a specific
+  token (`DELETE`, `CONFIRM`, the organization name, etc.),
+  the placeholder should NOT show the token itself.
+  `placeholder="DELETE"` lets anxious/rushed users bypass
+  the intent of the confirmation by copying from the
+  placeholder. Use `placeholder="Type DELETE here"` or
+  similar — still discoverable but requires actual typing.
+  Additionally: such Inputs should have
+  `autoComplete="off"` + `autoCapitalize="characters"` +
+  `autoCorrect="off"` + `spellCheck={false}` so the
+  browser doesn't auto-correct the verification phrase
+  (iOS especially is aggressive about capitalizing and
+  suggesting word replacements).
 
 ## Next surface to refine
 
 **Recommended next slices:**
 
-1. **`/settings` 19b.ii — StripeConnectSettings + Seat
-   Management.** Billing-surface companion to 19b.i.
-   ~450 lines combined. Stripe connect flow + seat purchase
-   both involve money and need the state-change reassurance
-   rule.
+1. **`/settings` 19b.iv — ApiKeyManager** (~250 lines).
+   Security-adjacent (API keys grant broad access). Likely
+   candidate for the same state-change reassurance +
+   ConfirmDialog-gate pattern applied in 19b.i (2FA).
+   GoalsSettings + ActivityLogPanel + ReferralSettings
+   can be a tidy 19b.v/vi bundle after.
 
 2. **Full `/finance` 9-lens pass (12b)** — slice 12 was
    narrow (money-precision only). Remaining ~1500 lines:
@@ -855,9 +933,9 @@ Session 22:
   `storage`, `autonomousDealMachine`, `countyAssessorIngest`,
   `supportAgent`, etc. — not blocking client refinement work.
 
-## Expected HEAD after session 22
+## Expected HEAD after session 24
 
-Session chain 8 → 22 cadence (all shipped atomic + docs):
+Session chain 8 → 24 cadence (all shipped atomic + docs):
 
 - `234dafa` slice 8  — /documents
 - `61f1469` slice 9  — /sign/:docId
@@ -875,12 +953,15 @@ Session chain 8 → 22 cadence (all shipped atomic + docs):
 - `1b5d0f7` slice 20 — /pipeline full
 - `8b5ad36` slice 21 — money-action reassurance grep (6 error paths)
 - `04b54f0` slice 22 — /settings security sub-slice (2FA + password, window.prompt ban)
+- `74e62ec` slice 23 — /settings billing sub-slice (StripeConnect + SeatManagement)
+- `a90fa77` slice 24 — /settings privacy sub-slice (GDPR export/delete)
 
-Cross-cutting rules added slices 19-22:
-- State-change error reassurance (slice 19, generalized 22 to security)
+Cross-cutting rules added slices 19-24:
+- State-change error reassurance (slice 19, generalized 22 to security, applied to 12+ error paths through 24)
 - window.prompt ban (slice 22, extending slice-5l window.confirm ban)
+- Placeholder disambiguation rule (slice 24)
 
-Brings total introduced in this chain to 14 rules.
+Brings total introduced in this chain to 15 rules.
 
 **Coverage to date** (surfaces with explicit 9-lens pass):
 legal/trust (documents, sign, portal, signature-capture) +

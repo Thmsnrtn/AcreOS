@@ -4065,7 +4065,7 @@ slice, ~290 lines) and `SeatManagement` (lines 401-~620,
   disconnect joins the list of billing/security actions
   that should never fire without an explicit gate.
 
-**Commit:** (pending)
+**Commit:** `74e62ec`
 
 ---
 
@@ -4201,4 +4201,4 @@ handling of the export flow could expose PII.
   copying from the placeholder. Use "Type {token} here"
   format instead. Adds to the ConfirmDialog rule family.
 
-**Commit:** (pending)
+**Commit:** `a90fa77`
