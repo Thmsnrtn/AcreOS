@@ -1,7 +1,28 @@
 # Elite-Team Refinement — Resume Point
 
-**Last session:** 2026-04-24 (session 27 — /finance 12b.i: NoteForm + RecordPayment)
-**Last completed refinement:** `NoteForm` +
+**Last session:** 2026-04-24 (session 28 — /finance 12b.ii: AcceptPaymentModal + Drawer header)
+**Last completed refinement:** `AcceptPaymentModal` (full
+9-lens treatment, same as RecordPaymentModal in slice 27)
++ `NoteDetailDrawer` header row + 4 silent-error handlers.
+AcceptPayment: slice-5l dialog semantics, form onSubmit,
+Label htmlFor, $ prefix, required-asterisk, success banner
+role=status, client-secret tabbable, input disabled post-
+creation, sentence-case, usd() on money, 44px touch.
+NoteDetailDrawer: **4 P1 silent-error fixes** (fetchDunningData,
+regenerate schedule, send reminder, download PDF) —
+previously all console.error-only; now destructive toasts
+with state-change reassurance per slice-19 rule
+("schedule is unchanged" / "no reminder was sent"). Send-
+reminder also gains a success toast. Drawer itself now
+role=dialog + aria-modal + aria-labelledby + Esc handler.
+Header icon-button aria-labels name the borrower (prevents
+mis-clicks in list view). 44px header touch. NoteDetailDrawer
+body ~600 lines deferred to 12b.iii.
+
+---
+
+**Prior session:** 2026-04-24 (session 27 — /finance 12b.i: NoteForm + RecordPayment)
+**Prior completed refinement:** `NoteForm` +
 `RecordPaymentModal` in `/finance.tsx`. ~350 lines across
 the two money-creation surfaces. NoteForm: currency-
 adornment rule ($/% inside inputs), mobile-keyboard
@@ -425,7 +446,8 @@ to a dedicated 9b slice.
 **/settings 19b.v final (26):** ✅ complete — ReferralSettings + Goals form (commit `ac1a64b`)
 **/settings FULL 9-lens arc (19 → 19b.v):** ✅ complete — every sub-component refined
 **/finance 12b.i (27):** ✅ complete — NoteForm + RecordPaymentModal (commit `694ba02`)
-**/finance 12b remaining (AcceptPaymentModal + NoteDetailDrawer):** ⬜ deferred — next slices
+**/finance 12b.ii (28):** ✅ complete — AcceptPaymentModal + NoteDetailDrawer header (commit `5059dfc`)
+**/finance 12b.iii NoteDetailDrawer body:** ⬜ deferred — ~600 lines remain (summary cards / loan progress / payment collection / dunning / payment history / schedule table)
 **window.confirm ban grep:** ✅ clean across the client
 **window.prompt ban:** ✅ clean after slice 22
 **Money-precision grep remaining (~63 files):** ⬜ deferred — apply per-surface as each page gets 9-lens pass
@@ -665,6 +687,19 @@ Session 27:
   onSubmit, Label htmlFor, money rows through usd() +
   dl/dt/dd semantics, submit guards against $0 payment.
   Sentence-case + proper ellipsis. (commit `694ba02`)
+
+Session 28:
+- /finance 12b.ii — AcceptPaymentModal (full 9-lens,
+  same pattern as slice-27 RecordPaymentModal) +
+  NoteDetailDrawer header + 4 silent-error handlers.
+  AcceptPayment: slice-5l dialog, form onSubmit, Label
+  htmlFor, $ prefix, role=status success banner, client
+  secret tabbable, fields disabled post-creation. Drawer:
+  4 P1 silent-console.error bugs fixed with state-change
+  reassurance ("schedule is unchanged" / "no reminder was
+  sent"), send-reminder gains success toast, drawer
+  role=dialog + Esc handler, header aria-labels name the
+  borrower. (commit `5059dfc`)
 
 Session 26:
 - /settings 19b.v final — ReferralSettings + GoalsSettings
@@ -970,15 +1005,16 @@ Session 24:
 
 ## Next surface to refine
 
-**Settings arc complete. /finance 12b in progress (2/6
-sub-components done).** Shift focus:
+**Settings arc complete. /finance 12b in progress (4/6
+sub-components done after slice 28).** Shift focus:
 
-1. **`/finance` 12b.ii — AcceptPaymentModal + Note
-   DetailDrawer remaining.** AcceptPaymentModal was
-   partially touched in slice 21 for payment-intent error
-   voice but UI body needs Label htmlFor + form semantics.
-   NoteDetailDrawer (~680 lines from 436-1117) is the main
-   detail surface and the largest /finance sub-component.
+1. **`/finance` 12b.iii — NoteDetailDrawer body.**
+   ~600 lines remaining: summary cards, loan-progress,
+   payment-collection card (Stripe Connect), dunning
+   manager, payment-history table, amortization-schedule
+   table. Mostly display surfaces with money-precision
+   already applied in slice 12, but a11y + sentence-case
+   + form-semantics passes still outstanding.
 
 2. **`/leads` 17b** — remaining ~2000 lines (LeadForm,
    LeadDetailDrawer, table rows, bulk-delete dialog,
@@ -1078,9 +1114,9 @@ sub-components done).** Shift focus:
   `storage`, `autonomousDealMachine`, `countyAssessorIngest`,
   `supportAgent`, etc. — not blocking client refinement work.
 
-## Expected HEAD after session 27
+## Expected HEAD after session 28
 
-Session chain 8 → 27 cadence (all shipped atomic + docs):
+Session chain 8 → 28 cadence (all shipped atomic + docs):
 
 - `234dafa` slice 8  — /documents
 - `61f1469` slice 9  — /sign/:docId
@@ -1103,8 +1139,9 @@ Session chain 8 → 27 cadence (all shipped atomic + docs):
 - `890f5bc` slice 25 — /settings completion (ApiKey + Activity + Goals)
 - `ac1a64b` slice 26 — /settings 19b.v final (Referral + Goals form)
 - `694ba02` slice 27 — /finance 12b.i (NoteForm + RecordPaymentModal)
+- `5059dfc` slice 28 — /finance 12b.ii (AcceptPaymentModal + Drawer header)
 
-Cross-cutting rules added slices 19-27:
+Cross-cutting rules added slices 19-28:
 - State-change error reassurance (slice 19, generalized 22, applied to 16+ error paths through 26)
 - window.prompt ban (slice 22)
 - Placeholder disambiguation (slice 24)

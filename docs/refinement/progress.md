@@ -4799,4 +4799,4 @@ Same treatment as slice 27's RecordPaymentModal:
 - Currency-adornment rule (slice 5m) — 1 more site.
 - Silent-mutation → toast — 4 more trust-bug fixes.
 
-**Commit:** (pending)
+**Commit:** `5059dfc`
