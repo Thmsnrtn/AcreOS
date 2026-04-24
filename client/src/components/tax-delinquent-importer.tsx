@@ -21,12 +21,12 @@ import {
 
 const TAX_DELINQUENT_COLUMNS = [
   { key: 'parcel_id', label: 'Parcel ID', required: false },
-  { key: 'owner_name', label: 'Owner Name', required: true },
-  { key: 'mailing_address', label: 'Mailing Address', required: false },
-  { key: 'property_address', label: 'Property Address', required: false },
-  { key: 'assessed_value', label: 'Assessed Value', required: false },
-  { key: 'taxes_owed', label: 'Taxes Owed', required: false },
-  { key: 'tax_year', label: 'Tax Year', required: false },
+  { key: 'owner_name', label: 'Owner name', required: true },
+  { key: 'mailing_address', label: 'Mailing address', required: false },
+  { key: 'property_address', label: 'Property address', required: false },
+  { key: 'assessed_value', label: 'Assessed value', required: false },
+  { key: 'taxes_owed', label: 'Taxes owed', required: false },
+  { key: 'tax_year', label: 'Tax year', required: false },
   { key: 'county', label: 'County', required: false },
   { key: 'state', label: 'State', required: false },
 ];
@@ -66,17 +66,25 @@ export function TaxDelinquentImporter({ open, onOpenChange }: TaxDelinquentImpor
 
   const handleFile = useCallback((file: File) => {
     if (!file.name.endsWith('.csv')) {
-      toast({ title: "Invalid file type", description: "Please upload a CSV file", variant: "destructive" });
+      toast({
+        title: "Invalid file type",
+        description: "Only CSV files are supported — no data was imported. Choose a .csv file and try again.",
+        variant: "destructive",
+      });
       return;
     }
-    
+
     const reader = new FileReader();
     reader.onload = (e) => {
       const text = e.target?.result as string;
       const data = parseCSV(text);
-      
+
       if (data.length === 0) {
-        toast({ title: "Empty file", description: "The CSV file has no data rows", variant: "destructive" });
+        toast({
+          title: "Empty file",
+          description: "The CSV file has no data rows — no leads were imported.",
+          variant: "destructive",
+        });
         return;
       }
       
@@ -146,7 +154,11 @@ export function TaxDelinquentImporter({ open, onOpenChange }: TaxDelinquentImpor
       queryClient.invalidateQueries({ queryKey: ['/api/leads'] });
     },
     onError: (err: Error) => {
-      toast({ title: "Import failed", description: err.message, variant: "destructive" });
+      toast({
+        title: "Couldn't import tax-delinquent list",
+        description: `${err.message} — no leads were imported. Review the file and try again.`,
+        variant: "destructive",
+      });
       setStep('preview');
     },
   });
@@ -183,15 +195,15 @@ export function TaxDelinquentImporter({ open, onOpenChange }: TaxDelinquentImpor
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-[800px] max-h-[85vh] overflow-y-auto" data-testid="dialog-tax-delinquent-import">
         <DialogHeader>
-          <DialogTitle>Import Tax Delinquent List</DialogTitle>
+          <DialogTitle>Import tax-delinquent list</DialogTitle>
           <DialogDescription>
-            Upload a CSV file containing tax delinquent property records to import as leads.
+            Upload a CSV file containing tax-delinquent property records to import as leads.
           </DialogDescription>
         </DialogHeader>
 
         {step === 'upload' && (
           <div className="space-y-4 py-4">
-            <div 
+            <div
               className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
                 isDragging ? 'border-primary bg-primary/5' : 'border-muted-foreground/25'
               }`}
@@ -200,8 +212,8 @@ export function TaxDelinquentImporter({ open, onOpenChange }: TaxDelinquentImpor
               onDragLeave={handleDragLeave}
               data-testid="dropzone-tax-delinquent"
             >
-              <Upload className="w-10 h-10 mx-auto mb-4 text-muted-foreground" />
-              <label className="cursor-pointer">
+              <Upload className="w-10 h-10 mx-auto mb-4 text-muted-foreground" aria-hidden="true" />
+              <label className="cursor-pointer block min-h-11">
                 <span className="text-sm text-muted-foreground">
                   Drag and drop your CSV file here, or click to browse
                 </span>
@@ -211,22 +223,25 @@ export function TaxDelinquentImporter({ open, onOpenChange }: TaxDelinquentImpor
                   accept=".csv"
                   className="hidden"
                   onChange={handleFileSelect}
+                  aria-label="Tax-delinquent CSV file"
                   data-testid="input-tax-delinquent-file"
                 />
               </label>
-              <p className="text-xs text-muted-foreground mt-2">Max 500 rows per import</p>
+              <p className="text-xs text-muted-foreground mt-2">Max <span className="tabular-nums">500</span> rows per import.</p>
             </div>
-            
+
             <div className="bg-muted/50 rounded-lg p-4">
-              <p className="text-sm font-medium mb-2">Expected columns:</p>
-              <div className="flex flex-wrap gap-2">
+              <p className="text-sm font-medium mb-2">Expected columns</p>
+              <ul className="flex flex-wrap gap-2" aria-label="Expected CSV columns">
                 {TAX_DELINQUENT_COLUMNS.map(col => (
-                  <Badge key={col.key} variant="outline" className="text-xs">
-                    {col.label}
-                    {col.required && <span className="text-destructive ml-1">*</span>}
-                  </Badge>
+                  <li key={col.key}>
+                    <Badge variant="outline" className="text-xs">
+                      {col.label}
+                      {col.required && <span className="text-destructive ml-1" aria-label="required">*</span>}
+                    </Badge>
+                  </li>
                 ))}
-              </div>
+              </ul>
             </div>
           </div>
         )}
@@ -235,19 +250,21 @@ export function TaxDelinquentImporter({ open, onOpenChange }: TaxDelinquentImpor
           <div className="space-y-4 py-4">
             <div className="flex items-center justify-between">
               <p className="text-sm font-medium">Map your CSV columns</p>
-              <Badge>{csvData.length} rows</Badge>
+              <Badge aria-label={`${csvData.length} rows in file`}>
+                <span className="tabular-nums">{csvData.length}</span> rows
+              </Badge>
             </div>
-            
+
             <div className="space-y-3 max-h-[300px] overflow-y-auto">
               {TAX_DELINQUENT_COLUMNS.map(col => (
                 <div key={col.key} className="flex items-center gap-4">
                   <div className="w-1/3">
                     <span className="text-sm font-medium">
                       {col.label}
-                      {col.required && <span className="text-destructive ml-1">*</span>}
+                      {col.required && <span className="text-destructive ml-1" aria-label="required">*</span>}
                     </span>
                   </div>
-                  <ArrowRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                  <ArrowRight className="w-4 h-4 text-muted-foreground flex-shrink-0" aria-hidden="true" />
                   <Select
                     value={columnMapping[col.key] || 'unmapped'}
                     onValueChange={(value) => {
@@ -257,11 +274,15 @@ export function TaxDelinquentImporter({ open, onOpenChange }: TaxDelinquentImpor
                       }));
                     }}
                   >
-                    <SelectTrigger className="flex-1" data-testid={`select-map-${col.key}`}>
-                      <SelectValue placeholder="Select column..." />
+                    <SelectTrigger
+                      className="flex-1"
+                      aria-label={`Map ${col.label}${col.required ? ' (required)' : ''} to a CSV column`}
+                      data-testid={`select-map-${col.key}`}
+                    >
+                      <SelectValue placeholder="Select column…" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="unmapped">-- Not mapped --</SelectItem>
+                      <SelectItem value="unmapped">— Not mapped —</SelectItem>
                       {csvHeaders.map(h => (
                         <SelectItem key={h} value={h}>{h}</SelectItem>
                       ))}
@@ -270,17 +291,18 @@ export function TaxDelinquentImporter({ open, onOpenChange }: TaxDelinquentImpor
                 </div>
               ))}
             </div>
-            
+
             <DialogFooter className="flex gap-2">
-              <Button variant="outline" onClick={resetImporter}>
+              <Button variant="outline" className="min-h-11" onClick={resetImporter}>
                 Back
               </Button>
-              <Button 
-                onClick={() => setStep('preview')} 
+              <Button
+                onClick={() => setStep('preview')}
                 disabled={!isRequiredMappingComplete()}
+                className="min-h-11"
                 data-testid="button-preview-mapping"
               >
-                Preview Data
+                Preview data
               </Button>
             </DialogFooter>
           </div>
@@ -289,16 +311,18 @@ export function TaxDelinquentImporter({ open, onOpenChange }: TaxDelinquentImpor
         {step === 'preview' && (
           <div className="space-y-4 py-4">
             <div className="flex items-center justify-between">
-              <p className="text-sm font-medium">Preview (first 10 rows)</p>
-              <Badge>{csvData.length} total rows</Badge>
+              <p className="text-sm font-medium">Preview (first <span className="tabular-nums">10</span> rows)</p>
+              <Badge>
+                <span className="tabular-nums">{csvData.length}</span> total rows
+              </Badge>
             </div>
-            
-            <div className="border rounded-lg overflow-x-auto">
+
+            <div className="border rounded-lg overflow-x-auto" role="region" tabIndex={0} aria-label="Mapped CSV preview">
               <Table>
                 <TableHeader>
                   <TableRow>
                     {TAX_DELINQUENT_COLUMNS.filter(c => columnMapping[c.key]).map(col => (
-                      <TableHead key={col.key} className="text-xs whitespace-nowrap">
+                      <TableHead key={col.key} scope="col" className="text-xs whitespace-nowrap">
                         {col.label}
                       </TableHead>
                     ))}
@@ -309,7 +333,7 @@ export function TaxDelinquentImporter({ open, onOpenChange }: TaxDelinquentImpor
                     <TableRow key={idx} data-testid={`preview-row-${idx}`}>
                       {TAX_DELINQUENT_COLUMNS.filter(c => columnMapping[c.key]).map(col => (
                         <TableCell key={col.key} className="text-xs max-w-[150px] truncate">
-                          {row[col.key] || '-'}
+                          {row[col.key] || '—'}
                         </TableCell>
                       ))}
                     </TableRow>
@@ -317,72 +341,72 @@ export function TaxDelinquentImporter({ open, onOpenChange }: TaxDelinquentImpor
                 </TableBody>
               </Table>
             </div>
-            
+
             <DialogFooter className="flex gap-2">
-              <Button variant="outline" onClick={() => setStep('mapping')}>
+              <Button variant="outline" className="min-h-11" onClick={() => setStep('mapping')}>
                 Back
               </Button>
-              <Button onClick={handleImport} data-testid="button-import-tax-delinquent">
-                <Upload className="w-4 h-4 mr-2" />
-                Import {csvData.length} Leads
+              <Button onClick={handleImport} className="min-h-11" data-testid="button-import-tax-delinquent">
+                <Upload className="w-4 h-4 mr-2" aria-hidden="true" />
+                Import <span className="tabular-nums mx-1">{csvData.length}</span> leads
               </Button>
             </DialogFooter>
           </div>
         )}
 
         {step === 'importing' && (
-          <div className="space-y-4 py-8 text-center">
-            <Loader2 className="w-12 h-12 mx-auto animate-spin text-muted-foreground" />
-            <p className="text-sm font-medium">Importing tax delinquent records...</p>
-            <p className="text-xs text-muted-foreground">This may take a moment for large files</p>
-            <Progress value={undefined} className="w-full" />
+          <div className="space-y-4 py-8 text-center" role="status" aria-live="polite">
+            <Loader2 className="w-12 h-12 mx-auto animate-spin text-muted-foreground" aria-hidden="true" />
+            <p className="text-sm font-medium">Importing tax-delinquent records…</p>
+            <p className="text-xs text-muted-foreground">This may take a moment for large files.</p>
+            <Progress value={undefined} className="w-full" aria-label="Importing" />
           </div>
         )}
 
         {step === 'complete' && importResult && (
           <div className="space-y-4 py-4">
-            <div className="text-center py-4">
+            <div className="text-center py-4" role="status" aria-live="polite">
               {importResult.errorCount === 0 ? (
-                <CheckCircle className="w-12 h-12 mx-auto mb-4 text-emerald-500" />
+                <CheckCircle className="w-12 h-12 mx-auto mb-4 text-emerald-500" aria-hidden="true" />
               ) : (
-                <XCircle className="w-12 h-12 mx-auto mb-4 text-amber-500" />
+                <XCircle className="w-12 h-12 mx-auto mb-4 text-amber-500" aria-hidden="true" />
               )}
-              <h3 className="text-lg font-semibold mb-2">Import Complete</h3>
+              <h3 className="text-lg font-semibold mb-2">Import complete</h3>
               <p className="text-sm text-muted-foreground">
-                Successfully imported {importResult.successCount} leads
-                {importResult.errorCount > 0 && ` (${importResult.errorCount} errors)`}
+                Successfully imported <span className="tabular-nums">{importResult.successCount}</span> lead{importResult.successCount === 1 ? "" : "s"}
+                {importResult.errorCount > 0 && <> (<span className="tabular-nums">{importResult.errorCount}</span> error{importResult.errorCount === 1 ? "" : "s"})</>}.
               </p>
             </div>
-            
-            <div className="grid grid-cols-2 gap-4 p-4 bg-muted/50 rounded-lg">
+
+            <dl className="grid grid-cols-2 gap-4 p-4 bg-muted/50 rounded-lg">
               <div className="text-center">
-                <p className="text-2xl font-bold text-emerald-600" data-testid="text-import-success-count">
+                <dd className="text-2xl font-bold text-emerald-600 tabular-nums" data-testid="text-import-success-count">
                   {importResult.successCount}
-                </p>
-                <p className="text-xs text-muted-foreground">Imported</p>
+                </dd>
+                <dt className="text-xs text-muted-foreground">Imported</dt>
               </div>
               <div className="text-center">
-                <p className="text-2xl font-bold text-red-600" data-testid="text-import-error-count">
+                <dd className="text-2xl font-bold text-red-600 tabular-nums" data-testid="text-import-error-count">
                   {importResult.errorCount}
-                </p>
-                <p className="text-xs text-muted-foreground">Errors</p>
+                </dd>
+                <dt className="text-xs text-muted-foreground">Errors</dt>
               </div>
-            </div>
-            
+            </dl>
+
             {importResult.errors && importResult.errors.length > 0 && (
-              <div className="border rounded-lg p-4 max-h-[150px] overflow-y-auto">
-                <p className="text-xs font-medium mb-2">Errors:</p>
+              <div className="border rounded-lg p-4 max-h-[150px] overflow-y-auto" role="alert">
+                <p className="text-xs font-medium mb-2">Errors</p>
                 {importResult.errors.slice(0, 10).map((err, idx) => (
                   <p key={idx} className="text-xs text-destructive">
-                    Row {err.row}: {err.error}
+                    Row <span className="tabular-nums">{err.row}</span>: {err.error}
                   </p>
                 ))}
               </div>
             )}
-            
+
             <DialogFooter>
-              <Button onClick={handleClose} data-testid="button-close-import">
-                <CheckCircle className="w-4 h-4 mr-2" />
+              <Button onClick={handleClose} className="min-h-11" data-testid="button-close-import">
+                <CheckCircle className="w-4 h-4 mr-2" aria-hidden="true" />
                 Done
               </Button>
             </DialogFooter>

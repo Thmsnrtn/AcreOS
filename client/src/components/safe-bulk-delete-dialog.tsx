@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useId } from "react";
+import { Label } from "@/components/ui/label";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
@@ -64,6 +65,7 @@ export function SafeBulkDeleteDialog({
   const { toast } = useToast();
   const [confirmText, setConfirmText] = useState("");
   const [lastDeletedIds, setLastDeletedIds] = useState<number[]>([]);
+  const confirmInputId = useId();
   
   // Fetch preview when dialog opens
   const { data: preview, isLoading: isLoadingPreview, error: previewError } = useQuery<BulkDeletePreviewResponse>({
@@ -113,9 +115,10 @@ export function SafeBulkDeleteDialog({
               size="sm"
               onClick={() => handleUndo(selectedIds)}
               className="shrink-0"
+              aria-label={`Undo — restore ${selectedIds.length} lead${selectedIds.length === 1 ? "" : "s"} from trash`}
               data-testid="button-undo-delete"
             >
-              <Undo2 className="w-3 h-3 mr-1" />
+              <Undo2 className="w-3 h-3 mr-1" aria-hidden="true" />
               Undo
             </Button>
           </div>
@@ -125,13 +128,13 @@ export function SafeBulkDeleteDialog({
     },
     onError: (error: Error) => {
       toast({
-        title: "Delete failed",
-        description: error.message,
+        title: "Couldn't delete leads",
+        description: `${error.message} — no leads were deleted. Try again or cancel to keep them.`,
         variant: "destructive",
       });
     },
   });
-  
+
   const restoreMutation = useMutation({
     mutationFn: async (ids: number[]) => {
       const res = await apiRequest("POST", "/api/leads/restore", { ids });
@@ -145,13 +148,13 @@ export function SafeBulkDeleteDialog({
       queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
       toast({
         title: "Leads restored",
-        description: `${data.restoredCount} lead(s) have been restored.`,
+        description: `${data.restoredCount} lead${data.restoredCount === 1 ? "" : "s"} restored.`,
       });
     },
     onError: (error: Error) => {
       toast({
-        title: "Restore failed",
-        description: error.message,
+        title: "Couldn't restore leads",
+        description: `${error.message} — the leads are still in trash. You can try again or restore them manually from Trash.`,
         variant: "destructive",
       });
     },
@@ -169,115 +172,125 @@ export function SafeBulkDeleteDialog({
   const isConfirmValid = confirmText === "DELETE";
   const isDeleting = deleteMutation.isPending;
   
+  const count = preview?.count ?? selectedIds.length;
+
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent className="max-w-lg" data-testid="dialog-safe-bulk-delete">
         <AlertDialogHeader>
           <AlertDialogTitle className="flex items-center gap-2 text-destructive">
-            <AlertTriangle className="w-5 h-5" />
-            Delete {selectedIds.length} Lead{selectedIds.length !== 1 ? "s" : ""}?
+            <AlertTriangle className="w-5 h-5" aria-hidden="true" />
+            Delete <span className="tabular-nums mx-1">{selectedIds.length}</span> lead{selectedIds.length !== 1 ? "s" : ""}?
           </AlertDialogTitle>
-          <AlertDialogDescription className="space-y-3">
-            <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md">
-              <Info className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
-              <p className="text-sm text-amber-800 dark:text-amber-200">
-                These leads will be moved to trash and can be restored within 30 days.
-              </p>
-            </div>
-            
-            {isLoadingPreview && (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-              </div>
-            )}
-            
-            {previewError && (
-              <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md text-destructive text-sm">
-                Failed to load preview: {(previewError as Error).message}
-              </div>
-            )}
-            
-            {preview && (
-              <>
-                <p className="text-sm font-medium">
-                  The following {preview.count} lead{preview.count !== 1 ? "s" : ""} will be deleted:
+          <AlertDialogDescription asChild>
+            <div className="space-y-3">
+              <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md">
+                <Info className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" aria-hidden="true" />
+                <p className="text-sm text-amber-800 dark:text-amber-200">
+                  These leads will be moved to trash and can be restored within 30 days.
                 </p>
-                
-                <ScrollArea className="h-[200px] border rounded-md">
-                  <div className="p-2 space-y-2">
-                    {preview.leads.map((lead) => (
-                      <div
-                        key={lead.id}
-                        className="flex items-center gap-3 p-2 rounded-md bg-muted/50"
-                        data-testid={`preview-lead-${lead.id}`}
-                      >
-                        <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
-                          <User className="w-4 h-4 text-muted-foreground" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">
-                            {lead.firstName} {lead.lastName}
-                          </p>
-                          <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                            {lead.email && (
-                              <span className="flex items-center gap-1 truncate">
-                                <Mail className="w-3 h-3" />
-                                {lead.email}
-                              </span>
-                            )}
-                            {lead.phone && (
-                              <span className="flex items-center gap-1">
-                                <Phone className="w-3 h-3" />
-                                {lead.phone}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <Badge variant="secondary" className="shrink-0 text-xs">
-                          {lead.status}
-                        </Badge>
-                      </div>
-                    ))}
-                  </div>
-                </ScrollArea>
-                
-                <div className="space-y-2 pt-2">
-                  <p className="text-sm text-muted-foreground">
-                    Type <span className="font-mono font-bold text-destructive">DELETE</span> to confirm:
-                  </p>
-                  <Input
-                    value={confirmText}
-                    onChange={(e) => setConfirmText(e.target.value)}
-                    placeholder="DELETE"
-                    className="font-mono"
-                    autoComplete="off"
-                    data-testid="input-confirm-delete"
-                  />
+              </div>
+
+              {isLoadingPreview && (
+                <div className="flex items-center justify-center py-8" role="status" aria-live="polite">
+                  <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" aria-hidden="true" />
+                  <span className="sr-only">Loading lead preview…</span>
                 </div>
-              </>
-            )}
+              )}
+
+              {previewError && (
+                <div role="alert" className="p-3 bg-destructive/10 border border-destructive/20 rounded-md text-destructive text-sm">
+                  Couldn't load preview — {(previewError as Error).message}. No leads have been deleted.
+                </div>
+              )}
+
+              {preview && (
+                <>
+                  <p className="text-sm font-medium">
+                    The following <span className="tabular-nums">{preview.count}</span> lead{preview.count !== 1 ? "s" : ""} will be deleted:
+                  </p>
+
+                  <ScrollArea className="h-[200px] border rounded-md">
+                    <ul className="p-2 space-y-2" aria-label="Leads that will be deleted">
+                      {preview.leads.map((lead) => (
+                        <li
+                          key={lead.id}
+                          className="flex items-center gap-3 p-2 rounded-md bg-muted/50"
+                          data-testid={`preview-lead-${lead.id}`}
+                        >
+                          <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center" aria-hidden="true">
+                            <User className="w-4 h-4 text-muted-foreground" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">
+                              {lead.firstName} {lead.lastName}
+                            </p>
+                            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                              {lead.email && (
+                                <span className="flex items-center gap-1 truncate">
+                                  <Mail className="w-3 h-3" aria-hidden="true" />
+                                  {lead.email}
+                                </span>
+                              )}
+                              {lead.phone && (
+                                <span className="flex items-center gap-1">
+                                  <Phone className="w-3 h-3" aria-hidden="true" />
+                                  <span className="tabular-nums">{lead.phone}</span>
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <Badge variant="secondary" className="shrink-0 text-xs capitalize">
+                            {lead.status}
+                          </Badge>
+                        </li>
+                      ))}
+                    </ul>
+                  </ScrollArea>
+
+                  <div className="space-y-2 pt-2">
+                    <Label htmlFor={confirmInputId} className="text-sm text-muted-foreground font-normal">
+                      Type <span className="font-mono font-bold text-destructive">DELETE</span> to confirm:
+                    </Label>
+                    <Input
+                      id={confirmInputId}
+                      value={confirmText}
+                      onChange={(e) => setConfirmText(e.target.value)}
+                      placeholder="Type DELETE here"
+                      className="font-mono"
+                      autoComplete="off"
+                      autoCapitalize="characters"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      data-testid="input-confirm-delete"
+                    />
+                  </div>
+                </>
+              )}
+            </div>
           </AlertDialogDescription>
         </AlertDialogHeader>
-        
+
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={isDeleting} data-testid="button-cancel-delete">
+          <AlertDialogCancel disabled={isDeleting} className="min-h-11" data-testid="button-cancel-delete">
             Cancel
           </AlertDialogCancel>
           <Button
             variant="destructive"
             onClick={handleDelete}
             disabled={!isConfirmValid || isDeleting || !preview}
+            className="min-h-11"
             data-testid="button-confirm-delete"
           >
             {isDeleting ? (
               <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Deleting...
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
+                Deleting…
               </>
             ) : (
               <>
-                <Trash2 className="w-4 h-4 mr-2" />
-                Delete {preview?.count || selectedIds.length} Lead{(preview?.count || selectedIds.length) !== 1 ? "s" : ""}
+                <Trash2 className="w-4 h-4 mr-2" aria-hidden="true" />
+                Delete <span className="tabular-nums mx-1">{count}</span> lead{count !== 1 ? "s" : ""}
               </>
             )}
           </Button>
@@ -304,31 +317,32 @@ export function useLeadUndoToast() {
       queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
       toast({
         title: "Leads restored",
-        description: `${data.restoredCount} lead(s) have been restored.`,
+        description: `${data.restoredCount} lead${data.restoredCount === 1 ? "" : "s"} restored.`,
       });
     },
     onError: (error: Error) => {
       toast({
-        title: "Restore failed",
-        description: error.message,
+        title: "Couldn't restore leads",
+        description: `${error.message} — the leads are still in trash. You can try again or restore them manually from Trash.`,
         variant: "destructive",
       });
     },
   });
-  
+
   const showUndoToast = (deletedCount: number, deletedIds: number[]) => {
     toast({
       title: "Leads moved to trash",
       description: (
         <div className="flex items-center justify-between gap-4">
-          <span>{deletedCount} lead(s) moved to trash.</span>
+          <span>{deletedCount} lead{deletedCount === 1 ? "" : "s"} moved to trash.</span>
           <Button
             variant="outline"
             size="sm"
             onClick={() => restoreMutation.mutate(deletedIds)}
             className="shrink-0"
+            aria-label={`Undo — restore ${deletedCount} lead${deletedCount === 1 ? "" : "s"} from trash`}
           >
-            <Undo2 className="w-3 h-3 mr-1" />
+            <Undo2 className="w-3 h-3 mr-1" aria-hidden="true" />
             Undo
           </Button>
         </div>
