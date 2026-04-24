@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useId } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import {
   Dialog,
   DialogContent,
@@ -29,9 +31,7 @@ import {
   Users,
   Plus,
   Trash2,
-  CheckCircle2,
   Clock,
-  AlertCircle,
   Trophy,
   Loader2,
 } from "lucide-react";
@@ -70,7 +70,7 @@ function getGoalStatus(goal: Goal) {
   if (pct >= 100) return { status: "completed", label: "Completed", color: "text-emerald-600", badgeVariant: "default" as const };
   if (daysLeft !== null && daysLeft < 0) return { status: "overdue", label: "Overdue", color: "text-red-600", badgeVariant: "destructive" as const };
   if (daysLeft !== null && daysLeft <= 7) return { status: "urgent", label: `${daysLeft}d left`, color: "text-amber-600", badgeVariant: "secondary" as const };
-  return { status: "active", label: "In Progress", color: "text-blue-600", badgeVariant: "outline" as const };
+  return { status: "active", label: "In progress", color: "text-blue-600", badgeVariant: "outline" as const };
 }
 
 function fmt(val: string | number, unit?: string): string {
@@ -84,9 +84,11 @@ function fmt(val: string | number, unit?: string): string {
 }
 
 export default function GoalsPage() {
+  useDocumentTitle("Goals & OKRs");
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
+  const [goalToDelete, setGoalToDelete] = useState<Goal | null>(null);
   const [newGoal, setNewGoal] = useState({
     name: "",
     category: "revenue",
@@ -94,6 +96,11 @@ export default function GoalsPage() {
     unit: "dollars",
     deadline: "",
   });
+  const nameId = useId();
+  const categoryId = useId();
+  const unitId = useId();
+  const targetId = useId();
+  const deadlineId = useId();
 
   const { data, isLoading } = useQuery<{ goals: Goal[] }>({
     queryKey: ["/api/goals"],
@@ -117,15 +124,27 @@ export default function GoalsPage() {
       setNewGoal({ name: "", category: "revenue", targetValue: "", unit: "dollars", deadline: "" });
       toast({ title: "Goal created", description: "Your new goal is being tracked." });
     },
-    onError: (err: any) => toast({ title: "Failed to create goal", description: err.message, variant: "destructive" }),
+    onError: (err: any) =>
+      toast({
+        title: "Couldn't create goal",
+        description: `${err.message} — no goal was created. Check your input and try again.`,
+        variant: "destructive",
+      }),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => apiRequest("DELETE", `/api/goals/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/goals"] });
-      toast({ title: "Goal removed" });
+      toast({ title: "Goal removed." });
+      setGoalToDelete(null);
     },
+    onError: (err: any) =>
+      toast({
+        title: "Couldn't remove goal",
+        description: `${err.message} — the goal is still being tracked.`,
+        variant: "destructive",
+      }),
   });
 
   const goals = data?.goals || [];
@@ -139,27 +158,27 @@ export default function GoalsPage() {
 
   return (
     <PageShell>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
         <div>
-          <h1 className="text-2xl font-bold">Goals & OKRs</h1>
-          <p className="text-muted-foreground text-sm mt-0.5">Track your organizational objectives and key results</p>
+          <h1 className="text-2xl font-bold">Goals &amp; OKRs</h1>
+          <p className="text-muted-foreground text-sm mt-0.5">Track your organizational objectives and key results.</p>
         </div>
-        <Button onClick={() => setCreateOpen(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          New Goal
+        <Button onClick={() => setCreateOpen(true)} className="min-h-11">
+          <Plus className="h-4 w-4 mr-2" aria-hidden="true" />
+          New goal
         </Button>
       </div>
       {/* Summary cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+      <dl className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-blue-50 dark:bg-blue-900/20">
+              <div className="p-2 rounded-lg bg-blue-50 dark:bg-blue-900/20" aria-hidden="true">
                 <Target className="h-5 w-5 text-blue-600" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{goals.length}</p>
-                <p className="text-sm text-muted-foreground">Active Goals</p>
+                <dd className="text-2xl font-bold tabular-nums">{goals.length}</dd>
+                <dt className="text-sm text-muted-foreground">Active goals</dt>
               </div>
             </div>
           </CardContent>
@@ -167,12 +186,12 @@ export default function GoalsPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-emerald-50 dark:bg-emerald-900/20">
+              <div className="p-2 rounded-lg bg-emerald-50 dark:bg-emerald-900/20" aria-hidden="true">
                 <Trophy className="h-5 w-5 text-emerald-600" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{completedCount}</p>
-                <p className="text-sm text-muted-foreground">Goals Completed</p>
+                <dd className="text-2xl font-bold tabular-nums">{completedCount}</dd>
+                <dt className="text-sm text-muted-foreground">Goals completed</dt>
               </div>
             </div>
           </CardContent>
@@ -180,115 +199,133 @@ export default function GoalsPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-900/20">
+              <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-900/20" aria-hidden="true">
                 <DollarSign className="h-5 w-5 text-amber-600" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{totalTargetRevenue > 0 ? Math.round((currentRevenue / totalTargetRevenue) * 100) : 0}%</p>
-                <p className="text-sm text-muted-foreground">Revenue on Track</p>
+                <dd className="text-2xl font-bold tabular-nums">{totalTargetRevenue > 0 ? Math.round((currentRevenue / totalTargetRevenue) * 100) : 0}%</dd>
+                <dt className="text-sm text-muted-foreground">Revenue on track</dt>
               </div>
             </div>
           </CardContent>
         </Card>
-      </div>
+      </dl>
 
       {isLoading ? (
-        <div className="flex items-center justify-center h-40">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <div className="flex items-center justify-center h-40" role="status" aria-live="polite">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" aria-hidden="true" />
+          <span className="sr-only">Loading goals…</span>
         </div>
       ) : goals.length === 0 ? (
         <Card>
           <CardContent className="py-16 text-center">
-            <Target className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-lg font-semibold mb-2">No goals yet</h3>
+            <Target className="h-12 w-12 text-muted-foreground mx-auto mb-4" aria-hidden="true" />
+            <h3 className="text-lg font-semibold mb-2">No goals yet.</h3>
             <p className="text-muted-foreground mb-4">Set revenue targets, deal counts, and other KPIs to track your progress.</p>
-            <Button onClick={() => setCreateOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Create Your First Goal
+            <Button onClick={() => setCreateOpen(true)} className="min-h-11">
+              <Plus className="h-4 w-4 mr-2" aria-hidden="true" />
+              Create your first goal
             </Button>
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <ul className="grid grid-cols-1 md:grid-cols-2 gap-4" aria-label="Your goals">
           {goals.map(goal => {
             const cfg = CATEGORY_CONFIG[goal.category as keyof typeof CATEGORY_CONFIG] || CATEGORY_CONFIG.custom;
             const Icon = cfg.icon;
             const current = parseFloat(goal.currentValue || "0");
             const target = parseFloat(goal.targetValue || "1");
             const pct = Math.min(100, Math.round((current / target) * 100));
-            const { status, label, color, badgeVariant } = getGoalStatus(goal);
+            const { label, color, badgeVariant } = getGoalStatus(goal);
 
             return (
-              <Card key={goal.id} className="relative">
-                <CardHeader className="pb-2">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className={`p-2 rounded-lg ${cfg.bg}`}>
-                        <Icon className={`h-4 w-4 ${cfg.color}`} />
+              <li key={goal.id}>
+                <Card className="relative">
+                  <CardHeader className="pb-2">
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className={`p-2 rounded-lg ${cfg.bg}`} aria-hidden="true">
+                          <Icon className={`h-4 w-4 ${cfg.color}`} />
+                        </div>
+                        <div>
+                          <CardTitle className="text-base">{goal.name}</CardTitle>
+                          <CardDescription className="text-xs">{cfg.label}</CardDescription>
+                        </div>
                       </div>
-                      <div>
-                        <CardTitle className="text-base">{goal.name}</CardTitle>
-                        <CardDescription className="text-xs">{cfg.label}</CardDescription>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={badgeVariant}>{label}</Badge>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-9 min-h-9 min-w-9"
+                          onClick={() => setGoalToDelete(goal)}
+                          aria-label={`Delete goal: ${goal.name}`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+                        </Button>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant={badgeVariant}>{label}</Badge>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
-                        onClick={() => deleteMutation.mutate(goal.id)}
-                        aria-label="Delete goal"
-                      >
-                        <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
-                      </Button>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    <div className="flex items-end justify-between">
-                      <div>
-                        <span className="text-2xl font-bold">{fmt(current, goal.unit)}</span>
-                        <span className="text-muted-foreground text-sm ml-1">/ {fmt(target, goal.unit)}</span>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      <div className="flex items-end justify-between">
+                        <div>
+                          <span className="text-2xl font-bold tabular-nums">{fmt(current, goal.unit)}</span>
+                          <span className="text-muted-foreground text-sm ml-1 tabular-nums">/ {fmt(target, goal.unit)}</span>
+                        </div>
+                        <span className={`text-lg font-semibold tabular-nums ${color}`}>{pct}%</span>
                       </div>
-                      <span className={`text-lg font-semibold ${color}`}>{pct}%</span>
+                      <Progress
+                        value={pct}
+                        className="h-2"
+                        aria-label={`${goal.name}: ${pct}% of ${fmt(target, goal.unit)} target`}
+                      />
+                      {goal.deadline && (
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <Clock className="h-3 w-3" aria-hidden="true" />
+                          <span className="tabular-nums">Deadline: {format(new Date(goal.deadline), "MMM d, yyyy")}</span>
+                        </div>
+                      )}
                     </div>
-                    <Progress value={pct} className="h-2" />
-                    {goal.deadline && (
-                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                        <Clock className="h-3 w-3" />
-                        <span>Deadline: {format(new Date(goal.deadline), "MMM d, yyyy")}</span>
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+              </li>
             );
           })}
-        </div>
+        </ul>
       )}
 
       {/* Create Goal Dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Create New Goal</DialogTitle>
+            <DialogTitle>Create new goal</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2">
+          <form
+            className="space-y-4 py-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (createMutation.isPending || !newGoal.name || !newGoal.targetValue) return;
+              createMutation.mutate(newGoal);
+            }}
+          >
             <div className="space-y-1.5">
-              <Label>Goal Name</Label>
+              <Label htmlFor={nameId}>
+                Goal name <span className="text-destructive" aria-label="required">*</span>
+              </Label>
               <Input
+                id={nameId}
                 placeholder="e.g., Close 10 deals this quarter"
                 value={newGoal.name}
                 onChange={e => setNewGoal(g => ({ ...g, name: e.target.value }))}
+                autoCapitalize="sentences"
               />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label>Category</Label>
+                <Label htmlFor={categoryId}>Category</Label>
                 <Select value={newGoal.category} onValueChange={v => setNewGoal(g => ({ ...g, category: v }))}>
-                  <SelectTrigger>
+                  <SelectTrigger id={categoryId}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -299,9 +336,9 @@ export default function GoalsPage() {
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label>Unit</Label>
+                <Label htmlFor={unitId}>Unit</Label>
                 <Select value={newGoal.unit} onValueChange={v => setNewGoal(g => ({ ...g, unit: v }))}>
-                  <SelectTrigger>
+                  <SelectTrigger id={unitId}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -314,38 +351,58 @@ export default function GoalsPage() {
                 </Select>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label>Target Value</Label>
+                <Label htmlFor={targetId}>
+                  Target value <span className="text-destructive" aria-label="required">*</span>
+                </Label>
                 <Input
+                  id={targetId}
                   type="number"
+                  inputMode="decimal"
+                  min={0}
+                  step="any"
                   placeholder="100000"
                   value={newGoal.targetValue}
                   onChange={e => setNewGoal(g => ({ ...g, targetValue: e.target.value }))}
                 />
               </div>
               <div className="space-y-1.5">
-                <Label>Deadline (optional)</Label>
+                <Label htmlFor={deadlineId}>Deadline (optional)</Label>
                 <Input
+                  id={deadlineId}
                   type="date"
                   value={newGoal.deadline}
                   onChange={e => setNewGoal(g => ({ ...g, deadline: e.target.value }))}
                 />
               </div>
             </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
-            <Button
-              onClick={() => createMutation.mutate(newGoal)}
-              disabled={!newGoal.name || !newGoal.targetValue || createMutation.isPending}
-            >
-              {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-              Create Goal
-            </Button>
-          </DialogFooter>
+            <DialogFooter>
+              <Button type="button" variant="outline" className="min-h-11" onClick={() => setCreateOpen(false)}>Cancel</Button>
+              <Button
+                type="submit"
+                className="min-h-11"
+                disabled={!newGoal.name || !newGoal.targetValue || createMutation.isPending}
+              >
+                {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" aria-hidden="true" /> : null}
+                Create goal
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={!!goalToDelete}
+        onOpenChange={(open) => !open && setGoalToDelete(null)}
+        title={goalToDelete ? `Delete "${goalToDelete.name}"?` : "Delete goal?"}
+        description="This removes the goal and its progress history. Your underlying data (leads, deals, revenue) is unchanged."
+        confirmLabel="Delete goal"
+        variant="destructive"
+        onConfirm={() => {
+          if (goalToDelete) deleteMutation.mutate(goalToDelete.id);
+        }}
+      />
     </PageShell>
   );
 }
