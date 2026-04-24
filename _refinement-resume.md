@@ -1,6 +1,35 @@
 # Elite-Team Refinement — Resume Point
 
-**Last session:** 2026-04-24 (session 32 — SafeBulkDeleteDialog + TaxDelinquentImporter)
+**Last session:** 2026-04-24 (session 33 — /campaigns 6c: AbTestManager + variants + analytics)
+**Last completed refinement:** Three deferred /campaigns 6c
+components (1343 lines). `AbTestManager` (675): 5 error-toast
+paths upgraded with state-change reassurance (create/start/
+complete/apply-winner/delete), create-test Dialog migrated to
+<form onSubmit>, 6 Inputs get Label htmlFor via useId (sr-only
+where Badge+heading provide grouping), test-type Select
+applies slice-25 teach-via-option-label rule, test-history
+Cards upgraded from <Card onClick> to role=button + tabIndex
++ aria-expanded + keyboard Enter/Space per slice-7, variant
+stats → dl/dt/dd with tabular-nums, Progress bars aria-label,
+Delete icon button aria-label names test, sentence-case sweep
+(~12 replacements), lists promoted to ul/li, 30+ icons aria-
+hidden, 44px touch. `CampaignVariantsPanel` (381): 3 error-
+toast paths reassurance voice, create-variant Dialog → form
+onSubmit, traffic-split Input aria-describedby + inputMode=
+numeric, required-asterisk + disabled-unless-named submit,
+variants list → ul/li, stats grid → dl/dt/dd, AI-analysis
+Card role=status + aria-live, declare-winner aria-label
+names variant, tooltip pruned per slice-5c, h-9 mobile shrink
+to h-7 desktop, 15+ icons aria-hidden, sentence-case (~8
+replacements). `CampaignAnalytics` (287): 6 titles + stat
+labels sentence-case, error state role=alert + reassurance,
+funnel Progress bars aria-label, responses list → ul/li
+with mailto:/tel: per slice-7, tabular-nums throughout, 8
+icons aria-hidden. Zero new cross-cutting rules.
+
+---
+
+**Prior session:** 2026-04-24 (session 32 — SafeBulkDeleteDialog + TaxDelinquentImporter)
 **Last completed refinement:** Two shared dialog components
 used by /leads — closes the remaining /leads dialog work
 deferred from slice 17b. `SafeBulkDeleteDialog`: DELETE
@@ -510,6 +539,7 @@ to a dedicated 9b slice.
 **/leads 17b (30):** ✅ complete — LeadForm + LeadDetailDrawer + import CSV + ScoreBreakdown (commit `aa6ff78`)
 **/onboarding-v2 18b (31):** ✅ complete — 6 deferred step components, closes /onboarding-v2 arc (commit `cd35c33`)
 **SafeBulkDeleteDialog + TaxDelinquentImporter (32):** ✅ complete — closes /leads dialog arc (commit `b06bbff`)
+**/campaigns 6c (33):** ✅ complete — AbTestManager + variants + analytics, closes /campaigns arc (commit `67e61b9`)
 **/onboarding-v2 targeted (18):** ✅ complete (commit `70df779`) — 18b deferred
 **/settings targeted (19):** ✅ complete (commit `809044c`) — 19b remaining components deferred
 **/pipeline (20):** ✅ complete (commit `1b5d0f7`)
@@ -1082,23 +1112,24 @@ Session 24:
 
 ## Next surface to refine
 
-**Settings + /finance + /leads + /onboarding-v2 arcs
-complete.** Shift focus:
+**Settings + /finance + /leads + /onboarding-v2 +
+/campaigns arcs complete.** Shift focus:
 
-1. **`/campaigns` 6c** — AbTestManager +
-   CampaignVariantsPanel + CampaignAnalytics deferred
-   component-set.
+1. **Placeholder-disambiguation grep sweep (slice 24
+   rule)** — find other confirmation Inputs that show
+   the verification token in the placeholder. Quick
+   horizontal pass.
 
-2. **jsPDF 1098 generator (slice 10b.ii)** — product +
-   compliance question on IRS form fidelity.
-
-3. **Teach-via-option-label grep sweep (slice 25 rule)**
+2. **Teach-via-option-label grep sweep (slice 25 rule)**
    — find other `<Select>` options across the app with
    bare permission/mode/tier labels.
 
-4. **Placeholder-disambiguation grep sweep (slice 24
-   rule)** — find other confirmation Inputs that show
-   the verification token in the placeholder.
+3. **Money-precision grep (slice 10b rule)** — ~63 files
+   still using bare `.toLocaleString()` on money values;
+   sweep the remaining surfaces.
+
+4. **jsPDF 1098 generator (slice 10b.ii)** — product +
+   compliance question on IRS form fidelity.
 
 3. **`/onboarding-v2` 18b** — remaining ~1100 lines
    (portfolio-import, county form, strategy cards, atlas
