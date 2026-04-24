@@ -15,6 +15,7 @@ import {
   type Role
 } from "@/hooks/use-organization";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -1618,6 +1619,8 @@ function TwoFactorAuthSettings() {
   const [verifyCode, setVerifyCode] = useState("");
   const [backupCodes, setBackupCodes] = useState<string[]>([]);
   const [showSetup, setShowSetup] = useState(false);
+  const [showDisableDialog, setShowDisableDialog] = useState(false);
+  const [disableCode, setDisableCode] = useState("");
 
   const { data: status, refetch: refetchStatus } = useQuery<{ enabled: boolean; backupCodesRemaining: number }>({
     queryKey: ["/api/auth/2fa/status"],
@@ -1632,35 +1635,52 @@ function TwoFactorAuthSettings() {
       setBackupCodes(data.backupCodes || []);
       setShowSetup(true);
     },
-    onError: () => toast({ title: "Failed to set up 2FA", variant: "destructive" }),
+    onError: (err: any) =>
+      toast({
+        title: "Couldn't start 2FA setup",
+        description: err?.message || "Check your connection and try again — 2FA is still off.",
+        variant: "destructive",
+      }),
   });
 
   const verifyMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/auth/2fa/verify-setup", { code: verifyCode }).then(r => r.json()),
     onSuccess: () => {
-      toast({ title: "2FA enabled successfully" });
+      toast({ title: "Two-factor authentication is on" });
       setShowSetup(false);
       setVerifyCode("");
       refetchStatus();
     },
-    onError: () => toast({ title: "Invalid code. Please try again.", variant: "destructive" }),
+    onError: () =>
+      toast({
+        title: "Code didn't match",
+        description: "Open your authenticator app and enter the current 6-digit code. 2FA is still off.",
+        variant: "destructive",
+      }),
   });
 
   const disableMutation = useMutation({
     mutationFn: (code: string) => apiRequest("POST", "/api/auth/2fa/disable", { code }).then(r => r.json()),
     onSuccess: () => {
-      toast({ title: "2FA disabled" });
+      toast({ title: "Two-factor authentication is off" });
+      setShowDisableDialog(false);
+      setDisableCode("");
       refetchStatus();
     },
-    onError: () => toast({ title: "Invalid code", variant: "destructive" }),
+    onError: (err: any) =>
+      toast({
+        title: "Couldn't disable 2FA",
+        description: err?.message || "Code didn't match. 2FA is still on — try again with the current authenticator code.",
+        variant: "destructive",
+      }),
   });
 
   return (
     <Card data-testid="card-2fa-settings">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Shield className="w-5 h-5" />
-          Two-Factor Authentication
+          <Shield className="w-5 h-5" aria-hidden="true" />
+          Two-factor authentication
         </CardTitle>
         <CardDescription>
           Add an extra layer of security with a time-based authenticator app (Google Authenticator, Authy, 1Password).
@@ -1669,76 +1689,121 @@ function TwoFactorAuthSettings() {
       <CardContent className="space-y-4">
         {status?.enabled ? (
           <div className="space-y-3">
-            <div className="flex items-center gap-2 text-green-600">
-              <CheckCircle2 className="w-4 h-4" />
+            <div className="flex items-center gap-2 text-green-600" role="status">
+              <CheckCircle2 className="w-4 h-4" aria-hidden="true" />
               <span className="text-sm font-medium">2FA is enabled</span>
             </div>
             <p className="text-xs text-muted-foreground">
-              Backup codes remaining: <strong>{status.backupCodesRemaining}</strong>
+              Backup codes remaining: <strong className="tabular-nums">{status.backupCodesRemaining}</strong>
             </p>
             <Button
               variant="outline"
               size="sm"
+              className="min-h-11 sm:min-h-9"
               data-testid="button-disable-2fa"
-              onClick={() => {
-                const code = window.prompt("Enter your 6-digit authenticator code to disable 2FA:");
-                if (code) disableMutation.mutate(code);
-              }}
+              onClick={() => setShowDisableDialog(true)}
             >
               Disable 2FA
             </Button>
+            <Dialog open={showDisableDialog} onOpenChange={(v) => { setShowDisableDialog(v); if (!v) setDisableCode(""); }}>
+              <DialogContent className="sm:max-w-sm">
+                <DialogHeader>
+                  <DialogTitle>Disable two-factor authentication?</DialogTitle>
+                  <DialogDescription>
+                    Enter your current 6-digit authenticator code to turn 2FA off. Your account will no longer require a second step at sign-in.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-2">
+                  <Label htmlFor="disable-2fa-code">Authenticator code</Label>
+                  <Input
+                    id="disable-2fa-code"
+                    placeholder="6-digit code"
+                    value={disableCode}
+                    onChange={e => setDisableCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    maxLength={6}
+                    autoComplete="one-time-code"
+                    inputMode="numeric"
+                    autoCapitalize="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    data-testid="input-2fa-disable-code"
+                  />
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setShowDisableDialog(false)}>Cancel</Button>
+                  <Button
+                    variant="destructive"
+                    onClick={() => disableMutation.mutate(disableCode)}
+                    disabled={disableCode.length !== 6 || disableMutation.isPending}
+                    data-testid="button-confirm-disable-2fa"
+                  >
+                    {disableMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" /> : null}
+                    Disable 2FA
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
           </div>
         ) : showSetup ? (
           <div className="space-y-4">
             <p className="text-sm">Scan this QR code with your authenticator app:</p>
             {qrCode && (
               <div className="flex justify-center">
-                <img src={qrCode} alt="2FA QR Code" className="w-40 h-40 border rounded" data-testid="img-2fa-qr" />
+                <img src={qrCode} alt="Scan this QR code with your authenticator app" className="w-40 h-40 border rounded" data-testid="img-2fa-qr" />
               </div>
             )}
             {secret && (
               <p className="text-xs text-muted-foreground text-center">
-                Manual entry key: <code className="font-mono bg-muted px-1 rounded">{secret}</code>
+                Manual entry key: <code className="font-mono bg-muted px-1 rounded tabular-nums">{secret}</code>
               </p>
             )}
             {backupCodes.length > 0 && (
               <div className="rounded-md bg-muted p-3 space-y-1">
-                <p className="text-xs font-medium">Save these backup codes in a safe place:</p>
+                <p className="text-xs font-medium">Save these backup codes in a safe place. Each can be used once if you lose access to your authenticator.</p>
                 <div className="grid grid-cols-2 gap-1">
                   {backupCodes.map((code, i) => (
-                    <code key={i} className="text-xs font-mono">{code}</code>
+                    <code key={i} className="text-xs font-mono tabular-nums">{code}</code>
                   ))}
                 </div>
               </div>
             )}
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Label htmlFor="input-2fa-verify-code" className="sr-only">6-digit authenticator code</Label>
               <Input
+                id="input-2fa-verify-code"
                 placeholder="6-digit code"
                 value={verifyCode}
                 onChange={e => setVerifyCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
                 maxLength={6}
+                autoComplete="one-time-code"
+                inputMode="numeric"
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
                 data-testid="input-2fa-verify-code"
-                className="w-36"
+                className="w-full sm:w-36"
               />
               <Button
                 size="sm"
+                className="min-h-11 sm:min-h-9"
                 onClick={() => verifyMutation.mutate()}
                 disabled={verifyCode.length !== 6 || verifyMutation.isPending}
                 data-testid="button-verify-2fa"
               >
-                {verifyMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Verify & Enable"}
+                {verifyMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : "Verify and enable"}
               </Button>
-              <Button variant="ghost" size="sm" onClick={() => setShowSetup(false)}>Cancel</Button>
+              <Button variant="ghost" size="sm" className="min-h-11 sm:min-h-9" onClick={() => setShowSetup(false)}>Cancel</Button>
             </div>
           </div>
         ) : (
           <Button
             size="sm"
+            className="min-h-11 sm:min-h-9"
             onClick={() => setupMutation.mutate()}
             disabled={setupMutation.isPending}
             data-testid="button-setup-2fa"
           >
-            {setupMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Set Up 2FA"}
+            {setupMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : "Set up 2FA"}
           </Button>
         )}
       </CardContent>
@@ -1758,67 +1823,92 @@ function PasswordChangeSettings() {
     mutationFn: () =>
       apiRequest("POST", "/api/auth/change-password", { currentPassword, newPassword }).then(r => r.json()),
     onSuccess: () => {
-      toast({ title: "Password changed successfully" });
+      toast({ title: "Password changed" });
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
     },
-    onError: (err: any) => toast({ title: err?.message || "Failed to change password", variant: "destructive" }),
+    onError: (err: any) =>
+      toast({
+        title: "Couldn't change password",
+        description: err?.message || "Check your current password and try again — your password hasn't changed.",
+        variant: "destructive",
+      }),
   });
 
-  const valid = currentPassword && newPassword.length >= 8 && newPassword === confirmPassword;
+  const passwordsMatch = !confirmPassword || newPassword === confirmPassword;
+  const valid = !!currentPassword && newPassword.length >= 8 && newPassword === confirmPassword;
 
   return (
     <Card data-testid="card-password-change">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Shield className="w-5 h-5" />
-          Change Password
+          <Shield className="w-5 h-5" aria-hidden="true" />
+          Change password
         </CardTitle>
         <CardDescription>Update your account password. Use at least 8 characters.</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-3 max-w-sm">
-        <div className="space-y-1">
-          <Label htmlFor="current-password">Current Password</Label>
-          <Input
-            id="current-password"
-            type="password"
-            value={currentPassword}
-            onChange={e => setCurrentPassword(e.target.value)}
-            data-testid="input-current-password"
-          />
-        </div>
-        <div className="space-y-1">
-          <Label htmlFor="new-password">New Password</Label>
-          <Input
-            id="new-password"
-            type="password"
-            value={newPassword}
-            onChange={e => setNewPassword(e.target.value)}
-            data-testid="input-new-password"
-          />
-        </div>
-        <div className="space-y-1">
-          <Label htmlFor="confirm-password">Confirm New Password</Label>
-          <Input
-            id="confirm-password"
-            type="password"
-            value={confirmPassword}
-            onChange={e => setConfirmPassword(e.target.value)}
-            data-testid="input-confirm-password"
-          />
-          {confirmPassword && newPassword !== confirmPassword && (
-            <p className="text-xs text-destructive">Passwords do not match</p>
-          )}
-        </div>
-        <Button
-          size="sm"
-          onClick={() => changeMutation.mutate()}
-          disabled={!valid || changeMutation.isPending}
-          data-testid="button-change-password"
+      <CardContent>
+        <form
+          className="space-y-3 max-w-sm"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (valid && !changeMutation.isPending) changeMutation.mutate();
+          }}
         >
-          {changeMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Change Password"}
-        </Button>
+          <div className="space-y-1">
+            <Label htmlFor="current-password">Current password</Label>
+            <Input
+              id="current-password"
+              type="password"
+              autoComplete="current-password"
+              value={currentPassword}
+              onChange={e => setCurrentPassword(e.target.value)}
+              data-testid="input-current-password"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="new-password">New password</Label>
+            <Input
+              id="new-password"
+              type="password"
+              autoComplete="new-password"
+              minLength={8}
+              value={newPassword}
+              onChange={e => setNewPassword(e.target.value)}
+              data-testid="input-new-password"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="confirm-password">Confirm new password</Label>
+            <Input
+              id="confirm-password"
+              type="password"
+              autoComplete="new-password"
+              minLength={8}
+              value={confirmPassword}
+              onChange={e => setConfirmPassword(e.target.value)}
+              aria-invalid={!passwordsMatch}
+              aria-describedby={!passwordsMatch ? "confirm-password-error" : undefined}
+              data-testid="input-confirm-password"
+            />
+            {!passwordsMatch && (
+              <p id="confirm-password-error" className="text-xs text-destructive" role="alert">
+                The two passwords don't match. Please retype them.
+              </p>
+            )}
+          </div>
+          <Button
+            type="submit"
+            size="sm"
+            className="min-h-11 sm:min-h-9"
+            disabled={!valid || changeMutation.isPending}
+            data-testid="button-change-password"
+          >
+            {changeMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" /> : null}
+            Change password
+          </Button>
+        </form>
       </CardContent>
     </Card>
   );

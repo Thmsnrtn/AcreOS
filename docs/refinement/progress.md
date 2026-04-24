@@ -3798,3 +3798,147 @@ upgraded:**
   the rule.
 
 **Commit:** (pending)
+
+---
+
+## Session 22 — 2026-04-24 — /settings security sub-slice (2FA + password change, slice 19b.i)
+
+**Scope:** Security-critical components inside
+`/settings.tsx` — `TwoFactorAuthSettings` (lines 1612-1746)
+and `PasswordChangeSettings` (1749-1826). First slice of the
+19b completion work. These are the two most security-
+sensitive sub-components in the settings tree, so they get
+prioritized.
+
+**Lens sweep + refinements shipped:**
+
+- **Trust + A11y (P0 — window.prompt on 2FA disable):**
+  `TwoFactorAuthSettings` used `window.prompt("Enter your
+  6-digit authenticator code to disable 2FA:")` to capture
+  the disable code. `window.prompt` is banned for the same
+  reasons `window.confirm` was (slice 5l) — no focus trap,
+  no proper input semantics, inconsistent styling next to
+  Radix dialogs — AND additionally on a security surface
+  it's worse: no `autoComplete="one-time-code"`, no
+  `inputMode="numeric"`, no proper accessible Label, no
+  aria wiring. On mobile this means iOS Safari doesn't
+  offer SMS autofill and the user types the code manually.
+  Fully replaced with a Radix `<Dialog>` + `<Label htmlFor>`
+  + `<Input autoComplete="one-time-code" inputMode="numeric"
+  autoCapitalize="off" autoCorrect="off" spellCheck={false}
+  maxLength={6}>` + confirm/cancel buttons with a
+  destructive-variant confirm. Each tick of the slice-5l
+  rule now checked.
+
+- **Trust (Money/security-action reassurance — apply slice
+  19 rule):** 2FA mutation error paths previously said
+  "Failed to set up 2FA" / "Invalid code. Please try again."
+  / "Invalid code." — generic and didn't name the current
+  state. Upgraded to:
+  - setupMutation error: "Couldn't start 2FA setup / Check
+    your connection and try again — **2FA is still off**."
+  - verifyMutation error: "Code didn't match / Open your
+    authenticator app and enter the current 6-digit code.
+    **2FA is still off**."
+  - disableMutation error: "Couldn't disable 2FA / Code
+    didn't match. **2FA is still on** — try again with the
+    current authenticator code."
+  Each error path now explicitly names the current 2FA
+  state (on/off) per the slice-19 rule, applied to security
+  rather than money. Same anxiety-reduction payoff.
+
+- **Engineer (form semantics on password change):**
+  `PasswordChangeSettings` was a bare collection of Labels
+  + Inputs + Button-onClick. No `<form onSubmit>`, so Enter
+  in any field did nothing. Wrapped in `<form>` + moved
+  submit handler to `onSubmit` + Button `type="submit"`.
+  Enter now submits from any field. Inputs gained proper
+  `autoComplete` values (`current-password`, `new-password`,
+  `new-password`) so password managers can fill / capture
+  correctly. `minLength={8}` added to both new-password
+  fields for browser-level validation. aria-invalid +
+  aria-describedby wired when passwords don't match.
+  Error message role=alert.
+
+- **Copy (sentence-case + voice):** "Two-Factor
+  Authentication" → "Two-factor authentication"; "Change
+  Password" → "Change password" (section + button); "Set
+  Up 2FA" → "Set up 2FA"; "Verify & Enable" → "Verify and
+  enable"; "2FA enabled successfully" → "Two-factor
+  authentication is on"; "2FA disabled" → "Two-factor
+  authentication is off"; "Current Password" / "New
+  Password" / "Confirm New Password" → sentence-case;
+  "Passwords do not match" → "The two passwords don't
+  match. Please retype them." (warmer + actionable).
+
+- **A11y (decorative-icon aria-hidden):** Shield (2FA
+  CardTitle + password CardTitle), CheckCircle2 (2FA-on
+  indicator), Loader2 (× 4 mutation-pending spinners).
+
+- **A11y (status indicator):** "2FA is enabled" row wrapped
+  in `role="status"` so SR users hear current state when
+  the card renders.
+
+- **A11y (QR-code alt text):** was `alt="2FA QR Code"` —
+  fine but uninformative. Upgraded to "Scan this QR code
+  with your authenticator app" — directive + matches the
+  sighted-user instruction.
+
+- **A11y (backup-codes instruction):** "Save these backup
+  codes in a safe place" → "Save these backup codes in a
+  safe place. Each can be used once if you lose access to
+  your authenticator." — names *why* they matter, which
+  reduces the odds users skip saving them.
+
+- **Mobile (touch):** all 2FA + password-change buttons
+  gain `min-h-11 sm:min-h-9` (44px mobile touch). 2FA
+  verify row switches `flex-col sm:flex-row` so at 320px
+  the Input, Verify, Cancel stack rather than clip.
+
+- **Tabular-nums:** backup-codes-remaining count, manual-
+  entry secret string (so fixed-width digits don't jitter
+  when the value is revealed), backup-code list.
+
+**9-lens sign-off:**
+
+| Lens              | Status                                                                                     |
+| ----------------- | ------------------------------------------------------------------------------------------ |
+| Designer          | PASS — sentence-case, tabular-nums, stack on mobile                                       |
+| Mobile designer   | PASS — 44px touch, flex-col at 320px, Input gets numeric keyboard via inputMode           |
+| Accessibility     | PASS — window.prompt replaced with accessible Dialog, aria-invalid + role=alert on form, decorative icons aria-hidden, directive QR alt |
+| Engineer          | PASS — form onSubmit + Enter submit, autoComplete + minLength                             |
+| Copywriter        | PASS — sentence-case, current-state-named errors (2FA is on/off), warmer password-match   |
+| Trust             | PASS — security actions now carry current-state reassurance, window.prompt eliminated     |
+
+**Deferred (remaining 19b sub-slices):**
+- StripeConnectSettings (lines 107-376) — billing surface
+- SeatManagement (377-553) — team surface
+- ReferralSettings (1822-1941)
+- GoalsSettings (1942-2123) — has bare .toLocaleString()
+  money site, apply usd()
+- ApiKeyManager (2124-2368) — security-adjacent, may have
+  similar prompt/confirm issues
+- ActivityLogPanel (2369-2440)
+- PrivacyDataSettings (2441+) — account deletion is
+  security-critical
+
+**Patterns reinforced:**
+- **Money-action error reassurance rule → generalized:** the
+  rule (slice 19) now applies cleanly to *any* action that
+  affects account state the user cares about — billing,
+  auth, security, sharing, deletion. Not just money. Error
+  toasts should name the current state (on/off, enabled/
+  disabled, subscribed/cancelled, shared/private, etc.)
+  when the action could have changed it. Renaming the
+  rule to "State-change error reassurance rule" is
+  tempting but "money-action" was the original naming —
+  keep the name, broaden the scope.
+- **window.prompt ban (new 22):** `window.prompt` is
+  subject to the same inaccessibility constraints as
+  `window.confirm` (slice 5l), PLUS on a security surface
+  it prevents proper input semantics. Replace with a
+  Radix Dialog + Input with appropriate `autoComplete`,
+  `inputMode`, etc. This extends the slice-5l
+  window.confirm ban to prompt.
+
+**Commit:** (pending)
