@@ -21,6 +21,8 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ConversionFunnel, type FunnelStage } from "@/components/ui/conversion-funnel";
 import DealsPage from "@/pages/deals";
+import { dollarsCompact } from "@/lib/format";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 const LeadsPage = lazy(() => import("@/pages/leads"));
 const PropertiesPage = lazy(() => import("@/pages/properties"));
@@ -38,7 +40,11 @@ function getTabFromHash(): TabValue {
 
 function TabFallback() {
   return (
-    <div className="flex items-center justify-center py-20">
+    <div
+      className="flex items-center justify-center py-20"
+      role="status"
+      aria-live="polite"
+    >
       <div className="animate-pulse text-muted-foreground text-sm">Loading…</div>
     </div>
   );
@@ -108,16 +114,14 @@ function PipelineIntelligenceHeader({ leads, deals }: { leads: Lead[]; deals: De
         <CardContent className="p-4">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-primary" />
-              <span className="font-semibold text-sm">Pipeline Funnel</span>
+              <TrendingUp className="w-4 h-4 text-primary" aria-hidden="true" />
+              <span className="font-semibold text-sm">Pipeline funnel</span>
             </div>
             <div className="flex items-center gap-3 text-xs text-muted-foreground">
-              <span>{totalLeads} active leads</span>
+              <span><span className="tabular-nums">{totalLeads}</span> active leads</span>
               {totalPipelineValue > 0 && (
-                <span className="text-primary font-medium">
-                  ${totalPipelineValue >= 1_000_000
-                    ? `${(totalPipelineValue / 1_000_000).toFixed(1)}M`
-                    : `${(totalPipelineValue / 1000).toFixed(0)}K`} pipeline
+                <span className="text-primary font-medium tabular-nums">
+                  {dollarsCompact(totalPipelineValue * 100)} pipeline
                 </span>
               )}
             </div>
@@ -135,33 +139,31 @@ function PipelineIntelligenceHeader({ leads, deals }: { leads: Lead[]; deals: De
       </Card>
 
       {/* Velocity metrics */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2" role="group" aria-label="Pipeline velocity metrics">
         {hotDeals > 0 && (
           <div className="flex items-center gap-2 rounded-lg border border-orange-200 bg-orange-50 dark:border-orange-800 dark:bg-orange-900/20 px-3 py-2">
-            <Flame className="w-4 h-4 text-orange-500 shrink-0" />
+            <Flame className="w-4 h-4 text-orange-500 shrink-0" aria-hidden="true" />
             <div>
-              <p className="text-xs font-semibold">{hotDeals} Hot</p>
-              <p className="text-[10px] text-muted-foreground">accepted/escrow</p>
+              <p className="text-xs font-semibold tabular-nums">{hotDeals} hot</p>
+              <p className="text-[10px] text-muted-foreground">accepted / in escrow</p>
             </div>
           </div>
         )}
         {stalledDeals > 0 && (
           <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20 px-3 py-2">
-            <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
+            <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" aria-hidden="true" />
             <div>
-              <p className="text-xs font-semibold">{stalledDeals} Stalled</p>
+              <p className="text-xs font-semibold tabular-nums">{stalledDeals} stalled</p>
               <p className="text-[10px] text-muted-foreground">14+ days idle</p>
             </div>
           </div>
         )}
         {totalPipelineValue > 0 && (
           <div className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-900/20 px-3 py-2">
-            <DollarSign className="w-4 h-4 text-blue-500 shrink-0" />
+            <DollarSign className="w-4 h-4 text-blue-500 shrink-0" aria-hidden="true" />
             <div>
-              <p className="text-xs font-semibold">
-                ${totalPipelineValue >= 1_000_000
-                  ? `${(totalPipelineValue / 1_000_000).toFixed(1)}M`
-                  : `${(totalPipelineValue / 1000).toFixed(0)}K`}
+              <p className="text-xs font-semibold tabular-nums">
+                {dollarsCompact(totalPipelineValue * 100)}
               </p>
               <p className="text-[10px] text-muted-foreground">in pipeline</p>
             </div>
@@ -171,21 +173,21 @@ function PipelineIntelligenceHeader({ leads, deals }: { leads: Lead[]; deals: De
           <div className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 dark:border-primary/30 dark:bg-primary/10 px-3 py-2">
             <TrendingUp className="w-4 h-4 text-primary shrink-0" aria-hidden="true" />
             <div>
-              <p className="text-xs font-semibold">Score {avgScore}</p>
+              <p className="text-xs font-semibold tabular-nums">Score {avgScore}</p>
               <p className="text-[10px] text-muted-foreground">avg lead quality</p>
             </div>
           </div>
         )}
         {closedValue > 0 && (
           <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-900/20 px-3 py-2">
-            <TrendingUp className="w-4 h-4 text-emerald-500 shrink-0" />
+            <TrendingUp className="w-4 h-4 text-emerald-500 shrink-0" aria-hidden="true" />
             <div>
-              <p className="text-xs font-semibold">
-                ${closedValue >= 1_000_000
-                  ? `${(closedValue / 1_000_000).toFixed(1)}M`
-                  : `${(closedValue / 1000).toFixed(0)}K`}
+              <p className="text-xs font-semibold tabular-nums">
+                {dollarsCompact(closedValue * 100)}
               </p>
-              <p className="text-[10px] text-muted-foreground">{closedDeals.length} closed</p>
+              <p className="text-[10px] text-muted-foreground">
+                <span className="tabular-nums">{closedDeals.length}</span> closed
+              </p>
             </div>
           </div>
         )}
@@ -197,6 +199,7 @@ function PipelineIntelligenceHeader({ leads, deals }: { leads: Lead[]; deals: De
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function PipelinePage() {
+  useDocumentTitle("Pipeline — AcreOS");
   const [activeTab, setActiveTab] = useState<TabValue>(getTabFromHash);
 
   const { data: leads = [] } = useQuery<Lead[]>({
@@ -247,29 +250,29 @@ export default function PipelinePage() {
       <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6" data-testid="tabs-pipeline">
         <TabsList className="w-full sm:w-auto overflow-x-auto flex-nowrap" data-testid="tabs-list-pipeline">
           <TabsTrigger value="board" className="flex items-center gap-2 min-w-max" data-testid="tab-board">
-            <GitBranch className="h-4 w-4" />
+            <GitBranch className="h-4 w-4" aria-hidden="true" />
             <span>Board</span>
             {activeDealsCount > 0 && (
-              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 ml-0.5">{activeDealsCount}</Badge>
+              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 ml-0.5 tabular-nums">{activeDealsCount}</Badge>
             )}
           </TabsTrigger>
           <TabsTrigger value="leads" className="flex items-center gap-2 min-w-max" data-testid="tab-leads">
-            <Users className="h-4 w-4" />
+            <Users className="h-4 w-4" aria-hidden="true" />
             <span>Leads</span>
             {activeLeads > 0 && (
-              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 ml-0.5">{activeLeads}</Badge>
+              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 ml-0.5 tabular-nums">{activeLeads}</Badge>
             )}
           </TabsTrigger>
           <TabsTrigger value="properties" className="flex items-center gap-2 min-w-max" data-testid="tab-properties">
-            <Map className="h-4 w-4" />
+            <Map className="h-4 w-4" aria-hidden="true" />
             <span>Properties</span>
           </TabsTrigger>
           <TabsTrigger value="deals" className="flex items-center gap-2 min-w-max" data-testid="tab-deals">
-            <Briefcase className="h-4 w-4" />
+            <Briefcase className="h-4 w-4" aria-hidden="true" />
             <span>Deals</span>
           </TabsTrigger>
           <TabsTrigger value="outreach" className="flex items-center gap-2 min-w-max" data-testid="tab-outreach">
-            <Mail className="h-4 w-4" />
+            <Mail className="h-4 w-4" aria-hidden="true" />
             <span>Outreach</span>
           </TabsTrigger>
         </TabsList>
