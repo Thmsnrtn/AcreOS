@@ -4800,3 +4800,103 @@ Same treatment as slice 27's RecordPaymentModal:
 - Silent-mutation → toast — 4 more trust-bug fixes.
 
 **Commit:** `5059dfc`
+
+---
+
+## Session 29 — 2026-04-24 — /finance 12b.iii: NoteDetailDrawer body (dynamic-loop first slice)
+
+**Scope:** Remaining NoteDetailDrawer body — payment
+collection action row, record/accept payment button row,
+schedule tab, dunning tab, property details, borrower
+details. Closes out the /finance 12b arc. First slice run
+via /loop dynamic-pacing.
+
+**Lens sweep + refinements shipped:**
+
+- **Payment-collection action row:** flex-col sm:flex-row
+  at 320px; buttons get 44px touch; sentence-case
+  ("Generate Payment Link" → "Generate payment link",
+  "Accept Payment" → "Accept payment"); decorative icons
+  aria-hidden.
+
+- **Payment link reveal:** `<label>` promoted to
+  `<Label htmlFor>` + Input id; `onFocus={select()}` so
+  keyboard copy works without drag-select. Copy button
+  gets aria-label + 44px touch.
+
+- **Record / Send Payment button row:** both buttons
+  get flex-col sm:flex-row + 44px touch. "Send Payment
+  Link" was an unwired stub — now `disabled` + title
+  tooltip directing the user to the "Generate payment
+  link" button above (dead-stub rule from slice 5l —
+  wired the ambiguity rather than leaving a broken
+  promise).
+
+- **Schedule tab (money-precision + copy + a11y):** 3
+  stat tiles (Total interest / Payoff date / Remaining)
+  switched from bare `.toLocaleString(undefined, ...)`
+  to `usd()`. Sentence-case labels. Scroll container
+  promoted to `tabIndex=0 + role=region + aria-label=
+  "Amortization schedule"` for keyboard + SR access.
+  Amortization-schedule rows use `usd()` on payment /
+  principal / interest / balance (was `.toFixed(2)` with
+  `$` prefix — bypassed the helper). Status icons gain
+  `role="img" + aria-label` naming the state (Paid /
+  Late / Pending) + sr-only status text.
+
+- **Dunning tab:** loader wrapped in role=status + aria-
+  live=polite + sr-only "Loading dunning data…". 4-tile
+  metric grid promoted from `<div>/<p>/<p>` triples to
+  `<dl>/<dt>/<dd>` per slice-10b semantic rule. Dunning-
+  stage badge gains `capitalize` for consistent case.
+  Action buttons (Send reminder / Escalate / Log call)
+  get 44px touch + sentence-case. Dunning-history
+  container becomes a tabbable region landmark + `<ul>/
+  <li>` semantics (was `<div>/<div>`). History items
+  get tabular-nums on timestamps + capitalize on status
+  badge.
+
+- **Property details + Borrower details cards:** both
+  grids promoted to `<dl>/<dt>/<dd>` semantics (was
+  `<div>/<span>/<span>`). Sentence-case card titles.
+  Status fields get `capitalize`.
+
+- **Email + phone tappability (slice 7 rule):** borrower
+  email promoted to `mailto:` anchor; phone promoted to
+  `tel:` anchor. "N/A" replaced with "—" per Money-unset
+  display rule.
+
+- **Proper ellipsis + trailing periods** on empty states
+  + "No dunning history yet." / "No property linked." /
+  "No borrower linked." / "Click to load dunning
+  information."
+
+- **Copy sentence-case:** "Property Details" → "Property
+  details"; "Borrower Details" → "Borrower details";
+  "Dunning Stage" / "Dunning History" → sentence-case;
+  "Delinquency Status" → "Delinquency status"; "Load
+  Dunning Data" → "Load dunning data"; "Send Reminder"
+  → "Send reminder"; "Log Call" → "Log call"; "Total
+  Interest" / "Payoff Date" → sentence-case; "Due Date"
+  → "Due date".
+
+- **Tabular-nums** swept across dunning days / missed
+  payments / schedule numbers / property size + APN /
+  phone.
+
+**9-lens sign-off (touched sections of drawer body):**
+
+| Lens              | Status                                                                       |
+| ----------------- | ---------------------------------------------------------------------------- |
+| Designer          | PASS — sentence-case, dl/dt/dd semantics, tabular-nums, trailing periods    |
+| Mobile designer   | PASS — flex-col sm:flex-row on action rows, 44px touch on 10+ buttons       |
+| Accessibility     | PASS — schedule + dunning history become tabbable regions, status icons get role=img + aria-label, all metric grids use dl semantics |
+| Engineer          | PASS — money values through usd() helper (was .toFixed(2) + literal $)     |
+| Copywriter        | PASS — sentence-case sweep, trailing periods, mailto/tel on contact        |
+| Trust             | PASS — status icons explicitly labeled, email/phone tappable, Money-unset "—" on contacts |
+
+**/finance 12b arc complete.** All six /finance sub-
+components refined across slices 12 + 27 + 28 + 29. No
+regressions across the arc.
+
+**Commit:** (pending)

@@ -749,48 +749,52 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                     </div>
                   </div>
 
-                  <div className="flex gap-2">
-                    <Button 
-                      onClick={handleGeneratePaymentLink} 
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <Button
+                      onClick={handleGeneratePaymentLink}
                       disabled={isGeneratingLink}
-                      className="flex-1"
+                      className="flex-1 min-h-11 sm:min-h-9"
                       data-testid="button-generate-payment-link"
                     >
                       {isGeneratingLink ? (
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
                       ) : (
-                        <Link2 className="w-4 h-4 mr-2" />
+                        <Link2 className="w-4 h-4 mr-2" aria-hidden="true" />
                       )}
-                      Generate Payment Link
+                      Generate payment link
                     </Button>
-                    <Button 
+                    <Button
                       onClick={() => setShowAcceptPayment(true)}
                       variant="outline"
+                      className="min-h-11 sm:min-h-9"
                       data-testid="button-accept-payment"
                     >
-                      <DollarSign className="w-4 h-4 mr-2" />
-                      Accept Payment
+                      <DollarSign className="w-4 h-4 mr-2" aria-hidden="true" />
+                      Accept payment
                     </Button>
                   </div>
 
                   {paymentLink && (
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">Payment Link</label>
+                      <Label htmlFor="text-payment-link" className="text-sm font-medium">Payment link</Label>
                       <div className="flex gap-2">
-                        <Input 
-                          value={paymentLink} 
-                          readOnly 
+                        <Input
+                          id="text-payment-link"
+                          value={paymentLink}
+                          readOnly
                           className="font-mono text-xs"
+                          onFocus={(e) => e.currentTarget.select()}
                           data-testid="text-payment-link"
                         />
                         <Button
                           size="icon"
                           variant="outline"
+                          className="h-11 w-11 sm:h-9 sm:w-9 shrink-0"
                           onClick={handleCopyPaymentLink}
-                          aria-label="Copy payment link"
+                          aria-label="Copy payment link to clipboard"
                           data-testid="button-copy-payment-link"
                         >
-                          <Copy className="w-4 h-4" />
+                          <Copy className="w-4 h-4" aria-hidden="true" />
                         </Button>
                       </div>
                       <p className="text-xs text-muted-foreground">
@@ -803,12 +807,12 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
             </CardContent>
           </Card>
 
-          <div className="flex gap-2">
-            <Button onClick={() => setShowRecordPayment(true)} className="flex-1" data-testid="button-record-payment">
-              <Receipt className="w-4 h-4 mr-2" /> Record Payment
+          <div className="flex flex-col sm:flex-row gap-2">
+            <Button onClick={() => setShowRecordPayment(true)} className="flex-1 min-h-11 sm:min-h-9" data-testid="button-record-payment">
+              <Receipt className="w-4 h-4 mr-2" aria-hidden="true" /> Record payment
             </Button>
-            <Button variant="outline" className="flex-1">
-              <CreditCard className="w-4 h-4 mr-2" /> Send Payment Link
+            <Button variant="outline" className="flex-1 min-h-11 sm:min-h-9" disabled title="Coming soon — use Generate payment link above">
+              <CreditCard className="w-4 h-4 mr-2" aria-hidden="true" /> Send payment link
             </Button>
           </div>
 
@@ -837,16 +841,16 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                         {paymentsLoading ? (
                         <TableRow>
                           <TableCell colSpan={5} className="text-center h-16">
-                            <div className="flex items-center justify-center gap-2">
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                              Loading...
+                            <div className="flex items-center justify-center gap-2" role="status" aria-live="polite">
+                              <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                              Loading payments…
                             </div>
                           </TableCell>
                         </TableRow>
                       ) : payments?.length === 0 ? (
                         <TableRow>
                           <TableCell colSpan={5} className="text-center h-16 text-muted-foreground">
-                            No payments recorded yet
+                            No payments recorded yet.
                           </TableCell>
                         </TableRow>
                       ) : (
@@ -882,47 +886,53 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
             <TabsContent value="schedule" className="mt-4 space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="bg-muted/50 rounded-lg p-3 text-center">
-                  <p className="text-xs text-muted-foreground">Total Interest</p>
-                  <p className="font-bold font-mono text-amber-600" data-testid="text-total-interest">
-                    ${schedule.reduce((sum, s) => sum + (s.interest || 0), 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                  <p className="text-xs text-muted-foreground">Total interest</p>
+                  <p className="font-bold font-mono tabular-nums text-amber-600" data-testid="text-total-interest">
+                    {usd(schedule.reduce((sum, s) => sum + (s.interest || 0), 0))}
                   </p>
                 </div>
                 <div className="bg-muted/50 rounded-lg p-3 text-center">
-                  <p className="text-xs text-muted-foreground">Payoff Date</p>
-                  <p className="font-bold" data-testid="text-payoff-date">
-                    {schedule.length > 0 ? format(new Date(schedule[schedule.length - 1].dueDate), 'MMM yyyy') : 'N/A'}
+                  <p className="text-xs text-muted-foreground">Payoff date</p>
+                  <p className="font-bold tabular-nums" data-testid="text-payoff-date">
+                    {schedule.length > 0 ? format(new Date(schedule[schedule.length - 1].dueDate), 'MMM yyyy') : '—'}
                   </p>
                 </div>
                 <div className="bg-muted/50 rounded-lg p-3 text-center">
                   <p className="text-xs text-muted-foreground">Remaining</p>
                   <p className="font-bold" data-testid="text-remaining-payments">
-                    {schedule.filter(s => s.status !== 'paid').length} payments
+                    <span className="tabular-nums">{schedule.filter(s => s.status !== 'paid').length}</span> payments
                   </p>
                 </div>
               </div>
               <div className="flex gap-2">
-                <Button 
-                  variant="outline" 
-                  size="sm" 
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="min-h-11 sm:min-h-9"
                   onClick={handleRegenerateSchedule}
                   disabled={isRegenerating}
                   data-testid="button-regenerate-schedule"
                 >
-                  {isRegenerating ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-1" />}
+                  {isRegenerating ? <Loader2 className="w-4 h-4 mr-1 animate-spin" aria-hidden="true" /> : <RefreshCw className="w-4 h-4 mr-1" aria-hidden="true" />}
                   Regenerate
                 </Button>
-                <Button variant="outline" size="sm" data-testid="button-export-schedule">
-                  <Download className="w-4 h-4 mr-1" /> Export PDF
+                <Button variant="outline" size="sm" className="min-h-11 sm:min-h-9" data-testid="button-export-schedule">
+                  <Download className="w-4 h-4 mr-1" aria-hidden="true" /> Export PDF
                 </Button>
               </div>
               <Card>
-                <CardContent className="p-0 max-h-64 overflow-y-auto">
-                  <div className="overflow-x-auto">
+                <CardContent className="p-0">
+                  <div
+                    className="max-h-64 overflow-y-auto overflow-x-auto"
+                    tabIndex={0}
+                    role="region"
+                    aria-label="Amortization schedule"
+                  >
                     <Table>
                       <TableHeader className="sticky top-0 bg-card">
                         <TableRow>
                           <TableHead className="min-w-[30px]">#</TableHead>
-                          <TableHead className="min-w-[90px]">Due Date</TableHead>
+                          <TableHead className="min-w-[90px]">Due date</TableHead>
                           <TableHead className="text-right min-w-[70px]">Payment</TableHead>
                           <TableHead className="text-right min-w-[70px]">Principal</TableHead>
                           <TableHead className="text-right min-w-[70px]">Interest</TableHead>
@@ -934,33 +944,40 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                         {schedule.length === 0 ? (
                         <TableRow>
                           <TableCell colSpan={7} className="text-center h-16 text-muted-foreground">
-                            No amortization schedule available
+                            No amortization schedule available.
                           </TableCell>
                         </TableRow>
                       ) : (
-                        schedule.map((row) => (
-                          <TableRow key={row.paymentNumber} data-testid={`row-amort-${row.paymentNumber}`}>
-                            <TableCell className="font-medium">{row.paymentNumber}</TableCell>
-                            <TableCell>{format(new Date(row.dueDate), 'MMM d, yyyy')}</TableCell>
-                            <TableCell className="text-right font-mono">${row.payment.toFixed(2)}</TableCell>
-                            <TableCell className="text-right font-mono text-muted-foreground">
-                              ${row.principal.toFixed(2)}
-                            </TableCell>
-                            <TableCell className="text-right font-mono text-muted-foreground">
-                              ${row.interest.toFixed(2)}
-                            </TableCell>
-                            <TableCell className="text-right font-mono">${row.balance.toFixed(2)}</TableCell>
-                            <TableCell>
-                              {row.status === 'paid' ? (
-                                <CheckCircle className="w-4 h-4 text-emerald-600" />
-                              ) : row.status === 'late' ? (
-                                <AlertTriangle className="w-4 h-4 text-red-600" />
-                              ) : (
-                                <Clock className="w-4 h-4 text-muted-foreground" />
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        ))
+                        schedule.map((row) => {
+                          const statusLabel =
+                            row.status === 'paid' ? 'Paid' :
+                            row.status === 'late' ? 'Late' :
+                            'Pending';
+                          return (
+                            <TableRow key={row.paymentNumber} data-testid={`row-amort-${row.paymentNumber}`}>
+                              <TableCell className="font-medium tabular-nums">{row.paymentNumber}</TableCell>
+                              <TableCell className="tabular-nums">{format(new Date(row.dueDate), 'MMM d, yyyy')}</TableCell>
+                              <TableCell className="text-right font-mono tabular-nums">{usd(row.payment)}</TableCell>
+                              <TableCell className="text-right font-mono tabular-nums text-muted-foreground">
+                                {usd(row.principal)}
+                              </TableCell>
+                              <TableCell className="text-right font-mono tabular-nums text-muted-foreground">
+                                {usd(row.interest)}
+                              </TableCell>
+                              <TableCell className="text-right font-mono tabular-nums">{usd(row.balance)}</TableCell>
+                              <TableCell>
+                                {row.status === 'paid' ? (
+                                  <CheckCircle className="w-4 h-4 text-emerald-600" aria-label="Paid" role="img" />
+                                ) : row.status === 'late' ? (
+                                  <AlertTriangle className="w-4 h-4 text-red-600" aria-label="Late" role="img" />
+                                ) : (
+                                  <Clock className="w-4 h-4 text-muted-foreground" aria-label="Pending" role="img" />
+                                )}
+                                <span className="sr-only">{statusLabel}</span>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })
                       )}
                       </TableBody>
                     </Table>
@@ -971,117 +988,128 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
 
             <TabsContent value="dunning" className="mt-4 space-y-4">
               {isDunningLoading ? (
-                <div className="flex items-center justify-center h-32">
-                  <Loader2 className="w-6 h-6 animate-spin" />
+                <div className="flex items-center justify-center h-32" role="status" aria-live="polite">
+                  <Loader2 className="w-6 h-6 animate-spin" aria-hidden="true" />
+                  <span className="sr-only">Loading dunning data…</span>
                 </div>
               ) : dunningData ? (
                 <>
-                  <div className="grid grid-cols-2 gap-3">
+                  <dl className="grid grid-cols-2 gap-3">
                     <Card className="glass-panel">
                       <CardContent className="p-4">
-                        <p className="text-xs text-muted-foreground mb-1">Delinquency Status</p>
-                        <div className="flex items-center gap-2">
+                        <dt className="text-xs text-muted-foreground mb-1">Delinquency status</dt>
+                        <dd className="flex items-center gap-2">
                           {dunningData.daysDelinquent > 0 ? (
-                            <AlertTriangle className="w-5 h-5 text-red-500" />
+                            <AlertTriangle className="w-5 h-5 text-red-500" aria-hidden="true" />
                           ) : (
-                            <CheckCircle className="w-5 h-5 text-emerald-500" />
+                            <CheckCircle className="w-5 h-5 text-emerald-500" aria-hidden="true" />
                           )}
-                          <span className="font-bold" data-testid="text-dunning-status">
+                          <span className="font-bold tabular-nums" data-testid="text-dunning-status">
                             {dunningData.daysDelinquent > 0 ? `${dunningData.daysDelinquent} days past due` : 'Current'}
                           </span>
-                        </div>
+                        </dd>
                       </CardContent>
                     </Card>
                     <Card className="glass-panel">
                       <CardContent className="p-4">
-                        <p className="text-xs text-muted-foreground mb-1">Dunning Stage</p>
-                        <Badge 
-                          className={
-                            dunningData.dunningStage === 'current' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400' :
-                            dunningData.dunningStage === 'friendly_reminder' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400' :
-                            dunningData.dunningStage === 'formal_notice' ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400' :
-                            dunningData.dunningStage === 'final_warning' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400' :
-                            'bg-red-200 text-red-900 dark:bg-red-900/50 dark:text-red-300'
-                          }
-                          data-testid="badge-dunning-stage"
-                        >
-                          {dunningData.dunningStage.replace(/_/g, ' ')}
-                        </Badge>
+                        <dt className="text-xs text-muted-foreground mb-1">Dunning stage</dt>
+                        <dd>
+                          <Badge
+                            className={
+                              dunningData.dunningStage === 'current' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 capitalize' :
+                              dunningData.dunningStage === 'friendly_reminder' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 capitalize' :
+                              dunningData.dunningStage === 'formal_notice' ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400 capitalize' :
+                              dunningData.dunningStage === 'final_warning' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 capitalize' :
+                              'bg-red-200 text-red-900 dark:bg-red-900/50 dark:text-red-300 capitalize'
+                            }
+                            data-testid="badge-dunning-stage"
+                          >
+                            {dunningData.dunningStage.replace(/_/g, ' ')}
+                          </Badge>
+                        </dd>
                       </CardContent>
                     </Card>
                     <Card className="glass-panel">
                       <CardContent className="p-4">
-                        <p className="text-xs text-muted-foreground mb-1">Past due amount</p>
-                        <p className="font-bold font-mono tabular-nums text-red-600" data-testid="text-past-due-amount">
+                        <dt className="text-xs text-muted-foreground mb-1">Past due amount</dt>
+                        <dd className="font-bold font-mono tabular-nums text-red-600" data-testid="text-past-due-amount">
                           {usd(dunningData.pastDueAmount ?? 0)}
-                        </p>
+                        </dd>
                       </CardContent>
                     </Card>
                     <Card className="glass-panel">
                       <CardContent className="p-4">
-                        <p className="text-xs text-muted-foreground mb-1">Missed payments</p>
-                        <p className="font-bold" data-testid="text-missed-payments">
+                        <dt className="text-xs text-muted-foreground mb-1">Missed payments</dt>
+                        <dd className="font-bold tabular-nums" data-testid="text-missed-payments">
                           {dunningData.missedPayments || 0}
-                        </p>
+                        </dd>
                       </CardContent>
                     </Card>
-                  </div>
+                  </dl>
 
                   <div className="flex flex-wrap gap-2">
-                    <Button 
-                      size="sm" 
-                      onClick={() => handleSendReminder('due')} 
+                    <Button
+                      size="sm"
+                      className="min-h-11 sm:min-h-9"
+                      onClick={() => handleSendReminder('due')}
                       disabled={isSendingReminder}
                       data-testid="button-send-reminder"
                     >
-                      {isSendingReminder ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Send className="w-4 h-4 mr-1" />}
-                      Send Reminder
+                      {isSendingReminder ? <Loader2 className="w-4 h-4 mr-1 animate-spin" aria-hidden="true" /> : <Send className="w-4 h-4 mr-1" aria-hidden="true" />}
+                      Send reminder
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => handleSendReminder('final_warning')} disabled={isSendingReminder} data-testid="button-escalate">
-                      <ArrowUpRight className="w-4 h-4 mr-1" /> Escalate
+                    <Button size="sm" variant="outline" className="min-h-11 sm:min-h-9" onClick={() => handleSendReminder('final_warning')} disabled={isSendingReminder} data-testid="button-escalate">
+                      <ArrowUpRight className="w-4 h-4 mr-1" aria-hidden="true" /> Escalate
                     </Button>
-                    <Button size="sm" variant="ghost" data-testid="button-record-contact">
-                      <Phone className="w-4 h-4 mr-1" /> Log Call
+                    <Button size="sm" variant="ghost" className="min-h-11 sm:min-h-9" data-testid="button-record-contact">
+                      <Phone className="w-4 h-4 mr-1" aria-hidden="true" /> Log call
                     </Button>
                   </div>
 
                   <Card>
                     <CardHeader className="py-3 px-4">
-                      <CardTitle className="text-sm">Dunning History</CardTitle>
+                      <CardTitle className="text-sm">Dunning history</CardTitle>
                     </CardHeader>
-                    <CardContent className="p-0 max-h-48 overflow-y-auto">
-                      {dunningData.history?.length > 0 ? (
-                        <div className="divide-y">
-                          {dunningData.history.map((h: any, idx: number) => (
-                            <div key={h.id || idx} className="px-4 py-3 flex items-start gap-3" data-testid={`row-dunning-${h.id || idx}`}>
-                              <div className="p-1.5 rounded-full bg-muted">
-                                {h.channel === 'email' ? <Mail className="w-3 h-3" /> : 
-                                 h.channel === 'sms' ? <Phone className="w-3 h-3" /> : 
-                                 <Send className="w-3 h-3" />}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium capitalize">{h.type?.replace(/_/g, ' ') || 'Action'}</p>
-                                <p className="text-xs text-muted-foreground">
-                                  {h.date ? format(new Date(h.date), 'MMM d, yyyy h:mm a') : 'Unknown date'}
-                                </p>
-                              </div>
-                              <Badge variant="outline" className="text-xs">
-                                {h.status}
-                              </Badge>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="p-4 text-sm text-muted-foreground text-center">No dunning history yet</p>
-                      )}
+                    <CardContent className="p-0">
+                      <div
+                        className="max-h-48 overflow-y-auto"
+                        tabIndex={0}
+                        role="region"
+                        aria-label="Dunning history"
+                      >
+                        {dunningData.history?.length > 0 ? (
+                          <ul className="divide-y">
+                            {dunningData.history.map((h: any, idx: number) => (
+                              <li key={h.id || idx} className="px-4 py-3 flex items-start gap-3" data-testid={`row-dunning-${h.id || idx}`}>
+                                <div className="p-1.5 rounded-full bg-muted">
+                                  {h.channel === 'email' ? <Mail className="w-3 h-3" aria-hidden="true" /> :
+                                   h.channel === 'sms' ? <Phone className="w-3 h-3" aria-hidden="true" /> :
+                                   <Send className="w-3 h-3" aria-hidden="true" />}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium capitalize">{h.type?.replace(/_/g, ' ') || 'Action'}</p>
+                                  <p className="text-xs text-muted-foreground tabular-nums">
+                                    {h.date ? format(new Date(h.date), 'MMM d, yyyy h:mm a') : 'Unknown date'}
+                                  </p>
+                                </div>
+                                <Badge variant="outline" className="text-xs capitalize">
+                                  {h.status}
+                                </Badge>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="p-4 text-sm text-muted-foreground text-center">No dunning history yet.</p>
+                        )}
+                      </div>
                     </CardContent>
                   </Card>
                 </>
               ) : (
                 <div className="text-center py-8 text-muted-foreground">
-                  <p>Click to load dunning information</p>
-                  <Button variant="outline" size="sm" className="mt-2" onClick={fetchDunningData}>
-                    Load Dunning Data
+                  <p>Click to load dunning information.</p>
+                  <Button variant="outline" size="sm" className="mt-2 min-h-11 sm:min-h-9" onClick={fetchDunningData}>
+                    Load dunning data
                   </Button>
                 </div>
               )}
@@ -1090,60 +1118,68 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
 
           <Card className="glass-panel">
             <CardHeader className="pb-2">
-              <CardTitle className="text-base">Property Details</CardTitle>
+              <CardTitle className="text-base">Property details</CardTitle>
             </CardHeader>
             <CardContent>
               {note.property ? (
-                <div className="grid grid-cols-2 gap-2 text-sm">
+                <dl className="grid grid-cols-2 gap-2 text-sm">
                   <div>
-                    <span className="text-muted-foreground">Location:</span>
-                    <span className="ml-2 font-medium">{note.property.county}, {note.property.state}</span>
+                    <dt className="text-muted-foreground inline">Location:</dt>
+                    <dd className="ml-2 font-medium inline">{note.property.county}, {note.property.state}</dd>
                   </div>
                   <div>
-                    <span className="text-muted-foreground">APN:</span>
-                    <span className="ml-2 font-mono">{note.property.apn}</span>
+                    <dt className="text-muted-foreground inline">APN:</dt>
+                    <dd className="ml-2 font-mono tabular-nums inline">{note.property.apn}</dd>
                   </div>
                   <div>
-                    <span className="text-muted-foreground">Size:</span>
-                    <span className="ml-2">{note.property.sizeAcres} acres</span>
+                    <dt className="text-muted-foreground inline">Size:</dt>
+                    <dd className="ml-2 inline tabular-nums">{note.property.sizeAcres} acres</dd>
                   </div>
                   <div>
-                    <span className="text-muted-foreground">Status:</span>
-                    <span className="ml-2">{note.property.status}</span>
+                    <dt className="text-muted-foreground inline">Status:</dt>
+                    <dd className="ml-2 inline capitalize">{note.property.status}</dd>
                   </div>
-                </div>
+                </dl>
               ) : (
-                <p className="text-muted-foreground">No property linked</p>
+                <p className="text-muted-foreground">No property linked.</p>
               )}
             </CardContent>
           </Card>
 
           <Card className="glass-panel">
             <CardHeader className="pb-2">
-              <CardTitle className="text-base">Borrower Details</CardTitle>
+              <CardTitle className="text-base">Borrower details</CardTitle>
             </CardHeader>
             <CardContent>
               {note.borrower ? (
-                <div className="grid grid-cols-2 gap-2 text-sm">
+                <dl className="grid grid-cols-2 gap-2 text-sm">
                   <div>
-                    <span className="text-muted-foreground">Name:</span>
-                    <span className="ml-2 font-medium">{note.borrower.firstName} {note.borrower.lastName}</span>
+                    <dt className="text-muted-foreground inline">Name:</dt>
+                    <dd className="ml-2 font-medium inline">{note.borrower.firstName} {note.borrower.lastName}</dd>
                   </div>
                   <div>
-                    <span className="text-muted-foreground">Email:</span>
-                    <span className="ml-2">{note.borrower.email || 'N/A'}</span>
+                    <dt className="text-muted-foreground inline">Email:</dt>
+                    <dd className="ml-2 inline">
+                      {note.borrower.email ? (
+                        <a href={`mailto:${note.borrower.email}`} className="hover:underline">{note.borrower.email}</a>
+                      ) : "—"}
+                    </dd>
                   </div>
                   <div>
-                    <span className="text-muted-foreground">Phone:</span>
-                    <span className="ml-2">{note.borrower.phone || 'N/A'}</span>
+                    <dt className="text-muted-foreground inline">Phone:</dt>
+                    <dd className="ml-2 inline tabular-nums">
+                      {note.borrower.phone ? (
+                        <a href={`tel:${note.borrower.phone}`} className="hover:underline">{note.borrower.phone}</a>
+                      ) : "—"}
+                    </dd>
                   </div>
                   <div>
-                    <span className="text-muted-foreground">Status:</span>
-                    <span className="ml-2">{note.borrower.status}</span>
+                    <dt className="text-muted-foreground inline">Status:</dt>
+                    <dd className="ml-2 inline capitalize">{note.borrower.status}</dd>
                   </div>
-                </div>
+                </dl>
               ) : (
-                <p className="text-muted-foreground">No borrower linked</p>
+                <p className="text-muted-foreground">No borrower linked.</p>
               )}
             </CardContent>
           </Card>
