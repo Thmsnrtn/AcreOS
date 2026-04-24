@@ -4066,3 +4066,139 @@ slice, ~290 lines) and `SeatManagement` (lines 401-~620,
   that should never fire without an explicit gate.
 
 **Commit:** (pending)
+
+---
+
+## Session 24 — 2026-04-24 — /settings privacy & data rights (slice 19b.iii)
+
+**Scope:** `PrivacyDataSettings` (lines 2557-2782 post-
+slice, ~230 lines) — GDPR Right-of-Access + Right-to-
+Erasure surface. Trust-critical: incorrect handling of
+the deletion flow could cause user data loss; incorrect
+handling of the export flow could expose PII.
+
+**Lens sweep + refinements shipped:**
+
+- **Trust (state-change error reassurance — slice 19
+  rule, 2 sites):** both mutation error toasts upgraded
+  with explicit state-unchanged reassurance:
+  - exportMutation: "Export failed" → "Couldn't prepare
+    your export / Check your connection and try again —
+    **no data was changed**." Export is read-only so this
+    is extra-cautious, but on a privacy surface the
+    reassurance reinforces that the user's data is safe
+    at rest.
+  - deleteMutation: "Deletion failed" → "Couldn't delete
+    your data / Check your connection and try again —
+    **your account is unchanged**." On a delete flow
+    where the user has just typed DELETE and expects
+    their data to be irreversibly anonymized, this is
+    critical: without the reassurance they don't know
+    if the delete partially applied.
+
+- **A11y (role=alert on "can't be undone" warning):** the
+  amber warning div announcing "This action cannot be
+  undone." was unlabeled. Promoted to `role="alert"` so
+  SR users hear it when the delete card renders. Copy
+  also tightened: "This action cannot be undone" →
+  "This action can't be undone" (contraction for warmer
+  voice).
+
+- **A11y (role=status on deleted state):** the post-
+  deletion "Data Deletion Complete" surface was static;
+  now wrapped in `role="status"` + `aria-live="polite"`
+  so a user whose account just got deleted hears
+  confirmation via SR.
+
+- **A11y (Label htmlFor on delete-confirm input):** the
+  "Type DELETE to confirm" hint was a `<p>` not linked
+  to the Input via htmlFor. Promoted to `<Label
+  htmlFor="input-delete-confirm">`; removed the
+  redundant aria-label (the Label is now the accessible
+  name). Input also gets autoComplete=off +
+  autoCapitalize="characters" + autoCorrect=off +
+  spellCheck=false so the browser doesn't suggest or
+  auto-correct the verification phrase.
+
+- **A11y (decorative-icon aria-hidden):** CheckCircle2
+  (deleted state), Lock (h2), Download × 2 (export card),
+  Trash2 × 2 (delete card + Request button), AlertTriangle
+  (warning), Shield (rights card), Loader2 × 2 (pending
+  spinners). 10+ icons.
+
+- **A11y (rights-list semantics):** the 6 GDPR rights
+  were rendered as `<div>` grid — promoted to `<ul>` /
+  `<li>` with `aria-label="GDPR and CCPA data rights"` on
+  the container. SR users now hear "list, 6 items" and
+  can navigate the rights with standard list navigation.
+
+- **Copy (sentence-case sweep):**
+  "Data Deletion Complete" → "Data deletion complete";
+  "Privacy & Data Rights" → "Privacy & data rights";
+  "Export Your Data" / "Download My Data" → sentence-
+  case; "Delete Personal Data" → "Delete personal data";
+  "Right to Erasure" → "right to erasure" (in a
+  parenthetical GDPR description, lowercase per the
+  surrounding sentence-case pattern); "Request Data
+  Deletion" → "Request data deletion"; "Confirm
+  Deletion" → "Confirm deletion"; "Your Data Rights" →
+  "Your data rights"; "Via Support" → "Via support";
+  all 6 GDPR right labels switched to sentence-case
+  ("Right of Access" → "Right of access", etc.); all
+  right descriptions get trailing periods.
+
+- **Copy (placeholder disambiguation):** the delete-
+  confirm Input had `placeholder="DELETE"` — which lets
+  users just type DELETE because the placeholder shows
+  them the answer. Changed to `placeholder="Type
+  DELETE here"` which is still discoverable but makes
+  it clearer that the user needs to type it themselves.
+
+- **Copy (proper ellipsis):** "Preparing Export..." →
+  "Preparing export…"; "Deleting..." → "Deleting…".
+
+- **Copy (warmer sign-out voice):** "You will be signed
+  out shortly" → "You'll be signed out in a few
+  seconds" (contraction + specificity).
+
+- **Mobile (touch):** all 4 CTAs in the privacy surface
+  (export, request-deletion, confirm-deletion, cancel)
+  now `min-h-11 sm:min-h-9`.
+
+- **Tabular-nums** on the "DELETE" token inside the
+  Label (so fixed-width uppercase reads cleanly when
+  bolded).
+
+**9-lens sign-off:**
+
+| Lens              | Status                                                                                    |
+| ----------------- | ----------------------------------------------------------------------------------------- |
+| Designer          | PASS — sentence-case, proper ellipsis, ul/li semantics on rights list                    |
+| Mobile designer   | PASS — 44px touch on all 4 CTAs                                                            |
+| Accessibility     | PASS — Label htmlFor on delete input, role=alert + role=status on state surfaces, 10+ icons aria-hidden, list semantics |
+| Engineer          | PASS — autoComplete/autoCapitalize/spellCheck on delete-confirm input                    |
+| Copywriter        | PASS — contraction voice, sentence-case, placeholder disambiguation, warmer sign-out copy |
+| Trust             | PASS — state-change reassurance on both mutations, role=alert on warning, explicit "account is unchanged" on failed delete |
+
+**Deferred (remaining 19b sub-slices):**
+- ReferralSettings (1822-1941)
+- GoalsSettings (1942-2123) — still has bare
+  `.toLocaleString()` money rendering on line 2096
+- ApiKeyManager (2124-2368)
+- ActivityLogPanel (2369-2440)
+
+**Patterns reinforced:**
+- **State-change error reassurance rule (slice 19/22):**
+  now applied to a fifth domain — *privacy actions*
+  (export / delete). The rule is fully general: any
+  action that touches user-visible state needs explicit
+  current-state reassurance on error.
+- **Placeholder disambiguation rule (new 24):** when a
+  confirm-input requires the user to type a specific
+  token (DELETE, CONFIRM, DROP TABLE, etc.), the
+  placeholder should NOT show the token itself — that
+  lets users bypass the intent of the confirmation by
+  copying from the placeholder. Use "Type {token} here"
+  format instead. Adds to the ConfirmDialog rule family.
+
+**Commit:** (pending)

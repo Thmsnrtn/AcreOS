@@ -2578,7 +2578,7 @@ function PrivacyDataSettings() {
         method: "POST",
         credentials: "include",
       });
-      if (!res.ok) throw new Error("Export failed");
+      if (!res.ok) throw new Error(`Server returned ${res.status}`);
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -2590,7 +2590,12 @@ function PrivacyDataSettings() {
       URL.revokeObjectURL(url);
     },
     onSuccess: () => toast({ title: "Data export downloaded" }),
-    onError: () => toast({ title: "Export failed", variant: "destructive" }),
+    onError: (err: any) =>
+      toast({
+        title: "Couldn't prepare your export",
+        description: err?.message || "Check your connection and try again — no data was changed.",
+        variant: "destructive",
+      }),
   });
 
   const deleteMutation = useMutation({
@@ -2599,7 +2604,7 @@ function PrivacyDataSettings() {
     onSuccess: () => {
       toast({
         title: "Account anonymized",
-        description: "Your personal data has been deleted. You will be signed out shortly.",
+        description: "Your personal data has been deleted. You'll be signed out in a few seconds.",
       });
       setShowDeleteForm(false);
       setTimeout(() => {
@@ -2607,14 +2612,18 @@ function PrivacyDataSettings() {
       }, 3000);
     },
     onError: (err: any) =>
-      toast({ title: err.message || "Deletion failed", variant: "destructive" }),
+      toast({
+        title: "Couldn't delete your data",
+        description: err?.message || "Check your connection and try again — your account is unchanged.",
+        variant: "destructive",
+      }),
   });
 
   if (privacyStatus?.deleted) {
     return (
-      <div className="flex flex-col items-center gap-4 py-16 text-center">
-        <CheckCircle2 className="w-12 h-12 text-green-500" />
-        <h2 className="text-xl font-semibold">Data Deletion Complete</h2>
+      <div className="flex flex-col items-center gap-4 py-16 text-center" role="status" aria-live="polite">
+        <CheckCircle2 className="w-12 h-12 text-green-500" aria-hidden="true" />
+        <h2 className="text-xl font-semibold">Data deletion complete</h2>
         <p className="text-muted-foreground text-sm">Your personal data has already been anonymized.</p>
       </div>
     );
@@ -2624,8 +2633,8 @@ function PrivacyDataSettings() {
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-semibold flex items-center gap-2">
-          <Lock className="w-5 h-5" />
-          Privacy &amp; Data Rights
+          <Lock className="w-5 h-5" aria-hidden="true" />
+          Privacy &amp; data rights
         </h2>
         <p className="text-muted-foreground text-sm">
           Manage your personal data rights under GDPR/CCPA.
@@ -2637,8 +2646,8 @@ function PrivacyDataSettings() {
         <Card>
           <CardHeader>
             <div className="flex items-center gap-2">
-              <Download className="w-5 h-5 text-primary" />
-              <CardTitle className="text-base">Export Your Data</CardTitle>
+              <Download className="w-5 h-5 text-primary" aria-hidden="true" />
+              <CardTitle className="text-base">Export your data</CardTitle>
             </div>
             <CardDescription>
               Download a complete copy of all personal data AcreOS holds about you (GDPR Article 15).
@@ -2658,13 +2667,13 @@ function PrivacyDataSettings() {
             <Button
               onClick={() => exportMutation.mutate()}
               disabled={exportMutation.isPending}
-              className="w-full"
+              className="w-full min-h-11 sm:min-h-9"
               data-testid="btn-export-data"
             >
               {exportMutation.isPending ? (
-                <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Preparing Export...</>
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />Preparing export…</>
               ) : (
-                <><Download className="w-4 h-4 mr-2" />Download My Data</>
+                <><Download className="w-4 h-4 mr-2" aria-hidden="true" />Download my data</>
               )}
             </Button>
           </CardContent>
@@ -2674,19 +2683,22 @@ function PrivacyDataSettings() {
         <Card className="border-red-200 dark:border-red-800">
           <CardHeader>
             <div className="flex items-center gap-2">
-              <Trash2 className="w-5 h-5 text-red-600" />
-              <CardTitle className="text-base text-red-700 dark:text-red-400">Delete Personal Data</CardTitle>
+              <Trash2 className="w-5 h-5 text-red-600" aria-hidden="true" />
+              <CardTitle className="text-base text-red-700 dark:text-red-400">Delete personal data</CardTitle>
             </div>
             <CardDescription>
-              Permanently anonymize your personal data (GDPR Article 17 — Right to Erasure).
+              Permanently anonymize your personal data (GDPR Article 17 — right to erasure).
               Business records required for legal compliance are retained in anonymized form.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
-              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <div
+              className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800"
+              role="alert"
+            >
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" aria-hidden="true" />
               <div className="text-xs text-amber-700 dark:text-amber-400 space-y-1">
-                <p className="font-medium">This action cannot be undone.</p>
+                <p className="font-medium">This action can't be undone.</p>
                 <p>Your email, name, and contact details will be replaced with anonymized values. Deals and business records are retained for legal compliance.</p>
               </div>
             </div>
@@ -2694,44 +2706,49 @@ function PrivacyDataSettings() {
             {!showDeleteForm ? (
               <Button
                 variant="destructive"
-                className="w-full"
+                className="w-full min-h-11 sm:min-h-9"
                 onClick={() => setShowDeleteForm(true)}
                 data-testid="btn-request-deletion"
               >
-                <Trash2 className="w-4 h-4 mr-2" />
-                Request Data Deletion
+                <Trash2 className="w-4 h-4 mr-2" aria-hidden="true" />
+                Request data deletion
               </Button>
             ) : (
               <div className="space-y-3">
-                <div>
-                  <p className="text-xs text-muted-foreground mb-2">
-                    Type <strong>DELETE</strong> to confirm:
-                  </p>
+                <div className="space-y-2">
+                  <Label htmlFor="input-delete-confirm" className="text-xs">
+                    Type <strong className="tabular-nums">DELETE</strong> to confirm:
+                  </Label>
                   <Input
+                    id="input-delete-confirm"
                     value={deleteConfirmText}
                     onChange={e => setDeleteConfirmText(e.target.value)}
-                    placeholder="DELETE"
+                    placeholder="Type DELETE here"
                     className="text-sm"
+                    autoComplete="off"
+                    autoCapitalize="characters"
+                    autoCorrect="off"
+                    spellCheck={false}
                     data-testid="input-delete-confirm"
-                    aria-label="Type DELETE to confirm account deletion"
                   />
                 </div>
                 <div className="flex gap-2">
                   <Button
                     variant="destructive"
-                    className="flex-1"
+                    className="flex-1 min-h-11 sm:min-h-9"
                     disabled={deleteConfirmText !== "DELETE" || deleteMutation.isPending}
                     onClick={() => deleteMutation.mutate()}
                     data-testid="btn-confirm-deletion"
                   >
                     {deleteMutation.isPending ? (
-                      <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Deleting...</>
+                      <><Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />Deleting…</>
                     ) : (
-                      "Confirm Deletion"
+                      "Confirm deletion"
                     )}
                   </Button>
                   <Button
                     variant="outline"
+                    className="min-h-11 sm:min-h-9"
                     onClick={() => { setShowDeleteForm(false); setDeleteConfirmText(""); }}
                   >
                     Cancel
@@ -2746,34 +2763,34 @@ function PrivacyDataSettings() {
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2">
-            <Shield className="w-5 h-5 text-primary" />
-            <CardTitle className="text-base">Your Data Rights</CardTitle>
+            <Shield className="w-5 h-5 text-primary" aria-hidden="true" />
+            <CardTitle className="text-base">Your data rights</CardTitle>
           </div>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3" aria-label="GDPR and CCPA data rights">
             {[
-              { right: "Right of Access (Art. 15)", desc: "Download all data we hold about you", status: "available" as const },
-              { right: "Right to Erasure (Art. 17)", desc: "Request anonymization of personal data", status: "available" as const },
-              { right: "Right to Rectification (Art. 16)", desc: "Correct inaccurate data via Settings", status: "available" as const },
-              { right: "Right to Portability (Art. 20)", desc: "Export your data in JSON format", status: "available" as const },
-              { right: "Right to Object (Art. 21)", desc: "Contact support to object to processing", status: "contact" as const },
-              { right: "Right to Restriction (Art. 18)", desc: "Contact support to restrict processing", status: "contact" as const },
+              { right: "Right of access (Art. 15)", desc: "Download all data we hold about you.", status: "available" as const },
+              { right: "Right to erasure (Art. 17)", desc: "Request anonymization of personal data.", status: "available" as const },
+              { right: "Right to rectification (Art. 16)", desc: "Correct inaccurate data via Settings.", status: "available" as const },
+              { right: "Right to portability (Art. 20)", desc: "Export your data in JSON format.", status: "available" as const },
+              { right: "Right to object (Art. 21)", desc: "Contact support to object to processing.", status: "contact" as const },
+              { right: "Right to restriction (Art. 18)", desc: "Contact support to restrict processing.", status: "contact" as const },
             ].map(({ right, desc, status }) => (
-              <div key={right} className="flex items-start gap-2 p-3 rounded-lg border bg-muted/20">
+              <li key={right} className="flex items-start gap-2 p-3 rounded-lg border bg-muted/20">
                 <Badge
                   variant={status === "available" ? "default" : "outline"}
                   className="text-xs shrink-0 mt-0.5"
                 >
-                  {status === "available" ? "Available" : "Via Support"}
+                  {status === "available" ? "Available" : "Via support"}
                 </Badge>
                 <div>
                   <p className="text-xs font-medium">{right}</p>
                   <p className="text-xs text-muted-foreground">{desc}</p>
                 </div>
-              </div>
+              </li>
             ))}
-          </div>
+          </ul>
         </CardContent>
       </Card>
     </div>
