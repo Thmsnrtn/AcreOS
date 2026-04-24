@@ -3,7 +3,7 @@ import { useWebSocketChannel } from "@/hooks/use-websocket-channel";
 import { useLocation } from "wouter";
 import {
   Bell, X, AlertTriangle, CheckCircle, Info,
-  ChevronRight, Volume2,
+  ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -82,9 +82,9 @@ export function NotificationBanner() {
   };
 
   const getPriorityIcon = (priority: number) => {
-    if (priority <= 2) return <AlertTriangle className="w-4 h-4 text-red-500" />;
-    if (priority <= 4) return <Info className="w-4 h-4 text-yellow-500" />;
-    return <CheckCircle className="w-4 h-4 text-green-500" />;
+    if (priority <= 2) return <AlertTriangle className="w-4 h-4 text-red-500" aria-hidden="true" />;
+    if (priority <= 4) return <Info className="w-4 h-4 text-yellow-500" aria-hidden="true" />;
+    return <CheckCircle className="w-4 h-4 text-green-500" aria-hidden="true" />;
   };
 
   return (
@@ -92,12 +92,16 @@ export function NotificationBanner() {
       {/* Toast Banner — stacked below the permanent bell so both are
           visible when a live notification arrives. */}
       {showBanner && latestNotif && (
-        <div className={cn(
-          "fixed top-16 right-4 md:right-16 z-50 max-w-sm",
-          "bg-card border shadow-lg rounded-lg p-4",
-          "animate-in slide-in-from-top-2 fade-in duration-300",
-          latestNotif.priority <= 2 && "border-red-300 dark:border-red-800",
-        )}>
+        <div
+          role={latestNotif.priority <= 2 ? "alert" : "status"}
+          aria-live={latestNotif.priority <= 2 ? "assertive" : "polite"}
+          className={cn(
+            "fixed top-16 right-4 md:right-16 z-50 max-w-sm",
+            "bg-card border shadow-lg rounded-lg p-4",
+            "animate-in slide-in-from-top-2 fade-in duration-300",
+            latestNotif.priority <= 2 && "border-red-300 dark:border-red-800",
+          )}
+        >
           <div className="flex items-start gap-3">
             {getPriorityIcon(latestNotif.priority)}
             <div className="flex-1 min-w-0">
@@ -112,12 +116,18 @@ export function NotificationBanner() {
                   className="h-auto p-0 text-xs mt-1 underline"
                   onClick={() => handleNotifClick(latestNotif)}
                 >
-                  View details <ChevronRight className="w-3 h-3 ml-0.5" />
+                  View details <ChevronRight className="w-3 h-3 ml-0.5" aria-hidden="true" />
                 </Button>
               )}
             </div>
-            <Button variant="ghost" size="sm" className="shrink-0 -mt-1 -mr-1" onClick={() => setShowBanner(false)}>
-              <X className="w-3.5 h-3.5" />
+            <Button
+              variant="ghost"
+              size="sm"
+              className="shrink-0 -mt-1 -mr-1"
+              onClick={() => setShowBanner(false)}
+              aria-label="Dismiss notification"
+            >
+              <X className="w-3.5 h-3.5" aria-hidden="true" />
             </Button>
           </div>
         </div>
@@ -133,11 +143,16 @@ export function NotificationBanner() {
           size="sm"
           className="relative rounded-full w-10 h-10 p-0 shadow-md bg-background"
           onClick={() => setShowTray(!showTray)}
-          aria-label="Notifications"
+          aria-label={unreadCount > 0 ? `Notifications (${unreadCount} unread)` : "Notifications"}
+          aria-expanded={showTray}
+          aria-haspopup="dialog"
         >
-          <Bell className="w-4 h-4" />
+          <Bell className="w-4 h-4" aria-hidden="true" />
           {unreadCount > 0 && (
-            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+            <span
+              aria-hidden="true"
+              className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full min-w-5 h-5 px-1 flex items-center justify-center tabular-nums"
+            >
               {unreadCount > 9 ? "9+" : unreadCount}
             </span>
           )}
@@ -146,7 +161,11 @@ export function NotificationBanner() {
 
       {/* Notification Tray — drops down from the bell */}
       {showTray && (
-        <div className="fixed top-16 right-4 md:right-16 z-50 w-80 max-h-96 bg-card border shadow-xl rounded-lg overflow-hidden">
+        <div
+          role="dialog"
+          aria-label="Notifications"
+          className="fixed top-16 right-4 md:right-16 z-50 w-80 max-h-96 bg-card border shadow-xl rounded-lg overflow-hidden"
+        >
           <div className="flex items-center justify-between p-3 border-b">
             <p className="font-medium text-sm">Notifications</p>
             <div className="flex items-center gap-2">
@@ -155,45 +174,59 @@ export function NotificationBanner() {
                   Mark all read
                 </Button>
               )}
-              <Button variant="ghost" size="sm" className="h-6" onClick={() => setShowTray(false)}>
-                <X className="w-3.5 h-3.5" />
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6"
+                onClick={() => setShowTray(false)}
+                aria-label="Close notifications"
+              >
+                <X className="w-3.5 h-3.5" aria-hidden="true" />
               </Button>
             </div>
           </div>
 
           <div className="max-h-80 overflow-y-auto">
             {notifications.length > 0 ? (
-              notifications.map((notif) => (
-                <div
-                  key={notif.id}
-                  className={cn(
-                    "p-3 border-b last:border-0 cursor-pointer hover:bg-muted/50 transition-colors",
-                    !notif.read && "bg-primary/5",
-                  )}
-                  onClick={() => handleNotifClick(notif)}
-                >
-                  <div className="flex items-start gap-2">
-                    {getPriorityIcon(notif.priority)}
-                    <div className="min-w-0 flex-1">
-                      <p className={cn("text-sm", !notif.read && "font-medium")}>
-                        {notif.title}
-                      </p>
-                      <p className="text-xs text-muted-foreground line-clamp-1">
-                        {notif.message}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {new Date(notif.createdAt).toLocaleTimeString()}
-                      </p>
-                    </div>
-                    {!notif.read && (
-                      <span className="w-2 h-2 bg-primary rounded-full mt-1.5 shrink-0" />
+              <ul aria-label="Recent notifications">
+                {notifications.map((notif) => (
+                  <li
+                    key={notif.id}
+                    className={cn(
+                      "border-b last:border-0",
+                      !notif.read && "bg-primary/5",
                     )}
-                  </div>
-                </div>
-              ))
+                  >
+                    <button
+                      type="button"
+                      onClick={() => handleNotifClick(notif)}
+                      className="w-full text-left p-3 cursor-pointer hover:bg-muted/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      aria-label={`${notif.read ? "" : "Unread — "}${notif.title}`}
+                    >
+                      <div className="flex items-start gap-2">
+                        {getPriorityIcon(notif.priority)}
+                        <div className="min-w-0 flex-1">
+                          <p className={cn("text-sm", !notif.read && "font-medium")}>
+                            {notif.title}
+                          </p>
+                          <p className="text-xs text-muted-foreground line-clamp-1">
+                            {notif.message}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-0.5 tabular-nums">
+                            {new Date(notif.createdAt).toLocaleTimeString()}
+                          </p>
+                        </div>
+                        {!notif.read && (
+                          <span className="w-2 h-2 bg-primary rounded-full mt-1.5 shrink-0" aria-hidden="true" />
+                        )}
+                      </div>
+                    </button>
+                  </li>
+                ))}
+              </ul>
             ) : (
               <div className="p-8 text-center text-sm text-muted-foreground">
-                No notifications yet
+                No notifications yet.
               </div>
             )}
           </div>
