@@ -622,6 +622,7 @@ to a dedicated 9b slice.
 **Money-precision sweep (36):** ✅ complete — dunning-manager fixed; 74 other grep hits verified intentional rounding (commit `b2fda5d`)
 **NotificationBanner a11y (37):** ✅ complete — transient role=alert/status, tray role=dialog, ul/li list, bell aria-expanded (commit `1257746`)
 **SellerIntentPanel silent-mutation (38):** ✅ complete — onError toast with state-change reassurance + bulk-scan triple-path (commit `d48750d`)
+**/fee-dashboard (39):** ✅ complete — full 9-lens, P1 money-precision fix, 5 error toasts with reassurance, teach-via-option-label on Frequency/Enabled (commit `f1fbae4`)
 **/onboarding-v2 targeted (18):** ✅ complete (commit `70df779`) — 18b deferred
 **/settings targeted (19):** ✅ complete (commit `809044c`) — 19b remaining components deferred
 **/pipeline (20):** ✅ complete (commit `1b5d0f7`)
