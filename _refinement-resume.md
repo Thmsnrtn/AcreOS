@@ -625,6 +625,7 @@ to a dedicated 9b slice.
 **/fee-dashboard (39):** ✅ complete — full 9-lens, P1 money-precision fix, 5 error toasts with reassurance, teach-via-option-label on Frequency/Enabled (commit `f1fbae4`)
 **/audit-log (40):** ✅ complete — full 9-lens, P1 CSV-injection fix per slice-5k, humanize-action per slice-8, retry-on-error per slice-9 (commit `3659ae6`)
 **/cash-flow (41):** ✅ complete — full 9-lens, section role=status, 5 progress-bar aria-labels, ul/li throughout (commit `f93968f`)
+**/executive-dashboard (42):** ✅ complete — full 9-lens, 4 section landmarks, all stat grids → dl/dt/dd (commit `3f7ce0c`)
 **/onboarding-v2 targeted (18):** ✅ complete (commit `70df779`) — 18b deferred
 **/settings targeted (19):** ✅ complete (commit `809044c`) — 19b remaining components deferred
 **/pipeline (20):** ✅ complete (commit `1b5d0f7`)
