@@ -1370,19 +1370,20 @@ export default function Settings() {
                                     }}
                                     disabled={updateRoleMutation.isPending}
                                   >
-                                    <SelectTrigger 
-                                      className="w-28"
+                                    <SelectTrigger
+                                      className="w-44 sm:w-56"
+                                      aria-label={`Role for team member`}
                                       data-testid={`select-role-${member.id}`}
                                     >
                                       <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
                                       {userPermissions.role === "owner" && (
-                                        <SelectItem value="owner">Owner</SelectItem>
+                                        <SelectItem value="owner">Owner — full access and billing</SelectItem>
                                       )}
-                                      <SelectItem value="admin">Admin</SelectItem>
-                                      <SelectItem value="member">Member</SelectItem>
-                                      <SelectItem value="viewer">Viewer</SelectItem>
+                                      <SelectItem value="admin">Admin — manage team and data</SelectItem>
+                                      <SelectItem value="member">Member — create and edit records</SelectItem>
+                                      <SelectItem value="viewer">Viewer — read-only access</SelectItem>
                                     </SelectContent>
                                   </Select>
                                 ) : (
