@@ -3435,7 +3435,7 @@ sections. Remaining full-page pass deferred (17b).
   waits for a fifth surface per the "three-strikes"
   convention.
 
-**Commit:** (pending)
+**Commit:** `3fb7dcb`
 
 ---
 
@@ -3520,4 +3520,4 @@ flow-level copy + the $ opportunity tiles.
 - `PortfolioImportStep` has its own CSV-import flow with a
   preview; slice-5k CSV-escape rule may apply.
 
-**Commit:** (pending)
+**Commit:** `70df779`

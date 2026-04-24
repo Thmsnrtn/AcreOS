@@ -1,7 +1,44 @@
 # Elite-Team Refinement — Resume Point
 
-**Last session:** 2026-04-23 (session 16 — `/dashboard`)
-**Last completed refinement:** `client/src/pages/dashboard.tsx`
+**Last session:** 2026-04-23 (session 18 — `/onboarding-v2` targeted)
+**Last completed refinement:** `client/src/pages/onboarding-v2.tsx`
+(1469 lines) — targeted pass: sentence-case sweep on all 18
+STEPS_BY_PATH step titles + subtitles (beginner/active/
+enterprise × 6 steps each), money-precision applied to the
+#1 aha-moment InstantDealHunt opportunity tiles (3 money
+sites through usd() noCents), tile labels sentence-cased,
+proper ellipsis on scanning messages, "Continue to dashboard"
+CTA min-h-11 + ArrowRight aria-hidden, tabular-nums on
+counts, useDocumentTitle("Welcome to AcreOS") wired. ~1100
+lines deferred to slice 18b (portfolio-import, county form,
+strategy cards, atlas tour, team/integrations/workflows
+steps, completion celebration).
+
+---
+
+**Prior session:** 2026-04-23 (session 17 — `/leads` targeted)
+**Prior completed refinement:** `client/src/pages/leads.tsx`
+(2572 lines) — targeted trust + a11y pass. THREE silent-
+failure bugs fixed: handleExport silently swallowed errors →
+destructive toast; handleFileSelect silently hid CSV preview
+errors → destructive toast; bulk-update toast voice upgraded.
+CSV-injection defense applied to handleBulkExport per slice-5k
+rule (double embedded quotes, prefix formula-triggers with
+`'`). window.confirm replaced with ConfirmDialog for dirty-
+form discard (slice-5l ban). Sentence-case sweep on stage
+filter items (desktop + mobile × 5 stages = 12 replacements),
+tier distribution labels (A/B/C/D tier), "Add New Lead" →
+"Add lead", import-tax-list. Lead-quality distribution bar
+now role=img with aria-label summarizing 4 tier counts.
+useDocumentTitle wired. Remaining ~2000 lines (LeadForm,
+LeadStatusBadge, LeadDetailDrawer, table rows, bulk-delete
+dialog, import preview, tax-delinquent importer) deferred
+to slice 17b.
+
+---
+
+**Prior session:** 2026-04-23 (session 16 — `/dashboard`)
+**Prior completed refinement:** `client/src/pages/dashboard.tsx`
 (734 lines) — the alternate dashboard entry surface. Full
 horizontal application of the cross-cutting rules stack.
 useDocumentTitle wired. Monthly cashflow + Pipeline value
@@ -217,7 +254,10 @@ to a dedicated 9b slice.
 **Money sweep: /properties + /deals + /campaigns-content (14):** ✅ complete (commit `0ffdbde`)
 **/today (15):** ✅ complete (commit `fb24811`)
 **/dashboard (16):** ✅ complete (commit `a73dfee`)
-**Money-precision grep remaining (~68 files):** ⬜ deferred — apply per-surface as each page gets 9-lens pass
+**/leads targeted (17):** ✅ complete (commit `3fb7dcb`) — 17b deferred
+**/onboarding-v2 targeted (18):** ✅ complete (commit `70df779`) — 18b deferred
+**window.confirm ban grep:** ✅ clean across the client (only remaining reference is an explanatory comment)
+**Money-precision grep remaining (~65 files):** ⬜ deferred — apply per-surface as each page gets 9-lens pass
 
 ## How to continue
 
@@ -360,6 +400,25 @@ Session 16:
   mobile tip-banner stacking, em-dash on aging-lead score
   separator, tabular-nums. useDocumentTitle wired.
   (commit `a73dfee`)
+
+Session 17:
+- `/leads` targeted pass — 2572-line file, surgical. Three
+  silent-failure P1 fixes (export / preview / bulk-update),
+  CSV-injection defense on handleBulkExport (slice-5k),
+  window.confirm → ConfirmDialog for dirty-form discard,
+  sentence-case sweep on stage filter (12 replacements) +
+  tier distribution labels, role=img + aria-label on
+  quality distribution bar, useDocumentTitle. ~2000 lines
+  deferred to 17b. (commit `3fb7dcb`)
+
+Session 18:
+- `/onboarding-v2` targeted pass — 1469-line file. Sentence-
+  case on all 18 STEPS_BY_PATH step titles + subtitles across
+  3 paths. usd() applied to 3 opportunity-tile money sites
+  (aha-moment trust-critical). Tile labels sentence-case,
+  proper ellipsis, CTA min-h-11, tabular-nums,
+  useDocumentTitle. ~1100 lines deferred to 18b.
+  (commit `70df779`)
 
 ## Cross-cutting gains this pass
 
@@ -586,50 +645,45 @@ Session 16:
 
 ## Next surface to refine
 
-**Recommended next slices (entry surfaces now done, shifting
-to list / workflow pages):**
+**Recommended next slices:**
 
-1. **`/leads` full 9-lens pass** — lead capture is trust-
-   critical for acquisition. Last touched in session 3 for
-   mobile checkbox tap targets only. Dedupe flow was
-   covered in session 4, but main list view still
-   unreviewed.
+1. **`/settings` full 9-lens pass** — lightly touched in
+   session 3 (tier badges) but the full surface has
+   Profile / Billing / Team / API / Integrations /
+   Deletion flows that need attention.
 
-2. **Full `/finance` 9-lens pass (12b)** — slice 12 was
+2. **`/pipeline` 9-lens pass** — high-traffic workflow
+   surface, lightly touched in session 3 for violet sweep.
+
+3. **Full `/finance` 9-lens pass (12b)** — slice 12 was
    narrow (money-precision only). Remaining ~1500 lines:
    create-note form dialog, delete confirmation, payment-
    record dialog, Stripe Connect configuration, dunning
    manager, drawer + cards that weren't touched.
 
-3. **`/settings` full 9-lens pass** — lightly touched in
-   session 3 (tier badges) but the full surface has
-   Profile / Billing / Team / API / Integrations /
-   Deletion flows that need attention.
+4. **`/leads` 17b** — remaining ~2000 lines (LeadForm,
+   LeadDetailDrawer, table rows, bulk-delete dialog, import
+   preview, tax-delinquent importer).
 
-4. **`/onboarding-v2` full 9-lens pass** — lightly touched
-   in session 2. Multi-step flow, first-run critical.
-
-5. **`/pipeline` 9-lens pass** — high-traffic workflow
-   surface, lightly touched in session 3 for violet sweep.
+5. **`/onboarding-v2` 18b** — remaining ~1100 lines
+   (portfolio-import, county form, strategy cards, atlas
+   tour, team/integrations/workflows steps, completion
+   celebration).
 
 6. **jsPDF 1098 generator (slice 10b.ii)** — product +
-   compliance question on IRS form fidelity. Best paired
-   with owner clarification on e-filing goals.
+   compliance question on IRS form fidelity.
 
-7. **`/campaigns` 6c (AbTestManager + CampaignVariantsPanel
-   + CampaignAnalytics)** — deferred component-set from
-   session 6.
+7. **`/campaigns` 6c** — AbTestManager + CampaignVariantsPanel
+   + CampaignAnalytics deferred component-set.
 
 **Grep candidates** (apply cross-cutting rules horizontally):
-- `.toLocaleString()` on money still present in ~68 files;
+- `.toLocaleString()` on money still present in ~65 files;
   highest value targets are `/offers`, `/investor-directory`,
   `/tax-delinquent`, `/property-tax`, dashboard child widgets.
-- `window.confirm()` ban rule — grep for any remaining
-  native confirms across the client.
 - Decorative-icon aria-hidden sweep — open-ended, apply
   surface-by-surface.
-- `useDocumentTitle` — grep for pages that don't call it
-  and add one.
+- `useDocumentTitle` — grep for pages that don't call it.
+- **`window.confirm()` ban:** ✅ clean as of slice 17.
 
 ## Deferred / flagged for owner decision
 
@@ -672,9 +726,9 @@ to list / workflow pages):**
   `storage`, `autonomousDealMachine`, `countyAssessorIngest`,
   `supportAgent`, etc. — not blocking client refinement work.
 
-## Expected HEAD after session 16
+## Expected HEAD after session 18
 
-Session chain 8 → 16 cadence (all shipped atomic + docs):
+Session chain 8 → 18 cadence (all shipped atomic + docs):
 
 - `234dafa` slice 8  — /documents
 - `61f1469` slice 9  — /sign/:docId
@@ -686,6 +740,8 @@ Session chain 8 → 16 cadence (all shipped atomic + docs):
 - `0ffdbde` slice 14 — money sweep: /properties + /deals + /campaigns
 - `fb24811` slice 15 — /today
 - `a73dfee` slice 16 — /dashboard
+- `3fb7dcb` slice 17 — /leads targeted (trust + CSV-injection + confirm ban)
+- `70df779` slice 18 — /onboarding-v2 targeted (step titles + aha-moment money)
 
 **Coverage to date** (surfaces with explicit 9-lens pass):
 legal/trust (documents, sign, portal, signature-capture) +
