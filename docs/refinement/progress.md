@@ -3797,7 +3797,7 @@ upgraded:**
   action semantics, but the *presence* of reassurance is
   the rule.
 
-**Commit:** (pending)
+**Commit:** `8b5ad36`
 
 ---
 
@@ -3941,4 +3941,4 @@ prioritized.
   `inputMode`, etc. This extends the slice-5l
   window.confirm ban to prompt.
 
-**Commit:** (pending)
+**Commit:** `04b54f0`

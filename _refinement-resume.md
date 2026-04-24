@@ -1,15 +1,46 @@
 # Elite-Team Refinement — Resume Point
 
-**Last session:** 2026-04-23 (session 20 — `/pipeline` full 9-lens)
-**Last completed refinement:** `client/src/pages/pipeline.tsx`
+**Last session:** 2026-04-24 (session 22 — settings security sub-slice 19b.i)
+**Last completed refinement:** `TwoFactorAuthSettings` +
+`PasswordChangeSettings` inside `client/src/pages/settings.tsx`.
+P0 a11y + security fix: `window.prompt()` used for 2FA
+disable code replaced with Radix Dialog + proper Input with
+autoComplete="one-time-code", inputMode="numeric", full
+mobile-keyboard checklist. **Extends the slice-5l
+window.confirm ban to window.prompt.** Every 2FA mutation
+error now names the current state (2FA is still on/off).
+Password change wrapped in <form onSubmit>, autoComplete
+values set on all 3 inputs so password managers work,
+minLength={8}, aria-invalid + aria-describedby +
+role=alert on mismatch. 2FA verify Input gets same mobile
+keyboard treatment. QR alt text directive. Backup-codes
+instruction names *why*. Sentence-case sweep, decorative
+icons aria-hidden, tabular-nums on count/secret/backup
+list, 44px touch, flex-col sm:flex-row on narrow rows.
+
+---
+
+**Prior session:** 2026-04-24 (session 21 — money-action reassurance grep)
+**Prior completed refinement:** 6 money-action error paths
+across `/finance` (3) and `/borrower-portal` (3) upgraded to
+name current billing state on error per slice-19 rule.
+Highest-anxiety path — `verifyPayment` after Stripe redirect
+— now tells the user "If you were charged, your lender will
+reconcile it within 24 hours — you don't need to pay again"
+(prevents double-charge AND support load). handleMakePayment,
+handleToggleAutopay, handleGeneratePaymentLink, handleCreate
+Payment all carry "no card charged / setting hasn't changed"
+voice. Two silent `console.error` trust bugs also removed.
+
+---
+
+**Prior session:** 2026-04-23 (session 20 — `/pipeline` full 9-lens)
+**Prior completed refinement:** `client/src/pages/pipeline.tsx`
 (307 lines) — full pass. Three hand-rolled compact $
 formatters replaced with canonical `dollarsCompact()` helper
-(slice 12). Sentence-case on funnel header + velocity-metric
-labels. 10+ decorative icons aria-hidden. Velocity-metric
-grid gets role=group + aria-label. Tab-fallback Suspense
-loader promoted to role=status + aria-live=polite. Tabular-
-nums across counts + money + avg score.
-useDocumentTitle("Pipeline — AcreOS") wired.
+(slice 12). Sentence-case, 10+ decorative icons aria-hidden,
+role=group + aria-label on velocity grid, role=status on
+Suspense fallback, tabular-nums, useDocumentTitle.
 
 ---
 
@@ -283,9 +314,12 @@ to a dedicated 9b slice.
 **/dashboard (16):** ✅ complete (commit `a73dfee`)
 **/leads targeted (17):** ✅ complete (commit `3fb7dcb`) — 17b deferred
 **/onboarding-v2 targeted (18):** ✅ complete (commit `70df779`) — 18b deferred
-**/settings targeted (19):** ✅ complete (commit `809044c`) — 19b deferred
+**/settings targeted (19):** ✅ complete (commit `809044c`) — 19b remaining components deferred
 **/pipeline (20):** ✅ complete (commit `1b5d0f7`)
+**Money-action reassurance grep (21):** ✅ complete across /finance + /borrower-portal (commit `8b5ad36`)
+**/settings security sub-slice 19b.i (22):** ✅ complete — 2FA + password change (commit `04b54f0`)
 **window.confirm ban grep:** ✅ clean across the client
+**window.prompt ban:** ✅ clean after slice 22 (was 1 instance in /settings 2FA)
 **Money-precision grep remaining (~63 files):** ⬜ deferred — apply per-surface as each page gets 9-lens pass
 
 ## How to continue
@@ -467,6 +501,25 @@ Session 20:
   10+ aria-hidden icons. role=group on velocity metrics,
   role=status on Suspense fallback. Tabular-nums sweep.
   useDocumentTitle. (commit `1b5d0f7`)
+
+Session 21:
+- Money-action reassurance grep sweep — 6 error paths
+  across /finance + /borrower-portal upgraded per slice-19
+  rule. Highest-anxiety path (post-Stripe verifyPayment)
+  carries "if charged, lender reconciles within 24 hours —
+  don't pay again" reassurance. Prevents double-charge
+  AND support load. (commit `8b5ad36`)
+
+Session 22:
+- /settings 19b.i — TwoFactorAuthSettings + Password
+  ChangeSettings. P0 fix: window.prompt for 2FA disable
+  replaced with accessible Radix Dialog. Extends slice-5l
+  ban to window.prompt. Security-action reassurance voice
+  ("2FA is still on/off"). Password change gets form
+  onSubmit + autoComplete + minLength + aria-invalid + role
+  =alert. 2FA verify Input gains one-time-code autoComplete.
+  Directive QR alt text. Sentence-case sweep. (commit
+  `04b54f0`)
 
 ## Cross-cutting gains this pass
 
@@ -690,27 +743,42 @@ Session 20:
   cleanly as the count crosses one/two/three digits. Parent
   button must carry `aria-label="X (N unread)"`; badge span
   must be `aria-hidden="true"` to avoid double-announcement.
-- **Money-action error reassurance rule (new 19):** error
-  toasts on money-related actions (checkout, charge, plan
-  change, refund, payment submit) should explicitly state
-  that no money moved / no state changed. Generic "Couldn't
-  X / try again" is fine for non-money actions, but on a
-  money action an anxious user wants explicit reassurance
-  they weren't charged. Example: handleUpgrade error toast
-  says "Check your connection and try again — your plan
-  wasn't changed." Applies anywhere an error toast fires
-  on an action that could plausibly affect the user's
-  billing state.
+- **State-change error reassurance rule (new 19, generalized 22):**
+  error toasts on actions that affect user-visible state
+  (money: checkout, charge, plan change, refund, payment
+  submit; security: 2FA enable/disable, password change;
+  account: deletion; sharing: public-link toggle) should
+  explicitly name the current state in the error ("your
+  plan wasn't changed", "2FA is still on", "your card
+  wasn't charged", "your password hasn't changed"). The
+  specific reassurance depends on the action semantics,
+  but the *presence* of reassurance is the rule. Generic
+  "Couldn't X / try again" is fine for non-state-changing
+  actions (fetches, previews); state-changing actions
+  need the current-state naming.
+- **window.prompt ban (new 22):** `window.prompt` is
+  subject to the same inaccessibility constraints as
+  `window.confirm` (slice 5l), PLUS on input-sensitive
+  surfaces (auth codes, passwords, secrets) it prevents
+  proper input semantics (autoComplete, inputMode,
+  aria-describedby, etc.). Replace with Radix Dialog +
+  Input configured for the specific input type
+  (`autoComplete="one-time-code"` for auth codes,
+  `type="password"` + `autoComplete="current-password"`
+  for passwords, etc.). Extends the slice-5l
+  window.confirm ban to prompt. Grep candidate: remaining
+  native `window.prompt` calls across the client (none as
+  of slice 22).
 
 ## Next surface to refine
 
 **Recommended next slices:**
 
-1. **`/settings` 19b** — remaining ~2400 lines of settings.
-   StripeConnect / SeatMgmt / 2FA / PasswordChange /
-   Referral / Goals / ApiKey / ActivityLog / PrivacyData
-   components plus the 14 other tabs. Big surface — likely
-   needs a sub-slice plan (one group of tabs at a time).
+1. **`/settings` 19b.ii — StripeConnectSettings + Seat
+   Management.** Billing-surface companion to 19b.i.
+   ~450 lines combined. Stripe connect flow + seat purchase
+   both involve money and need the state-change reassurance
+   rule.
 
 2. **Full `/finance` 9-lens pass (12b)** — slice 12 was
    narrow (money-precision only). Remaining ~1500 lines:
@@ -787,9 +855,9 @@ Session 20:
   `storage`, `autonomousDealMachine`, `countyAssessorIngest`,
   `supportAgent`, etc. — not blocking client refinement work.
 
-## Expected HEAD after session 20
+## Expected HEAD after session 22
 
-Session chain 8 → 20 cadence (all shipped atomic + docs):
+Session chain 8 → 22 cadence (all shipped atomic + docs):
 
 - `234dafa` slice 8  — /documents
 - `61f1469` slice 9  — /sign/:docId
@@ -805,10 +873,14 @@ Session chain 8 → 20 cadence (all shipped atomic + docs):
 - `70df779` slice 18 — /onboarding-v2 targeted
 - `809044c` slice 19 — /settings targeted (money-action reassurance rule)
 - `1b5d0f7` slice 20 — /pipeline full
+- `8b5ad36` slice 21 — money-action reassurance grep (6 error paths)
+- `04b54f0` slice 22 — /settings security sub-slice (2FA + password, window.prompt ban)
 
-Cross-cutting rule added in this pair: Money-action error
-reassurance (slice 19). Brings total introduced in this
-chain to 13 rules.
+Cross-cutting rules added slices 19-22:
+- State-change error reassurance (slice 19, generalized 22 to security)
+- window.prompt ban (slice 22, extending slice-5l window.confirm ban)
+
+Brings total introduced in this chain to 14 rules.
 
 **Coverage to date** (surfaces with explicit 9-lens pass):
 legal/trust (documents, sign, portal, signature-capture) +
