@@ -3942,3 +3942,127 @@ prioritized.
   window.confirm ban to prompt.
 
 **Commit:** `04b54f0`
+
+---
+
+## Session 23 — 2026-04-24 — /settings billing sub-slice (StripeConnect + SeatManagement, slice 19b.ii)
+
+**Scope:** billing-surface companion to slice 22's security
+sub-slice. Refines `StripeConnectSettings` (lines 107-398 post-
+slice, ~290 lines) and `SeatManagement` (lines 401-~620,
+~220 lines) inside `/settings.tsx`.
+
+**Lens sweep + refinements shipped:**
+
+- **Trust (P1 — disconnect without confirmation):**
+  `StripeConnectSettings` had a bare "Disconnect" button
+  that immediately called `disconnectMutation.mutate()`.
+  Disconnecting Stripe means losing the ability to collect
+  new payments from borrowers — a high-impact destructive
+  action with no guard rail. Gated behind a `<ConfirmDialog>`
+  with specific description ("You won't be able to collect
+  new payments through AcreOS until you reconnect. Pending
+  payments already in Stripe will continue to process
+  normally. You can reconnect at any time."). Destructive
+  variant, "Keep connected" / "Disconnect Stripe" buttons.
+
+- **Trust (state-change error reassurance — slice 19 rule,
+  4 sites):** all 4 Stripe/Seat mutation error toasts
+  upgraded. connectMutation: "Couldn't start Stripe
+  onboarding … your Stripe connection is unchanged."
+  refreshMutation: "Couldn't refresh Stripe status …".
+  disconnectMutation: "Couldn't disconnect Stripe … your
+  Stripe account is still connected." purchaseSeatsMutation:
+  "Couldn't start seat purchase … **no card was charged
+  and your seat count is unchanged**."
+
+- **Copy (sentence-case sweep):**
+  StripeConnectSettings labels: "Not Connected" → "Not
+  connected"; "Onboarding Required" → "Onboarding
+  required"; "Pending Verification" → "Pending
+  verification"; "Connection Status" → "Connection status";
+  "Action Required" → "Action required"; "Connect Stripe
+  Account" → "Connect Stripe account"; "Complete
+  Onboarding" → "Complete onboarding" (button + helper
+  text + confirm reference); "Refresh Status" → "Refresh
+  status"; "Platform Fee:" → "Platform fee:"; the helper
+  text within Action required uses &ldquo;/&rdquo; smart
+  quotes.
+  SeatManagement labels: "Seat Management" → "Seat
+  management"; "Included Seats" / "Additional Seats" →
+  sentence-case; "Add More Seats" → "Add more seats";
+  "Add Seats" → "Add seats". Description gets trailing
+  period.
+
+- **A11y (definition-list semantics):** Stripe connection-
+  status grid (Charges / Payouts / Onboarding) and the
+  SeatManagement stats grid (Included / Additional / Used
+  / Available) promoted from `<div>` + `<p>` pairs to
+  proper `<dl>` + `<dt>` / `<dd>` per the slice-10b
+  definition-list semantic rule. SR users now hear labeled
+  pairs.
+
+- **A11y (decorative-icon aria-hidden sweep — 20+ icons):**
+  Wallet × 2 (CardTitle + skeleton CardTitle), StatusIcon,
+  CheckCircle2 × 3 (charges/payouts/onboarding status
+  indicators), AlertCircle × 3, Link2, ExternalLink,
+  RefreshCw, Unlink, Loader2 × 4. In SeatManagement: Users
+  × 2, Check, UserPlus, Loader2.
+
+- **A11y (Progress aria-label):** seat-usage Progress bar
+  gains `aria-label="Seat usage: X of Y seats in use"` so
+  SR users hear actual utilization.
+
+- **A11y (Add-seats button aria-label):** the "Add seats"
+  button with changing quantity/billing gets an aria-label
+  that names the purchase intent: "Add {N} {billingPeriod}
+  seat(s)". Screen reader users hear *what* they're
+  about to commit to.
+
+- **A11y (role=status on Stripe requirements banner):** the
+  amber "Action required" banner promoted to role=status +
+  aria-live=polite so SR users hear the new-requirement
+  notification when it appears.
+
+- **Engineer (select htmlFor):** Billing-period `<Select>`
+  had an unlabeled trigger — the `<Label>` was present but
+  not linked. Added `id` + `htmlFor`.
+
+- **Tabular-nums sweep:** Stripe account-ID, SeatManagement
+  count tiles (4), Seat-price tile, seat-quantity input.
+
+- **Mobile (touch):** all CTAs in both sub-components now
+  `min-h-11 sm:min-h-9`.
+
+**9-lens sign-off (applied to touched components):**
+
+| Lens              | Status                                                                                                 |
+| ----------------- | ------------------------------------------------------------------------------------------------------ |
+| Designer          | PASS — sentence-case, tabular-nums, dl/dt/dd on fact grids                                            |
+| Mobile designer   | PASS — 44px touch on all billing CTAs, inputMode=numeric on seat-quantity                             |
+| Accessibility     | PASS — 20+ aria-hidden icons, role=status on requirements banner, Progress labeled, Add-seats named  |
+| Engineer          | PASS — ConfirmDialog gates destructive disconnect, error specificity, Select htmlFor                  |
+| Copywriter        | PASS — sentence-case sweep, "no card was charged and your seat count is unchanged"                    |
+| Trust             | PASS — 4 state-change error reassurances, destructive action gated, platform-fee copy unchanged      |
+
+**Deferred (remaining 19b sub-slices):**
+- ReferralSettings (1822-1941)
+- GoalsSettings (1942-2123) — has bare .toLocaleString()
+  money site (line 2096) — apply usd()
+- ApiKeyManager (2124-2368) — candidate for its own
+  security-focused slice like 19b.i
+- ActivityLogPanel (2369-2440)
+- PrivacyDataSettings (2441+) — account deletion, another
+  trust-critical surface with a likely confirm pattern
+
+**Patterns reinforced:**
+- **State-change error reassurance rule (slice 19,
+  generalized 22):** 4 more applications (Stripe connect /
+  disconnect / refresh; seat purchase).
+- **Definition-list semantic rule (slice 10b):** applied to
+  two additional fact grids inside settings.
+- **ConfirmDialog on destructive actions (slice 5l):** Stripe
+  disconnect joins the list of billing/security actions
+  that should never fire without an explicit gate.
+
+**Commit:** (pending)

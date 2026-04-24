@@ -108,15 +108,16 @@ interface StripeConnectStatusResponse {
 
 function StripeConnectSettings() {
   const { toast } = useToast();
-  
+  const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
+
   const { data: connectStatus, isLoading: statusLoading, refetch } = useQuery<StripeConnectStatusResponse>({
     queryKey: ["/api/stripe/connect/status"],
   });
-  
+
   const connectMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/stripe/connect/link", {});
-      if (!res.ok) throw new Error("Failed to start Stripe onboarding");
+      if (!res.ok) throw new Error(`Server returned ${res.status}`);
       return res.json();
     },
     onSuccess: (data) => {
@@ -126,17 +127,17 @@ function StripeConnectSettings() {
     },
     onError: (error: any) => {
       toast({
-        title: "Error",
-        description: error.message || "Failed to start Stripe onboarding",
+        title: "Couldn't start Stripe onboarding",
+        description: error?.message || "Check your connection and try again — your Stripe connection is unchanged.",
         variant: "destructive",
       });
     },
   });
-  
+
   const refreshMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/stripe/connect/refresh", {});
-      if (!res.ok) throw new Error("Failed to refresh status");
+      if (!res.ok) throw new Error(`Server returned ${res.status}`);
       return res.json();
     },
     onSuccess: () => {
@@ -148,21 +149,22 @@ function StripeConnectSettings() {
     },
     onError: (error: any) => {
       toast({
-        title: "Error",
-        description: error.message || "Failed to refresh status",
+        title: "Couldn't refresh Stripe status",
+        description: error?.message || "Check your connection and try again.",
         variant: "destructive",
       });
     },
   });
-  
+
   const disconnectMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/stripe/connect/disconnect", {});
-      if (!res.ok) throw new Error("Failed to disconnect account");
+      if (!res.ok) throw new Error(`Server returned ${res.status}`);
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/stripe/connect/status"] });
+      setShowDisconnectConfirm(false);
       toast({
         title: "Stripe disconnected",
         description: "Your Stripe account has been disconnected.",
@@ -170,28 +172,28 @@ function StripeConnectSettings() {
     },
     onError: (error: any) => {
       toast({
-        title: "Error",
-        description: error.message || "Failed to disconnect Stripe account",
+        title: "Couldn't disconnect Stripe",
+        description: error?.message || "Check your connection and try again — your Stripe account is still connected.",
         variant: "destructive",
       });
     },
   });
-  
+
   const getStatusDisplay = () => {
-    if (!connectStatus) return { label: "Not Connected", icon: AlertCircle, color: "text-muted-foreground" };
-    
+    if (!connectStatus) return { label: "Not connected", icon: AlertCircle, color: "text-muted-foreground" };
+
     if (!connectStatus.isConnected) {
-      return { label: "Not Connected", icon: AlertCircle, color: "text-muted-foreground" };
+      return { label: "Not connected", icon: AlertCircle, color: "text-muted-foreground" };
     }
-    
+
     if (!connectStatus.detailsSubmitted) {
-      return { label: "Onboarding Required", icon: Clock, color: "text-amber-500" };
+      return { label: "Onboarding required", icon: Clock, color: "text-amber-500" };
     }
-    
+
     if (!connectStatus.chargesEnabled) {
-      return { label: "Pending Verification", icon: Clock, color: "text-amber-500" };
+      return { label: "Pending verification", icon: Clock, color: "text-amber-500" };
     }
-    
+
     return { label: "Active", icon: CheckCircle2, color: "text-green-500" };
   };
   
@@ -203,7 +205,7 @@ function StripeConnectSettings() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Wallet className="w-5 h-5" />
+            <Wallet className="w-5 h-5" aria-hidden="true" />
             Stripe Connect
           </CardTitle>
         </CardHeader>
@@ -218,7 +220,7 @@ function StripeConnectSettings() {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Wallet className="w-5 h-5" />
+          <Wallet className="w-5 h-5" aria-hidden="true" />
           Stripe Connect
         </CardTitle>
         <CardDescription>
@@ -228,94 +230,99 @@ function StripeConnectSettings() {
       <CardContent className="space-y-6">
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-3">
-            <StatusIcon className={`w-5 h-5 ${status.color}`} />
+            <StatusIcon className={`w-5 h-5 ${status.color}`} aria-hidden="true" />
             <div>
-              <p className="font-medium">Connection Status</p>
+              <p className="font-medium">Connection status</p>
               <p className={`text-sm ${status.color}`} data-testid="text-stripe-status">
                 {status.label}
               </p>
             </div>
           </div>
-          
+
           {connectStatus?.isConnected && connectStatus.accountId && (
             <div className="text-right">
               <p className="text-sm text-muted-foreground">Account ID</p>
-              <p className="font-mono text-sm" data-testid="text-stripe-account-id">
+              <p className="font-mono text-sm tabular-nums" data-testid="text-stripe-account-id">
                 {connectStatus.accountId}
               </p>
             </div>
           )}
         </div>
-        
+
         {connectStatus?.isConnected && (
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 pt-4 border-t">
+          <dl className="grid grid-cols-2 md:grid-cols-3 gap-4 pt-4 border-t">
             <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">Charges</p>
-              <div className="flex items-center gap-1">
+              <dt className="text-sm text-muted-foreground">Charges</dt>
+              <dd className="flex items-center gap-1">
                 {connectStatus.chargesEnabled ? (
-                  <CheckCircle2 className="w-4 h-4 text-green-500" />
+                  <CheckCircle2 className="w-4 h-4 text-green-500" aria-hidden="true" />
                 ) : (
-                  <AlertCircle className="w-4 h-4 text-amber-500" />
+                  <AlertCircle className="w-4 h-4 text-amber-500" aria-hidden="true" />
                 )}
                 <span className="text-sm font-medium">
                   {connectStatus.chargesEnabled ? "Enabled" : "Pending"}
                 </span>
-              </div>
+              </dd>
             </div>
             <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">Payouts</p>
-              <div className="flex items-center gap-1">
+              <dt className="text-sm text-muted-foreground">Payouts</dt>
+              <dd className="flex items-center gap-1">
                 {connectStatus.payoutsEnabled ? (
-                  <CheckCircle2 className="w-4 h-4 text-green-500" />
+                  <CheckCircle2 className="w-4 h-4 text-green-500" aria-hidden="true" />
                 ) : (
-                  <AlertCircle className="w-4 h-4 text-amber-500" />
+                  <AlertCircle className="w-4 h-4 text-amber-500" aria-hidden="true" />
                 )}
                 <span className="text-sm font-medium">
                   {connectStatus.payoutsEnabled ? "Enabled" : "Pending"}
                 </span>
-              </div>
+              </dd>
             </div>
             <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">Onboarding</p>
-              <div className="flex items-center gap-1">
+              <dt className="text-sm text-muted-foreground">Onboarding</dt>
+              <dd className="flex items-center gap-1">
                 {connectStatus.detailsSubmitted ? (
-                  <CheckCircle2 className="w-4 h-4 text-green-500" />
+                  <CheckCircle2 className="w-4 h-4 text-green-500" aria-hidden="true" />
                 ) : (
-                  <AlertCircle className="w-4 h-4 text-amber-500" />
+                  <AlertCircle className="w-4 h-4 text-amber-500" aria-hidden="true" />
                 )}
                 <span className="text-sm font-medium">
                   {connectStatus.detailsSubmitted ? "Complete" : "Incomplete"}
                 </span>
-              </div>
+              </dd>
             </div>
-          </div>
+          </dl>
         )}
-        
+
         {connectStatus?.requirements && connectStatus.requirements.currentlyDue.length > 0 && (
-          <div className="p-4 rounded-md bg-amber-500/10 border border-amber-500/20">
+          <div
+            className="p-4 rounded-md bg-amber-500/10 border border-amber-500/20"
+            role="status"
+            aria-live="polite"
+          >
             <p className="font-medium text-amber-500 flex items-center gap-2">
-              <AlertCircle className="w-4 h-4" />
-              Action Required
+              <AlertCircle className="w-4 h-4" aria-hidden="true" />
+              Action required
             </p>
             <p className="text-sm text-muted-foreground mt-1">
-              Complete your Stripe onboarding to enable payments. Click "Complete Onboarding" below.
+              Complete your Stripe onboarding to enable payments. Click &ldquo;Complete onboarding&rdquo; below.
             </p>
           </div>
         )}
-        
+
         <div className="flex flex-wrap gap-3 pt-4 border-t">
           {!connectStatus?.isConnected ? (
             <Button
               onClick={() => connectMutation.mutate()}
               disabled={connectMutation.isPending}
+              className="min-h-11 sm:min-h-9"
               data-testid="button-connect-stripe"
             >
               {connectMutation.isPending ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
               ) : (
-                <Link2 className="w-4 h-4 mr-2" />
+                <Link2 className="w-4 h-4 mr-2" aria-hidden="true" />
               )}
-              Connect Stripe Account
+              Connect Stripe account
             </Button>
           ) : (
             <>
@@ -323,55 +330,70 @@ function StripeConnectSettings() {
                 <Button
                   onClick={() => connectMutation.mutate()}
                   disabled={connectMutation.isPending}
+                  className="min-h-11 sm:min-h-9"
                   data-testid="button-complete-onboarding"
                 >
                   {connectMutation.isPending ? (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
                   ) : (
-                    <ExternalLink className="w-4 h-4 mr-2" />
+                    <ExternalLink className="w-4 h-4 mr-2" aria-hidden="true" />
                   )}
-                  Complete Onboarding
+                  Complete onboarding
                 </Button>
               )}
-              
+
               <Button
                 variant="outline"
                 onClick={() => refreshMutation.mutate()}
                 disabled={refreshMutation.isPending}
+                className="min-h-11 sm:min-h-9"
                 data-testid="button-refresh-stripe-status"
               >
                 {refreshMutation.isPending ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
                 ) : (
-                  <RefreshCw className="w-4 h-4 mr-2" />
+                  <RefreshCw className="w-4 h-4 mr-2" aria-hidden="true" />
                 )}
-                Refresh Status
+                Refresh status
               </Button>
-              
+
               <Button
                 variant="outline"
-                onClick={() => disconnectMutation.mutate()}
+                onClick={() => setShowDisconnectConfirm(true)}
                 disabled={disconnectMutation.isPending}
+                className="min-h-11 sm:min-h-9"
                 data-testid="button-disconnect-stripe"
               >
                 {disconnectMutation.isPending ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
                 ) : (
-                  <Unlink className="w-4 h-4 mr-2" />
+                  <Unlink className="w-4 h-4 mr-2" aria-hidden="true" />
                 )}
                 Disconnect
               </Button>
             </>
           )}
         </div>
-        
+
         <div className="pt-4 border-t">
           <p className="text-sm text-muted-foreground">
-            <strong>Platform Fee:</strong> A 2.5% platform fee is applied to all payments processed through AcreOS. 
+            <strong>Platform fee:</strong> a 2.5% platform fee is applied to all payments processed through AcreOS.
             This covers payment processing, automated payment collection, and platform infrastructure.
           </p>
         </div>
       </CardContent>
+
+      <ConfirmDialog
+        open={showDisconnectConfirm}
+        onOpenChange={setShowDisconnectConfirm}
+        title="Disconnect your Stripe account?"
+        description="You won't be able to collect new payments through AcreOS until you reconnect. Pending payments already in Stripe will continue to process normally. You can reconnect at any time."
+        confirmLabel="Disconnect Stripe"
+        cancelLabel="Keep connected"
+        variant="destructive"
+        isLoading={disconnectMutation.isPending}
+        onConfirm={() => disconnectMutation.mutate()}
+      />
     </Card>
   );
 }
@@ -392,7 +414,7 @@ function SeatManagement() {
   const purchaseSeatsMutation = useMutation({
     mutationFn: async ({ quantity, billingPeriod }: { quantity: number; billingPeriod: string }) => {
       const res = await apiRequest("POST", "/api/organization/seats/purchase", { quantity, billingPeriod });
-      if (!res.ok) throw new Error("Failed to create checkout session");
+      if (!res.ok) throw new Error(`Server returned ${res.status}`);
       return res.json();
     },
     onSuccess: (data) => {
@@ -402,8 +424,8 @@ function SeatManagement() {
     },
     onError: (error: any) => {
       toast({
-        title: "Error",
-        description: error.message || "Failed to purchase seats",
+        title: "Couldn't start seat purchase",
+        description: error?.message || "Check your connection and try again — no card was charged and your seat count is unchanged.",
         variant: "destructive",
       });
     },
@@ -427,8 +449,8 @@ function SeatManagement() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Users className="w-5 h-5" />
-            Seat Management
+            <Users className="w-5 h-5" aria-hidden="true" />
+            Seat management
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -442,56 +464,57 @@ function SeatManagement() {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Users className="w-5 h-5" />
-          Seat Management
+          <Users className="w-5 h-5" aria-hidden="true" />
+          Seat management
         </CardTitle>
-        <CardDescription>Manage your team seat allocation</CardDescription>
+        <CardDescription>Manage your team seat allocation.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <dl className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">Included Seats</p>
-            <p className="text-2xl font-semibold" data-testid="text-included-seats">
+            <dt className="text-sm text-muted-foreground">Included seats</dt>
+            <dd className="text-2xl font-semibold tabular-nums" data-testid="text-included-seats">
               {seatInfo?.includedSeats ?? 0}
-            </p>
+            </dd>
           </div>
           <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">Additional Seats</p>
-            <p className="text-2xl font-semibold" data-testid="text-additional-seats">
+            <dt className="text-sm text-muted-foreground">Additional seats</dt>
+            <dd className="text-2xl font-semibold tabular-nums" data-testid="text-additional-seats">
               {seatInfo?.additionalSeats ?? 0}
-            </p>
+            </dd>
           </div>
           <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">Used</p>
-            <p className="text-2xl font-semibold" data-testid="text-used-seats">
+            <dt className="text-sm text-muted-foreground">Used</dt>
+            <dd className="text-2xl font-semibold tabular-nums" data-testid="text-used-seats">
               {seatInfo?.usedSeats ?? 0} / {seatInfo?.totalSeats ?? 0}
-            </p>
+            </dd>
           </div>
           <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">Available</p>
-            <p className="text-2xl font-semibold text-green-600" data-testid="text-available-seats">
+            <dt className="text-sm text-muted-foreground">Available</dt>
+            <dd className="text-2xl font-semibold tabular-nums text-green-600" data-testid="text-available-seats">
               {seatInfo?.availableSeats ?? 0}
-            </p>
+            </dd>
           </div>
-        </div>
-        
+        </dl>
+
         {seatInfo && seatInfo.totalSeats > 0 && (
-          <Progress 
-            value={(seatInfo.usedSeats / seatInfo.totalSeats) * 100} 
+          <Progress
+            value={(seatInfo.usedSeats / seatInfo.totalSeats) * 100}
             className="h-2"
+            aria-label={`Seat usage: ${seatInfo.usedSeats} of ${seatInfo.totalSeats} seats in use`}
           />
         )}
-        
+
         {seatInfo?.hasTeamMessaging && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Check className="w-4 h-4 text-green-500" />
+            <Check className="w-4 h-4 text-green-500" aria-hidden="true" />
             Team messaging enabled (2+ seats)
           </div>
         )}
-        
+
         {seatPricing?.canPurchaseSeats && seatInfo?.canAddSeats && (
           <div className="pt-4 border-t space-y-4">
-            <h4 className="font-medium">Add More Seats</h4>
+            <h4 className="font-medium">Add more seats</h4>
             <div className="flex flex-wrap items-end gap-4">
               <div className="space-y-1">
                 <Label htmlFor="seat-quantity">Quantity</Label>
@@ -502,14 +525,15 @@ function SeatManagement() {
                   max={seatInfo?.maxSeats ? seatInfo.maxSeats - seatInfo.totalSeats : 100}
                   value={seatQuantity}
                   onChange={(e) => setSeatQuantity(Math.max(1, parseInt(e.target.value) || 1))}
-                  className="w-20"
+                  className="w-20 tabular-nums"
+                  inputMode="numeric"
                   data-testid="input-seat-quantity"
                 />
               </div>
               <div className="space-y-1">
-                <Label>Billing</Label>
+                <Label htmlFor="select-billing-period">Billing</Label>
                 <Select value={billingPeriod} onValueChange={(v) => setBillingPeriod(v as "monthly" | "yearly")}>
-                  <SelectTrigger className="w-28" data-testid="select-billing-period">
+                  <SelectTrigger id="select-billing-period" className="w-28" data-testid="select-billing-period">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -520,8 +544,8 @@ function SeatManagement() {
               </div>
               <div className="flex-1 space-y-1">
                 <Label>Price</Label>
-                <p className="text-lg font-semibold" data-testid="text-seat-price">
-                  {billingPeriod === "monthly" 
+                <p className="text-lg font-semibold tabular-nums" data-testid="text-seat-price">
+                  {billingPeriod === "monthly"
                     ? `${formatPrice((seatPricing.monthly?.amount ?? 0) * seatQuantity)}/mo`
                     : `${formatPrice((seatPricing.yearly?.amount ?? 0) * seatQuantity)}/yr`
                   }
@@ -530,14 +554,16 @@ function SeatManagement() {
               <Button
                 onClick={handlePurchaseSeats}
                 disabled={purchaseSeatsMutation.isPending || !seatQuantity}
+                className="min-h-11 sm:min-h-9"
                 data-testid="button-purchase-seats"
+                aria-label={`Add ${seatQuantity} ${billingPeriod} seat${seatQuantity === 1 ? "" : "s"}`}
               >
                 {purchaseSeatsMutation.isPending ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
                 ) : (
-                  <UserPlus className="w-4 h-4 mr-2" />
+                  <UserPlus className="w-4 h-4 mr-2" aria-hidden="true" />
                 )}
-                Add Seats
+                Add seats
               </Button>
             </div>
           </div>
