@@ -1,7 +1,27 @@
 # Elite-Team Refinement — Resume Point
 
-**Last session:** 2026-04-24 (session 29 — /finance 12b.iii: Drawer body, closes 12b arc)
-**Last completed refinement:** `AcceptPaymentModal` (full
+**Last session:** 2026-04-24 (session 30 — /leads 17b: LeadForm + LeadDetailDrawer + import CSV)
+**Last completed refinement:** `LeadDetailDrawer` (hand-rolled
+drawer P1 fix — role=dialog + aria-modal + aria-labelledby +
+Esc + focus-return; silent assignment-error → destructive toast
+with "still assigned to X" reassurance; Contact/Activity/TCPA
+fact-pair rows → dl/dt/dd; email → mailto:, phone → tel:; 25+
+aria-hidden icons; sentence-case sweep; tabular-nums on dates;
+status badge capitalize; 44px touch on close/edit) + `LeadForm`
+(sentence-case labels, required asterisks on firstName/lastName,
+full mobile-keyboard checklist on email/phone/names,
+autoComplete everywhere, 44px submit, grid-cols-1 sm:grid-cols-2)
++ Import CSV dialog (sentence-case, aria-hidden icons, dl/dt/dd
+on stats grid, role=status on preview count, role=alert on
+errors, role=region on preview table, tabular-nums, aria-label
+on file input, 44px buttons) + ScoreBreakdownCard (sentence-case,
+aria-hidden, role=status on loader, tabular-nums).
+Zero new cross-cutting rules — pure horizontal application.
+
+---
+
+**Prior session:** 2026-04-24 (session 29 — /finance 12b.iii: Drawer body, closes 12b arc)
+**Prior completed refinement:** `AcceptPaymentModal` (full
 9-lens treatment, same as RecordPaymentModal in slice 27)
 + `NoteDetailDrawer` header row + 4 silent-error handlers.
 AcceptPayment: slice-5l dialog semantics, form onSubmit,
@@ -434,7 +454,9 @@ to a dedicated 9b slice.
 **Money sweep: /properties + /deals + /campaigns-content (14):** ✅ complete (commit `0ffdbde`)
 **/today (15):** ✅ complete (commit `fb24811`)
 **/dashboard (16):** ✅ complete (commit `a73dfee`)
-**/leads targeted (17):** ✅ complete (commit `3fb7dcb`) — 17b deferred
+**/leads targeted (17):** ✅ complete (commit `3fb7dcb`)
+**/leads 17b (30):** ✅ complete — LeadForm + LeadDetailDrawer + import CSV + ScoreBreakdown (commit `aa6ff78`)
+**/leads remaining (SafeBulkDeleteDialog + TaxDelinquentImporter shared components):** ⬜ deferred — separate component files, not in leads.tsx scope
 **/onboarding-v2 targeted (18):** ✅ complete (commit `70df779`) — 18b deferred
 **/settings targeted (19):** ✅ complete (commit `809044c`) — 19b remaining components deferred
 **/pipeline (20):** ✅ complete (commit `1b5d0f7`)
@@ -449,6 +471,7 @@ to a dedicated 9b slice.
 **/finance 12b.ii (28):** ✅ complete — AcceptPaymentModal + NoteDetailDrawer header (commit `5059dfc`)
 **/finance 12b.iii (29):** ✅ complete — NoteDetailDrawer body, closes 12b arc (commit `43fb11c`)
 **/finance FULL arc:** ✅ complete across slices 12 + 27 + 28 + 29
+**/leads 17b (30):** ✅ complete — LeadForm + LeadDetailDrawer + import CSV + ScoreBreakdown (commit `aa6ff78`)
 **window.confirm ban grep:** ✅ clean across the client
 **window.prompt ban:** ✅ clean after slice 22
 **Money-precision grep remaining (~63 files):** ⬜ deferred — apply per-surface as each page gets 9-lens pass
@@ -1006,20 +1029,19 @@ Session 24:
 
 ## Next surface to refine
 
-**Settings arc complete. /finance 12b in progress (4/6
-sub-components done after slice 28).** Shift focus:
+**Settings + /finance + /leads-in-file arcs complete.**
+Shift focus:
 
-1. **`/finance` 12b.iii — NoteDetailDrawer body.**
-   ~600 lines remaining: summary cards, loan-progress,
-   payment-collection card (Stripe Connect), dunning
-   manager, payment-history table, amortization-schedule
-   table. Mostly display surfaces with money-precision
-   already applied in slice 12, but a11y + sentence-case
-   + form-semantics passes still outstanding.
+1. **`/onboarding-v2` 18b** — remaining ~1100 lines
+   (portfolio-import, county form, strategy cards, atlas
+   tour, team/integrations/workflows steps, completion
+   celebration).
 
-2. **`/leads` 17b** — remaining ~2000 lines (LeadForm,
-   LeadDetailDrawer, table rows, bulk-delete dialog,
-   import preview, tax-delinquent importer).
+2. **`SafeBulkDeleteDialog` + `TaxDelinquentImporter`**
+   (shared components used by /leads; standalone files,
+   never had a 9-lens pass). Both are dialogs — focus on
+   Esc/aria-modal/focus-return parity with the patterns
+   from slices 5l + 30.
 
 3. **`/onboarding-v2` 18b** — remaining ~1100 lines
    (portfolio-import, county form, strategy cards, atlas
