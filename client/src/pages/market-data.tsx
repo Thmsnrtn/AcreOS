@@ -7,6 +7,7 @@ import { Link } from "wouter";
 import { TrendingUp, TrendingDown, Minus, ArrowRight, MapPin } from "lucide-react";
 import { motion } from "framer-motion";
 import { staggerContainer, staggerItem } from "@/lib/animations";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 interface StateMarketData {
   state: string;
@@ -25,11 +26,11 @@ interface MarketDataResponse {
 function TrendIcon({ trend }: { trend: string }) {
   switch (trend) {
     case "rising":
-      return <TrendingUp className="w-4 h-4 text-emerald-500" />;
+      return <TrendingUp className="w-4 h-4 text-emerald-500" aria-hidden="true" />;
     case "falling":
-      return <TrendingDown className="w-4 h-4 text-red-500" />;
+      return <TrendingDown className="w-4 h-4 text-red-500" aria-hidden="true" />;
     default:
-      return <Minus className="w-4 h-4 text-amber-500" />;
+      return <Minus className="w-4 h-4 text-amber-500" aria-hidden="true" />;
   }
 }
 
@@ -42,6 +43,7 @@ function trendColor(trend: string): string {
 }
 
 export default function MarketDataPage() {
+  useDocumentTitle("Land prices by state");
   const { data, isLoading } = useQuery<MarketDataResponse>({
     queryKey: ["/api/market-intelligence/public/data"],
   });
@@ -52,17 +54,22 @@ export default function MarketDataPage() {
       <div className="border-b bg-card">
         <div className="max-w-6xl mx-auto px-4 py-8">
           <h1 className="text-3xl md:text-4xl font-bold">
-            Land Prices by State
+            Land prices by state
           </h1>
           <p className="text-muted-foreground mt-2 text-lg">
-            AcreOS Market Intelligence — real-time real estate market data
+            AcreOS Market Intelligence — real-time real estate market data.
           </p>
         </div>
       </div>
 
       <div className="max-w-6xl mx-auto px-4 py-8">
         {isLoading ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div
+            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
+            role="status"
+            aria-live="polite"
+          >
+            <span className="sr-only">Loading market data…</span>
             {Array.from({ length: 8 }).map((_, i) => (
               <Card key={i}>
                 <CardContent className="p-4 space-y-3">
@@ -73,15 +80,21 @@ export default function MarketDataPage() {
               </Card>
             ))}
           </div>
+        ) : !data?.states || data.states.length === 0 ? (
+          <div className="text-center py-16 text-muted-foreground">
+            <MapPin className="w-10 h-10 mx-auto mb-3 opacity-30" aria-hidden="true" />
+            <p className="text-sm">No market data available yet. Check back soon.</p>
+          </div>
         ) : (
-          <motion.div
+          <motion.ul
             variants={staggerContainer}
             initial="hidden"
             animate="visible"
             className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
+            aria-label="Land prices by state"
           >
-            {data?.states.map((state) => (
-              <motion.div key={state.state} variants={staggerItem}>
+            {data.states.map((state) => (
+              <motion.li key={state.state} variants={staggerItem}>
                 <Card className="hover:shadow-md transition-shadow">
                   <CardHeader className="pb-2">
                     <div className="flex items-center justify-between">
@@ -95,29 +108,31 @@ export default function MarketDataPage() {
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    <div>
-                      <p className="text-2xl font-bold">
+                    <dl>
+                      <dd className="text-2xl font-bold tabular-nums">
                         ${state.avgPricePerAcre.toLocaleString()}
-                      </p>
-                      <p className="text-xs text-muted-foreground">avg $/acre</p>
-                    </div>
+                      </dd>
+                      <dt className="text-xs text-muted-foreground">avg $/acre</dt>
+                    </dl>
 
                     <div className="space-y-1">
                       <p className="text-xs text-muted-foreground">Top appreciating counties:</p>
-                      <div className="flex flex-wrap gap-1">
+                      <ul className="flex flex-wrap gap-1" aria-label={`Top appreciating counties in ${state.state}`}>
                         {state.topCounties.map((county) => (
-                          <Badge key={county} variant="secondary" className="text-[10px]">
-                            <MapPin className="w-2.5 h-2.5 mr-0.5" />
-                            {county}
-                          </Badge>
+                          <li key={county}>
+                            <Badge variant="secondary" className="text-[10px]">
+                              <MapPin className="w-2.5 h-2.5 mr-0.5" aria-hidden="true" />
+                              {county}
+                            </Badge>
+                          </li>
                         ))}
-                      </div>
+                      </ul>
                     </div>
                   </CardContent>
                 </Card>
-              </motion.div>
+              </motion.li>
             ))}
-          </motion.div>
+          </motion.ul>
         )}
 
         {/* CTA */}
@@ -130,8 +145,8 @@ export default function MarketDataPage() {
               AcreOS uses AI to find undervalued land, automate due diligence, and track your path to financial freedom.
             </p>
             <Link href="/auth">
-              <Button>
-                Start Free <ArrowRight className="w-4 h-4 ml-1" />
+              <Button className="min-h-11">
+                Start free <ArrowRight className="w-4 h-4 ml-1" aria-hidden="true" />
               </Button>
             </Link>
           </CardContent>
