@@ -1,4 +1,5 @@
 import { PageShell } from "@/components/page-shell";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import { PaxContextButton } from "@/components/pax-context-button";
 import { ListPagination, usePagination } from "@/components/list-pagination";
 import { useLeads, useLeadsPaginated, useCreateLead, useUpdateLead, useDeleteLead } from "@/hooks/use-leads";
@@ -638,6 +639,7 @@ function TcpaConsentBadge({ lead }: { lead: Lead }) {
 }
 
 export default function LeadsPage() {
+  useDocumentTitle("Leads — AcreOS");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const { data: leadsResponse, isLoading, error, refetch } = useLeadsPaginated({ page: currentPage, pageSize });
@@ -691,6 +693,7 @@ export default function LeadsPage() {
   const [isBulkUpdating, setIsBulkUpdating] = useState(false);
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
+  const [pendingDiscardClose, setPendingDiscardClose] = useState(false);
   const { toast } = useToast();
 
   const handleSelectAll = (checked: boolean) => {
@@ -721,13 +724,20 @@ export default function LeadsPage() {
     setIsBulkUpdating(true);
     try {
       const res = await apiRequest("POST", "/api/leads/bulk-update", { ids: Array.from(selectedLeadIds), updates: { status } });
-      if (!res.ok) throw new Error("Failed to update leads");
+      if (!res.ok) throw new Error(`Server returned ${res.status}`);
       const result = await res.json();
-      toast({ title: "Success", description: `Updated ${result.updatedCount} leads to "${status}".` });
+      toast({
+        title: `Updated ${result.updatedCount} lead${result.updatedCount === 1 ? "" : "s"}`,
+        description: `Status set to "${status}".`,
+      });
       setSelectedLeadIds(new Set());
       queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
     } catch (error: any) {
-      toast({ title: "Error", description: error.message || "Failed to update leads", variant: "destructive" });
+      toast({
+        title: "Couldn't update leads",
+        description: error?.message || "Check your connection and try again.",
+        variant: "destructive",
+      });
     } finally {
       setIsBulkUpdating(false);
     }
@@ -736,10 +746,18 @@ export default function LeadsPage() {
   const handleBulkExport = () => {
     if (selectedLeadIds.size === 0) return;
     const selectedLeads = filteredLeads?.filter(l => selectedLeadIds.has(l.id)) || [];
+    // CSV-safe cell encoder (slice 5k rule): double embedded quotes AND
+    // prefix formula-trigger leading characters with a `'` so spreadsheets
+    // don't interpret exported values as formulas (CSV injection).
+    const escapeCell = (raw: string | null | undefined): string => {
+      const s = (raw ?? "").toString();
+      const safe = /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
+      return `"${safe.replace(/"/g, '""')}"`;
+    };
     const headers = ["firstName", "lastName", "email", "phone", "status"];
-    const csvRows = [headers.join(",")];
+    const csvRows = [headers.map(h => escapeCell(h)).join(",")];
     selectedLeads.forEach(lead => {
-      csvRows.push([lead.firstName, lead.lastName, lead.email || "", lead.phone || "", lead.status].map(v => `"${v || ""}"`).join(","));
+      csvRows.push([lead.firstName, lead.lastName, lead.email, lead.phone, lead.status].map(escapeCell).join(","));
     });
     const blob = new Blob([csvRows.join("\n")], { type: "text/csv" });
     const url = window.URL.createObjectURL(blob);
@@ -782,7 +800,7 @@ export default function LeadsPage() {
     setIsExporting(true);
     try {
       const response = await fetch('/api/leads/export', { credentials: 'include' });
-      if (!response.ok) throw new Error('Failed to export');
+      if (!response.ok) throw new Error(`Server returned ${response.status}`);
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -793,8 +811,12 @@ export default function LeadsPage() {
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-    } catch (error) {
-      console.error('Export error:', error);
+    } catch (error: any) {
+      toast({
+        title: "Couldn't export leads",
+        description: error?.message || "Check your connection and try again.",
+        variant: "destructive",
+      });
     } finally {
       setIsExporting(false);
     }
@@ -826,9 +848,13 @@ export default function LeadsPage() {
       
       const preview = await response.json();
       setImportPreview(preview);
-    } catch (error) {
-      console.error('Preview error:', error);
+    } catch (error: any) {
       setImportPreview(null);
+      toast({
+        title: "Couldn't preview this file",
+        description: error?.message || "Check that the file is a valid CSV and try again.",
+        variant: "destructive",
+      });
     } finally {
       setIsLoadingPreview(false);
     }
@@ -1054,59 +1080,74 @@ export default function LeadsPage() {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem 
-                    onClick={handleExport} 
+                  <DropdownMenuItem
+                    onClick={handleExport}
                     disabled={isExporting}
                     className="min-h-[44px]"
                     data-testid="button-export-leads-mobile"
                   >
-                    {isExporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
+                    {isExporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" /> : <Download className="w-4 h-4 mr-2" aria-hidden="true" />}
                     Export CSV
                   </DropdownMenuItem>
-                  <DropdownMenuItem 
+                  <DropdownMenuItem
                     onClick={() => setIsImportOpen(true)}
                     className="min-h-[44px]"
                     data-testid="button-import-leads-mobile"
                   >
-                    <Upload className="w-4 h-4 mr-2" />
+                    <Upload className="w-4 h-4 mr-2" aria-hidden="true" />
                     Import CSV
                   </DropdownMenuItem>
-                  <DropdownMenuItem 
+                  <DropdownMenuItem
                     onClick={() => setIsTaxDelinquentImportOpen(true)}
                     className="min-h-[44px]"
                     data-testid="button-import-tax-delinquent-mobile"
                   >
-                    <FileText className="w-4 h-4 mr-2" />
-                    Import Tax List
+                    <FileText className="w-4 h-4 mr-2" aria-hidden="true" />
+                    Import tax list
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
               
 <Dialog open={isCreateOpen} onOpenChange={(open) => {
-                // confirm discard on mobile/desktop if form is dirty
-                const formEl = document.querySelector('[data-testid="lead-form"]') as HTMLFormElement | null;
-                if (!open && formEl) {
-                  // best-effort: if any inputs changed, prompt
-                  const dirty = formEl.querySelector('input[name="firstName"],input[name="lastName"],input[name="email"],input[name="phone"]') as HTMLInputElement | null;
+                // Confirm discard if form has any input. window.confirm()
+                // was banned in slice 5l (no focus trap, inconsistent with
+                // Radix dialogs, blocks main thread); route through
+                // <ConfirmDialog> so the discard prompt is accessible.
+                if (!open) {
+                  const formEl = document.querySelector('[data-testid="lead-form"]') as HTMLFormElement | null;
+                  const dirty = formEl?.querySelector('input[name="firstName"],input[name="lastName"],input[name="email"],input[name="phone"]') as HTMLInputElement | null;
                   if (dirty && dirty.value) {
-                    const ok = window.confirm('You have unsaved changes. Discard them?');
-                    if (!ok) return;
+                    setPendingDiscardClose(true);
+                    return;
                   }
                 }
                 setIsCreateOpen(open);
               }}>
                 <DialogTrigger asChild>
                   <Button className="shadow-lg hover:shadow-primary/25 min-h-[44px]" data-testid="button-add-lead">
-                    <Plus className="w-4 h-4 mr-2" /> Add New Lead
+                    <Plus className="w-4 h-4 mr-2" aria-hidden="true" /> Add lead
                   </Button>
                 </DialogTrigger>
                 <DialogContent className="sm:max-w-[425px]">
                   <DialogHeader>
-                    <DialogTitle>Create New Lead</DialogTitle>
+                    <DialogTitle>Create lead</DialogTitle>
                   </DialogHeader>
                   <LeadForm onSuccess={() => setIsCreateOpen(false)} />
                 </DialogContent>
               </Dialog>
+              <ConfirmDialog
+                open={pendingDiscardClose}
+                onOpenChange={(v) => setPendingDiscardClose(v)}
+                title="Discard unsaved changes?"
+                description="You've started entering a lead. Closing this form will discard what you've typed. This can't be undone."
+                confirmLabel="Discard"
+                cancelLabel="Keep editing"
+                variant="destructive"
+                onConfirm={() => {
+                  setPendingDiscardClose(false);
+                  setIsCreateOpen(false);
+                }}
+              />
             </div>
           </div>
 
@@ -1122,24 +1163,30 @@ export default function LeadsPage() {
             return (
               <div className="rounded-xl border bg-card p-4 space-y-2">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="font-medium text-muted-foreground uppercase tracking-wide">Lead Quality Distribution — {total} total</span>
+                  <span className="font-medium text-muted-foreground uppercase tracking-wide">
+                    Lead quality distribution — <span className="tabular-nums">{total}</span> total
+                  </span>
                   {overdue > 0 && (
                     <span className="flex items-center gap-1 text-amber-600 font-medium">
-                      <Clock className="w-3 h-3" /> {overdue} overdue for follow-up
+                      <Clock className="w-3 h-3" aria-hidden="true" /> <span className="tabular-nums">{overdue}</span> overdue for follow-up
                     </span>
                   )}
                 </div>
-                <div className="flex h-2 rounded-full overflow-hidden gap-0.5">
-                  {tierA > 0 && <div className="bg-emerald-500 transition-all" style={{ width: `${(tierA/total)*100}%` }} title={`A Tier: ${tierA}`} />}
-                  {tierB > 0 && <div className="bg-blue-400 transition-all" style={{ width: `${(tierB/total)*100}%` }} title={`B Tier: ${tierB}`} />}
-                  {tierC > 0 && <div className="bg-amber-400 transition-all" style={{ width: `${(tierC/total)*100}%` }} title={`C Tier: ${tierC}`} />}
-                  {tierD > 0 && <div className="bg-muted-foreground/30 transition-all" style={{ width: `${(tierD/total)*100}%` }} title={`D Tier: ${tierD}`} />}
+                <div
+                  className="flex h-2 rounded-full overflow-hidden gap-0.5"
+                  role="img"
+                  aria-label={`Quality distribution: ${tierA} A-tier, ${tierB} B-tier, ${tierC} C-tier, ${tierD} D-tier`}
+                >
+                  {tierA > 0 && <div className="bg-emerald-500 transition-all" style={{ width: `${(tierA/total)*100}%` }} title={`A tier: ${tierA}`} />}
+                  {tierB > 0 && <div className="bg-blue-400 transition-all" style={{ width: `${(tierB/total)*100}%` }} title={`B tier: ${tierB}`} />}
+                  {tierC > 0 && <div className="bg-amber-400 transition-all" style={{ width: `${(tierC/total)*100}%` }} title={`C tier: ${tierC}`} />}
+                  {tierD > 0 && <div className="bg-muted-foreground/30 transition-all" style={{ width: `${(tierD/total)*100}%` }} title={`D tier: ${tierD}`} />}
                 </div>
                 <div className="flex flex-wrap gap-x-4 gap-y-1">
-                  {tierA > 0 && <span className="text-[10px] text-emerald-700 dark:text-emerald-400">A Tier <strong>{tierA}</strong></span>}
-                  {tierB > 0 && <span className="text-[10px] text-blue-700 dark:text-blue-400">B Tier <strong>{tierB}</strong></span>}
-                  {tierC > 0 && <span className="text-[10px] text-amber-700 dark:text-amber-400">C Tier <strong>{tierC}</strong></span>}
-                  {tierD > 0 && <span className="text-[10px] text-muted-foreground">D Tier <strong>{tierD}</strong></span>}
+                  {tierA > 0 && <span className="text-[10px] text-emerald-700 dark:text-emerald-400">A tier <strong className="tabular-nums">{tierA}</strong></span>}
+                  {tierB > 0 && <span className="text-[10px] text-blue-700 dark:text-blue-400">B tier <strong className="tabular-nums">{tierB}</strong></span>}
+                  {tierC > 0 && <span className="text-[10px] text-amber-700 dark:text-amber-400">C tier <strong className="tabular-nums">{tierC}</strong></span>}
+                  {tierD > 0 && <span className="text-[10px] text-muted-foreground">D tier <strong className="tabular-nums">{tierD}</strong></span>}
                 </div>
               </div>
             );
@@ -1187,25 +1234,25 @@ export default function LeadsPage() {
                       <SelectValue placeholder="Filter by stage" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All Leads</SelectItem>
+                      <SelectItem value="all">All leads</SelectItem>
                       <SelectItem value="hot">
                         <span className="flex items-center gap-2">
-                          <Flame className="w-3 h-3 text-orange-500" /> Hot Leads
+                          <Flame className="w-3 h-3 text-orange-500" aria-hidden="true" /> Hot leads
                         </span>
                       </SelectItem>
                       <SelectItem value="warm">
                         <span className="flex items-center gap-2">
-                          <Sun className="w-3 h-3 text-yellow-500" /> Warm Leads
+                          <Sun className="w-3 h-3 text-yellow-500" aria-hidden="true" /> Warm leads
                         </span>
                       </SelectItem>
                       <SelectItem value="cold">
                         <span className="flex items-center gap-2">
-                          <Snowflake className="w-3 h-3 text-blue-500" /> Cold Leads
+                          <Snowflake className="w-3 h-3 text-blue-500" aria-hidden="true" /> Cold leads
                         </span>
                       </SelectItem>
                       <SelectItem value="dead">
                         <span className="flex items-center gap-2">
-                          <Skull className="w-3 h-3 text-muted-foreground" /> Dead Leads
+                          <Skull className="w-3 h-3 text-muted-foreground" aria-hidden="true" /> Dead leads
                         </span>
                       </SelectItem>
                     </SelectContent>
@@ -1216,7 +1263,7 @@ export default function LeadsPage() {
                         <SelectValue placeholder="Filter by assignee" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all">All Assignees</SelectItem>
+                        <SelectItem value="all">All assignees</SelectItem>
                         <SelectItem value="unassigned">Unassigned</SelectItem>
                         {teamMembers.map((member) => (
                           <SelectItem key={member.userId} value={member.userId}>
@@ -1320,7 +1367,7 @@ export default function LeadsPage() {
                               <SelectValue placeholder="Filter by assignee" />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="all">All Assignees</SelectItem>
+                              <SelectItem value="all">All assignees</SelectItem>
                               <SelectItem value="unassigned">Unassigned</SelectItem>
                               {teamMembers.map((member) => (
                                 <SelectItem key={member.userId} value={member.userId}>

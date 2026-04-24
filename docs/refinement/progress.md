@@ -3309,3 +3309,130 @@ components — each is its own slice. StatCard internals (which
 render sparklines) also deferred.
 
 **Commit:** `a73dfee`
+
+---
+
+## Session 17 — 2026-04-23 — `/leads` targeted trust + a11y pass (slice 17)
+
+**Surface:** `client/src/pages/leads.tsx` (2572 lines) — the
+primary lead-management list view. Too big for a full 9-lens
+pass in one slice; this is a surgical pass on the highest-
+value trust/a11y bugs + scoped copy sweep on the top
+sections. Remaining full-page pass deferred (17b).
+
+**Lens sweep + refinements shipped (high-impact surgical):**
+
+- **Engineer + Trust (P1 silent-export bug):** `handleExport`
+  caught to `console.error('Export error:', error)` only —
+  user clicks Export, nothing happens, no feedback, they
+  assume broken. Now throws through to a destructive toast:
+  "Couldn't export leads / Check your connection and try
+  again." Specific message from server surfaces if
+  available. Same bug class as the silent-messaging fix
+  in slice 10b.
+
+- **Engineer + Trust (P1 silent-preview bug):**
+  `handleFileSelect` caught to `console.error('Preview
+  error:', error)` — user picks a malformed CSV, preview
+  state goes null silently, user sees a broken import flow
+  with no explanation. Now surfaces a destructive toast
+  naming the likely cause ("Check that the file is a valid
+  CSV and try again.").
+
+- **Engineer + Security (CSV injection fix — slice 5k rule):**
+  `handleBulkExport` used naive `v => \`"${v || ""}"\``.
+  Two problems:
+  1. **Embedded quotes not doubled** — `'She said "hi"'`
+     breaks CSV parsing.
+  2. **Formula-trigger prefix missing** — a value starting
+     with `=`, `+`, `-`, `@`, `\t`, `\r` is interpreted as
+     a formula when opened in Excel/Sheets, which is a CSV-
+     injection attack vector. User exports leads, forwards
+     the file, recipient opens in Excel, malicious formula
+     runs with recipient's permissions.
+  Factored `escapeCell()` inline per slice-5k rule: double
+  embedded quotes AND prefix formula-trigger leading chars
+  with `'` to force text interpretation. Also swapped the
+  header row through the same escape.
+
+- **A11y + Trust (`window.confirm` ban — slice 5l rule):**
+  the Add-Lead dialog's onOpenChange handler gated close on
+  dirty-form state with `window.confirm('You have unsaved
+  changes. Discard them?')`. `window.confirm` was banned
+  in slice 5l: no focus trap, no aria wiring, blocks main
+  thread, inconsistent visual next to Radix dialogs.
+  Replaced with `<ConfirmDialog>` gated by a new
+  `pendingDiscardClose` state. Discard action is explicitly
+  destructive-variant with a tighter "Keep editing" /
+  "Discard" button pair that preserves the user's in-
+  progress typing when they cancel the close.
+
+- **Copy (sentence-case sweep — top sections):** "Add New
+  Lead" → "Add lead" (dropped redundant "new"); "Create
+  New Lead" → "Create lead" (dialog title); "All Leads" /
+  "Hot Leads" / "Warm Leads" / "Cold Leads" / "Dead Leads"
+  → sentence-case (6 items × 2 across desktop + mobile =
+  12 replacements); "All Assignees" → "All assignees";
+  "Import Tax List" → "Import tax list"; "Lead Quality
+  Distribution" → "Lead quality distribution"; "A Tier" /
+  "B Tier" / "C Tier" / "D Tier" → "A tier" / "B tier" /
+  etc. in both legend + hover-title.
+
+- **A11y (decorative-icon aria-hidden):** Flame / Sun /
+  Snowflake / Skull stage-filter icons (× 2 renders —
+  desktop + mobile) each got `aria-hidden`. Plus / Clock /
+  Download / Upload / FileText / Loader2 in the top
+  toolbar and dropdown.
+
+- **A11y (lead-quality bar as role=img):** the horizontal
+  colored-segment distribution bar previously had only
+  `<div>` tier-tooltips. Container now `role="img"` with
+  an aria-label summarizing all four tier counts, so SR
+  users hear "Quality distribution: 12 A-tier, 18 B-tier,
+  …" instead of four silent divs.
+
+- **Engineer (bulk-update toast voice):** "Success /
+  Updated X leads to '{status}'" → "Updated N lead(s) /
+  Status set to '{status}'." — tighter title, correct
+  singular/plural on 1 vs N. Error-toast voice upgraded:
+  "Error / Failed to update leads" → "Couldn't update
+  leads / Check your connection and try again."
+
+- **Tabular-nums sweep on lead-quality distribution:** tier
+  counts in legend + "N total" + "N overdue" now use
+  `tabular-nums` so digits don't jitter as the filter
+  changes.
+
+- **useDocumentTitle** wired: "Leads — AcreOS".
+
+**9-lens sign-off (applied to touched sections only):**
+
+| Lens              | Status                                                                                                              |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Designer          | PASS — sentence-case, tabular-nums, tier labels cleaner                                                            |
+| Accessibility     | PASS — 10+ decorative icons aria-hidden, role=img on quality bar, window.confirm replaced with ConfirmDialog       |
+| Engineer          | PASS — silent-export + silent-preview fixed, CSV-injection defense, form-dirty discard accessible                   |
+| Copywriter        | PASS — tighter CTAs, correct singular/plural on bulk toast, specific error fallbacks                                 |
+| Trust             | PASS — three silent-failure paths now surface toasts, CSV-injection vector closed, discard flow accessible          |
+| Other             | N/A — deferred with the rest of the 2000+ lines of the page                                                         |
+
+**Deferred (slice 17b):**
+- Full 9-lens pass on LeadStatusBadge, LeadForm,
+  ScoreBreakdownCard, LeadDetailDrawer, the main table
+  rows, bulk-delete confirmation, import preview dialog,
+  tax-delinquent importer. Each has its own a11y +
+  sentence-case + mobile concerns. 2000+ lines remain.
+- Score-formatter consistency sweep + score-tier rendering.
+- SafeBulkDeleteDialog component passthrough.
+
+**Patterns reinforced:**
+- Silent-mutation / silent-query → toast rule applied to
+  export/preview flows.
+- window.confirm ban rule — trigger to audit: grep shows
+  how many other surfaces still use it.
+- CSV injection defense rule (slice 5k) — applied to a
+  fourth surface; helper still inlined, factoring out
+  waits for a fifth surface per the "three-strikes"
+  convention.
+
+**Commit:** (pending)
