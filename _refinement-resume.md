@@ -1,6 +1,29 @@
 # Elite-Team Refinement — Resume Point
 
-**Last session:** 2026-04-24 (session 33 — /campaigns 6c: AbTestManager + variants + analytics)
+**Last session:** 2026-04-24 (session 34 — placeholder-disambiguation grep sweep)
+**Last completed refinement:** Slice-24 placeholder-
+disambiguation rule applied horizontally. Grep found one
+remaining violation — the standalone `/privacy-settings` page
+(distinct from settings.tsx PrivacyDataSettings fixed in slice
+19b.iii). P0 fix: `placeholder="DELETE MY DATA"` → "Type
+DELETE MY DATA here" + full mobile-keyboard guard
+(autoComplete=off + autoCapitalize=characters + autoCorrect=
+off + spellCheck=false). Also lifted to 9-lens parity: Input
+gains id + Label htmlFor via useId; 2 error-toast paths gain
+state-change reassurance ("your data is unchanged", "your
+account is unchanged and no personal data was removed");
+warning block role=alert, post-delete role=status; data-
+rights grid → ul/li with Badge aria-label; sentence-case
+sweep (~14 headings/CTAs/right labels); 6 icons aria-hidden;
+44px on all 4 CTAs; flex-col sm:flex-row for 320px on Confirm/
+Cancel; contraction voice; proper ellipsis; useDocumentTitle
+wired. `safe-bulk-delete-dialog` (slice 32) and settings.tsx
+PrivacyDataSettings (slice 24) already conform — rule is now
+clean across the client.
+
+---
+
+**Prior session:** 2026-04-24 (session 33 — /campaigns 6c: AbTestManager + variants + analytics)
 **Last completed refinement:** Three deferred /campaigns 6c
 components (1343 lines). `AbTestManager` (675): 5 error-toast
 paths upgraded with state-change reassurance (create/start/
@@ -540,6 +563,7 @@ to a dedicated 9b slice.
 **/onboarding-v2 18b (31):** ✅ complete — 6 deferred step components, closes /onboarding-v2 arc (commit `cd35c33`)
 **SafeBulkDeleteDialog + TaxDelinquentImporter (32):** ✅ complete — closes /leads dialog arc (commit `b06bbff`)
 **/campaigns 6c (33):** ✅ complete — AbTestManager + variants + analytics, closes /campaigns arc (commit `67e61b9`)
+**Placeholder-disambiguation sweep (34):** ✅ complete — /privacy-settings lifted; rule is clean across client (commit `40eaaf8`)
 **/onboarding-v2 targeted (18):** ✅ complete (commit `70df779`) — 18b deferred
 **/settings targeted (19):** ✅ complete (commit `809044c`) — 19b remaining components deferred
 **/pipeline (20):** ✅ complete (commit `1b5d0f7`)
@@ -1113,23 +1137,24 @@ Session 24:
 ## Next surface to refine
 
 **Settings + /finance + /leads + /onboarding-v2 +
-/campaigns arcs complete.** Shift focus:
+/campaigns arcs complete.** Cross-cutting rules 24 +
+25 cleanup is the next horizontal pass:
 
-1. **Placeholder-disambiguation grep sweep (slice 24
-   rule)** — find other confirmation Inputs that show
-   the verification token in the placeholder. Quick
-   horizontal pass.
-
-2. **Teach-via-option-label grep sweep (slice 25 rule)**
+1. **Teach-via-option-label grep sweep (slice 25 rule)**
    — find other `<Select>` options across the app with
-   bare permission/mode/tier labels.
+   bare permission/mode/tier labels. Candidates: billing
+   cadence, notification frequency, role/permission
+   selectors outside /settings, integration modes.
 
-3. **Money-precision grep (slice 10b rule)** — ~63 files
+2. **Money-precision grep (slice 10b rule)** — ~63 files
    still using bare `.toLocaleString()` on money values;
    sweep the remaining surfaces.
 
-4. **jsPDF 1098 generator (slice 10b.ii)** — product +
+3. **jsPDF 1098 generator (slice 10b.ii)** — product +
    compliance question on IRS form fidelity.
+
+4. **Decorative-icon aria-hidden grep** — open-ended
+   horizontal sweep across remaining components.
 
 3. **`/onboarding-v2` 18b** — remaining ~1100 lines
    (portfolio-import, county form, strategy cards, atlas
