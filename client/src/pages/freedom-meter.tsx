@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState, useId } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import {
   AreaChart, Area, BarChart, Bar, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
@@ -99,8 +99,13 @@ function FreedomMeter({ score, monthlyIncome, monthlyExpenses }: {
 
   return (
     <div className="flex flex-col items-center gap-4">
-      <div className="relative" style={{ width: radius * 2, height: radius * 2 }}>
-        <svg height={radius * 2} width={radius * 2}>
+      <div
+        className="relative"
+        style={{ width: radius * 2, height: radius * 2 }}
+        role="img"
+        aria-label={`Freedom score: ${fmtPct(score)}, status ${label.toLowerCase()}`}
+      >
+        <svg height={radius * 2} width={radius * 2} aria-hidden="true">
           {/* Background ring */}
           <circle
             stroke="#e5e7eb"
@@ -123,13 +128,15 @@ function FreedomMeter({ score, monthlyIncome, monthlyExpenses }: {
             cy={radius}
           />
         </svg>
-        <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-3xl font-black" style={{ color }}>{fmtPct(score)}</span>
+        <div className="absolute inset-0 flex flex-col items-center justify-center" aria-hidden="true">
+          <span className="text-3xl font-black tabular-nums" style={{ color }}>{fmtPct(score)}</span>
           <span className="text-xs font-bold tracking-widest" style={{ color }}>{label}</span>
         </div>
       </div>
       <div className="text-center text-sm text-muted-foreground">
-        <div>{fmt(monthlyIncome)}/mo income ÷ {fmt(monthlyExpenses)}/mo expenses</div>
+        <div>
+          <span className="tabular-nums">{fmt(monthlyIncome)}</span>/mo income ÷ <span className="tabular-nums">{fmt(monthlyExpenses)}</span>/mo expenses
+        </div>
       </div>
     </div>
   );
@@ -154,32 +161,36 @@ function NoteCard({ note }: { note: NotePayment }) {
             <p className="font-semibold text-sm">{note.propertyName}</p>
             {note.buyer && <p className="text-xs text-muted-foreground">Buyer: {note.buyer}</p>}
           </div>
-          <Badge className={statusColor}>{note.status}</Badge>
+          <Badge className={`${statusColor} capitalize`}>{note.status}</Badge>
         </div>
-        <div className="grid grid-cols-2 gap-2 text-sm mb-3">
+        <dl className="grid grid-cols-2 gap-2 text-sm mb-3">
           <div>
-            <p className="text-muted-foreground text-xs">Monthly Payment</p>
-            <p className="font-bold text-green-600">{fmt(note.monthlyPayment)}</p>
+            <dt className="text-muted-foreground text-xs">Monthly payment</dt>
+            <dd className="font-bold text-green-600 tabular-nums">{fmt(note.monthlyPayment)}</dd>
           </div>
           <div>
-            <p className="text-muted-foreground text-xs">Balance Remaining</p>
-            <p className="font-semibold">{fmt(note.totalBalance)}</p>
+            <dt className="text-muted-foreground text-xs">Balance remaining</dt>
+            <dd className="font-semibold tabular-nums">{fmt(note.totalBalance)}</dd>
           </div>
           <div>
-            <p className="text-muted-foreground text-xs">Months Left</p>
-            <p className="font-semibold">{note.remainingMonths}</p>
+            <dt className="text-muted-foreground text-xs">Months left</dt>
+            <dd className="font-semibold tabular-nums">{note.remainingMonths}</dd>
           </div>
           <div>
-            <p className="text-muted-foreground text-xs">Interest Rate</p>
-            <p className="font-semibold">{note.interestRate}%</p>
+            <dt className="text-muted-foreground text-xs">Interest rate</dt>
+            <dd className="font-semibold tabular-nums">{note.interestRate}%</dd>
           </div>
-        </div>
+        </dl>
         <div>
           <div className="flex justify-between text-xs text-muted-foreground mb-1">
             <span>Note progress</span>
-            <span>{progressPct}% paid</span>
+            <span className="tabular-nums">{progressPct}% paid</span>
           </div>
-          <Progress value={progressPct} className="h-1.5" />
+          <Progress
+            value={progressPct}
+            className="h-1.5"
+            aria-label={`${note.propertyName} paid ${progressPct}%`}
+          />
         </div>
       </CardContent>
     </Card>
@@ -191,18 +202,21 @@ function MilestoneCard({ milestone }: {
 }) {
   return (
     <div className={`flex items-center gap-3 p-3 rounded-lg border ${milestone.achieved ? "border-green-200 bg-green-50 dark:border-green-900 dark:bg-green-900/10" : "border-border bg-muted/30"}`}>
-      <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${milestone.achieved ? "bg-green-100 text-green-600 dark:bg-green-900/30" : "bg-muted text-muted-foreground"}`}>
+      <div
+        className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${milestone.achieved ? "bg-green-100 text-green-600 dark:bg-green-900/30" : "bg-muted text-muted-foreground"}`}
+        aria-hidden="true"
+      >
         {milestone.achieved ? <CheckCircle className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
       </div>
       <div className="flex-1 min-w-0">
         <p className={`text-sm font-semibold ${milestone.achieved ? "text-green-700 dark:text-green-400" : "text-foreground"}`}>
           {milestone.label}
         </p>
-        <p className="text-xs text-muted-foreground">{fmt(milestone.targetMonthly)}/month</p>
+        <p className="text-xs text-muted-foreground tabular-nums">{fmt(milestone.targetMonthly)}/month</p>
       </div>
       {milestone.achieved && milestone.achievedDate && (
-        <p className="text-xs text-green-600 dark:text-green-400 flex-shrink-0">
-          ✓ {new Date(milestone.achievedDate).toLocaleDateString("en-US", { month: "short", year: "numeric" })}
+        <p className="text-xs text-green-600 dark:text-green-400 flex-shrink-0 tabular-nums">
+          <span aria-label="achieved">✓</span> {new Date(milestone.achievedDate).toLocaleDateString("en-US", { month: "short", year: "numeric" })}
         </p>
       )}
     </div>
@@ -268,11 +282,13 @@ function buildMockSnapshot(monthlyExpenses: number): FreedomSnapshot {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function FreedomMeterPage() {
+  useDocumentTitle("Freedom meter");
   const { toast } = useToast();
   const [monthlyExpenses, setMonthlyExpenses] = useState(4500);
   const [editingExpenses, setEditingExpenses] = useState(false);
   const [expenseInput, setExpenseInput] = useState("4500");
   const [activeTab, setActiveTab] = useState<"overview" | "notes" | "milestones" | "projection">("overview");
+  const expenseInputId = useId();
 
   const { data: snapshot } = useQuery<FreedomSnapshot>({
     queryKey: ["/api/data-intel/freedom-snapshot", monthlyExpenses],
@@ -287,10 +303,17 @@ export default function FreedomMeterPage() {
 
   function saveExpenses() {
     const val = parseFloat(expenseInput);
-    if (isNaN(val) || val < 0) return;
+    if (isNaN(val) || val < 0) {
+      toast({
+        title: "Couldn't save expenses",
+        description: "Enter a positive number — your previous value is unchanged.",
+        variant: "destructive",
+      });
+      return;
+    }
     setMonthlyExpenses(val);
     setEditingExpenses(false);
-    toast({ title: "Monthly expenses updated" });
+    toast({ title: "Monthly expenses updated." });
   }
 
   const projectionData = Array.from({ length: 36 }, (_, i) => {
@@ -311,44 +334,63 @@ export default function FreedomMeterPage() {
   return (
     <PageShell>
       <div className="mb-6">
-        <h1 className="text-2xl md:text-3xl font-bold">Freedom Meter</h1>
-        <p className="text-muted-foreground text-sm md:text-base">Track your journey from trading time for money to true passive income freedom through your land note portfolio</p>
+        <h1 className="text-2xl md:text-3xl font-bold">Freedom meter</h1>
+        <p className="text-muted-foreground text-sm md:text-base">Track your journey from trading time for money to true passive income freedom through your land note portfolio.</p>
       </div>
 
       {/* Top wisdom bar */}
-      <div className="rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-900/50 dark:bg-amber-900/10 p-4 mb-6">
+      <aside
+        aria-label="Daily wisdom"
+        className="rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-900/50 dark:bg-amber-900/10 p-4 mb-6"
+      >
         <div className="flex gap-3 items-start">
-          <Star className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" />
+          <Star className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" aria-hidden="true" />
           <p className="text-sm text-amber-800 dark:text-amber-300 italic">{data.dailyInsight}</p>
         </div>
-      </div>
+      </aside>
 
       {/* Expenses editor */}
       <div className="mb-6">
         <Card>
           <CardContent className="p-4">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="font-semibold text-sm">Your Monthly Fixed Expenses</p>
-                <p className="text-xs text-muted-foreground">Rent, food, utilities, car, insurance — your baseline to achieve freedom</p>
+                <Label htmlFor={expenseInputId} className="font-semibold text-sm">Your monthly fixed expenses</Label>
+                <p className="text-xs text-muted-foreground">Rent, food, utilities, car, insurance — your baseline to achieve freedom.</p>
               </div>
               {editingExpenses ? (
-                <div className="flex items-center gap-2">
-                  <span className="text-muted-foreground">$</span>
+                <form
+                  className="flex items-center gap-2"
+                  onSubmit={(e) => { e.preventDefault(); saveExpenses(); }}
+                >
+                  <span className="text-muted-foreground" aria-hidden="true">$</span>
                   <Input
+                    id={expenseInputId}
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    step="0.01"
                     value={expenseInput}
                     onChange={e => setExpenseInput(e.target.value)}
-                    className="w-28 text-right"
+                    className="w-28 text-right tabular-nums"
                     autoFocus
-                    onKeyDown={e => e.key === "Enter" && saveExpenses()}
+                    aria-label="Monthly fixed expenses in dollars"
                   />
-                  <Button size="sm" onClick={saveExpenses}><Save className="w-3 h-3" /></Button>
-                </div>
+                  <Button size="sm" type="submit" aria-label="Save expenses" className="min-h-9 min-w-9">
+                    <Save className="w-3 h-3" aria-hidden="true" />
+                  </Button>
+                </form>
               ) : (
                 <div className="flex items-center gap-3">
-                  <span className="text-2xl font-bold">{fmt(monthlyExpenses)}/mo</span>
-                  <Button variant="ghost" size="icon" aria-label="Edit expenses" onClick={() => { setEditingExpenses(true); setExpenseInput(String(monthlyExpenses)); }}>
-                    <Edit3 className="w-4 h-4" />
+                  <span id={expenseInputId} className="text-2xl font-bold tabular-nums">{fmt(monthlyExpenses)}/mo</span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Edit expenses"
+                    onClick={() => { setEditingExpenses(true); setExpenseInput(String(monthlyExpenses)); }}
+                    className="min-h-9 min-w-9"
+                  >
+                    <Edit3 className="w-4 h-4" aria-hidden="true" />
                   </Button>
                 </div>
               )}
@@ -367,29 +409,29 @@ export default function FreedomMeterPage() {
           />
         </Card>
 
-        <div className="md:col-span-2 grid grid-cols-2 gap-4">
+        <dl className="md:col-span-2 grid grid-cols-2 gap-4">
           <Card>
             <CardContent className="p-5">
               <div className="flex items-center gap-2 mb-2">
-                <div className="w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center" aria-hidden="true">
                   <DollarSign className="w-4 h-4 text-green-600 dark:text-green-400" />
                 </div>
-                <p className="text-sm font-medium text-muted-foreground">Monthly Note Income</p>
+                <dt className="text-sm font-medium text-muted-foreground">Monthly note income</dt>
               </div>
-              <p className="text-3xl font-black text-green-600 dark:text-green-400">{fmt(data.totalMonthlyNoteIncome)}</p>
-              <p className="text-xs text-muted-foreground mt-1">{data.activeNotes.filter(n => n.status === "current").length} active notes</p>
+              <dd className="text-3xl font-black text-green-600 dark:text-green-400 tabular-nums">{fmt(data.totalMonthlyNoteIncome)}</dd>
+              <p className="text-xs text-muted-foreground mt-1"><span className="tabular-nums">{data.activeNotes.filter(n => n.status === "current").length}</span> active notes</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardContent className="p-5">
               <div className="flex items-center gap-2 mb-2">
-                <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center" aria-hidden="true">
                   <Target className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                 </div>
-                <p className="text-sm font-medium text-muted-foreground">Portfolio Value</p>
+                <dt className="text-sm font-medium text-muted-foreground">Portfolio value</dt>
               </div>
-              <p className="text-3xl font-black">{fmt(data.portfolioValue)}</p>
+              <dd className="text-3xl font-black tabular-nums">{fmt(data.portfolioValue)}</dd>
               <p className="text-xs text-muted-foreground mt-1">Outstanding principal across all notes</p>
             </CardContent>
           </Card>
@@ -397,18 +439,18 @@ export default function FreedomMeterPage() {
           <Card>
             <CardContent className="p-5">
               <div className="flex items-center gap-2 mb-2">
-                <div className="w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center" aria-hidden="true">
                   <Clock className="w-4 h-4 text-purple-600 dark:text-purple-400" />
                 </div>
-                <p className="text-sm font-medium text-muted-foreground">Freedom Date</p>
+                <dt className="text-sm font-medium text-muted-foreground">Freedom date</dt>
               </div>
               {data.projectedFreedomDate ? (
                 <>
-                  <p className="text-xl font-black text-purple-600 dark:text-purple-400">{data.projectedFreedomDate}</p>
-                  <p className="text-xs text-muted-foreground mt-1">{data.monthsUntilFreedom} months away</p>
+                  <dd className="text-xl font-black text-purple-600 dark:text-purple-400 tabular-nums">{data.projectedFreedomDate}</dd>
+                  <p className="text-xs text-muted-foreground mt-1"><span className="tabular-nums">{data.monthsUntilFreedom}</span> months away</p>
                 </>
               ) : (
-                <p className="text-xl font-black text-green-600">Already Free!</p>
+                <dd className="text-xl font-black text-green-600">Already free!</dd>
               )}
             </CardContent>
           </Card>
@@ -416,39 +458,42 @@ export default function FreedomMeterPage() {
           <Card>
             <CardContent className="p-5">
               <div className="flex items-center gap-2 mb-2">
-                <div className="w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center" aria-hidden="true">
                   <TrendingUp className="w-4 h-4 text-amber-600 dark:text-amber-400" />
                 </div>
-                <p className="text-sm font-medium text-muted-foreground">Monthly Surplus / Gap</p>
+                <dt className="text-sm font-medium text-muted-foreground">Monthly surplus / gap</dt>
               </div>
               {data.totalMonthlyNoteIncome >= data.totalMonthlyExpenses ? (
                 <>
-                  <p className="text-3xl font-black text-green-600">+{fmt(data.totalMonthlyNoteIncome - data.totalMonthlyExpenses)}</p>
+                  <dd className="text-3xl font-black text-green-600 tabular-nums">+{fmt(data.totalMonthlyNoteIncome - data.totalMonthlyExpenses)}</dd>
                   <p className="text-xs text-green-600 mt-1">Passive surplus each month</p>
                 </>
               ) : (
                 <>
-                  <p className="text-3xl font-black text-orange-500">-{fmt(data.totalMonthlyExpenses - data.totalMonthlyNoteIncome)}</p>
+                  <dd className="text-3xl font-black text-orange-500 tabular-nums">−{fmt(data.totalMonthlyExpenses - data.totalMonthlyNoteIncome)}</dd>
                   <p className="text-xs text-muted-foreground mt-1">Still needed to reach freedom</p>
                 </>
               )}
             </CardContent>
           </Card>
-        </div>
+        </dl>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 mb-6 overflow-x-auto pb-1">
+      <div className="flex gap-2 mb-6 overflow-x-auto pb-1" role="tablist" aria-label="Freedom meter sections">
         {([
-          ["overview", "Progress Chart"],
-          ["notes", "Active Notes"],
+          ["overview", "Progress chart"],
+          ["notes", "Active notes"],
           ["milestones", "Milestones"],
-          ["projection", "Freedom Projection"],
+          ["projection", "Freedom projection"],
         ] as const).map(([tab, label]) => (
           <button
             key={tab}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === tab}
             onClick={() => setActiveTab(tab)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${activeTab === tab ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}
+            className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors min-h-11 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${activeTab === tab ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}
           >
             {label}
           </button>
@@ -459,8 +504,8 @@ export default function FreedomMeterPage() {
       {activeTab === "overview" && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Note Income vs. Monthly Expenses — 12 Month History</CardTitle>
-            <CardDescription>Track your progress toward the day note income exceeds your fixed expenses</CardDescription>
+            <CardTitle className="text-base">Note income vs. monthly expenses — 12-month history</CardTitle>
+            <CardDescription>Track your progress toward the day note income exceeds your fixed expenses.</CardDescription>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
@@ -478,52 +523,56 @@ export default function FreedomMeterPage() {
       )}
 
       {activeTab === "notes" && (
-        <div>
+        <div role="tabpanel">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold">Active Seller-Financed Notes</h3>
+            <h3 className="font-semibold">Active seller-financed notes</h3>
             {data.notesAtRisk > 0 && (
               <Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300">
-                {data.notesAtRisk} at risk
+                <span className="tabular-nums mr-1">{data.notesAtRisk}</span> at risk
               </Badge>
             )}
           </div>
           {data.activeNotes.length === 0 ? (
             <Card>
               <CardContent className="p-8 text-center text-muted-foreground">
-                <DollarSign className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                <p className="font-semibold mb-1">No active notes yet</p>
+                <DollarSign className="w-12 h-12 mx-auto mb-3 opacity-30" aria-hidden="true" />
+                <p className="font-semibold mb-1">No active notes yet.</p>
                 <p className="text-sm">Close your first owner-financed deal and it will appear here. That first monthly payment is the start of your passive income portfolio.</p>
-                <Button className="mt-4" onClick={() => window.location.href = "/blind-offer-wizard"}>
-                  Find Your First Deal <ChevronRight className="w-4 h-4 ml-1" />
+                <Button className="mt-4 min-h-11" onClick={() => window.location.href = "/blind-offer-wizard"}>
+                  Find your first deal <ChevronRight className="w-4 h-4 ml-1" aria-hidden="true" />
                 </Button>
               </CardContent>
             </Card>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <ul className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" aria-label="Active seller-financed notes">
               {data.activeNotes.map(note => (
-                <NoteCard key={note.noteId} note={note} />
+                <li key={note.noteId}>
+                  <NoteCard note={note} />
+                </li>
               ))}
-            </div>
+            </ul>
           )}
         </div>
       )}
 
       {activeTab === "milestones" && (
-        <div>
+        <div role="tabpanel">
           <div className="mb-4">
-            <h3 className="font-semibold">Freedom Milestones</h3>
-            <p className="text-sm text-muted-foreground">Progress through each milestone as you add notes to your portfolio</p>
+            <h3 className="font-semibold">Freedom milestones</h3>
+            <p className="text-sm text-muted-foreground">Progress through each milestone as you add notes to your portfolio.</p>
           </div>
-          <div className="space-y-3">
+          <ul className="space-y-3" aria-label="Freedom milestones">
             {data.milestones.map((m, i) => (
-              <MilestoneCard key={i} milestone={m} />
+              <li key={i}>
+                <MilestoneCard milestone={m} />
+              </li>
             ))}
-          </div>
+          </ul>
           <div className="mt-6 p-4 rounded-xl border border-blue-200 bg-blue-50 dark:border-blue-900/50 dark:bg-blue-900/10">
             <div className="flex gap-3">
-              <Info className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
+              <Info className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" aria-hidden="true" />
               <div className="text-sm text-blue-800 dark:text-blue-300">
-                <p className="font-semibold mb-1">The Milestone Strategy</p>
+                <p className="font-semibold mb-1">The milestone strategy</p>
                 <p>Each milestone represents a real life expense covered by passive note income. When your notes cover groceries, you're partially free. When they cover rent, you're mostly free. When they exceed all expenses, work becomes optional — you do it because you want to, not because you have to.</p>
               </div>
             </div>
@@ -534,10 +583,10 @@ export default function FreedomMeterPage() {
       {activeTab === "projection" && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">36-Month Freedom Projection</CardTitle>
+            <CardTitle className="text-base">36-month freedom projection</CardTitle>
             <CardDescription>
               Based on adding ~1 owner-financed note every 2 months at $329/month average
-              {freedomMonth && ` — projected freedom in ${freedomMonth.month}`}
+              {freedomMonth && ` — projected freedom in ${freedomMonth.month}`}.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -556,33 +605,33 @@ export default function FreedomMeterPage() {
               </AreaChart>
             </ResponsiveContainer>
 
-            <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+            <dl className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
               <div className="p-3 rounded-lg bg-muted/40">
-                <p className="text-xs text-muted-foreground mb-1">At 1 note/2 months</p>
-                <p className="font-bold">{data.projectedFreedomDate || "Already free"}</p>
+                <dt className="text-xs text-muted-foreground mb-1">At 1 note/2 months</dt>
+                <dd className="font-bold tabular-nums">{data.projectedFreedomDate || "Already free"}</dd>
                 <p className="text-xs text-muted-foreground">Freedom date</p>
               </div>
               <div className="p-3 rounded-lg bg-muted/40">
-                <p className="text-xs text-muted-foreground mb-1">At 1 note/month</p>
-                <p className="font-bold">
+                <dt className="text-xs text-muted-foreground mb-1">At 1 note/month</dt>
+                <dd className="font-bold tabular-nums">
                   {(() => {
                     const d = new Date();
                     const moNeeded = Math.max(0, data.monthsUntilFreedom ? Math.ceil(data.monthsUntilFreedom / 2) : 0);
                     d.setMonth(d.getMonth() + moNeeded);
                     return moNeeded > 0 ? d.toLocaleDateString("en-US", { month: "short", year: "numeric" }) : "Already free";
                   })()}
-                </p>
+                </dd>
                 <p className="text-xs text-muted-foreground">Freedom date (faster)</p>
               </div>
               <div className="p-3 rounded-lg bg-muted/40">
-                <p className="text-xs text-muted-foreground mb-1">Notes still needed</p>
-                <p className="font-bold">
+                <dt className="text-xs text-muted-foreground mb-1">Notes still needed</dt>
+                <dd className="font-bold tabular-nums">
                   {data.totalMonthlyNoteIncome >= data.totalMonthlyExpenses ? "0" :
                     Math.ceil((data.totalMonthlyExpenses - data.totalMonthlyNoteIncome) / 329)}
-                </p>
+                </dd>
                 <p className="text-xs text-muted-foreground">At $329/month avg</p>
               </div>
-            </div>
+            </dl>
           </CardContent>
         </Card>
       )}
@@ -591,29 +640,40 @@ export default function FreedomMeterPage() {
       <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card className="border border-primary/20 bg-primary/5">
           <CardContent className="p-5 flex items-center gap-4">
-            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0" aria-hidden="true">
               <Zap className="w-5 h-5 text-primary" />
             </div>
             <div className="flex-1">
-              <p className="font-semibold text-sm">Add Your Next Note</p>
-              <p className="text-xs text-muted-foreground">Use the Blind Offer Wizard to find and price your next deal</p>
+              <p className="font-semibold text-sm">Add your next note</p>
+              <p className="text-xs text-muted-foreground">Use the Blind Offer Wizard to find and price your next deal.</p>
             </div>
-            <Button size="sm" onClick={() => window.location.href = "/blind-offer-wizard"}>
-              Start <ChevronRight className="w-3 h-3 ml-1" />
+            <Button
+              size="sm"
+              onClick={() => window.location.href = "/blind-offer-wizard"}
+              className="min-h-9"
+              aria-label="Start Blind Offer Wizard"
+            >
+              Start <ChevronRight className="w-3 h-3 ml-1" aria-hidden="true" />
             </Button>
           </CardContent>
         </Card>
         <Card className="border border-border">
           <CardContent className="p-5 flex items-center gap-4">
-            <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center flex-shrink-0">
+            <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center flex-shrink-0" aria-hidden="true">
               <Award className="w-5 h-5 text-muted-foreground" />
             </div>
             <div className="flex-1">
-              <p className="font-semibold text-sm">Manage Late Payments</p>
-              <p className="text-xs text-muted-foreground">Automate dunning sequences and default protocols</p>
+              <p className="font-semibold text-sm">Manage late payments</p>
+              <p className="text-xs text-muted-foreground">Automate dunning sequences and default protocols.</p>
             </div>
-            <Button variant="outline" size="sm" onClick={() => window.location.href = "/dunning"}>
-              View <ChevronRight className="w-3 h-3 ml-1" />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => window.location.href = "/dunning"}
+              className="min-h-9"
+              aria-label="Open dunning manager"
+            >
+              View <ChevronRight className="w-3 h-3 ml-1" aria-hidden="true" />
             </Button>
           </CardContent>
         </Card>
