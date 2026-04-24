@@ -12,7 +12,7 @@ import { ListSkeleton, TableRowSkeleton } from "@/components/list-skeleton";
 import { InlineError } from "@/components/inline-error";
 import { QueryErrorState } from "@/components/query-error-state";
 import { useDelayedLoading } from "@/hooks/use-delayed-loading";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef, useId } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertLeadSchema, type Lead } from "@shared/schema";
@@ -1879,19 +1879,19 @@ export default function LeadsPage() {
       <Dialog open={isImportOpen} onOpenChange={(open) => !open && resetImportDialog()}>
         <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Import Leads from CSV</DialogTitle>
+            <DialogTitle>Import leads from CSV</DialogTitle>
             <DialogDescription>
-              Upload a CSV file to bulk import leads. Required columns: firstName, lastName
+              Upload a CSV file to bulk import leads. Required columns: firstName, lastName.
             </DialogDescription>
           </DialogHeader>
-          
+
           {!importPreview && !importResult && (
             <div className="space-y-4 py-4">
               <div className="border-2 border-dashed rounded-lg p-8 text-center">
-                <Upload className="w-10 h-10 mx-auto mb-4 text-muted-foreground" />
-                <label className="cursor-pointer">
+                <Upload className="w-10 h-10 mx-auto mb-4 text-muted-foreground" aria-hidden="true" />
+                <label className="cursor-pointer block min-h-11">
                   <span className="text-sm text-muted-foreground">
-                    {isLoadingPreview ? "Processing..." : "Click to select or drag a CSV file here"}
+                    {isLoadingPreview ? "Processing…" : "Click to select or drag a CSV file here"}
                   </span>
                   <Input
                     type="file"
@@ -1899,13 +1899,14 @@ export default function LeadsPage() {
                     className="hidden"
                     onChange={handleFileSelect}
                     disabled={isLoadingPreview}
+                    aria-label="Select CSV file to import"
                     data-testid="input-import-file"
                   />
                 </label>
-                <p className="text-xs text-muted-foreground mt-2">Max file size: 5MB</p>
+                <p className="text-xs text-muted-foreground mt-2">Max file size: 5 MB.</p>
               </div>
               <div className="bg-muted/50 rounded-lg p-4">
-                <p className="text-sm font-medium mb-2">Expected columns:</p>
+                <p className="text-sm font-medium mb-2">Expected columns</p>
                 <p className="text-xs text-muted-foreground">
                   firstName, lastName, email, phone, address, city, state, zip, type, status, source, notes
                 </p>
@@ -1915,16 +1916,16 @@ export default function LeadsPage() {
 
           {importPreview && (
             <div className="space-y-4 py-4">
-              <div className="flex items-center gap-2 text-sm">
-                <CheckCircle className="w-4 h-4 text-green-600" />
-                <span>Found {importPreview.totalRows} rows to import</span>
+              <div className="flex items-center gap-2 text-sm" role="status" aria-live="polite">
+                <CheckCircle className="w-4 h-4 text-green-600" aria-hidden="true" />
+                <span>Found <span className="tabular-nums">{importPreview.totalRows}</span> rows to import.</span>
               </div>
-              
+
               <div className="border rounded-lg overflow-hidden">
                 <div className="bg-muted/50 p-2 text-sm font-medium">
                   Preview (first 5 rows)
                 </div>
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto" role="region" tabIndex={0} aria-label="CSV preview">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -1943,11 +1944,11 @@ export default function LeadsPage() {
                         <TableRow key={idx}>
                           {importPreview.headers.slice(0, 5).map((header) => (
                             <TableCell key={header} className="text-xs max-w-[150px] truncate">
-                              {row[header] || "-"}
+                              {row[header] || "—"}
                             </TableCell>
                           ))}
                           {importPreview.headers.length > 5 && (
-                            <TableCell className="text-xs text-muted-foreground">...</TableCell>
+                            <TableCell className="text-xs text-muted-foreground">…</TableCell>
                           )}
                         </TableRow>
                       ))}
@@ -1960,37 +1961,37 @@ export default function LeadsPage() {
 
           {importResult && (
             <div className="space-y-4 py-4">
-              <div className="grid grid-cols-3 gap-4 text-center">
+              <dl className="grid grid-cols-3 gap-4 text-center">
                 <div className="bg-muted/50 rounded-lg p-4">
-                  <p className="text-2xl font-bold">{importResult.totalRows}</p>
-                  <p className="text-xs text-muted-foreground">Total Rows</p>
+                  <dd className="text-2xl font-bold tabular-nums">{importResult.totalRows}</dd>
+                  <dt className="text-xs text-muted-foreground">Total rows</dt>
                 </div>
                 <div className="bg-green-100 dark:bg-green-900/30 rounded-lg p-4">
-                  <p className="text-2xl font-bold text-green-700 dark:text-green-300">{importResult.successCount}</p>
-                  <p className="text-xs text-green-600 dark:text-green-400">Imported</p>
+                  <dd className="text-2xl font-bold text-green-700 dark:text-green-300 tabular-nums">{importResult.successCount}</dd>
+                  <dt className="text-xs text-green-600 dark:text-green-400">Imported</dt>
                 </div>
                 <div className="bg-red-100 dark:bg-red-900/30 rounded-lg p-4">
-                  <p className="text-2xl font-bold text-red-700 dark:text-red-300">{importResult.errorCount}</p>
-                  <p className="text-xs text-red-600 dark:text-red-400">Failed</p>
+                  <dd className="text-2xl font-bold text-red-700 dark:text-red-300 tabular-nums">{importResult.errorCount}</dd>
+                  <dt className="text-xs text-red-600 dark:text-red-400">Failed</dt>
                 </div>
-              </div>
+              </dl>
 
               {importResult.errors.length > 0 && (
-                <div className="border border-red-200 dark:border-red-800 rounded-lg overflow-hidden">
+                <div className="border border-red-200 dark:border-red-800 rounded-lg overflow-hidden" role="alert">
                   <div className="bg-red-50 dark:bg-red-900/30 p-2 text-sm font-medium text-red-700 dark:text-red-300 flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4" />
-                    Errors ({importResult.errors.length})
+                    <AlertCircle className="w-4 h-4" aria-hidden="true" />
+                    Errors (<span className="tabular-nums">{importResult.errors.length}</span>)
                   </div>
                   <div className="max-h-[200px] overflow-y-auto">
                     {importResult.errors.slice(0, 10).map((err, idx) => (
                       <div key={idx} className="p-2 border-b last:border-0 text-xs">
-                        <span className="font-medium">Row {err.row}:</span>{" "}
+                        <span className="font-medium">Row <span className="tabular-nums">{err.row}</span>:</span>{" "}
                         <span className="text-red-600 dark:text-red-400">{err.error}</span>
                       </div>
                     ))}
                     {importResult.errors.length > 10 && (
                       <div className="p-2 text-xs text-muted-foreground">
-                        ...and {importResult.errors.length - 10} more errors
+                        …and <span className="tabular-nums">{importResult.errors.length - 10}</span> more errors.
                       </div>
                     )}
                   </div>
@@ -2002,23 +2003,24 @@ export default function LeadsPage() {
           <DialogFooter>
             {!importResult ? (
               <>
-                <Button variant="outline" onClick={resetImportDialog}>
+                <Button variant="outline" className="min-h-11" onClick={resetImportDialog}>
                   Cancel
                 </Button>
-                <Button 
+                <Button
                   onClick={handleImport}
                   disabled={!importPreview || isImporting}
+                  className="min-h-11"
                   data-testid="button-confirm-import"
                 >
                   {isImporting ? (
-                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Importing...</>
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" /> Importing…</>
                   ) : (
-                    <><Upload className="w-4 h-4 mr-2" /> Import {importPreview?.totalRows || 0} Leads</>
+                    <><Upload className="w-4 h-4 mr-2" aria-hidden="true" /> Import <span className="tabular-nums mx-1">{importPreview?.totalRows || 0}</span> leads</>
                   )}
                 </Button>
               </>
             ) : (
-              <Button onClick={resetImportDialog} data-testid="button-close-import">
+              <Button onClick={resetImportDialog} className="min-h-11" data-testid="button-close-import">
                 Done
               </Button>
             )}
@@ -2088,16 +2090,25 @@ function LeadForm({ lead, onSuccess }: { lead?: Lead; onSuccess: () => void }) {
 
   return (
     <Form {...form}>
-<form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4" data-testid="lead-form">
-        <div className="grid grid-cols-2 gap-4">
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4" data-testid="lead-form">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FormField
             control={form.control}
             name="firstName"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>First Name</FormLabel>
+                <FormLabel>
+                  First name <span className="text-destructive" aria-label="required">*</span>
+                </FormLabel>
                 <FormControl>
-                  <Input {...field} placeholder="John" data-testid="input-first-name" />
+                  <Input
+                    {...field}
+                    placeholder="John"
+                    autoComplete="given-name"
+                    autoCapitalize="words"
+                    spellCheck={false}
+                    data-testid="input-first-name"
+                  />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -2108,16 +2119,25 @@ function LeadForm({ lead, onSuccess }: { lead?: Lead; onSuccess: () => void }) {
             name="lastName"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Last Name</FormLabel>
+                <FormLabel>
+                  Last name <span className="text-destructive" aria-label="required">*</span>
+                </FormLabel>
                 <FormControl>
-                  <Input {...field} placeholder="Doe" data-testid="input-last-name" />
+                  <Input
+                    {...field}
+                    placeholder="Doe"
+                    autoComplete="family-name"
+                    autoCapitalize="words"
+                    spellCheck={false}
+                    data-testid="input-last-name"
+                  />
                 </FormControl>
                 <FormMessage />
               </FormItem>
             )}
           />
         </div>
-        
+
         <FormField
           control={form.control}
           name="email"
@@ -2125,7 +2145,17 @@ function LeadForm({ lead, onSuccess }: { lead?: Lead; onSuccess: () => void }) {
             <FormItem>
               <FormLabel>Email</FormLabel>
               <FormControl>
-                <Input {...field} placeholder="john@example.com" type="email" data-testid="input-email" />
+                <Input
+                  {...field}
+                  placeholder="john@example.com"
+                  type="email"
+                  inputMode="email"
+                  autoComplete="email"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  data-testid="input-email"
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -2139,7 +2169,14 @@ function LeadForm({ lead, onSuccess }: { lead?: Lead; onSuccess: () => void }) {
             <FormItem>
               <FormLabel>Phone</FormLabel>
               <FormControl>
-                <Input {...field} placeholder="(555) 123-4567" data-testid="input-phone" />
+                <Input
+                  {...field}
+                  placeholder="(555) 123-4567"
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  data-testid="input-phone"
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -2172,14 +2209,14 @@ function LeadForm({ lead, onSuccess }: { lead?: Lead; onSuccess: () => void }) {
         />
 
         <div className="pt-2">
-          <Button type="submit" className="w-full" disabled={isPending} data-testid="button-submit-lead">
+          <Button type="submit" className="w-full min-h-11" disabled={isPending} data-testid="button-submit-lead">
             {isPending ? (
               <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                {lead ? "Saving..." : "Creating..."}
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
+                {lead ? "Saving…" : "Creating…"}
               </>
             ) : (
-              lead ? "Save Changes" : "Create Lead"
+              lead ? "Save changes" : "Create lead"
             )}
           </Button>
         </div>
@@ -2221,22 +2258,23 @@ function ScoreBreakdownCard({ leadId }: { leadId: number }) {
           <CardHeader className="pb-2 cursor-pointer hover:bg-muted/30 rounded-t-lg transition-colors">
             <CardTitle className="text-base flex items-center justify-between gap-2">
               <span className="flex items-center gap-2">
-                <TrendingUp className="w-4 h-4" /> Score Breakdown
+                <TrendingUp className="w-4 h-4" aria-hidden="true" /> Score breakdown
               </span>
-              <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${isOpen ? "rotate-180" : ""}`} />
+              <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${isOpen ? "rotate-180" : ""}`} aria-hidden="true" />
             </CardTitle>
           </CardHeader>
         </CollapsibleTrigger>
         <CollapsibleContent>
           <CardContent className="pt-0 pb-3">
             {isLoading && (
-              <div className="flex items-center justify-center py-4">
-                <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+              <div className="flex items-center justify-center py-4" role="status" aria-live="polite">
+                <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" aria-hidden="true" />
+                <span className="sr-only">Loading score breakdown…</span>
               </div>
             )}
             {!isLoading && factorEntries.length === 0 && (
               <p className="text-sm text-muted-foreground text-center py-3">
-                No score breakdown available. Click "Rescore Lead" to generate one.
+                No score breakdown available. Click "Rescore lead" to generate one.
               </p>
             )}
             {!isLoading && factorEntries.length > 0 && (
@@ -2253,12 +2291,12 @@ function ScoreBreakdownCard({ leadId }: { leadId: number }) {
                         ${isPos ? "bg-green-50 dark:bg-green-900/20" : isNeg ? "bg-red-50 dark:bg-red-900/20" : "bg-muted/40"}`}
                     >
                       <div className="flex items-center gap-2 min-w-0">
-                        {isPos && <TrendingUp className="w-3 h-3 text-green-600 dark:text-green-400 flex-shrink-0" />}
-                        {isNeg && <TrendingDown className="w-3 h-3 text-red-600 dark:text-red-400 flex-shrink-0" />}
-                        {!isPos && !isNeg && <Minus className="w-3 h-3 text-muted-foreground flex-shrink-0" />}
+                        {isPos && <TrendingUp className="w-3 h-3 text-green-600 dark:text-green-400 flex-shrink-0" aria-hidden="true" />}
+                        {isNeg && <TrendingDown className="w-3 h-3 text-red-600 dark:text-red-400 flex-shrink-0" aria-hidden="true" />}
+                        {!isPos && !isNeg && <Minus className="w-3 h-3 text-muted-foreground flex-shrink-0" aria-hidden="true" />}
                         <span className="truncate text-xs">{explanation || FACTOR_LABELS[key] || key.replace(/([A-Z])/g, ' $1').trim()}</span>
                       </div>
-                      <span className={`text-xs font-semibold flex-shrink-0 ml-2
+                      <span className={`text-xs font-semibold flex-shrink-0 ml-2 tabular-nums
                         ${isPos ? "text-green-600 dark:text-green-400" : isNeg ? "text-red-600 dark:text-red-400" : "text-muted-foreground"}`}>
                         {isPos ? "+" : ""}{score}
                       </span>
@@ -2281,7 +2319,32 @@ function LeadDetailDrawer({ lead, onClose, onEdit }: { lead: Lead; onClose: () =
   const { data: teamMembers } = useTeamMembers();
   const { data: userPermissions } = useUserPermissions();
   const { mutate: updateLead } = useUpdateLead();
+  const { toast } = useToast();
   const [isAssigning, setIsAssigning] = useState(false);
+  const titleId = useId();
+  const previouslyFocused = useRef<HTMLElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    previouslyFocused.current = document.activeElement as HTMLElement | null;
+    panelRef.current?.focus();
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      previouslyFocused.current?.focus?.();
+    };
+  }, [onClose]);
+
+  const leadName = `${lead.firstName} ${lead.lastName}`.trim();
+  const currentAssigneeName = (() => {
+    if (!lead.assignedTo) return "Unassigned";
+    const userIdStr = String(lead.assignedTo);
+    const member = teamMembers?.find(m => m.userId === userIdStr);
+    return member?.displayName || member?.email || userIdStr;
+  })();
 
   const handleAssignmentChange = (userId: string) => {
     setIsAssigning(true);
@@ -2294,6 +2357,11 @@ function LeadDetailDrawer({ lead, onClose, onEdit }: { lead: Lead; onClose: () =
         },
         onError: () => {
           setIsAssigning(false);
+          toast({
+            variant: "destructive",
+            title: "Couldn't update assignment",
+            description: `${leadName} is still assigned to ${currentAssigneeName}. Check your connection and try again.`,
+          });
         },
       }
     );
@@ -2316,8 +2384,13 @@ function LeadDetailDrawer({ lead, onClose, onEdit }: { lead: Lead; onClose: () =
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" onClick={onClose}>
-      <div 
-        className="fixed right-0 top-0 h-full w-full max-w-2xl bg-background shadow-2xl overflow-y-auto"
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        className="fixed right-0 top-0 h-full w-full max-w-2xl bg-background shadow-2xl overflow-y-auto outline-none"
         onClick={e => e.stopPropagation()}
         data-testid="drawer-lead-detail"
       >
@@ -2325,20 +2398,20 @@ function LeadDetailDrawer({ lead, onClose, onEdit }: { lead: Lead; onClose: () =
           <div className="flex items-center justify-between gap-4">
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <Badge className={statusColors[lead.status] || statusColors.new}>
+                <Badge className={`capitalize ${statusColors[lead.status] || statusColors.new}`}>
                   {lead.status}
                 </Badge>
               </div>
-              <h2 className="text-xl font-bold mt-2" data-testid="text-lead-name">
-                {lead.firstName} {lead.lastName}
+              <h2 id={titleId} className="text-xl font-bold mt-2" data-testid="text-lead-name">
+                {leadName}
               </h2>
             </div>
             <div className="flex items-center gap-2">
-              <Button size="icon" variant="ghost" onClick={onEdit} aria-label="Edit lead" data-testid="button-edit-lead-drawer">
-                <Edit className="w-5 h-5" />
+              <Button size="icon" variant="ghost" onClick={onEdit} aria-label={`Edit ${leadName}`} className="min-h-11 min-w-11" data-testid="button-edit-lead-drawer">
+                <Edit className="w-5 h-5" aria-hidden="true" />
               </Button>
-              <Button size="icon" variant="ghost" onClick={onClose} aria-label="Close drawer" data-testid="button-close-lead-drawer">
-                <X className="w-5 h-5" />
+              <Button size="icon" variant="ghost" onClick={onClose} aria-label={`Close ${leadName} details`} className="min-h-11 min-w-11" data-testid="button-close-lead-drawer">
+                <X className="w-5 h-5" aria-hidden="true" />
               </Button>
             </div>
           </div>
@@ -2348,11 +2421,11 @@ function LeadDetailDrawer({ lead, onClose, onEdit }: { lead: Lead; onClose: () =
           <Tabs defaultValue="details" className="space-y-6">
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="details" data-testid="tab-lead-details">
-                <User className="w-4 h-4 mr-2" />
+                <User className="w-4 h-4 mr-2" aria-hidden="true" />
                 Details
               </TabsTrigger>
               <TabsTrigger value="timeline" data-testid="tab-lead-timeline">
-                <Clock className="w-4 h-4 mr-2" />
+                <Clock className="w-4 h-4 mr-2" aria-hidden="true" />
                 Timeline
               </TabsTrigger>
             </TabsList>
@@ -2361,32 +2434,34 @@ function LeadDetailDrawer({ lead, onClose, onEdit }: { lead: Lead; onClose: () =
               <Card className="glass-panel">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base flex items-center gap-2">
-                    <User className="w-4 h-4" /> Contact Information
+                    <User className="w-4 h-4" aria-hidden="true" /> Contact information
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid grid-cols-2 gap-4 text-sm">
+                  <dl className="grid grid-cols-2 gap-4 text-sm">
                     <div>
-                      <p className="text-muted-foreground">Name</p>
-                      <p className="font-medium">{lead.firstName} {lead.lastName}</p>
+                      <dt className="text-muted-foreground">Name</dt>
+                      <dd className="font-medium">{leadName}</dd>
                     </div>
                     {lead.email && (
                       <div>
-                        <p className="text-muted-foreground">Email</p>
-                        <p className="font-medium flex items-center gap-2">
-                          <Mail className="w-3 h-3" /> {lead.email}
-                        </p>
+                        <dt className="text-muted-foreground">Email</dt>
+                        <dd className="font-medium flex items-center gap-2">
+                          <Mail className="w-3 h-3 flex-shrink-0" aria-hidden="true" />
+                          <a href={`mailto:${lead.email}`} className="underline-offset-2 hover:underline truncate">{lead.email}</a>
+                        </dd>
                       </div>
                     )}
                     {lead.phone && (
                       <div>
-                        <p className="text-muted-foreground">Phone</p>
-                        <p className="font-medium flex items-center gap-2">
-                          <Phone className="w-3 h-3" /> {lead.phone}
-                        </p>
+                        <dt className="text-muted-foreground">Phone</dt>
+                        <dd className="font-medium flex items-center gap-2">
+                          <Phone className="w-3 h-3 flex-shrink-0" aria-hidden="true" />
+                          <a href={`tel:${lead.phone.replace(/[^\d+]/g, '')}`} className="tabular-nums underline-offset-2 hover:underline">{lead.phone}</a>
+                        </dd>
                       </div>
                     )}
-                  </div>
+                  </dl>
                 </CardContent>
               </Card>
 
@@ -2394,7 +2469,7 @@ function LeadDetailDrawer({ lead, onClose, onEdit }: { lead: Lead; onClose: () =
                 <Card className="glass-panel">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-base flex items-center gap-2">
-                      <MapPin className="w-4 h-4" /> Address
+                      <MapPin className="w-4 h-4" aria-hidden="true" /> Address
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
@@ -2413,46 +2488,46 @@ function LeadDetailDrawer({ lead, onClose, onEdit }: { lead: Lead; onClose: () =
               <Card className="glass-panel">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base flex items-center gap-2">
-                    <Calendar className="w-4 h-4" /> Activity
+                    <Calendar className="w-4 h-4" aria-hidden="true" /> Activity
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-3 text-sm">
+                  <dl className="space-y-3 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Created</span>
-                      <span>{lead.createdAt ? format(new Date(lead.createdAt), 'MMM d, yyyy') : 'N/A'}</span>
+                      <dt className="text-muted-foreground">Created</dt>
+                      <dd className="tabular-nums">{lead.createdAt ? format(new Date(lead.createdAt), 'MMM d, yyyy') : '—'}</dd>
                     </div>
                     {lead.lastContactedAt && (
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">Last Contacted</span>
-                        <span>{format(new Date(lead.lastContactedAt), 'MMM d, yyyy')}</span>
+                        <dt className="text-muted-foreground">Last contacted</dt>
+                        <dd className="tabular-nums">{format(new Date(lead.lastContactedAt), 'MMM d, yyyy')}</dd>
                       </div>
                     )}
                     {lead.lastAIMessageAt && (
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">Last Nurtured (AI)</span>
-                        <span className="text-right">{format(new Date(lead.lastAIMessageAt), 'MMM d, yyyy')}</span>
+                        <dt className="text-muted-foreground">Last nurtured (AI)</dt>
+                        <dd className="text-right tabular-nums">{format(new Date(lead.lastAIMessageAt), 'MMM d, yyyy')}</dd>
                       </div>
                     )}
                     {lead.nextFollowUpAt && (
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">Next Follow-up</span>
-                        <span className="text-right">{format(new Date(lead.nextFollowUpAt), 'MMM d, yyyy')}</span>
+                        <dt className="text-muted-foreground">Next follow-up</dt>
+                        <dd className="text-right tabular-nums">{format(new Date(lead.nextFollowUpAt), 'MMM d, yyyy')}</dd>
                       </div>
                     )}
                     {lead.source && (
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">Source</span>
-                        <span className="capitalize">{lead.source}</span>
+                        <dt className="text-muted-foreground">Source</dt>
+                        <dd className="capitalize">{String(lead.source).replace(/_/g, ' ')}</dd>
                       </div>
                     )}
                     {lead.type && (
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">Type</span>
-                        <span className="capitalize">{lead.type}</span>
+                        <dt className="text-muted-foreground">Type</dt>
+                        <dd className="capitalize">{String(lead.type).replace(/_/g, ' ')}</dd>
                       </div>
                     )}
-                  </div>
+                  </dl>
                 </CardContent>
               </Card>
 
@@ -2462,42 +2537,42 @@ function LeadDetailDrawer({ lead, onClose, onEdit }: { lead: Lead; onClose: () =
               <Card className="glass-panel">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base flex items-center gap-2">
-                    <Shield className="w-4 h-4" /> TCPA Compliance
+                    <Shield className="w-4 h-4" aria-hidden="true" /> TCPA compliance
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-3 text-sm">
+                  <dl className="space-y-3 text-sm">
                     <div className="flex justify-between items-center">
-                      <span className="text-muted-foreground">Status</span>
-                      <TcpaConsentBadge lead={lead} />
+                      <dt className="text-muted-foreground">Status</dt>
+                      <dd><TcpaConsentBadge lead={lead} /></dd>
                     </div>
                     {lead.consentDate && (
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">Consent Date</span>
-                        <span>{format(new Date(lead.consentDate), 'MMM d, yyyy')}</span>
+                        <dt className="text-muted-foreground">Consent date</dt>
+                        <dd className="tabular-nums">{format(new Date(lead.consentDate), 'MMM d, yyyy')}</dd>
                       </div>
                     )}
                     {lead.consentSource && (
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">Consent Source</span>
-                        <span className="capitalize">{lead.consentSource}</span>
+                        <dt className="text-muted-foreground">Consent source</dt>
+                        <dd className="capitalize">{String(lead.consentSource).replace(/_/g, ' ')}</dd>
                       </div>
                     )}
                     {lead.optOutDate && (
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">Opt-out Date</span>
-                        <span>{format(new Date(lead.optOutDate), 'MMM d, yyyy')}</span>
+                        <dt className="text-muted-foreground">Opt-out date</dt>
+                        <dd className="tabular-nums">{format(new Date(lead.optOutDate), 'MMM d, yyyy')}</dd>
                       </div>
                     )}
                     {lead.optOutReason && (
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">Opt-out Reason</span>
-                        <span>{lead.optOutReason}</span>
+                        <dt className="text-muted-foreground">Opt-out reason</dt>
+                        <dd>{lead.optOutReason}</dd>
                       </div>
                     )}
-                    <div className="pt-2 border-t flex gap-2">
-                      <TcpaConsentToggle lead={lead} />
-                    </div>
+                  </dl>
+                  <div className="pt-3 mt-3 border-t flex gap-2">
+                    <TcpaConsentToggle lead={lead} />
                   </div>
                 </CardContent>
               </Card>
@@ -2506,7 +2581,7 @@ function LeadDetailDrawer({ lead, onClose, onEdit }: { lead: Lead; onClose: () =
               <Card className="glass-panel">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base flex items-center gap-2">
-                    <Users className="w-4 h-4" /> Assignment
+                    <Users className="w-4 h-4" aria-hidden="true" /> Assignment
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -2519,8 +2594,9 @@ function LeadDetailDrawer({ lead, onClose, onEdit }: { lead: Lead; onClose: () =
                           onValueChange={handleAssignmentChange}
                           disabled={isAssigning}
                         >
-                          <SelectTrigger 
+                          <SelectTrigger
                             className="w-[180px]"
+                            aria-label={`Assignee for ${leadName}`}
                             data-testid="select-lead-assignee"
                           >
                             <SelectValue placeholder="Select assignee" />
@@ -2535,7 +2611,7 @@ function LeadDetailDrawer({ lead, onClose, onEdit }: { lead: Lead; onClose: () =
                           </SelectContent>
                         </Select>
                       ) : (
-                        <span 
+                        <span
                           className="text-sm font-medium"
                           data-testid="text-lead-assignee"
                         >
@@ -2551,7 +2627,7 @@ function LeadDetailDrawer({ lead, onClose, onEdit }: { lead: Lead; onClose: () =
                 <Card className="glass-panel">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-base flex items-center gap-2">
-                      <StickyNote className="w-4 h-4" /> Notes
+                      <StickyNote className="w-4 h-4" aria-hidden="true" /> Notes
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
@@ -2567,9 +2643,9 @@ function LeadDetailDrawer({ lead, onClose, onEdit }: { lead: Lead; onClose: () =
               </Card>
 
               <div className="flex gap-2">
-                <Button variant="outline" className="flex-1" onClick={onEdit}>
-                  <Edit className="w-4 h-4 mr-2" />
-                  Edit Lead
+                <Button variant="outline" className="flex-1 min-h-11" onClick={onEdit}>
+                  <Edit className="w-4 h-4 mr-2" aria-hidden="true" />
+                  Edit lead
                 </Button>
               </div>
             </TabsContent>
@@ -2579,26 +2655,26 @@ function LeadDetailDrawer({ lead, onClose, onEdit }: { lead: Lead; onClose: () =
               <Card className="glass-panel">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base flex items-center gap-2">
-                    <History className="w-4 h-4" /> Contact Interactions
+                    <History className="w-4 h-4" aria-hidden="true" /> Contact interactions
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-2 gap-3 text-sm">
                     <div className="flex items-center gap-2 text-muted-foreground">
-                      <Phone className="w-3 h-3" />
+                      <Phone className="w-3 h-3" aria-hidden="true" />
                       <span>Calls</span>
                     </div>
                     <div className="flex items-center gap-2 text-muted-foreground">
-                      <Mail className="w-3 h-3" />
+                      <Mail className="w-3 h-3" aria-hidden="true" />
                       <span>Emails</span>
                     </div>
                     <div className="flex items-center gap-2 text-muted-foreground">
-                      <StickyNote className="w-3 h-3" />
+                      <StickyNote className="w-3 h-3" aria-hidden="true" />
                       <span>Notes</span>
                     </div>
                     <div className="flex items-center gap-2 text-muted-foreground">
-                      <Clock className="w-3 h-3" />
-                      <span>
+                      <Clock className="w-3 h-3" aria-hidden="true" />
+                      <span className="tabular-nums">
                         {lead.lastContactedAt
                           ? `Last: ${format(new Date(lead.lastContactedAt), "MMM d")}`
                           : "No contact yet"}
