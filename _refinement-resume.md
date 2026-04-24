@@ -1,6 +1,25 @@
 # Elite-Team Refinement — Resume Point
 
-**Last session:** 2026-04-24 (session 34 — placeholder-disambiguation grep sweep)
+**Last session:** 2026-04-24 (session 35 — teach-via-option-label grep sweep)
+**Last completed refinement:** Slice-25 teach-via-option-label
+rule applied horizontally. Scan of ~80 SelectItem groups across
+client. Most were either (a) status filters where consequence
+is obvious from name, (b) already teach-formatted (API scope
+Select, slice 25), or (c) would require fabricated SLA/feature
+claims to teach honestly (support priority, automation
+priority, fee-payout cadence). One clear high-value target
+found: settings.tsx TeamMembers team-role Select. Applied
+inline-consequence pattern (Owner — full access and billing,
+Admin — manage team and data, Member — create and edit
+records, Viewer — read-only access). Trigger widened w-28 →
+w-44 sm:w-56 to fit teach copy. aria-label added for SR
+context. Reseller-dashboard plan Select inspected and deferred
+(per-reseller plan definitions vary). Slice-25 rule now clean
+across in-tree permission-tier Selects.
+
+---
+
+**Prior session:** 2026-04-24 (session 34 — placeholder-disambiguation grep sweep)
 **Last completed refinement:** Slice-24 placeholder-
 disambiguation rule applied horizontally. Grep found one
 remaining violation — the standalone `/privacy-settings` page
@@ -564,6 +583,7 @@ to a dedicated 9b slice.
 **SafeBulkDeleteDialog + TaxDelinquentImporter (32):** ✅ complete — closes /leads dialog arc (commit `b06bbff`)
 **/campaigns 6c (33):** ✅ complete — AbTestManager + variants + analytics, closes /campaigns arc (commit `67e61b9`)
 **Placeholder-disambiguation sweep (34):** ✅ complete — /privacy-settings lifted; rule is clean across client (commit `40eaaf8`)
+**Teach-via-option-label sweep (35):** ✅ complete — settings team-role Select lifted; rule is clean across permission-tier Selects (commit `9ed59b3`)
 **/onboarding-v2 targeted (18):** ✅ complete (commit `70df779`) — 18b deferred
 **/settings targeted (19):** ✅ complete (commit `809044c`) — 19b remaining components deferred
 **/pipeline (20):** ✅ complete (commit `1b5d0f7`)
@@ -1137,24 +1157,22 @@ Session 24:
 ## Next surface to refine
 
 **Settings + /finance + /leads + /onboarding-v2 +
-/campaigns arcs complete.** Cross-cutting rules 24 +
-25 cleanup is the next horizontal pass:
+/campaigns arcs complete.** Slices 24 + 25 rules
+now clean across client. Next:
 
-1. **Teach-via-option-label grep sweep (slice 25 rule)**
-   — find other `<Select>` options across the app with
-   bare permission/mode/tier labels. Candidates: billing
-   cadence, notification frequency, role/permission
-   selectors outside /settings, integration modes.
-
-2. **Money-precision grep (slice 10b rule)** — ~63 files
+1. **Money-precision grep (slice 10b rule)** — ~63 files
    still using bare `.toLocaleString()` on money values;
-   sweep the remaining surfaces.
+   sweep the remaining surfaces. Focus on trust-critical
+   ones first (statement-like views, payoffs, receipts).
 
-3. **jsPDF 1098 generator (slice 10b.ii)** — product +
+2. **jsPDF 1098 generator (slice 10b.ii)** — product +
    compliance question on IRS form fidelity.
 
-4. **Decorative-icon aria-hidden grep** — open-ended
+3. **Decorative-icon aria-hidden grep** — open-ended
    horizontal sweep across remaining components.
+
+4. **Silent-mutation grep** — scan all mutation `onError`
+   handlers that console.error without surfacing a toast.
 
 3. **`/onboarding-v2` 18b** — remaining ~1100 lines
    (portfolio-import, county form, strategy cards, atlas
