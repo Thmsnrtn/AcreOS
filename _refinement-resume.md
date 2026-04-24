@@ -1,7 +1,26 @@
 # Elite-Team Refinement — Resume Point
 
-**Last session:** 2026-04-24 (session 25 — settings completion 19b.iv)
-**Last completed refinement:** `ApiKeyManager` +
+**Last session:** 2026-04-24 (session 26 — settings 19b.v final)
+**Last completed refinement:** `ReferralSettings` +
+`GoalsSettings` form/outer polish. **Closes the full
+/settings 19b arc** — every sub-component in the 2658-line
+file has now had at least one refinement pass. ReferralSettings
+credits routed through `usd()`, stats promoted to `<dl>/<dt>/<dd>`,
+load-error bare <p> replaced with role=alert banner + retry
+button, referral-link Input gets Label htmlFor + select-on-
+focus. GoalsSettings: GOAL_TYPE_LABELS sentence-cased
+(surfaces in Select + existing goal cards), state-change
+reassurance on create + delete ("no goal was created" /
+"the goal still exists"), all 5 form fields get Label
+htmlFor, required asterisks with aria-label, inputMode=
+decimal on target, 7+ aria-hidden icons, 44px touch, proper
+trailing periods. 13 decorative icons aria-hidden between
+the two components.
+
+---
+
+**Prior session:** 2026-04-24 (session 25 — settings completion 19b.iv)
+**Prior completed refinement:** `ApiKeyManager` +
 `ActivityLogPanel` + `GoalsSettings` goal-progress row.
 Closes out the bulk of /settings 19b work in one ~520-line
 commit. Security-critical revoke path gets state-change
@@ -382,7 +401,8 @@ to a dedicated 9b slice.
 **/settings billing sub-slice 19b.ii (23):** ✅ complete — StripeConnect + SeatManagement (commit `74e62ec`)
 **/settings privacy sub-slice 19b.iii (24):** ✅ complete — PrivacyDataSettings / GDPR (commit `a90fa77`)
 **/settings completion 19b.iv (25):** ✅ complete — ApiKeyManager + ActivityLog + Goals progress (commit `890f5bc`)
-**/settings 19b.v ReferralSettings:** ⬜ deferred — low-risk marketing surface, final wrap-up
+**/settings 19b.v final (26):** ✅ complete — ReferralSettings + Goals form (commit `ac1a64b`)
+**/settings FULL 9-lens arc (19 → 19b.v):** ✅ complete — every sub-component refined
 **window.confirm ban grep:** ✅ clean across the client
 **window.prompt ban:** ✅ clean after slice 22
 **Money-precision grep remaining (~63 files):** ⬜ deferred — apply per-surface as each page gets 9-lens pass
@@ -609,6 +629,19 @@ Session 25:
   toLocaleString. Progress aria-label names goal+%+values.
   Teach-via-option-label rule introduced. (commit
   `890f5bc`)
+
+Session 26:
+- /settings 19b.v final — ReferralSettings + GoalsSettings
+  form. Closes out the full /settings 19b arc. Referral:
+  credit values through usd(), stats dl/dt/dd, load-error
+  role=alert + RefreshCw retry, referral Input Label +
+  select-on-focus, 8 aria-hidden icons. Goals:
+  GOAL_TYPE_LABELS sentence-cased, state-change
+  reassurance on both mutations, all 5 form Label htmlFor
+  wired, required asterisks, inputMode=decimal, 7+ aria-
+  hidden icons, 44px touch. Every sub-component of the
+  2658-line settings file has now had a refinement pass.
+  (commit `ac1a64b`)
 
 Session 24:
 - /settings 19b.iii — PrivacyDataSettings (GDPR surface).
@@ -901,15 +934,31 @@ Session 24:
 
 ## Next surface to refine
 
-**Recommended next slices:**
+**Settings arc complete.** Shift focus to other big
+deferred surfaces:
 
-1. **`/settings` 19b.v — ReferralSettings** (~120 lines).
-   Final wrap-up. Marketing surface, low risk. Tidy one-off.
+1. **Full `/finance` 9-lens pass (12b)** — slice 12 was
+   narrow (money-precision only). Remaining ~1500 lines:
+   create-note form dialog, delete confirmation, payment-
+   record dialog, Stripe Connect configuration, dunning
+   manager, drawer + cards that weren't touched.
 
-2. **Full `/finance` 9-lens pass (12b)** — slice 12 was
-   narrow (money-precision only). Remaining ~1500 lines.
+2. **`/leads` 17b** — remaining ~2000 lines (LeadForm,
+   LeadDetailDrawer, table rows, bulk-delete dialog,
+   import preview, tax-delinquent importer).
 
-3. **Teach-via-option-label grep sweep (new 25 rule)** —
+3. **`/onboarding-v2` 18b** — remaining ~1100 lines
+   (portfolio-import, county form, strategy cards, atlas
+   tour, team/integrations/workflows steps, completion
+   celebration).
+
+4. **jsPDF 1098 generator (slice 10b.ii)** — product +
+   compliance question on IRS form fidelity.
+
+5. **`/campaigns` 6c** — AbTestManager + CampaignVariantsPanel
+   + CampaignAnalytics deferred component-set.
+
+6. **Teach-via-option-label grep sweep (new 25 rule)** —
    find other `<Select>` options across the app with
    bare permission/mode/tier labels that could benefit
    from the inline-consequence pattern. Candidates:
@@ -992,9 +1041,9 @@ Session 24:
   `storage`, `autonomousDealMachine`, `countyAssessorIngest`,
   `supportAgent`, etc. — not blocking client refinement work.
 
-## Expected HEAD after session 25
+## Expected HEAD after session 26
 
-Session chain 8 → 25 cadence (all shipped atomic + docs):
+Session chain 8 → 26 cadence (all shipped atomic + docs):
 
 - `234dafa` slice 8  — /documents
 - `61f1469` slice 9  — /sign/:docId
@@ -1015,14 +1064,17 @@ Session chain 8 → 25 cadence (all shipped atomic + docs):
 - `74e62ec` slice 23 — /settings billing sub-slice (StripeConnect + SeatManagement)
 - `a90fa77` slice 24 — /settings privacy sub-slice (GDPR export/delete)
 - `890f5bc` slice 25 — /settings completion (ApiKey + Activity + Goals)
+- `ac1a64b` slice 26 — /settings 19b.v final (Referral + Goals form)
 
-Cross-cutting rules added slices 19-25:
-- State-change error reassurance (slice 19, generalized 22 to security, applied to 14+ error paths through 25)
-- window.prompt ban (slice 22, extending slice-5l window.confirm ban)
-- Placeholder disambiguation rule (slice 24)
-- Teach-via-option-label rule (slice 25)
+Cross-cutting rules added slices 19-26:
+- State-change error reassurance (slice 19, generalized 22, applied to 16+ error paths through 26)
+- window.prompt ban (slice 22)
+- Placeholder disambiguation (slice 24)
+- Teach-via-option-label (slice 25)
 
-Brings total introduced in this chain to 16 rules.
+Brings total introduced in this chain to 16 rules. **Settings
+arc is complete** — all 2658 lines refined across 7 commits
+(19, 19b.i-v) with zero regressions.
 
 **Coverage to date** (surfaces with explicit 9-lens pass):
 legal/trust (documents, sign, portal, signature-capture) +
