@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { QueryErrorState } from "@/components/query-error-state";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import { motion } from "framer-motion";
 import { staggerContainer, staggerItem } from "@/lib/animations";
 import {
@@ -157,6 +158,7 @@ function formatNumber(value: number): string {
 }
 
 export default function ExecutiveDashboard() {
+  useDocumentTitle("Executive dashboard");
   const { data: metrics, isLoading, isError, error, refetch } =
     useExecutiveDashboard();
 
@@ -174,7 +176,8 @@ export default function ExecutiveDashboard() {
   return (
     <PageShell>
       {isLoading ? (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4" role="status" aria-live="polite">
+          <span className="sr-only">Loading executive dashboard…</span>
           {Array.from({ length: 8 }).map((_, i) => (
             <MetricSkeleton key={i} />
           ))}
@@ -193,25 +196,25 @@ export default function ExecutiveDashboard() {
           className="space-y-6"
         >
           {/* Revenue Metrics */}
-          <div>
-            <h2 className="text-lg font-semibold mb-3 text-foreground">
+          <section aria-labelledby="section-revenue">
+            <h2 id="section-revenue" className="text-lg font-semibold mb-3 text-foreground">
               Revenue
             </h2>
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <dl className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
               <motion.div variants={staggerItem}>
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">
-                      <InfoTooltip term="Monthly Revenue" explanation="The total recurring revenue from all paying customers this month">MRR</InfoTooltip>
+                      <dt><InfoTooltip term="Monthly Revenue" explanation="The total recurring revenue from all paying customers this month">MRR</InfoTooltip></dt>
                     </CardTitle>
-                    <DollarSign className="h-4 w-4 text-muted-foreground" />
+                    <DollarSign className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">
+                    <dd className="text-2xl font-bold tabular-nums">
                       {formatCurrency(metrics.mrr)}
-                    </div>
+                    </dd>
                     <p className="text-xs text-muted-foreground">
-                      Monthly Recurring Revenue
+                      Monthly recurring revenue
                     </p>
                   </CardContent>
                 </Card>
@@ -221,16 +224,16 @@ export default function ExecutiveDashboard() {
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">
-                      <InfoTooltip term="Revenue Per Customer" explanation="Average monthly revenue divided by number of active customers">ARPU</InfoTooltip>
+                      <dt><InfoTooltip term="Revenue Per Customer" explanation="Average monthly revenue divided by number of active customers">ARPU</InfoTooltip></dt>
                     </CardTitle>
-                    <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                    <TrendingUp className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">
+                    <dd className="text-2xl font-bold tabular-nums">
                       {formatCurrency(metrics.arpu)}
-                    </div>
+                    </dd>
                     <p className="text-xs text-muted-foreground">
-                      Avg Revenue Per User
+                      Avg revenue per user
                     </p>
                   </CardContent>
                 </Card>
@@ -240,16 +243,16 @@ export default function ExecutiveDashboard() {
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">
-                      <InfoTooltip term="Churn Rate" explanation="Percentage of customers who cancelled or downgraded in the last 30 days. Lower is better.">Churn Rate</InfoTooltip>
+                      <dt><InfoTooltip term="Churn Rate" explanation="Percentage of customers who cancelled or downgraded in the last 30 days. Lower is better.">Churn rate</InfoTooltip></dt>
                     </CardTitle>
-                    <TrendingDown className="h-4 w-4 text-muted-foreground" />
+                    <TrendingDown className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">
+                    <dd className="text-2xl font-bold tabular-nums">
                       {metrics.churnRate}%
-                    </div>
+                    </dd>
                     <p className="text-xs text-muted-foreground">
-                      {metrics.churnedOrgsLast30Days} orgs churned (30d)
+                      <span className="tabular-nums">{metrics.churnedOrgsLast30Days}</span> org{metrics.churnedOrgsLast30Days === 1 ? "" : "s"} churned (30d)
                     </p>
                   </CardContent>
                 </Card>
@@ -259,46 +262,54 @@ export default function ExecutiveDashboard() {
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Tier Breakdown
+                      <dt>Tier breakdown</dt>
                     </CardTitle>
-                    <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                    <BarChart3 className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                   </CardHeader>
                   <CardContent>
-                    <div className="flex flex-wrap gap-1.5">
-                      {Object.entries(metrics.tierBreakdown).map(
-                        ([tier, tierCount]) => (
-                          <Badge key={tier} variant="secondary" className="text-xs">
-                            {tier}: {tierCount}
-                          </Badge>
-                        )
-                      )}
-                    </div>
+                    <dd>
+                      <ul className="flex flex-wrap gap-1.5" aria-label="Organizations by tier">
+                        {Object.entries(metrics.tierBreakdown).map(
+                          ([tier, tierCount]) => (
+                            <li key={tier}>
+                              <Badge
+                                variant="secondary"
+                                className="text-xs capitalize"
+                                aria-label={`${tier} tier: ${tierCount} organization${tierCount === 1 ? "" : "s"}`}
+                              >
+                                {tier}: <span className="tabular-nums ml-1">{tierCount}</span>
+                              </Badge>
+                            </li>
+                          )
+                        )}
+                      </ul>
+                    </dd>
                   </CardContent>
                 </Card>
               </motion.div>
-            </div>
-          </div>
+            </dl>
+          </section>
 
           {/* Organization Metrics */}
-          <div>
-            <h2 className="text-lg font-semibold mb-3 text-foreground">
+          <section aria-labelledby="section-orgs">
+            <h2 id="section-orgs" className="text-lg font-semibold mb-3 text-foreground">
               Organizations
             </h2>
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <dl className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               <motion.div variants={staggerItem}>
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Active Organizations
+                      <dt>Active organizations</dt>
                     </CardTitle>
-                    <Building2 className="h-4 w-4 text-muted-foreground" />
+                    <Building2 className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">
+                    <dd className="text-2xl font-bold tabular-nums">
                       {formatNumber(metrics.activeOrganizations)}
-                    </div>
+                    </dd>
                     <p className="text-xs text-muted-foreground">
-                      of {formatNumber(metrics.totalOrganizations)} total
+                      of <span className="tabular-nums">{formatNumber(metrics.totalOrganizations)}</span> total
                     </p>
                   </CardContent>
                 </Card>
@@ -308,14 +319,14 @@ export default function ExecutiveDashboard() {
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">
-                      New (30d)
+                      <dt>New (30d)</dt>
                     </CardTitle>
-                    <TrendingUp className="h-4 w-4 text-emerald-500" />
+                    <TrendingUp className="h-4 w-4 text-emerald-500" aria-hidden="true" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">
+                    <dd className="text-2xl font-bold tabular-nums">
                       +{formatNumber(metrics.newOrgsLast30Days)}
-                    </div>
+                    </dd>
                     <p className="text-xs text-muted-foreground">
                       New organizations this month
                     </p>
@@ -327,12 +338,12 @@ export default function ExecutiveDashboard() {
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Growth Rate
+                      <dt>Growth rate</dt>
                     </CardTitle>
-                    <Target className="h-4 w-4 text-muted-foreground" />
+                    <Target className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">
+                    <dd className="text-2xl font-bold tabular-nums">
                       {metrics.totalOrganizations > 0
                         ? Math.round(
                             (metrics.newOrgsLast30Days /
@@ -341,34 +352,34 @@ export default function ExecutiveDashboard() {
                           )
                         : 0}
                       %
-                    </div>
+                    </dd>
                     <p className="text-xs text-muted-foreground">
                       30-day growth rate
                     </p>
                   </CardContent>
                 </Card>
               </motion.div>
-            </div>
-          </div>
+            </dl>
+          </section>
 
           {/* Platform Usage */}
-          <div>
-            <h2 className="text-lg font-semibold mb-3 text-foreground">
-              Platform Usage
+          <section aria-labelledby="section-usage">
+            <h2 id="section-usage" className="text-lg font-semibold mb-3 text-foreground">
+              Platform usage
             </h2>
-            <div className="grid gap-4 md:grid-cols-3">
+            <dl className="grid gap-4 md:grid-cols-3">
               <motion.div variants={staggerItem}>
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Total Leads
+                      <dt>Total leads</dt>
                     </CardTitle>
-                    <Users className="h-4 w-4 text-muted-foreground" />
+                    <Users className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">
+                    <dd className="text-2xl font-bold tabular-nums">
                       {formatNumber(metrics.platformUsage.totalLeads)}
-                    </div>
+                    </dd>
                     <p className="text-xs text-muted-foreground">
                       Across all organizations
                     </p>
@@ -380,14 +391,14 @@ export default function ExecutiveDashboard() {
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Total Properties
+                      <dt>Total properties</dt>
                     </CardTitle>
-                    <MapPin className="h-4 w-4 text-muted-foreground" />
+                    <MapPin className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">
+                    <dd className="text-2xl font-bold tabular-nums">
                       {formatNumber(metrics.platformUsage.totalProperties)}
-                    </div>
+                    </dd>
                     <p className="text-xs text-muted-foreground">
                       Across all organizations
                     </p>
@@ -399,40 +410,40 @@ export default function ExecutiveDashboard() {
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Total Deals
+                      <dt>Total deals</dt>
                     </CardTitle>
-                    <Briefcase className="h-4 w-4 text-muted-foreground" />
+                    <Briefcase className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">
+                    <dd className="text-2xl font-bold tabular-nums">
                       {formatNumber(metrics.platformUsage.totalDeals)}
-                    </div>
+                    </dd>
                     <p className="text-xs text-muted-foreground">
                       Across all organizations
                     </p>
                   </CardContent>
                 </Card>
               </motion.div>
-            </div>
-          </div>
+            </dl>
+          </section>
 
           {/* NPS */}
-          <div>
-            <h2 className="text-lg font-semibold mb-3 text-foreground">
-              Net Promoter Score
+          <section aria-labelledby="section-nps">
+            <h2 id="section-nps" className="text-lg font-semibold mb-3 text-foreground">
+              Net promoter score
             </h2>
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <dl className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
               <motion.div variants={staggerItem}>
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">
-                      <InfoTooltip term="Customer Satisfaction Score" explanation="Measures how likely customers are to recommend you. Ranges from -100 to 100. Above 50 is excellent.">NPS Score</InfoTooltip>
+                      <dt><InfoTooltip term="Customer Satisfaction Score" explanation="Measures how likely customers are to recommend you. Ranges from -100 to 100. Above 50 is excellent.">NPS score</InfoTooltip></dt>
                     </CardTitle>
-                    <Target className="h-4 w-4 text-muted-foreground" />
+                    <Target className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                   </CardHeader>
                   <CardContent>
-                    <div
-                      className={`text-2xl font-bold ${
+                    <dd
+                      className={`text-2xl font-bold tabular-nums ${
                         metrics.nps.score >= 50
                           ? "text-emerald-600"
                           : metrics.nps.score >= 0
@@ -441,10 +452,9 @@ export default function ExecutiveDashboard() {
                       }`}
                     >
                       {metrics.nps.score}
-                    </div>
+                    </dd>
                     <p className="text-xs text-muted-foreground">
-                      {metrics.nps.responseCount} responses (avg{" "}
-                      {metrics.nps.average})
+                      <span className="tabular-nums">{metrics.nps.responseCount}</span> response{metrics.nps.responseCount === 1 ? "" : "s"} (avg <span className="tabular-nums">{metrics.nps.average}</span>)
                     </p>
                   </CardContent>
                 </Card>
@@ -454,16 +464,16 @@ export default function ExecutiveDashboard() {
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">
-                      <InfoTooltip term="Promoters" explanation="Customers who love your product and would recommend it to others (scored 9-10).">Promoters</InfoTooltip>
+                      <dt><InfoTooltip term="Promoters" explanation="Customers who love your product and would recommend it to others (scored 9-10).">Promoters</InfoTooltip></dt>
                     </CardTitle>
-                    <ThumbsUp className="h-4 w-4 text-emerald-500" />
+                    <ThumbsUp className="h-4 w-4 text-emerald-500" aria-hidden="true" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-emerald-600">
+                    <dd className="text-2xl font-bold text-emerald-600 tabular-nums">
                       {metrics.nps.promoters}
-                    </div>
+                    </dd>
                     <p className="text-xs text-muted-foreground">
-                      Score 9-10
+                      Score 9–10
                     </p>
                   </CardContent>
                 </Card>
@@ -473,16 +483,16 @@ export default function ExecutiveDashboard() {
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">
-                      <InfoTooltip term="Passives" explanation="Customers who are satisfied but not enthusiastic. They might switch to a competitor (scored 7-8).">Passives</InfoTooltip>
+                      <dt><InfoTooltip term="Passives" explanation="Customers who are satisfied but not enthusiastic. They might switch to a competitor (scored 7-8).">Passives</InfoTooltip></dt>
                     </CardTitle>
-                    <Minus className="h-4 w-4 text-amber-500" />
+                    <Minus className="h-4 w-4 text-amber-500" aria-hidden="true" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-amber-600">
+                    <dd className="text-2xl font-bold text-amber-600 tabular-nums">
                       {metrics.nps.passives}
-                    </div>
+                    </dd>
                     <p className="text-xs text-muted-foreground">
-                      Score 7-8
+                      Score 7–8
                     </p>
                   </CardContent>
                 </Card>
@@ -492,22 +502,22 @@ export default function ExecutiveDashboard() {
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">
-                      <InfoTooltip term="Detractors" explanation="Unhappy customers who may discourage others from using your product (scored 0-6).">Detractors</InfoTooltip>
+                      <dt><InfoTooltip term="Detractors" explanation="Unhappy customers who may discourage others from using your product (scored 0-6).">Detractors</InfoTooltip></dt>
                     </CardTitle>
-                    <ThumbsDown className="h-4 w-4 text-red-500" />
+                    <ThumbsDown className="h-4 w-4 text-red-500" aria-hidden="true" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-red-600">
+                    <dd className="text-2xl font-bold text-red-600 tabular-nums">
                       {metrics.nps.detractors}
-                    </div>
+                    </dd>
                     <p className="text-xs text-muted-foreground">
-                      Score 0-6
+                      Score 0–6
                     </p>
                   </CardContent>
                 </Card>
               </motion.div>
-            </div>
-          </div>
+            </dl>
+          </section>
         </motion.div>
       )}
     </PageShell>
