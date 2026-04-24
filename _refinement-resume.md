@@ -1,6 +1,31 @@
 # Elite-Team Refinement — Resume Point
 
-**Last session:** 2026-04-24 (session 30 — /leads 17b: LeadForm + LeadDetailDrawer + import CSV)
+**Last session:** 2026-04-24 (session 31 — /onboarding-v2 18b: 6 deferred step components)
+**Last completed refinement:** 6 deferred onboarding step
+components in `client/src/pages/onboarding-v2.tsx` — closes
+the /onboarding-v2 arc. `PortfolioImportStep`: drop zone
+<div onClick> → role=button + keyboard (slice-7), file input
+aria-label, preview role=region, success role=status with
+count, error state-change reassurance, proper ellipsis,
+tabular-nums. `TargetCountiesStep`: sr-only Label htmlFor +
+Input id on both fields, state gets full mobile-keyboard
+checklist (maxLength=2 + autoCapitalize=characters +
+autoComplete=address-level1 + autoCorrect=off + spellCheck=
+false), county gets autoComplete=address-level2. `Automation
+Step`: 3 toggles upgraded to role=switch + aria-checked per
+slice-5l; container role=group. Sentence-case sweep across
+all 6 components (~20 title/label replacements). `TeamSetupStep`:
+Label htmlFor + Textarea id + aria-describedby helper hint,
+email-list autoCapitalize=none, ul/li promotion, role=status
+banner, state-change reassurance ("no invites were sent").
+`IntegrationsStep`: ul/li promotion, Badge aria-label naming
+provider + status. `WorkflowsStep`: 3 cards → role=checkbox +
+aria-checked + descriptive aria-label. 44px touch on all CTAs.
+Zero new cross-cutting rules — pure horizontal application.
+
+---
+
+**Prior session:** 2026-04-24 (session 30 — /leads 17b: LeadForm + LeadDetailDrawer + import CSV)
 **Last completed refinement:** `LeadDetailDrawer` (hand-rolled
 drawer P1 fix — role=dialog + aria-modal + aria-labelledby +
 Esc + focus-return; silent assignment-error → destructive toast
@@ -456,6 +481,7 @@ to a dedicated 9b slice.
 **/dashboard (16):** ✅ complete (commit `a73dfee`)
 **/leads targeted (17):** ✅ complete (commit `3fb7dcb`)
 **/leads 17b (30):** ✅ complete — LeadForm + LeadDetailDrawer + import CSV + ScoreBreakdown (commit `aa6ff78`)
+**/onboarding-v2 18b (31):** ✅ complete — 6 deferred step components, closes /onboarding-v2 arc (commit `cd35c33`)
 **/leads remaining (SafeBulkDeleteDialog + TaxDelinquentImporter shared components):** ⬜ deferred — separate component files, not in leads.tsx scope
 **/onboarding-v2 targeted (18):** ✅ complete (commit `70df779`) — 18b deferred
 **/settings targeted (19):** ✅ complete (commit `809044c`) — 19b remaining components deferred
@@ -1029,19 +1055,25 @@ Session 24:
 
 ## Next surface to refine
 
-**Settings + /finance + /leads-in-file arcs complete.**
-Shift focus:
+**Settings + /finance + /leads-in-file + /onboarding-v2
+arcs complete.** Shift focus:
 
-1. **`/onboarding-v2` 18b** — remaining ~1100 lines
-   (portfolio-import, county form, strategy cards, atlas
-   tour, team/integrations/workflows steps, completion
-   celebration).
-
-2. **`SafeBulkDeleteDialog` + `TaxDelinquentImporter`**
+1. **`SafeBulkDeleteDialog` + `TaxDelinquentImporter`**
    (shared components used by /leads; standalone files,
    never had a 9-lens pass). Both are dialogs — focus on
    Esc/aria-modal/focus-return parity with the patterns
    from slices 5l + 30.
+
+2. **`/campaigns` 6c** — AbTestManager +
+   CampaignVariantsPanel + CampaignAnalytics deferred
+   component-set.
+
+3. **jsPDF 1098 generator (slice 10b.ii)** — product +
+   compliance question on IRS form fidelity.
+
+4. **Teach-via-option-label grep sweep (slice 25 rule)**
+   — find other `<Select>` options across the app with
+   bare permission/mode/tier labels.
 
 3. **`/onboarding-v2` 18b** — remaining ~1100 lines
    (portfolio-import, county form, strategy cards, atlas
