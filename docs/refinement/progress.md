@@ -4662,3 +4662,141 @@ deserve the full 9-lens treatment.
 - Definition-list semantic rule on payment breakdown.
 
 **Commit:** `694ba02`
+
+---
+
+## Session 28 — 2026-04-24 — /finance 12b.ii: AcceptPaymentModal + NoteDetailDrawer header & handlers
+
+**Scope:** AcceptPaymentModal (complete) + NoteDetailDrawer
+header row + 4 silent-error handlers. The NoteDetailDrawer
+body (~600 lines of cards + tabs + tables) deferred to
+slice 12b.iii.
+
+**Lens sweep + refinements shipped:**
+
+**AcceptPaymentModal (hand-rolled overlay — Stripe payment intent):**
+
+Same treatment as slice 27's RecordPaymentModal:
+
+- **Slice-5l dialog semantics:** `role="dialog"` + `aria-
+  modal="true"` + `aria-labelledby` + `aria-describedby` +
+  `useEffect` Escape handler + `p-4` mobile gutter.
+
+- **Form onSubmit wrapping:** Enter in the amount field
+  now triggers create-payment-intent. Previously mouse-
+  only.
+
+- **Currency-adornment rule (5m):** `$` prefix inside the
+  amount Input; right-aligned + tabular-nums.
+
+- **Label htmlFor on both inputs** (amount + type Select)
+  + required-asterisk on amount.
+
+- **Payment-intent-created success banner** promoted to
+  `role="status" + aria-live="polite"` so SR users hear
+  the client-secret reveal.
+
+- **Client-secret value** rendered with `tabIndex={0}` +
+  `Label htmlFor` so keyboard users can focus + copy the
+  full string (was just `select-all` class — dragging
+  worked only with mouse).
+
+- **Input + Select disabled after intent created** — the
+  intent is server-bound to a specific amount, so editing
+  either field after creation would silently invalidate
+  the surfaced client secret. Disabling is the correct
+  semantic.
+
+- **Copy sentence-case:** "Accept Payment" → "Accept
+  payment"; "Payment Amount" / "Payment Type" → sentence-
+  case; "Monthly Payment" / "Down Payment" / "Extra
+  Payment" Select options → sentence-case;
+  "Create Payment Intent" / "Creating..." → sentence-case
+  + proper ellipsis.
+
+- **Money-precision:** intent-created banner amount
+  routed through `usd()` (was `$${Number(amount).toFixed
+  (2)}`).
+
+- **44px touch on both action buttons.**
+
+**NoteDetailDrawer (header + 4 action handlers):**
+
+- **Engineer + Trust (P1 silent-error sweep — 4 handlers):**
+  `fetchDunningData` / `handleRegenerateSchedule` /
+  `handleSendReminder` / `handleDownloadPdf` all caught
+  errors into `console.error` only. User clicks Send
+  Reminder / Regenerate Schedule / Download PDF, nothing
+  happens visibly, assumes broken. Each now surfaces a
+  destructive toast with specific state-change reassurance
+  (slice-19 rule generalized):
+  - fetchDunningData: "Couldn't load dunning data / Check
+    your connection and try again."
+  - handleRegenerateSchedule: "Couldn't regenerate
+    schedule / **the existing schedule is unchanged**."
+  - handleSendReminder: "Couldn't send reminder / **no
+    reminder was sent**." Also adds a success toast
+    ("Reminder sent / Your borrower has been notified.")
+    since the previous silent-success-on-data-refresh
+    pattern left the user wondering whether the send
+    went through.
+  - handleDownloadPdf: "Couldn't download note PDF /
+    Check your connection and try again."
+
+- **Copy (removed redundant "Copied!" title):** payment-
+  link copy toast "Copied! / Payment link copied to
+  clipboard" → single-line "Payment link copied to
+  clipboard" (description was redundant with title).
+
+- **A11y (drawer dialog semantics — slice-5l):** the
+  hand-rolled overlay had no dialog semantics. Now
+  `role="dialog"` + `aria-modal="true"` + `aria-
+  labelledby={drawerTitleId}` + `useEffect` Escape
+  handler. Note title gets `id={drawerTitleId}` to pair.
+  Borrower subtitle `truncate` so long names don't push
+  the action buttons off-screen.
+
+- **A11y (per-row aria-labels on destructive header
+  actions):** bare "Delete note" / "Download note PDF"
+  / "Close drawer" aria-labels were generic across all
+  notes — in a list view, SR user firing actions in quick
+  succession could confuse which note they're operating
+  on. Each aria-label now names the borrower ("Delete
+  note for Jane Smith" / "Download note PDF for Jane
+  Smith" / "Close note details"). Prevents mis-clicks.
+
+- **Mobile (touch):** Download / Delete / Close icon
+  buttons bumped from default size=icon (36px) to
+  `h-11 w-11 sm:h-9 sm:w-9` (44px mobile).
+
+- **Decorative icons aria-hidden** on Download / Loader2
+  / Trash2 / X.
+
+- **Tabular-nums** on Note ID + $0.05 PDF cost label.
+
+**9-lens sign-off (touched components):**
+
+| Lens              | Status                                                                               |
+| ----------------- | ------------------------------------------------------------------------------------ |
+| Designer          | PASS — sentence-case, proper ellipsis, tabular-nums, trailing periods               |
+| Mobile designer   | PASS — p-4 modal gutter, 44px touch on header icon buttons                          |
+| Accessibility     | PASS — 2 hand-rolled dialogs get full slice-5l treatment, header aria-labels name borrower, intent banner role=status |
+| Engineer          | PASS — 4 silent console.error bugs fixed; form onSubmit + Enter submits on modal    |
+| Copywriter        | PASS — state-change reassurance on 4 drawer handlers, single-line copy toast         |
+| Trust             | PASS — regenerateSchedule + sendReminder errors explicit about what didn't change   |
+
+**Deferred (remaining /finance 12b):**
+- NoteDetailDrawer body (~600 lines: summary cards, loan-
+  progress card, payment-collection card, dunning manager,
+  payment-history table, amortization-schedule table,
+  Stripe Connect sub-card). These sections were partially
+  touched in slice 12 for money-precision — remaining
+  a11y/copy/form-semantics work is slice 12b.iii.
+
+**Patterns reinforced (no new rules this slice):**
+- Hand-rolled-dialog rule (slice 5l) — 2 more surfaces.
+- State-change error reassurance — 4 more error paths.
+- Currency-adornment rule (slice 5m) — 1 more site.
+- Silent-mutation → toast — 4 more trust-bug fixes.
+
+**Commit:** (pending)

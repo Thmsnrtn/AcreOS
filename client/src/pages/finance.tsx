@@ -478,7 +478,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
   const handleCopyPaymentLink = async () => {
     if (paymentLink) {
       await navigator.clipboard.writeText(paymentLink);
-      toast({ title: "Copied!", description: "Payment link copied to clipboard" });
+      toast({ title: "Payment link copied to clipboard" });
     }
   };
 
@@ -486,12 +486,15 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
     setIsDunningLoading(true);
     try {
       const res = await fetch(`/api/notes/${note.id}/dunning`, { credentials: 'include' });
-      if (res.ok) {
-        const data = await res.json();
-        setDunningData(data);
-      }
-    } catch (err) {
-      console.error('Failed to fetch dunning data:', err);
+      if (!res.ok) throw new Error(`Server returned ${res.status}`);
+      const data = await res.json();
+      setDunningData(data);
+    } catch (err: any) {
+      toast({
+        title: "Couldn't load dunning data",
+        description: err?.message || "Check your connection and try again.",
+        variant: "destructive",
+      });
     } finally {
       setIsDunningLoading(false);
     }
@@ -504,11 +507,14 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
         method: 'POST',
         credentials: 'include',
       });
-      if (res.ok) {
-        window.location.reload();
-      }
-    } catch (err) {
-      console.error('Failed to regenerate schedule:', err);
+      if (!res.ok) throw new Error(`Server returned ${res.status}`);
+      window.location.reload();
+    } catch (err: any) {
+      toast({
+        title: "Couldn't regenerate schedule",
+        description: err?.message || "Check your connection and try again — the existing schedule is unchanged.",
+        variant: "destructive",
+      });
     } finally {
       setIsRegenerating(false);
     }
@@ -523,11 +529,15 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
         credentials: 'include',
         body: JSON.stringify({ action: 'send_reminder', stage: type }),
       });
-      if (res.ok) {
-        fetchDunningData();
-      }
-    } catch (err) {
-      console.error('Failed to send reminder:', err);
+      if (!res.ok) throw new Error(`Server returned ${res.status}`);
+      fetchDunningData();
+      toast({ title: "Reminder sent", description: "Your borrower has been notified." });
+    } catch (err: any) {
+      toast({
+        title: "Couldn't send reminder",
+        description: err?.message || "Check your connection and try again — no reminder was sent.",
+        variant: "destructive",
+      });
     } finally {
       setIsSendingReminder(false);
     }
@@ -539,7 +549,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
       const response = await fetch(`/api/notes/${note.id}/document`, {
         credentials: 'include',
       });
-      if (!response.ok) throw new Error('Failed to generate PDF');
+      if (!response.ok) throw new Error(`Server returned ${response.status}`);
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -549,8 +559,12 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-    } catch (error) {
-      console.error('Download error:', error);
+    } catch (error: any) {
+      toast({
+        title: "Couldn't download note PDF",
+        description: error?.message || "Check your connection and try again.",
+        variant: "destructive",
+      });
     } finally {
       setIsDownloading(false);
     }
@@ -565,41 +579,79 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
     .filter(p => p.status === 'completed')
     .reduce((sum, p) => sum + Number(p.amount || 0), 0);
 
+  const drawerTitleId = "note-detail-title";
+  const borrowerName = note.borrower
+    ? `${note.borrower.firstName} ${note.borrower.lastName}`
+    : (note.borrowerId ? `Borrower #${note.borrowerId}` : "Unassigned borrower");
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" onClick={onClose}>
-      <div 
+    <div
+      className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={drawerTitleId}
+    >
+      <div
         className="fixed right-0 top-0 h-full w-full max-w-2xl bg-background shadow-2xl overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
         <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-xl font-bold" data-testid="text-note-title">
-                Note #{note.id}
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <h2 id={drawerTitleId} className="text-xl font-bold" data-testid="text-note-title">
+                Note #<span className="tabular-nums">{note.id}</span>
               </h2>
-              <p className="text-muted-foreground">
-                {note.borrower ? `${note.borrower.firstName} ${note.borrower.lastName}` : (note.borrowerId ? `Borrower #${note.borrowerId}` : "Unassigned borrower")}
+              <p className="text-muted-foreground truncate">
+                {borrowerName}
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
               <div className="flex flex-col items-center gap-0.5">
                 <Button
                   size="icon"
                   variant="ghost"
+                  className="h-11 w-11 sm:h-9 sm:w-9"
                   onClick={handleDownloadPdf}
                   disabled={isDownloading}
-                  aria-label="Download note PDF"
+                  aria-label={`Download note PDF for ${borrowerName}`}
                   data-testid="button-download-note-pdf"
                 >
-                  {isDownloading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
+                  {isDownloading ? (
+                    <Loader2 className="w-5 h-5 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <Download className="w-5 h-5" aria-hidden="true" />
+                  )}
                 </Button>
-                <span className="text-[10px] text-muted-foreground" data-testid="text-cost-pdf">$0.05</span>
+                <span className="text-[10px] text-muted-foreground tabular-nums" data-testid="text-cost-pdf">$0.05</span>
               </div>
-              <Button size="icon" variant="ghost" onClick={onDelete} aria-label="Delete note" data-testid="button-delete-note">
-                <Trash2 className="w-5 h-5 text-destructive" />
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-11 w-11 sm:h-9 sm:w-9"
+                onClick={onDelete}
+                aria-label={`Delete note for ${borrowerName}`}
+                data-testid="button-delete-note"
+              >
+                <Trash2 className="w-5 h-5 text-destructive" aria-hidden="true" />
               </Button>
-              <Button size="icon" variant="ghost" onClick={onClose} aria-label="Close drawer" data-testid="button-close-drawer">
-                <X className="w-5 h-5" />
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-11 w-11 sm:h-9 sm:w-9"
+                onClick={onClose}
+                aria-label="Close note details"
+                data-testid="button-close-drawer"
+              >
+                <X className="w-5 h-5" aria-hidden="true" />
               </Button>
             </div>
           </div>
@@ -1157,92 +1209,141 @@ function AcceptPaymentModal({ note, onClose }: { note: NoteWithDetails; onClose:
     }
   };
 
+  const titleId = "accept-payment-title";
+  const descId = "accept-payment-desc";
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
   return (
-    <div className="fixed inset-0 z-60 bg-black/50 flex items-center justify-center" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-60 bg-black/50 flex items-center justify-center p-4"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+      aria-describedby={descId}
+    >
       <Card className="w-full max-w-md floating-window" onClick={e => e.stopPropagation()}>
         <CardHeader>
-          <CardTitle>Accept Payment</CardTitle>
-          <CardDescription>Create a payment intent for Note #{note.id}</CardDescription>
+          <CardTitle id={titleId}>Accept payment</CardTitle>
+          <CardDescription id={descId}>
+            Create a payment intent for Note #<span className="tabular-nums">{note.id}</span>.
+          </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Payment Amount ($)</label>
-            <Input
-              type="number"
-              value={amount}
-              onChange={e => setAmount(e.target.value)}
-              placeholder={String(Number(note.monthlyPayment || 0))}
-              data-testid="input-payment-amount"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Payment Type</label>
-            <Select value={paymentType} onValueChange={setPaymentType}>
-              <SelectTrigger data-testid="select-payment-type">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="monthly_payment">Monthly Payment</SelectItem>
-                <SelectItem value="down_payment">Down Payment</SelectItem>
-                <SelectItem value="extra_payment">Extra Payment</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {clientSecret ? (
-            <div className="space-y-3">
-              <div className="bg-emerald-50 dark:bg-emerald-900/30 rounded-lg p-4 border border-emerald-200 dark:border-emerald-800">
-                <div className="flex items-center gap-2 mb-2">
-                  <CheckCircle className="w-5 h-5 text-emerald-600" />
-                  <span className="font-medium text-emerald-800 dark:text-emerald-200">Payment Intent Created</span>
-                </div>
-                <p className="text-sm text-muted-foreground mb-2">
-                  Amount: <span className="font-mono font-bold">${Number(amount).toFixed(2)}</span>
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Use the client secret below with Stripe.js to complete the payment.
-                </p>
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">Client Secret</label>
-                <div className="font-mono text-xs bg-muted p-2 rounded break-all select-all">
-                  {clientSecret}
-                </div>
+        <CardContent>
+          <form
+            className="space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!amount || isCreating || clientSecret) return;
+              handleCreatePaymentIntent();
+            }}
+          >
+            <div className="space-y-2">
+              <Label htmlFor="input-accept-payment-amount">
+                Payment amount <span className="text-destructive" aria-label="required">*</span>
+              </Label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm pointer-events-none">$</span>
+                <Input
+                  id="input-accept-payment-amount"
+                  type="number"
+                  min="0"
+                  step="any"
+                  inputMode="decimal"
+                  value={amount}
+                  onChange={e => setAmount(e.target.value)}
+                  placeholder={String(Number(note.monthlyPayment || 0))}
+                  className="pl-7 text-right tabular-nums"
+                  disabled={!!clientSecret}
+                  data-testid="input-payment-amount"
+                />
               </div>
             </div>
-          ) : (
-            <div className="bg-muted/50 rounded-lg p-4">
-              <p className="text-sm text-muted-foreground">
-                This will create a Stripe payment intent that can be used to process the payment via Stripe.js or the Stripe dashboard.
-              </p>
-            </div>
-          )}
 
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={onClose} className="flex-1">
-              {clientSecret ? 'Close' : 'Cancel'}
-            </Button>
-            {!clientSecret && (
-              <Button 
-                onClick={handleCreatePaymentIntent} 
-                disabled={isCreating || !amount} 
-                className="flex-1"
-              >
-                {isCreating ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Creating...
-                  </>
-                ) : (
-                  <>
-                    <CreditCard className="w-4 h-4 mr-2" />
-                    Create Payment Intent
-                  </>
-                )}
-              </Button>
+            <div className="space-y-2">
+              <Label htmlFor="select-payment-type">Payment type</Label>
+              <Select value={paymentType} onValueChange={setPaymentType} disabled={!!clientSecret}>
+                <SelectTrigger id="select-payment-type" data-testid="select-payment-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="monthly_payment">Monthly payment</SelectItem>
+                  <SelectItem value="down_payment">Down payment</SelectItem>
+                  <SelectItem value="extra_payment">Extra payment</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {clientSecret ? (
+              <div className="space-y-3">
+                <div
+                  className="bg-emerald-50 dark:bg-emerald-900/30 rounded-lg p-4 border border-emerald-200 dark:border-emerald-800"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    <CheckCircle className="w-5 h-5 text-emerald-600" aria-hidden="true" />
+                    <span className="font-medium text-emerald-800 dark:text-emerald-200">Payment intent created</span>
+                  </div>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Amount: <span className="font-mono font-bold tabular-nums">{usd(Number(amount) || 0)}</span>
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Use the client secret below with Stripe.js to complete the payment.
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="text-client-secret" className="text-xs text-muted-foreground">Client secret</Label>
+                  <div
+                    id="text-client-secret"
+                    className="font-mono text-xs bg-muted p-2 rounded break-all select-all tabular-nums"
+                    tabIndex={0}
+                  >
+                    {clientSecret}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-muted/50 rounded-lg p-4">
+                <p className="text-sm text-muted-foreground">
+                  This will create a Stripe payment intent that can be used to process the payment via Stripe.js or the Stripe dashboard.
+                </p>
+              </div>
             )}
-          </div>
+
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={onClose} className="flex-1 min-h-11 sm:min-h-9">
+                {clientSecret ? 'Close' : 'Cancel'}
+              </Button>
+              {!clientSecret && (
+                <Button
+                  type="submit"
+                  disabled={isCreating || !amount}
+                  className="flex-1 min-h-11 sm:min-h-9"
+                  data-testid="button-create-payment-intent"
+                >
+                  {isCreating ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
+                      Creating…
+                    </>
+                  ) : (
+                    <>
+                      <CreditCard className="w-4 h-4 mr-2" aria-hidden="true" />
+                      Create payment intent
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
+          </form>
         </CardContent>
       </Card>
     </div>
