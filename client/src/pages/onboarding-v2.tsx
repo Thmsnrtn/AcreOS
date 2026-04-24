@@ -343,6 +343,7 @@ function PortfolioImportStep({ onContinue }: { onContinue: (data?: Record<string
   const [isUploading, setIsUploading] = useState(false);
   const [importComplete, setImportComplete] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const importedCountRef = useRef<number>(0);
 
   const handleFileSelect = useCallback((selectedFile: File) => {
     setFile(selectedFile);
@@ -384,15 +385,17 @@ function PortfolioImportStep({ onContinue }: { onContinue: (data?: Record<string
       });
       if (!res.ok) throw new Error("Import failed");
       const result = await res.json();
+      const count = result.imported ?? result.count ?? 0;
+      importedCountRef.current = count;
       setImportComplete(true);
       toast({
         title: "Import successful",
-        description: `Imported ${result.imported ?? result.count ?? 0} leads from your file.`,
+        description: `Imported ${count} leads from your file.`,
       });
     } catch {
       toast({
-        title: "Import failed",
-        description: "Check the file format and try again.",
+        title: "Couldn't import portfolio",
+        description: "No leads were imported — check the file format (CSV or XLSX) and try again.",
         variant: "destructive",
       });
     } finally {
@@ -404,12 +407,21 @@ function PortfolioImportStep({ onContinue }: { onContinue: (data?: Record<string
     <div className="space-y-4">
       {!file ? (
         <div
+          role="button"
+          tabIndex={0}
+          aria-label="Select or drop a CSV or XLSX file to import"
           onDrop={handleDrop}
           onDragOver={(e) => e.preventDefault()}
           onClick={() => fileInputRef.current?.click()}
-          className="border-2 border-dashed border-gray-700 rounded-xl p-10 text-center cursor-pointer hover:border-blue-500 transition-colors"
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              fileInputRef.current?.click();
+            }
+          }}
+          className="border-2 border-dashed border-gray-700 rounded-xl p-10 text-center cursor-pointer hover:border-blue-500 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
         >
-          <Upload className="w-10 h-10 text-gray-500 mx-auto mb-3" />
+          <Upload className="w-10 h-10 text-gray-500 mx-auto mb-3" aria-hidden="true" />
           <p className="text-gray-300 font-medium">Drop your CSV or XLSX file here</p>
           <p className="text-gray-500 text-sm mt-1">or click to browse</p>
           <input
@@ -417,6 +429,7 @@ function PortfolioImportStep({ onContinue }: { onContinue: (data?: Record<string
             type="file"
             accept=".csv,.xlsx"
             className="hidden"
+            aria-label="Portfolio file"
             onChange={(e) => e.target.files?.[0] && handleFileSelect(e.target.files[0])}
           />
         </div>
@@ -424,13 +437,15 @@ function PortfolioImportStep({ onContinue }: { onContinue: (data?: Record<string
         <div className="space-y-3">
           <div className="flex items-center justify-between p-3 bg-blue-950/30 border border-blue-700/30 rounded-lg">
             <div className="flex items-center gap-2">
-              <FileSpreadsheet className="w-5 h-5 text-blue-400" />
+              <FileSpreadsheet className="w-5 h-5 text-blue-400" aria-hidden="true" />
               <span className="text-white text-sm font-medium">{file.name}</span>
             </div>
             {!importComplete && (
               <button
+                type="button"
                 onClick={() => { setFile(null); setPreview([]); }}
-                className="text-gray-500 hover:text-gray-300 text-xs"
+                className="text-gray-500 hover:text-gray-300 text-xs min-h-11 px-2"
+                aria-label={`Remove ${file.name} and choose a different file`}
               >
                 Change file
               </button>
@@ -438,12 +453,12 @@ function PortfolioImportStep({ onContinue }: { onContinue: (data?: Record<string
           </div>
 
           {preview.length > 0 && !importComplete && (
-            <div className="overflow-x-auto rounded-lg border border-gray-800">
+            <div className="overflow-x-auto rounded-lg border border-gray-800" role="region" tabIndex={0} aria-label="Portfolio file preview">
               <table className="w-full text-xs text-gray-300">
                 <thead>
                   <tr className="bg-gray-900/80">
                     {preview[0]?.map((header, i) => (
-                      <th key={i} className="px-3 py-2 text-left font-medium text-gray-400">
+                      <th key={i} scope="col" className="px-3 py-2 text-left font-medium text-gray-400">
                         {header}
                       </th>
                     ))}
@@ -462,15 +477,19 @@ function PortfolioImportStep({ onContinue }: { onContinue: (data?: Record<string
                 </tbody>
               </table>
               <div className="px-3 py-1.5 text-xs text-gray-600 bg-gray-900/50">
-                Showing first {Math.min(preview.length - 1, 5)} rows
+                Showing first <span className="tabular-nums">{Math.min(preview.length - 1, 5)}</span> rows
               </div>
             </div>
           )}
 
           {importComplete && (
-            <div className="p-3 bg-emerald-950/30 border border-emerald-700/30 rounded-lg text-emerald-300 text-sm flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4" />
-              Portfolio imported successfully
+            <div
+              className="p-3 bg-emerald-950/30 border border-emerald-700/30 rounded-lg text-emerald-300 text-sm flex items-center gap-2"
+              role="status"
+              aria-live="polite"
+            >
+              <CheckCircle2 className="w-4 h-4" aria-hidden="true" />
+              Portfolio imported successfully{importedCountRef.current > 0 ? ` — ${importedCountRef.current} leads added.` : "."}
             </div>
           )}
         </div>
@@ -481,17 +500,17 @@ function PortfolioImportStep({ onContinue }: { onContinue: (data?: Record<string
           <Button
             onClick={handleUpload}
             disabled={isUploading}
-            className="flex-1 bg-blue-600 hover:bg-blue-700 py-3"
+            className="flex-1 bg-blue-600 hover:bg-blue-700 py-3 min-h-11"
           >
             {isUploading ? (
               <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Importing...
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
+                Importing…
               </>
             ) : (
               <>
-                <Upload className="w-4 h-4 mr-2" />
-                Import {preview.length > 1 ? `${preview.length - 1} rows` : "file"}
+                <Upload className="w-4 h-4 mr-2" aria-hidden="true" />
+                Import {preview.length > 1 ? <><span className="tabular-nums mx-1">{preview.length - 1}</span> rows</> : "file"}
               </>
             )}
           </Button>
@@ -499,12 +518,12 @@ function PortfolioImportStep({ onContinue }: { onContinue: (data?: Record<string
         <Button
           onClick={() => onContinue({ dataImported: importComplete || !!file })}
           className={cn(
-            "py-3",
+            "py-3 min-h-11",
             file && !importComplete ? "flex-1" : "w-full",
             "bg-primary hover:bg-primary/90"
           )}
         >
-          {importComplete ? "Continue" : "Skip for now"} <ArrowRight className="w-4 h-4 ml-2" />
+          {importComplete ? "Continue" : "Skip for now"} <ArrowRight className="w-4 h-4 ml-2" aria-hidden="true" />
         </Button>
       </div>
     </div>
@@ -549,17 +568,28 @@ function TargetCountiesStep({
       {counties.map((c, i) => (
         <div key={i} className="flex gap-3">
           <div className="w-20">
+            <Label htmlFor={`target-state-${i}`} className="sr-only">State (2 letter code)</Label>
             <Input
+              id={`target-state-${i}`}
               placeholder="ST"
               maxLength={2}
+              inputMode="text"
+              autoCapitalize="characters"
+              autoComplete="address-level1"
+              autoCorrect="off"
+              spellCheck={false}
               value={c.state}
               onChange={(e) => updateCounty(i, "state", e.target.value)}
-              className="bg-gray-900 border-gray-700 text-white text-center"
+              className="bg-gray-900 border-gray-700 text-white text-center uppercase"
             />
           </div>
           <div className="flex-1">
+            <Label htmlFor={`target-county-${i}`} className="sr-only">County name</Label>
             <Input
+              id={`target-county-${i}`}
               placeholder="County name"
+              autoCapitalize="words"
+              autoComplete="address-level2"
               value={c.county}
               onChange={(e) => updateCounty(i, "county", e.target.value)}
               className="bg-gray-900 border-gray-700 text-white"
@@ -570,17 +600,18 @@ function TargetCountiesStep({
 
       {counties.length < 5 && (
         <button
+          type="button"
           onClick={addCounty}
-          className="text-sm text-blue-400 hover:text-blue-300"
+          className="text-sm text-blue-400 hover:text-blue-300 min-h-11 px-2"
         >
-          + Add another county (up to 5)
+          + Add another county (up to <span className="tabular-nums">5</span>)
         </button>
       )}
 
       <div className="p-3 bg-gray-900 border border-gray-800 rounded-lg">
         <p className="text-xs text-gray-500 mb-1">Pro tip</p>
         <p className="text-xs text-gray-400">
-          Running deals in 3-5 counties gives you enough deal flow while keeping focus.
+          Running deals in 3–5 counties gives you enough deal flow while keeping focus.
           The Deal Hunter scans each county every night.
         </p>
       </div>
@@ -596,10 +627,10 @@ function TargetCountiesStep({
           onContinue(data);
         }}
         disabled={validCounties.length === 0}
-        className="w-full bg-primary hover:bg-primary/90 py-3"
+        className="w-full bg-primary hover:bg-primary/90 py-3 min-h-11"
       >
-        Set {validCounties.length} {validCounties.length === 1 ? "County" : "Counties"} as Targets
-        <Target className="w-4 h-4 ml-2" />
+        Set <span className="tabular-nums mx-1">{validCounties.length}</span> {validCounties.length === 1 ? "county" : "counties"} as targets
+        <Target className="w-4 h-4 ml-2" aria-hidden="true" />
       </Button>
     </div>
   );
@@ -620,52 +651,59 @@ function AutomationStep({ onContinue }: { onContinue: () => void }) {
     <div className="space-y-4">
       <div className="p-4 bg-blue-950/20 border border-blue-700/30 rounded-xl">
         <div className="flex items-center gap-3 mb-3">
-          <Zap className="w-5 h-5 text-blue-400" />
-          <span className="font-medium text-white">Autonomous Deal Machine</span>
+          <Zap className="w-5 h-5 text-blue-400" aria-hidden="true" />
+          <span className="font-medium text-white">Autonomous deal machine</span>
         </div>
         <p className="text-sm text-gray-400 mb-4">
           AcreOS runs these processes automatically every night. Toggle what you want active.
         </p>
-        <div className="space-y-3">
+        <div className="space-y-3" role="group" aria-label="Autonomous deal machine settings">
           {[
             {
               key: "dealHunter" as const,
               icon: Target,
-              label: "Nightly Deal Hunter",
+              label: "Nightly deal hunter",
               desc: "Scans your target counties for new motivated sellers",
             },
             {
               key: "autoMail" as const,
               icon: Mail,
-              label: "Auto-Send First Touch Mailers",
+              label: "Auto-send first-touch mailers",
               desc: "Automatically sends initial outreach to new high-score leads",
             },
             {
               key: "morningBriefing" as const,
               icon: Star,
-              label: "Morning Briefing Email",
+              label: "Morning briefing email",
               desc: "Daily summary of new opportunities, responses, and action items",
             },
           ].map(({ key, icon: Icon, label, desc }) => (
             <button
               key={key}
+              type="button"
+              role="switch"
+              aria-checked={settings[key]}
+              aria-label={`${label}: ${settings[key] ? "on" : "off"}`}
               onClick={() => setSettings((prev) => ({ ...prev, [key]: !prev[key] }))}
               className={cn(
-                "w-full text-left p-3 rounded-lg border transition-colors flex items-start gap-3",
+                "w-full text-left p-3 rounded-lg border transition-colors flex items-start gap-3 min-h-11",
                 settings[key]
                   ? "border-blue-500/50 bg-blue-950/30"
                   : "border-gray-700 bg-gray-900/50"
               )}
             >
-              <Icon className={cn("w-4 h-4 mt-0.5 flex-shrink-0", settings[key] ? "text-blue-400" : "text-gray-500")} />
+              <Icon className={cn("w-4 h-4 mt-0.5 flex-shrink-0", settings[key] ? "text-blue-400" : "text-gray-500")} aria-hidden="true" />
               <div className="flex-1">
                 <div className="text-sm font-medium text-white">{label}</div>
                 <div className="text-xs text-gray-500">{desc}</div>
               </div>
-              <div className={cn(
-                "w-8 h-5 rounded-full transition-colors flex items-center px-0.5 flex-shrink-0 mt-0.5",
-                settings[key] ? "bg-blue-500 justify-end" : "bg-gray-700 justify-start"
-              )}>
+              <div
+                aria-hidden="true"
+                className={cn(
+                  "w-8 h-5 rounded-full transition-colors flex items-center px-0.5 flex-shrink-0 mt-0.5",
+                  settings[key] ? "bg-blue-500 justify-end" : "bg-gray-700 justify-start"
+                )}
+              >
                 <div className="w-4 h-4 bg-white rounded-full" />
               </div>
             </button>
@@ -673,8 +711,8 @@ function AutomationStep({ onContinue }: { onContinue: () => void }) {
         </div>
       </div>
 
-      <Button onClick={onContinue} className="w-full bg-primary hover:bg-primary/90 py-3">
-        Activate Deal Machine <Zap className="w-4 h-4 ml-2" />
+      <Button onClick={onContinue} className="w-full bg-primary hover:bg-primary/90 py-3 min-h-11">
+        Activate deal machine <Zap className="w-4 h-4 ml-2" aria-hidden="true" />
       </Button>
     </div>
   );
@@ -699,7 +737,11 @@ function TeamSetupStep({ onContinue }: { onContinue: (data?: Record<string, any>
       toast({ title: "Invitations sent", description: "Your team members will receive an email invite." });
     },
     onError: () => {
-      toast({ title: "Could not send invites", description: "You can invite team members later in Settings.", variant: "destructive" });
+      toast({
+        title: "Couldn't send invites",
+        description: "No invites were sent — you can try again now or invite team members later in Settings.",
+        variant: "destructive",
+      });
     },
   });
 
@@ -716,40 +758,52 @@ function TeamSetupStep({ onContinue }: { onContinue: (data?: Record<string, any>
   return (
     <div className="space-y-4">
       <div className="p-4 bg-purple-950/20 border border-purple-700/30 rounded-xl">
-        <div className="space-y-3">
+        <ul className="space-y-3" aria-label="Team roles you can invite">
           {[
-            { icon: UserPlus, role: "Deal Analysts", desc: "Find and evaluate acquisition targets" },
-            { icon: Users, role: "Virtual Assistants", desc: "Handle outreach, follow-ups, and data entry" },
-            { icon: Briefcase, role: "Closing Coordinators", desc: "Manage contracts and transactions" },
+            { icon: UserPlus, role: "Deal analysts", desc: "Find and evaluate acquisition targets" },
+            { icon: Users, role: "Virtual assistants", desc: "Handle outreach, follow-ups, and data entry" },
+            { icon: Briefcase, role: "Closing coordinators", desc: "Manage contracts and transactions" },
           ].map(({ icon: Icon, role, desc }) => (
-            <div key={role} className="flex items-center gap-3 p-2">
-              <div className="w-8 h-8 bg-purple-900/50 rounded-lg flex items-center justify-center flex-shrink-0">
+            <li key={role} className="flex items-center gap-3 p-2">
+              <div className="w-8 h-8 bg-purple-900/50 rounded-lg flex items-center justify-center flex-shrink-0" aria-hidden="true">
                 <Icon className="w-4 h-4 text-purple-400" />
               </div>
               <div>
                 <div className="text-sm font-medium text-white">{role}</div>
                 <div className="text-xs text-gray-500">{desc}</div>
               </div>
-            </div>
+            </li>
           ))}
-        </div>
+        </ul>
       </div>
 
       <div>
-        <Label className="text-gray-300 mb-2 block">Invite team members</Label>
+        <Label htmlFor="team-invite-emails" className="text-gray-300 mb-2 block">Invite team members</Label>
         <Textarea
+          id="team-invite-emails"
           placeholder="Enter email addresses (one per line or comma-separated)"
           value={emails}
           onChange={(e) => setEmails(e.target.value)}
           className="bg-gray-900 border-gray-700 text-white min-h-[80px]"
           disabled={invitesSent}
+          aria-describedby="team-invite-emails-hint"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
         />
+        <p id="team-invite-emails-hint" className="text-xs text-gray-600 mt-1">
+          Each person receives an email with a sign-in link. You can add more later in Settings.
+        </p>
       </div>
 
       {invitesSent && (
-        <div className="p-3 bg-emerald-950/30 border border-emerald-700/30 rounded-lg text-emerald-300 text-sm flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4" />
-          Invitations sent successfully
+        <div
+          className="p-3 bg-emerald-950/30 border border-emerald-700/30 rounded-lg text-emerald-300 text-sm flex items-center gap-2"
+          role="status"
+          aria-live="polite"
+        >
+          <CheckCircle2 className="w-4 h-4" aria-hidden="true" />
+          Invitations sent successfully.
         </div>
       )}
 
@@ -758,23 +812,23 @@ function TeamSetupStep({ onContinue }: { onContinue: (data?: Record<string, any>
           <Button
             onClick={handleInvite}
             disabled={inviteMutation.isPending}
-            className="flex-1 bg-primary hover:bg-primary/90 py-3"
+            className="flex-1 bg-primary hover:bg-primary/90 py-3 min-h-11"
           >
             {inviteMutation.isPending ? (
-              <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Sending...</>
+              <><Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" /> Sending…</>
             ) : (
-              <><Mail className="w-4 h-4 mr-2" /> Send Invites</>
+              <><Mail className="w-4 h-4 mr-2" aria-hidden="true" /> Send invites</>
             )}
           </Button>
         )}
         <Button
           onClick={() => onContinue({ teamInvited: invitesSent })}
           className={cn(
-            "py-3 bg-primary hover:bg-primary/90",
+            "py-3 min-h-11 bg-primary hover:bg-primary/90",
             !invitesSent && emails.trim() ? "flex-1" : "w-full"
           )}
         >
-          {invitesSent ? "Continue" : "Skip for now"} <ArrowRight className="w-4 h-4 ml-2" />
+          {invitesSent ? "Continue" : "Skip for now"} <ArrowRight className="w-4 h-4 ml-2" aria-hidden="true" />
         </Button>
       </div>
     </div>
@@ -810,7 +864,7 @@ function IntegrationsStep({ onContinue }: { onContinue: () => void }) {
   const integrations = [
     {
       icon: CreditCard,
-      name: "Stripe Payments",
+      name: "Stripe payments",
       desc: "Collect payments, sell notes, manage subscriptions",
       status: stripeData?.subscription ? "connected" : "not_configured",
       configUrl: "/settings#billing",
@@ -831,7 +885,7 @@ function IntegrationsStep({ onContinue }: { onContinue: () => void }) {
     },
     {
       icon: Key,
-      name: "API & Webhooks",
+      name: "API & webhooks",
       desc: "Connect external tools via REST API and webhooks",
       status: "available",
       configUrl: "/webhooks",
@@ -840,9 +894,9 @@ function IntegrationsStep({ onContinue }: { onContinue: () => void }) {
 
   return (
     <div className="space-y-4">
-      <div className="space-y-3">
-        {integrations.map(({ icon: Icon, name, desc, status, configUrl }) => (
-          <div
+      <ul className="space-y-3" aria-label="Available integrations">
+        {integrations.map(({ icon: Icon, name, desc, status }) => (
+          <li
             key={name}
             className={cn(
               "p-4 rounded-xl border flex items-start gap-3",
@@ -851,16 +905,20 @@ function IntegrationsStep({ onContinue }: { onContinue: () => void }) {
                 : "border-gray-700 bg-gray-900/50"
             )}
           >
-            <div className={cn(
-              "w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0",
-              status === "connected" ? "bg-emerald-900/50" : "bg-gray-800"
-            )}>
+            <div
+              aria-hidden="true"
+              className={cn(
+                "w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0",
+                status === "connected" ? "bg-emerald-900/50" : "bg-gray-800"
+              )}
+            >
               <Icon className={cn("w-5 h-5", status === "connected" ? "text-emerald-400" : "text-gray-400")} />
             </div>
             <div className="flex-1">
               <div className="flex items-center gap-2">
                 <span className="font-medium text-white text-sm">{name}</span>
                 <Badge
+                  aria-label={`${name}: ${status === "connected" ? "connected" : "not configured"}`}
                   className={cn(
                     "text-[10px] px-1.5",
                     status === "connected"
@@ -873,16 +931,16 @@ function IntegrationsStep({ onContinue }: { onContinue: () => void }) {
               </div>
               <p className="text-xs text-gray-500 mt-0.5">{desc}</p>
             </div>
-          </div>
+          </li>
         ))}
-      </div>
+      </ul>
 
       <p className="text-xs text-gray-600 text-center">
         You can configure all integrations later in Settings.
       </p>
 
-      <Button onClick={onContinue} className="w-full bg-primary hover:bg-primary/90 py-3">
-        Continue <ArrowRight className="w-4 h-4 ml-2" />
+      <Button onClick={onContinue} className="w-full bg-primary hover:bg-primary/90 py-3 min-h-11">
+        Continue <ArrowRight className="w-4 h-4 ml-2" aria-hidden="true" />
       </Button>
     </div>
   );
@@ -899,22 +957,22 @@ function WorkflowsStep({ onContinue }: { onContinue: () => void }) {
     {
       id: "standard_pipeline",
       icon: Workflow,
-      title: "Standard Deal Pipeline",
+      title: "Standard deal pipeline",
       desc: "Lead → Contact → Negotiate → Contract → Close",
       stages: 5,
     },
     {
       id: "high_volume",
       icon: Zap,
-      title: "High-Volume Acquisition",
+      title: "High-volume acquisition",
       desc: "Auto-score → Auto-offer → Review → Close",
       stages: 4,
     },
     {
       id: "team_review",
       icon: Users,
-      title: "Team Review Workflow",
-      desc: "Analyst → Manager Approval → Offer → Contract → Close",
+      title: "Team review workflow",
+      desc: "Analyst → Manager approval → Offer → Contract → Close",
       stages: 5,
     },
   ];
@@ -927,28 +985,35 @@ function WorkflowsStep({ onContinue }: { onContinue: () => void }) {
 
   return (
     <div className="space-y-4">
-      <div className="space-y-3">
-        {workflows.map(({ id, icon: Icon, title, desc, stages }) => (
-          <button
-            key={id}
-            onClick={() => toggle(id)}
-            className={cn(
-              "w-full text-left p-4 rounded-xl border-2 transition-all",
-              selectedWorkflows.includes(id)
-                ? "border-purple-500 bg-purple-950/20"
-                : "border-gray-700 bg-gray-900 hover:border-gray-600"
-            )}
-          >
-            <div className="flex items-center gap-3">
-              <Icon className={cn("w-5 h-5 flex-shrink-0", selectedWorkflows.includes(id) ? "text-purple-400" : "text-gray-500")} />
-              <div>
-                <div className="font-semibold text-white text-sm">{title}</div>
-                <div className="text-xs text-gray-400">{desc}</div>
-                <div className="text-xs text-gray-600 mt-1">{stages} stages</div>
+      <div className="space-y-3" role="group" aria-label="Deal workflows">
+        {workflows.map(({ id, icon: Icon, title, desc, stages }) => {
+          const checked = selectedWorkflows.includes(id);
+          return (
+            <button
+              key={id}
+              type="button"
+              role="checkbox"
+              aria-checked={checked}
+              aria-label={`${title}, ${stages} stages`}
+              onClick={() => toggle(id)}
+              className={cn(
+                "w-full text-left p-4 rounded-xl border-2 transition-all min-h-11",
+                checked
+                  ? "border-purple-500 bg-purple-950/20"
+                  : "border-gray-700 bg-gray-900 hover:border-gray-600"
+              )}
+            >
+              <div className="flex items-center gap-3">
+                <Icon className={cn("w-5 h-5 flex-shrink-0", checked ? "text-purple-400" : "text-gray-500")} aria-hidden="true" />
+                <div>
+                  <div className="font-semibold text-white text-sm">{title}</div>
+                  <div className="text-xs text-gray-400">{desc}</div>
+                  <div className="text-xs text-gray-600 mt-1"><span className="tabular-nums">{stages}</span> stages</div>
+                </div>
               </div>
-            </div>
-          </button>
-        ))}
+            </button>
+          );
+        })}
       </div>
 
       <p className="text-xs text-gray-600 text-center">
@@ -958,10 +1023,10 @@ function WorkflowsStep({ onContinue }: { onContinue: () => void }) {
       <Button
         onClick={onContinue}
         disabled={selectedWorkflows.length === 0}
-        className="w-full bg-primary hover:bg-primary/90 py-3"
+        className="w-full bg-primary hover:bg-primary/90 py-3 min-h-11"
       >
-        Configure {selectedWorkflows.length} {selectedWorkflows.length === 1 ? "Workflow" : "Workflows"}
-        <Settings className="w-4 h-4 ml-2" />
+        Configure <span className="tabular-nums mx-1">{selectedWorkflows.length}</span> {selectedWorkflows.length === 1 ? "workflow" : "workflows"}
+        <Settings className="w-4 h-4 ml-2" aria-hidden="true" />
       </Button>
     </div>
   );
