@@ -25,6 +25,8 @@ import { PlaybookCard } from "@/components/playbooks/PlaybookCard";
 import { Link } from "wouter";
 import { WorkspaceManager } from "@/components/workspace/WorkspaceManager";
 import { DailyDealFeed } from "@/components/deal-feed/daily-deal-feed";
+import { usd, dollarsCompact } from "@/lib/format";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 function getUrgencyStyle(urgency: string) {
   switch (urgency) {
@@ -84,6 +86,7 @@ interface DashboardIntelligence {
 }
 
 export default function Dashboard() {
+  useDocumentTitle("Dashboard — AcreOS");
   const queryClient = useQueryClient();
   const { data: organization, isLoading: orgLoading, error: orgError, refetch: refetchOrg } = useOrganization();
   const { data: stats, isLoading: statsLoading } = useDashboardStats();
@@ -211,11 +214,11 @@ export default function Dashboard() {
             <Card className="floating-window border-primary/20">
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center gap-2 text-lg">
-                  <Target className="w-5 h-5 text-primary" />
-                  Today's Opportunities
+                  <Target className="w-5 h-5 text-primary" aria-hidden="true" />
+                  Today's opportunities
                   <Link href="/deal-feed" className="ml-auto">
                     <Button variant="ghost" size="sm" className="text-xs">
-                      View All <span className="ml-1">→</span>
+                      View all <span className="ml-1" aria-hidden="true">→</span>
                     </Button>
                   </Link>
                 </CardTitle>
@@ -238,8 +241,8 @@ export default function Dashboard() {
           >
             <motion.div variants={item}>
               <StatCard
-                title="Total Properties"
-                value={isLoading ? "-" : stats?.activeProperties ?? properties.length}
+                title="Total properties"
+                value={isLoading ? "—" : stats?.activeProperties ?? properties.length}
                 icon={Map}
                 trend={`${properties.filter((p: any) => p.status === 'owned').length} owned`}
                 color="terracotta"
@@ -250,8 +253,8 @@ export default function Dashboard() {
             </motion.div>
             <motion.div variants={item}>
               <StatCard
-                title="Active Notes"
-                value={isLoading ? "-" : stats?.activeNotes ?? 0}
+                title="Active notes"
+                value={isLoading ? "—" : stats?.activeNotes ?? 0}
                 icon={Banknote}
                 color="sage"
                 data-testid="stat-active-notes"
@@ -261,10 +264,10 @@ export default function Dashboard() {
             </motion.div>
             <motion.div variants={item}>
               <StatCard
-                title="Monthly Cashflow"
-                value={isLoading ? "-" : `$${(stats?.monthlyRevenue ?? 0).toLocaleString()}`}
+                title="Monthly cashflow"
+                value={isLoading ? "—" : usd(stats?.monthlyRevenue ?? 0, { noCents: true })}
                 icon={TrendingUp}
-                trend="Projected Income"
+                trend="Projected income"
                 data-testid="stat-monthly-cashflow"
                 sparklineData={revenueSparkline}
                 trendDirection={revenueSparkline.length >= 2 && revenueSparkline[revenueSparkline.length - 1] >= revenueSparkline[0] ? "up" : "down"}
@@ -272,8 +275,8 @@ export default function Dashboard() {
             </motion.div>
             <motion.div variants={item}>
               <StatCard
-                title="Pipeline Value"
-                value={`$${pipelineValue.toLocaleString()}`}
+                title="Pipeline value"
+                value={usd(pipelineValue, { noCents: true })}
                 icon={Users}
                 trend={`${leads.length} leads`}
                 color="sand"
@@ -316,13 +319,13 @@ export default function Dashboard() {
             <Card className="floating-window border-primary/20">
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center gap-2 text-lg">
-                  <Sparkles className="w-5 h-5 text-primary" />
-                  Smart Intelligence
+                  <Sparkles className="w-5 h-5 text-primary" aria-hidden="true" />
+                  Smart intelligence
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <AnomalyAlerts 
+                  <AnomalyAlerts
                     anomalies={intelligence?.anomalies || []} 
                     isLoading={intelligenceLoading}
                   />
@@ -351,10 +354,10 @@ export default function Dashboard() {
             <Card className="floating-window" data-testid="section-playbooks">
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center gap-2 text-lg">
-                  <BookOpen className="w-5 h-5 text-primary" />
+                  <BookOpen className="w-5 h-5 text-primary" aria-hidden="true" />
                   Playbooks
                   {playbooksData?.activeInstances && playbooksData.activeInstances.length > 0 && (
-                    <Badge variant="outline" className="ml-2 text-xs" data-testid="badge-active-playbooks">
+                    <Badge variant="outline" className="ml-2 text-xs tabular-nums" data-testid="badge-active-playbooks">
                       {playbooksData.activeInstances.length} active
                     </Badge>
                   )}
@@ -395,9 +398,9 @@ export default function Dashboard() {
             <Card className="floating-window border-amber-200 dark:border-amber-800" data-testid="section-aging-leads">
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center gap-2 text-lg">
-                  <AlertTriangle className="w-5 h-5 text-amber-500" />
-                  Aging Leads
-                  <Badge variant="outline" className="ml-2 text-xs" data-testid="badge-aging-count">
+                  <AlertTriangle className="w-5 h-5 text-amber-500" aria-hidden="true" />
+                  Aging leads
+                  <Badge variant="outline" className="ml-2 text-xs tabular-nums" data-testid="badge-aging-count">
                     {agingLeads.length}
                   </Badge>
                 </CardTitle>
@@ -416,20 +419,20 @@ export default function Dashboard() {
                           <span className="font-medium text-sm" data-testid={`text-aging-lead-name-${lead.id}`}>
                             {lead.firstName} {lead.lastName}
                           </span>
-                          <span className="text-xs text-muted-foreground flex items-center gap-1">
+                          <span className="text-xs text-muted-foreground flex items-center gap-1 capitalize">
                             {getStageIcon(lead.nurturingStage)}
                             {lead.nurturingStage} lead
-                            {lead.score !== null && ` - Score: ${lead.score}`}
+                            {lead.score !== null && <span className="normal-case tabular-nums"> — Score: {lead.score}</span>}
                           </span>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
                         <Badge
                           variant="outline"
-                          className={`text-xs border-0 ${getUrgencyStyle(lead.urgency)}`}
+                          className={`text-xs border-0 tabular-nums ${getUrgencyStyle(lead.urgency)}`}
                           data-testid={`badge-aging-urgency-${lead.id}`}
                         >
-                          <Clock className="w-3 h-3 mr-1" />
+                          <Clock className="w-3 h-3 mr-1" aria-hidden="true" />
                           {lead.daysSinceContact}d
                         </Badge>
                       </div>
@@ -437,7 +440,7 @@ export default function Dashboard() {
                   ))}
                   {agingLeads.length > 5 && (
                     <Link href="/leads" className="block text-center text-sm text-muted-foreground hover:text-foreground py-2">
-                      View all {agingLeads.length} aging leads
+                      View all <span className="tabular-nums">{agingLeads.length}</span> aging leads
                     </Link>
                   )}
                 </div>
@@ -468,7 +471,7 @@ export default function Dashboard() {
           >
             <Card className="floating-window">
               <CardContent className="p-6">
-                <h3 className="text-lg font-semibold mb-6">Inventory Status</h3>
+                <h3 className="text-lg font-semibold mb-6">Inventory status</h3>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
@@ -512,7 +515,7 @@ export default function Dashboard() {
           >
             <Card className="floating-window">
               <CardContent className="p-6">
-                <h3 className="text-lg font-semibold mb-6">Lead Pipeline</h3>
+                <h3 className="text-lg font-semibold mb-6">Lead pipeline</h3>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={leadStatusData}>
@@ -554,9 +557,9 @@ export default function Dashboard() {
             <Card className="floating-window">
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center gap-2 text-lg">
-                  <Target className="w-5 h-5 text-primary" />
-                  Deal Velocity Funnel
-                  <Badge variant="outline" className="text-xs ml-auto">
+                  <Target className="w-5 h-5 text-primary" aria-hidden="true" />
+                  Deal velocity funnel
+                  <Badge variant="outline" className="text-xs ml-auto tabular-nums">
                     {funnelStages[funnelStages.length - 1].value > 0
                       ? `${funnelStages[funnelStages.length - 1].pct}% close rate`
                       : "No closings yet"}
@@ -570,15 +573,22 @@ export default function Dashboard() {
                       <div className="flex items-center justify-between text-sm mb-1">
                         <span className="font-medium text-xs">{stage.name}</span>
                         <div className="flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground">{stage.value}</span>
+                          <span className="text-xs text-muted-foreground tabular-nums">{stage.value}</span>
                           {idx > 0 && funnelStages[idx - 1].value > 0 && (
-                            <span className="text-[10px] text-muted-foreground">
+                            <span className="text-[10px] text-muted-foreground tabular-nums">
                               ({Math.round((stage.value / funnelStages[idx - 1].value) * 100)}% conv)
                             </span>
                           )}
                         </div>
                       </div>
-                      <div className="w-full bg-muted rounded-full h-5 overflow-hidden">
+                      <div
+                        className="w-full bg-muted rounded-full h-5 overflow-hidden"
+                        role="progressbar"
+                        aria-label={`${stage.name}: ${stage.value} leads (${stage.pct}% of top of funnel)`}
+                        aria-valuenow={stage.pct}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                      >
                         <div
                           className="h-full rounded-full flex items-center px-2 transition-all duration-700"
                           style={{
@@ -587,7 +597,7 @@ export default function Dashboard() {
                           }}
                         >
                           {stage.pct >= 15 && (
-                            <span className="text-white text-[10px] font-semibold">{stage.pct}%</span>
+                            <span className="text-white text-[10px] font-semibold tabular-nums" aria-hidden="true">{stage.pct}%</span>
                           )}
                         </div>
                       </div>
@@ -595,7 +605,7 @@ export default function Dashboard() {
                   ))}
                 </div>
                 {funnelStages[0].value === 0 && (
-                  <p className="text-xs text-muted-foreground text-center mt-4">Add leads to see your deal funnel</p>
+                  <p className="text-xs text-muted-foreground text-center mt-4">Add leads to see your deal funnel.</p>
                 )}
               </CardContent>
             </Card>
@@ -649,22 +659,22 @@ export default function Dashboard() {
             ) : organization && (
               <Card className="glass-panel border-none">
                 <CardContent className="flex items-center gap-3 p-3">
-                  <Building2 className="w-5 h-5 text-muted-foreground" />
+                  <Building2 className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
                   <div className="flex flex-col">
                     <span className="text-sm font-medium" data-testid="text-organization-name">
                       {organization.name}
                     </span>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <Badge 
-                        variant="outline" 
+                      <Badge
+                        variant="outline"
                         className={`text-xs ${getTierColor(organization.subscriptionTier)}`}
                         data-testid="badge-subscription-tier"
                       >
-                        <Crown className="w-3 h-3 mr-1" />
+                        <Crown className="w-3 h-3 mr-1" aria-hidden="true" />
                         {organization.subscriptionTier.charAt(0).toUpperCase() + organization.subscriptionTier.slice(1)}
                       </Badge>
                       <span className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Activity className="w-3 h-3" /> Online
+                        <Activity className="w-3 h-3" aria-hidden="true" /> Online
                       </span>
                     </div>
                   </div>
@@ -677,38 +687,38 @@ export default function Dashboard() {
           {!tipDismissed && !isLoading && (
             leads.length === 0 ? (
               <Card className="border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/40">
-                <CardContent className="flex items-center justify-between p-4">
+                <CardContent className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4">
                   <div className="flex items-center gap-3">
-                    <Sparkles className="w-5 h-5 text-blue-500 shrink-0" />
+                    <Sparkles className="w-5 h-5 text-blue-500 shrink-0" aria-hidden="true" />
                     <p className="text-sm text-blue-800 dark:text-blue-200">
-                      Import your first leads to see pipeline stats here
+                      Import your first leads to see pipeline stats here.
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 shrink-0">
                     <Link href="/leads">
-                      <Button size="sm" variant="outline" className="text-xs">Go to Leads</Button>
+                      <Button size="sm" variant="outline" className="text-xs min-h-11 sm:min-h-9">Go to leads</Button>
                     </Link>
-                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setTipDismissed(true)} aria-label="Dismiss tip">
-                      <X className="h-3 w-3" />
+                    <Button size="icon" variant="ghost" className="h-11 w-11 sm:h-9 sm:w-9" onClick={() => setTipDismissed(true)} aria-label="Dismiss tip">
+                      <X className="h-3 w-3" aria-hidden="true" />
                     </Button>
                   </div>
                 </CardContent>
               </Card>
             ) : campaignsData.length === 0 ? (
               <Card className="border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/40">
-                <CardContent className="flex items-center justify-between p-4">
+                <CardContent className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4">
                   <div className="flex items-center gap-3">
-                    <Sparkles className="w-5 h-5 text-blue-500 shrink-0" />
+                    <Sparkles className="w-5 h-5 text-blue-500 shrink-0" aria-hidden="true" />
                     <p className="text-sm text-blue-800 dark:text-blue-200">
-                      Create your first campaign to start outreach
+                      Create your first campaign to start outreach.
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 shrink-0">
                     <Link href="/campaigns">
-                      <Button size="sm" variant="outline" className="text-xs">Go to Campaigns</Button>
+                      <Button size="sm" variant="outline" className="text-xs min-h-11 sm:min-h-9">Go to campaigns</Button>
                     </Link>
-                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setTipDismissed(true)} aria-label="Dismiss tip">
-                      <X className="h-3 w-3" />
+                    <Button size="icon" variant="ghost" className="h-11 w-11 sm:h-9 sm:w-9" onClick={() => setTipDismissed(true)} aria-label="Dismiss tip">
+                      <X className="h-3 w-3" aria-hidden="true" />
                     </Button>
                   </div>
                 </CardContent>

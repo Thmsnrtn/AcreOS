@@ -3120,3 +3120,192 @@ small adjacent copy/a11y cleanup where it falls naturally.
   bureaucratic; "—" is quieter.
 
 **Commit:** `0ffdbde`
+
+---
+
+## Session 15 — 2026-04-23 — `/today` authenticated entry surface
+
+**Surface:** `client/src/pages/today.tsx` (1324 lines) — the
+authenticated entry page customers land on after sign-in.
+Last touched in sessions 1-3 for infrastructure; this is its
+first proper 9-lens pass.
+
+**Lens sweep + refinements shipped:**
+
+- **Copy (sentence-case sweep across 20+ section headers +
+  CTAs):** "View Notes" / "View Leads" / "View Deals" /
+  "View Properties" (alertLinkLabelByType); "Get Started" →
+  "Get started"; "Active Leads" / "Active Deals" /
+  "Pending Decisions" (welcome-back tiles); "Review
+  Decisions" / "View Portfolio" / "Check Messages";
+  "Add Your First Parcel" / "Import Leads"; "Agent
+  Activity" / "Sovereign Dashboard"; "Business Pulse" /
+  "Hot Deals" / "Avg Win Prob" / "This Month"; "Start
+  Here Today" / "Evening Review"; "Today's Actions" /
+  "All Tasks"; "Portfolio Alerts"; "Pax Noticed" / "View
+  All"; "Follow Up" / "View Deal"; "Pax Suggests" / "All
+  Leads"; "Goal Progress" / "Manage Goals"; "AI Action
+  Queue" / "View Pipeline"; "Cash Position" / "View
+  Finance"; "Portfolio Overview"; stat cards ("Active
+  Leads" / "Active Notes" / "Open Deals").
+
+- **A11y (decorative-icon aria-hidden sweep — 30+ icons):**
+  Sparkles (onboarding + pax noticed ×2 + pax suggests +
+  each pax observation card), RefreshCw (welcome back), X
+  (dismiss ×2), Target (getting started hero), Map + Users
+  (hero CTAs), CheckCircle2 (welcome back × 3), Briefcase
+  + MessageSquare, ArrowRight (~8 in-app-link icons), Clock
+  (pending pill + task cards), Sun (greeting), Bot (agent
+  activity), Activity (pulse), DollarSign + Flame +
+  BarChart3 + TrendingUp (pulse tiles), Zap + Moon
+  (start-here-today), Calendar (today's actions), Bell
+  (alerts), AlertTriangle + AlertCircle (alert cards +
+  stale leads + expiring offers + cash position), Banknote
+  (cash tile), Target (goals).
+
+- **Money-precision (new 10b rule horizontally applied):**
+  goal-progress revenue line: `$X.toLocaleString()` → `usd(X,
+  { noCents: true })` — bare version was dropping cents
+  (slice 10b P0 bug class). Cash-position 30/60/90 projected
+  tiles + next3 payment amounts use `usd(.., noCents)`.
+  Business Pulse Pipeline + This Month tiles replace hand-
+  rolled `$${(x / 1M).toFixed(1)}M` compact format with the
+  canonical `dollarsCompact()` helper (slice 12). Welcome-
+  back loading `-` → `—` on 4 stat tiles per Money-unset
+  rule.
+
+- **A11y (semantic severity):** expiring-offer cards now
+  `role="alert"` (deal deadline pressure is assertive, not
+  polite); critical system alerts `role="alert"` + aria-
+  live="assertive"; warning/info alerts `role="status"` +
+  polite. Dismiss buttons on alerts gained specific aria-
+  label naming the alert title. Pending-decisions pill got
+  `role="link"` + aria-label naming the action count.
+  Progress bars on goal cards got aria-label with percentage
+  + label.
+
+- **Mobile (layout + touch):** onboarding banner + welcome
+  back both stack `flex-col sm:flex-row`; icon tiles get
+  `shrink-0` so narrow widths don't squash. All primary
+  action buttons get `min-h-11 sm:min-h-9` (44px mobile
+  touch). Dismiss-icon buttons get `h-11 w-11 sm:h-9 sm:w-9`.
+
+- **Tabular-nums sweep:** every number — pending decisions
+  pill, welcome-back stat tiles (4), agent activity counters
+  (3), autonomy badge, pulse score (`15/100`), all 4 pulse
+  tiles, today's actions count badge, portfolio alerts
+  count, pax noticed count, pax suggest confidence %, goal
+  progress %, goal money, cash position late count +
+  projected tiles + payment amounts, portfolio overview
+  stat cards. Surface-wide jitter-free numerics.
+
+- **Copy (severity/priority capitalize):** obs.severity,
+  alert.priority, task.priority badges all render
+  lowercase enum values (`high`/`medium`/`low`). Added
+  `capitalize` class so they display as "High" / "Medium"
+  etc., consistent with sentence-case surroundings.
+
+- **useDocumentTitle:** wired as `"Today — AcreOS"` — tab
+  label + SR page-load announcement both match.
+
+**9-lens sign-off:**
+
+| Lens              | Status                                                                                                                           |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Designer          | PASS — sentence-case + tabular-nums + consistent `—` em-dash for unset values, mobile stack                                     |
+| Mobile designer   | PASS — 44px touch on all CTAs, flex-col sm:flex-row stack, shrink-0 on icon tiles                                                |
+| Accessibility     | PASS — 30+ decorative icons aria-hidden, role=alert/status wired by severity, aria-labels on dismiss + pending-decision pill    |
+| Engineer          | PASS — no type changes, centralized usd()/dollarsCompact() usage, no new network calls                                           |
+| AI systems        | N/A — widgets aggregate server-side Pax + intelligence data                                                                       |
+| Land investor     | PASS — "pending decisions" affordance explicit, Pax Suggests confidence % now tabular-nums, "hot deals" + "accepted/in escrow"   |
+| Copywriter        | PASS — full sentence-case sweep, em-dash for unset/loading                                                                         |
+| Infrastructure    | N/A — no network changes                                                                                                          |
+| Trust             | PASS — cent-drop trust bug eliminated on revenue goals, loading `-` unified to `—` Money-unset convention                         |
+
+**Deferred:** the 1324-line file includes KPI stat-cards,
+goal-progress section, Pax / alerts / tasks / AI-action cards
+that may deserve their own deep pass — but the horizontal
+rules were the priority and are now cleanly applied.
+
+**Commit:** (pending)
+
+---
+
+## Session 16 — 2026-04-23 — `/dashboard` alternate entry surface
+
+**Surface:** `client/src/pages/dashboard.tsx` (734 lines) —
+the alternate dashboard surface (separate from /today). Same
+pattern: horizontal application of established cross-cutting
+rules.
+
+- **useDocumentTitle("Dashboard — AcreOS")** wired.
+
+- **Copy (sentence-case sweep):** "Today's Opportunities" →
+  "Today's opportunities"; "View All" → "View all"; stat-
+  card titles "Total Properties" / "Active Notes" / "Monthly
+  Cashflow" / "Pipeline Value" → sentence-case;
+  "Projected Income" → "Projected income"; "Smart
+  Intelligence" → "Smart intelligence"; "Aging Leads" →
+  "Aging leads"; "Inventory Status" → "Inventory status";
+  "Lead Pipeline" → "Lead pipeline"; "Deal Velocity Funnel"
+  → "Deal velocity funnel"; "Go to Leads" → "Go to leads";
+  "Go to Campaigns" → "Go to campaigns". Contextual tip
+  banners gain trailing periods.
+
+- **Money-precision:** Monthly Cashflow StatCard used bare
+  `$${(stats?.monthlyRevenue ?? 0).toLocaleString()}` —
+  cent-drop risk on integer revenue values. Now
+  `usd(stats?.monthlyRevenue ?? 0, { noCents: true })`.
+  Pipeline Value StatCard same fix. Loading `"-"` → `"—"`
+  (em-dash) on 3 stat cards, matching Money-unset rule.
+
+- **A11y (decorative-icon aria-hidden sweep):** Target
+  (deal-feed card + funnel card), Sparkles (intelligence +
+  tip-banner × 2), BookOpen (playbooks), AlertTriangle
+  (aging leads), Clock (aging-lead urgency badge),
+  Building2 + Crown + Activity (org card), X (tip
+  dismiss × 2). ~12 icons.
+
+- **A11y (funnel progress bars):** funnel-stage progress
+  bars promoted to `role="progressbar"` + aria-label (stage
+  name + lead count + % of top-of-funnel) + aria-valuenow /
+  min / max. SR users now get actual funnel conversion
+  context instead of silent decorative divs.
+
+- **Mobile (tip banner layout):** tip banners stack
+  `flex-col sm:flex-row sm:items-center sm:justify-between`
+  — at 320px the "Go to leads" button was pushed onto
+  overflow. Buttons get `min-h-11 sm:min-h-9` (44px touch),
+  dismiss X gets `h-11 w-11 sm:h-9 sm:w-9`.
+
+- **Copy (aging-lead score separator):** " - Score: N"
+  (hyphen + title case) → em-dash " — Score: N" + span
+  with `normal-case tabular-nums` so the "negotiating lead"
+  copy stays lowercase while the numeric score uses tabular
+  digits.
+
+- **Tabular-nums:** aging-lead count badge, active
+  playbooks badge, funnel values + conversion %, funnel
+  close-rate badge, inventory counts, aging-lead urgency
+  days.
+
+- **Copy (empty-state period):** "Add leads to see your
+  deal funnel" gets trailing period.
+
+**9-lens sign-off:**
+
+| Lens              | Status                                                                                                        |
+| ----------------- | ------------------------------------------------------------------------------------------------------------- |
+| Designer          | PASS — sentence-case, tabular-nums, em-dash for unset values, trailing periods                               |
+| Mobile designer   | PASS — stacked tip banners at 320px, 44px touch on CTAs                                                       |
+| Accessibility     | PASS — 12+ decorative icons aria-hidden, funnel progressbar semantics, aria-label on dismiss                  |
+| Engineer          | PASS — usd() on money stat cards, no type changes, canonical helper adoption                                 |
+| Copywriter        | PASS — sentence-case, em-dash, period polish                                                                   |
+| Trust             | PASS — cent-drop eliminated on Monthly cashflow + Pipeline value                                              |
+
+**Deferred:** PlaybookCard, ActivityFeed, AnomalyAlerts,
+PredictiveInsights, NextBestActions, TasksDueWidget child
+components — each is its own slice. StatCard internals (which
+render sparklines) also deferred.
+
+**Commit:** (pending)
