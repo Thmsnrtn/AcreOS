@@ -1951,7 +1951,7 @@ function ReferralSettings() {
     queryKey: ["/api/referral/code"],
     queryFn: async () => {
       const res = await fetch("/api/referral/code", { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to load referral code");
+      if (!res.ok) throw new Error(`Server returned ${res.status}`);
       return res.json();
     },
   });
@@ -1960,7 +1960,7 @@ function ReferralSettings() {
     queryKey: ["/api/referral/stats"],
     queryFn: async () => {
       const res = await fetch("/api/referral/stats", { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to load referral stats");
+      if (!res.ok) throw new Error(`Server returned ${res.status}`);
       return res.json();
     },
   });
@@ -1972,7 +1972,7 @@ function ReferralSettings() {
   const copyLink = () => {
     if (!referralLink) return;
     navigator.clipboard.writeText(referralLink).then(() => {
-      toast({ title: "Copied!", description: "Referral link copied to clipboard." });
+      toast({ title: "Referral link copied to clipboard" });
     });
   };
 
@@ -1983,8 +1983,8 @@ function ReferralSettings() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Gift className="w-5 h-5" />
-            Refer &amp; Earn
+            <Gift className="w-5 h-5" aria-hidden="true" />
+            Refer &amp; earn
           </CardTitle>
           <CardDescription>
             Share AcreOS with fellow Land Investors. They get 30 days free — you get $20 account credit when they subscribe.
@@ -1993,7 +1993,7 @@ function ReferralSettings() {
         <CardContent className="space-y-6">
           {/* Offer callout */}
           <div className="rounded-xl bg-primary/5 border border-primary/20 p-4 flex items-start gap-3">
-            <Gift className="w-5 h-5 text-primary shrink-0 mt-0.5" />
+            <Gift className="w-5 h-5 text-primary shrink-0 mt-0.5" aria-hidden="true" />
             <div className="space-y-1">
               <p className="font-semibold text-sm">Give 30 days free, get $20 credit</p>
               <p className="text-xs text-muted-foreground">
@@ -2005,16 +2005,41 @@ function ReferralSettings() {
 
           {/* Referral link */}
           <div className="space-y-2">
-            <p className="text-sm font-medium">Your referral link</p>
+            <Label htmlFor="input-referral-link" className="text-sm font-medium">Your referral link</Label>
             {codeQuery.isLoading ? (
               <Skeleton className="h-10 w-full" />
             ) : codeQuery.isError ? (
-              <p className="text-sm text-destructive">Failed to load referral link. Please refresh.</p>
+              <div
+                role="alert"
+                className="flex items-start gap-2 p-3 rounded-md border border-destructive/50 bg-destructive/5 text-sm"
+              >
+                <AlertTriangle className="w-4 h-4 text-destructive shrink-0 mt-0.5" aria-hidden="true" />
+                <div className="flex-1">
+                  <p className="text-foreground">Couldn't load your referral link.</p>
+                  <Button size="sm" variant="outline" className="mt-2" onClick={() => codeQuery.refetch()}>
+                    <RefreshCw className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" />
+                    Try again
+                  </Button>
+                </div>
+              </div>
             ) : (
               <div className="flex gap-2">
-                <Input readOnly value={referralLink} className="font-mono text-sm" />
-                <Button variant="outline" size="sm" onClick={copyLink} className="shrink-0">
-                  <Link2 className="w-4 h-4 mr-1" />
+                <Input
+                  id="input-referral-link"
+                  readOnly
+                  value={referralLink}
+                  className="font-mono text-sm"
+                  onFocus={(e) => e.currentTarget.select()}
+                  data-testid="input-referral-link"
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={copyLink}
+                  className="shrink-0 min-h-11 sm:min-h-9"
+                  aria-label="Copy referral link to clipboard"
+                >
+                  <Link2 className="w-4 h-4 mr-1" aria-hidden="true" />
                   Copy
                 </Button>
               </div>
@@ -2022,20 +2047,20 @@ function ReferralSettings() {
           </div>
 
           {/* Stats */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <dl className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             {[
-              { label: "Signups", value: stats?.signups ?? 0, icon: Users },
-              { label: "Converted", value: stats?.conversions ?? 0, icon: CheckCircle2 },
-              { label: "Credits Earned", value: stats ? `$${(stats.creditsEarned / 100).toFixed(0)}` : "$0", icon: Coins },
-              { label: "Available Credit", value: stats ? `$${(stats.creditBalance / 100).toFixed(0)}` : "$0", icon: Wallet },
+              { label: "Signups", value: stats?.signups ?? 0, icon: Users, isMoney: false },
+              { label: "Converted", value: stats?.conversions ?? 0, icon: CheckCircle2, isMoney: false },
+              { label: "Credits earned", value: stats ? usd(stats.creditsEarned / 100, { noCents: true }) : "$0", icon: Coins, isMoney: true },
+              { label: "Available credit", value: stats ? usd(stats.creditBalance / 100, { noCents: true }) : "$0", icon: Wallet, isMoney: true },
             ].map(({ label, value, icon: Icon }) => (
               <div key={label} className="rounded-lg border border-border/60 bg-card p-4 space-y-1 text-center">
-                <Icon className="w-4 h-4 text-primary mx-auto" />
-                <p className="text-2xl font-bold">{statsQuery.isLoading ? "—" : value}</p>
-                <p className="text-xs text-muted-foreground">{label}</p>
+                <Icon className="w-4 h-4 text-primary mx-auto" aria-hidden="true" />
+                <dd className="text-2xl font-bold tabular-nums">{statsQuery.isLoading ? "—" : value}</dd>
+                <dt className="text-xs text-muted-foreground">{label}</dt>
               </div>
             ))}
-          </div>
+          </dl>
 
           <p className="text-xs text-muted-foreground">
             Credits are applied automatically to your subscription invoice once a referee has been a paying subscriber for 30+ days.
@@ -2057,10 +2082,10 @@ interface GoalPayload {
 }
 
 const GOAL_TYPE_LABELS: Record<GoalPayload["goalType"], string> = {
-  deals_closed: "Deals Closed",
-  notes_deployed: "Notes Deployed",
-  revenue_earned: "Revenue Earned ($)",
-  leads_contacted: "Leads Contacted",
+  deals_closed: "Deals closed",
+  notes_deployed: "Notes deployed",
+  revenue_earned: "Revenue earned ($)",
+  leads_contacted: "Leads contacted",
 };
 
 function GoalsSettings() {
@@ -2087,7 +2112,12 @@ function GoalsSettings() {
       setForm({ label: "", goalType: "deals_closed", targetValue: "", periodStart: new Date().toISOString().slice(0, 10), periodEnd: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10) });
       toast({ title: "Goal created", description: "Your new goal has been saved." });
     },
-    onError: () => toast({ title: "Error", description: "Failed to create goal.", variant: "destructive" }),
+    onError: (err: any) =>
+      toast({
+        title: "Couldn't create goal",
+        description: err?.message || "Check your connection and try again — no goal was created.",
+        variant: "destructive",
+      }),
   });
 
   const deleteGoal = useMutation({
@@ -2096,7 +2126,12 @@ function GoalsSettings() {
       queryClient.invalidateQueries({ queryKey: ["/api/goals"] });
       toast({ title: "Goal deleted" });
     },
-    onError: () => toast({ title: "Error", description: "Failed to delete goal.", variant: "destructive" }),
+    onError: (err: any) =>
+      toast({
+        title: "Couldn't delete goal",
+        description: err?.message || "Check your connection and try again — the goal still exists.",
+        variant: "destructive",
+      }),
   });
 
   return (
@@ -2106,14 +2141,20 @@ function GoalsSettings() {
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="flex items-center gap-2">
-                <Target className="w-5 h-5" />
-                Business Goals
+                <Target className="w-5 h-5" aria-hidden="true" />
+                Business goals
               </CardTitle>
-              <CardDescription>Track progress toward deals, revenue, and activity targets</CardDescription>
+              <CardDescription>Track progress toward deals, revenue, and activity targets.</CardDescription>
             </div>
-            <Button size="sm" onClick={() => setShowForm(v => !v)} variant={showForm ? "outline" : "default"}>
-              {showForm ? <X className="w-4 h-4 mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
-              {showForm ? "Cancel" : "New Goal"}
+            <Button
+              size="sm"
+              className="min-h-11 sm:min-h-9"
+              onClick={() => setShowForm(v => !v)}
+              variant={showForm ? "outline" : "default"}
+              data-testid="button-toggle-new-goal"
+            >
+              {showForm ? <X className="w-4 h-4 mr-2" aria-hidden="true" /> : <Plus className="w-4 h-4 mr-2" aria-hidden="true" />}
+              {showForm ? "Cancel" : "New goal"}
             </Button>
           </div>
         </CardHeader>
@@ -2122,17 +2163,20 @@ function GoalsSettings() {
           <CardContent className="border-t pt-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="sm:col-span-2 space-y-1">
-                <Label>Goal Label</Label>
+                <Label htmlFor="input-goal-label">
+                  Goal label <span className="text-destructive" aria-label="required">*</span>
+                </Label>
                 <Input
+                  id="input-goal-label"
                   placeholder="e.g. Q2 deal target"
                   value={form.label}
                   onChange={e => setForm(f => ({ ...f, label: e.target.value }))}
                 />
               </div>
               <div className="space-y-1">
-                <Label>Type</Label>
+                <Label htmlFor="select-goal-type">Type</Label>
                 <Select value={form.goalType} onValueChange={v => setForm(f => ({ ...f, goalType: v as GoalPayload["goalType"] }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="select-goal-type"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {(Object.entries(GOAL_TYPE_LABELS) as [GoalPayload["goalType"], string][]).map(([v, l]) => (
                       <SelectItem key={v} value={v}>{l}</SelectItem>
@@ -2141,30 +2185,53 @@ function GoalsSettings() {
                 </Select>
               </div>
               <div className="space-y-1">
-                <Label>Target</Label>
+                <Label htmlFor="input-goal-target">
+                  Target <span className="text-destructive" aria-label="required">*</span>
+                </Label>
                 <Input
+                  id="input-goal-target"
                   type="number"
                   min="0"
+                  inputMode="decimal"
                   placeholder="e.g. 10"
                   value={form.targetValue}
                   onChange={e => setForm(f => ({ ...f, targetValue: e.target.value }))}
+                  className="tabular-nums"
                 />
               </div>
               <div className="space-y-1">
-                <Label className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" />Start Date</Label>
-                <Input type="date" value={form.periodStart} onChange={e => setForm(f => ({ ...f, periodStart: e.target.value }))} />
+                <Label htmlFor="input-goal-start" className="flex items-center gap-1">
+                  <Calendar className="w-3.5 h-3.5" aria-hidden="true" />Start date
+                </Label>
+                <Input
+                  id="input-goal-start"
+                  type="date"
+                  value={form.periodStart}
+                  onChange={e => setForm(f => ({ ...f, periodStart: e.target.value }))}
+                  className="tabular-nums"
+                />
               </div>
               <div className="space-y-1">
-                <Label className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" />End Date</Label>
-                <Input type="date" value={form.periodEnd} onChange={e => setForm(f => ({ ...f, periodEnd: e.target.value }))} />
+                <Label htmlFor="input-goal-end" className="flex items-center gap-1">
+                  <Calendar className="w-3.5 h-3.5" aria-hidden="true" />End date
+                </Label>
+                <Input
+                  id="input-goal-end"
+                  type="date"
+                  value={form.periodEnd}
+                  onChange={e => setForm(f => ({ ...f, periodEnd: e.target.value }))}
+                  className="tabular-nums"
+                />
               </div>
               <div className="sm:col-span-2">
                 <Button
                   onClick={() => createGoal.mutate(form)}
                   disabled={!form.label || !form.targetValue || createGoal.isPending}
+                  className="min-h-11 sm:min-h-9"
+                  data-testid="button-save-goal"
                 >
-                  {createGoal.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                  Save Goal
+                  {createGoal.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />}
+                  Save goal
                 </Button>
               </div>
             </div>
@@ -2178,9 +2245,9 @@ function GoalsSettings() {
             </div>
           ) : goals.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
-              <Target className="w-10 h-10 mx-auto mb-3 opacity-30" />
+              <Target className="w-10 h-10 mx-auto mb-3 opacity-30" aria-hidden="true" />
               <p className="text-sm font-medium">No goals yet</p>
-              <p className="text-xs mt-1">Create a goal to track your team's progress</p>
+              <p className="text-xs mt-1">Create a goal to track your team's progress.</p>
             </div>
           ) : (
             <div className="space-y-4">

@@ -4369,3 +4369,156 @@ as tidy one-off follow-up.
   label is the only chance to disambiguate in-context.
 
 **Commit:** `890f5bc`
+
+---
+
+## Session 26 — 2026-04-24 — /settings 19b.v final: ReferralSettings + GoalsSettings form polish
+
+**Scope:** `ReferralSettings` (~100 lines) + `GoalsSettings`
+form & outer header polish (~30 lines delta). Closes out
+the entire `/settings` 19b arc — every sub-component in the
+file now has at least one refinement pass.
+
+**Lens sweep + refinements shipped:**
+
+**ReferralSettings:**
+
+- **Money-precision (slice 10b rule):** stats tiles
+  rendered credit values as `$${(cents / 100).toFixed(0)}`
+  which drops cents even on non-zero balances. Routed
+  through `usd(cents / 100, { noCents: true })` so the
+  display honors the canonical helper's null/empty
+  fallback and lets a future cents-enabled rendering
+  swap in cleanly.
+
+- **A11y (definition-list semantics on stats):** 4 stats
+  tiles (Signups / Converted / Credits earned / Available
+  credit) promoted from `<div>` + `<p>` + `<p>` triples to
+  `<dl>` / `<dd>` / `<dt>` per the slice-10b rule. SR
+  users now hear labeled pairs instead of three unlinked
+  text runs per tile.
+
+- **A11y (error state with retry, replacing bare error
+  text):** "Failed to load referral link. Please refresh."
+  was a lone `<p className="text-destructive">`. Now a
+  proper role=alert banner with AlertTriangle icon + body
+  copy + a RefreshCw retry button that calls
+  `codeQuery.refetch()` so the user doesn't have to
+  reload the whole settings page.
+
+- **A11y (referral-link Input Label htmlFor):** "Your
+  referral link" was rendered as a `<p>` sitting above the
+  Input, not linked to it. Promoted to `<Label htmlFor=
+  "input-referral-link">` + Input `id` so SR users hear
+  the label on focus.
+
+- **Engineer (select-on-focus convenience):** the read-
+  only referral-link Input now calls `e.currentTarget
+  .select()` on focus — tapping the link immediately
+  highlights the full URL so keyboard-copy (Ctrl/Cmd+C)
+  works without a drag-select. Matches native behavior
+  expected for shareable-URL fields.
+
+- **Copy (Copy-toast voice):** "Copied! / Referral link
+  copied to clipboard" → single-line "Referral link
+  copied to clipboard" (description was redundant with
+  title that says "Copied!").
+
+- **Copy (sentence-case):** "Refer & Earn" → "Refer &
+  earn"; stats labels "Credits Earned" → "Credits
+  earned"; "Available Credit" → "Available credit".
+
+- **Copy error-message fallback:** codeQuery + statsQuery
+  both now throw with server status code instead of bare
+  "Failed to load referral X" strings — consistent with
+  the other settings queries.
+
+- **A11y (aria-labels on Copy button):** icon+text "Copy"
+  button gets explicit aria-label "Copy referral link to
+  clipboard" (the visible "Copy" is fine for sighted
+  users but SR users benefit from the explicit target).
+
+- **A11y (Gift + Link2 + Users + CheckCircle2 + Coins +
+  Wallet + RefreshCw + AlertTriangle):** 8 decorative
+  icons now aria-hidden.
+
+- **Mobile:** Copy button + retry button get `min-h-11
+  sm:min-h-9` (44px touch).
+
+- **Tabular-nums** on stats values.
+
+**GoalsSettings (form + outer polish):**
+
+- **Copy (sentence-case GOAL_TYPE_LABELS):** "Deals
+  Closed" / "Notes Deployed" / "Revenue Earned ($)" /
+  "Leads Contacted" → sentence-case. These render in
+  both the Select options and the existing goal cards,
+  so the change surfaces everywhere.
+
+- **Copy (state-change reassurance on createGoal +
+  deleteGoal):** "Error / Failed to create goal" →
+  "Couldn't create goal / Check your connection and
+  try again — no goal was created." Same treatment on
+  delete: "the goal still exists."
+
+- **Copy (sentence-case on card title + button +
+  empty-state period):** "Business Goals" → "Business
+  goals"; "New Goal" → "New goal"; "Save Goal" → "Save
+  goal"; "Goal Label" → "Goal label"; "Start Date" /
+  "End Date" → "Start date" / "End date"; empty-state
+  "Create a goal to track your team's progress" gets
+  trailing period.
+
+- **A11y (Label htmlFor on all 5 form fields):** all
+  Label elements were unlinked to their Inputs/Selects.
+  Now properly wired (label / type / target / start-date
+  / end-date).
+
+- **A11y (required-asterisk aria-label):** both required
+  fields (Goal label + Target) gain the required `*`
+  indicator with `aria-label="required"` per the slice-
+  6a pattern.
+
+- **A11y (decorative icons):** Target × 2 (CardTitle +
+  empty-state), X + Plus (toggle button), Calendar × 2
+  (date-field Labels), Loader2 — all aria-hidden.
+
+- **Engineer (inputMode on target-value):** Input
+  `type="number"` gains `inputMode="decimal"` so mobile
+  users get the numeric keyboard instead of the default.
+
+- **Tabular-nums** on number + date inputs in the form
+  so digits don't jitter as the user types.
+
+- **Mobile:** both CTAs (toggle button + Save goal)
+  now `min-h-11 sm:min-h-9`.
+
+**9-lens sign-off:**
+
+| Lens              | Status                                                                                   |
+| ----------------- | ---------------------------------------------------------------------------------------- |
+| Designer          | PASS — sentence-case sweep, proper trailing periods, tabular-nums                        |
+| Mobile designer   | PASS — 44px touch on all 4 CTAs, inputMode=decimal on numeric, select-on-focus for copy |
+| Accessibility     | PASS — dl/dt/dd on referral stats, role=alert with retry on load error, Label htmlFor on every form field, decorative icons aria-hidden, required-asterisk aria-label |
+| Engineer          | PASS — centralized usd() on credit values, state-change reassurance on both goal mutations |
+| Copywriter        | PASS — sentence-case, "no goal was created", trailing periods                             |
+| Trust             | PASS — state-change reassurance completes the /settings mutation coverage                |
+
+**Settings 19b arc complete.** Every sub-component of the
+2658-line file has now had at least one refinement pass:
+- 19 → General + Tab list (809044c)
+- 19b.i → 2FA + PasswordChange (04b54f0)
+- 19b.ii → StripeConnect + SeatManagement (74e62ec)
+- 19b.iii → PrivacyDataSettings (a90fa77)
+- 19b.iv → ApiKeyManager + ActivityLog + Goals progress
+  (890f5bc)
+- 19b.v → ReferralSettings + Goals form (this slice)
+
+**Patterns reinforced (no new rules this slice):**
+- Money-precision rule applied to cents-denominated
+  balances (credits earned / available credit).
+- Definition-list semantic rule applied to stats tiles.
+- State-change error reassurance completed across all
+  /settings mutations.
+
+**Commit:** (pending)
