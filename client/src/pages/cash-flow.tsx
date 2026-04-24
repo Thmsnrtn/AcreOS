@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
+import { useDocumentTitle } from '@/hooks/use-document-title';
 import {
   AreaChart,
   Area,
@@ -52,13 +53,20 @@ const IMPACT_STYLES: Record<string, string> = {
 };
 
 const PATTERN_STYLES: Record<string, { label: string; color: string; icon: JSX.Element }> = {
-  consistent: { label: 'Consistent', color: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300', icon: <CheckCircle className="w-4 h-4" /> },
-  improving: { label: 'Improving', color: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300', icon: <TrendingUp className="w-4 h-4" /> },
-  declining: { label: 'Declining', color: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300', icon: <TrendingDown className="w-4 h-4" /> },
-  erratic: { label: 'Erratic', color: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300', icon: <AlertTriangle className="w-4 h-4" /> },
+  consistent: { label: 'Consistent', color: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300', icon: <CheckCircle className="w-4 h-4" aria-hidden="true" /> },
+  improving: { label: 'Improving', color: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300', icon: <TrendingUp className="w-4 h-4" aria-hidden="true" /> },
+  declining: { label: 'Declining', color: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300', icon: <TrendingDown className="w-4 h-4" aria-hidden="true" /> },
+  erratic: { label: 'Erratic', color: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300', icon: <AlertTriangle className="w-4 h-4" aria-hidden="true" /> },
 };
 
+function humanize(s: string): string {
+  if (!s) return '';
+  const spaced = s.replace(/_/g, ' ');
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
 export default function CashFlowPage() {
+  useDocumentTitle('Cash flow forecaster');
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [forecastId, setForecastId] = useState<number | null>(null);
@@ -136,7 +144,11 @@ export default function CashFlowPage() {
       refetchSummary();
     },
     onError: (err: Error) => {
-      toast({ title: 'Forecast failed', description: err.message, variant: 'destructive' });
+      toast({
+        title: "Couldn't generate forecast",
+        description: `${err.message} — your existing forecast (if any) is unchanged. Try again in a moment.`,
+        variant: 'destructive',
+      });
     },
   });
 
@@ -174,11 +186,11 @@ export default function CashFlowPage() {
     <div className="container mx-auto p-6 space-y-6">
       <RequiredDisclaimer type="financial" />
       {/* Header */}
-      <div className="flex items-start justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-2">
-            <Activity className="w-8 h-8 text-primary" />
-            Cash Flow Forecaster
+            <Activity className="w-8 h-8 text-primary" aria-hidden="true" />
+            Cash flow forecaster
           </h1>
           <p className="text-muted-foreground mt-1">
             12-month income and expense projections with payment health analysis and AI insights.
@@ -187,32 +199,52 @@ export default function CashFlowPage() {
         <Button
           onClick={() => generateMutation.mutate()}
           disabled={generateMutation.isPending}
+          className="min-h-11"
         >
-          <RefreshCw className={`w-4 h-4 mr-2 ${generateMutation.isPending ? 'animate-spin' : ''}`} />
-          {generateMutation.isPending ? 'Forecasting…' : 'Generate Forecast'}
+          <RefreshCw
+            className={`w-4 h-4 mr-2 ${generateMutation.isPending ? 'animate-spin' : ''}`}
+            aria-hidden="true"
+          />
+          {generateMutation.isPending ? 'Forecasting…' : 'Generate forecast'}
         </Button>
       </div>
 
       {/* Portfolio Cash Flow Health Banner */}
       {summary && cashFlowHealthPct !== null && (
-        <div className={`rounded-xl border p-4 ${monthlyNetCashFlow >= 0 ? "bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800" : "bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800"}`}>
+        <section
+          role="status"
+          aria-live="polite"
+          className={`rounded-xl border p-4 ${monthlyNetCashFlow >= 0 ? "bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800" : "bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800"}`}
+        >
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
-              <Shield className={`w-4 h-4 ${monthlyNetCashFlow >= 0 ? "text-emerald-600" : "text-red-500"}`} />
-              <span className="font-semibold text-sm">Portfolio Cash Flow Health</span>
+              <Shield
+                className={`w-4 h-4 ${monthlyNetCashFlow >= 0 ? "text-emerald-600" : "text-red-500"}`}
+                aria-hidden="true"
+              />
+              <span className="font-semibold text-sm">Portfolio cash flow health</span>
             </div>
             <div className="flex items-center gap-3">
               {coverageRatio !== null && (
-                <span className="text-xs text-muted-foreground">Coverage Ratio: <span className="font-bold text-foreground">{coverageRatio.toFixed(2)}x</span></span>
+                <span className="text-xs text-muted-foreground">
+                  Coverage ratio: <span className="font-bold text-foreground tabular-nums">{coverageRatio.toFixed(2)}x</span>
+                </span>
               )}
               {runwayMonths !== null && (
                 <Badge variant="destructive" className="text-xs">
-                  {runwayMonths} mo runway
+                  <span className="tabular-nums">{runwayMonths}</span> mo runway
                 </Badge>
               )}
             </div>
           </div>
-          <div className="w-full bg-background/60 rounded-full h-3 overflow-hidden">
+          <div
+            className="w-full bg-background/60 rounded-full h-3 overflow-hidden"
+            role="progressbar"
+            aria-label="Portfolio cash flow health"
+            aria-valuenow={Math.round(cashFlowHealthPct)}
+            aria-valuemin={0}
+            aria-valuemax={100}
+          >
             <div
               className={`h-full rounded-full transition-all duration-700 ${monthlyNetCashFlow >= 0 ? "bg-emerald-500" : "bg-red-500"}`}
               style={{ width: `${cashFlowHealthPct}%` }}
@@ -223,63 +255,63 @@ export default function CashFlowPage() {
               ? `Positive cash flow of ${formatDollar(monthlyNetCashFlow)}/mo · Your portfolio is generating surplus income.`
               : `Negative cash flow of ${formatDollar(Math.abs(monthlyNetCashFlow))}/mo · Expenses exceed income — review high-risk notes.`}
           </p>
-        </div>
+        </section>
       )}
 
       {/* Portfolio KPIs */}
       {summary ? (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <dl className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card>
             <CardContent className="pt-4">
               <div className="flex items-center gap-2 mb-1">
-                <TrendingUp className="w-4 h-4 text-emerald-500" />
-                <span className="text-sm text-muted-foreground">Projected Income</span>
+                <TrendingUp className="w-4 h-4 text-emerald-500" aria-hidden="true" />
+                <dt className="text-sm text-muted-foreground">Projected income</dt>
               </div>
-              <div className="text-2xl font-bold text-emerald-600">{formatDollar(summary.totalProjectedIncome)}</div>
-              <div className="text-xs text-muted-foreground mt-0.5">Next 12 months</div>
+              <dd className="text-2xl font-bold text-emerald-600 tabular-nums">{formatDollar(summary.totalProjectedIncome)}</dd>
+              <p className="text-xs text-muted-foreground mt-0.5">Next 12 months</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-4">
               <div className="flex items-center gap-2 mb-1">
-                <TrendingDown className="w-4 h-4 text-red-500" />
-                <span className="text-sm text-muted-foreground">Projected Expenses</span>
+                <TrendingDown className="w-4 h-4 text-red-500" aria-hidden="true" />
+                <dt className="text-sm text-muted-foreground">Projected expenses</dt>
               </div>
-              <div className="text-2xl font-bold text-red-500">{formatDollar(summary.totalProjectedExpenses)}</div>
-              <div className="text-xs text-muted-foreground mt-0.5">Next 12 months</div>
+              <dd className="text-2xl font-bold text-red-500 tabular-nums">{formatDollar(summary.totalProjectedExpenses)}</dd>
+              <p className="text-xs text-muted-foreground mt-0.5">Next 12 months</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-4">
               <div className="flex items-center gap-2 mb-1">
-                <DollarSign className="w-4 h-4 text-primary" />
-                <span className="text-sm text-muted-foreground">Net Cash Flow</span>
+                <DollarSign className="w-4 h-4 text-primary" aria-hidden="true" />
+                <dt className="text-sm text-muted-foreground">Net cash flow</dt>
               </div>
-              <div className={`text-2xl font-bold ${summary.netCashFlow >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+              <dd className={`text-2xl font-bold tabular-nums ${summary.netCashFlow >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
                 {formatDollar(summary.netCashFlow)}
-              </div>
-              <div className="text-xs text-muted-foreground mt-0.5">Next 12 months</div>
+              </dd>
+              <p className="text-xs text-muted-foreground mt-0.5">Next 12 months</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-4">
               <div className="flex items-center gap-2 mb-1">
-                <AlertTriangle className="w-4 h-4 text-orange-500" />
-                <span className="text-sm text-muted-foreground">High-Risk Notes</span>
+                <AlertTriangle className="w-4 h-4 text-orange-500" aria-hidden="true" />
+                <dt className="text-sm text-muted-foreground">High-risk notes</dt>
               </div>
-              <div className="text-2xl font-bold text-orange-500">{summary.highRiskNoteCount}</div>
-              <div className="text-xs text-muted-foreground mt-0.5">
-                Avg risk score: {Math.round(summary.averagePaymentRiskScore * 100)}%
-              </div>
+              <dd className="text-2xl font-bold text-orange-500 tabular-nums">{summary.highRiskNoteCount}</dd>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Avg risk score: <span className="tabular-nums">{Math.round(summary.averagePaymentRiskScore * 100)}%</span>
+              </p>
             </CardContent>
           </Card>
-        </div>
+        </dl>
       ) : (
         !summaryLoading && (
           <div className="text-center py-16 text-muted-foreground">
-            <Activity className="w-12 h-12 mx-auto mb-4 opacity-30" />
-            <p className="text-lg font-medium">No forecast data yet</p>
-            <p className="text-sm mt-1">Click "Generate Forecast" to create your first cash flow projection</p>
+            <Activity className="w-12 h-12 mx-auto mb-4 opacity-30" aria-hidden="true" />
+            <p className="text-lg font-medium">No forecast data yet.</p>
+            <p className="text-sm mt-1">Click "Generate forecast" to create your first cash flow projection.</p>
           </div>
         )
       )}
@@ -287,11 +319,17 @@ export default function CashFlowPage() {
       {summary && (
         <Tabs defaultValue="timeline">
           <TabsList>
-            <TabsTrigger value="timeline">Portfolio Timeline</TabsTrigger>
-            <TabsTrigger value="breakdown">Income Breakdown</TabsTrigger>
-            <TabsTrigger value="risk">High-Risk Notes ({highRisk.length})</TabsTrigger>
-            {insights.length > 0 && <TabsTrigger value="insights">AI Insights ({insights.length})</TabsTrigger>}
-            {accuracy && <TabsTrigger value="accuracy">Forecast Accuracy</TabsTrigger>}
+            <TabsTrigger value="timeline">Portfolio timeline</TabsTrigger>
+            <TabsTrigger value="breakdown">Income breakdown</TabsTrigger>
+            <TabsTrigger value="risk">
+              High-risk notes (<span className="tabular-nums">{highRisk.length}</span>)
+            </TabsTrigger>
+            {insights.length > 0 && (
+              <TabsTrigger value="insights">
+                AI insights (<span className="tabular-nums">{insights.length}</span>)
+              </TabsTrigger>
+            )}
+            {accuracy && <TabsTrigger value="accuracy">Forecast accuracy</TabsTrigger>}
           </TabsList>
 
           {/* ── TIMELINE ── */}
@@ -300,7 +338,7 @@ export default function CashFlowPage() {
             {portfolioTimelineData?.timeline && portfolioTimelineData.timeline.length > 0 && (
               <Card>
                 <CardHeader>
-                  <CardTitle>24-Month Income Projection</CardTitle>
+                  <CardTitle>24-month income projection</CardTitle>
                   <CardDescription>
                     Expected monthly income across all active notes and owned properties.
                     Shaded band shows uncertainty range. Balloon payments are highlighted.
@@ -374,8 +412,8 @@ export default function CashFlowPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle>Monthly Cash Flow Projection</CardTitle>
-                <CardDescription>Projected income, expenses, and net cash flow over the next 12 months</CardDescription>
+                <CardTitle>Monthly cash flow projection</CardTitle>
+                <CardDescription>Projected income, expenses, and net cash flow over the next 12 months.</CardDescription>
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={320}>
@@ -417,41 +455,55 @@ export default function CashFlowPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <Card>
                 <CardHeader>
-                  <CardTitle>Income by Source</CardTitle>
+                  <CardTitle>Income by source</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  {incomeBreakdown.map((item) => (
-                    <div key={item.name} className="space-y-1">
-                      <div className="flex justify-between text-sm">
-                        <span className="capitalize">{item.name}</span>
-                        <span className="font-medium">{formatDollar(item.value)}</span>
-                      </div>
-                      <Progress
-                        value={(item.value / summary.totalProjectedIncome) * 100}
-                        className="h-2"
-                      />
-                    </div>
-                  ))}
+                  <ul className="space-y-3" aria-label="Income by source">
+                    {incomeBreakdown.map((item) => {
+                      const pct = (item.value / summary.totalProjectedIncome) * 100;
+                      const label = humanize(item.name);
+                      return (
+                        <li key={item.name} className="space-y-1">
+                          <div className="flex justify-between text-sm">
+                            <span>{label}</span>
+                            <span className="font-medium tabular-nums">{formatDollar(item.value)}</span>
+                          </div>
+                          <Progress
+                            value={pct}
+                            className="h-2"
+                            aria-label={`${label}: ${formatDollar(item.value)}, ${pct.toFixed(1)}% of projected income`}
+                          />
+                        </li>
+                      );
+                    })}
+                  </ul>
                 </CardContent>
               </Card>
 
               <Card>
                 <CardHeader>
-                  <CardTitle>Expenses by Category</CardTitle>
+                  <CardTitle>Expenses by category</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  {Object.entries(summary.expensesByCategory).map(([cat, amt]: [string, any]) => (
-                    <div key={cat} className="space-y-1">
-                      <div className="flex justify-between text-sm">
-                        <span className="capitalize">{cat}</span>
-                        <span className="font-medium text-red-500">{formatDollar(amt)}</span>
-                      </div>
-                      <Progress
-                        value={(amt / summary.totalProjectedExpenses) * 100}
-                        className="h-2"
-                      />
-                    </div>
-                  ))}
+                  <ul className="space-y-3" aria-label="Expenses by category">
+                    {Object.entries(summary.expensesByCategory).map(([cat, amt]: [string, any]) => {
+                      const pct = (amt / summary.totalProjectedExpenses) * 100;
+                      const label = humanize(cat);
+                      return (
+                        <li key={cat} className="space-y-1">
+                          <div className="flex justify-between text-sm">
+                            <span>{label}</span>
+                            <span className="font-medium text-red-500 tabular-nums">{formatDollar(amt)}</span>
+                          </div>
+                          <Progress
+                            value={pct}
+                            className="h-2"
+                            aria-label={`${label}: ${formatDollar(amt)}, ${pct.toFixed(1)}% of projected expenses`}
+                          />
+                        </li>
+                      );
+                    })}
+                  </ul>
                 </CardContent>
               </Card>
             </div>
@@ -461,80 +513,94 @@ export default function CashFlowPage() {
           <TabsContent value="risk" className="space-y-4">
             {highRisk.length === 0 ? (
               <div className="text-center py-16 text-muted-foreground">
-                <Shield className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                <Shield className="w-10 h-10 mx-auto mb-3 opacity-30" aria-hidden="true" />
                 <p>No high-risk notes detected. Portfolio looks healthy.</p>
               </div>
             ) : (
-              highRisk.map(({ note, riskScore, riskFactors }: any) => (
-                <Card key={note.id} className="border-orange-200 dark:border-orange-800">
-                  <CardContent className="pt-4 pb-4">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <p className="font-medium">Note #{note.id}</p>
-                          <Badge className="bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300">
-                            Risk: {(riskScore * 100).toFixed(0)}%
-                          </Badge>
-                          {note.paymentPattern && (
-                            <Badge className={PATTERN_STYLES[note.paymentPattern]?.color || ''}>
-                              {PATTERN_STYLES[note.paymentPattern]?.icon}
-                              <span className="ml-1">{PATTERN_STYLES[note.paymentPattern]?.label || note.paymentPattern}</span>
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="text-sm text-muted-foreground mt-1">
-                          Balance: {note.balance ? formatDollar(note.balance) : '—'} ·
-                          Rate: {note.interestRate ?? '—'}%
-                        </p>
-                      </div>
-                    </div>
-
-                    {riskFactors?.length > 0 && (
-                      <div className="mt-3 space-y-2">
-                        {riskFactors.slice(0, 3).map((f: any, i: number) => (
-                          <div key={i} className="flex items-start gap-2 text-sm">
-                            <span className={`shrink-0 font-medium ${IMPACT_STYLES[f.impact]}`}>
-                              {f.impact.toUpperCase()}
-                            </span>
-                            <span className="text-muted-foreground">{f.factor}</span>
-                            {f.mitigation && (
-                              <span className="text-xs text-emerald-600 dark:text-emerald-400 ml-1">
-                                → {f.mitigation}
-                              </span>
-                            )}
+              <ul className="space-y-4" aria-label="High-risk notes">
+                {highRisk.map(({ note, riskScore, riskFactors }: any) => (
+                  <li key={note.id}>
+                    <Card className="border-orange-200 dark:border-orange-800">
+                      <CardContent className="pt-4 pb-4">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="font-medium">Note <span className="tabular-nums">#{note.id}</span></p>
+                              <Badge
+                                className="bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300"
+                                aria-label={`Risk score ${(riskScore * 100).toFixed(0)} percent`}
+                              >
+                                Risk: <span className="tabular-nums ml-1">{(riskScore * 100).toFixed(0)}%</span>
+                              </Badge>
+                              {note.paymentPattern && (
+                                <Badge className={PATTERN_STYLES[note.paymentPattern]?.color || ''}>
+                                  {PATTERN_STYLES[note.paymentPattern]?.icon}
+                                  <span className="ml-1">{PATTERN_STYLES[note.paymentPattern]?.label || note.paymentPattern}</span>
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="text-sm text-muted-foreground mt-1">
+                              Balance: <span className="tabular-nums">{note.balance ? formatDollar(note.balance) : '—'}</span> ·
+                              Rate: <span className="tabular-nums">{note.interestRate ?? '—'}%</span>
+                            </p>
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              ))
+                        </div>
+
+                        {riskFactors?.length > 0 && (
+                          <ul className="mt-3 space-y-2" aria-label="Risk factors">
+                            {riskFactors.slice(0, 3).map((f: any, i: number) => (
+                              <li key={i} className="flex items-start gap-2 text-sm">
+                                <span className={`shrink-0 font-medium ${IMPACT_STYLES[f.impact]}`}>
+                                  {f.impact.toUpperCase()}
+                                </span>
+                                <span className="text-muted-foreground">{f.factor}</span>
+                                {f.mitigation && (
+                                  <span className="text-xs text-emerald-600 dark:text-emerald-400 ml-1">
+                                    → {f.mitigation}
+                                  </span>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </li>
+                ))}
+              </ul>
             )}
           </TabsContent>
 
           {/* ── INSIGHTS ── */}
           {insights.length > 0 && (
             <TabsContent value="insights" className="space-y-4">
-              {insights.map((insight: any, i: number) => (
-                <Card key={i}>
-                  <CardContent className="pt-4 pb-4">
-                    <div className="flex items-start gap-3">
-                      <div className={`p-1.5 rounded ${insight.urgency === 'critical' || insight.urgency === 'high' ? 'bg-red-100' : 'bg-blue-100'}`}>
-                        <Zap className={`w-4 h-4 ${insight.urgency === 'critical' || insight.urgency === 'high' ? 'text-red-600' : 'text-blue-600'}`} />
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <Badge className={URGENCY_STYLES[insight.urgency] || ''}>
-                            {insight.urgency}
-                          </Badge>
-                          <span className="text-xs text-muted-foreground capitalize">{insight.type?.replace(/_/g, ' ')}</span>
+              <ul className="space-y-4" aria-label="AI insights">
+                {insights.map((insight: any, i: number) => (
+                  <li key={i}>
+                    <Card>
+                      <CardContent className="pt-4 pb-4">
+                        <div className="flex items-start gap-3">
+                          <div
+                            aria-hidden="true"
+                            className={`p-1.5 rounded ${insight.urgency === 'critical' || insight.urgency === 'high' ? 'bg-red-100' : 'bg-blue-100'}`}
+                          >
+                            <Zap className={`w-4 h-4 ${insight.urgency === 'critical' || insight.urgency === 'high' ? 'text-red-600' : 'text-blue-600'}`} />
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <Badge className={URGENCY_STYLES[insight.urgency] || ''}>
+                                {humanize(insight.urgency)}
+                              </Badge>
+                              <span className="text-xs text-muted-foreground">{humanize(insight.type ?? '')}</span>
+                            </div>
+                            <p className="text-sm">{insight.message}</p>
+                          </div>
                         </div>
-                        <p className="text-sm">{insight.message}</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                      </CardContent>
+                    </Card>
+                  </li>
+                ))}
+              </ul>
             </TabsContent>
           )}
 
@@ -543,37 +609,37 @@ export default function CashFlowPage() {
             <TabsContent value="accuracy" className="space-y-4">
               <Card>
                 <CardHeader>
-                  <CardTitle>Forecast Accuracy — Last 6 Months</CardTitle>
+                  <CardTitle>Forecast accuracy — last 6 months</CardTitle>
                   <CardDescription>
-                    Overall accuracy: {(accuracy.overallAccuracy * 100).toFixed(1)}%
+                    Overall accuracy: <span className="tabular-nums">{(accuracy.overallAccuracy * 100).toFixed(1)}%</span>
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   {accuracy.forecasts?.length > 0 ? (
-                    <div className="space-y-4">
+                    <ul className="space-y-4" aria-label="Historical forecast comparisons">
                       {accuracy.forecasts.map((f: any) => (
-                        <div key={f.forecastId} className="space-y-2 pb-4 border-b last:border-b-0">
+                        <li key={f.forecastId} className="space-y-2 pb-4 border-b last:border-b-0">
                           <div className="flex justify-between text-sm">
-                            <span className="text-muted-foreground">Forecast #{f.forecastId}</span>
-                            <span className={Math.abs(f.variancePercent) < 10 ? 'text-emerald-600' : 'text-orange-500'}>
+                            <span className="text-muted-foreground">Forecast <span className="tabular-nums">#{f.forecastId}</span></span>
+                            <span className={`tabular-nums ${Math.abs(f.variancePercent) < 10 ? 'text-emerald-600' : 'text-orange-500'}`}>
                               Income variance: {f.variancePercent.toFixed(1)}%
                             </span>
                           </div>
-                          <div className="grid grid-cols-2 gap-4 text-sm">
+                          <dl className="grid grid-cols-2 gap-4 text-sm">
                             <div>
-                              <p className="text-muted-foreground">Projected Income</p>
-                              <p className="font-medium">{formatDollar(f.projectedIncome)}</p>
+                              <dt className="text-muted-foreground">Projected income</dt>
+                              <dd className="font-medium tabular-nums">{formatDollar(f.projectedIncome)}</dd>
                             </div>
                             <div>
-                              <p className="text-muted-foreground">Actual Income</p>
-                              <p className="font-medium">{formatDollar(f.actualIncome)}</p>
+                              <dt className="text-muted-foreground">Actual income</dt>
+                              <dd className="font-medium tabular-nums">{formatDollar(f.actualIncome)}</dd>
                             </div>
-                          </div>
-                        </div>
+                          </dl>
+                        </li>
                       ))}
-                    </div>
+                    </ul>
                   ) : (
-                    <p className="text-muted-foreground text-sm">No historical comparison data available yet</p>
+                    <p className="text-muted-foreground text-sm">No historical comparison data available yet.</p>
                   )}
                 </CardContent>
               </Card>
