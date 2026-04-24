@@ -57,6 +57,7 @@ import { UserPlus, XCircle } from "lucide-react";
 import { CancellationDialog } from "@/components/cancellation-dialog";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 interface SeatInfo {
   tier: string;
@@ -552,6 +553,7 @@ function SeatManagement() {
 }
 
 export default function Settings() {
+  useDocumentTitle("Settings — AcreOS");
   const { toast } = useToast();
   const [location, setLocation] = useLocation();
   const search = useSearch();
@@ -623,19 +625,19 @@ export default function Settings() {
         description: `Added ${data.counts.leads} leads, ${data.counts.properties} properties, ${data.counts.deals} deals, and ${data.counts.notes} notes.`,
       });
     },
-    onError: () => {
+    onError: (err: any) => {
       toast({
-        title: "Error",
-        description: "Failed to create demo data",
+        title: "Couldn't create demo data",
+        description: err?.message || "Check your connection and try again.",
         variant: "destructive",
       });
     },
   });
-  
+
   const clearDataMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/clear-demo-data", {});
-      if (!res.ok) throw new Error("Failed to clear data");
+      if (!res.ok) throw new Error(`Server returned ${res.status}`);
       return res.json();
     },
     onSuccess: () => {
@@ -646,10 +648,10 @@ export default function Settings() {
         description: "All demo data has been removed from your organization.",
       });
     },
-    onError: () => {
+    onError: (err: any) => {
       toast({
-        title: "Error",
-        description: "Failed to clear data",
+        title: "Couldn't clear data",
+        description: err?.message || "Check your connection and try again.",
         variant: "destructive",
       });
     },
@@ -687,8 +689,8 @@ export default function Settings() {
       }
     } catch (error: any) {
       toast({
-        title: "Error",
-        description: error.message || "Failed to create checkout session",
+        title: "Couldn't start checkout",
+        description: error?.message || "Check your connection and try again — your plan wasn't changed.",
         variant: "destructive",
       });
     }
@@ -702,8 +704,8 @@ export default function Settings() {
       }
     } catch (error: any) {
       toast({
-        title: "Error",
-        description: error.message || "Failed to open customer portal",
+        title: "Couldn't open the billing portal",
+        description: error?.message || "Check your connection and try again.",
         variant: "destructive",
       });
     }
@@ -746,68 +748,68 @@ export default function Settings() {
             <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
               <TabsList className="inline-flex w-auto min-w-full md:min-w-0" data-testid="tabs-settings">
                 <TabsTrigger value="general" data-testid="tab-general" className="gap-1">
-                  <SettingsIcon className="w-4 h-4 hidden sm:inline" />
+                  <SettingsIcon className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
                   General
                 </TabsTrigger>
                 <TabsTrigger value="team" data-testid="tab-team" className="gap-1">
-                  <Users className="w-4 h-4 hidden sm:inline" />
+                  <Users className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
                   Team
                 </TabsTrigger>
                 <TabsTrigger value="payments" data-testid="tab-payments" className="gap-1">
-                  <Wallet className="w-4 h-4 hidden sm:inline" />
+                  <Wallet className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
                   Payments
                 </TabsTrigger>
                 <TabsTrigger value="communications" data-testid="tab-communications" className="gap-1">
-                  <Mail className="w-4 h-4 hidden sm:inline" />
+                  <Mail className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
                   Communications
                 </TabsTrigger>
                 <TabsTrigger value="notifications" data-testid="tab-notifications" className="gap-1">
-                  <Bell className="w-4 h-4 hidden sm:inline" />
+                  <Bell className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
                   Notifications
                 </TabsTrigger>
                 <TabsTrigger value="ai" data-testid="tab-ai" className="gap-1">
-                  <Sparkles className="w-4 h-4 hidden sm:inline" />
+                  <Sparkles className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
                   AI
                 </TabsTrigger>
                 <TabsTrigger value="data" data-testid="tab-data" className="gap-1">
-                  <FileText className="w-4 h-4 hidden sm:inline" />
+                  <FileText className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
                   Data
                 </TabsTrigger>
                 <TabsTrigger value="appearance" data-testid="tab-appearance" className="gap-1">
-                  <SettingsIcon className="w-4 h-4 hidden sm:inline" />
+                  <SettingsIcon className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
                   Appearance
                 </TabsTrigger>
                 <TabsTrigger value="integrations" data-testid="tab-integrations" className="gap-1">
-                  <Link2 className="w-4 h-4 hidden sm:inline" />
+                  <Link2 className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
                   Integrations
                 </TabsTrigger>
                 <TabsTrigger value="developer" data-testid="tab-developer" className="gap-1">
-                  <Code className="w-4 h-4 hidden sm:inline" />
+                  <Code className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
                   Developer
                 </TabsTrigger>
                 <TabsTrigger value="goals" data-testid="tab-goals" className="gap-1">
-                  <Target className="w-4 h-4 hidden sm:inline" />
+                  <Target className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
                   Goals
                 </TabsTrigger>
                 <TabsTrigger value="security" data-testid="tab-security" className="gap-1">
-                  <Shield className="w-4 h-4 hidden sm:inline" />
+                  <Shield className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
                   Security
                 </TabsTrigger>
                 <TabsTrigger value="privacy" data-testid="tab-privacy" className="gap-1">
-                  <Lock className="w-4 h-4 hidden sm:inline" />
+                  <Lock className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
                   Privacy
                 </TabsTrigger>
                 <TabsTrigger value="referral" data-testid="tab-referral" className="gap-1">
-                  <Gift className="w-4 h-4 hidden sm:inline" />
-                  Refer &amp; Earn
+                  <Gift className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
+                  Refer &amp; earn
                 </TabsTrigger>
                 <TabsTrigger value="automations" data-testid="tab-automations" className="gap-1">
-                  <Zap className="w-4 h-4 hidden sm:inline" />
+                  <Zap className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
                   Automations
                 </TabsTrigger>
                 <TabsTrigger value="ai-tasks" data-testid="tab-ai-tasks" className="gap-1">
-                  <Clock className="w-4 h-4 hidden sm:inline" />
-                  AI Tasks
+                  <Clock className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
+                  AI tasks
                 </TabsTrigger>
               </TabsList>
             </div>
@@ -816,10 +818,10 @@ export default function Settings() {
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
-                    <Building2 className="w-5 h-5" />
-                    Organization Details
+                    <Building2 className="w-5 h-5" aria-hidden="true" />
+                    Organization details
                   </CardTitle>
-                  <CardDescription>Your organization information and current plan</CardDescription>
+                  <CardDescription>Your organization information and current plan.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {orgLoading ? (
@@ -831,21 +833,21 @@ export default function Settings() {
                   ) : organization && (
                     <>
                       <div className="flex flex-col gap-1">
-                        <span className="text-sm text-muted-foreground">Organization Name</span>
+                        <span className="text-sm text-muted-foreground">Organization name</span>
                         <span className="text-lg font-medium" data-testid="text-org-name">
                           {organization.name}
                         </span>
                       </div>
-                      
+
                       <div className="flex flex-col gap-1">
-                        <span className="text-sm text-muted-foreground">Subscription Tier</span>
+                        <span className="text-sm text-muted-foreground">Subscription tier</span>
                         <div className="flex items-center gap-2 flex-wrap">
                           <Badge
                             variant="outline"
                             className={`${organization.isFounder ? 'bg-gradient-to-r from-primary to-accent text-white border-primary' : getTierColor(organization.subscriptionTier)}`}
                             data-testid="badge-current-tier"
                           >
-                            <Crown className="w-3 h-3 mr-1" />
+                            <Crown className="w-3 h-3 mr-1" aria-hidden="true" />
                             {organization.isFounder ? 'Enterprise (Founder)' : organization.subscriptionTier.charAt(0).toUpperCase() + organization.subscriptionTier.slice(1)}
                           </Badge>
                           {organization.isFounder && (
@@ -863,9 +865,9 @@ export default function Settings() {
                         <Skeleton className="h-10 w-48" />
                       ) : subscriptionData?.subscription ? (
                         <div className="flex flex-col gap-2 pt-2">
-                          <span className="text-sm text-muted-foreground">Current Period</span>
-                          <span className="text-sm" data-testid="text-subscription-period">
-                            {new Date(subscriptionData.subscription.current_period_start * 1000).toLocaleDateString()} - {new Date(subscriptionData.subscription.current_period_end * 1000).toLocaleDateString()}
+                          <span className="text-sm text-muted-foreground">Current period</span>
+                          <span className="text-sm tabular-nums" data-testid="text-subscription-period">
+                            {new Date(subscriptionData.subscription.current_period_start * 1000).toLocaleDateString()} &ndash; {new Date(subscriptionData.subscription.current_period_end * 1000).toLocaleDateString()}
                           </span>
                           <div className="flex gap-2">
                             <Button
@@ -875,12 +877,12 @@ export default function Settings() {
                               data-testid="button-manage-subscription"
                             >
                               {portalMutation.isPending ? (
-                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
                               ) : (
-                                <CreditCard className="w-4 h-4 mr-2" />
+                                <CreditCard className="w-4 h-4 mr-2" aria-hidden="true" />
                               )}
-                              Manage Subscription
-                              <ExternalLink className="w-3 h-3 ml-2" />
+                              Manage subscription
+                              <ExternalLink className="w-3 h-3 ml-2" aria-hidden="true" />
                             </Button>
                             <Button
                               variant="ghost"
@@ -889,7 +891,7 @@ export default function Settings() {
                               onClick={() => setShowCancelDialog(true)}
                               aria-label="Cancel subscription"
                             >
-                              <XCircle className="w-4 h-4 mr-1" />
+                              <XCircle className="w-4 h-4 mr-1" aria-hidden="true" />
                               Cancel
                             </Button>
                           </div>
@@ -903,10 +905,10 @@ export default function Settings() {
                         <div className="space-y-3">
                           {!organization.trialUsed && (
                             <div className="flex items-start gap-3 p-4 rounded-md bg-emerald-500/10 border border-emerald-500/20">
-                              <Gift className="w-5 h-5 text-emerald-500 mt-0.5 flex-shrink-0" />
+                              <Gift className="w-5 h-5 text-emerald-500 mt-0.5 flex-shrink-0" aria-hidden="true" />
                               <div>
                                 <p className="font-medium text-emerald-500" data-testid="text-trial-available">
-                                  7-Day Free Trial Available
+                                  7-day free trial available
                                 </p>
                                 <p className="text-sm text-muted-foreground mt-1">
                                   Start your subscription with a 7-day free trial. No charge until the trial ends.
@@ -931,10 +933,10 @@ export default function Settings() {
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
-                    <BarChart3 className="w-5 h-5" />
-                    Usage & Limits
+                    <BarChart3 className="w-5 h-5" aria-hidden="true" />
+                    Usage and limits
                   </CardTitle>
-                  <CardDescription>Track your resource usage against your plan limits</CardDescription>
+                  <CardDescription>Track your resource usage against your plan limits.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   {usageLoading ? (
@@ -952,8 +954,8 @@ export default function Settings() {
                         const usageItems = [
                           { key: "leads" as const, label: "Leads", icon: Users, description: "Total leads in your CRM" },
                           { key: "properties" as const, label: "Properties", icon: Home, description: "Properties in your inventory" },
-                          { key: "notes" as const, label: "Notes", icon: FileText, description: "Active seller finance notes" },
-                          { key: "ai_requests" as const, label: "AI Requests", icon: Sparkles, description: "Daily AI requests (resets at midnight)" },
+                          { key: "notes" as const, label: "Notes", icon: FileText, description: "Active seller-finance notes" },
+                          { key: "ai_requests" as const, label: "AI requests", icon: Sparkles, description: "Daily AI requests (resets at midnight)" },
                         ];
                         
                         const nearLimitItems = usageItems.filter(item => {
@@ -964,8 +966,12 @@ export default function Settings() {
                         return (
                           <>
                             {nearLimitItems.length > 0 && usageData.tier !== "enterprise" && (
-                              <div className="flex items-start gap-3 p-4 rounded-md bg-amber-500/10 border border-amber-500/20 mb-4">
-                                <TrendingUp className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" />
+                              <div
+                                className="flex items-start gap-3 p-4 rounded-md bg-amber-500/10 border border-amber-500/20 mb-4"
+                                role="status"
+                                aria-live="polite"
+                              >
+                                <TrendingUp className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" aria-hidden="true" />
                                 <div>
                                   <p className="font-medium text-amber-500">
                                     You're approaching your limits
@@ -974,14 +980,14 @@ export default function Settings() {
                                     You've used 80%+ of your {nearLimitItems.map(i => i.label.toLowerCase()).join(", ")} allowance.
                                     Upgrade your plan to unlock higher limits.
                                   </p>
-                                  <Button 
-                                    size="sm" 
+                                  <Button
+                                    size="sm"
                                     className="mt-2"
                                     onClick={() => document.getElementById("pricing-section")?.scrollIntoView({ behavior: "smooth" })}
                                     data-testid="button-upgrade-from-usage"
                                   >
-                                    <Crown className="w-4 h-4 mr-2" />
-                                    View Upgrade Options
+                                    <Crown className="w-4 h-4 mr-2" aria-hidden="true" />
+                                    View upgrade options
                                   </Button>
                                 </div>
                               </div>
@@ -1000,7 +1006,7 @@ export default function Settings() {
                                   <div key={item.key} className="space-y-2" data-testid={`usage-item-${item.key}`}>
                                     <div className="flex items-center justify-between gap-2">
                                       <div className="flex items-center gap-2">
-                                        <IconComponent className="w-4 h-4 text-muted-foreground" />
+                                        <IconComponent className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
                                         <span className="font-medium">{item.label}</span>
                                       </div>
                                       <span className="text-sm tabular-nums" data-testid={`text-usage-${item.key}`}>
@@ -1014,9 +1020,10 @@ export default function Settings() {
                                       </span>
                                     </div>
                                     {!isUnlimited && (
-                                      <Progress 
-                                        value={Math.min(percentage, 100)} 
+                                      <Progress
+                                        value={Math.min(percentage, 100)}
                                         className={`h-2 ${isAtLimit ? "[&>div]:bg-red-500" : isNearLimit ? "[&>div]:bg-amber-500" : ""}`}
+                                        aria-label={`${item.label} usage: ${usage.current} of ${usage.limit} (${Math.round(percentage)}%)`}
                                       />
                                     )}
                                     <p className="text-xs text-muted-foreground">{item.description}</p>
