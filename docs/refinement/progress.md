@@ -4202,3 +4202,170 @@ handling of the export flow could expose PII.
   format instead. Adds to the ConfirmDialog rule family.
 
 **Commit:** `a90fa77`
+
+---
+
+## Session 25 — 2026-04-24 — /settings completion pass (ApiKeyManager + ActivityLogPanel + GoalsSettings, 19b.iv)
+
+**Scope:** Close out the remaining `/settings` 19b sub-
+components in one commit. ~520 lines across three sub-
+components:
+- `ApiKeyManager` (lines 2238-2538 post-slice, most work)
+- `ActivityLogPanel` (2540-2620) — small table refresh
+- `GoalsSettings` goal-progress row (money-precision +
+  Progress aria-label)
+
+ReferralSettings is the remaining 19b component — deferred
+as tidy one-off follow-up.
+
+**Lens sweep + refinements shipped:**
+
+**ApiKeyManager (trust-critical — keys grant broad access):**
+
+- **Trust (state-change error reassurance — slice 19 rule,
+  2 sites):** createKey / revokeKey error toasts upgraded.
+  "Failed to create API key" → "Couldn't create API key /
+  Check your connection and try again — **no key was
+  created**." "Failed to revoke key" → "Couldn't revoke
+  API key / Check your connection and try again — **the
+  key is still active**." The revoke reassurance is
+  security-critical: user thinks they just disabled a
+  leaked key, transient error silently leaves it live,
+  user doesn't re-try = leaked key stays active forever.
+
+- **A11y (just-created-key banner role=alert):** new-key
+  banner is a one-time reveal ("copy now, won't be shown
+  again") — critical for SR users to hear. Container
+  promoted to `role="alert" + aria-live="assertive"`. The
+  code block gets a sr-only Label ("Newly created API
+  key") + id for programmatic reference. Copy button gets
+  explicit `aria-label="Copy API key to clipboard"` (was
+  bare "Copy" text). Copy-success toast specified from
+  generic "Copied to clipboard" → "API key copied to
+  clipboard" so SR users hear what exactly was copied.
+
+- **A11y (create-form Label htmlFor + form onSubmit):** the
+  3-field create form had `<Label>` without `htmlFor` and
+  no `<form onSubmit>`. Promoted to proper form with
+  `<Label htmlFor>` on all 3 fields (name/scope/expiry) +
+  matching Input/SelectTrigger ids. Enter in the name
+  field now submits.
+
+- **Copy (scope select — teaches permissions):** the scope
+  select was bare `Read` / `Write` / `Admin` labels — a
+  user creating their first key has no idea what those
+  mean. Upgraded to "Read — view data only" / "Write —
+  create and edit" / "Admin — full control" so the blast
+  radius of each scope is self-evident at selection time.
+
+- **Copy (naming hint in CardDescription):** added
+  "Name it for where you'll use it — Zapier, a custom
+  script, etc. — so you know which key to revoke later."
+  The key names become the only human-readable identifier
+  for keys; naming them descriptively matters for future
+  revocation.
+
+- **A11y (loading state → role=status):** "Loading keys…"
+  was a bare `<div>` with just text. Now a Loader2 spinner
+  + role=status + aria-live=polite + "Loading keys…"
+  accessible label.
+
+- **A11y (scrollable table region):** keys list table
+  promoted to a `tabIndex={0}` + `role="region"` +
+  `aria-label="Active API keys"` wrapper so keyboard
+  users can enter the region and scroll, and SR users get
+  a landmark. Empty action-column TableHead gets
+  `<span className="sr-only">Actions</span>` so SR users
+  hear the column's purpose.
+
+- **A11y (per-row revoke action group):** inline "Confirm
+  / Cancel" buttons for revoke now wrapped in `role=
+  "group"` with aria-label naming the key being revoked.
+  Each button's aria-label specifies "Confirm revoke {key
+  name}" / "Cancel revoke of {key name}" so SR users
+  don't accidentally confirm revoke on the wrong row.
+
+- **A11y (revoke button dynamic aria-label):** the
+  per-row Revoke button was bare text. Now
+  `aria-label="Revoke {key name}"`.
+
+- **Sentence-case + mobile:** "API Keys" → "API keys";
+  "Create Key" → "Create key"; "New API Key" → "New API
+  key". Create button + Copy button + X dismiss get 44px
+  touch targets.
+
+- **Required-asterisk + autoComplete:** Name field gets
+  required * + aria-label="required" + autoComplete=off
+  (so key names aren't auto-filled from random unrelated
+  saved data).
+
+- **Mobile (grid-cols-1 sm:grid-cols-2):** scope + expiry
+  row at 320px was clipping; stacks on mobile.
+
+- **Tabular-nums** on key prefix, created/last-used/
+  expires dates.
+
+**ActivityLogPanel:**
+
+- **Copy:** "Activity Log" → "Activity log".
+- **A11y:** loading state wrapped in role=status +
+  aria-live=polite + Loader2. Table promoted to
+  role=region + tabIndex=0 + aria-label="Organization
+  activity log" (scrollable log landmark). Decorative
+  icons aria-hidden.
+- **Tabular-nums** on timestamp + entity ID + user ID
+  (8-char prefix) columns.
+
+**GoalsSettings (goal-progress row):**
+
+- **Money-precision (slice 10b rule applied
+  conditionally):** goal values rendered bare
+  `.toLocaleString()` regardless of goal type. For a
+  revenue_earned goal, this drops cents. Now conditional:
+  `goalType === "revenue_earned"` uses `usd(value,
+  { noCents: true })`, other goal types (deals, leads,
+  properties — count-based) use `toLocaleString()`
+  directly. Matches the /today slice-15 pattern.
+- **Progress aria-label:** the goal-progress bar gains a
+  descriptive label naming the goal, percentage, and
+  formatted current/target values. Previously SR users
+  heard a silent progress bar.
+- **En-dash** on date range (was hyphen).
+- **Tabular-nums** on period dates + progress line.
+- **44px touch** on delete button (bumped from h-7 w-7 to
+  h-11 w-11 on mobile, reverted at sm+).
+- **Delete-goal aria-label** upgraded from "Delete goal"
+  (ambiguous in a list) to "Delete goal: {goal label}"
+  (names the specific row).
+
+**9-lens sign-off (applied to 3 touched components):**
+
+| Lens              | Status                                                                            |
+| ----------------- | --------------------------------------------------------------------------------- |
+| Designer          | PASS — sentence-case, proper en-dash on ranges, tabular-nums on all date/ID/digit |
+| Mobile designer   | PASS — grid-cols-1 sm:grid-cols-2 on create form, 44px touch on Copy/X/Delete    |
+| Accessibility     | PASS — role=alert on new-key banner, role=status on loaders, role=region on log + keys tables, aria-labels on all dynamic actions, form onSubmit + Label htmlFor throughout |
+| Engineer          | PASS — no type changes, centralized usd() helper applied to revenue goals        |
+| AI systems        | N/A                                                                                 |
+| Copywriter        | PASS — scope select teaches permissions, naming hint in CardDescription, revoke reassurance security-specific |
+| Trust             | PASS — revoke-failure explicit ("the key is still active"), new-key reveal is role=alert, per-row action aria-labels prevent mis-clicks |
+
+**Deferred (final 19b):**
+- `ReferralSettings` (1822-1941) — deferred to slice 19b.v.
+  Marketing-heavy, low-risk relative to the security +
+  billing + privacy trio. Natural wrap-up one-off.
+
+**Patterns reinforced:**
+- **State-change error reassurance** (slice 19/22): applied
+  to API-key revoke — brings total applications to 14
+  error paths across the chain. The pattern is now
+  thoroughly baked in.
+- **Teach-via-option-label rule (new 25):** when a
+  `<Select>` presents options whose consequences aren't
+  obvious from the option name (permissions, pricing
+  tiers, compliance modes, etc.), include the consequence
+  in the option label itself ("Read — view data only"
+  instead of bare "Read"). Selection happens once; the
+  label is the only chance to disambiguate in-context.
+
+**Commit:** (pending)

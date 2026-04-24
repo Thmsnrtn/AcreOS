@@ -59,6 +59,7 @@ import { CancellationDialog } from "@/components/cancellation-dialog";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { usd } from "@/lib/format";
 
 interface SeatInfo {
   tier: string;
@@ -2184,17 +2185,22 @@ function GoalsSettings() {
           ) : (
             <div className="space-y-4">
               {goals.map((goal: any) => {
-                const pct = Math.min(100, Math.round((Number(goal.currentValue ?? 0) / Number(goal.targetValue)) * 100));
+                const current = Number(goal.currentValue ?? 0);
+                const target = Number(goal.targetValue);
+                const pct = Math.min(100, Math.round((current / target) * 100));
                 const isComplete = pct >= 100;
+                const isRevenue = goal.goalType === "revenue_earned";
+                const valueFormat = (n: number) =>
+                  isRevenue ? usd(n, { noCents: true }) : n.toLocaleString();
                 return (
                   <div key={goal.id} className="rounded-lg border p-4 space-y-2">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <p className="font-medium truncate">{goal.label}</p>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="text-xs text-muted-foreground tabular-nums">
                           {GOAL_TYPE_LABELS[goal.goalType as GoalPayload["goalType"]] ?? goal.goalType}
                           {" · "}
-                          {new Date(goal.periodStart).toLocaleDateString()} – {new Date(goal.periodEnd).toLocaleDateString()}
+                          {new Date(goal.periodStart).toLocaleDateString()} &ndash; {new Date(goal.periodEnd).toLocaleDateString()}
                         </p>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
@@ -2204,19 +2210,23 @@ function GoalsSettings() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                          className="h-11 w-11 sm:h-7 sm:w-7 text-muted-foreground hover:text-destructive"
                           onClick={() => deleteGoal.mutate(goal.id)}
                           disabled={deleteGoal.isPending}
-                          aria-label="Delete goal"
+                          aria-label={`Delete goal: ${goal.label}`}
                         >
-                          <X className="w-3.5 h-3.5" />
+                          <X className="w-3.5 h-3.5" aria-hidden="true" />
                         </Button>
                       </div>
                     </div>
                     <div className="space-y-1">
-                      <Progress value={pct} className="h-2" />
-                      <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>{Number(goal.currentValue ?? 0).toLocaleString()} / {Number(goal.targetValue).toLocaleString()}</span>
+                      <Progress
+                        value={pct}
+                        className="h-2"
+                        aria-label={`${goal.label}: ${pct}% complete (${valueFormat(current)} of ${valueFormat(target)})`}
+                      />
+                      <div className="flex justify-between text-xs text-muted-foreground tabular-nums">
+                        <span>{valueFormat(current)} / {valueFormat(target)}</span>
                         <span className={isComplete ? "text-green-600 font-semibold" : ""}>{pct}%</span>
                       </div>
                     </div>
@@ -2278,7 +2288,12 @@ function ApiKeyManager() {
       setNewKeyName("");
       refetch();
     },
-    onError: () => toast({ title: "Failed to create API key", variant: "destructive" }),
+    onError: (err: any) =>
+      toast({
+        title: "Couldn't create API key",
+        description: err?.message || "Check your connection and try again — no key was created.",
+        variant: "destructive",
+      }),
   });
 
   const revokeKey = useMutation({
@@ -2291,49 +2306,76 @@ function ApiKeyManager() {
       refetch();
       toast({ title: "API key revoked" });
     },
-    onError: () => toast({ title: "Failed to revoke key", variant: "destructive" }),
+    onError: (err: any) =>
+      toast({
+        title: "Couldn't revoke API key",
+        description: err?.message || "Check your connection and try again — the key is still active.",
+        variant: "destructive",
+      }),
   });
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-xl font-semibold flex items-center gap-2">
-            <Code className="w-5 h-5" />
-            API Keys
+            <Code className="w-5 h-5" aria-hidden="true" />
+            API keys
           </h2>
           <p className="text-muted-foreground text-sm">
             Create API keys to let external tools access your AcreOS data.
           </p>
         </div>
-        <Button size="sm" onClick={() => setShowCreate(true)} data-testid="button-create-api-key">
-          <Plus className="w-4 h-4 mr-1" /> Create Key
+        <Button
+          size="sm"
+          className="min-h-11 sm:min-h-9"
+          onClick={() => setShowCreate(true)}
+          data-testid="button-create-api-key"
+        >
+          <Plus className="w-4 h-4 mr-1" aria-hidden="true" /> Create key
         </Button>
       </div>
 
       {/* Newly created key — show once */}
       {createdKey && (
-        <Card className="border-emerald-500 bg-emerald-50 dark:bg-emerald-950/30">
+        <Card
+          className="border-emerald-500 bg-emerald-50 dark:bg-emerald-950/30"
+          role="alert"
+          aria-live="assertive"
+        >
           <CardHeader className="pb-2">
             <CardTitle className="text-sm text-emerald-700 dark:text-emerald-400 flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4" /> API key created — copy it now, it won't be shown again
+              <CheckCircle2 className="w-4 h-4" aria-hidden="true" /> API key created — copy it now, it won't be shown again
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-2">
-              <code className="flex-1 text-xs bg-muted rounded px-2 py-1.5 font-mono break-all">{createdKey}</code>
+              <Label htmlFor="text-created-api-key" className="sr-only">Newly created API key</Label>
+              <code
+                id="text-created-api-key"
+                className="flex-1 text-xs bg-muted rounded px-2 py-1.5 font-mono break-all tabular-nums"
+                data-testid="text-created-api-key"
+              >{createdKey}</code>
               <Button
                 size="sm"
                 variant="outline"
+                className="min-h-11 sm:min-h-9 shrink-0"
                 onClick={() => {
                   navigator.clipboard.writeText(createdKey);
-                  toast({ title: "Copied to clipboard" });
+                  toast({ title: "API key copied to clipboard" });
                 }}
+                aria-label="Copy API key to clipboard"
               >
                 Copy
               </Button>
-              <Button size="sm" variant="ghost" onClick={() => setCreatedKey(null)}>
-                <X className="w-4 h-4" />
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-11 w-11 sm:h-9 sm:w-9 shrink-0"
+                onClick={() => setCreatedKey(null)}
+                aria-label="Dismiss new API key banner"
+              >
+                <X className="w-4 h-4" aria-hidden="true" />
               </Button>
             </div>
           </CardContent>
@@ -2344,57 +2386,74 @@ function ApiKeyManager() {
       {showCreate && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">New API Key</CardTitle>
+            <CardTitle className="text-base">New API key</CardTitle>
+            <CardDescription>Name it for where you'll use it — Zapier, a custom script, etc. — so you know which key to revoke later.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <Label>Name</Label>
-              <Input
-                placeholder="e.g. Zapier integration"
-                value={newKeyName}
-                onChange={e => setNewKeyName(e.target.value)}
-                className="mt-1"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
+          <CardContent>
+            <form
+              className="space-y-4"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!newKeyName.trim() || createKey.isPending) return;
+                createKey.mutate();
+              }}
+            >
               <div>
-                <Label>Scope</Label>
-                <Select value={newKeyScope} onValueChange={(v: any) => setNewKeyScope(v)}>
-                  <SelectTrigger className="mt-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="read">Read</SelectItem>
-                    <SelectItem value="write">Write</SelectItem>
-                    <SelectItem value="admin">Admin</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label htmlFor="input-api-key-name">
+                  Name <span className="text-destructive" aria-label="required">*</span>
+                </Label>
+                <Input
+                  id="input-api-key-name"
+                  placeholder="e.g. Zapier integration"
+                  value={newKeyName}
+                  onChange={e => setNewKeyName(e.target.value)}
+                  className="mt-1"
+                  autoComplete="off"
+                  data-testid="input-api-key-name"
+                />
               </div>
-              <div>
-                <Label>Expiry</Label>
-                <Select value={newKeyExpiry} onValueChange={setNewKeyExpiry}>
-                  <SelectTrigger className="mt-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="never">Never</SelectItem>
-                    <SelectItem value="30">30 days</SelectItem>
-                    <SelectItem value="60">60 days</SelectItem>
-                    <SelectItem value="90">90 days</SelectItem>
-                  </SelectContent>
-                </Select>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="select-api-key-scope">Scope</Label>
+                  <Select value={newKeyScope} onValueChange={(v: any) => setNewKeyScope(v)}>
+                    <SelectTrigger id="select-api-key-scope" className="mt-1" data-testid="select-api-key-scope">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="read">Read — view data only</SelectItem>
+                      <SelectItem value="write">Write — create and edit</SelectItem>
+                      <SelectItem value="admin">Admin — full control</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="select-api-key-expiry">Expiry</Label>
+                  <Select value={newKeyExpiry} onValueChange={setNewKeyExpiry}>
+                    <SelectTrigger id="select-api-key-expiry" className="mt-1" data-testid="select-api-key-expiry">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="never">Never</SelectItem>
+                      <SelectItem value="30">30 days</SelectItem>
+                      <SelectItem value="60">60 days</SelectItem>
+                      <SelectItem value="90">90 days</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-            </div>
-            <div className="flex gap-2">
-              <Button
-                onClick={() => createKey.mutate()}
-                disabled={!newKeyName.trim() || createKey.isPending}
-              >
-                {createKey.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-                Create
-              </Button>
-              <Button variant="outline" onClick={() => setShowCreate(false)}>Cancel</Button>
-            </div>
+              <div className="flex gap-2">
+                <Button
+                  type="submit"
+                  className="min-h-11 sm:min-h-9"
+                  disabled={!newKeyName.trim() || createKey.isPending}
+                  data-testid="button-create-api-key-submit"
+                >
+                  {createKey.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" /> : null}
+                  Create
+                </Button>
+                <Button type="button" variant="outline" className="min-h-11 sm:min-h-9" onClick={() => setShowCreate(false)}>Cancel</Button>
+              </div>
+            </form>
           </CardContent>
         </Card>
       )}
@@ -2403,71 +2462,101 @@ function ApiKeyManager() {
       <Card>
         <CardContent className="p-0">
           {isLoading ? (
-            <div className="p-4 text-sm text-muted-foreground">Loading keys…</div>
+            <div
+              className="p-4 text-sm text-muted-foreground flex items-center gap-2"
+              role="status"
+              aria-live="polite"
+            >
+              <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+              Loading keys…
+            </div>
           ) : keys.length === 0 ? (
             <div className="p-6 text-center text-sm text-muted-foreground">
               No API keys yet. Create one above to get started.
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Key</TableHead>
-                  <TableHead>Scope</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead>Last used</TableHead>
-                  <TableHead>Expires</TableHead>
-                  <TableHead />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {keys.map(k => (
-                  <TableRow key={k.id}>
-                    <TableCell className="font-medium">{k.name}</TableCell>
-                    <TableCell className="font-mono text-xs text-muted-foreground">{k.keyPrefix}…</TableCell>
-                    <TableCell>
-                      <Badge variant="secondary" className="text-xs capitalize">{k.scope}</Badge>
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {k.createdAt ? new Date(k.createdAt).toLocaleDateString() : "—"}
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleDateString() : "Never"}
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {k.expiresAt ? new Date(k.expiresAt).toLocaleDateString() : "Never"}
-                    </TableCell>
-                    <TableCell>
-                      {revokeId === k.id ? (
-                        <div className="flex gap-1">
+            <div
+              tabIndex={0}
+              role="region"
+              aria-label="Active API keys"
+              className="overflow-x-auto"
+            >
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Key</TableHead>
+                    <TableHead>Scope</TableHead>
+                    <TableHead>Created</TableHead>
+                    <TableHead>Last used</TableHead>
+                    <TableHead>Expires</TableHead>
+                    <TableHead><span className="sr-only">Actions</span></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {keys.map(k => (
+                    <TableRow key={k.id}>
+                      <TableCell className="font-medium">{k.name}</TableCell>
+                      <TableCell className="font-mono text-xs text-muted-foreground tabular-nums">{k.keyPrefix}…</TableCell>
+                      <TableCell>
+                        <Badge variant="secondary" className="text-xs capitalize">{k.scope}</Badge>
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground tabular-nums">
+                        {k.createdAt ? new Date(k.createdAt).toLocaleDateString() : "—"}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground tabular-nums">
+                        {k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleDateString() : "Never"}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground tabular-nums">
+                        {k.expiresAt ? new Date(k.expiresAt).toLocaleDateString() : "Never"}
+                      </TableCell>
+                      <TableCell>
+                        {revokeId === k.id ? (
+                          <div
+                            className="flex gap-1"
+                            role="group"
+                            aria-label={`Confirm revocation of ${k.name}`}
+                          >
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              className="min-h-9"
+                              onClick={() => revokeKey.mutate(k.id)}
+                              disabled={revokeKey.isPending}
+                              data-testid={`button-confirm-revoke-${k.id}`}
+                              aria-label={`Confirm revoke ${k.name}`}
+                            >
+                              {revokeKey.isPending ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" aria-hidden="true" /> : null}
+                              Confirm
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="min-h-9"
+                              onClick={() => setRevokeId(null)}
+                              aria-label={`Cancel revoke of ${k.name}`}
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        ) : (
                           <Button
                             size="sm"
-                            variant="destructive"
-                            onClick={() => revokeKey.mutate(k.id)}
-                            disabled={revokeKey.isPending}
+                            variant="ghost"
+                            className="text-destructive hover:text-destructive min-h-9"
+                            onClick={() => setRevokeId(k.id)}
+                            data-testid={`button-revoke-${k.id}`}
+                            aria-label={`Revoke ${k.name}`}
                           >
-                            Confirm
+                            Revoke
                           </Button>
-                          <Button size="sm" variant="ghost" onClick={() => setRevokeId(null)}>
-                            Cancel
-                          </Button>
-                        </div>
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="text-destructive hover:text-destructive"
-                          onClick={() => setRevokeId(k.id)}
-                        >
-                          Revoke
-                        </Button>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -2503,8 +2592,8 @@ function ActivityLogPanel() {
     <div className="space-y-4">
       <div>
         <h2 className="text-xl font-semibold flex items-center gap-2">
-          <Shield className="w-5 h-5" />
-          Activity Log
+          <Shield className="w-5 h-5" aria-hidden="true" />
+          Activity log
         </h2>
         <p className="text-muted-foreground text-sm">
           Last 50 actions performed in your organization.
@@ -2514,39 +2603,53 @@ function ActivityLogPanel() {
       <Card>
         <CardContent className="p-0">
           {isLoading ? (
-            <div className="p-4 text-sm text-muted-foreground">Loading…</div>
+            <div
+              className="p-4 text-sm text-muted-foreground flex items-center gap-2"
+              role="status"
+              aria-live="polite"
+            >
+              <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+              Loading activity log…
+            </div>
           ) : entries.length === 0 ? (
             <div className="p-6 text-center text-sm text-muted-foreground">No activity recorded yet.</div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Time</TableHead>
-                  <TableHead>Action</TableHead>
-                  <TableHead>Entity</TableHead>
-                  <TableHead>User</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {entries.map(e => (
-                  <TableRow key={e.id}>
-                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                      {new Date(e.createdAt).toLocaleString()}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="text-xs capitalize">{e.action}</Badge>
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      <span className="capitalize">{e.entityType}</span>
-                      {e.entityId && <span className="text-muted-foreground ml-1">#{e.entityId}</span>}
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {e.userId ? e.userId.slice(0, 8) + "…" : "System"}
-                    </TableCell>
+            <div
+              tabIndex={0}
+              role="region"
+              aria-label="Organization activity log"
+              className="overflow-x-auto"
+            >
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Time</TableHead>
+                    <TableHead>Action</TableHead>
+                    <TableHead>Entity</TableHead>
+                    <TableHead>User</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {entries.map(e => (
+                    <TableRow key={e.id}>
+                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap tabular-nums">
+                        {new Date(e.createdAt).toLocaleString()}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-xs capitalize">{e.action}</Badge>
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        <span className="capitalize">{e.entityType}</span>
+                        {e.entityId && <span className="text-muted-foreground ml-1 tabular-nums">#{e.entityId}</span>}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground tabular-nums">
+                        {e.userId ? e.userId.slice(0, 8) + "…" : "System"}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </CardContent>
       </Card>
