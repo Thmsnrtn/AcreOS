@@ -3,12 +3,12 @@
  * Shows who did what, when, to which record — across the entire organization.
  * Mounted at /audit-log (accessible to org owners and admins)
  */
-import { useState } from "react";
+import { useState, useId } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -26,7 +26,8 @@ import {
 } from "@/components/ui/table";
 import { Download, Filter, Search, RefreshCw, User, FileText, DollarSign, Home, Handshake } from "lucide-react";
 import { relative } from "@/lib/format";
-import { useAuth } from "@/hooks/use-auth";
+import { useDocumentTitle } from "@/hooks/use-document-title";
+import { useToast } from "@/hooks/use-toast";
 
 interface AuditEntry {
   id: number;
@@ -71,12 +72,31 @@ function getActionColor(action: string): string {
   return "bg-muted text-muted-foreground";
 }
 
+// CSV-injection defense per slice-5k rule — double embedded quotes AND
+// neutralize formula-trigger leading characters (=, +, -, @, \t, \r)
+// with a `'` prefix so spreadsheets don't execute them.
+function escapeCsvCell(value: unknown): string {
+  const str = value == null ? "" : String(value);
+  const neutralized = /^[=+\-@\t\r]/.test(str) ? `'${str}` : str;
+  return `"${neutralized.replace(/"/g, '""')}"`;
+}
+
+// Humanize snake_case action strings so "lead_created" renders as
+// "Lead created" per slice-8 humanizeType rule.
+function humanizeAction(action: string): string {
+  const spaced = action.replace(/_/g, " ");
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
 export default function AuditLog() {
-  const { user } = useAuth();
+  useDocumentTitle("Audit log");
+  const { toast } = useToast();
   const [search, setSearch] = useState("");
   const [entityFilter, setEntityFilter] = useState("all");
   const [page, setPage] = useState(1);
   const limit = 50;
+  const searchId = useId();
+  const filterId = useId();
 
   const params = new URLSearchParams({
     limit: String(limit),
@@ -85,7 +105,7 @@ export default function AuditLog() {
     ...(search && { search }),
   });
 
-  const { data, isLoading, refetch } = useQuery<AuditResponse>({
+  const { data, isLoading, isError, refetch } = useQuery<AuditResponse>({
     queryKey: [`/api/activity?${params}`],
     staleTime: 30_000,
   });
@@ -93,42 +113,59 @@ export default function AuditLog() {
   const totalPages = Math.ceil((data?.total ?? 0) / limit);
 
   function exportCsv() {
-    const rows = [
-      ["Timestamp", "Action", "Entity Type", "Entity ID", "User", "Details"],
-      ...(data?.entries ?? []).map((e) => [
-        e.createdAt,
-        e.action,
-        e.entityType || "",
-        String(e.entityId || ""),
-        e.userEmail || e.userId || "",
-        JSON.stringify(e.metadata || {}),
-      ]),
-    ];
-    const csv = rows.map((r) => r.map((c) => `"${c}"`).join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `audit-log-${new Date().toISOString().split("T")[0]}.csv`;
-    a.click();
+    try {
+      const rows = [
+        ["Timestamp", "Action", "Entity Type", "Entity ID", "User", "Details"],
+        ...(data?.entries ?? []).map((e) => [
+          e.createdAt,
+          e.action,
+          e.entityType || "",
+          String(e.entityId || ""),
+          e.userEmail || e.userId || "",
+          JSON.stringify(e.metadata || {}),
+        ]),
+      ];
+      const csv = rows.map((r) => r.map(escapeCsvCell).join(",")).join("\n");
+      const blob = new Blob([csv], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `audit-log-${new Date().toISOString().split("T")[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast({
+        title: "Couldn't export audit log",
+        description: "No file was downloaded. Refresh the page and try again.",
+        variant: "destructive",
+      });
+    }
   }
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Audit Log</h1>
+          <h1 className="text-2xl font-bold">Audit log</h1>
           <p className="text-sm text-muted-foreground">
             Every action taken in your organization, with who, when, and what changed.
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => refetch()}>
-            <RefreshCw className="h-4 w-4 mr-1.5" />
+          <Button variant="outline" size="sm" onClick={() => refetch()} className="min-h-9">
+            <RefreshCw className="h-4 w-4 mr-1.5" aria-hidden="true" />
             Refresh
           </Button>
-          <Button variant="outline" size="sm" onClick={exportCsv}>
-            <Download className="h-4 w-4 mr-1.5" />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={exportCsv}
+            disabled={(data?.entries ?? []).length === 0}
+            className="min-h-9"
+          >
+            <Download className="h-4 w-4 mr-1.5" aria-hidden="true" />
             Export CSV
           </Button>
         </div>
@@ -138,31 +175,42 @@ export default function AuditLog() {
       <Card>
         <CardContent className="p-4">
           <div className="flex gap-3 flex-wrap">
-            <div className="relative flex-1 min-w-[200px]">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search actions, users, entities..."
-                value={search}
-                onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-                className="pl-9"
-              />
+            <div className="flex-1 min-w-[200px]">
+              <Label htmlFor={searchId} className="sr-only">Search audit log</Label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                <Input
+                  id={searchId}
+                  placeholder="Search actions, users, entities…"
+                  value={search}
+                  onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+                  className="pl-9"
+                  type="search"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                />
+              </div>
             </div>
-            <Select value={entityFilter} onValueChange={(v) => { setEntityFilter(v); setPage(1); }}>
-              <SelectTrigger className="w-[160px]">
-                <Filter className="h-4 w-4 mr-2" />
-                <SelectValue placeholder="Entity type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All entities</SelectItem>
-                <SelectItem value="lead">Leads</SelectItem>
-                <SelectItem value="property">Properties</SelectItem>
-                <SelectItem value="deal">Deals</SelectItem>
-                <SelectItem value="note">Notes</SelectItem>
-                <SelectItem value="document">Documents</SelectItem>
-                <SelectItem value="campaign">Campaigns</SelectItem>
-                <SelectItem value="payment">Payments</SelectItem>
-              </SelectContent>
-            </Select>
+            <div>
+              <Label htmlFor={filterId} className="sr-only">Filter by entity type</Label>
+              <Select value={entityFilter} onValueChange={(v) => { setEntityFilter(v); setPage(1); }}>
+                <SelectTrigger id={filterId} className="w-[160px]">
+                  <Filter className="h-4 w-4 mr-2" aria-hidden="true" />
+                  <SelectValue placeholder="Entity type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All entities</SelectItem>
+                  <SelectItem value="lead">Leads</SelectItem>
+                  <SelectItem value="property">Properties</SelectItem>
+                  <SelectItem value="deal">Deals</SelectItem>
+                  <SelectItem value="note">Notes</SelectItem>
+                  <SelectItem value="document">Documents</SelectItem>
+                  <SelectItem value="campaign">Campaigns</SelectItem>
+                  <SelectItem value="payment">Payments</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -170,32 +218,49 @@ export default function AuditLog() {
       {/* Table */}
       <Card>
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto" role="region" aria-label="Audit log entries" tabIndex={0}>
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[180px]">When</TableHead>
-                  <TableHead>Action</TableHead>
-                  <TableHead>Entity</TableHead>
-                  <TableHead>User</TableHead>
-                  <TableHead>Details</TableHead>
+                  <TableHead scope="col" className="w-[180px]">When</TableHead>
+                  <TableHead scope="col">Action</TableHead>
+                  <TableHead scope="col">Entity</TableHead>
+                  <TableHead scope="col">User</TableHead>
+                  <TableHead scope="col">Details</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
-                  Array.from({ length: 10 }).map((_, i) => (
-                    <TableRow key={i}>
-                      {Array.from({ length: 5 }).map((_, j) => (
-                        <TableCell key={j}>
-                          <div className="h-4 bg-muted animate-pulse rounded w-3/4" />
-                        </TableCell>
-                      ))}
+                  <>
+                    <TableRow>
+                      <TableCell colSpan={5} className="sr-only" role="status" aria-live="polite">
+                        Loading audit log…
+                      </TableCell>
                     </TableRow>
-                  ))
+                    {Array.from({ length: 10 }).map((_, i) => (
+                      <TableRow key={i}>
+                        {Array.from({ length: 5 }).map((_, j) => (
+                          <TableCell key={j}>
+                            <div className="h-4 bg-muted animate-pulse rounded w-3/4" />
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    ))}
+                  </>
+                ) : isError ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center py-12" role="alert">
+                      <p className="text-destructive mb-2">Couldn't load the audit log.</p>
+                      <p className="text-xs text-muted-foreground mb-3">The records themselves are unchanged — try again.</p>
+                      <Button variant="outline" size="sm" className="min-h-9" onClick={() => refetch()}>
+                        <RefreshCw className="h-4 w-4 mr-1.5" aria-hidden="true" /> Retry
+                      </Button>
+                    </TableCell>
+                  </TableRow>
                 ) : (data?.entries ?? []).length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={5} className="text-center py-12 text-muted-foreground">
-                      No audit log entries found
+                      No audit log entries found.
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -203,23 +268,28 @@ export default function AuditLog() {
                     const EntityIcon = entry.entityType
                       ? (ENTITY_ICONS[entry.entityType.toLowerCase()] ?? FileText)
                       : FileText;
+                    const detailsText = entry.metadata
+                      ? Object.entries(entry.metadata)
+                          .map(([k, v]) => `${k}: ${JSON.stringify(v)}`)
+                          .join(", ")
+                      : "";
                     return (
                       <TableRow key={entry.id}>
-                        <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                        <TableCell className="text-xs text-muted-foreground whitespace-nowrap tabular-nums">
                           {relative(entry.createdAt)}
                         </TableCell>
                         <TableCell>
                           <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${getActionColor(entry.action)}`}>
-                            {entry.action.replace(/_/g, " ")}
+                            {humanizeAction(entry.action)}
                           </span>
                         </TableCell>
                         <TableCell>
                           {entry.entityType && (
                             <div className="flex items-center gap-1.5 text-sm">
-                              <EntityIcon className="h-3.5 w-3.5 text-muted-foreground" />
+                              <EntityIcon className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
                               <span className="capitalize">{entry.entityType}</span>
                               {entry.entityId && (
-                                <span className="text-muted-foreground">#{entry.entityId}</span>
+                                <span className="text-muted-foreground tabular-nums">#{entry.entityId}</span>
                               )}
                             </div>
                           )}
@@ -227,13 +297,11 @@ export default function AuditLog() {
                         <TableCell className="text-sm">
                           {entry.userEmail || entry.userId || "System"}
                         </TableCell>
-                        <TableCell className="text-xs text-muted-foreground max-w-[300px] truncate">
-                          {entry.metadata
-                            ? Object.entries(entry.metadata)
-                                .map(([k, v]) => `${k}: ${JSON.stringify(v)}`)
-                                .join(", ")
-                                .slice(0, 120)
-                            : "—"}
+                        <TableCell
+                          className="text-xs text-muted-foreground max-w-[300px] truncate"
+                          title={detailsText || undefined}
+                        >
+                          {detailsText ? detailsText.slice(0, 120) : "—"}
                         </TableCell>
                       </TableRow>
                     );
@@ -247,9 +315,9 @@ export default function AuditLog() {
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-between">
+        <nav aria-label="Audit log pagination" className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <p className="text-sm text-muted-foreground">
-            Page {page} of {totalPages} — {data?.total ?? 0} total entries
+            Page <span className="tabular-nums">{page}</span> of <span className="tabular-nums">{totalPages}</span> — <span className="tabular-nums">{data?.total ?? 0}</span> total entries
           </p>
           <div className="flex gap-2">
             <Button
@@ -257,6 +325,8 @@ export default function AuditLog() {
               size="sm"
               disabled={page === 1}
               onClick={() => setPage((p) => p - 1)}
+              aria-label="Previous page"
+              className="min-h-9"
             >
               Previous
             </Button>
@@ -265,11 +335,13 @@ export default function AuditLog() {
               size="sm"
               disabled={page >= totalPages}
               onClick={() => setPage((p) => p + 1)}
+              aria-label="Next page"
+              className="min-h-9"
             >
               Next
             </Button>
           </div>
-        </div>
+        </nav>
       )}
     </div>
   );
