@@ -3436,3 +3436,88 @@ sections. Remaining full-page pass deferred (17b).
   convention.
 
 **Commit:** (pending)
+
+---
+
+## Session 18 — 2026-04-23 — `/onboarding-v2` targeted pass
+
+**Surface:** `client/src/pages/onboarding-v2.tsx` (1469
+lines). The 3-path onboarding flow (beginner / active /
+enterprise) that customers enter after signup. Last touched
+in session 2 — this is a targeted pass on the most visible
+flow-level copy + the $ opportunity tiles.
+
+**Lens sweep + refinements shipped:**
+
+- **Copy (sentence-case sweep on STEPS_BY_PATH — 18 step
+  titles + subtitles):** the 3-path, 6-step-each flow had
+  every title in Title Case ("Where Do You Want to Invest?",
+  "What's Your Strategy?", "Meet Atlas, Your AI Deal
+  Partner", "Upgrade Your Investing Operation", "Import
+  Your Existing Portfolio", "Set Your Target Counties",
+  "Configure Autonomous Deal Machine", "Set Up Your Team",
+  "Connect Your Tools", "Configure Deal Workflows", etc.)
+  → sentence-case. All 18 step titles + subtitles rewritten
+  with trailing periods where appropriate.
+
+- **Money-precision (instant deal-hunt opportunity tiles):**
+  the most trust-critical surface on the onboarding flow —
+  the "aha moment" showing 3 real opportunities with
+  estimated offer, resale, and profit values. All 3 money
+  sites (`estimatedOfferPrice`, `estimatedResaleValue`,
+  `potentialProfit`) switched from bare
+  `$${X.toLocaleString()}` to `usd(X, { noCents: true })`
+  — drops the cent-precision bug class (slice 10b rule) on
+  a first-impression surface where a displayed "$12,345"
+  representing an actual $12,345.67 would look broken when
+  the user clicks into the full deal later.
+
+- **Copy (tile labels):** "Offer Price" → "Offer price";
+  "Resale Value" → "Resale value"; "Potential Profit" →
+  "Potential profit"; "Motivation Score" → "Motivation
+  score"; "Top Signal" → "Top signal"; "Hot Deal" → "Hot
+  deal" (badge).
+
+- **Copy (loading/scanning)**: "Scanning..." → "Scanning…"
+  (proper ellipsis × 2 across error + loading paths).
+  "Continue to Dashboard" → "Continue to dashboard".
+
+- **Tabular-nums** on opportunity count ("Found N
+  opportunities") + totalScanned number.
+
+- **Mobile (touch):** both "Continue to dashboard" CTAs
+  (error path + success path) now `min-h-11` (44px).
+
+- **A11y (icon aria-hidden):** ArrowRight on CTAs × 2.
+
+- **useDocumentTitle("Welcome to AcreOS")** wired on the
+  main OnboardingV2 component.
+
+**9-lens sign-off (applied to touched sections):**
+
+| Lens              | Status                                                                                                         |
+| ----------------- | -------------------------------------------------------------------------------------------------------------- |
+| Designer          | PASS — sentence-case titles + subtitles, tabular-nums on counts + scanned, proper ellipsis, tile-label consistency |
+| Mobile designer   | PASS — 44px touch on CTAs                                                                                       |
+| Accessibility     | PASS — decorative ArrowRight icons aria-hidden                                                                  |
+| Engineer          | PASS — centralized usd() helper on the high-visibility money tiles                                               |
+| AI systems        | PASS — Atlas naming + "AI deal partner" framing consistent                                                      |
+| Land investor     | PASS — "motivation score" + "potential profit" framing are industry-standard                                     |
+| Copywriter        | PASS — sentence-case, proper ellipsis, trailing periods on subtitles                                              |
+| Trust             | PASS — money-precision applied to the #1 aha-moment tile, so first-impression numbers match downstream reality   |
+
+**Deferred (slice 18b):**
+- The remaining 1100+ lines of onboarding-v2 — portfolio-
+  import step, target-county form, strategy-selection
+  cards, atlas-tour step, team invite step, integrations
+  step, workflows step, the complete-celebration screen —
+  each is its own focused surface. "Where do you want to
+  invest?" county-picker has form semantics worth a full
+  pass.
+- `CompletionCelebration` component animation has no
+  `prefers-reduced-motion` guard — worth addressing in a
+  future motion-polish slice.
+- `PortfolioImportStep` has its own CSV-import flow with a
+  preview; slice-5k CSV-escape rule may apply.
+
+**Commit:** (pending)

@@ -44,6 +44,8 @@ import {
 import { cn } from "@/lib/utils";
 import { useLocation } from "wouter";
 import { QueryErrorState } from "@/components/query-error-state";
+import { usd } from "@/lib/format";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 // ── Completion celebration animation ─────────────────────────────────────
 // Pure CSS confetti burst that plays for 2s then fades to reveal content.
@@ -114,28 +116,28 @@ interface OnboardingStep {
 
 const STEPS_BY_PATH: Record<InvestorPath, OnboardingStep[]> = {
   beginner: [
-    { id: "path", title: "Welcome to AcreOS", subtitle: "Let's personalize your experience" },
-    { id: "target_county", title: "Where Do You Want to Invest?", subtitle: "Your first step: pick a county to explore" },
-    { id: "instant_hunt", title: "🔥 AcreOS Found Real Opportunities", subtitle: "Here's what's available in your target area RIGHT NOW" },
-    { id: "strategy", title: "What's Your Strategy?", subtitle: "How do you plan to make money with land?" },
-    { id: "atlas_tour", title: "Meet Atlas, Your AI Deal Partner", subtitle: "Atlas works 24/7 so you don't have to" },
-    { id: "complete", title: "You're Ready to Find Deals!", subtitle: "Your personalized dashboard is configured" },
+    { id: "path", title: "Welcome to AcreOS", subtitle: "Let's personalize your experience." },
+    { id: "target_county", title: "Where do you want to invest?", subtitle: "Pick a county to explore first." },
+    { id: "instant_hunt", title: "🔥 AcreOS found real opportunities", subtitle: "Here's what's available in your target area right now." },
+    { id: "strategy", title: "What's your strategy?", subtitle: "How do you plan to make money with land?" },
+    { id: "atlas_tour", title: "Meet Atlas, your AI deal partner", subtitle: "Atlas works 24/7 so you don't have to." },
+    { id: "complete", title: "You're ready to find deals!", subtitle: "Your personalized dashboard is configured." },
   ],
   active: [
-    { id: "path", title: "Welcome Back to AcreOS", subtitle: "Upgrade your investing operation" },
-    { id: "portfolio_import", title: "Import Your Existing Portfolio", subtitle: "Connect what you've built so AcreOS can analyze it" },
-    { id: "target_counties", title: "Set Your Target Counties", subtitle: "Configure Deal Hunter for your active markets" },
-    { id: "instant_hunt", title: "🔥 Deals in Your Markets", subtitle: "Here's what AcreOS found in your target counties" },
-    { id: "automation", title: "Configure Autonomous Deal Machine", subtitle: "Set it once — AcreOS finds deals every night" },
-    { id: "complete", title: "Your Operation is Upgraded!", subtitle: "AcreOS is now working while you sleep" },
+    { id: "path", title: "Welcome back to AcreOS", subtitle: "Upgrade your investing operation." },
+    { id: "portfolio_import", title: "Import your existing portfolio", subtitle: "Connect what you've built so AcreOS can analyze it." },
+    { id: "target_counties", title: "Set your target counties", subtitle: "Configure Deal Hunter for your active markets." },
+    { id: "instant_hunt", title: "🔥 Deals in your markets", subtitle: "Here's what AcreOS found in your target counties." },
+    { id: "automation", title: "Configure the autonomous deal machine", subtitle: "Set it once — AcreOS finds deals every night." },
+    { id: "complete", title: "Your operation is upgraded!", subtitle: "AcreOS is now working while you sleep." },
   ],
   enterprise: [
-    { id: "path", title: "Enterprise Setup", subtitle: "Configure AcreOS for your team" },
-    { id: "team", title: "Set Up Your Team", subtitle: "Invite deal analysts, VAs, and closing coordinators" },
-    { id: "integrations", title: "Connect Your Tools", subtitle: "CRM, accounting, and communication stack" },
-    { id: "instant_hunt", title: "🔥 Enterprise Market Scan", subtitle: "AcreOS scanning all your target markets simultaneously" },
-    { id: "workflows", title: "Configure Deal Workflows", subtitle: "Custom pipeline stages and automation rules" },
-    { id: "complete", title: "Enterprise Platform Ready!", subtitle: "Your team can now work deals at scale" },
+    { id: "path", title: "Enterprise setup", subtitle: "Configure AcreOS for your team." },
+    { id: "team", title: "Set up your team", subtitle: "Invite deal analysts, VAs, and closing coordinators." },
+    { id: "integrations", title: "Connect your tools", subtitle: "CRM, accounting, and communication stack." },
+    { id: "instant_hunt", title: "🔥 Enterprise market scan", subtitle: "AcreOS scanning all your target markets simultaneously." },
+    { id: "workflows", title: "Configure deal workflows", subtitle: "Custom pipeline stages and automation rules." },
+    { id: "complete", title: "Enterprise platform ready!", subtitle: "Your team can now work deals at scale." },
   ],
 };
 
@@ -194,9 +196,9 @@ function InstantDealHunt({
         />
         <Button
           onClick={onContinue}
-          className="w-full bg-primary hover:bg-primary/90 text-white font-semibold py-3"
+          className="w-full min-h-11 bg-primary hover:bg-primary/90 text-white font-semibold py-3"
         >
-          Continue to Dashboard <ArrowRight className="w-4 h-4 ml-2" />
+          Continue to dashboard <ArrowRight className="w-4 h-4 ml-2" aria-hidden="true" />
         </Button>
       </div>
     );
@@ -209,7 +211,7 @@ function InstantDealHunt({
           <div className="space-y-3">
             <div className="w-12 h-12 rounded-full border-4 border-emerald-500 border-t-transparent animate-spin mx-auto" />
             <p className="text-gray-400">
-              Scanning {targetCounty} County, {targetState} for motivated sellers...
+              Scanning {targetCounty} County, {targetState} for motivated sellers…
             </p>
             <p className="text-xs text-gray-600">
               Checking tax delinquency records · Scoring seller motivation · Finding opportunities
@@ -218,15 +220,15 @@ function InstantDealHunt({
         ) : (
           <div className="space-y-2">
             <div className="text-2xl font-bold text-white">
-              Found {opportunities.length} opportunities
+              Found <span className="tabular-nums">{opportunities.length}</span> opportunities
               {totalScanned > 0 && (
                 <span className="text-gray-400 text-base font-normal ml-2">
-                  ({totalScanned.toLocaleString()} properties scanned)
+                  (<span className="tabular-nums">{totalScanned.toLocaleString()}</span> properties scanned)
                 </span>
               )}
             </div>
             <p className="text-gray-400 text-sm">
-              in {targetCounty} County, {targetState} — ranked by seller motivation
+              in {targetCounty} County, {targetState} — ranked by seller motivation.
             </p>
           </div>
         )}
@@ -248,7 +250,7 @@ function InstantDealHunt({
             >
               {i === 0 && (
                 <div className="absolute top-2 right-2">
-                  <Badge className="bg-red-600 text-white text-xs">🔥 Hot Deal</Badge>
+                  <Badge className="bg-red-600 text-white text-xs">🔥 Hot deal</Badge>
                 </div>
               )}
               <div className="flex items-start justify-between mb-2">
@@ -271,32 +273,32 @@ function InstantDealHunt({
                   >
                     {opp.motivationGrade} · {opp.motivationScore}
                   </div>
-                  <div className="text-xs text-gray-500">Motivation Score</div>
+                  <div className="text-xs text-gray-500">Motivation score</div>
                 </div>
               </div>
 
               <div className="text-xs text-gray-400 mb-3">
-                📍 Top Signal: <span className="text-gray-300">{opp.topSignal}</span>
+                📍 Top signal: <span className="text-gray-300">{opp.topSignal}</span>
               </div>
 
               <div className="grid grid-cols-3 gap-2 text-center">
                 <div className="bg-gray-800/60 rounded-lg p-2 min-w-0">
-                  <div className="text-sm font-semibold text-white truncate">
-                    ${opp.estimatedOfferPrice.toLocaleString()}
+                  <div className="text-sm font-semibold text-white truncate tabular-nums">
+                    {usd(opp.estimatedOfferPrice, { noCents: true })}
                   </div>
-                  <div className="text-xs text-gray-500">Offer Price</div>
+                  <div className="text-xs text-gray-500">Offer price</div>
                 </div>
                 <div className="bg-gray-800/60 rounded-lg p-2 min-w-0">
-                  <div className="text-sm font-semibold text-white truncate">
-                    ${opp.estimatedResaleValue.toLocaleString()}
+                  <div className="text-sm font-semibold text-white truncate tabular-nums">
+                    {usd(opp.estimatedResaleValue, { noCents: true })}
                   </div>
-                  <div className="text-xs text-gray-500">Resale Value</div>
+                  <div className="text-xs text-gray-500">Resale value</div>
                 </div>
                 <div className="bg-emerald-900/40 rounded-lg p-2">
-                  <div className="text-sm font-semibold text-emerald-400">
-                    ${opp.potentialProfit.toLocaleString()}
+                  <div className="text-sm font-semibold text-emerald-400 tabular-nums">
+                    {usd(opp.potentialProfit, { noCents: true })}
                   </div>
-                  <div className="text-xs text-gray-500">Potential Profit</div>
+                  <div className="text-xs text-gray-500">Potential profit</div>
                 </div>
               </div>
             </div>
@@ -321,10 +323,10 @@ function InstantDealHunt({
       <Button
         onClick={onContinue}
         disabled={isLoading}
-        className="w-full bg-primary hover:bg-primary/90 text-white font-semibold py-3"
+        className="w-full min-h-11 bg-primary hover:bg-primary/90 text-white font-semibold py-3"
       >
-        {isLoading ? "Scanning..." : "Continue to Dashboard"}
-        <ArrowRight className="w-4 h-4 ml-2" />
+        {isLoading ? "Scanning…" : "Continue to dashboard"}
+        <ArrowRight className="w-4 h-4 ml-2" aria-hidden="true" />
       </Button>
     </div>
   );
@@ -970,6 +972,7 @@ function WorkflowsStep({ onContinue }: { onContinue: () => void }) {
 // ---------------------------------------------------------------------------
 
 export default function OnboardingV2() {
+  useDocumentTitle("Welcome to AcreOS");
   const [, navigate] = useLocation();
   const [selectedPath, setSelectedPath] = useState<InvestorPath | null>(null);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
