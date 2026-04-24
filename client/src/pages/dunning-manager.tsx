@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { usd } from "@/lib/format";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import { AlertTriangle, CreditCard, Mail, RefreshCw, CheckCircle2, XCircle, Loader2, Clock } from "lucide-react";
 
 interface DunningCase {
@@ -40,6 +42,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.
 };
 
 export default function DunningManagerPage() {
+  useDocumentTitle("Dunning manager");
   const { toast } = useToast();
   const qc = useQueryClient();
 
@@ -59,7 +62,12 @@ export default function DunningManagerPage() {
       toast({ title: "Payment retry initiated" });
       qc.invalidateQueries({ queryKey: ["/api/dunning"] });
     },
-    onError: () => toast({ title: "Retry failed", variant: "destructive" }),
+    onError: () =>
+      toast({
+        title: "Couldn't retry payment",
+        description: "The customer's card wasn't charged. You can try again or cancel the case.",
+        variant: "destructive",
+      }),
   });
 
   const cancelMutation = useMutation({
@@ -68,7 +76,12 @@ export default function DunningManagerPage() {
       toast({ title: "Dunning case cancelled" });
       qc.invalidateQueries({ queryKey: ["/api/dunning"] });
     },
-    onError: () => toast({ title: "Cancel failed", variant: "destructive" }),
+    onError: () =>
+      toast({
+        title: "Couldn't cancel dunning case",
+        description: "The case is still active and retries will continue as scheduled.",
+        variant: "destructive",
+      }),
   });
 
   const cases = casesData?.cases ?? [];
@@ -116,11 +129,11 @@ export default function DunningManagerPage() {
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center gap-2 text-muted-foreground mb-1">
-                <CreditCard className="w-4 h-4" />
-                <span className="text-xs">Total Due</span>
+                <CreditCard className="w-4 h-4" aria-hidden="true" />
+                <span className="text-xs">Total due</span>
               </div>
-              <p className="text-2xl font-bold">
-                ${((summary.totalAmountDueCents ?? 0) / 100).toLocaleString()}
+              <p className="text-2xl font-bold tabular-nums">
+                {usd((summary.totalAmountDueCents ?? 0) / 100)}
               </p>
             </CardContent>
           </Card>
@@ -129,60 +142,63 @@ export default function DunningManagerPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Active Cases</CardTitle>
+          <CardTitle className="text-base">Active cases</CardTitle>
           <CardDescription>Subscriptions with payment failures requiring action.</CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Loader2 className="w-4 h-4 animate-spin" /> Loading cases...
+            <div className="flex items-center gap-2 text-muted-foreground" role="status" aria-live="polite">
+              <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> Loading cases…
             </div>
           ) : cases.length === 0 ? (
             <div className="text-center py-8">
-              <CheckCircle2 className="w-8 h-8 text-green-600 mx-auto mb-2" />
+              <CheckCircle2 className="w-8 h-8 text-green-600 mx-auto mb-2" aria-hidden="true" />
               <p className="text-muted-foreground text-sm">No active dunning cases.</p>
             </div>
           ) : (
-            <div className="space-y-2">
+            <ul className="space-y-2" aria-label="Active dunning cases">
               {cases.map(c => {
                 const config = STATUS_CONFIG[c.status] ?? STATUS_CONFIG.pending;
                 const Icon = config.icon;
                 return (
-                  <div key={c.id} className="flex items-center justify-between p-3 border rounded-lg">
+                  <li key={c.id} className="flex items-center justify-between p-3 border rounded-lg">
                     <div className="space-y-0.5">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium">{c.orgName}</span>
                         <Badge variant="outline" className="text-xs">{c.planName}</Badge>
                         <div className={`flex items-center gap-1 text-xs ${config.color}`}>
-                          <Icon className="w-3 h-3" /> {config.label}
+                          <Icon className="w-3 h-3" aria-hidden="true" /> {config.label}
                         </div>
                       </div>
                       <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                        <span className="flex items-center gap-1"><Mail className="w-3 h-3" />{c.email}</span>
                         <span className="flex items-center gap-1">
-                          <AlertTriangle className="w-3 h-3 text-yellow-500" />
-                          {c.daysOverdue} days overdue
+                          <Mail className="w-3 h-3" aria-hidden="true" />
+                          <a href={`mailto:${c.email}`} className="underline-offset-2 hover:underline truncate">{c.email}</a>
                         </span>
-                        <span>${(c.amountDueCents / 100).toFixed(2)}</span>
-                        <span>Attempt {c.attemptCount}</span>
+                        <span className="flex items-center gap-1">
+                          <AlertTriangle className="w-3 h-3 text-yellow-500" aria-hidden="true" />
+                          <span className="tabular-nums">{c.daysOverdue}</span> days overdue
+                        </span>
+                        <span className="tabular-nums">{usd(c.amountDueCents / 100)}</span>
+                        <span>Attempt <span className="tabular-nums">{c.attemptCount}</span></span>
                       </div>
                     </div>
                     <div className="flex gap-2">
                       {(c.status === "pending" || c.status === "failed") && (
-                        <Button size="sm" variant="outline" onClick={() => retryMutation.mutate(c.id)}>
-                          <RefreshCw className="w-3 h-3 mr-1" /> Retry
+                        <Button size="sm" variant="outline" className="min-h-9" onClick={() => retryMutation.mutate(c.id)}>
+                          <RefreshCw className="w-3 h-3 mr-1" aria-hidden="true" /> Retry
                         </Button>
                       )}
                       {c.status !== "resolved" && c.status !== "cancelled" && (
-                        <Button size="sm" variant="ghost" onClick={() => cancelMutation.mutate(c.id)}>
+                        <Button size="sm" variant="ghost" className="min-h-9" onClick={() => cancelMutation.mutate(c.id)}>
                           Cancel
                         </Button>
                       )}
                     </div>
-                  </div>
+                  </li>
                 );
               })}
-            </div>
+            </ul>
           )}
         </CardContent>
       </Card>
