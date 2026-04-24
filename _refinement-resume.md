@@ -628,6 +628,7 @@ to a dedicated 9b slice.
 **/executive-dashboard (42):** ✅ complete — full 9-lens, 4 section landmarks, all stat grids → dl/dt/dd (commit `3f7ce0c`)
 **/kpi-dashboard (43):** ✅ complete — 9-lens, money-precision on currency KPIs, category sections, trend icon aria-label (commit `e16c7ce`)
 **/freedom-meter (44):** ✅ complete — P1 SVG gauge role=img, proper tab roles, form onSubmit, dl/dt/dd throughout (commit `e7b6d2e`)
+**/goals (45):** ✅ complete — P1 delete confirmation, form onSubmit, 5 Label htmlFor, state-change reassurance on both mutations (commit `c7f67bf`)
 **/onboarding-v2 targeted (18):** ✅ complete (commit `70df779`) — 18b deferred
 **/settings targeted (19):** ✅ complete (commit `809044c`) — 19b remaining components deferred
 **/pipeline (20):** ✅ complete (commit `1b5d0f7`)
