@@ -44,8 +44,9 @@ import {
 } from "lucide-react";
 import { format, isToday, isBefore, startOfDay, subDays } from "date-fns";
 import { AnimatedCounter } from "@/components/ui/animated-counter";
-import { plural } from "@/lib/format";
+import { plural, usd, dollarsCompact } from "@/lib/format";
 import { VerticalBadge } from "@/components/ui/vertical-badge";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 interface GoalWithProgress {
   id: number;
@@ -167,10 +168,10 @@ const alertHrefByType: Record<string, string> = {
 };
 
 const alertLinkLabelByType: Record<string, string> = {
-  note_overdue: "View Notes",
-  stale_leads: "View Leads",
-  stuck_deals: "View Deals",
-  stale_avm: "View Properties",
+  note_overdue: "View notes",
+  stale_leads: "View leads",
+  stuck_deals: "View deals",
+  stale_avm: "View properties",
 };
 
 const priorityColors: Record<string, string> = {
@@ -184,6 +185,7 @@ const LAST_VISIT_KEY = "acreos_last_visit_ts";
 const WELCOME_BACK_THRESHOLD_DAYS = 7;
 
 export default function TodayPage() {
+  useDocumentTitle("Today — AcreOS");
   const { data: organization } = useOrganization();
   const { user } = useAuth();
   const { data: stats, isLoading: statsLoading } = useDashboardStats();
@@ -471,10 +473,10 @@ export default function TodayPage() {
       {/* Onboarding prompt for new users */}
       {showOnboardingBanner && (
         <Card className="border-primary/30 bg-primary/5">
-          <CardContent className="p-4 flex items-center justify-between gap-4">
+          <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-primary/10">
-                <Sparkles className="w-5 h-5 text-primary" />
+              <div className="p-2 rounded-lg bg-primary/10 shrink-0">
+                <Sparkles className="w-5 h-5 text-primary" aria-hidden="true" />
               </div>
               <div>
                 <h3 className="font-semibold text-sm">Welcome to AcreOS!</h3>
@@ -483,12 +485,18 @@ export default function TodayPage() {
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <Link href="/onboarding-v2">
-                <Button size="sm">
-                  Get Started <ArrowRight className="w-3.5 h-3.5 ml-1" />
+                <Button size="sm" className="min-h-11 sm:min-h-9">
+                  Get started <ArrowRight className="w-3.5 h-3.5 ml-1" aria-hidden="true" />
                 </Button>
               </Link>
-              <Button variant="ghost" size="sm" onClick={() => { setOnboardingDismissed(true); sessionStorage.setItem("onboarding_banner_dismissed", "true"); }}>
-                <X className="w-4 h-4" />
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-11 w-11 sm:h-9 sm:w-9"
+                onClick={() => { setOnboardingDismissed(true); sessionStorage.setItem("onboarding_banner_dismissed", "true"); }}
+                aria-label="Dismiss onboarding banner"
+              >
+                <X className="w-4 h-4" aria-hidden="true" />
               </Button>
             </div>
           </CardContent>
@@ -501,8 +509,8 @@ export default function TodayPage() {
           <CardContent className="p-5">
             <div className="flex items-start justify-between gap-4 mb-4">
               <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-blue-100 dark:bg-blue-900/40">
-                  <RefreshCw className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                <div className="p-2.5 rounded-xl bg-blue-100 dark:bg-blue-900/40 shrink-0">
+                  <RefreshCw className="w-5 h-5 text-blue-600 dark:text-blue-400" aria-hidden="true" />
                 </div>
                 <div>
                   <h3 className="font-semibold text-base">
@@ -516,60 +524,60 @@ export default function TodayPage() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="shrink-0 h-8 w-8"
+                className="shrink-0 h-11 w-11 sm:h-9 sm:w-9"
                 onClick={dismissWelcomeBack}
                 aria-label="Dismiss welcome back card"
               >
-                <X className="w-4 h-4" />
+                <X className="w-4 h-4" aria-hidden="true" />
               </Button>
             </div>
 
             {/* Summary stats */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
               <div className="bg-white/70 dark:bg-background/40 rounded-lg p-3 text-center">
-                <p className="text-lg font-bold text-foreground">
-                  {statsLoading ? "-" : stats?.activeLeads ?? 0}
+                <p className="text-lg font-bold text-foreground tabular-nums">
+                  {statsLoading ? "—" : stats?.activeLeads ?? 0}
                 </p>
-                <p className="text-xs text-muted-foreground">Active Leads</p>
+                <p className="text-xs text-muted-foreground">Active leads</p>
               </div>
               <div className="bg-white/70 dark:bg-background/40 rounded-lg p-3 text-center">
-                <p className="text-lg font-bold text-foreground">
-                  {statsLoading ? "-" : stats?.activeDeals ?? 0}
+                <p className="text-lg font-bold text-foreground tabular-nums">
+                  {statsLoading ? "—" : stats?.activeDeals ?? 0}
                 </p>
-                <p className="text-xs text-muted-foreground">Active Deals</p>
+                <p className="text-xs text-muted-foreground">Active deals</p>
               </div>
               <div className="bg-white/70 dark:bg-background/40 rounded-lg p-3 text-center">
-                <p className="text-lg font-bold text-foreground">
-                  {statsLoading ? "-" : stats?.activeProperties ?? 0}
+                <p className="text-lg font-bold text-foreground tabular-nums">
+                  {statsLoading ? "—" : stats?.activeProperties ?? 0}
                 </p>
                 <p className="text-xs text-muted-foreground">Properties</p>
               </div>
               <div className="bg-white/70 dark:bg-background/40 rounded-lg p-3 text-center">
-                <p className="text-lg font-bold text-foreground">
+                <p className="text-lg font-bold text-foreground tabular-nums">
                   {pendingDecisionCount > 0 ? pendingDecisionCount : 0}
                 </p>
-                <p className="text-xs text-muted-foreground">Pending Decisions</p>
+                <p className="text-xs text-muted-foreground">Pending decisions</p>
               </div>
             </div>
 
             {/* Quick action links */}
             <div className="flex flex-wrap gap-2">
-              <Button asChild size="sm" variant="default" className="gap-1.5">
+              <Button asChild size="sm" variant="default" className="gap-1.5 min-h-11 sm:min-h-9">
                 <Link href="/decision-queue">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  Review Decisions
+                  <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" />
+                  Review decisions
                 </Link>
               </Button>
-              <Button asChild size="sm" variant="outline" className="gap-1.5 bg-white/60 dark:bg-background/40">
+              <Button asChild size="sm" variant="outline" className="gap-1.5 bg-white/60 dark:bg-background/40 min-h-11 sm:min-h-9">
                 <Link href="/portfolio">
-                  <Briefcase className="w-3.5 h-3.5" />
-                  View Portfolio
+                  <Briefcase className="w-3.5 h-3.5" aria-hidden="true" />
+                  View portfolio
                 </Link>
               </Button>
-              <Button asChild size="sm" variant="outline" className="gap-1.5 bg-white/60 dark:bg-background/40">
+              <Button asChild size="sm" variant="outline" className="gap-1.5 bg-white/60 dark:bg-background/40 min-h-11 sm:min-h-9">
                 <Link href="/team-inbox">
-                  <MessageSquare className="w-3.5 h-3.5" />
-                  Check Messages
+                  <MessageSquare className="w-3.5 h-3.5" aria-hidden="true" />
+                  Check messages
                 </Link>
               </Button>
             </div>
@@ -583,23 +591,23 @@ export default function TodayPage() {
           <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-accent/5">
             <CardContent className="p-6 text-center space-y-3">
               <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-primary/10">
-                <Target className="w-6 h-6 text-primary" />
+                <Target className="w-6 h-6 text-primary" aria-hidden="true" />
               </div>
               <h2 className="text-xl font-bold">Ready to find your first deal?</h2>
               <p className="text-muted-foreground max-w-md mx-auto">
                 Your AcreOS workspace is set up. Follow these steps to start evaluating parcels and closing deals.
               </p>
               <div className="flex flex-wrap gap-2 justify-center pt-2">
-                <Button asChild size="sm">
+                <Button asChild size="sm" className="min-h-11 sm:min-h-9">
                   <Link href="/properties">
-                    <Map className="w-4 h-4 mr-1.5" />
-                    Add Your First Parcel
+                    <Map className="w-4 h-4 mr-1.5" aria-hidden="true" />
+                    Add your first parcel
                   </Link>
                 </Button>
-                <Button asChild size="sm" variant="outline">
+                <Button asChild size="sm" variant="outline" className="min-h-11 sm:min-h-9">
                   <Link href="/leads">
-                    <Users className="w-4 h-4 mr-1.5" />
-                    Import Leads
+                    <Users className="w-4 h-4 mr-1.5" aria-hidden="true" />
+                    Import leads
                   </Link>
                 </Button>
               </div>
@@ -612,22 +620,26 @@ export default function TodayPage() {
       {/* Header */}
       <div className="flex flex-col gap-1">
         <div className="flex items-center gap-2 flex-wrap">
-          <Sun className="w-5 h-5 text-amber-500" />
+          <Sun className="w-5 h-5 text-amber-500" aria-hidden="true" />
           <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-today-title">
             {greeting()}{user?.firstName ? `, ${user.firstName}` : ""}
           </h1>
           <VerticalBadge className="ml-1" />
         </div>
-        <p className="text-muted-foreground text-sm">
+        <p className="text-muted-foreground text-sm tabular-nums">
           {format(new Date(), "EEEE, MMMM d, yyyy")} — here's what needs your attention today.
         </p>
         {pendingDecisionCount > 0 && (
           <Link href="/decision-queue">
-            <div className="inline-flex items-center gap-2 mt-2 px-3 py-1.5 rounded-full bg-red-50 border border-red-200 dark:bg-red-900/20 dark:border-red-800 text-sm text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors cursor-pointer">
-              <Clock className="w-4 h-4" />
+            <div
+              className="inline-flex items-center gap-2 mt-2 px-3 py-1.5 rounded-full bg-red-50 border border-red-200 dark:bg-red-900/20 dark:border-red-800 text-sm text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors cursor-pointer"
+              role="link"
+              aria-label={`${plural(pendingDecisionCount, "pending decision")} — review now`}
+            >
+              <Clock className="w-4 h-4" aria-hidden="true" />
               <span className="font-medium">{plural(pendingDecisionCount, "pending decision")}</span>
-              <Badge variant="destructive" className="text-xs px-1.5 py-0">{pendingDecisionCount}</Badge>
-              <ArrowRight className="w-3.5 h-3.5" />
+              <Badge variant="destructive" className="text-xs px-1.5 py-0 tabular-nums">{pendingDecisionCount}</Badge>
+              <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
             </div>
           </Link>
         )}
@@ -638,41 +650,41 @@ export default function TodayPage() {
         <div className="rounded-xl border bg-gradient-to-br from-primary/5 to-transparent p-4">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
-              <Bot className="w-4 h-4 text-primary" />
-              <span className="font-semibold text-sm">Agent Activity</span>
+              <Bot className="w-4 h-4 text-primary" aria-hidden="true" />
+              <span className="font-semibold text-sm">Agent activity</span>
               {autonomyScore > 0 && (
-                <Badge variant="outline" className="text-xs">
-                  {Math.round(autonomyScore)}% Autonomy
+                <Badge variant="outline" className="text-xs tabular-nums">
+                  {Math.round(autonomyScore)}% autonomy
                 </Badge>
               )}
             </div>
             <Link href="/sovereign">
               <Badge variant="secondary" className="text-xs cursor-pointer hover:bg-primary/10">
-                Sovereign Dashboard →
+                Sovereign dashboard &rarr;
               </Badge>
             </Link>
           </div>
           <div className="grid grid-cols-3 gap-3">
             <div className="text-center">
-              <AnimatedCounter value={activeAgentCount} className="text-lg font-bold" />
-              <p className="text-xs text-muted-foreground">Active Agents</p>
+              <AnimatedCounter value={activeAgentCount} className="text-lg font-bold tabular-nums" />
+              <p className="text-xs text-muted-foreground">Active agents</p>
             </div>
             <div className="text-center">
               <Link href="/ai#agents">
                 <AnimatedCounter
                   value={pendingApprovalCount}
-                  className={`text-lg font-bold ${pendingApprovalCount > 0 ? "text-amber-600" : ""}`}
+                  className={`text-lg font-bold tabular-nums ${pendingApprovalCount > 0 ? "text-amber-600" : ""}`}
                 />
-                <p className="text-xs text-muted-foreground">Pending Approvals</p>
+                <p className="text-xs text-muted-foreground">Pending approvals</p>
               </Link>
             </div>
             <div className="text-center">
               <AnimatedCounter
                 value={Math.round(autonomyScore)}
                 format={(n) => `${Math.round(n)}%`}
-                className="text-lg font-bold"
+                className="text-lg font-bold tabular-nums"
               />
-              <p className="text-xs text-muted-foreground">Autonomy Score</p>
+              <p className="text-xs text-muted-foreground">Autonomy score</p>
             </div>
           </div>
         </div>
@@ -704,63 +716,59 @@ export default function TodayPage() {
         <div className={`rounded-xl border bg-gradient-to-br ${pulseBg} p-4`}>
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <Activity className={`w-4 h-4 ${pulseColor}`} />
-              <span className="font-semibold text-sm">Business Pulse</span>
+              <Activity className={`w-4 h-4 ${pulseColor}`} aria-hidden="true" />
+              <span className="font-semibold text-sm">Business pulse</span>
               <Badge variant="outline" className={`text-xs ${pulseColor} border-current`}>
                 {pulseLabel}
               </Badge>
             </div>
             <div className="flex items-center gap-1">
-              <div className={`w-2 h-2 rounded-full ${pulseScore >= 55 ? "bg-emerald-500 animate-pulse" : "bg-muted-foreground"}`} />
-              <span className="text-xs text-muted-foreground">{pulseScore}/100</span>
+              <div className={`w-2 h-2 rounded-full ${pulseScore >= 55 ? "bg-emerald-500 animate-pulse" : "bg-muted-foreground"}`} aria-hidden="true" />
+              <span className="text-xs text-muted-foreground tabular-nums" aria-label={`Pulse score ${pulseScore} out of 100`}>{pulseScore}/100</span>
             </div>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="bg-background/60 rounded-lg p-3 text-center">
               <div className="flex items-center justify-center gap-1 mb-1">
-                <DollarSign className="w-3.5 h-3.5 text-primary" />
+                <DollarSign className="w-3.5 h-3.5 text-primary" aria-hidden="true" />
                 <span className="text-[10px] text-muted-foreground uppercase tracking-wide">Pipeline</span>
               </div>
-              <p className="text-lg font-bold text-foreground">
-                {pipelineValue >= 1_000_000
-                  ? `$${(pipelineValue / 1_000_000).toFixed(1)}M`
-                  : pipelineValue >= 1000
-                  ? `$${(pipelineValue / 1000).toFixed(0)}K`
-                  : pipelineValue > 0 ? `$${pipelineValue}` : "—"}
+              <p className="text-lg font-bold text-foreground tabular-nums">
+                {pipelineValue > 0 ? dollarsCompact(pipelineValue * 100) : "—"}
               </p>
-              <p className="text-[10px] text-muted-foreground">{activeDeals.length} active deals</p>
+              <p className="text-[10px] text-muted-foreground">
+                <span className="tabular-nums">{activeDeals.length}</span> active deals
+              </p>
             </div>
             <div className="bg-background/60 rounded-lg p-3 text-center">
               <div className="flex items-center justify-center gap-1 mb-1">
-                <Flame className="w-3.5 h-3.5 text-orange-500" />
-                <span className="text-[10px] text-muted-foreground uppercase tracking-wide">Hot Deals</span>
+                <Flame className="w-3.5 h-3.5 text-orange-500" aria-hidden="true" />
+                <span className="text-[10px] text-muted-foreground uppercase tracking-wide">Hot deals</span>
               </div>
-              <p className="text-lg font-bold text-foreground">{hotDeals}</p>
-              <p className="text-[10px] text-muted-foreground">accepted/in escrow</p>
+              <p className="text-lg font-bold text-foreground tabular-nums">{hotDeals}</p>
+              <p className="text-[10px] text-muted-foreground">accepted / in escrow</p>
             </div>
             <div className="bg-background/60 rounded-lg p-3 text-center">
               <div className="flex items-center justify-center gap-1 mb-1">
-                <BarChart3 className="w-3.5 h-3.5 text-primary" />
-                <span className="text-[10px] text-muted-foreground uppercase tracking-wide">Avg Win Prob</span>
+                <BarChart3 className="w-3.5 h-3.5 text-primary" aria-hidden="true" />
+                <span className="text-[10px] text-muted-foreground uppercase tracking-wide">Avg win prob</span>
               </div>
-              <p className="text-lg font-bold text-foreground">
+              <p className="text-lg font-bold text-foreground tabular-nums">
                 {avgWinProbability > 0 ? `${avgWinProbability}%` : "—"}
               </p>
               <p className="text-[10px] text-muted-foreground">across pipeline</p>
             </div>
             <div className="bg-background/60 rounded-lg p-3 text-center">
               <div className="flex items-center justify-center gap-1 mb-1">
-                <TrendingUp className="w-3.5 h-3.5 text-emerald-500" />
-                <span className="text-[10px] text-muted-foreground uppercase tracking-wide">This Month</span>
+                <TrendingUp className="w-3.5 h-3.5 text-emerald-500" aria-hidden="true" />
+                <span className="text-[10px] text-muted-foreground uppercase tracking-wide">This month</span>
               </div>
-              <p className="text-lg font-bold text-foreground">
-                {closedRevenueThisMonth >= 1_000_000
-                  ? `$${(closedRevenueThisMonth / 1_000_000).toFixed(1)}M`
-                  : closedRevenueThisMonth >= 1000
-                  ? `$${(closedRevenueThisMonth / 1000).toFixed(0)}K`
-                  : closedRevenueThisMonth > 0 ? `$${closedRevenueThisMonth}` : "—"}
+              <p className="text-lg font-bold text-foreground tabular-nums">
+                {closedRevenueThisMonth > 0 ? dollarsCompact(closedRevenueThisMonth * 100) : "—"}
               </p>
-              <p className="text-[10px] text-muted-foreground">{closedDealsThisMonth.length} closed</p>
+              <p className="text-[10px] text-muted-foreground">
+                <span className="tabular-nums">{closedDealsThisMonth.length}</span> closed
+              </p>
             </div>
           </div>
           {/* Pulse progress bar */}
@@ -787,15 +795,15 @@ export default function TodayPage() {
       <div data-testid="section-start-here-today">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <Zap className="w-4 h-4 text-amber-500" />
-            <h2 className="text-lg font-semibold">Start Here Today</h2>
+            <Zap className="w-4 h-4 text-amber-500" aria-hidden="true" />
+            <h2 className="text-lg font-semibold">Start here today</h2>
             <Badge variant="secondary" className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 text-xs">
               AI
             </Badge>
           </div>
           <Link href="/evening-review">
             <Button variant="ghost" size="sm" className="gap-1 text-xs">
-              <Moon className="w-3 h-3" /> Evening Review
+              <Moon className="w-3 h-3" aria-hidden="true" /> Evening review
             </Button>
           </Link>
         </div>
@@ -842,17 +850,17 @@ export default function TodayPage() {
       <div data-testid="section-todays-actions">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-primary" />
-            <h2 className="text-lg font-semibold">Today's Actions</h2>
+            <Calendar className="w-4 h-4 text-primary" aria-hidden="true" />
+            <h2 className="text-lg font-semibold">Today's actions</h2>
             {todayActions.length > 0 && (
-              <Badge variant="secondary" className="bg-primary/10 text-primary text-xs">
+              <Badge variant="secondary" className="bg-primary/10 text-primary text-xs tabular-nums">
                 {todayActions.length}
               </Badge>
             )}
           </div>
           <Link href="/pipeline">
             <Button variant="ghost" size="sm" className="gap-1 text-xs">
-              All Tasks <ArrowRight className="w-3 h-3" />
+              All tasks <ArrowRight className="w-3 h-3" aria-hidden="true" />
             </Button>
           </Link>
         </div>
@@ -875,21 +883,21 @@ export default function TodayPage() {
               return (
                 <Card key={task.id} className="hover:shadow-sm transition-shadow">
                   <CardContent className="flex items-center gap-4 py-3 px-4">
-                    <Clock className={`w-4 h-4 shrink-0 ${isOverdue ? "text-red-500" : "text-amber-500"}`} />
+                    <Clock className={`w-4 h-4 shrink-0 ${isOverdue ? "text-red-500" : "text-amber-500"}`} aria-hidden="true" />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="font-medium text-sm truncate">{task.title}</span>
                         {task.priority && (
-                          <Badge variant="secondary" className={`${priorityColors[task.priority] ?? ""} text-xs`}>
+                          <Badge variant="secondary" className={`${priorityColors[task.priority] ?? ""} text-xs capitalize`}>
                             {task.priority}
                           </Badge>
                         )}
                         {isOverdue && (
-                          <Badge variant="secondary" className="bg-red-100 text-red-700 text-xs">overdue</Badge>
+                          <Badge variant="secondary" className="bg-red-100 text-red-700 text-xs">Overdue</Badge>
                         )}
                       </div>
                       {task.dueDate && (
-                        <p className="text-xs text-muted-foreground">
+                        <p className="text-xs text-muted-foreground tabular-nums">
                           Due {format(new Date(task.dueDate), "MMM d")}
                         </p>
                       )}
@@ -906,9 +914,9 @@ export default function TodayPage() {
       {!alertsLoading && systemAlerts.length > 0 && (
         <div data-testid="section-alerts">
           <div className="flex items-center gap-2 mb-3">
-            <Bell className="w-4 h-4 text-amber-500" />
-            <h2 className="text-lg font-semibold">Portfolio Alerts</h2>
-            <Badge variant="secondary" className="bg-amber-100 text-amber-700 text-xs">
+            <Bell className="w-4 h-4 text-amber-500" aria-hidden="true" />
+            <h2 className="text-lg font-semibold">Portfolio alerts</h2>
+            <Badge variant="secondary" className="bg-amber-100 text-amber-700 text-xs tabular-nums">
               {systemAlerts.length}
             </Badge>
           </div>
@@ -925,8 +933,13 @@ export default function TodayPage() {
               const href = alertHrefByType[alert.type] ?? "/";
               const linkLabel = alertLinkLabelByType[alert.type] ?? "View";
               return (
-                <div key={alert.id} className={`flex items-start gap-3 rounded-lg border p-3 ${borderClass}`}>
-                  <AlertTriangle className={`w-4 h-4 shrink-0 mt-0.5 ${iconClass}`} />
+                <div
+                  key={alert.id}
+                  className={`flex items-start gap-3 rounded-lg border p-3 ${borderClass}`}
+                  role={isCritical ? "alert" : "status"}
+                  aria-live={isCritical ? "assertive" : "polite"}
+                >
+                  <AlertTriangle className={`w-4 h-4 shrink-0 mt-0.5 ${iconClass}`} aria-hidden="true" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium">{alert.title}</p>
                     <p className="text-xs text-muted-foreground mt-0.5">{alert.message}</p>
@@ -941,9 +954,9 @@ export default function TodayPage() {
                       className="h-7 w-7"
                       onClick={() => dismissMutation.mutate(alert.id)}
                       disabled={dismissMutation.isPending}
-                      aria-label="Dismiss alert"
+                      aria-label={`Dismiss alert: ${alert.title}`}
                     >
-                      <X className="w-3 h-3" />
+                      <X className="w-3 h-3" aria-hidden="true" />
                     </Button>
                   </div>
                 </div>
@@ -958,20 +971,20 @@ export default function TodayPage() {
         <div data-testid="section-pax-noticed">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-primary" />
-              <h2 className="text-lg font-semibold">Pax Noticed</h2>
+              <Sparkles className="w-4 h-4 text-primary" aria-hidden="true" />
+              <h2 className="text-lg font-semibold">Pax noticed</h2>
               <Badge variant="secondary" className="bg-primary/10 text-primary text-xs">
                 AI
               </Badge>
               {paxItemCount > 0 && (
-                <Badge variant="secondary" className="bg-primary/10 text-primary text-xs">
+                <Badge variant="secondary" className="bg-primary/10 text-primary text-xs tabular-nums">
                   {paxItemCount}
                 </Badge>
               )}
             </div>
             <Link href="/pax#insights">
               <Button variant="ghost" size="sm" className="gap-1 text-xs">
-                View All <ArrowRight className="w-3 h-3" />
+                View all <ArrowRight className="w-3 h-3" aria-hidden="true" />
               </Button>
             </Link>
           </div>
@@ -998,11 +1011,11 @@ export default function TodayPage() {
                 : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400";
               return (
                 <div key={`obs-${obs.id}`} className={`flex items-start gap-3 rounded-lg border p-3 ${borderClass}`}>
-                  <Sparkles className="w-4 h-4 shrink-0 mt-0.5 text-primary" />
+                  <Sparkles className="w-4 h-4 shrink-0 mt-0.5 text-primary" aria-hidden="true" />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-sm font-medium">{obs.title}</p>
-                      <Badge variant="secondary" className={`text-xs ${badgeClass}`}>
+                      <Badge variant="secondary" className={`text-xs capitalize ${badgeClass}`}>
                         {obs.severity}
                       </Badge>
                     </div>
@@ -1015,33 +1028,37 @@ export default function TodayPage() {
             {/* Stale lead cards */}
             {paxStaleLeads.map((lead) => (
               <div key={`stale-${lead.id}`} className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20 p-3">
-                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-500" />
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-500" aria-hidden="true" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium">
                     {lead.firstName} {lead.lastName} hasn't been contacted
                   </p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
+                  <p className="text-xs text-muted-foreground mt-0.5 tabular-nums">
                     {lead.daysSinceContact >= 999 ? "Never contacted" : `${lead.daysSinceContact} days since last contact`}
                   </p>
                 </div>
                 <Link href="/leads">
-                  <Button variant="outline" size="sm" className="text-xs h-7 shrink-0">Follow Up</Button>
+                  <Button variant="outline" size="sm" className="text-xs h-7 shrink-0">Follow up</Button>
                 </Link>
               </div>
             ))}
 
             {/* Expiring offer cards */}
             {paxExpiringOffers.map((offer) => (
-              <div key={`offer-${offer.id}`} className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20 p-3">
-                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-red-500" />
+              <div
+                key={`offer-${offer.id}`}
+                className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20 p-3"
+                role="alert"
+              >
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-red-500" aria-hidden="true" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium">{offer.title}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
+                  <p className="text-xs text-muted-foreground mt-0.5 tabular-nums">
                     Offer expires {offer.offerExpiresAt ? format(new Date(offer.offerExpiresAt), "MMM d, h:mm a") : "soon"}
                   </p>
                 </div>
                 <Link href="/deals">
-                  <Button variant="outline" size="sm" className="text-xs h-7 shrink-0">View Deal</Button>
+                  <Button variant="outline" size="sm" className="text-xs h-7 shrink-0">View deal</Button>
                 </Link>
               </div>
             ))}
@@ -1053,15 +1070,15 @@ export default function TodayPage() {
       <div data-testid="section-pax-suggests">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-emerald-500" />
-            <h2 className="text-lg font-semibold">Pax Suggests</h2>
+            <Sparkles className="w-4 h-4 text-emerald-500" aria-hidden="true" />
+            <h2 className="text-lg font-semibold">Pax suggests</h2>
             <Badge variant="secondary" className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 text-xs">
               AI
             </Badge>
           </div>
           <Link href="/leads">
             <Button variant="ghost" size="sm" className="gap-1 text-xs">
-              All Leads <ArrowRight className="w-3 h-3" />
+              All leads <ArrowRight className="w-3 h-3" aria-hidden="true" />
             </Button>
           </Link>
         </div>
@@ -1089,11 +1106,11 @@ export default function TodayPage() {
               return (
                 <Card key={s.id} className="hover:shadow-sm transition-shadow border-emerald-100 dark:border-emerald-900/30">
                   <CardContent className="flex items-start gap-4 py-3 px-4">
-                    <Sparkles className="w-4 h-4 shrink-0 mt-1 text-emerald-500" />
+                    <Sparkles className="w-4 h-4 shrink-0 mt-1 text-emerald-500" aria-hidden="true" />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap mb-0.5">
                         <span className="font-medium text-sm">{s.suggestion}</span>
-                        <Badge variant="secondary" className={`text-xs ${confBadgeClass}`}>
+                        <Badge variant="secondary" className={`text-xs tabular-nums ${confBadgeClass}`}>
                           {confidencePct}% confidence
                         </Badge>
                       </div>
@@ -1115,15 +1132,15 @@ export default function TodayPage() {
         <div data-testid="section-goals">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <Target className="w-4 h-4 text-primary" />
-              <h2 className="text-lg font-semibold">Goal Progress</h2>
-              <Badge variant="secondary" className="bg-primary/10 text-primary text-xs">
+              <Target className="w-4 h-4 text-primary" aria-hidden="true" />
+              <h2 className="text-lg font-semibold">Goal progress</h2>
+              <Badge variant="secondary" className="bg-primary/10 text-primary text-xs tabular-nums">
                 {activeGoals.length}
               </Badge>
             </div>
             <Link href="/settings">
               <Button variant="ghost" size="sm" className="gap-1 text-xs">
-                Manage Goals <ArrowRight className="w-3 h-3" />
+                Manage goals <ArrowRight className="w-3 h-3" aria-hidden="true" />
               </Button>
             </Link>
           </div>
@@ -1133,14 +1150,18 @@ export default function TodayPage() {
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-medium truncate">{goal.label}</span>
-                    <span className="text-xs text-muted-foreground ml-2 shrink-0">
+                    <span className="text-xs text-muted-foreground ml-2 shrink-0 tabular-nums">
                       {goal.progressPct}%
                     </span>
                   </div>
-                  <Progress value={goal.progressPct} className="h-2 mb-2" />
-                  <p className="text-xs text-muted-foreground">
+                  <Progress
+                    value={goal.progressPct}
+                    className="h-2 mb-2"
+                    aria-label={`${goal.label}: ${goal.progressPct}% complete`}
+                  />
+                  <p className="text-xs text-muted-foreground tabular-nums">
                     {typeof goal.currentValue === "number" && goal.goalType === "revenue_earned"
-                      ? `$${goal.currentValue.toLocaleString()} of $${Number(goal.targetValue).toLocaleString()}`
+                      ? `${usd(goal.currentValue, { noCents: true })} of ${usd(goal.targetValue, { noCents: true })}`
                       : `${goal.currentValue} of ${Number(goal.targetValue)}`}
                     {" · "}ends {format(new Date(goal.periodEnd), "MMM d, yyyy")}
                   </p>
@@ -1155,12 +1176,12 @@ export default function TodayPage() {
       <div data-testid="section-ai-actions">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <GitBranch className="w-4 h-4 text-primary" />
-            <h2 className="text-lg font-semibold">AI Action Queue</h2>
+            <GitBranch className="w-4 h-4 text-primary" aria-hidden="true" />
+            <h2 className="text-lg font-semibold">AI action queue</h2>
           </div>
           <Link href="/pipeline">
             <Button variant="ghost" size="sm" className="gap-1 text-xs">
-              View Pipeline <ArrowRight className="w-3 h-3" />
+              View pipeline <ArrowRight className="w-3 h-3" aria-hidden="true" />
             </Button>
           </Link>
         </div>
@@ -1184,7 +1205,7 @@ export default function TodayPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="font-medium text-sm truncate">{action.title}</span>
-                      <Badge variant="secondary" className={priorityColors[action.priority]}>
+                      <Badge variant="secondary" className={`capitalize ${priorityColors[action.priority]}`}>
                         {action.priority}
                       </Badge>
                     </div>
@@ -1205,17 +1226,17 @@ export default function TodayPage() {
         <div data-testid="section-cash-position">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-emerald-500" />
-              <h2 className="text-lg font-semibold">Cash Position</h2>
+              <TrendingUp className="w-4 h-4 text-emerald-500" aria-hidden="true" />
+              <h2 className="text-lg font-semibold">Cash position</h2>
               {cashPosition.lateCount > 0 && (
-                <Badge variant="secondary" className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 text-xs">
+                <Badge variant="secondary" className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 text-xs tabular-nums">
                   {cashPosition.lateCount} late
                 </Badge>
               )}
             </div>
             <Link href="/finance">
               <Button variant="ghost" size="sm" className="gap-1 text-xs">
-                View Finance <ArrowRight className="w-3 h-3" />
+                View finance <ArrowRight className="w-3 h-3" aria-hidden="true" />
               </Button>
             </Link>
           </div>
@@ -1232,9 +1253,9 @@ export default function TodayPage() {
                 ].map(({ label, value }) => (
                   <Card key={label} className="border-emerald-100 dark:border-emerald-900/30">
                     <CardContent className="py-3 px-3 text-center">
-                      <p className="text-xs text-muted-foreground mb-0.5">{label} projected</p>
-                      <p className="text-base font-semibold text-emerald-700 dark:text-emerald-400">
-                        ${value.toLocaleString("en-US", { maximumFractionDigits: 0 })}
+                      <p className="text-xs text-muted-foreground mb-0.5 tabular-nums">{label} projected</p>
+                      <p className="text-base font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">
+                        {usd(value, { noCents: true })}
                       </p>
                     </CardContent>
                   </Card>
@@ -1243,30 +1264,36 @@ export default function TodayPage() {
               {/* Upcoming payments */}
               {cashPosition.next3.length > 0 && (
                 <div className="space-y-1.5">
-                  {cashPosition.next3.map((note) => (
-                    <Card key={note.id} className="hover:shadow-sm transition-shadow">
-                      <CardContent className="flex items-center justify-between py-2.5 px-4">
-                        <div className="flex items-center gap-2.5">
-                          {(note.status === "late" || note.status === "delinquent") ? (
-                            <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
-                          ) : (
-                            <Banknote className="w-4 h-4 text-emerald-500 shrink-0" />
-                          )}
-                          <div>
-                            <p className="text-sm font-medium leading-tight">
-                              {note.borrowerName ?? `Note #${note.id}`}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              Due {note.nextPaymentDate ? format(new Date(note.nextPaymentDate), "MMM d") : "—"}
-                            </p>
+                  {cashPosition.next3.map((note) => {
+                    const isLate = note.status === "late" || note.status === "delinquent";
+                    return (
+                      <Card key={note.id} className="hover:shadow-sm transition-shadow">
+                        <CardContent className="flex items-center justify-between py-2.5 px-4">
+                          <div className="flex items-center gap-2.5">
+                            {isLate ? (
+                              <AlertCircle className="w-4 h-4 text-red-500 shrink-0" aria-hidden="true" />
+                            ) : (
+                              <Banknote className="w-4 h-4 text-emerald-500 shrink-0" aria-hidden="true" />
+                            )}
+                            <div>
+                              <p className="text-sm font-medium leading-tight">
+                                {note.borrowerName ?? `Note #${note.id}`}
+                              </p>
+                              <p className="text-xs text-muted-foreground tabular-nums">
+                                Due {note.nextPaymentDate ? format(new Date(note.nextPaymentDate), "MMM d") : "—"}
+                              </p>
+                            </div>
                           </div>
-                        </div>
-                        <span className={`text-sm font-semibold ${note.status === "late" || note.status === "delinquent" ? "text-red-600 dark:text-red-400" : "text-emerald-700 dark:text-emerald-400"}`}>
-                          ${parseFloat(note.monthlyPayment || "0").toLocaleString("en-US", { maximumFractionDigits: 0 })}
-                        </span>
-                      </CardContent>
-                    </Card>
-                  ))}
+                          <span
+                            className={`text-sm font-semibold tabular-nums ${isLate ? "text-red-600 dark:text-red-400" : "text-emerald-700 dark:text-emerald-400"}`}
+                            aria-label={isLate ? `Late payment: ${usd(note.monthlyPayment, { noCents: true })}` : undefined}
+                          >
+                            {usd(note.monthlyPayment, { noCents: true })}
+                          </span>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1278,11 +1305,11 @@ export default function TodayPage() {
 
       {/* Section 4: KPI Stats */}
       <div data-testid="section-stats">
-        <h2 className="text-lg font-semibold mb-3">Portfolio Overview</h2>
+        <h2 className="text-lg font-semibold mb-3">Portfolio overview</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-5" data-testid="stats-grid">
           <StatCard
-            title="Active Leads"
-            value={statsLoading ? "-" : stats?.activeLeads ?? leads.length}
+            title="Active leads"
+            value={statsLoading ? "—" : stats?.activeLeads ?? leads.length}
             icon={Users}
             trend={`${leads.filter((l) => l.status === "new").length} new`}
             color="terracotta"
@@ -1290,7 +1317,7 @@ export default function TodayPage() {
           />
           <StatCard
             title="Properties"
-            value={statsLoading ? "-" : properties.length}
+            value={statsLoading ? "—" : properties.length}
             icon={Map}
             trend={(() => {
               const owned = properties.filter((p) => p.status === "owned").length;
@@ -1304,15 +1331,15 @@ export default function TodayPage() {
             data-testid="stat-properties"
           />
           <StatCard
-            title="Active Notes"
-            value={statsLoading ? "-" : stats?.activeNotes ?? 0}
+            title="Active notes"
+            value={statsLoading ? "—" : stats?.activeNotes ?? 0}
             icon={Banknote}
             color="terracotta"
             data-testid="stat-active-notes"
           />
           <StatCard
-            title="Open Deals"
-            value={statsLoading ? "-" : stats?.activeDeals ?? 0}
+            title="Open deals"
+            value={statsLoading ? "—" : stats?.activeDeals ?? 0}
             icon={GitBranch}
             color="sage"
             data-testid="stat-open-deals"
