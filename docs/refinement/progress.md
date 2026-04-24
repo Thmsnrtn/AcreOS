@@ -4661,4 +4661,4 @@ deserve the full 9-lens treatment.
 - Money-precision via `usd()` on 4 more render sites.
 - Definition-list semantic rule on payment breakdown.
 
-**Commit:** (pending)
+**Commit:** `694ba02`

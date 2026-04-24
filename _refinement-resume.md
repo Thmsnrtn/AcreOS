@@ -1,7 +1,28 @@
 # Elite-Team Refinement — Resume Point
 
-**Last session:** 2026-04-24 (session 26 — settings 19b.v final)
-**Last completed refinement:** `ReferralSettings` +
+**Last session:** 2026-04-24 (session 27 — /finance 12b.i: NoteForm + RecordPayment)
+**Last completed refinement:** `NoteForm` +
+`RecordPaymentModal` in `/finance.tsx`. ~350 lines across
+the two money-creation surfaces. NoteForm: currency-
+adornment rule ($/% inside inputs), mobile-keyboard
+checklist on all money inputs, required-asterisk on 6
+fields, prerequisite-select 3-state on Borrower + Property
+with specific empty-state copy ("No buyers yet — add a
+buyer lead first"), calculated-payment banner role=status,
+grid-cols-1 sm:grid-cols-2 on paired rows, sentence-case +
+proper ellipsis. RecordPaymentModal: full slice-5l hand-
+rolled-dialog treatment (role=dialog + aria-modal + Esc
+handler), <form onSubmit> so Enter commits, Label htmlFor
+on amount + method, $ prefix inside amount input, 3 money
+rows promoted to <dl>/<dt>/<dd> and routed through usd()
+with cents, submit-disabled when amount empty (prevents
+$0 payment), sentence-case. Two of six /finance 12b
+sub-components complete.
+
+---
+
+**Prior session:** 2026-04-24 (session 26 — settings 19b.v final)
+**Prior completed refinement:** `ReferralSettings` +
 `GoalsSettings` form/outer polish. **Closes the full
 /settings 19b arc** — every sub-component in the 2658-line
 file has now had at least one refinement pass. ReferralSettings
@@ -403,6 +424,8 @@ to a dedicated 9b slice.
 **/settings completion 19b.iv (25):** ✅ complete — ApiKeyManager + ActivityLog + Goals progress (commit `890f5bc`)
 **/settings 19b.v final (26):** ✅ complete — ReferralSettings + Goals form (commit `ac1a64b`)
 **/settings FULL 9-lens arc (19 → 19b.v):** ✅ complete — every sub-component refined
+**/finance 12b.i (27):** ✅ complete — NoteForm + RecordPaymentModal (commit `694ba02`)
+**/finance 12b remaining (AcceptPaymentModal + NoteDetailDrawer):** ⬜ deferred — next slices
 **window.confirm ban grep:** ✅ clean across the client
 **window.prompt ban:** ✅ clean after slice 22
 **Money-precision grep remaining (~63 files):** ⬜ deferred — apply per-surface as each page gets 9-lens pass
@@ -629,6 +652,19 @@ Session 25:
   toLocaleString. Progress aria-label names goal+%+values.
   Teach-via-option-label rule introduced. (commit
   `890f5bc`)
+
+Session 27:
+- /finance 12b.i — NoteForm + RecordPaymentModal (two
+  money-creation surfaces). Currency-adornment rule on
+  principal/down-payment ($) + interest (%). Mobile-
+  keyboard checklist on all money inputs. Required-
+  asterisk on 6 fields. Prerequisite-select 3-state with
+  specific empty-state copy. NoteForm calculated-payment
+  banner role=status. RecordPaymentModal: full slice-5l
+  dialog treatment (role=dialog + aria-modal + Esc), form
+  onSubmit, Label htmlFor, money rows through usd() +
+  dl/dt/dd semantics, submit guards against $0 payment.
+  Sentence-case + proper ellipsis. (commit `694ba02`)
 
 Session 26:
 - /settings 19b.v final — ReferralSettings + GoalsSettings
@@ -934,14 +970,15 @@ Session 24:
 
 ## Next surface to refine
 
-**Settings arc complete.** Shift focus to other big
-deferred surfaces:
+**Settings arc complete. /finance 12b in progress (2/6
+sub-components done).** Shift focus:
 
-1. **Full `/finance` 9-lens pass (12b)** — slice 12 was
-   narrow (money-precision only). Remaining ~1500 lines:
-   create-note form dialog, delete confirmation, payment-
-   record dialog, Stripe Connect configuration, dunning
-   manager, drawer + cards that weren't touched.
+1. **`/finance` 12b.ii — AcceptPaymentModal + Note
+   DetailDrawer remaining.** AcceptPaymentModal was
+   partially touched in slice 21 for payment-intent error
+   voice but UI body needs Label htmlFor + form semantics.
+   NoteDetailDrawer (~680 lines from 436-1117) is the main
+   detail surface and the largest /finance sub-component.
 
 2. **`/leads` 17b** — remaining ~2000 lines (LeadForm,
    LeadDetailDrawer, table rows, bulk-delete dialog,
@@ -1041,9 +1078,9 @@ deferred surfaces:
   `storage`, `autonomousDealMachine`, `countyAssessorIngest`,
   `supportAgent`, etc. — not blocking client refinement work.
 
-## Expected HEAD after session 26
+## Expected HEAD after session 27
 
-Session chain 8 → 26 cadence (all shipped atomic + docs):
+Session chain 8 → 27 cadence (all shipped atomic + docs):
 
 - `234dafa` slice 8  — /documents
 - `61f1469` slice 9  — /sign/:docId
@@ -1065,8 +1102,9 @@ Session chain 8 → 26 cadence (all shipped atomic + docs):
 - `a90fa77` slice 24 — /settings privacy sub-slice (GDPR export/delete)
 - `890f5bc` slice 25 — /settings completion (ApiKey + Activity + Goals)
 - `ac1a64b` slice 26 — /settings 19b.v final (Referral + Goals form)
+- `694ba02` slice 27 — /finance 12b.i (NoteForm + RecordPaymentModal)
 
-Cross-cutting rules added slices 19-26:
+Cross-cutting rules added slices 19-27:
 - State-change error reassurance (slice 19, generalized 22, applied to 16+ error paths through 26)
 - window.prompt ban (slice 22)
 - Placeholder disambiguation (slice 24)
