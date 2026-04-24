@@ -1,6 +1,6 @@
 # Elite-Team Refinement — Resume Point
 
-**Last session:** 2026-04-24 (session 28 — /finance 12b.ii: AcceptPaymentModal + Drawer header)
+**Last session:** 2026-04-24 (session 29 — /finance 12b.iii: Drawer body, closes 12b arc)
 **Last completed refinement:** `AcceptPaymentModal` (full
 9-lens treatment, same as RecordPaymentModal in slice 27)
 + `NoteDetailDrawer` header row + 4 silent-error handlers.
@@ -447,7 +447,8 @@ to a dedicated 9b slice.
 **/settings FULL 9-lens arc (19 → 19b.v):** ✅ complete — every sub-component refined
 **/finance 12b.i (27):** ✅ complete — NoteForm + RecordPaymentModal (commit `694ba02`)
 **/finance 12b.ii (28):** ✅ complete — AcceptPaymentModal + NoteDetailDrawer header (commit `5059dfc`)
-**/finance 12b.iii NoteDetailDrawer body:** ⬜ deferred — ~600 lines remain (summary cards / loan progress / payment collection / dunning / payment history / schedule table)
+**/finance 12b.iii (29):** ✅ complete — NoteDetailDrawer body, closes 12b arc (commit `43fb11c`)
+**/finance FULL arc:** ✅ complete across slices 12 + 27 + 28 + 29
 **window.confirm ban grep:** ✅ clean across the client
 **window.prompt ban:** ✅ clean after slice 22
 **Money-precision grep remaining (~63 files):** ⬜ deferred — apply per-surface as each page gets 9-lens pass
