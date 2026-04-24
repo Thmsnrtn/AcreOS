@@ -621,6 +621,7 @@ to a dedicated 9b slice.
 **Teach-via-option-label sweep (35):** ✅ complete — settings team-role Select lifted; rule is clean across permission-tier Selects (commit `9ed59b3`)
 **Money-precision sweep (36):** ✅ complete — dunning-manager fixed; 74 other grep hits verified intentional rounding (commit `b2fda5d`)
 **NotificationBanner a11y (37):** ✅ complete — transient role=alert/status, tray role=dialog, ul/li list, bell aria-expanded (commit `1257746`)
+**SellerIntentPanel silent-mutation (38):** ✅ complete — onError toast with state-change reassurance + bulk-scan triple-path (commit `d48750d`)
 **/onboarding-v2 targeted (18):** ✅ complete (commit `70df779`) — 18b deferred
 **/settings targeted (19):** ✅ complete (commit `809044c`) — 19b remaining components deferred
 **/pipeline (20):** ✅ complete (commit `1b5d0f7`)
