@@ -4522,3 +4522,143 @@ file now has at least one refinement pass.
   /settings mutations.
 
 **Commit:** `ac1a64b`
+
+---
+
+## Session 27 — 2026-04-24 — /finance 12b: NoteForm + RecordPaymentModal
+
+**Scope:** Two of the six deferred /finance sub-components
+(NoteForm and RecordPaymentModal). ~350 lines touched
+across the 1541-line file. These are the two money-creation
+surfaces — creating a new note binds a borrower to long-term
+debt, recording a payment commits money history. Both
+deserve the full 9-lens treatment.
+
+**Lens sweep + refinements shipped:**
+
+**NoteForm (`/finance` seller-finance note creation):**
+
+- **Currency-adornment rule (slice 5m applied):** Principal
+  + Down payment had `$` in the label text ("Principal ($)",
+  "Down Payment ($)"). Promoted to visual prefix inside the
+  input (relative wrapper + absolute-positioned `$` + `pl-7`
+  on the Input) per the slice-5m rule. Interest rate gets
+  a `%` suffix inside the input (`pr-7`).
+
+- **Mobile-keyboard checklist (slice 5m):** principal /
+  down-payment get `type="number"` + `inputMode="decimal"`
+  + `min="0"` + `step="any"`; interest rate same;
+  term-months gets `type="number"` + `inputMode="numeric"`
+  + `min="1"` (integer). All money inputs now also get
+  `text-right tabular-nums` for money readability.
+
+- **Required-asterisk rule (slice 6a applied):** 6 required
+  fields (Borrower, Property, Principal, Interest rate,
+  Term, Start date) gain the `*` indicator with
+  `aria-label="required"`. Down payment is optional and
+  stays unmarked.
+
+- **Prerequisite-select 3-state (slice 5m applied):**
+  Borrower + Property selects now display a specific empty-
+  state placeholder when the list is zero ("No buyers yet
+  — add a buyer lead first" / "No unsold properties yet")
+  so the user understands *why* the dropdown is empty
+  instead of seeing a generic "Select buyer" placeholder
+  + disabled "No buyers available" only after opening.
+
+- **Calculated-monthly-payment banner:** the derived
+  suggestedPayment reveal banner promoted to
+  `role="status" + aria-live="polite"` so SR users hear
+  the calculation update as they type principal / rate /
+  term. Value routed through `usd(suggestedPayment)` with
+  cents precision (was `$${suggestedPayment.toFixed(2)}`)
+  — consistent with the slice-10b money-precision rule.
+
+- **Sentence-case + period polish:** "Interest Rate" →
+  "Interest rate"; "Start Date" → "Start date"; "Down
+  Payment" → "Down payment"; "Calculated Monthly Payment"
+  → "Calculated monthly payment"; submit button
+  "Create Note" → "Create note"; loading "Creating Note..."
+  → "Creating note…".
+
+- **Mobile layout:** Borrower/Property row `grid-cols-2`
+  promoted to `grid-cols-1 sm:grid-cols-2` — at 320px the
+  two Selects were squeezing borrower names. Down payment
+  + Start date pair same fix. Submit button gets
+  `min-h-11` (44px touch).
+
+**RecordPaymentModal (hand-rolled overlay — money commit):**
+
+- **A11y (role=dialog + Esc handler — slice 5l rule):**
+  the modal was a bare `<div onClick={onClose}>` with no
+  dialog semantics. Promoted per the slice-5l hand-rolled-
+  dialog rule: `role="dialog"` + `aria-modal="true"` +
+  `aria-labelledby={titleId}` + `aria-describedby={descId}`
+  + `useEffect` Escape-key handler. Overlay gets `p-4`
+  so the card has a gutter on mobile.
+
+- **Engineer (form onSubmit):** the content was loose
+  Label + Input + Button. Wrapped in `<form onSubmit>` +
+  Button `type="submit"` so Enter commits the payment.
+  Previously mouse-only.
+
+- **Label htmlFor:** both Inputs (payment amount +
+  payment method Select) now have `<Label htmlFor>` +
+  matching `id` pairs. Payment amount gets the same $
+  prefix + right-aligned tabular-nums money treatment as
+  NoteForm's principal.
+
+- **Required-asterisk** on payment-amount label.
+
+- **Money-precision sweep:** principal / interest / total
+  rows routed through `usd()` with cents. Previously
+  `.toFixed(2)` with literal `$` prefix — functional but
+  bypassed the centralized helper's null/NaN fallback.
+
+- **Definition-list semantics (slice 10b):** principal /
+  interest / total rows promoted from `<span>/<span>` to
+  `<dl>` / `<dt>` / `<dd>`. SR users hear labeled pairs.
+
+- **Copy:** "Record Payment" → "Record payment" on title +
+  button; "ACH Transfer" → "ACH transfer"; "Credit Card"
+  → "Credit card"; "Recording..." → "Recording…".
+
+- **Engineer (submit-disabled when no amount):** submit
+  button now disables when `amount` is empty, not just
+  when pending. Prevents accidentally recording a $0
+  payment.
+
+- **Mobile touch:** both Cancel + submit buttons get
+  `min-h-11 sm:min-h-9`.
+
+- **Tabular-nums** on note ID in description + all money
+  rows.
+
+**9-lens sign-off:**
+
+| Lens              | Status                                                                             |
+| ----------------- | ---------------------------------------------------------------------------------- |
+| Designer          | PASS — $/% adornments inside inputs, right-aligned money, dl/dt/dd on payment breakdown |
+| Mobile designer   | PASS — grid-cols-1 sm:grid-cols-2 on paired rows, 44px touch, inputMode correct   |
+| Accessibility     | PASS — role=dialog + aria-modal + Esc, Label htmlFor on every field, required-asterisk aria-label |
+| Engineer          | PASS — form onSubmit + Enter submit on modal, centralized usd()                   |
+| Copywriter        | PASS — sentence-case, proper ellipsis, prerequisite-select empty-state copy       |
+| Trust             | PASS — money-precision via usd() on both NoteForm calculation + payment breakdown, submit guards empty amount |
+
+**Deferred (remaining /finance 12b):**
+- `AcceptPaymentModal` (1117-1251) — Stripe PaymentIntent
+  flow. Partially touched in slice 21 for payment-intent
+  error reassurance but the UI body needs the same form-
+  semantics + label treatment.
+- `NoteDetailDrawer` (436-1117) — the main detail surface.
+  Long, deferred.
+
+**Patterns reinforced:**
+- Currency-adornment rule (slice 5m) on 3 more money inputs.
+- Mobile-keyboard checklist on money/term inputs.
+- Prerequisite-select 3-state on 2 more Selects.
+- Hand-rolled-dialog semantics rule (slice 5l) on RecordPaymentModal.
+- Money-precision via `usd()` on 4 more render sites.
+- Definition-list semantic rule on payment breakdown.
+
+**Commit:** (pending)

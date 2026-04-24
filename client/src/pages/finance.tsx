@@ -3,7 +3,8 @@ import { useNotes, useCreateNote, useDeleteNote } from "@/hooks/use-notes";
 import { usePayments, useRecordPayment } from "@/hooks/use-payments";
 import { useLeads } from "@/hooks/use-leads";
 import { useProperties } from "@/hooks/use-properties";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { Label } from "@/components/ui/label";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertNoteSchema, type Note, type Lead, type Property } from "@shared/schema";
@@ -1275,70 +1276,116 @@ function RecordPaymentModal({ note, onClose }: { note: NoteWithDetails; onClose:
     });
   };
 
+  const titleId = "record-payment-title";
+  const descId = "record-payment-desc";
+
+  // Close on Escape — hand-rolled overlay has no Radix Dialog backing,
+  // so wire the key handler here per the slice-5l Dialog Esc key rule.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
   return (
-    <div className="fixed inset-0 z-60 bg-black/50 flex items-center justify-center" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-60 bg-black/50 flex items-center justify-center p-4"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+      aria-describedby={descId}
+    >
       <Card className="w-full max-w-md floating-window" onClick={e => e.stopPropagation()}>
         <CardHeader>
-          <CardTitle>Record Payment</CardTitle>
-          <CardDescription>Record a payment for Note #{note.id}</CardDescription>
+          <CardTitle id={titleId}>Record payment</CardTitle>
+          <CardDescription id={descId}>
+            Record a payment for Note #<span className="tabular-nums">{note.id}</span>.
+          </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Payment Amount ($)</label>
-            <Input
-              type="number"
-              value={amount}
-              onChange={e => setAmount(e.target.value)}
-              placeholder={String(Number(note.monthlyPayment || 0))}
-              data-testid="input-payment-amount"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Payment Method</label>
-            <Select value={method} onValueChange={setMethod}>
-              <SelectTrigger data-testid="select-payment-method">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ach">ACH Transfer</SelectItem>
-                <SelectItem value="card">Credit Card</SelectItem>
-                <SelectItem value="check">Check</SelectItem>
-                <SelectItem value="cash">Cash</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="bg-muted/50 rounded-lg p-4 space-y-2">
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Principal</span>
-              <span className="font-mono">${principalAmount.toFixed(2)}</span>
+        <CardContent>
+          <form
+            className="space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!amount || isPending) return;
+              handleSubmit();
+            }}
+          >
+            <div className="space-y-2">
+              <Label htmlFor="input-payment-amount">
+                Payment amount <span className="text-destructive" aria-label="required">*</span>
+              </Label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm pointer-events-none">$</span>
+                <Input
+                  id="input-payment-amount"
+                  type="number"
+                  min="0"
+                  step="any"
+                  inputMode="decimal"
+                  value={amount}
+                  onChange={e => setAmount(e.target.value)}
+                  placeholder={String(Number(note.monthlyPayment || 0))}
+                  className="pl-7 text-right tabular-nums"
+                  data-testid="input-payment-amount"
+                />
+              </div>
             </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Interest</span>
-              <span className="font-mono">${interestAmount.toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between font-medium pt-2 border-t">
-              <span>Total</span>
-              <span className="font-mono">${Number(amount || 0).toFixed(2)}</span>
-            </div>
-          </div>
 
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={onClose} className="flex-1" disabled={isPending}>
-              Cancel
-            </Button>
-            <Button onClick={handleSubmit} disabled={isPending} className="flex-1" data-testid="button-submit-payment">
-              {isPending ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Recording...
-                </>
-              ) : (
-                "Record Payment"
-              )}
-            </Button>
-          </div>
+            <div className="space-y-2">
+              <Label htmlFor="select-payment-method">Payment method</Label>
+              <Select value={method} onValueChange={setMethod}>
+                <SelectTrigger id="select-payment-method" data-testid="select-payment-method">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ach">ACH transfer</SelectItem>
+                  <SelectItem value="card">Credit card</SelectItem>
+                  <SelectItem value="check">Check</SelectItem>
+                  <SelectItem value="cash">Cash</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <dl className="bg-muted/50 rounded-lg p-4 space-y-2">
+              <div className="flex justify-between text-sm">
+                <dt className="text-muted-foreground">Principal</dt>
+                <dd className="font-mono tabular-nums">{usd(principalAmount)}</dd>
+              </div>
+              <div className="flex justify-between text-sm">
+                <dt className="text-muted-foreground">Interest</dt>
+                <dd className="font-mono tabular-nums">{usd(interestAmount)}</dd>
+              </div>
+              <div className="flex justify-between font-medium pt-2 border-t">
+                <dt>Total</dt>
+                <dd className="font-mono tabular-nums">{usd(Number(amount) || 0)}</dd>
+              </div>
+            </dl>
+
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={onClose} className="flex-1 min-h-11 sm:min-h-9" disabled={isPending}>
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={isPending || !amount}
+                className="flex-1 min-h-11 sm:min-h-9"
+                data-testid="button-submit-payment"
+              >
+                {isPending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
+                    Recording…
+                  </>
+                ) : (
+                  "Record payment"
+                )}
+              </Button>
+            </div>
+          </form>
         </CardContent>
       </Card>
     </div>
@@ -1394,17 +1441,19 @@ function NoteForm({ onSuccess }: { onSuccess: () => void }) {
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FormField
             control={form.control}
             name="borrowerId"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Borrower</FormLabel>
+                <FormLabel>
+                  Borrower <span className="text-destructive" aria-label="required">*</span>
+                </FormLabel>
                 <Select onValueChange={(val) => field.onChange(parseInt(val))}>
                   <FormControl>
                     <SelectTrigger data-testid="select-borrower">
-                      <SelectValue placeholder="Select buyer" />
+                      <SelectValue placeholder={buyers.length === 0 ? "No buyers yet — add a buyer lead first" : "Select buyer"} />
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
@@ -1429,11 +1478,13 @@ function NoteForm({ onSuccess }: { onSuccess: () => void }) {
             name="propertyId"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Property</FormLabel>
+                <FormLabel>
+                  Property <span className="text-destructive" aria-label="required">*</span>
+                </FormLabel>
                 <Select onValueChange={(val) => field.onChange(parseInt(val))}>
                   <FormControl>
                     <SelectTrigger data-testid="select-property">
-                      <SelectValue placeholder="Select property" />
+                      <SelectValue placeholder={availableProperties.length === 0 ? "No unsold properties yet" : "Select property"} />
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
@@ -1460,9 +1511,23 @@ function NoteForm({ onSuccess }: { onSuccess: () => void }) {
             name="originalPrincipal"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Principal ($)</FormLabel>
+                <FormLabel>
+                  Principal <span className="text-destructive" aria-label="required">*</span>
+                </FormLabel>
                 <FormControl>
-                  <Input {...field} type="number" placeholder="10000" data-testid="input-principal" />
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm pointer-events-none">$</span>
+                    <Input
+                      {...field}
+                      type="number"
+                      min="0"
+                      step="any"
+                      inputMode="decimal"
+                      placeholder="10000"
+                      className="pl-7 text-right tabular-nums"
+                      data-testid="input-principal"
+                    />
+                  </div>
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -1474,9 +1539,23 @@ function NoteForm({ onSuccess }: { onSuccess: () => void }) {
             name="interestRate"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Interest Rate (%)</FormLabel>
+                <FormLabel>
+                  Interest rate <span className="text-destructive" aria-label="required">*</span>
+                </FormLabel>
                 <FormControl>
-                  <Input {...field} type="number" placeholder="9" data-testid="input-interest-rate" />
+                  <div className="relative">
+                    <Input
+                      {...field}
+                      type="number"
+                      min="0"
+                      step="any"
+                      inputMode="decimal"
+                      placeholder="9"
+                      className="pr-7 text-right tabular-nums"
+                      data-testid="input-interest-rate"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm pointer-events-none">%</span>
+                  </div>
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -1488,9 +1567,20 @@ function NoteForm({ onSuccess }: { onSuccess: () => void }) {
             name="termMonths"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Term (months)</FormLabel>
+                <FormLabel>
+                  Term (months) <span className="text-destructive" aria-label="required">*</span>
+                </FormLabel>
                 <FormControl>
-                  <Input {...field} type="number" placeholder="60" data-testid="input-term" onChange={(e) => field.onChange(parseInt(e.target.value))} />
+                  <Input
+                    {...field}
+                    type="number"
+                    min="1"
+                    inputMode="numeric"
+                    placeholder="60"
+                    className="text-right tabular-nums"
+                    data-testid="input-term"
+                    onChange={(e) => field.onChange(parseInt(e.target.value))}
+                  />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -1499,23 +1589,42 @@ function NoteForm({ onSuccess }: { onSuccess: () => void }) {
         </div>
 
         {suggestedPayment > 0 && (
-          <div className="bg-muted/50 rounded-lg p-4">
+          <div
+            className="bg-muted/50 rounded-lg p-4"
+            role="status"
+            aria-live="polite"
+          >
             <div className="flex justify-between items-center">
-              <span className="text-sm text-muted-foreground">Calculated Monthly Payment</span>
-              <span className="text-lg font-bold font-mono text-emerald-600">${suggestedPayment.toFixed(2)}</span>
+              <span className="text-sm text-muted-foreground">Calculated monthly payment</span>
+              <span className="text-lg font-bold font-mono tabular-nums text-emerald-600">
+                {usd(suggestedPayment)}
+              </span>
             </div>
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FormField
             control={form.control}
             name="downPayment"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Down Payment ($)</FormLabel>
+                <FormLabel>Down payment</FormLabel>
                 <FormControl>
-                  <Input {...field} value={field.value ?? ""} type="number" placeholder="1000" data-testid="input-down-payment" />
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm pointer-events-none">$</span>
+                    <Input
+                      {...field}
+                      value={field.value ?? ""}
+                      type="number"
+                      min="0"
+                      step="any"
+                      inputMode="decimal"
+                      placeholder="1000"
+                      className="pl-7 text-right tabular-nums"
+                      data-testid="input-down-payment"
+                    />
+                  </div>
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -1527,12 +1636,15 @@ function NoteForm({ onSuccess }: { onSuccess: () => void }) {
             name="startDate"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Start Date</FormLabel>
+                <FormLabel>
+                  Start date <span className="text-destructive" aria-label="required">*</span>
+                </FormLabel>
                 <FormControl>
-                  <Input 
-                    type="date" 
-                    onChange={(e) => field.onChange(new Date(e.target.value))} 
+                  <Input
+                    type="date"
+                    onChange={(e) => field.onChange(new Date(e.target.value))}
                     defaultValue={new Date().toISOString().split('T')[0]}
+                    className="tabular-nums"
                     data-testid="input-start-date"
                   />
                 </FormControl>
@@ -1543,14 +1655,14 @@ function NoteForm({ onSuccess }: { onSuccess: () => void }) {
         </div>
 
         <div className="pt-2">
-          <Button type="submit" className="w-full" disabled={isPending} data-testid="button-submit-note">
+          <Button type="submit" className="w-full min-h-11" disabled={isPending} data-testid="button-submit-note">
             {isPending ? (
               <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Creating Note...
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
+                Creating note…
               </>
             ) : (
-              "Create Note"
+              "Create note"
             )}
           </Button>
         </div>
