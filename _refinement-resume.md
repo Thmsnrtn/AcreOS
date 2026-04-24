@@ -1,7 +1,29 @@
 # Elite-Team Refinement — Resume Point
 
-**Last session:** 2026-04-24 (session 24 — settings privacy 19b.iii)
-**Last completed refinement:** `PrivacyDataSettings` inside
+**Last session:** 2026-04-24 (session 25 — settings completion 19b.iv)
+**Last completed refinement:** `ApiKeyManager` +
+`ActivityLogPanel` + `GoalsSettings` goal-progress row.
+Closes out the bulk of /settings 19b work in one ~520-line
+commit. Security-critical revoke path gets state-change
+reassurance ("the key is still active" — critical since a
+silent revoke failure leaves a leaked key live). New-key
+banner promoted to role=alert + aria-live=assertive. Scope
+select teaches permissions in the label itself ("Read —
+view data only") — **new teach-via-option-label rule**.
+Create form properly formed with Label htmlFor + Enter-
+submit. Per-row Revoke aria-label names the specific key
+(mis-click protection in a list). ActivityLog table gets
+region landmark, loading state gets role=status. Goals
+progress row: conditional `usd()` on revenue_earned vs.
+count-based types, Progress aria-label describes goal + %
++ formatted values, en-dash on date range. 44px touch on
+all delete/cancel/copy actions. Only ReferralSettings
+remains in 19b — deferred as 19b.v.
+
+---
+
+**Prior session:** 2026-04-24 (session 24 — settings privacy 19b.iii)
+**Prior completed refinement:** `PrivacyDataSettings` inside
 `settings.tsx`. Third 19b sub-slice. State-change error
 reassurance on export + delete mutations ("no data was
 changed" / "your account is unchanged" — critical on an
@@ -359,7 +381,8 @@ to a dedicated 9b slice.
 **/settings security sub-slice 19b.i (22):** ✅ complete — 2FA + password change (commit `04b54f0`)
 **/settings billing sub-slice 19b.ii (23):** ✅ complete — StripeConnect + SeatManagement (commit `74e62ec`)
 **/settings privacy sub-slice 19b.iii (24):** ✅ complete — PrivacyDataSettings / GDPR (commit `a90fa77`)
-**/settings 19b remaining (GoalsSettings/ApiKeyManager/ActivityLogPanel/ReferralSettings):** ⬜ deferred — covered in next slices
+**/settings completion 19b.iv (25):** ✅ complete — ApiKeyManager + ActivityLog + Goals progress (commit `890f5bc`)
+**/settings 19b.v ReferralSettings:** ⬜ deferred — low-risk marketing surface, final wrap-up
 **window.confirm ban grep:** ✅ clean across the client
 **window.prompt ban:** ✅ clean after slice 22
 **Money-precision grep remaining (~63 files):** ⬜ deferred — apply per-surface as each page gets 9-lens pass
@@ -571,6 +594,21 @@ Session 23:
   grids. 20+ aria-hidden icons. Progress + Add-seats
   dynamic aria-labels. Sentence-case. 44px touch. Tabular-
   nums. (commit `74e62ec`)
+
+Session 25:
+- /settings 19b.iv — ApiKeyManager (trust-critical, ~300
+  lines of work) + ActivityLogPanel (~80 lines) + Goals
+  progress row (~40 lines). Security: revoke state-change
+  reassurance ("the key is still active" — silent revoke
+  failure would leave a leaked key active). New-key banner
+  role=alert + aria-live=assertive. Scope Select now
+  teaches permissions inline ("Read — view data only").
+  Create form onSubmit + Label htmlFor. Per-row revoke
+  aria-labels name the key (mis-click protection).
+  Revenue goals use usd(), count goals use plain
+  toLocaleString. Progress aria-label names goal+%+values.
+  Teach-via-option-label rule introduced. (commit
+  `890f5bc`)
 
 Session 24:
 - /settings 19b.iii — PrivacyDataSettings (GDPR surface).
@@ -832,6 +870,20 @@ Session 24:
   window.confirm ban to prompt. Grep candidate: remaining
   native `window.prompt` calls across the client (none as
   of slice 22).
+- **Teach-via-option-label rule (new 25):** when a
+  `<Select>` presents options whose consequences aren't
+  obvious from the option name (permissions, pricing
+  tiers, compliance modes, billing cadence implications,
+  etc.), include the consequence in the option label
+  itself. Example: scope select on API keys — "Read —
+  view data only" / "Write — create and edit" / "Admin —
+  full control" instead of bare "Read" / "Write" /
+  "Admin". Selection happens once; the label is the only
+  chance to disambiguate in-context. Applies anywhere
+  option names are domain-specific enough that a first-
+  time user can't predict the blast radius. Grep
+  candidate: Select options across the app with terse
+  permission/mode/tier labels.
 - **Placeholder disambiguation rule (new 24):** when a
   confirmation Input requires the user to type a specific
   token (`DELETE`, `CONFIRM`, the organization name, etc.),
@@ -851,12 +903,19 @@ Session 24:
 
 **Recommended next slices:**
 
-1. **`/settings` 19b.iv — ApiKeyManager** (~250 lines).
-   Security-adjacent (API keys grant broad access). Likely
-   candidate for the same state-change reassurance +
-   ConfirmDialog-gate pattern applied in 19b.i (2FA).
-   GoalsSettings + ActivityLogPanel + ReferralSettings
-   can be a tidy 19b.v/vi bundle after.
+1. **`/settings` 19b.v — ReferralSettings** (~120 lines).
+   Final wrap-up. Marketing surface, low risk. Tidy one-off.
+
+2. **Full `/finance` 9-lens pass (12b)** — slice 12 was
+   narrow (money-precision only). Remaining ~1500 lines.
+
+3. **Teach-via-option-label grep sweep (new 25 rule)** —
+   find other `<Select>` options across the app with
+   bare permission/mode/tier labels that could benefit
+   from the inline-consequence pattern. Candidates:
+   pricing/subscription tiers, notification frequencies,
+   access levels across team/seat management,
+   integration-provider modes.
 
 2. **Full `/finance` 9-lens pass (12b)** — slice 12 was
    narrow (money-precision only). Remaining ~1500 lines:
@@ -933,9 +992,9 @@ Session 24:
   `storage`, `autonomousDealMachine`, `countyAssessorIngest`,
   `supportAgent`, etc. — not blocking client refinement work.
 
-## Expected HEAD after session 24
+## Expected HEAD after session 25
 
-Session chain 8 → 24 cadence (all shipped atomic + docs):
+Session chain 8 → 25 cadence (all shipped atomic + docs):
 
 - `234dafa` slice 8  — /documents
 - `61f1469` slice 9  — /sign/:docId
@@ -955,13 +1014,15 @@ Session chain 8 → 24 cadence (all shipped atomic + docs):
 - `04b54f0` slice 22 — /settings security sub-slice (2FA + password, window.prompt ban)
 - `74e62ec` slice 23 — /settings billing sub-slice (StripeConnect + SeatManagement)
 - `a90fa77` slice 24 — /settings privacy sub-slice (GDPR export/delete)
+- `890f5bc` slice 25 — /settings completion (ApiKey + Activity + Goals)
 
-Cross-cutting rules added slices 19-24:
-- State-change error reassurance (slice 19, generalized 22 to security, applied to 12+ error paths through 24)
+Cross-cutting rules added slices 19-25:
+- State-change error reassurance (slice 19, generalized 22 to security, applied to 14+ error paths through 25)
 - window.prompt ban (slice 22, extending slice-5l window.confirm ban)
 - Placeholder disambiguation rule (slice 24)
+- Teach-via-option-label rule (slice 25)
 
-Brings total introduced in this chain to 15 rules.
+Brings total introduced in this chain to 16 rules.
 
 **Coverage to date** (surfaces with explicit 9-lens pass):
 legal/trust (documents, sign, portal, signature-capture) +
