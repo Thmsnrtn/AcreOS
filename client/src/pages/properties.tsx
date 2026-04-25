@@ -742,20 +742,21 @@ export default function PropertiesPage() {
             <div className="space-y-4 py-4">
               <div className="border-2 border-dashed rounded-lg p-8 text-center">
                 <Upload className="w-10 h-10 mx-auto mb-4 text-muted-foreground" aria-hidden="true" />
-                <label className="cursor-pointer">
+                <label className="cursor-pointer block min-h-11 focus-within:outline-none focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 rounded">
                   <span className="text-sm text-muted-foreground">
                     {isLoadingPreview ? "Processing…" : "Click to select or drag a CSV file here"}
                   </span>
                   <Input
                     type="file"
                     accept=".csv"
-                    className="hidden"
+                    className="sr-only"
                     onChange={handleFileSelect}
                     disabled={isLoadingPreview}
+                    aria-label="Select CSV file to import"
                     data-testid="input-import-property-file"
                   />
                 </label>
-                <p className="text-xs text-muted-foreground mt-2">Max file size: 5MB</p>
+                <p className="text-xs text-muted-foreground mt-2">Max file size: 5 MB.</p>
               </div>
               <div className="bg-muted/50 rounded-lg p-4">
                 <p className="text-sm font-medium mb-2">Expected columns:</p>
