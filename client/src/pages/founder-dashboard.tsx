@@ -666,7 +666,10 @@ function SophieActivityPreview() {
       )}
 
       {isLoading ? (
-        <div className="space-y-2 animate-pulse">{[0,1,2].map(i => <div key={i} className="h-7 bg-muted rounded" />)}</div>
+        <div className="space-y-2 animate-pulse" role="status" aria-busy="true" aria-label="Loading auto-resolutions">
+          {[0,1,2].map(i => <div key={i} className="h-7 bg-muted rounded" />)}
+          <span className="sr-only">Loading…</span>
+        </div>
       ) : recent.length === 0 ? (
         <p className="text-xs text-muted-foreground py-2">No autonomous resolutions in the last 24 hours.</p>
       ) : (
@@ -810,7 +813,10 @@ function JobHealthPanel() {
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <div className="space-y-2">{[...Array(6)].map((_, i) => <Skeleton key={i} className="h-7 w-full" />)}</div>
+          <div className="space-y-2" role="status" aria-busy="true" aria-label="Loading scheduled jobs">
+            {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-7 w-full" />)}
+            <span className="sr-only">Loading…</span>
+          </div>
         ) : (
           <div className="space-y-1.5 max-h-64 overflow-y-auto">
             {jobs.map((job: any) => (

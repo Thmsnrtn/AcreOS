@@ -103,8 +103,14 @@ function ConversationList({
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-40">
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+      <div
+        role="status"
+        aria-busy="true"
+        aria-label="Loading conversation"
+        className="flex items-center justify-center h-40"
+      >
+        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" aria-hidden="true" />
+        <span className="sr-only">Loading…</span>
       </div>
     );
   }

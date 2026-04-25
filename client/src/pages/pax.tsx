@@ -464,7 +464,14 @@ function AiChatGuard({ children }: { children: React.ReactNode }) {
   const openaiService = healthData?.services?.find(s => s.name === "openai");
   const aiUnavailable = openaiService?.status === "unconfigured";
 
-  if (isLoading) return <Skeleton className="h-64 w-full rounded-lg" />;
+  if (isLoading) {
+    return (
+      <div role="status" aria-busy="true" aria-label="Loading Pax availability">
+        <Skeleton className="h-64 w-full rounded-lg" />
+        <span className="sr-only">Loading…</span>
+      </div>
+    );
+  }
 
   if (aiUnavailable) {
     return (
