@@ -1,9 +1,12 @@
-import { useState } from 'react';
+import { useId, useState, type FormEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
+import { useToast } from '@/hooks/use-toast';
+import { useDocumentTitle } from '@/hooks/use-document-title';
 import {
   BarChart,
   Bar,
@@ -11,7 +14,6 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
   ResponsiveContainer,
   PieChart,
   Pie,
@@ -26,7 +28,6 @@ import {
   TrendingUp,
   Search,
   Activity,
-  Users,
   BarChart2,
 } from 'lucide-react';
 
@@ -55,11 +56,11 @@ function MetricCard({
       <CardContent className="pt-5">
         <div className="flex items-start justify-between">
           <div>
-            <p className="text-sm text-muted-foreground">{label}</p>
-            <p className="text-2xl font-bold mt-0.5">{value}</p>
+            <dt className="text-sm text-muted-foreground">{label}</dt>
+            <dd className="text-2xl font-bold mt-0.5 tabular-nums">{value}</dd>
             {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
           </div>
-          <div className="text-muted-foreground">{icon}</div>
+          <div className="text-muted-foreground" aria-hidden="true">{icon}</div>
         </div>
       </CardContent>
     </Card>
@@ -73,9 +74,12 @@ function formatSeconds(s: number) {
 }
 
 export default function VoiceAnalyticsPage() {
+  useDocumentTitle("Voice analytics");
+  const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const searchId = useId();
 
   const { data: analyticsData } = useQuery({
     queryKey: ['voice', 'analytics'],
@@ -98,7 +102,6 @@ export default function VoiceAnalyticsPage() {
   const analytics = analyticsData?.analytics;
   const calls: any[] = callsData?.calls ?? [];
 
-  // Build call volume by day (last 14 days)
   const volumeByDay = (() => {
     const map: Record<string, number> = {};
     const now = new Date();
@@ -116,7 +119,6 @@ export default function VoiceAnalyticsPage() {
     return Object.entries(map).map(([date, count]) => ({ date, count }));
   })();
 
-  // Sentiment trend (avg per day)
   const sentimentTrend = (() => {
     const map: Record<string, { total: number; count: number }> = {};
     const now = new Date();
@@ -141,7 +143,6 @@ export default function VoiceAnalyticsPage() {
     }));
   })();
 
-  // Call outcome distribution
   const outcomeDistribution = (() => {
     const map: Record<string, number> = {};
     for (const call of calls) {
@@ -151,7 +152,6 @@ export default function VoiceAnalyticsPage() {
     return Object.entries(map).map(([name, value]) => ({ name, value }));
   })();
 
-  // Conversion rate (interested / total calls that have outcomes)
   const taggedCalls = calls.filter(c => (c as any).outcome);
   const interestedCalls = calls.filter(c => (c as any).outcome === 'interested');
   const conversionRate =
@@ -159,7 +159,6 @@ export default function VoiceAnalyticsPage() {
       ? ((interestedCalls.length / taggedCalls.length) * 100).toFixed(1)
       : '0.0';
 
-  // Talk time analytics
   const completedCalls = calls.filter(c => c.duration > 0);
   const avgDuration =
     completedCalls.length > 0
@@ -167,7 +166,6 @@ export default function VoiceAnalyticsPage() {
       : 0;
   const longestCalls = [...completedCalls].sort((a, b) => b.duration - a.duration).slice(0, 5);
 
-  // Active calls count (status = active or initiated)
   const activeCalls = calls.filter(c => ['active', 'initiated'].includes(c.status));
 
   const handleSearch = async () => {
@@ -178,199 +176,228 @@ export default function VoiceAnalyticsPage() {
         `/api/voice/transcripts/search?q=${encodeURIComponent(searchQuery)}&limit=20`,
         { credentials: 'include' }
       );
+      if (!res.ok) throw new Error('Search request failed');
       const data = await res.json();
       setSearchResults(data.results ?? []);
-    } catch (err) {
-      console.error('Search error:', err);
+    } catch (err: any) {
+      toast({
+        title: "Couldn't search transcripts",
+        description: `${err.message ?? 'Network error'}. Your query is still on this device — try again.`,
+        variant: 'destructive',
+      });
     } finally {
       setIsSearching(false);
     }
   };
 
+  const handleSearchSubmit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    handleSearch();
+  };
+
   return (
     <div className="container mx-auto p-6 space-y-6">
-      {/* Header */}
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-2">
-            <BarChart2 className="w-8 h-8 text-primary" />
-            Voice Analytics
+            <BarChart2 className="w-8 h-8 text-primary" aria-hidden="true" />
+            Voice analytics
           </h1>
           <p className="text-muted-foreground mt-1">
             Call volume, sentiment trends, conversion rates, and transcript search.
           </p>
         </div>
         {activeCalls.length > 0 && (
-          <div className="flex items-center gap-2 px-4 py-2 bg-emerald-100 dark:bg-emerald-900/30 rounded-lg">
-            <span className="relative flex h-3 w-3">
+          <div
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-100 dark:bg-emerald-900/30 rounded-lg"
+            role="status"
+            aria-label={`${activeCalls.length} active call${activeCalls.length === 1 ? '' : 's'} right now`}
+          >
+            <span className="relative flex h-3 w-3" aria-hidden="true">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75" />
               <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500" />
             </span>
-            <span className="text-sm font-medium text-emerald-700 dark:text-emerald-300">
-              {activeCalls.length} Active Call{activeCalls.length !== 1 ? 's' : ''}
+            <span className="text-sm font-medium text-emerald-700 dark:text-emerald-300 tabular-nums">
+              {activeCalls.length} active call{activeCalls.length === 1 ? '' : 's'}
             </span>
           </div>
         )}
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <dl className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <MetricCard
-          label="Total Calls"
+          label="Total calls"
           value={analytics?.totalCalls ?? calls.length}
           sub={`${analytics?.inboundVsOutbound?.inbound ?? 0} in / ${analytics?.inboundVsOutbound?.outbound ?? 0} out`}
           icon={<Phone className="w-5 h-5" />}
         />
         <MetricCard
-          label="Avg Duration"
+          label="Average duration"
           value={formatSeconds(analytics?.averageDuration ?? avgDuration)}
           sub="Per completed call"
           icon={<Clock className="w-5 h-5" />}
         />
         <MetricCard
-          label="Call-to-Conversion"
+          label="Call-to-conversion"
           value={`${conversionRate}%`}
           sub={`${interestedCalls.length} of ${taggedCalls.length} tagged calls`}
           icon={<TrendingUp className="w-5 h-5" />}
         />
         <MetricCard
-          label="Active Right Now"
+          label="Active right now"
           value={activeCalls.length}
           sub="Live calls in progress"
           icon={<Activity className="w-5 h-5" />}
         />
-      </div>
+      </dl>
 
       {/* Charts Row 1 */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Call Volume by Day */}
         <Card>
           <CardHeader>
-            <CardTitle>Call Volume (Last 14 Days)</CardTitle>
+            <CardTitle>Call volume (last 14 days)</CardTitle>
             <CardDescription>Total calls per day</CardDescription>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={volumeByDay}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" tick={{ fontSize: 10 }} interval={2} />
-                <YAxis allowDecimals={false} />
-                <Tooltip />
-                <Bar dataKey="count" fill="#d97541" radius={[4, 4, 0, 0]} name="Calls" />
-              </BarChart>
-            </ResponsiveContainer>
+            <div
+              role="img"
+              aria-label={`Daily call volume over 14 days, ${volumeByDay.reduce((s, d) => s + d.count, 0)} total`}
+            >
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={volumeByDay}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" tick={{ fontSize: 10 }} interval={2} />
+                  <YAxis allowDecimals={false} />
+                  <Tooltip />
+                  <Bar dataKey="count" fill="#d97541" radius={[4, 4, 0, 0]} name="Calls" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </CardContent>
         </Card>
 
-        {/* Sentiment Trend */}
         <Card>
           <CardHeader>
-            <CardTitle>Sentiment Trend</CardTitle>
+            <CardTitle>Sentiment trend</CardTitle>
             <CardDescription>Average sentiment score over time (-1 to +1)</CardDescription>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={220}>
-              <LineChart data={sentimentTrend}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" tick={{ fontSize: 10 }} interval={2} />
-                <YAxis domain={[-1, 1]} />
-                <Tooltip formatter={(v: any) => [v.toFixed(2), 'Avg Sentiment']} />
-                <Line
-                  type="monotone"
-                  dataKey="sentiment"
-                  stroke="#10b981"
-                  strokeWidth={2}
-                  dot={false}
-                />
-              </LineChart>
-            </ResponsiveContainer>
+            <div
+              role="img"
+              aria-label={`Sentiment trend across 14 days; latest average ${sentimentTrend[sentimentTrend.length - 1]?.sentiment ?? 0}`}
+            >
+              <ResponsiveContainer width="100%" height={220}>
+                <LineChart data={sentimentTrend}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" tick={{ fontSize: 10 }} interval={2} />
+                  <YAxis domain={[-1, 1]} />
+                  <Tooltip formatter={(v: any) => [v.toFixed(2), 'Average sentiment']} />
+                  <Line
+                    type="monotone"
+                    dataKey="sentiment"
+                    stroke="#10b981"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
           </CardContent>
         </Card>
       </div>
 
       {/* Charts Row 2 */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Outcome Distribution Pie */}
         <Card>
           <CardHeader>
-            <CardTitle>Call Outcome Distribution</CardTitle>
-            <CardDescription>Interested / Not Interested / Callback / Voicemail</CardDescription>
+            <CardTitle>Call outcome distribution</CardTitle>
+            <CardDescription>Interested / not interested / callback / voicemail</CardDescription>
           </CardHeader>
           <CardContent>
             {outcomeDistribution.length > 0 ? (
-              <ResponsiveContainer width="100%" height={220}>
-                <PieChart>
-                  <Pie
-                    data={outcomeDistribution}
-                    dataKey="value"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={80}
-                    label={({ name, value }: any) => `${name}: ${value}`}
-                  >
-                    {outcomeDistribution.map((entry, i) => (
-                      <Cell
-                        key={i}
-                        fill={OUTCOME_COLORS[entry.name] || PIE_COLORS[i % PIE_COLORS.length]}
-                      />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
+              <div
+                role="img"
+                aria-label={`Call outcomes: ${outcomeDistribution.map(o => `${o.name} ${o.value}`).join(', ')}`}
+              >
+                <ResponsiveContainer width="100%" height={220}>
+                  <PieChart>
+                    <Pie
+                      data={outcomeDistribution}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={80}
+                      label={({ name, value }: any) => `${name}: ${value}`}
+                    >
+                      {outcomeDistribution.map((entry, i) => (
+                        <Cell
+                          key={i}
+                          fill={OUTCOME_COLORS[entry.name] || PIE_COLORS[i % PIE_COLORS.length]}
+                        />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
             ) : (
               <div className="flex flex-col items-center justify-center h-[220px] text-muted-foreground">
-                <PhoneCall className="w-10 h-10 mb-2 opacity-30" />
+                <PhoneCall className="w-10 h-10 mb-2 opacity-30" aria-hidden="true" />
                 <p className="text-sm">No outcome data yet. Tag calls with outcomes.</p>
               </div>
             )}
           </CardContent>
         </Card>
 
-        {/* Talk Time Analytics */}
         <Card>
           <CardHeader>
-            <CardTitle>Talk Time Analytics</CardTitle>
+            <CardTitle>Talk time analytics</CardTitle>
             <CardDescription>Longest calls in your history</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="mb-3">
               <p className="text-sm text-muted-foreground">Average call duration</p>
-              <p className="text-2xl font-bold">{formatSeconds(avgDuration)}</p>
+              <p className="text-2xl font-bold tabular-nums">{formatSeconds(avgDuration)}</p>
             </div>
-            <div className="space-y-2">
-              {longestCalls.length > 0 ? (
-                longestCalls.map((call, i) => (
-                  <div key={call.id} className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-2">
-                      <span className="text-muted-foreground w-4">{i + 1}.</span>
-                      <span className="truncate max-w-[180px]">{call.phoneNumber}</span>
+            {longestCalls.length > 0 ? (
+              <ol className="space-y-2 list-none p-0 m-0" aria-label="Top five longest calls">
+                {longestCalls.map((call, i) => (
+                  <li key={call.id} className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-muted-foreground w-4 tabular-nums">{i + 1}.</span>
+                      <a
+                        href={`tel:${call.phoneNumber}`}
+                        className="truncate max-w-[180px] hover:underline"
+                        aria-label={`Call ${call.phoneNumber}`}
+                      >
+                        {call.phoneNumber}
+                      </a>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Badge variant="outline">{call.direction}</Badge>
-                      <span className="font-mono text-xs">{formatSeconds(call.duration)}</span>
+                      <Badge variant="outline" aria-label={`Direction: ${call.direction}`}>{call.direction}</Badge>
+                      <span className="font-mono text-xs tabular-nums">{formatSeconds(call.duration)}</span>
                     </div>
-                  </div>
-                ))
-              ) : (
-                <p className="text-sm text-muted-foreground">No completed calls yet.</p>
-              )}
-            </div>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p className="text-sm text-muted-foreground">No completed calls yet.</p>
+            )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Sentiment breakdown from analytics */}
       {analytics?.sentimentBreakdown && (
         <Card>
           <CardHeader>
-            <CardTitle>Sentiment Breakdown</CardTitle>
+            <CardTitle>Sentiment breakdown</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex gap-6">
+            <ul className="flex gap-6 list-none p-0 m-0 flex-wrap" aria-label="Sentiment breakdown across all calls">
               {Object.entries(analytics.sentimentBreakdown).map(([label, count]: [string, any]) => (
-                <div key={label} className="flex items-center gap-2">
+                <li key={label} className="flex items-center gap-2">
                   <div
                     className={`w-3 h-3 rounded-full ${
                       label === 'positive'
@@ -379,12 +406,13 @@ export default function VoiceAnalyticsPage() {
                         ? 'bg-red-500'
                         : 'bg-gray-400'
                     }`}
+                    aria-hidden="true"
                   />
                   <span className="capitalize text-sm">{label}</span>
-                  <span className="text-sm font-bold">{count}</span>
-                </div>
+                  <span className="text-sm font-bold tabular-nums" aria-label={`${count} ${label} calls`}>{count}</span>
+                </li>
               ))}
-            </div>
+            </ul>
           </CardContent>
         </Card>
       )}
@@ -393,30 +421,37 @@ export default function VoiceAnalyticsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Search className="w-4 h-4" />
-            Transcript Search
+            <Search className="w-4 h-4" aria-hidden="true" />
+            Transcript search
           </CardTitle>
           <CardDescription>Search across all call transcripts for keywords or phrases</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex gap-3 mb-4">
-            <Input
-              placeholder="Search transcripts… e.g. 'price', 'interested', 'callback'"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleSearch()}
-              className="flex-1"
-            />
-            <Button onClick={handleSearch} disabled={isSearching}>
-              <Search className="w-4 h-4 mr-2" />
+          <form onSubmit={handleSearchSubmit} className="flex gap-3 mb-4">
+            <div className="flex-1">
+              <Label htmlFor={searchId} className="sr-only">Search transcripts</Label>
+              <Input
+                id={searchId}
+                type="search"
+                placeholder="Search transcripts… e.g. 'price', 'interested', 'callback'"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                inputMode="search"
+              />
+            </div>
+            <Button type="submit" disabled={isSearching || !searchQuery.trim()}>
+              <Search className="w-4 h-4 mr-2" aria-hidden="true" />
               {isSearching ? 'Searching…' : 'Search'}
             </Button>
-          </div>
+          </form>
 
           {searchResults.length > 0 ? (
-            <div className="space-y-3">
+            <ul className="space-y-3 list-none p-0 m-0" aria-label={`${searchResults.length} transcript matches for "${searchQuery}"`}>
               {searchResults.map((result, i) => (
-                <div key={i} className="p-3 border rounded-lg bg-muted/30">
+                <li key={i} className="p-3 border rounded-lg bg-muted/30">
                   <div className="flex items-center gap-2 mb-1">
                     <Badge variant="outline">Call #{result.callId}</Badge>
                     <span className="text-xs text-muted-foreground">
@@ -438,11 +473,11 @@ export default function VoiceAnalyticsPage() {
                       )}
                     …
                   </p>
-                </div>
+                </li>
               ))}
-            </div>
+            </ul>
           ) : searchQuery && !isSearching ? (
-            <p className="text-sm text-muted-foreground">No results found for "{searchQuery}".</p>
+            <p className="text-sm text-muted-foreground" role="status">No results found for "{searchQuery}".</p>
           ) : null}
         </CardContent>
       </Card>
