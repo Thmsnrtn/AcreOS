@@ -1098,7 +1098,7 @@ export default function OnboardingV2() {
               {
                 path: "beginner" as InvestorPath,
                 icon: Home,
-                title: "Just Getting Started",
+                title: "Just getting started",
                 subtitle: "I'm new to land investing and want to learn the ropes",
                 benefits: ["Guided first deal walkthrough", "Expert strategy explanations", "Sample deal pre-loaded", "Daily Atlas coaching tips"],
                 color: "emerald",
@@ -1106,7 +1106,7 @@ export default function OnboardingV2() {
               {
                 path: "active" as InvestorPath,
                 icon: Building,
-                title: "Active Real Estate Professional",
+                title: "Active land investor",
                 subtitle: "I'm already doing deals and need better tools",
                 benefits: ["Import existing portfolio", "Configure Deal Hunter for your markets", "Activate Autonomous Deal Machine", "Advanced analytics"],
                 color: "blue",
@@ -1114,7 +1114,7 @@ export default function OnboardingV2() {
               {
                 path: "enterprise" as InvestorPath,
                 icon: Briefcase,
-                title: "Team or Enterprise",
+                title: "Team or enterprise",
                 subtitle: "I run a land investing operation with a team",
                 benefits: ["Multi-user deal pipeline", "VA and team management", "White-label options", "API access for integrations"],
                 color: "purple",
@@ -1220,7 +1220,7 @@ export default function OnboardingV2() {
                 onClick={() => advance()}
                 className="w-full bg-primary hover:bg-primary/90 py-3"
               >
-                Let's Get Started <ArrowRight className="w-4 h-4 ml-2" />
+                Let's get started <ArrowRight className="w-4 h-4 ml-2" aria-hidden="true" />
               </Button>
             </div>
           )}
@@ -1228,10 +1228,14 @@ export default function OnboardingV2() {
           {currentStep.id === "target_county" && (
             <div className="space-y-4">
               <div>
-                <Label className="text-gray-300 mb-2 block">Target State</Label>
+                <Label htmlFor="onb-target-state" className="text-gray-300 mb-2 block">Target state</Label>
                 <Input
+                  id="onb-target-state"
                   placeholder="e.g., TX"
                   maxLength={2}
+                  autoCapitalize="characters"
+                  autoCorrect="off"
+                  spellCheck={false}
                   value={formData.targetState || ""}
                   onChange={(e) =>
                     setFormData((p) => ({ ...p, targetState: e.target.value.toUpperCase() }))
@@ -1240,9 +1244,11 @@ export default function OnboardingV2() {
                 />
               </div>
               <div>
-                <Label className="text-gray-300 mb-2 block">Target County</Label>
+                <Label htmlFor="onb-target-county" className="text-gray-300 mb-2 block">Target county</Label>
                 <Input
+                  id="onb-target-county"
                   placeholder="e.g., Hudspeth"
+                  autoCapitalize="words"
                   value={formData.targetCounty || ""}
                   onChange={(e) =>
                     setFormData((p) => ({ ...p, targetCounty: e.target.value }))
@@ -1263,7 +1269,7 @@ export default function OnboardingV2() {
                 disabled={!formData.targetCounty || !formData.targetState}
                 className="w-full bg-primary hover:bg-primary/90 py-3"
               >
-                Scan This County <Zap className="w-4 h-4 ml-2" />
+                Scan this county <Zap className="w-4 h-4 ml-2" aria-hidden="true" />
               </Button>
             </div>
           )}
@@ -1378,7 +1384,7 @@ export default function OnboardingV2() {
                 onClick={() => advance()}
                 className="w-full bg-primary hover:bg-primary/90 py-3"
               >
-                Activate Atlas <Sparkles className="w-4 h-4 ml-2" />
+                Activate Atlas <Sparkles className="w-4 h-4 ml-2" aria-hidden="true" />
               </Button>
             </div>
           )}
@@ -1469,8 +1475,8 @@ export default function OnboardingV2() {
                 disabled={completeMutation.isPending}
                 className="w-full bg-primary hover:bg-primary/90 py-4 text-lg font-semibold"
               >
-                {completeMutation.isPending ? "Setting up..." : "Go to My Dashboard"}
-                <ArrowRight className="w-5 h-5 ml-2" />
+                {completeMutation.isPending ? "Setting up…" : "Go to my dashboard"}
+                <ArrowRight className="w-5 h-5 ml-2" aria-hidden="true" />
               </Button>
 
               <p className="text-xs text-gray-600">
