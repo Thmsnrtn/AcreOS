@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useId } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -9,8 +9,10 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
+import { useDocumentTitle } from "@/hooks/use-document-title";
+import { usd } from "@/lib/format";
 import {
-  TrendingUp, TrendingDown, DollarSign, Target, BarChart3, RefreshCw, CheckCircle, XCircle, Loader2
+  TrendingUp, TrendingDown, DollarSign, Target, BarChart3, CheckCircle, Loader2
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 
@@ -48,7 +50,7 @@ interface AccuracyMetrics {
 
 function formatPrice(val: string | number) {
   const n = typeof val === "string" ? parseFloat(val) : val;
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n);
+  return usd(n);
 }
 
 function confidenceColor(conf: string) {
@@ -58,9 +60,18 @@ function confidenceColor(conf: string) {
   return "text-red-600";
 }
 
+function confidenceLabel(conf: string) {
+  const c = parseFloat(conf);
+  if (c >= 0.8) return "high";
+  if (c >= 0.6) return "medium";
+  return "low";
+}
+
 function RecommendationCard({ rec }: { rec: PriceRecommendation }) {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const actualPriceId = useId();
+  const acceptedSwitchId = useId();
   const [actualPrice, setActualPrice] = useState("");
   const [accepted, setAccepted] = useState(true);
   const [showOutcome, setShowOutcome] = useState(false);
@@ -76,38 +87,50 @@ function RecommendationCard({ rec }: { rec: PriceRecommendation }) {
       setShowOutcome(false);
       qc.invalidateQueries({ queryKey: ["/api/price-optimizer/accuracy/stats"] });
     },
-    onError: () => toast({ title: "Failed to record outcome", variant: "destructive" }),
+    onError: () =>
+      toast({
+        title: "Couldn't record outcome",
+        description: "The recommendation history is unchanged. Try again, or open the property to update manually.",
+        variant: "destructive",
+      }),
   });
 
   const typeLabel: Record<string, string> = {
-    acquisition_offer: "Acquisition Offer",
-    disposition_list: "Disposition Price",
-    counter_offer: "Counter Offer",
+    acquisition_offer: "Acquisition offer",
+    disposition_list: "Disposition price",
+    counter_offer: "Counter offer",
   };
 
   const typeIcon: Record<string, React.ReactNode> = {
-    acquisition_offer: <TrendingDown className="w-4 h-4 text-blue-500" />,
-    disposition_list: <TrendingUp className="w-4 h-4 text-green-500" />,
-    counter_offer: <Target className="w-4 h-4 text-orange-500" />,
+    acquisition_offer: <TrendingDown className="w-4 h-4 text-blue-500" aria-hidden="true" />,
+    disposition_list: <TrendingUp className="w-4 h-4 text-green-500" aria-hidden="true" />,
+    counter_offer: <Target className="w-4 h-4 text-orange-500" aria-hidden="true" />,
   };
+
+  const confPct = Math.round(parseFloat(rec.confidence) * 100);
+  const confLabel = confidenceLabel(rec.confidence);
 
   return (
     <Card>
       <CardHeader className="pb-2">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-2">
-            {typeIcon[rec.recommendationType] || <DollarSign className="w-4 h-4" />}
+            {typeIcon[rec.recommendationType] || <DollarSign className="w-4 h-4" aria-hidden="true" />}
             <CardTitle className="text-sm">{typeLabel[rec.recommendationType] || rec.recommendationType}</CardTitle>
           </div>
-          <Badge variant="outline" className={`text-xs ${confidenceColor(rec.confidence)}`}>
-            {Math.round(parseFloat(rec.confidence) * 100)}% confident
+          <Badge
+            variant="outline"
+            className={`text-xs tabular-nums ${confidenceColor(rec.confidence)}`}
+            aria-label={`Confidence ${confPct}%, ${confLabel}`}
+          >
+            {confPct}% confident
           </Badge>
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
         <div>
-          <p className="text-2xl font-bold">{formatPrice(rec.recommendedPrice)}</p>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-2xl font-bold tabular-nums">{formatPrice(rec.recommendedPrice)}</p>
+          <p className="text-xs text-muted-foreground tabular-nums">
             Range: {formatPrice(rec.priceRangeMin)} – {formatPrice(rec.priceRangeMax)}
           </p>
         </div>
@@ -118,7 +141,10 @@ function RecommendationCard({ rec }: { rec: PriceRecommendation }) {
 
         {rec.comparablesSummary && rec.comparablesSummary.count > 0 && (
           <div className="text-xs text-muted-foreground space-y-0.5">
-            <p>{rec.comparablesSummary.count} comparables · Median {formatPrice(rec.comparablesSummary.medianPricePerAcre)}/acre</p>
+            <p>
+              <span className="tabular-nums">{rec.comparablesSummary.count}</span> comparables · Median{" "}
+              <span className="tabular-nums">{formatPrice(rec.comparablesSummary.medianPricePerAcre)}</span>/acre
+            </p>
             {rec.comparablesSummary.recentTrend && (
               <p>Market trend: <span className="font-medium capitalize">{rec.comparablesSummary.recentTrend}</span></p>
             )}
@@ -126,64 +152,80 @@ function RecommendationCard({ rec }: { rec: PriceRecommendation }) {
         )}
 
         {rec.strategy && (
-          <div className="flex flex-wrap gap-1">
+          <ul className="flex flex-wrap gap-1" aria-label="Strategy badges">
             {rec.strategy.competitionLevel && (
-              <Badge variant="secondary" className="text-xs capitalize">{rec.strategy.competitionLevel} competition</Badge>
+              <li><Badge variant="secondary" className="text-xs capitalize">{rec.strategy.competitionLevel} competition</Badge></li>
             )}
             {rec.strategy.marketTiming && (
-              <Badge variant="secondary" className="text-xs capitalize">{rec.strategy.marketTiming.replace(/_/g, " ")}</Badge>
+              <li><Badge variant="secondary" className="text-xs capitalize">{rec.strategy.marketTiming.replace(/_/g, " ")}</Badge></li>
             )}
-          </div>
+          </ul>
         )}
 
         {showOutcome ? (
-          <div className="space-y-2 pt-2 border-t">
-            <Label className="text-xs">Actual Price</Label>
+          <form
+            onSubmit={(e) => { e.preventDefault(); if (actualPrice) recordOutcome.mutate(); }}
+            className="space-y-2 pt-2 border-t"
+          >
+            <Label htmlFor={actualPriceId} className="text-xs">Actual price</Label>
             <Input
+              id={actualPriceId}
               type="number"
               placeholder="Enter actual price"
               value={actualPrice}
               onChange={e => setActualPrice(e.target.value)}
-              className="h-8 text-sm"
+              className="h-8 text-sm tabular-nums"
+              inputMode="decimal"
+              step="0.01"
+              min={0}
+              required
+              autoFocus
             />
             <div className="flex items-center gap-2">
-              <Switch checked={accepted} onCheckedChange={setAccepted} />
-              <Label className="text-xs">Price accepted</Label>
+              <Switch id={acceptedSwitchId} checked={accepted} onCheckedChange={setAccepted} />
+              <Label htmlFor={acceptedSwitchId} className="text-xs cursor-pointer">Price accepted</Label>
             </div>
             <div className="flex gap-2">
               <Button
+                type="submit"
                 size="sm"
                 className="h-7 text-xs"
-                onClick={() => recordOutcome.mutate()}
                 disabled={!actualPrice || recordOutcome.isPending}
               >
-                {recordOutcome.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Save"}
+                {recordOutcome.isPending ? <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" /> : "Save"}
               </Button>
-              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setShowOutcome(false)}>
+              <Button type="button" size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setShowOutcome(false)}>
                 Cancel
               </Button>
             </div>
-          </div>
+          </form>
         ) : (
           <Button
             size="sm"
             variant="outline"
             className="h-7 text-xs w-full mt-1"
             onClick={() => setShowOutcome(true)}
+            aria-label={`Record outcome for ${typeLabel[rec.recommendationType] || rec.recommendationType}`}
           >
-            Record Outcome
+            Record outcome
           </Button>
         )}
 
-        <p className="text-xs text-muted-foreground">{new Date(rec.createdAt).toLocaleDateString()}</p>
+        <p className="text-xs text-muted-foreground tabular-nums">{new Date(rec.createdAt).toLocaleDateString()}</p>
       </CardContent>
     </Card>
   );
 }
 
 export default function PriceOptimizerPage() {
+  useDocumentTitle("Price optimizer");
   const { toast } = useToast();
   const qc = useQueryClient();
+  const propertyIdInput = useId();
+  const targetMarginId = useId();
+  const quickSaleId = useId();
+  const currentOfferId = useId();
+  const sellerAskId = useId();
   const [propertyId, setPropertyId] = useState("");
   const [activeTab, setActiveTab] = useState("recommend");
   const [targetMargin, setTargetMargin] = useState("30");
@@ -205,6 +247,8 @@ export default function PriceOptimizerPage() {
     queryFn: () => fetch("/api/price-optimizer/accuracy/stats").then(r => r.json()),
   });
 
+  const reassurance = "Your inputs are unchanged — try again. The property's existing recommendations stay intact.";
+
   const acquisitionMutation = useMutation({
     mutationFn: () =>
       apiRequest("POST", `/api/price-optimizer/${propertyId}/acquisition`, {
@@ -214,7 +258,12 @@ export default function PriceOptimizerPage() {
       toast({ title: "Acquisition price recommendation generated" });
       qc.invalidateQueries({ queryKey: ["/api/price-optimizer", propertyId] });
     },
-    onError: () => toast({ title: "Failed to generate recommendation", variant: "destructive" }),
+    onError: () =>
+      toast({
+        title: "Couldn't generate acquisition price",
+        description: reassurance,
+        variant: "destructive",
+      }),
   });
 
   const dispositionMutation = useMutation({
@@ -224,7 +273,12 @@ export default function PriceOptimizerPage() {
       toast({ title: "Disposition price recommendation generated" });
       qc.invalidateQueries({ queryKey: ["/api/price-optimizer", propertyId] });
     },
-    onError: () => toast({ title: "Failed to generate recommendation", variant: "destructive" }),
+    onError: () =>
+      toast({
+        title: "Couldn't generate list price",
+        description: reassurance,
+        variant: "destructive",
+      }),
   });
 
   const counterMutation = useMutation({
@@ -237,7 +291,12 @@ export default function PriceOptimizerPage() {
       toast({ title: "Counter-offer recommendation generated" });
       qc.invalidateQueries({ queryKey: ["/api/price-optimizer", propertyId] });
     },
-    onError: () => toast({ title: "Failed to generate recommendation", variant: "destructive" }),
+    onError: () =>
+      toast({
+        title: "Couldn't generate counter-offer",
+        description: reassurance,
+        variant: "destructive",
+      }),
   });
 
   const metrics = accuracyData?.metrics;
@@ -246,7 +305,7 @@ export default function PriceOptimizerPage() {
     <PageShell>
       <div>
         <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-price-optimizer-title">
-          Price Optimizer
+          Price optimizer
         </h1>
         <p className="text-muted-foreground text-sm md:text-base">
           AI-powered pricing for acquisitions, dispositions, and counter-offers.
@@ -254,42 +313,44 @@ export default function PriceOptimizerPage() {
       </div>
 
       {metrics && metrics.totalRecommendations > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <dl className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
-            { label: "Total Recommendations", value: metrics.totalRecommendations, icon: BarChart3 },
-            { label: "Avg Accuracy", value: `${Math.round(metrics.averageAccuracy * 100)}%`, icon: Target },
-            { label: "Acceptance Rate", value: `${Math.round(metrics.acceptanceRate * 100)}%`, icon: CheckCircle },
-            { label: "Avg Price Deviation", value: `${Math.round(metrics.avgPriceDeviation * 100)}%`, icon: TrendingUp },
+            { label: "Total recommendations", value: metrics.totalRecommendations.toString(), icon: BarChart3 },
+            { label: "Avg accuracy", value: `${Math.round(metrics.averageAccuracy * 100)}%`, icon: Target },
+            { label: "Acceptance rate", value: `${Math.round(metrics.acceptanceRate * 100)}%`, icon: CheckCircle },
+            { label: "Avg price deviation", value: `${Math.round(metrics.avgPriceDeviation * 100)}%`, icon: TrendingUp },
           ].map(({ label, value, icon: Icon }) => (
             <Card key={label}>
               <CardContent className="p-4">
-                <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
-                  <Icon className="w-3 h-3" />
+                <dt className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
+                  <Icon className="w-3 h-3" aria-hidden="true" />
                   {label}
-                </div>
-                <p className="text-xl font-bold">{value}</p>
+                </dt>
+                <dd className="text-xl font-bold tabular-nums">{value}</dd>
               </CardContent>
             </Card>
           ))}
-        </div>
+        </dl>
       )}
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Get Price Recommendation</CardTitle>
+          <CardTitle className="text-base">Get price recommendation</CardTitle>
           <CardDescription>Enter a property ID to generate an AI-powered price recommendation.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex gap-2">
             <div className="flex-1">
-              <Label htmlFor="propertyId" className="text-xs">Property ID</Label>
+              <Label htmlFor={propertyIdInput} className="text-xs">Property ID</Label>
               <Input
-                id="propertyId"
+                id={propertyIdInput}
                 type="number"
                 placeholder="e.g. 42"
                 value={propertyId}
                 onChange={e => setPropertyId(e.target.value)}
-                className="mt-1"
+                className="mt-1 tabular-nums"
+                inputMode="numeric"
+                min={1}
               />
             </div>
           </div>
@@ -298,83 +359,111 @@ export default function PriceOptimizerPage() {
             <TabsList>
               <TabsTrigger value="recommend" className="text-xs">Acquisition</TabsTrigger>
               <TabsTrigger value="disposition" className="text-xs">Disposition</TabsTrigger>
-              <TabsTrigger value="counter" className="text-xs">Counter Offer</TabsTrigger>
+              <TabsTrigger value="counter" className="text-xs">Counter offer</TabsTrigger>
             </TabsList>
 
             <TabsContent value="recommend" className="space-y-3 pt-3">
-              <div>
-                <Label className="text-xs">Target Margin (%)</Label>
-                <Input
-                  type="number"
-                  min="5"
-                  max="70"
-                  value={targetMargin}
-                  onChange={e => setTargetMargin(e.target.value)}
-                  className="mt-1 w-32"
-                />
-              </div>
-              <Button
-                disabled={!propertyId || acquisitionMutation.isPending}
-                onClick={() => acquisitionMutation.mutate()}
+              <form
+                onSubmit={(e) => { e.preventDefault(); if (propertyId) acquisitionMutation.mutate(); }}
+                className="space-y-3"
               >
-                {acquisitionMutation.isPending ? (
-                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Analyzing...</>
-                ) : (
-                  "Get Acquisition Price"
-                )}
-              </Button>
+                <div>
+                  <Label htmlFor={targetMarginId} className="text-xs">Target margin (%)</Label>
+                  <Input
+                    id={targetMarginId}
+                    type="number"
+                    min="5"
+                    max="70"
+                    value={targetMargin}
+                    onChange={e => setTargetMargin(e.target.value)}
+                    className="mt-1 w-32 tabular-nums"
+                    inputMode="numeric"
+                  />
+                </div>
+                <Button
+                  type="submit"
+                  disabled={!propertyId || acquisitionMutation.isPending}
+                  aria-label={propertyId ? `Get acquisition price for property ${propertyId}` : "Get acquisition price"}
+                >
+                  {acquisitionMutation.isPending ? (
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />Analyzing…</>
+                  ) : (
+                    "Get acquisition price"
+                  )}
+                </Button>
+              </form>
             </TabsContent>
 
             <TabsContent value="disposition" className="space-y-3 pt-3">
-              <div className="flex items-center gap-2">
-                <Switch checked={quickSale} onCheckedChange={setQuickSale} />
-                <Label className="text-sm">Quick sale (15% discount for faster close)</Label>
-              </div>
-              <Button
-                disabled={!propertyId || dispositionMutation.isPending}
-                onClick={() => dispositionMutation.mutate()}
+              <form
+                onSubmit={(e) => { e.preventDefault(); if (propertyId) dispositionMutation.mutate(); }}
+                className="space-y-3"
               >
-                {dispositionMutation.isPending ? (
-                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Analyzing...</>
-                ) : (
-                  "Get List Price"
-                )}
-              </Button>
+                <div className="flex items-center gap-2">
+                  <Switch id={quickSaleId} checked={quickSale} onCheckedChange={setQuickSale} />
+                  <Label htmlFor={quickSaleId} className="text-sm cursor-pointer">Quick sale (15% discount for faster close)</Label>
+                </div>
+                <Button
+                  type="submit"
+                  disabled={!propertyId || dispositionMutation.isPending}
+                  aria-label={propertyId ? `Get list price for property ${propertyId}` : "Get list price"}
+                >
+                  {dispositionMutation.isPending ? (
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />Analyzing…</>
+                  ) : (
+                    "Get list price"
+                  )}
+                </Button>
+              </form>
             </TabsContent>
 
             <TabsContent value="counter" className="space-y-3 pt-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs">Your Current Offer ($)</Label>
-                  <Input
-                    type="number"
-                    placeholder="e.g. 45000"
-                    value={currentOffer}
-                    onChange={e => setCurrentOffer(e.target.value)}
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs">Seller's Ask ($)</Label>
-                  <Input
-                    type="number"
-                    placeholder="e.g. 70000"
-                    value={sellerAsk}
-                    onChange={e => setSellerAsk(e.target.value)}
-                    className="mt-1"
-                  />
-                </div>
-              </div>
-              <Button
-                disabled={!propertyId || !currentOffer || !sellerAsk || counterMutation.isPending}
-                onClick={() => counterMutation.mutate()}
+              <form
+                onSubmit={(e) => { e.preventDefault(); if (propertyId && currentOffer && sellerAsk) counterMutation.mutate(); }}
+                className="space-y-3"
               >
-                {counterMutation.isPending ? (
-                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Analyzing...</>
-                ) : (
-                  "Get Counter Offer"
-                )}
-              </Button>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label htmlFor={currentOfferId} className="text-xs">Your current offer ($)</Label>
+                    <Input
+                      id={currentOfferId}
+                      type="number"
+                      placeholder="e.g. 45000"
+                      value={currentOffer}
+                      onChange={e => setCurrentOffer(e.target.value)}
+                      className="mt-1 tabular-nums"
+                      inputMode="decimal"
+                      step="0.01"
+                      min={0}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor={sellerAskId} className="text-xs">Seller's ask ($)</Label>
+                    <Input
+                      id={sellerAskId}
+                      type="number"
+                      placeholder="e.g. 70000"
+                      value={sellerAsk}
+                      onChange={e => setSellerAsk(e.target.value)}
+                      className="mt-1 tabular-nums"
+                      inputMode="decimal"
+                      step="0.01"
+                      min={0}
+                    />
+                  </div>
+                </div>
+                <Button
+                  type="submit"
+                  disabled={!propertyId || !currentOffer || !sellerAsk || counterMutation.isPending}
+                  aria-label={propertyId ? `Get counter-offer for property ${propertyId}` : "Get counter-offer"}
+                >
+                  {counterMutation.isPending ? (
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />Analyzing…</>
+                  ) : (
+                    "Get counter offer"
+                  )}
+                </Button>
+              </form>
             </TabsContent>
           </Tabs>
         </CardContent>
@@ -382,19 +471,19 @@ export default function PriceOptimizerPage() {
 
       {propertyId && (
         <div>
-          <h2 className="text-lg font-semibold mb-3">Recommendations for Property #{propertyId}</h2>
+          <h2 className="text-lg font-semibold mb-3">Recommendations for Property #<span className="tabular-nums">{propertyId}</span></h2>
           {recsLoading ? (
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Loader2 className="w-4 h-4 animate-spin" /> Loading...
+            <div className="flex items-center gap-2 text-muted-foreground" role="status" aria-live="polite">
+              <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> Loading…
             </div>
           ) : recommendations?.recommendations.length === 0 ? (
             <p className="text-muted-foreground text-sm">No recommendations yet. Generate one above.</p>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" aria-label={`Price recommendations for property ${propertyId}`}>
               {recommendations?.recommendations.map(rec => (
-                <RecommendationCard key={rec.id} rec={rec} />
+                <li key={rec.id}><RecommendationCard rec={rec} /></li>
               ))}
-            </div>
+            </ul>
           )}
         </div>
       )}
