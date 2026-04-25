@@ -1,6 +1,9 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { z } from 'zod';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useDocumentTitle } from '@/hooks/use-document-title';
+import { ConfirmDialog } from '@/components/confirm-dialog';
+import { usd } from '@/lib/format';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -39,10 +42,12 @@ function daysOnMarket(createdAt: string) {
   return Math.floor(diff / (1000 * 60 * 60 * 24));
 }
 
+// P1 money-precision: marketplace listing prices are display-tier aggregates; the
+// canonical usd() preserves precision at boundary while we hide cents on display.
 function fmt(n: number | string | null | undefined) {
   const v = Number(n);
   if (!v || isNaN(v)) return '—';
-  return `$${v.toLocaleString()}`;
+  return usd(v, { noCents: true });
 }
 
 function listingTypeBadgeVariant(type: string): 'default' | 'secondary' | 'outline' {
@@ -463,8 +468,18 @@ function SavedSearchPanel({ filters }: { filters: Record<string, string> }) {
 }
 
 export default function MarketplacePage() {
+  useDocumentTitle('Marketplace');
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const minPriceId = useId();
+  const maxPriceId = useId();
+  const stateId = useId();
+  const typeId = useId();
+  const sortById = useId();
+  const minAcresId = useId();
+  const maxAcresId = useId();
+  const zoningId = useId();
+  const propTypeId = useId();
 
   // Browse filters
   const [minPrice, setMinPrice] = useState('');
@@ -476,6 +491,7 @@ export default function MarketplacePage() {
   const [filterZoning, setFilterZoning] = useState('');
   const [filterPropertyType, setFilterPropertyType] = useState('');
   const [sortBy, setSortBy] = useState('newest');
+  const [pendingDeleteListing, setPendingDeleteListing] = useState<any>(null);
 
   // Detail dialog state
   const [detailRow, setDetailRow] = useState<any>(null);
@@ -570,7 +586,7 @@ export default function MarketplacePage() {
       setCreateDescription('');
     },
     onError: (err: Error) => {
-      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+      toast({ title: "Couldn't create listing", description: `${err.message} — your draft is preserved. Try again.`, variant: 'destructive' });
     },
   });
 
@@ -585,12 +601,12 @@ export default function MarketplacePage() {
       return res.json();
     },
     onSuccess: () => {
-      toast({ title: 'Listing removed' });
+      toast({ title: 'Listing removed', description: 'It has been pulled from the marketplace.' });
       queryClient.invalidateQueries({ queryKey: ['marketplace-my-listings'] });
       queryClient.invalidateQueries({ queryKey: ['marketplace-browse'] });
     },
     onError: (err: Error) => {
-      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+      toast({ title: "Couldn't remove listing", description: `${err.message} — the listing is still live.`, variant: 'destructive' });
     },
   });
 
@@ -626,31 +642,31 @@ export default function MarketplacePage() {
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-2">
-            <Store className="w-7 h-7" />
+            <Store className="w-7 h-7" aria-hidden="true" />
             Marketplace
           </h1>
-          <p className="text-muted-foreground mt-1">Buy and sell land deals directly with verified investors</p>
+          <p className="text-muted-foreground mt-1">Buy and sell land deals directly with verified investors.</p>
         </div>
-        <Button onClick={() => setIsCreateOpen(true)}>
-          <Plus className="w-4 h-4 mr-2" />
-          Post a Deal
+        <Button onClick={() => setIsCreateOpen(true)} aria-label="Post a new deal to the marketplace">
+          <Plus className="w-4 h-4 mr-2" aria-hidden="true" />
+          Post a deal
         </Button>
       </div>
 
       {/* Main tabs */}
       <Tabs defaultValue="browse" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="browse">Browse Deals</TabsTrigger>
+          <TabsTrigger value="browse">Browse deals</TabsTrigger>
           <TabsTrigger value="my-listings">
-            My Listings
+            My listings
             {myListings.length > 0 && (
-              <span className="ml-1.5 rounded-full bg-primary/15 px-1.5 py-0.5 text-xs font-medium">{myListings.length}</span>
+              <span className="ml-1.5 rounded-full bg-primary/15 px-1.5 py-0.5 text-xs font-medium tabular-nums" aria-label={`${myListings.length} listing${myListings.length === 1 ? "" : "s"}`}>{myListings.length}</span>
             )}
           </TabsTrigger>
           <TabsTrigger value="my-bids">
-            My Bids
+            My bids
             {myBids.length > 0 && (
-              <span className="ml-1.5 rounded-full bg-primary/15 px-1.5 py-0.5 text-xs font-medium">{myBids.length}</span>
+              <span className="ml-1.5 rounded-full bg-primary/15 px-1.5 py-0.5 text-xs font-medium tabular-nums" aria-label={`${myBids.length} bid${myBids.length === 1 ? "" : "s"}`}>{myBids.length}</span>
             )}
           </TabsTrigger>
         </TabsList>
@@ -662,37 +678,42 @@ export default function MarketplacePage() {
           {/* Filter bar */}
           <Card>
             <CardContent className="p-4">
-              <div className="flex flex-wrap gap-3 items-end">
+              <fieldset className="flex flex-wrap gap-3 items-end border-0 p-0 m-0">
+                <legend className="sr-only">Filter marketplace listings</legend>
                 <div className="flex flex-col gap-1">
-                  <Label className="text-xs">Min Price</Label>
+                  <Label htmlFor={minPriceId} className="text-xs">Min price</Label>
                   <div className="relative">
-                    <DollarSign className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                    <DollarSign className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" aria-hidden="true" />
                     <Input
+                      id={minPriceId}
                       type="number"
+                      inputMode="decimal"
                       placeholder="0"
-                      className="pl-8 w-28"
+                      className="pl-8 w-28 tabular-nums"
                       value={minPrice}
                       onChange={(e) => setMinPrice(e.target.value)}
                     />
                   </div>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <Label className="text-xs">Max Price</Label>
+                  <Label htmlFor={maxPriceId} className="text-xs">Max price</Label>
                   <div className="relative">
-                    <DollarSign className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                    <DollarSign className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" aria-hidden="true" />
                     <Input
+                      id={maxPriceId}
                       type="number"
+                      inputMode="decimal"
                       placeholder="Any"
-                      className="pl-8 w-28"
+                      className="pl-8 w-28 tabular-nums"
                       value={maxPrice}
                       onChange={(e) => setMaxPrice(e.target.value)}
                     />
                   </div>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <Label className="text-xs">State</Label>
+                  <Label htmlFor={stateId} className="text-xs">State</Label>
                   <Select value={filterState} onValueChange={setFilterState}>
-                    <SelectTrigger className="w-32">
+                    <SelectTrigger id={stateId} className="w-32">
                       <SelectValue placeholder="All states" />
                     </SelectTrigger>
                     <SelectContent>
@@ -704,9 +725,9 @@ export default function MarketplacePage() {
                   </Select>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <Label className="text-xs">Listing Type</Label>
+                  <Label htmlFor={typeId} className="text-xs">Listing type</Label>
                   <Select value={filterType} onValueChange={setFilterType}>
-                    <SelectTrigger className="w-36">
+                    <SelectTrigger id={typeId} className="w-36">
                       <SelectValue placeholder="All types" />
                     </SelectTrigger>
                     <SelectContent>
@@ -718,44 +739,48 @@ export default function MarketplacePage() {
                   </Select>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <Label className="text-xs">Sort By</Label>
+                  <Label htmlFor={sortById} className="text-xs">Sort by</Label>
                   <Select value={sortBy} onValueChange={setSortBy}>
-                    <SelectTrigger className="w-36">
+                    <SelectTrigger id={sortById} className="w-36">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="newest">Newest</SelectItem>
-                      <SelectItem value="price_asc">Price: Low to High</SelectItem>
-                      <SelectItem value="price_desc">Price: High to Low</SelectItem>
-                      <SelectItem value="most_bids">Most Activity</SelectItem>
+                      <SelectItem value="price_asc">Price: low to high</SelectItem>
+                      <SelectItem value="price_desc">Price: high to low</SelectItem>
+                      <SelectItem value="most_bids">Most activity</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 {/* Advanced filters */}
                 <div className="flex flex-col gap-1">
-                  <Label className="text-xs">Min Acres</Label>
+                  <Label htmlFor={minAcresId} className="text-xs">Min acres</Label>
                   <Input
+                    id={minAcresId}
                     type="number"
+                    inputMode="decimal"
                     placeholder="0"
-                    className="w-20"
+                    className="w-20 tabular-nums"
                     value={filterMinAcres}
                     onChange={(e) => setFilterMinAcres(e.target.value)}
                   />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <Label className="text-xs">Max Acres</Label>
+                  <Label htmlFor={maxAcresId} className="text-xs">Max acres</Label>
                   <Input
+                    id={maxAcresId}
                     type="number"
+                    inputMode="decimal"
                     placeholder="Any"
-                    className="w-20"
+                    className="w-20 tabular-nums"
                     value={filterMaxAcres}
                     onChange={(e) => setFilterMaxAcres(e.target.value)}
                   />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <Label className="text-xs">Zoning</Label>
+                  <Label htmlFor={zoningId} className="text-xs">Zoning</Label>
                   <Select value={filterZoning} onValueChange={setFilterZoning}>
-                    <SelectTrigger className="w-32">
+                    <SelectTrigger id={zoningId} className="w-32">
                       <SelectValue placeholder="All zoning" />
                     </SelectTrigger>
                     <SelectContent>
@@ -770,19 +795,19 @@ export default function MarketplacePage() {
                   </Select>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <Label className="text-xs">Property Type</Label>
+                  <Label htmlFor={propTypeId} className="text-xs">Property type</Label>
                   <Select value={filterPropertyType} onValueChange={setFilterPropertyType}>
-                    <SelectTrigger className="w-36">
+                    <SelectTrigger id={propTypeId} className="w-36">
                       <SelectValue placeholder="All types" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All types</SelectItem>
-                      <SelectItem value="raw_land">Raw Land</SelectItem>
+                      <SelectItem value="raw_land">Raw land</SelectItem>
                       <SelectItem value="timber">Timber</SelectItem>
                       <SelectItem value="farmland">Farmland</SelectItem>
-                      <SelectItem value="hunting">Hunting Land</SelectItem>
+                      <SelectItem value="hunting">Hunting land</SelectItem>
                       <SelectItem value="waterfront">Waterfront</SelectItem>
-                      <SelectItem value="rural_residential">Rural Residential</SelectItem>
+                      <SelectItem value="rural_residential">Rural residential</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -801,11 +826,12 @@ export default function MarketplacePage() {
                       setFilterZoning('');
                       setFilterPropertyType('');
                     }}
+                    aria-label="Clear all marketplace filters"
                   >
                     Clear filters
                   </Button>
                 )}
-              </div>
+              </fieldset>
             </CardContent>
           </Card>
 
@@ -1010,10 +1036,10 @@ export default function MarketplacePage() {
                               size="icon"
                               className="text-destructive hover:text-destructive h-8 w-8"
                               disabled={removeMutation.isPending || listing.status === 'sold'}
-                              onClick={() => removeMutation.mutate(listing.id)}
-                              aria-label="Remove listing"
+                              onClick={() => setPendingDeleteListing(listing)}
+                              aria-label={`Remove listing for ${listing.address || listing.county || `property #${listing.id}`}`}
                             >
-                              {removeMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                              {removeMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : <Trash2 className="w-4 h-4" aria-hidden="true" />}
                             </Button>
                           </TableCell>
                         </TableRow>
@@ -1197,13 +1223,27 @@ export default function MarketplacePage() {
                 Cancel
               </Button>
               <Button type="submit" disabled={createMutation.isPending}>
-                {createMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                Post Deal
+                {createMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />}
+                Post deal
               </Button>
             </div>
           </form>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={!!pendingDeleteListing}
+        onOpenChange={(open) => { if (!open) setPendingDeleteListing(null); }}
+        title="Remove this listing?"
+        description={pendingDeleteListing ? `The listing for ${pendingDeleteListing.address || pendingDeleteListing.county || `property #${pendingDeleteListing.id}`} (${fmt(pendingDeleteListing.askingPrice)}) will be pulled from the marketplace. Active bids stay in your records but can no longer accept new bids.` : ""}
+        confirmLabel="Remove listing"
+        variant="destructive"
+        onConfirm={() => {
+          if (pendingDeleteListing) removeMutation.mutate(pendingDeleteListing.id);
+          setPendingDeleteListing(null);
+        }}
+        isLoading={removeMutation.isPending}
+      />
     </div>
   );
 }
