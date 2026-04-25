@@ -758,6 +758,7 @@ to a dedicated 9b slice.
 **Chart a11y wrappers batch 2 (172):** ✅ complete — 8 more charts: maps (PPA sparkline + environmental radar), avm (comp-sales + market-adjustments), usage-dashboard, team-dashboard-content (revenue/conversion/trends). (commit `ce33231`)
 **Table a11y scope=col (173):** ✅ complete — lens shift to tables. 24 `<th>` elements across 5 components got scope="col": analytics-content, tier-upgrade-panel, seller-finance-calculator (amortization), cohort-analytics, attribution-analytics. (commit `7c385cc`)
 **Table a11y scope=col cont. (174):** ✅ complete — 37 more `<th>` elements: portfolio-optimizer (holdings 5), founder-dashboard (32 across 10 admin tables: revenue/MRR/tiers/uptime/agents/pipeline/orgs/AI-models). (commit `43603d5`)
+**Contact-field autoComplete (175):** ✅ complete — lens shift to contact info. 11 inputs across document-generator (flyer name/phone/email + buyer/seller names) and ai-offer-generator (buyer name/company/phone/email + seller name) got autoComplete="name|tel|email|organization", autoCapitalize="words", + full email-keyboard hardening where applicable. (commit `958457a`)
 **/onboarding-v2 targeted (18):** ✅ complete (commit `70df779`) — 18b deferred
 **/settings targeted (19):** ✅ complete (commit `809044c`) — 19b remaining components deferred
 **/pipeline (20):** ✅ complete (commit `1b5d0f7`)
