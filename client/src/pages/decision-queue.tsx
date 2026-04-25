@@ -1,14 +1,17 @@
-import { useState } from "react";
+import { useState, useId } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { useDocumentTitle } from "@/hooks/use-document-title";
+import { usd } from "@/lib/format";
 import {
-  Clock, PhoneCall, CheckCircle2, XCircle,
+  PhoneCall, CheckCircle2, XCircle,
   ChevronRight, CheckCheck, Loader2, Sparkles, Send,
 } from "lucide-react";
 import { subDays } from "date-fns";
@@ -40,15 +43,21 @@ interface PaxPanelState {
   isLoading: boolean;
 }
 
-function SectionHeader({ title, count, description }: { title: string; count: number; description: string }) {
+function SectionHeader({ title, count, description, headingId }: { title: string; count: number; description: string; headingId: string }) {
   return (
     <div className="flex items-start gap-3 mb-3">
       <div>
-        <h2 className="font-semibold flex items-center gap-2">
+        <h2 id={headingId} className="font-semibold flex items-center gap-2">
           {title}
-          <Badge variant={count > 0 ? "destructive" : "secondary"}>{count}</Badge>
+          <Badge
+            variant={count > 0 ? "destructive" : "secondary"}
+            aria-label={`${count} item${count === 1 ? "" : "s"}`}
+            className="tabular-nums"
+          >
+            {count}
+          </Badge>
         </h2>
-        <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
+        <p className="text-xs text-muted-foreground mt-0.5">{description}.</p>
       </div>
     </div>
   );
@@ -59,16 +68,18 @@ function AskPaxButton({ label, message, onAsk }: { label: string; message: strin
     <Button
       size="sm"
       variant="outline"
-      className="text-xs text-purple-600 border-purple-200 hover:bg-purple-50 dark:hover:bg-purple-900/20"
+      className="text-xs text-purple-600 border-purple-200 hover:bg-purple-50 dark:hover:bg-purple-900/20 min-h-9"
       onClick={() => onAsk(message, label)}
+      aria-label={`Ask Pax about ${label}`}
     >
-      <Sparkles className="w-3 h-3 mr-1" />
+      <Sparkles className="w-3 h-3 mr-1" aria-hidden="true" />
       Ask Pax
     </Button>
   );
 }
 
 export default function DecisionQueuePage() {
+  useDocumentTitle("Decision queue");
   const { toast } = useToast();
   const qc = useQueryClient();
 
@@ -80,6 +91,10 @@ export default function DecisionQueuePage() {
     isLoading: false,
   });
   const [paxInput, setPaxInput] = useState('');
+  const paxInputId = useId();
+  const stalledHeadingId = useId();
+  const waitingHeadingId = useId();
+  const stuckHeadingId = useId();
 
   // Cycle 9: both /api/leads and /api/deals return paginated
   // { data: [...], total, page, ... } envelopes now. The previous
@@ -113,11 +128,20 @@ export default function DecisionQueuePage() {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
-      }).then(r => r.json()),
+      }).then(r => {
+        if (!r.ok) throw new Error("Failed to update lead");
+        return r.json();
+      }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/leads"] });
-      toast({ title: "Lead updated" });
+      toast({ title: "Lead updated." });
     },
+    onError: () =>
+      toast({
+        title: "Couldn't update lead",
+        description: "The lead is unchanged. Try again in a moment.",
+        variant: "destructive",
+      }),
   });
 
   const updateDeal = useMutation({
@@ -126,11 +150,20 @@ export default function DecisionQueuePage() {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
-      }).then(r => r.json()),
+      }).then(r => {
+        if (!r.ok) throw new Error("Failed to update deal");
+        return r.json();
+      }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/deals"] });
-      toast({ title: "Deal updated" });
+      toast({ title: "Deal updated." });
     },
+    onError: () =>
+      toast({
+        title: "Couldn't update deal",
+        description: "The deal stage is unchanged. Try again in a moment.",
+        variant: "destructive",
+      }),
   });
 
   const now = new Date();
@@ -194,8 +227,12 @@ export default function DecisionQueuePage() {
   if (isLoading) {
     return (
       <PageShell>
-        <div className="flex items-center justify-center py-16 text-muted-foreground">
-          <Loader2 className="w-5 h-5 animate-spin mr-2" />
+        <div
+          className="flex items-center justify-center py-16 text-muted-foreground"
+          role="status"
+          aria-live="polite"
+        >
+          <Loader2 className="w-5 h-5 animate-spin mr-2" aria-hidden="true" />
           Loading queue…
         </div>
       </PageShell>
@@ -206,12 +243,16 @@ export default function DecisionQueuePage() {
     return (
       <PageShell>
         <div className="space-y-2 mb-6">
-          <h1 className="text-2xl font-semibold">Decision Queue</h1>
-          <p className="text-sm text-muted-foreground">Items requiring your attention</p>
+          <h1 className="text-2xl font-semibold">Decision queue</h1>
+          <p className="text-sm text-muted-foreground">Items requiring your attention.</p>
         </div>
-        <div className="flex flex-col items-center justify-center py-20 text-center gap-3">
-          <CheckCheck className="w-10 h-10 text-green-500" />
-          <h2 className="font-semibold text-lg">Pipeline is clear</h2>
+        <div
+          className="flex flex-col items-center justify-center py-20 text-center gap-3"
+          role="status"
+          aria-live="polite"
+        >
+          <CheckCheck className="w-10 h-10 text-green-500" aria-hidden="true" />
+          <h2 className="font-semibold text-lg">Pipeline is clear.</h2>
           <p className="text-muted-foreground text-sm max-w-xs">No decisions needed today. All leads are current and deals are moving.</p>
         </div>
       </PageShell>
@@ -222,21 +263,22 @@ export default function DecisionQueuePage() {
     <PageShell>
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-semibold">Decision Queue</h1>
+          <h1 className="text-2xl font-semibold">Decision queue</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {totalItems} item{totalItems !== 1 ? "s" : ""} need your attention
+            <span className="tabular-nums">{totalItems}</span> item{totalItems !== 1 ? "s" : ""} need your attention.
           </p>
         </div>
 
         {/* Stalled Leads */}
         {stalledLeads.length > 0 && (
-          <section>
+          <section aria-labelledby={stalledHeadingId}>
             <SectionHeader
-              title="Stalled Leads"
+              title="Stalled leads"
               count={stalledLeads.length}
               description="No contact in 14+ days — these sellers may go cold"
+              headingId={stalledHeadingId}
             />
-            <div className="space-y-2">
+            <ul className="space-y-2" aria-label="Stalled leads">
               {stalledLeads.map(lead => {
                 const name = [lead.firstName, lead.lastName].filter(Boolean).join(" ") || `Lead #${lead.id}`;
                 const lastContact = lead.lastContactedAt
@@ -244,120 +286,129 @@ export default function DecisionQueuePage() {
                   : "Never contacted";
                 const paxMsg = `I have a stalled lead named ${name}${lead.propertyAddress ? ` at ${lead.propertyAddress}` : ''}. ${lastContact}. What should I do to re-engage this seller?`;
                 return (
-                  <Card key={lead.id} className="border-l-4 border-red-400">
-                    <CardContent className="py-3 px-4 flex items-center gap-3">
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm">{name}</p>
-                        {lead.propertyAddress && (
-                          <p className="text-xs text-muted-foreground truncate">{lead.propertyAddress}</p>
-                        )}
-                        <p className="text-xs text-red-500 mt-0.5">{lastContact}</p>
-                      </div>
-                      <div className="flex gap-2 shrink-0">
-                        <AskPaxButton
-                          label={`Stalled lead: ${name}`}
-                          message={paxMsg}
-                          onAsk={openPax}
-                        />
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-xs"
-                          onClick={() =>
-                            updateLead.mutate({
-                              id: lead.id,
-                              data: { lastContactedAt: now.toISOString() } as any,
-                            })
-                          }
-                          disabled={updateLead.isPending}
-                        >
-                          <PhoneCall className="w-3 h-3 mr-1" />
-                          Log Contact
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
+                  <li key={lead.id}>
+                    <Card className="border-l-4 border-red-400">
+                      <CardContent className="py-3 px-4 flex flex-col sm:flex-row sm:items-center gap-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm">{name}</p>
+                          {lead.propertyAddress && (
+                            <p className="text-xs text-muted-foreground truncate">{lead.propertyAddress}</p>
+                          )}
+                          <p className="text-xs text-red-500 mt-0.5">{lastContact}</p>
+                        </div>
+                        <div className="flex gap-2 shrink-0 flex-wrap">
+                          <AskPaxButton
+                            label={`stalled lead ${name}`}
+                            message={paxMsg}
+                            onAsk={openPax}
+                          />
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-xs min-h-9"
+                            onClick={() =>
+                              updateLead.mutate({
+                                id: lead.id,
+                                data: { lastContactedAt: now.toISOString() } as any,
+                              })
+                            }
+                            disabled={updateLead.isPending}
+                            aria-label={`Log contact for ${name}`}
+                          >
+                            <PhoneCall className="w-3 h-3 mr-1" aria-hidden="true" />
+                            Log contact
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </li>
                 );
               })}
-            </div>
+            </ul>
           </section>
         )}
 
         {/* Waiting Counters */}
         {waitingCounters.length > 0 && (
-          <section>
+          <section aria-labelledby={waitingHeadingId}>
             <SectionHeader
-              title="Waiting on Counter"
+              title="Waiting on counter"
               count={waitingCounters.length}
               description="Offers sent 7+ days ago with no response"
+              headingId={waitingHeadingId}
             />
-            <div className="space-y-2">
+            <ul className="space-y-2" aria-label="Deals waiting on counter">
               {waitingCounters.map(deal => {
                 const offerAmt = deal.offerAmount
-                  ? `$${parseFloat(deal.offerAmount).toLocaleString()}`
+                  ? usd(parseFloat(deal.offerAmount))
                   : 'unknown amount';
                 const sentWhen = deal.offerDate
                   ? relative(deal.offerDate)
                   : 'recently';
                 const paxMsg = `Deal #${deal.id} has had an offer of ${offerAmt} sitting with no response since ${sentWhen}. Should I follow up, revise the offer, or walk away?`;
                 return (
-                  <Card key={deal.id} className="border-l-4 border-orange-400">
-                    <CardContent className="py-3 px-4 flex items-center gap-3">
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm">Deal #{deal.id}</p>
-                        {deal.offerAmount && (
-                          <p className="text-xs text-muted-foreground">
-                            Offer: ${parseFloat(deal.offerAmount).toLocaleString()}
+                  <li key={deal.id}>
+                    <Card className="border-l-4 border-orange-400">
+                      <CardContent className="py-3 px-4 flex flex-col sm:flex-row sm:items-center gap-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm">Deal <span className="tabular-nums">#{deal.id}</span></p>
+                          {deal.offerAmount && (
+                            <p className="text-xs text-muted-foreground tabular-nums">
+                              Offer: {usd(parseFloat(deal.offerAmount))}
+                            </p>
+                          )}
+                          <p className="text-xs text-orange-500 mt-0.5">
+                            Sent {relative(deal.offerDate)}
                           </p>
-                        )}
-                        <p className="text-xs text-orange-500 mt-0.5">
-                          Sent {relative(deal.offerDate)}
-                        </p>
-                      </div>
-                      <div className="flex gap-2 shrink-0 flex-wrap justify-end">
-                        <AskPaxButton
-                          label={`Waiting counter: Deal #${deal.id}`}
-                          message={paxMsg}
-                          onAsk={openPax}
-                        />
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-xs text-green-600"
-                          onClick={() => updateDeal.mutate({ id: deal.id, data: { status: "accepted" } })}
-                          disabled={updateDeal.isPending}
-                        >
-                          <CheckCircle2 className="w-3 h-3 mr-1" />
-                          Accepted
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-xs text-red-600"
-                          onClick={() => updateDeal.mutate({ id: deal.id, data: { status: "cancelled" } })}
-                          disabled={updateDeal.isPending}
-                        >
-                          <XCircle className="w-3 h-3 mr-1" />
-                          Rejected
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
+                        </div>
+                        <div className="flex gap-2 shrink-0 flex-wrap justify-end">
+                          <AskPaxButton
+                            label={`waiting counter on Deal #${deal.id}`}
+                            message={paxMsg}
+                            onAsk={openPax}
+                          />
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-xs text-green-600 min-h-9"
+                            onClick={() => updateDeal.mutate({ id: deal.id, data: { status: "accepted" } })}
+                            disabled={updateDeal.isPending}
+                            aria-label={`Mark Deal #${deal.id} as accepted`}
+                          >
+                            <CheckCircle2 className="w-3 h-3 mr-1" aria-hidden="true" />
+                            Accepted
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-xs text-red-600 min-h-9"
+                            onClick={() => updateDeal.mutate({ id: deal.id, data: { status: "cancelled" } })}
+                            disabled={updateDeal.isPending}
+                            aria-label={`Mark Deal #${deal.id} as rejected`}
+                          >
+                            <XCircle className="w-3 h-3 mr-1" aria-hidden="true" />
+                            Rejected
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </li>
                 );
               })}
-            </div>
+            </ul>
           </section>
         )}
 
         {/* Stuck Deals */}
         {stuckDeals.length > 0 && (
-          <section>
+          <section aria-labelledby={stuckHeadingId}>
             <SectionHeader
-              title="Stuck in Stage"
+              title="Stuck in stage"
               count={stuckDeals.length}
               description="No stage change in 14+ days"
+              headingId={stuckHeadingId}
             />
-            <div className="space-y-2">
+            <ul className="space-y-2" aria-label="Deals stuck in stage">
               {stuckDeals.map(deal => {
                 const stageMap: Record<string, string> = {
                   negotiating: "countered",
@@ -371,43 +422,46 @@ export default function DecisionQueuePage() {
                   : '';
                 const paxMsg = `Deal #${deal.id} is stuck in the "${deal.status.replace(/_/g, ' ')}" stage${stalledWhen ? `, last updated ${stalledWhen}` : ''}. What are the best next steps to move this forward?`;
                 return (
-                  <Card key={deal.id} className="border-l-4 border-yellow-400">
-                    <CardContent className="py-3 px-4 flex items-center gap-3">
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm">Deal #{deal.id}</p>
-                        <p className="text-xs text-muted-foreground capitalize">
-                          Stage: {deal.status.replace(/_/g, " ")}
-                        </p>
-                        {deal.updatedAt && (
-                          <p className="text-xs text-yellow-600 mt-0.5">
-                            Stalled {relative(deal.updatedAt)}
+                  <li key={deal.id}>
+                    <Card className="border-l-4 border-yellow-400">
+                      <CardContent className="py-3 px-4 flex flex-col sm:flex-row sm:items-center gap-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm">Deal <span className="tabular-nums">#{deal.id}</span></p>
+                          <p className="text-xs text-muted-foreground capitalize">
+                            Stage: {deal.status.replace(/_/g, " ")}
                           </p>
-                        )}
-                      </div>
-                      <div className="flex gap-2 shrink-0">
-                        <AskPaxButton
-                          label={`Stuck deal: Deal #${deal.id}`}
-                          message={paxMsg}
-                          onAsk={openPax}
-                        />
-                        {nextStage && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="text-xs"
-                            onClick={() => updateDeal.mutate({ id: deal.id, data: { status: nextStage } })}
-                            disabled={updateDeal.isPending}
-                          >
-                            <ChevronRight className="w-3 h-3 mr-1" />
-                            Advance
-                          </Button>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
+                          {deal.updatedAt && (
+                            <p className="text-xs text-yellow-600 mt-0.5">
+                              Stalled {relative(deal.updatedAt)}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex gap-2 shrink-0 flex-wrap">
+                          <AskPaxButton
+                            label={`stuck deal #${deal.id}`}
+                            message={paxMsg}
+                            onAsk={openPax}
+                          />
+                          {nextStage && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-xs min-h-9"
+                              onClick={() => updateDeal.mutate({ id: deal.id, data: { status: nextStage } })}
+                              disabled={updateDeal.isPending}
+                              aria-label={`Advance Deal #${deal.id} to ${nextStage.replace(/_/g, ' ')}`}
+                            >
+                              <ChevronRight className="w-3 h-3 mr-1" aria-hidden="true" />
+                              Advance
+                            </Button>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </li>
                 );
               })}
-            </div>
+            </ul>
           </section>
         )}
       </div>
@@ -417,7 +471,7 @@ export default function DecisionQueuePage() {
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <div className="flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-purple-500" />
+              <Sparkles className="w-5 h-5 text-purple-500" aria-hidden="true" />
               <DialogTitle>Ask Pax</DialogTitle>
             </div>
             {pax.contextLabel && (
@@ -425,8 +479,17 @@ export default function DecisionQueuePage() {
             )}
           </DialogHeader>
 
-          <div className="space-y-3 mt-2">
+          <form
+            className="space-y-3 mt-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (pax.isLoading || !paxInput.trim()) return;
+              sendPaxMessage();
+            }}
+          >
+            <Label htmlFor={paxInputId} className="sr-only">Question for Pax</Label>
             <Textarea
+              id={paxInputId}
               className="text-sm min-h-[100px]"
               value={paxInput}
               onChange={(e) => setPaxInput(e.target.value)}
@@ -434,25 +497,29 @@ export default function DecisionQueuePage() {
             />
 
             <Button
-              className="w-full"
-              onClick={sendPaxMessage}
+              type="submit"
+              className="w-full min-h-11"
               disabled={pax.isLoading || !paxInput.trim()}
             >
               {pax.isLoading ? (
                 <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
                   Thinking…
                 </>
               ) : (
                 <>
-                  <Send className="w-4 h-4 mr-2" />
+                  <Send className="w-4 h-4 mr-2" aria-hidden="true" />
                   Send to Pax
                 </>
               )}
             </Button>
 
             {pax.response && (
-              <div className="rounded-lg bg-muted p-4 text-sm whitespace-pre-wrap">
+              <div
+                className="rounded-lg bg-muted p-4 text-sm whitespace-pre-wrap"
+                role="status"
+                aria-live="polite"
+              >
                 <p className="font-semibold text-xs text-purple-600 mb-1">Pax</p>
                 {pax.response}
               </div>
@@ -461,10 +528,10 @@ export default function DecisionQueuePage() {
             <div className="text-xs text-center text-muted-foreground">
               For a full conversation,{' '}
               <a href="/ai" className="text-purple-600 underline hover:no-underline">
-                open AI Hub
-              </a>
+                open AI hub
+              </a>.
             </div>
-          </div>
+          </form>
         </DialogContent>
       </Dialog>
     </PageShell>
