@@ -98,11 +98,11 @@ export default function NightCapPage() {
             </p>
           </div>
           <div className="ml-auto">
-            <Link href="/dashboard">
-              <Button variant="ghost" size="sm" className="text-slate-400 hover:text-white gap-1" aria-label="Open main dashboard">
+            <Button asChild variant="ghost" size="sm" className="text-slate-400 hover:text-white gap-1">
+              <Link href="/dashboard" aria-label="Open main dashboard">
                 Dashboard <ArrowRight className="w-3 h-3" aria-hidden="true" />
-              </Button>
-            </Link>
+              </Link>
+            </Button>
           </div>
         </div>
 
@@ -258,11 +258,11 @@ export default function NightCapPage() {
                   <li className="text-slate-500 text-sm list-none">No leads scored today yet.</li>
                 )}
               </ul>
-              <Link href="/leads">
-                <Button variant="ghost" size="sm" className="mt-3 text-xs text-indigo-400 hover:text-indigo-300 p-0 h-auto" aria-label="View all leads">
+              <Button asChild variant="ghost" size="sm" className="mt-3 text-xs text-indigo-400 hover:text-indigo-300 p-0 h-auto">
+                <Link href="/leads" aria-label="View all leads">
                   View all leads <ArrowRight className="w-3 h-3 ml-1" aria-hidden="true" />
-                </Button>
-              </Link>
+                </Link>
+              </Button>
             </GlassCard>
           )}
 

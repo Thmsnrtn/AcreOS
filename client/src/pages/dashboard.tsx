@@ -216,11 +216,11 @@ export default function Dashboard() {
                 <CardTitle className="flex items-center gap-2 text-lg">
                   <Target className="w-5 h-5 text-primary" aria-hidden="true" />
                   Today's opportunities
-                  <Link href="/deal-feed" className="ml-auto">
-                    <Button variant="ghost" size="sm" className="text-xs">
+                  <Button asChild variant="ghost" size="sm" className="ml-auto text-xs">
+                    <Link href="/deal-feed">
                       View all <span className="ml-1" aria-hidden="true">→</span>
-                    </Button>
-                  </Link>
+                    </Link>
+                  </Button>
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -710,9 +710,9 @@ export default function Dashboard() {
                     </p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <Link href="/leads">
-                      <Button size="sm" variant="outline" className="text-xs min-h-11 sm:min-h-9">Go to leads</Button>
-                    </Link>
+                    <Button asChild size="sm" variant="outline" className="text-xs min-h-11 sm:min-h-9">
+                      <Link href="/leads">Go to leads</Link>
+                    </Button>
                     <Button size="icon" variant="ghost" className="h-11 w-11 sm:h-9 sm:w-9" onClick={() => setTipDismissed(true)} aria-label="Dismiss tip">
                       <X className="h-3 w-3" aria-hidden="true" />
                     </Button>
@@ -729,9 +729,9 @@ export default function Dashboard() {
                     </p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <Link href="/campaigns">
-                      <Button size="sm" variant="outline" className="text-xs min-h-11 sm:min-h-9">Go to campaigns</Button>
-                    </Link>
+                    <Button asChild size="sm" variant="outline" className="text-xs min-h-11 sm:min-h-9">
+                      <Link href="/campaigns">Go to campaigns</Link>
+                    </Button>
                     <Button size="icon" variant="ghost" className="h-11 w-11 sm:h-9 sm:w-9" onClick={() => setTipDismissed(true)} aria-label="Dismiss tip">
                       <X className="h-3 w-3" aria-hidden="true" />
                     </Button>
