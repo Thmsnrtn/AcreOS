@@ -91,15 +91,22 @@ export function NpsDialog({ open, trigger, onClose }: NpsDialogProps) {
         {step === "score" && (
           <>
             <DialogHeader>
-              <DialogTitle>How likely are you to recommend {brandName} to a colleague?</DialogTitle>
+              <DialogTitle id="nps-score-title">How likely are you to recommend {brandName} to a colleague?</DialogTitle>
               <DialogDescription>
                 On a scale of 0 to 10, where 0 is not at all likely and 10 is extremely likely.
               </DialogDescription>
             </DialogHeader>
-            <div className="flex flex-wrap justify-center gap-2 py-4">
+            <div
+              role="radiogroup"
+              aria-labelledby="nps-score-title"
+              className="flex flex-wrap justify-center gap-2 py-4"
+            >
               {Array.from({ length: 11 }, (_, i) => (
                 <Button
                   key={i}
+                  type="button"
+                  role="radio"
+                  aria-checked={selectedScore === i}
                   variant="outline"
                   size="sm"
                   className={`w-10 h-10 p-0 font-semibold text-sm ${SCORE_COLORS[i]} border-0`}
@@ -142,17 +149,19 @@ export function NpsDialog({ open, trigger, onClose }: NpsDialogProps) {
               value={feedback}
               onChange={(e) => setFeedback(e.target.value)}
               className="min-h-[80px]"
+              autoCapitalize="sentences"
               aria-label="Additional feedback"
             />
             <div className="flex justify-end gap-2 pt-2">
-              <Button variant="ghost" size="sm" onClick={handleSubmit}>
+              <Button type="button" variant="ghost" size="sm" onClick={handleSubmit}>
                 Skip
               </Button>
               <Button
+                type="button"
                 onClick={handleSubmit}
                 disabled={submitMutation.isPending}
               >
-                {submitMutation.isPending ? "Submitting..." : "Submit feedback"}
+                {submitMutation.isPending ? "Submitting…" : "Submit feedback"}
               </Button>
             </div>
           </>
