@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useId } from "react";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,6 +6,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useToast } from "@/hooks/use-toast";
+import { useDocumentTitle } from "@/hooks/use-document-title";
+import { usd } from "@/lib/format";
 import { Calculator, TrendingDown } from "lucide-react";
 
 type DepMethod = "macrs_5yr" | "macrs_7yr" | "macrs_15yr" | "straight_line";
@@ -45,19 +48,27 @@ function calcSchedule(costBasis: number, method: DepMethod, slYears = 10): DepRo
   return rows;
 }
 
-function fmtDollar(cents: number) {
-  return `$${cents.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-}
-
 export default function DepreciationCalculatorPage() {
+  useDocumentTitle("Depreciation calculator");
+  const { toast } = useToast();
   const [costBasis, setCostBasis] = useState("");
   const [method, setMethod] = useState<DepMethod>("macrs_7yr");
   const [slYears, setSlYears] = useState("10");
   const [schedule, setSchedule] = useState<DepRow[] | null>(null);
+  const costBasisId = useId();
+  const methodId = useId();
+  const slYearsId = useId();
 
   const handleCalculate = () => {
     const cost = parseFloat(costBasis);
-    if (!cost || cost <= 0) return;
+    if (!cost || cost <= 0) {
+      toast({
+        title: "Invalid cost basis",
+        description: "Enter a positive dollar amount — your previous schedule (if any) is unchanged.",
+        variant: "destructive",
+      });
+      return;
+    }
     setSchedule(calcSchedule(cost, method, parseInt(slYears)));
   };
 
@@ -65,7 +76,7 @@ export default function DepreciationCalculatorPage() {
     <PageShell>
       <div>
         <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-depreciation-calculator-title">
-          Depreciation Calculator
+          Depreciation calculator
         </h1>
         <p className="text-muted-foreground text-sm md:text-base">
           Calculate MACRS or straight-line depreciation schedules for improvements and equipment.
@@ -74,47 +85,63 @@ export default function DepreciationCalculatorPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Calculate Schedule</CardTitle>
+          <CardTitle className="text-base">Calculate schedule</CardTitle>
           <CardDescription>Enter asset cost and depreciation method.</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <Label className="text-xs">Cost Basis ($)</Label>
-              <Input
-                type="number"
-                placeholder="e.g. 50000"
-                value={costBasis}
-                onChange={e => setCostBasis(e.target.value)}
-              />
-            </div>
-            <div>
-              <Label className="text-xs">Method</Label>
-              <Select value={method} onValueChange={v => setMethod(v as DepMethod)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="macrs_5yr">MACRS 5-Year</SelectItem>
-                  <SelectItem value="macrs_7yr">MACRS 7-Year</SelectItem>
-                  <SelectItem value="macrs_15yr">MACRS 15-Year</SelectItem>
-                  <SelectItem value="straight_line">Straight-Line</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {method === "straight_line" && (
+        <CardContent>
+          <form
+            className="space-y-3"
+            onSubmit={(e) => { e.preventDefault(); handleCalculate(); }}
+          >
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
-                <Label className="text-xs">Useful Life (years)</Label>
+                <Label htmlFor={costBasisId} className="text-xs">
+                  Cost basis ($) <span className="text-destructive" aria-label="required">*</span>
+                </Label>
                 <Input
+                  id={costBasisId}
                   type="number"
-                  placeholder="10"
-                  value={slYears}
-                  onChange={e => setSlYears(e.target.value)}
+                  inputMode="decimal"
+                  min={0}
+                  step="0.01"
+                  placeholder="e.g. 50000"
+                  value={costBasis}
+                  onChange={e => setCostBasis(e.target.value)}
+                  className="tabular-nums"
                 />
               </div>
-            )}
-          </div>
-          <Button onClick={handleCalculate} disabled={!costBasis}>
-            <Calculator className="w-4 h-4 mr-2" /> Calculate
-          </Button>
+              <div>
+                <Label htmlFor={methodId} className="text-xs">Method</Label>
+                <Select value={method} onValueChange={v => setMethod(v as DepMethod)}>
+                  <SelectTrigger id={methodId}><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="macrs_5yr">MACRS 5-year — equipment, vehicles</SelectItem>
+                    <SelectItem value="macrs_7yr">MACRS 7-year — office furniture, fixtures</SelectItem>
+                    <SelectItem value="macrs_15yr">MACRS 15-year — land improvements (fences, paving)</SelectItem>
+                    <SelectItem value="straight_line">Straight-line — equal deduction each year</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {method === "straight_line" && (
+                <div>
+                  <Label htmlFor={slYearsId} className="text-xs">Useful life (years)</Label>
+                  <Input
+                    id={slYearsId}
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    placeholder="10"
+                    value={slYears}
+                    onChange={e => setSlYears(e.target.value)}
+                    className="tabular-nums"
+                  />
+                </div>
+              )}
+            </div>
+            <Button type="submit" disabled={!costBasis} className="min-h-11">
+              <Calculator className="w-4 h-4 mr-2" aria-hidden="true" /> Calculate
+            </Button>
+          </form>
         </CardContent>
       </Card>
 
@@ -122,30 +149,32 @@ export default function DepreciationCalculatorPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-sm flex items-center gap-2">
-              <TrendingDown className="w-4 h-4" /> Depreciation Schedule
+              <TrendingDown className="w-4 h-4" aria-hidden="true" /> Depreciation schedule
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="text-xs">Year</TableHead>
-                  <TableHead className="text-xs text-right">Deduction</TableHead>
-                  <TableHead className="text-xs text-right">Accumulated</TableHead>
-                  <TableHead className="text-xs text-right">Book Value</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {schedule.map(row => (
-                  <TableRow key={row.year}>
-                    <TableCell className="text-xs">{row.year}</TableCell>
-                    <TableCell className="text-xs text-right">{fmtDollar(row.deduction)}</TableCell>
-                    <TableCell className="text-xs text-right">{fmtDollar(row.accumulated)}</TableCell>
-                    <TableCell className="text-xs text-right font-medium">{fmtDollar(row.bookValue)}</TableCell>
+            <div role="region" aria-label="Depreciation schedule" tabIndex={0} className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead scope="col" className="text-xs">Year</TableHead>
+                    <TableHead scope="col" className="text-xs text-right">Deduction</TableHead>
+                    <TableHead scope="col" className="text-xs text-right">Accumulated</TableHead>
+                    <TableHead scope="col" className="text-xs text-right">Book value</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {schedule.map(row => (
+                    <TableRow key={row.year}>
+                      <TableCell className="text-xs tabular-nums">{row.year}</TableCell>
+                      <TableCell className="text-xs text-right tabular-nums">{usd(row.deduction)}</TableCell>
+                      <TableCell className="text-xs text-right tabular-nums">{usd(row.accumulated)}</TableCell>
+                      <TableCell className="text-xs text-right font-medium tabular-nums">{usd(row.bookValue)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           </CardContent>
         </Card>
       )}
