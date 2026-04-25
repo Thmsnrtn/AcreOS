@@ -940,7 +940,7 @@ export function Sidebar() {
         </div>
       </div>
 
-      <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
+      <nav aria-label="Mobile navigation" className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
         {isFounder && (
           <Link
             href="/founder"
@@ -1110,6 +1110,7 @@ export function Sidebar() {
           </SheetTrigger>
           <SheetContent
             side="left"
+            aria-label="Mobile sidebar"
             className="p-0 w-[85vw] max-w-[320px] border-r-sidebar-border"
           >
             <MobileNavContent onNavClick={() => setIsOpen(false)} />
@@ -1119,6 +1120,7 @@ export function Sidebar() {
 
       {/* Desktop Sidebar */}
       <aside
+        aria-label="Sidebar"
         className={cn(
           "hidden md:flex flex-col fixed inset-y-0 left-0 z-50 m-2 rounded-xl border border-sidebar-border shadow-xl overflow-hidden sidebar-vibrancy sidebar-spring",
           isCollapsed ? "w-[68px]" : "w-64"
