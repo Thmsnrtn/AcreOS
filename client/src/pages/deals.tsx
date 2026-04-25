@@ -1722,13 +1722,13 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
             <TabsContent value="documents" className="space-y-4 md:space-y-6">
               <div className="flex items-center justify-between gap-3">
                 <h3 className="font-medium text-sm md:text-base">Document packages</h3>
-                <Link href={`/documents?action=create-package&dealId=${deal.id}`}>
-                  <Button size="sm" className="min-h-[44px]" data-testid="button-create-package-from-deal">
+                <Button asChild size="sm" className="min-h-[44px]" data-testid="button-create-package-from-deal">
+                  <Link href={`/documents?action=create-package&dealId=${deal.id}`}>
                     <FolderPlus className="w-4 h-4 mr-2" aria-hidden="true" />
                     <span className="sr-only sm:not-sr-only sm:inline">Create package</span>
                     <span className="sm:hidden">New</span>
-                  </Button>
-                </Link>
+                  </Link>
+                </Button>
               </div>
 
               {packagesLoading ? (
@@ -1741,12 +1741,12 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                       <h3 className="font-medium">No document packages</h3>
                       <p className="text-sm text-muted-foreground">Create a package to bundle documents for this deal.</p>
                     </div>
-                    <Link href={`/documents?action=create-package&dealId=${deal.id}`}>
-                      <Button variant="outline" className="min-h-[44px]" data-testid="button-create-first-package">
+                    <Button asChild variant="outline" className="min-h-[44px]" data-testid="button-create-first-package">
+                      <Link href={`/documents?action=create-package&dealId=${deal.id}`}>
                         <Plus className="w-4 h-4 mr-2" aria-hidden="true" />
                         Create package
-                      </Button>
-                    </Link>
+                      </Link>
+                    </Button>
                   </CardContent>
                 </Card>
               ) : (
@@ -1784,12 +1784,12 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                               </div>
                             </div>
                             <div className="flex items-center gap-2 ml-9 sm:ml-0">
-                              <Link href={`/documents?packageId=${pkg.id}`}>
-                                <Button variant="outline" size="sm" className="min-h-[44px] min-w-[44px]" data-testid={`button-view-deal-package-${pkg.id}`} aria-label={`View package ${pkg.name}`}>
+                              <Button asChild variant="outline" size="sm" className="min-h-[44px] min-w-[44px]" data-testid={`button-view-deal-package-${pkg.id}`}>
+                                <Link href={`/documents?packageId=${pkg.id}`} aria-label={`View package ${pkg.name}`}>
                                   <Eye className="w-4 h-4 sm:mr-1" aria-hidden="true" />
                                   <span className="sr-only sm:not-sr-only sm:inline">View</span>
-                                </Button>
-                              </Link>
+                                </Link>
+                              </Button>
                               {pkg.status === "draft" && docsCount > 0 && (
                                 <Button
                                   size="sm"

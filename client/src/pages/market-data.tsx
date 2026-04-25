@@ -145,11 +145,11 @@ export default function MarketDataPage() {
             <p className="text-sm text-muted-foreground">
               AcreOS uses AI to find undervalued land, automate due diligence, and track your path to financial freedom.
             </p>
-            <Link href="/auth">
-              <Button className="min-h-11">
+            <Button asChild className="min-h-11">
+              <Link href="/auth">
                 Start free <ArrowRight className="w-4 h-4 ml-1" aria-hidden="true" />
-              </Button>
-            </Link>
+              </Link>
+            </Button>
           </CardContent>
         </Card>
       </div>

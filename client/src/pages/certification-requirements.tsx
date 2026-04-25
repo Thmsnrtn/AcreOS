@@ -120,11 +120,11 @@ export default function CertificationRequirements() {
           <h1 className="text-2xl font-bold">Certification requirements</h1>
           <p className="text-muted-foreground">Requirements and benefits for each certification tier.</p>
         </div>
-        <Link href="/certification-leaderboard">
-          <Button variant="outline">
+        <Button asChild variant="outline">
+          <Link href="/certification-leaderboard">
             <Award className="h-4 w-4 mr-2" aria-hidden="true" /> View leaderboard
-          </Button>
-        </Link>
+          </Link>
+        </Button>
       </div>
 
       {userTier !== "none" && (
@@ -225,11 +225,11 @@ export default function CertificationRequirements() {
                     </ul>
                   </div>
                   {status === "next" && (
-                    <Link href="/academy">
-                      <Button className="w-full" size="sm" aria-label={`Start working toward ${tier.name} tier`}>
+                    <Button asChild className="w-full" size="sm">
+                      <Link href="/academy" aria-label={`Start working toward ${tier.name} tier`}>
                         Start working toward {tier.name}
-                      </Button>
-                    </Link>
+                      </Link>
+                    </Button>
                   )}
                 </CardContent>
               </Card>

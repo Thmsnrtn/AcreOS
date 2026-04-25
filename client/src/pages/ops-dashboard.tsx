@@ -65,11 +65,11 @@ function StatPanel({
         <CardTitle className="text-sm font-medium flex items-center justify-between">
           <span className="flex items-center gap-2">{icon}{title}</span>
           {linkTo && (
-            <Link href={linkTo}>
-              <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" aria-label={`View all ${title.toLowerCase()}`}>
+            <Button asChild variant="ghost" size="sm" className="h-6 px-2 text-xs">
+              <Link href={linkTo} aria-label={`View all ${title.toLowerCase()}`}>
                 View all <ChevronRight className="w-3 h-3 ml-1" aria-hidden="true" />
-              </Button>
-            </Link>
+              </Link>
+            </Button>
           )}
         </CardTitle>
       </CardHeader>

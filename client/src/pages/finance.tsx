@@ -737,12 +737,12 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                   <p className="text-sm text-muted-foreground mb-3">
                     Connect Stripe to accept payments.
                   </p>
-                  <Link href="/settings?tab=payments">
-                    <Button variant="outline" size="sm">
+                  <Button asChild variant="outline" size="sm">
+                    <Link href="/settings?tab=payments">
                       <ExternalLink className="w-4 h-4 mr-2" aria-hidden="true" />
                       Settings &rsaquo; Payments
-                    </Button>
-                  </Link>
+                    </Link>
+                  </Button>
                 </div>
               ) : (
                 <>
