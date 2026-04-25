@@ -140,15 +140,15 @@ export function DashboardSettings({ settings, onSettingsChange }: DashboardSetti
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="icon" variant="ghost" aria-label="Dashboard settings" data-testid="button-dashboard-settings">
-          <Settings className="w-4 h-4" />
+        <Button type="button" size="icon" variant="ghost" aria-label="Dashboard settings" data-testid="button-dashboard-settings">
+          <Settings className="w-4 h-4" aria-hidden="true" />
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Settings className="w-5 h-5" />
-            Customize Dashboard
+            <Settings className="w-5 h-5" aria-hidden="true" />
+            Customize dashboard
           </DialogTitle>
         </DialogHeader>
         
@@ -157,68 +157,80 @@ export function DashboardSettings({ settings, onSettingsChange }: DashboardSetti
             Show, hide, and reorder dashboard widgets to customize your view.
           </p>
           
-          <div className="space-y-2">
-            {localSettings.order.map((widgetId, index) => (
-              <div
-                key={widgetId}
-                className="flex items-center justify-between gap-2 p-3 rounded-md bg-muted/50"
-                data-testid={`widget-settings-${widgetId}`}
-              >
-                <div className="flex items-center gap-3">
-                  <GripVertical className="w-4 h-4 text-muted-foreground" />
-                  <Label htmlFor={`widget-${widgetId}`} className="font-medium text-sm cursor-pointer">
-                    {getWidgetLabel(widgetId)}
-                  </Label>
-                </div>
-                
-                <div className="flex items-center gap-2">
-                  <div className="flex flex-col">
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-5 w-5"
-                      disabled={index === 0}
-                      onClick={() => moveWidget(widgetId, "up")}
-                      aria-label="Move widget up"
-                      data-testid={`button-move-up-${widgetId}`}
-                    >
-                      <ChevronUp className="w-3 h-3" />
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-5 w-5"
-                      disabled={index === localSettings.order.length - 1}
-                      onClick={() => moveWidget(widgetId, "down")}
-                      aria-label="Move widget down"
-                      data-testid={`button-move-down-${widgetId}`}
-                    >
-                      <ChevronDown className="w-3 h-3" />
-                    </Button>
+          <ul aria-label="Dashboard widgets" className="space-y-2 list-none p-0 m-0">
+            {localSettings.order.map((widgetId, index) => {
+              const widgetLabel = getWidgetLabel(widgetId);
+              return (
+                <li
+                  key={widgetId}
+                  className="flex items-center justify-between gap-2 p-3 rounded-md bg-muted/50"
+                  data-testid={`widget-settings-${widgetId}`}
+                >
+                  <div className="flex items-center gap-3">
+                    <GripVertical className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
+                    <Label htmlFor={`widget-${widgetId}`} className="font-medium text-sm cursor-pointer">
+                      {widgetLabel}
+                    </Label>
                   </div>
-                  <Switch
-                    id={`widget-${widgetId}`}
-                    checked={localSettings.visibility[widgetId] ?? true}
-                    onCheckedChange={(checked) => handleVisibilityChange(widgetId, checked)}
-                    data-testid={`switch-visibility-${widgetId}`}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
+
+                  <div className="flex items-center gap-2">
+                    <div className="flex flex-col">
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        className="h-5 w-5"
+                        disabled={index === 0}
+                        onClick={() => moveWidget(widgetId, "up")}
+                        aria-label={`Move ${widgetLabel} up`}
+                        data-testid={`button-move-up-${widgetId}`}
+                      >
+                        <ChevronUp className="w-3 h-3" aria-hidden="true" />
+                      </Button>
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        className="h-5 w-5"
+                        disabled={index === localSettings.order.length - 1}
+                        onClick={() => moveWidget(widgetId, "down")}
+                        aria-label={`Move ${widgetLabel} down`}
+                        data-testid={`button-move-down-${widgetId}`}
+                      >
+                        <ChevronDown className="w-3 h-3" aria-hidden="true" />
+                      </Button>
+                    </div>
+                    <Switch
+                      id={`widget-${widgetId}`}
+                      checked={localSettings.visibility[widgetId] ?? true}
+                      onCheckedChange={(checked) => handleVisibilityChange(widgetId, checked)}
+                      aria-label={`Show ${widgetLabel} widget`}
+                      data-testid={`switch-visibility-${widgetId}`}
+                    />
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
         </div>
         
         <div className="flex items-center justify-between gap-2 pt-2">
-          <Button variant="outline" onClick={handleReset} data-testid="button-reset-dashboard">
-            <RotateCcw className="w-4 h-4 mr-2" />
+          <Button type="button" variant="outline" onClick={handleReset} data-testid="button-reset-dashboard">
+            <RotateCcw className="w-4 h-4 mr-2" aria-hidden="true" />
             Reset
           </Button>
           <div className="flex gap-2">
-            <Button variant="ghost" onClick={() => setOpen(false)} data-testid="button-cancel-settings">
+            <Button type="button" variant="ghost" onClick={() => setOpen(false)} data-testid="button-cancel-settings">
               Cancel
             </Button>
-            <Button onClick={handleSave} disabled={updateOrg.isPending} data-testid="button-save-dashboard-settings">
-              {updateOrg.isPending ? "Saving..." : "Save"}
+            <Button
+              type="button"
+              onClick={handleSave}
+              disabled={updateOrg.isPending}
+              aria-busy={updateOrg.isPending}
+              data-testid="button-save-dashboard-settings"
+            >
+              {updateOrg.isPending ? "Saving…" : "Save"}
             </Button>
           </div>
         </div>
