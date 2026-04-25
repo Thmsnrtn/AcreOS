@@ -1,5 +1,7 @@
-import { useState, useEffect } from "react";
+import { useId, useState, useEffect, type FormEvent } from "react";
 import { loadGoogleFont } from "@/lib/font-loader";
+import { useDocumentTitle } from "@/hooks/use-document-title";
+import { usd } from "@/lib/format";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -61,8 +63,14 @@ interface RevenueTrendPoint {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function fmtCurrency(val: number) {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(val);
+  // Reseller dashboard shows compact currency in KPI cards + chart axes.
+  // Use canonical usd helper with noCents to match the codebase pattern;
+  // tenants list rows show MRR/total revenue at the K-tier or above so
+  // sub-dollar precision isn't surfaced visually.
+  return usd(val, { noCents: true });
 }
+
+const reassurance = "Your form is unchanged — try again.";
 
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -80,7 +88,10 @@ function StatusBadge({ status }: { status: string }) {
     onboarding: "bg-yellow-100 text-yellow-800",
   };
   return (
-    <span className={`px-2 py-0.5 rounded text-xs font-medium ${map[status] ?? "bg-gray-100 text-gray-600"}`}>
+    <span
+      className={`px-2 py-0.5 rounded text-xs font-medium capitalize ${map[status] ?? "bg-gray-100 text-gray-600"}`}
+      aria-label={`Status: ${status}`}
+    >
       {status}
     </span>
   );
@@ -99,6 +110,12 @@ function CreateTenantDialog({ onSuccess }: { onSuccess: () => void }) {
     adminName: "",
     notes: "",
   });
+  const orgNameId = useId();
+  const subdomainId = useId();
+  const planId = useId();
+  const adminNameId = useId();
+  const adminEmailId = useId();
+  const notesId = useId();
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -117,33 +134,53 @@ function CreateTenantDialog({ onSuccess }: { onSuccess: () => void }) {
       setForm({ name: "", subdomain: "", plan: "professional", adminEmail: "", adminName: "", notes: "" });
       onSuccess();
     },
-    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+    onError: (e: any) =>
+      toast({ title: "Couldn't create tenant", description: `${e.message}. ${reassurance}`, variant: "destructive" }),
   });
+
+  function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (createMutation.isPending || !form.name || !form.subdomain || !form.adminEmail) return;
+    createMutation.mutate();
+  }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm"><Plus className="w-4 h-4 mr-1" /> New Tenant</Button>
+        <Button size="sm"><Plus className="w-4 h-4 mr-1" aria-hidden="true" /> New tenant</Button>
       </DialogTrigger>
       <DialogContent>
-        <DialogHeader><DialogTitle>Create New Tenant</DialogTitle></DialogHeader>
-        <div className="space-y-4 pt-2">
+        <DialogHeader><DialogTitle>Create new tenant</DialogTitle></DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4 pt-2">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label>Organization Name</Label>
-              <Input placeholder="Acme Realty" value={form.name}
-                onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+              <Label htmlFor={orgNameId}>Organization name</Label>
+              <Input
+                id={orgNameId}
+                placeholder="Acme Realty"
+                value={form.name}
+                onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                autoCapitalize="words"
+              />
             </div>
             <div>
-              <Label>Subdomain</Label>
-              <Input placeholder="acme-realty" value={form.subdomain}
-                onChange={e => setForm(f => ({ ...f, subdomain: e.target.value.toLowerCase().replace(/\s+/g, "-") }))} />
+              <Label htmlFor={subdomainId}>Subdomain</Label>
+              <Input
+                id={subdomainId}
+                placeholder="acme-realty"
+                value={form.subdomain}
+                onChange={e => setForm(f => ({ ...f, subdomain: e.target.value.toLowerCase().replace(/\s+/g, "-") }))}
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                className="font-mono"
+              />
             </div>
           </div>
           <div>
-            <Label>Plan</Label>
+            <Label htmlFor={planId}>Plan</Label>
             <Select value={form.plan} onValueChange={v => setForm(f => ({ ...f, plan: v }))}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger id={planId}><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="starter">Starter</SelectItem>
                 <SelectItem value="professional">Professional</SelectItem>
@@ -153,26 +190,49 @@ function CreateTenantDialog({ onSuccess }: { onSuccess: () => void }) {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label>Admin Name</Label>
-              <Input placeholder="Jane Smith" value={form.adminName}
-                onChange={e => setForm(f => ({ ...f, adminName: e.target.value }))} />
+              <Label htmlFor={adminNameId}>Admin name</Label>
+              <Input
+                id={adminNameId}
+                placeholder="Jane Smith"
+                value={form.adminName}
+                onChange={e => setForm(f => ({ ...f, adminName: e.target.value }))}
+                autoCapitalize="words"
+              />
             </div>
             <div>
-              <Label>Admin Email</Label>
-              <Input type="email" placeholder="jane@acme.com" value={form.adminEmail}
-                onChange={e => setForm(f => ({ ...f, adminEmail: e.target.value }))} />
+              <Label htmlFor={adminEmailId}>Admin email</Label>
+              <Input
+                id={adminEmailId}
+                type="email"
+                inputMode="email"
+                placeholder="jane@acme.com"
+                value={form.adminEmail}
+                onChange={e => setForm(f => ({ ...f, adminEmail: e.target.value }))}
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+              />
             </div>
           </div>
           <div>
-            <Label>Notes (optional)</Label>
-            <Textarea placeholder="Special requirements…" value={form.notes}
-              onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} />
+            <Label htmlFor={notesId}>Notes (optional)</Label>
+            <Textarea
+              id={notesId}
+              placeholder="Special requirements…"
+              value={form.notes}
+              onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+              rows={2}
+              autoCapitalize="sentences"
+            />
           </div>
-          <Button className="w-full" onClick={() => createMutation.mutate()}
-            disabled={createMutation.isPending || !form.name || !form.subdomain || !form.adminEmail}>
-            {createMutation.isPending ? "Creating…" : "Create Tenant"}
+          <Button
+            type="submit"
+            className="w-full"
+            disabled={createMutation.isPending || !form.name || !form.subdomain || !form.adminEmail}
+          >
+            {createMutation.isPending ? "Creating…" : "Create tenant"}
           </Button>
-        </div>
+        </form>
       </DialogContent>
     </Dialog>
   );
@@ -182,34 +242,34 @@ function CreateTenantDialog({ onSuccess }: { onSuccess: () => void }) {
 
 function AnalyticsCards({ analytics, loading }: { analytics: ResellerAnalytics | null; loading: boolean }) {
   const cards = [
-    { label: "Total Tenants", value: analytics?.totalTenants, display: "number", icon: Building2, color: "text-blue-500" },
-    { label: "Active Users", value: analytics?.totalUsers, display: "number", icon: Users, color: "text-green-500" },
-    { label: "Total Revenue", value: analytics?.totalRevenue, display: "currency", icon: DollarSign, color: "text-purple-500" },
+    { label: "Total tenants", value: analytics?.totalTenants, display: "number", icon: Building2, color: "text-blue-500" },
+    { label: "Active users", value: analytics?.totalUsers, display: "number", icon: Users, color: "text-green-500" },
+    { label: "Total revenue", value: analytics?.totalRevenue, display: "currency", icon: DollarSign, color: "text-purple-500" },
     { label: "MRR", value: analytics?.mrr, display: "currency", icon: TrendingUp, color: "text-orange-500" },
   ];
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+    <dl className="grid grid-cols-2 md:grid-cols-4 gap-4">
       {cards.map(card => (
         <Card key={card.label}>
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-1">
-              <p className="text-sm text-muted-foreground">{card.label}</p>
-              <card.icon className={`w-4 h-4 ${card.color}`} />
+              <dt className="text-sm text-muted-foreground">{card.label}</dt>
+              <card.icon className={`w-4 h-4 ${card.color}`} aria-hidden="true" />
             </div>
             {loading ? (
               <Skeleton className="h-7 w-20 mt-1" />
             ) : (
-              <p className="text-2xl font-bold">
+              <dd className="text-2xl font-bold tabular-nums">
                 {card.display === "currency"
                   ? fmtCurrency(card.value ?? 0)
                   : (card.value ?? 0).toLocaleString()}
-              </p>
+              </dd>
             )}
           </CardContent>
         </Card>
       ))}
-    </div>
+    </dl>
   );
 }
 
@@ -217,6 +277,7 @@ function AnalyticsCards({ analytics, loading }: { analytics: ResellerAnalytics |
 
 function TenantTable({ tenants, loading }: { tenants: Tenant[]; loading: boolean }) {
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const filterId = useId();
 
   const filtered = statusFilter && statusFilter !== "all"
     ? tenants.filter(t => t.status === statusFilter)
@@ -226,8 +287,9 @@ function TenantTable({ tenants, loading }: { tenants: Tenant[]; loading: boolean
     <div className="space-y-3">
       <div className="flex items-center gap-3">
         <div className="w-44">
+          <Label htmlFor={filterId} className="sr-only">Filter tenants by status</Label>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="h-8"><SelectValue placeholder="All statuses" /></SelectTrigger>
+            <SelectTrigger id={filterId} className="h-8"><SelectValue placeholder="All statuses" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All</SelectItem>
               <SelectItem value="active">Active</SelectItem>
@@ -237,77 +299,101 @@ function TenantTable({ tenants, loading }: { tenants: Tenant[]; loading: boolean
             </SelectContent>
           </Select>
         </div>
-        <p className="text-xs text-muted-foreground ml-auto">{filtered.length} tenants</p>
+        <p className="text-xs text-muted-foreground ml-auto tabular-nums" aria-live="polite">
+          {filtered.length} tenant{filtered.length === 1 ? "" : "s"}
+        </p>
       </div>
 
       {loading ? (
-        <div className="space-y-2">{[1,2,3,4,5].map(i => <Skeleton key={i} className="h-14" />)}</div>
+        <div className="space-y-2" role="status" aria-label="Loading tenants">{[1,2,3,4,5].map(i => <Skeleton key={i} className="h-14" />)}</div>
       ) : filtered.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">
-            <Building2 className="w-10 h-10 mx-auto mb-2 text-muted-foreground" />
+            <Building2 className="w-10 h-10 mx-auto mb-2 text-muted-foreground" aria-hidden="true" />
             <p className="text-muted-foreground">No tenants found</p>
           </CardContent>
         </Card>
       ) : (
-        <div className="rounded-md border">
+        <div className="rounded-md border" role="region" aria-label="Tenants" tabIndex={0}>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Tenant</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Plan</TableHead>
-                <TableHead>Users</TableHead>
-                <TableHead>Revenue</TableHead>
-                <TableHead>AI Credits</TableHead>
-                <TableHead>Onboarding</TableHead>
-                <TableHead>Last Active</TableHead>
+                <TableHead scope="col">Tenant</TableHead>
+                <TableHead scope="col">Status</TableHead>
+                <TableHead scope="col">Plan</TableHead>
+                <TableHead scope="col">Users</TableHead>
+                <TableHead scope="col">Revenue</TableHead>
+                <TableHead scope="col">AI credits</TableHead>
+                <TableHead scope="col">Onboarding</TableHead>
+                <TableHead scope="col">Last active</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map(tenant => (
-                <TableRow key={tenant.id}>
-                  <TableCell>
-                    <p className="font-medium text-sm">{tenant.name}</p>
-                    <p className="text-xs text-muted-foreground">{tenant.subdomain}</p>
-                  </TableCell>
-                  <TableCell><StatusBadge status={tenant.status} /></TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className="text-xs capitalize">{tenant.plan}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1">
-                      <Users className="w-3 h-3 text-muted-foreground" />
-                      <span className="text-sm">{tenant.userCount}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell className="font-semibold">{fmtCurrency(tenant.monthlyRevenue)}/mo</TableCell>
-                  <TableCell>
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-xs">
-                        <span>{tenant.aiCreditsUsed.toLocaleString()}</span>
-                        <span className="text-muted-foreground">/ {tenant.aiCreditsLimit.toLocaleString()}</span>
+              {filtered.map(tenant => {
+                const creditsPct = (tenant.aiCreditsUsed / Math.max(tenant.aiCreditsLimit, 1)) * 100;
+                const onboardingPct = (tenant.onboardingStep / Math.max(tenant.onboardingTotal, 1)) * 100;
+                return (
+                  <TableRow key={tenant.id}>
+                    <TableCell scope="row">
+                      <p className="font-medium text-sm">{tenant.name}</p>
+                      <p className="text-xs text-muted-foreground font-mono">{tenant.subdomain}</p>
+                    </TableCell>
+                    <TableCell><StatusBadge status={tenant.status} /></TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="text-xs capitalize" aria-label={`Plan: ${tenant.plan}`}>{tenant.plan}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1">
+                        <Users className="w-3 h-3 text-muted-foreground" aria-hidden="true" />
+                        <span className="text-sm tabular-nums" aria-label={`${tenant.userCount} active users`}>{tenant.userCount}</span>
                       </div>
-                      <Progress value={(tenant.aiCreditsUsed / Math.max(tenant.aiCreditsLimit, 1)) * 100} className="h-1.5" />
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    {tenant.status === "onboarding" ? (
+                    </TableCell>
+                    <TableCell className="font-semibold tabular-nums">{fmtCurrency(tenant.monthlyRevenue)}/mo</TableCell>
+                    <TableCell>
                       <div className="space-y-1">
-                        <div className="flex justify-between text-xs">
-                          <span>Step {tenant.onboardingStep} / {tenant.onboardingTotal}</span>
+                        <div className="flex justify-between text-xs tabular-nums">
+                          <span>{tenant.aiCreditsUsed.toLocaleString()}</span>
+                          <span className="text-muted-foreground">/ {tenant.aiCreditsLimit.toLocaleString()}</span>
                         </div>
-                        <Progress value={(tenant.onboardingStep / Math.max(tenant.onboardingTotal, 1)) * 100} className="h-1.5" />
+                        <Progress
+                          value={creditsPct}
+                          className="h-1.5"
+                          role="progressbar"
+                          aria-valuenow={Math.round(creditsPct)}
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                          aria-label={`${tenant.name} AI credit usage`}
+                        />
                       </div>
-                    ) : (
-                      <CheckCircle2 className="w-4 h-4 text-green-500" />
-                    )}
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {tenant.lastActiveAt ? fmtDate(tenant.lastActiveAt) : "Never"}
-                  </TableCell>
-                </TableRow>
-              ))}
+                    </TableCell>
+                    <TableCell>
+                      {tenant.status === "onboarding" ? (
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-xs tabular-nums">
+                            <span>Step {tenant.onboardingStep} / {tenant.onboardingTotal}</span>
+                          </div>
+                          <Progress
+                            value={onboardingPct}
+                            className="h-1.5"
+                            role="progressbar"
+                            aria-valuenow={Math.round(onboardingPct)}
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                            aria-label={`${tenant.name} onboarding progress`}
+                          />
+                        </div>
+                      ) : (
+                        <CheckCircle2 className="w-4 h-4 text-green-500" aria-label="Onboarding complete" />
+                      )}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {tenant.lastActiveAt
+                        ? <time dateTime={tenant.lastActiveAt}>{fmtDate(tenant.lastActiveAt)}</time>
+                        : "Never"}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </div>
@@ -323,7 +409,7 @@ function RevenueTrendChart({ data, loading }: { data: RevenueTrendPoint[]; loadi
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm flex items-center gap-2">
-          <TrendingUp className="w-4 h-4 text-primary" /> Revenue Trend
+          <TrendingUp className="w-4 h-4 text-primary" aria-hidden="true" /> Revenue trend
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -334,20 +420,25 @@ function RevenueTrendChart({ data, loading }: { data: RevenueTrendPoint[]; loadi
             No revenue data yet
           </div>
         ) : (
-          <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={data} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-              <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-              <YAxis yAxisId="rev" tickFormatter={v => `$${(v / 1000).toFixed(0)}K`} tick={{ fontSize: 11 }} width={60} />
-              <YAxis yAxisId="ten" orientation="right" tick={{ fontSize: 11 }} width={40} />
-              <Tooltip formatter={((val: number, name: string) =>
-                name === "Revenue" ? fmtCurrency(val) : val
-              ) as any} />
-              <Legend wrapperStyle={{ fontSize: 12 }} />
-              <Line yAxisId="rev" type="monotone" dataKey="revenue" name="Revenue" stroke="#6366f1" strokeWidth={2} dot={{ r: 3 }} />
-              <Line yAxisId="ten" type="monotone" dataKey="newTenants" name="New Tenants" stroke="#22c55e" strokeWidth={2} dot={{ r: 3 }} />
-            </LineChart>
-          </ResponsiveContainer>
+          <div
+            role="img"
+            aria-label={`Revenue and new-tenant trend over ${data.length} months. Latest month revenue ${fmtCurrency(data[data.length - 1]?.revenue ?? 0)}, ${data[data.length - 1]?.newTenants ?? 0} new tenants.`}
+          >
+            <ResponsiveContainer width="100%" height={200}>
+              <LineChart data={data} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                <YAxis yAxisId="rev" tickFormatter={v => fmtCurrency(v)} tick={{ fontSize: 11 }} width={60} />
+                <YAxis yAxisId="ten" orientation="right" tick={{ fontSize: 11 }} width={40} />
+                <Tooltip formatter={((val: number, name: string) =>
+                  name === "Revenue" ? fmtCurrency(val) : val
+                ) as any} />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                <Line yAxisId="rev" type="monotone" dataKey="revenue" name="Revenue" stroke="#6366f1" strokeWidth={2} dot={{ r: 3 }} />
+                <Line yAxisId="ten" type="monotone" dataKey="newTenants" name="New tenants" stroke="#22c55e" strokeWidth={2} dot={{ r: 3 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
         )}
       </CardContent>
     </Card>
@@ -369,19 +460,24 @@ function UsageBreakdown({ tenants }: { tenants: Tenant[] }) {
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm flex items-center gap-2">
-          <Zap className="w-4 h-4 text-primary" /> AI Credits Usage by Tenant
+          <Zap className="w-4 h-4 text-primary" aria-hidden="true" /> AI credits usage by tenant
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <ResponsiveContainer width="100%" height={200}>
-          <BarChart data={data} layout="vertical" margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
-            <CartesianGrid strokeDasharray="3 3" className="opacity-30" horizontal={false} />
-            <XAxis type="number" tick={{ fontSize: 11 }} />
-            <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={120} />
-            <Tooltip formatter={((val: number) => [val.toLocaleString(), "Credits"]) as any} />
-            <Bar dataKey="credits" name="AI Credits" fill="#f59e0b" radius={[0, 4, 4, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
+        <div
+          role="img"
+          aria-label={`Top ${data.length} tenants by AI credit usage: ${data.slice(0, 3).map(d => `${d.name} ${d.credits.toLocaleString()} credits`).join(", ")}${data.length > 3 ? "…" : ""}`}
+        >
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={data} layout="vertical" margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" className="opacity-30" horizontal={false} />
+              <XAxis type="number" tick={{ fontSize: 11 }} />
+              <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={120} />
+              <Tooltip formatter={((val: number) => [val.toLocaleString(), "Credits"]) as any} />
+              <Bar dataKey="credits" name="AI credits" fill="#f59e0b" radius={[0, 4, 4, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
       </CardContent>
     </Card>
   );
@@ -428,7 +524,8 @@ function WhiteLabelPanel() {
       return res.json();
     },
     onSuccess: () => toast({ title: "Branding saved", description: "Your white-label settings have been updated." }),
-    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+    onError: (e: any) =>
+      toast({ title: "Couldn't save branding", description: `${e.message}. ${reassurance}`, variant: "destructive" }),
   });
 
   const set = (k: keyof typeof branding) => (e: React.ChangeEvent<HTMLInputElement>) =>
@@ -597,6 +694,7 @@ function WhiteLabelPanel() {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function ResellerDashboardPage() {
+  useDocumentTitle("Reseller dashboard");
   const queryClient = useQueryClient();
 
   const { data: analyticsData, isLoading: analyticsLoading } = useQuery({
@@ -633,7 +731,7 @@ export default function ResellerDashboardPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Building2 className="w-7 h-7 text-primary" /> Reseller Dashboard
+            <Building2 className="w-7 h-7 text-primary" aria-hidden="true" /> Reseller dashboard
           </h1>
           <p className="text-muted-foreground mt-1">
             Tenant management, usage analytics, and white-label configuration
@@ -644,7 +742,7 @@ export default function ResellerDashboardPage() {
             queryClient.invalidateQueries({ queryKey: ["/api/white-label/tenants"] });
             queryClient.invalidateQueries({ queryKey: ["/api/white-label/analytics"] });
           }}>
-            <RefreshCw className="w-4 h-4 mr-1" /> Refresh
+            <RefreshCw className="w-4 h-4 mr-1" aria-hidden="true" /> Refresh
           </Button>
           <CreateTenantDialog onSuccess={() => queryClient.invalidateQueries({ queryKey: ["/api/white-label/tenants"] })} />
         </div>
@@ -657,14 +755,14 @@ export default function ResellerDashboardPage() {
         <TabsList>
           <TabsTrigger value="tenants">Tenants</TabsTrigger>
           <TabsTrigger value="analytics">Analytics</TabsTrigger>
-          <TabsTrigger value="branding">White-Label</TabsTrigger>
+          <TabsTrigger value="branding">White-label</TabsTrigger>
         </TabsList>
 
         <TabsContent value="tenants" className="mt-4">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm flex items-center gap-2">
-                <Users className="w-4 h-4 text-primary" /> Tenants
+                <Users className="w-4 h-4 text-primary" aria-hidden="true" /> Tenants
               </CardTitle>
             </CardHeader>
             <CardContent>
