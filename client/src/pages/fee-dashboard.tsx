@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -129,12 +130,11 @@ function SummaryCards({ analytics, loading }: { analytics: FeeAnalytics | null; 
 // ─── Analytics Chart ─────────────────────────────────────────────────────────
 
 function AnalyticsChart({ analytics }: { analytics: FeeAnalytics | null }) {
-  // Build bar data from summary fields
   const data = analytics ? [
     { name: "Collected", value: analytics.totalCollected },
-    { name: "In Escrow", value: analytics.pendingInEscrow },
-    { name: "Paid Out", value: analytics.paidOut },
-    { name: "This Month", value: analytics.thisMonth },
+    { name: "In escrow", value: analytics.pendingInEscrow },
+    { name: "Paid out", value: analytics.paidOut },
+    { name: "This month", value: analytics.thisMonth },
   ] : [];
 
   return (
@@ -148,21 +148,32 @@ function AnalyticsChart({ analytics }: { analytics: FeeAnalytics | null }) {
         {data.length === 0 ? (
           <Skeleton className="h-48 w-full" />
         ) : (
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={data} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-              <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-              <YAxis tickFormatter={v => `$${(v / 1000).toFixed(0)}K`} tick={{ fontSize: 11 }} width={60} />
-              <Tooltip formatter={((val: number) => fmtCurrency(val)) as any} />
-              <Bar dataKey="value" fill="#6366f1" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+          <div
+            role="img"
+            aria-label={`Fee breakdown bar chart: ${data.map(d => `${d.name} ${fmtCurrency(d.value)}`).join(", ")}`}
+          >
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={data} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                <YAxis tickFormatter={v => `$${(v / 1000).toFixed(0)}K`} tick={{ fontSize: 11 }} width={60} />
+                <Tooltip formatter={((val: number) => fmtCurrency(val)) as any} />
+                <Bar dataKey="value" fill="#6366f1" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         )}
         {analytics && (
-          <div className="mt-3 flex gap-4 text-xs text-muted-foreground">
-            <span>Avg rate: <strong className="tabular-nums">{(analytics.avgFeeRate * 100).toFixed(2)}%</strong></span>
-            <span>Transactions: <strong className="tabular-nums">{analytics.transactionCount.toLocaleString()}</strong></span>
-          </div>
+          <dl className="mt-3 flex gap-4 text-xs text-muted-foreground">
+            <div className="flex gap-1">
+              <dt>Average rate:</dt>
+              <dd><strong className="tabular-nums">{(analytics.avgFeeRate * 100).toFixed(2)}%</strong></dd>
+            </div>
+            <div className="flex gap-1">
+              <dt>Transactions:</dt>
+              <dd><strong className="tabular-nums">{analytics.transactionCount.toLocaleString()}</strong></dd>
+            </div>
+          </dl>
         )}
       </CardContent>
     </Card>
@@ -175,6 +186,7 @@ function SettlementsTab() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [settlementToRelease, setSettlementToRelease] = useState<Settlement | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["/api/fees/settlements", statusFilter],
@@ -205,6 +217,7 @@ function SettlementsTab() {
       toast({ title: "Settlement released from escrow." });
       queryClient.invalidateQueries({ queryKey: ["/api/fees/settlements"] });
       queryClient.invalidateQueries({ queryKey: ["/api/fees/analytics"] });
+      setSettlementToRelease(null);
     },
     onError: (e: any) =>
       toast({
@@ -275,7 +288,7 @@ function SettlementsTab() {
                         size="sm"
                         variant="outline"
                         className="h-9 min-h-9 text-xs"
-                        onClick={() => releaseMutation.mutate(s.id)}
+                        onClick={() => setSettlementToRelease(s)}
                         disabled={releaseMutation.isPending}
                         aria-label={`Release settlement ${s.transactionId} from escrow`}
                       >
@@ -289,6 +302,21 @@ function SettlementsTab() {
           </Table>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!settlementToRelease}
+        onOpenChange={(open) => !open && setSettlementToRelease(null)}
+        title="Release settlement from escrow?"
+        description={
+          settlementToRelease
+            ? `Release ${fmtCurrency(settlementToRelease.amount)} for transaction ${settlementToRelease.transactionId}? Funds will move out of escrow and cannot be recalled here.`
+            : ""
+        }
+        confirmLabel="Release funds"
+        variant="destructive"
+        onConfirm={() => settlementToRelease && releaseMutation.mutate(settlementToRelease.id)}
+        isLoading={releaseMutation.isPending}
+      />
     </div>
   );
 }
