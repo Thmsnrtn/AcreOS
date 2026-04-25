@@ -655,6 +655,7 @@ to a dedicated 9b slice.
 **/campaigns + /analytics (69):** ✅ complete — useDocumentTitle on both tab routers, sentence-case (Marketing hub, A/B tests), TabFallback role=status, decorative tab/sidebar icons aria-hidden (commit `dcbdc93`)
 **/founder-prompt-history + /dodd-frank-checker (70):** ✅ complete — **milestone slice 70** — version timeline → ol/li with VersionRow component, toggle aria-expanded/aria-controls + min-h-9, dodd-frank form onSubmit + try/catch with legal-hedge reassurance toast (was silent), 7 useId+Label pairings, slice-25 teach on seller type + rate type, severity-icon aria-label, critical findings role=alert (commit `0d75e57`)
 **/dunning-manager + /agent-performance (71):** ✅ complete — P1 ConfirmDialog on Cancel (slice-8 destructive rule), Retry/Cancel mis-click aria-labels naming org, dl/dt/dd stat cards, TrustScoreBar role=progressbar with aria-valuenow, agent grid → ul/li, usd() money-precision (commit `12f48ee`)
+**/event-log + /founder-onboarding (72):** ✅ complete — search useId+Label+mobile-keyboard, EventRow expand aria-expanded/aria-controls + min-h-9, events → ol/li (semantic sequence), priority icon aria-label, expanded details → dl/dt/dd, sweep onError reassurance toast (was silent), retry-on-error inline button, journey rows aria-label naming org+status+step (commit `7ad6c1d`)
 **/onboarding-v2 targeted (18):** ✅ complete (commit `70df779`) — 18b deferred
 **/settings targeted (19):** ✅ complete (commit `809044c`) — 19b remaining components deferred
 **/pipeline (20):** ✅ complete (commit `1b5d0f7`)
