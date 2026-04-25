@@ -24,15 +24,18 @@ export function FieldWorkToolbar() {
   }
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 border-t bg-background px-2 py-2 flex items-center justify-around gap-1 safe-area-bottom">
+    <nav
+      aria-label="Field work tools"
+      className="fixed bottom-0 left-0 right-0 z-50 border-t bg-background px-2 py-2 flex items-center justify-around gap-1 safe-area-bottom"
+    >
       <Button
         variant="ghost"
         size="sm"
         className="flex flex-col items-center gap-1 h-auto py-2 px-3"
-        aria-label="Quick Capture"
+        aria-label="Quick capture"
         onClick={() => navigate("/quick-capture")}
       >
-        <Camera className="h-5 w-5" />
+        <Camera className="h-5 w-5" aria-hidden="true" />
         <span className="text-xs text-muted-foreground">Capture</span>
       </Button>
 
@@ -40,10 +43,10 @@ export function FieldWorkToolbar() {
         variant="ghost"
         size="sm"
         className="flex flex-col items-center gap-1 h-auto py-2 px-3"
-        aria-label="Scan Property"
+        aria-label="Scan property"
         onClick={() => navigate("/field-scanner")}
       >
-        <ScanLine className="h-5 w-5" />
+        <ScanLine className="h-5 w-5" aria-hidden="true" />
         <span className="text-xs text-muted-foreground">Scan</span>
       </Button>
 
@@ -51,10 +54,10 @@ export function FieldWorkToolbar() {
         variant="ghost"
         size="sm"
         className="flex flex-col items-center gap-1 h-auto py-2 px-3"
-        aria-label="Nearest Opportunity"
+        aria-label="Nearest opportunity"
         onClick={() => navigate("/deal-feed")}
       >
-        <MapPin className="h-5 w-5" />
+        <MapPin className="h-5 w-5" aria-hidden="true" />
         <span className="text-xs text-muted-foreground">Nearby</span>
       </Button>
 
@@ -65,9 +68,9 @@ export function FieldWorkToolbar() {
         aria-label="Voice note"
         onClick={() => toast({ title: "Voice notes coming soon", description: "We're shipping in-field voice memos in an upcoming release." })}
       >
-        <Mic className="h-5 w-5" />
+        <Mic className="h-5 w-5" aria-hidden="true" />
         <span className="text-xs text-muted-foreground">Voice</span>
       </Button>
-    </div>
+    </nav>
   );
 }
