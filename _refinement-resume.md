@@ -643,6 +643,7 @@ to a dedicated 9b slice.
 **/title-search + /offer-batches (57):** ✅ complete — humanize-type on legal issue.type, usd() on clearance cost + issue amount, chain-of-title → ol (commit `66a9634`)
 **/property-enrichment + /territory-manager (58):** ✅ complete — P1 ConfirmDialog on territory delete (previously zero confirmation), usd() on valuation fields, 2+2 reassurance toasts (commit `170574c`)
 **/activity + /portfolio-health (59):** ✅ complete — day groups → section landmarks, role=alert (critical) vs role=status, retry-on-error inline button (commit `b7d176b`)
+**/depreciation-calculator + /usage-quota (60):** ✅ complete — **milestone slice 60** — slice-25 teach on MACRS method, P1 money-precision on tax deductions, role=alert on quota-blocked features (commit `fe49a82`)
 **/onboarding-v2 targeted (18):** ✅ complete (commit `70df779`) — 18b deferred
 **/settings targeted (19):** ✅ complete (commit `809044c`) — 19b remaining components deferred
 **/pipeline (20):** ✅ complete (commit `1b5d0f7`)
