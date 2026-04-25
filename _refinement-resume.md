@@ -783,6 +783,7 @@ to a dedicated 9b slice.
 **PageShell labels batch 2 (197):** ✅ complete — 9 more: beta-dashboard, help, deal-feed, blind-offer-wizard, freedom-meter, regulatory-intel, automation, pax, commissions. (commit `0d40345`)
 **PageShell labels batch 3 (198):** ✅ complete — 15 more: decision-queue, executive-dashboard, admin-support, workflows, tax-optimizer, price-optimizer, model-training, market-watchlist, deal-patterns, exchange-1031, syndication, forecasting, webhooks, ops-dashboard, team-leaderboard. (commit `f95a0ab`)
 **PageShell document.title fallback (199):** ✅ complete — strategy shift: PageShell now falls back to `document.title` (with " · AcreOS" suffix stripped) when no `label` is passed. Every page that calls useDocumentTitle/usePageMeta now auto-supplies a meaningful `<main aria-label>` without per-page wiring. Explicit label still overrides. (commit `95d906b`)
+**ConfirmDialog + QueryErrorState polish (200):** ✅ complete — 200-slice milestone. ConfirmDialog Loader2 aria-hidden + "Processing…" aria-live=polite. QueryErrorState compact mode role=alert + aria-live, decorative icons aria-hidden, retry button aria-label varies by isRetrying. Sentence-case titles ("Authentication required", "Data not found", "Something went wrong", "Try again"). (commit `9c8b195`)
 **/onboarding-v2 targeted (18):** ✅ complete (commit `70df779`) — 18b deferred
 **/settings targeted (19):** ✅ complete (commit `809044c`) — 19b remaining components deferred
 **/pipeline (20):** ✅ complete (commit `1b5d0f7`)
