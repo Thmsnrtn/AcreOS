@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useId } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,7 @@ interface CreditPurchaseModalProps {
 export function CreditPurchaseModal({ open, onOpenChange }: CreditPurchaseModalProps) {
   const { toast } = useToast();
   const [selectedPack, setSelectedPack] = useState<string>("pack_25");
+  const groupLabelId = useId();
 
   const purchaseMutation = useMutation({
     mutationFn: async (packId: string) => {
@@ -40,8 +41,8 @@ export function CreditPurchaseModal({ open, onOpenChange }: CreditPurchaseModalP
     },
     onError: (error: Error) => {
       toast({
-        title: "Purchase Failed",
-        description: error.message,
+        title: "Couldn't start purchase",
+        description: `${error.message} — your selection is preserved. Try again or contact support.`,
         variant: "destructive",
       });
     },
@@ -55,43 +56,53 @@ export function CreditPurchaseModal({ open, onOpenChange }: CreditPurchaseModalP
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <CreditCard className="w-5 h-5" />
-            Purchase Credits
+          <DialogTitle id={groupLabelId} className="flex items-center gap-2">
+            <CreditCard className="w-5 h-5" aria-hidden="true" />
+            Purchase credits
           </DialogTitle>
           <DialogDescription>
             Select a credit pack to add to your account. Credits can be used for emails, SMS, AI features, and more.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid grid-cols-2 gap-3 py-4">
-          {CREDIT_PACKS.map((pack) => (
-            <Card
-              key={pack.id}
-              className={`cursor-pointer transition-all ${
-                selectedPack === pack.id
-                  ? "ring-2 ring-primary"
-                  : ""
-              }`}
-              onClick={() => setSelectedPack(pack.id)}
-              data-testid={`card-pack-${pack.id}`}
-            >
-              <CardContent className="p-4 text-center relative">
-                {selectedPack === pack.id && (
-                  <div className="absolute top-2 right-2">
-                    <Check className="w-4 h-4 text-primary" />
+        <div role="radiogroup" aria-labelledby={groupLabelId} className="grid grid-cols-2 gap-3 py-4">
+          {CREDIT_PACKS.map((pack) => {
+            const isSelected = selectedPack === pack.id;
+            return (
+              <Card
+                key={pack.id}
+                role="radio"
+                aria-checked={isSelected}
+                tabIndex={isSelected ? 0 : -1}
+                onClick={() => setSelectedPack(pack.id)}
+                onKeyDown={(e) => {
+                  if (e.key === " " || e.key === "Enter") {
+                    e.preventDefault();
+                    setSelectedPack(pack.id);
+                  }
+                }}
+                className={`cursor-pointer transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+                  isSelected ? "ring-2 ring-primary" : ""
+                }`}
+                data-testid={`card-pack-${pack.id}`}
+              >
+                <CardContent className="p-4 text-center relative">
+                  {isSelected && (
+                    <div className="absolute top-2 right-2">
+                      <Check className="w-4 h-4 text-primary" aria-hidden="true" />
+                    </div>
+                  )}
+                  <div className="text-2xl font-bold tabular-nums">{pack.name}</div>
+                  <div className="text-sm text-muted-foreground mt-1 tabular-nums">
+                    {pack.credits.toLocaleString()} credits
                   </div>
-                )}
-                <div className="text-2xl font-bold">{pack.name}</div>
-                <div className="text-sm text-muted-foreground mt-1">
-                  {pack.credits.toLocaleString()} credits
-                </div>
-                <Badge variant="secondary" className="mt-2">
-                  ${(pack.credits / 100).toFixed(0)} value
-                </Badge>
-              </CardContent>
-            </Card>
-          ))}
+                  <Badge variant="secondary" className="mt-2">
+                    ${(pack.credits / 100).toFixed(0)} value
+                  </Badge>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
 
         <div className="flex justify-end gap-3 pt-2">
@@ -109,11 +120,11 @@ export function CreditPurchaseModal({ open, onOpenChange }: CreditPurchaseModalP
             data-testid="button-confirm-purchase"
           >
             {purchaseMutation.isPending ? (
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
             ) : (
-              <CreditCard className="w-4 h-4 mr-2" />
+              <CreditCard className="w-4 h-4 mr-2" aria-hidden="true" />
             )}
-            Purchase
+            {purchaseMutation.isPending ? "Starting…" : "Purchase"}
           </Button>
         </div>
       </DialogContent>
