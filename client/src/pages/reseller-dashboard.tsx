@@ -674,7 +674,10 @@ function WhiteLabelPanel() {
                       <p className="text-xs text-gray-500">Real Estate Suite</p>
                     </div>
                     <button
-                      className="ml-auto text-xs text-white px-3 py-1.5 rounded font-medium"
+                      type="button"
+                      tabIndex={-1}
+                      aria-hidden="true"
+                      className="ml-auto text-xs text-white px-3 py-1.5 rounded font-medium pointer-events-none"
                       style={{ backgroundColor: branding.accentColor }}
                     >
                       Get Started

@@ -109,8 +109,10 @@ export function DealInbox({ leadId, leadEmail, leadName }: DealInboxProps) {
   return (
     <div className="border rounded-lg">
       <button
+        type="button"
         onClick={() => setIsExpanded(!isExpanded)}
-        className="flex items-center justify-between w-full p-4 hover:bg-muted/50 transition-colors focus:outline-none focus:ring-2 focus:ring-ring rounded-t-lg"
+        aria-expanded={isExpanded}
+        className="flex items-center justify-between w-full p-4 hover:bg-muted/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-t-lg"
         aria-label={isExpanded ? "Collapse email thread" : "Expand email thread"}
       >
         <div className="flex items-center gap-2">

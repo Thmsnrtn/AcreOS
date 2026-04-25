@@ -1173,8 +1173,10 @@ export default function FieldScout() {
               {filteredLeads.slice(0, 5).map((lead, i) => (
                 <button
                   key={lead.id || i}
+                  type="button"
                   onClick={() => setSelectedLead(lead)}
-                  className="w-full flex items-center justify-between p-2 rounded hover:bg-gray-800 text-left transition-colors"
+                  aria-label={`View lead ${lead.firstName ?? ""} ${lead.lastName ?? ""}`.trim() || "View lead"}
+                  className="w-full flex items-center justify-between p-2 rounded hover:bg-gray-800 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
                 >
                   <div>
                     <div className="text-sm font-medium">{lead.ownerName || "Unknown"}</div>
@@ -1433,13 +1435,15 @@ export default function FieldScout() {
           </button>
         )}
         <button
+          type="button"
           onClick={() => {
             setShowQuickAdd(true);
             setActiveView("scout");
           }}
-          className="w-14 h-14 bg-emerald-600 rounded-full flex items-center justify-center shadow-lg"
+          aria-label="Quick-add new lead"
+          className="w-14 h-14 bg-emerald-600 rounded-full flex items-center justify-center shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
         >
-          <Plus className="w-7 h-7 text-white" />
+          <Plus className="w-7 h-7 text-white" aria-hidden="true" />
         </button>
       </div>
 
