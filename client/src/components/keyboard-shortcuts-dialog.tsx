@@ -18,35 +18,35 @@ export function KeyboardShortcutsDialog() {
       <DialogContent className="max-w-md" data-testid="dialog-keyboard-shortcuts">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Keyboard className="h-5 w-5" />
-            Keyboard Shortcuts
+            <Keyboard className="h-5 w-5" aria-hidden="true" />
+            Keyboard shortcuts
           </DialogTitle>
         </DialogHeader>
-        
+
         <div className="space-y-6">
-          <div>
-            <h3 className="text-sm font-medium text-muted-foreground mb-3">Navigation</h3>
-            <div className="space-y-2">
+          <section aria-labelledby="kbd-nav-heading">
+            <h3 id="kbd-nav-heading" className="text-sm font-medium text-muted-foreground mb-3">Navigation</h3>
+            <ul className="space-y-2 list-none p-0 m-0">
               {navigationShortcuts.map(([id, shortcut]) => (
-                <div key={id} className="flex items-center justify-between">
+                <li key={id} className="flex items-center justify-between">
                   <span className="text-sm">{shortcut.description}</span>
                   <ShortcutKeys keys={shortcut.key} />
-                </div>
+                </li>
               ))}
-            </div>
-          </div>
-          
-          <div>
-            <h3 className="text-sm font-medium text-muted-foreground mb-3">Actions</h3>
-            <div className="space-y-2">
+            </ul>
+          </section>
+
+          <section aria-labelledby="kbd-actions-heading">
+            <h3 id="kbd-actions-heading" className="text-sm font-medium text-muted-foreground mb-3">Actions</h3>
+            <ul className="space-y-2 list-none p-0 m-0">
               {otherShortcuts.map(([id, shortcut]) => (
-                <div key={id} className="flex items-center justify-between">
+                <li key={id} className="flex items-center justify-between">
                   <span className="text-sm">{shortcut.description}</span>
                   <ShortcutKeys keys={shortcut.key} />
-                </div>
+                </li>
               ))}
-            </div>
-          </div>
+            </ul>
+          </section>
         </div>
       </DialogContent>
     </Dialog>
