@@ -1,15 +1,15 @@
 // @ts-nocheck
-import { useState, useRef } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useState, useRef, useId } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Upload, Download, FileText, TrendingUp, AlertCircle, CheckCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { useDocumentTitle } from "@/hooks/use-document-title";
+import { usd } from "@/lib/format";
 import { DisclaimerBanner } from "@/components/disclaimer-banner";
 
 interface BulkResult {
@@ -27,6 +27,8 @@ interface BulkResult {
 }
 
 export default function AvmBulk() {
+  useDocumentTitle("Bulk AVM valuation");
+  const fileInputId = useId();
   const [file, setFile] = useState<File | null>(null);
   const [results, setResults] = useState<BulkResult[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -72,7 +74,11 @@ export default function AvmBulk() {
       setResults(data.results || []);
       toast({ title: "Bulk valuation complete", description: `Processed ${data.results.length} properties.` });
     } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+      toast({
+        title: "Couldn't run bulk valuation",
+        description: `${err.message}. Your uploaded file is unchanged — try again, or check the CSV format.`,
+        variant: "destructive",
+      });
     } finally {
       setIsProcessing(false);
     }
@@ -103,6 +109,11 @@ export default function AvmBulk() {
     else { setSortField(field); setSortDir("desc"); }
   };
 
+  const sortIndicator = (field: keyof BulkResult) =>
+    sortField === field ? (sortDir === "asc" ? "↑" : "↓") : "";
+  const ariaSort = (field: keyof BulkResult): "ascending" | "descending" | "none" =>
+    sortField === field ? (sortDir === "asc" ? "ascending" : "descending") : "none";
+
   const successCount = results.filter(r => r.status === "success").length;
   const errorCount = results.filter(r => r.status === "error").length;
   const avgValue = results.length ? results.filter(r => r.status === "success").reduce((s, r) => s + r.avmValue, 0) / successCount : 0;
@@ -110,167 +121,205 @@ export default function AvmBulk() {
   return (
     <div className="p-6 space-y-6">
       <DisclaimerBanner type="avm" />
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold">Bulk AVM Valuation</h1>
-          <p className="text-muted-foreground">Upload a CSV of properties to get instant valuations</p>
+          <h1 className="text-2xl font-bold">Bulk AVM valuation</h1>
+          <p className="text-muted-foreground">Upload a CSV of properties to get instant valuations.</p>
         </div>
         {results.length > 0 && (
-          <Button onClick={handleExport} variant="outline">
-            <Download className="h-4 w-4 mr-2" /> Export CSV
+          <Button onClick={handleExport} variant="outline" aria-label="Export results to CSV">
+            <Download className="h-4 w-4 mr-2" aria-hidden="true" /> Export CSV
           </Button>
         )}
       </div>
 
-      {/* Upload Panel */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Upload className="h-5 w-5" /> Upload Properties
+            <Upload className="h-5 w-5" aria-hidden="true" /> Upload properties
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div
-            className="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer hover:border-primary transition-colors"
-            onClick={() => fileInputRef.current?.click()}
+          <Label
+            htmlFor={fileInputId}
+            className="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer hover:border-primary transition-colors block focus-within:ring-2 focus-within:ring-ring"
           >
-            <FileText className="h-10 w-10 mx-auto mb-3 text-muted-foreground" />
+            <FileText className="h-10 w-10 mx-auto mb-3 text-muted-foreground" aria-hidden="true" />
             <p className="font-medium">{file ? file.name : "Click to upload CSV"}</p>
             <p className="text-sm text-muted-foreground mt-1">
-              Required columns: address, county, state, acreage
+              Required columns: address, county, state, acreage.
             </p>
-            <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={handleFileChange} />
-          </div>
+            <input
+              id={fileInputId}
+              ref={fileInputRef}
+              type="file"
+              accept=".csv"
+              className="sr-only"
+              onChange={handleFileChange}
+              aria-label="Upload CSV file"
+            />
+          </Label>
 
           {file && (
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
               <Badge variant="secondary">{file.name}</Badge>
-              <span className="text-sm text-muted-foreground">{(file.size / 1024).toFixed(1)} KB</span>
+              <span className="text-sm text-muted-foreground tabular-nums">{(file.size / 1024).toFixed(1)} KB</span>
               <Button onClick={handleUploadAndProcess} disabled={isProcessing}>
-                {isProcessing ? "Processing..." : "Run Bulk Valuation"}
+                {isProcessing ? "Processing…" : "Run bulk valuation"}
               </Button>
             </div>
           )}
 
           {isProcessing && (
-            <div className="space-y-2">
+            <div className="space-y-2" role="status" aria-live="polite">
               <div className="flex justify-between text-sm">
-                <span>Processing properties...</span>
-                <span>{progress}%</span>
+                <span>Processing properties…</span>
+                <span className="tabular-nums">{progress}%</span>
               </div>
-              <Progress value={progress} />
+              <Progress value={progress} aria-label={`Processing progress ${progress}%`} />
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Summary Cards */}
       {results.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <dl className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card>
             <CardContent className="pt-6">
-              <div className="text-2xl font-bold">{results.length}</div>
-              <div className="text-sm text-muted-foreground">Total Properties</div>
+              <dd className="text-2xl font-bold tabular-nums">{results.length}</dd>
+              <dt className="text-sm text-muted-foreground">Total properties</dt>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-6">
-              <div className="text-2xl font-bold text-green-600 flex items-center gap-1">
-                <CheckCircle className="h-5 w-5" /> {successCount}
-              </div>
-              <div className="text-sm text-muted-foreground">Successful</div>
+              <dd className="text-2xl font-bold text-green-600 flex items-center gap-1 tabular-nums">
+                <CheckCircle className="h-5 w-5" aria-hidden="true" /> {successCount}
+              </dd>
+              <dt className="text-sm text-muted-foreground">Successful</dt>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-6">
-              <div className="text-2xl font-bold text-red-600 flex items-center gap-1">
-                <AlertCircle className="h-5 w-5" /> {errorCount}
-              </div>
-              <div className="text-sm text-muted-foreground">Failed</div>
+              <dd className="text-2xl font-bold text-red-600 flex items-center gap-1 tabular-nums">
+                <AlertCircle className="h-5 w-5" aria-hidden="true" /> {errorCount}
+              </dd>
+              <dt className="text-sm text-muted-foreground">Failed</dt>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-6">
-              <div className="text-2xl font-bold">${(avgValue / 1000).toFixed(0)}K</div>
-              <div className="text-sm text-muted-foreground">Avg AVM Value</div>
+              <dd className="text-2xl font-bold tabular-nums">{usd(avgValue, { noCents: true })}</dd>
+              <dt className="text-sm text-muted-foreground">Avg AVM value</dt>
             </CardContent>
           </Card>
-        </div>
+        </dl>
       )}
 
-      {/* Results Table */}
       {results.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <TrendingUp className="h-5 w-5" /> Valuation Results
+              <TrendingUp className="h-5 w-5" aria-hidden="true" /> Valuation results
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Address</TableHead>
-                  <TableHead>County/State</TableHead>
-                  <TableHead className="cursor-pointer" onClick={() => toggleSort("acreage")}>
-                    Acreage {sortField === "acreage" && (sortDir === "asc" ? "↑" : "↓")}
-                  </TableHead>
-                  <TableHead className="cursor-pointer" onClick={() => toggleSort("avmValue")}>
-                    AVM Value {sortField === "avmValue" && (sortDir === "asc" ? "↑" : "↓")}
-                  </TableHead>
-                  <TableHead className="cursor-pointer" onClick={() => toggleSort("pricePerAcre")}>
-                    $/Acre {sortField === "pricePerAcre" && (sortDir === "asc" ? "↑" : "↓")}
-                  </TableHead>
-                  <TableHead className="cursor-pointer" onClick={() => toggleSort("confidence")}>
-                    Confidence {sortField === "confidence" && (sortDir === "asc" ? "↑" : "↓")}
-                  </TableHead>
-                  <TableHead>Range</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {sortedResults.map((r, i) => (
-                  <TableRow key={i}>
-                    <TableCell className="font-medium max-w-[200px] truncate">{r.address}</TableCell>
-                    <TableCell>{r.county}, {r.state}</TableCell>
-                    <TableCell>{r.acreage?.toFixed(1)}</TableCell>
-                    <TableCell>{r.status === "success" ? `$${r.avmValue?.toLocaleString()}` : "—"}</TableCell>
-                    <TableCell>{r.status === "success" ? `$${r.pricePerAcre?.toLocaleString()}` : "—"}</TableCell>
-                    <TableCell>
-                      {r.status === "success" && (
-                        <Badge variant={r.confidence >= 80 ? "default" : r.confidence >= 60 ? "secondary" : "destructive"}>
-                          {r.confidence}%
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {r.status === "success" ? `$${(r.confidenceLow/1000).toFixed(0)}K – $${(r.confidenceHigh/1000).toFixed(0)}K` : "—"}
-                    </TableCell>
-                    <TableCell>
-                      {r.status === "success"
-                        ? <CheckCircle className="h-4 w-4 text-green-500" />
-                        : <span className="text-xs text-red-500">{r.error || "Failed"}</span>}
-                    </TableCell>
+            <div role="region" aria-label="Bulk valuation results" tabIndex={0}>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead scope="col">Address</TableHead>
+                    <TableHead scope="col">County/state</TableHead>
+                    <TableHead scope="col" aria-sort={ariaSort("acreage")}>
+                      <button
+                        type="button"
+                        className="font-semibold hover:underline"
+                        onClick={() => toggleSort("acreage")}
+                        aria-label={`Sort by acreage ${ariaSort("acreage") === "ascending" ? "descending" : "ascending"}`}
+                      >
+                        Acreage {sortIndicator("acreage")}
+                      </button>
+                    </TableHead>
+                    <TableHead scope="col" aria-sort={ariaSort("avmValue")}>
+                      <button
+                        type="button"
+                        className="font-semibold hover:underline"
+                        onClick={() => toggleSort("avmValue")}
+                        aria-label={`Sort by AVM value ${ariaSort("avmValue") === "ascending" ? "descending" : "ascending"}`}
+                      >
+                        AVM value {sortIndicator("avmValue")}
+                      </button>
+                    </TableHead>
+                    <TableHead scope="col" aria-sort={ariaSort("pricePerAcre")}>
+                      <button
+                        type="button"
+                        className="font-semibold hover:underline"
+                        onClick={() => toggleSort("pricePerAcre")}
+                        aria-label={`Sort by price per acre ${ariaSort("pricePerAcre") === "ascending" ? "descending" : "ascending"}`}
+                      >
+                        $/acre {sortIndicator("pricePerAcre")}
+                      </button>
+                    </TableHead>
+                    <TableHead scope="col" aria-sort={ariaSort("confidence")}>
+                      <button
+                        type="button"
+                        className="font-semibold hover:underline"
+                        onClick={() => toggleSort("confidence")}
+                        aria-label={`Sort by confidence ${ariaSort("confidence") === "ascending" ? "descending" : "ascending"}`}
+                      >
+                        Confidence {sortIndicator("confidence")}
+                      </button>
+                    </TableHead>
+                    <TableHead scope="col">Range</TableHead>
+                    <TableHead scope="col">Status</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {sortedResults.map((r, i) => (
+                    <TableRow key={i}>
+                      <TableCell className="font-medium max-w-[200px] truncate">{r.address}</TableCell>
+                      <TableCell>{r.county}, {r.state}</TableCell>
+                      <TableCell className="tabular-nums">{r.acreage?.toFixed(1)}</TableCell>
+                      <TableCell className="tabular-nums">{r.status === "success" ? usd(r.avmValue) : "—"}</TableCell>
+                      <TableCell className="tabular-nums">{r.status === "success" ? usd(r.pricePerAcre) : "—"}</TableCell>
+                      <TableCell>
+                        {r.status === "success" && (
+                          <Badge
+                            variant={r.confidence >= 80 ? "default" : r.confidence >= 60 ? "secondary" : "destructive"}
+                            className="tabular-nums"
+                            aria-label={`Confidence ${r.confidence}%${r.confidence >= 80 ? ", high" : r.confidence >= 60 ? ", medium" : ", low"}`}
+                          >
+                            {r.confidence}%
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground tabular-nums">
+                        {r.status === "success" ? `${usd(r.confidenceLow, { noCents: true })} – ${usd(r.confidenceHigh, { noCents: true })}` : "—"}
+                      </TableCell>
+                      <TableCell>
+                        {r.status === "success"
+                          ? <CheckCircle className="h-4 w-4 text-green-500" aria-label="Success" />
+                          : <span className="text-xs text-red-500" role="alert">{r.error || "Failed"}</span>}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           </CardContent>
         </Card>
       )}
 
-      {/* CSV Format Guide */}
       {!results.length && (
         <Card>
-          <CardHeader><CardTitle>CSV Format Guide</CardTitle></CardHeader>
+          <CardHeader><CardTitle>CSV format guide</CardTitle></CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground mb-3">Your CSV should have these columns (header row required):</p>
-            <div className="bg-muted rounded p-3 font-mono text-sm">
-              address,county,state,acreage<br />
-              "123 Rural Rd","Smith County","TX",45.5<br />
-              "456 Farm Lane","Johnson County","OK",120.0
-            </div>
-            <p className="text-xs text-muted-foreground mt-2">Optional columns: apn, property_type, zoning</p>
+            <pre className="bg-muted rounded p-3 font-mono text-sm overflow-x-auto">
+{`address,county,state,acreage
+"123 Rural Rd","Smith County","TX",45.5
+"456 Farm Lane","Johnson County","OK",120.0`}
+            </pre>
+            <p className="text-xs text-muted-foreground mt-2">Optional columns: apn, property_type, zoning.</p>
           </CardContent>
         </Card>
       )}
