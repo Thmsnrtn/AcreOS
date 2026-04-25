@@ -475,15 +475,17 @@ export function FocusList() {
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
+                      type="button"
                       onClick={() => executeAction(lead, nextAction)}
-                      className={`w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded-md text-xs font-medium border transition-colors hover:opacity-90 ${getPriorityStyle(nextAction.priority)}`}
+                      className={`w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded-md text-xs font-medium border transition-colors hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${getPriorityStyle(nextAction.priority)}`}
+                      aria-label={`${nextAction.label} — ${nextAction.reason}`}
                       data-testid={`button-next-action-${lead.id}`}
                     >
                       <span className="flex items-center gap-1.5">
                         {getActionIcon(nextAction.type)}
                         {nextAction.label}
                       </span>
-                      <ArrowRight className="w-3 h-3 opacity-60" />
+                      <ArrowRight className="w-3 h-3 opacity-60" aria-hidden="true" />
                     </button>
                   </TooltipTrigger>
                   <TooltipContent side="bottom">
