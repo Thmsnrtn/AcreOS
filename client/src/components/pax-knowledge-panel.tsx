@@ -131,9 +131,11 @@ export function PaxKnowledgePanel({ open, onClose }: PaxKnowledgePanelProps) {
         </SheetHeader>
 
         {/* Upload zone */}
-        <div
+        <button
+          type="button"
+          disabled={files.length >= MAX_KB_FILES}
           className={cn(
-            "mx-4 mt-3 rounded-lg border-2 border-dashed p-4 text-center cursor-pointer transition-colors flex-shrink-0",
+            "mx-4 mt-3 w-auto rounded-lg border-2 border-dashed p-4 text-center cursor-pointer transition-colors flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
             isDragOver ? "border-primary bg-primary/5" : "border-border hover:border-primary/40",
             files.length >= MAX_KB_FILES && "opacity-50 pointer-events-none"
           )}
@@ -141,26 +143,28 @@ export function PaxKnowledgePanel({ open, onClose }: PaxKnowledgePanelProps) {
           onDragLeave={() => setIsDragOver(false)}
           onDrop={handleDrop}
           onClick={() => fileInputRef.current?.click()}
+          aria-label="Upload knowledge base file"
         >
-          <input
-            ref={fileInputRef}
-            type="file"
-            className="hidden"
-            multiple
-            accept=".pdf,.docx,.csv,.txt,.json"
-            onChange={(e) => { Array.from(e.target.files ?? []).forEach(uploadFile); e.target.value = ""; }}
-          />
           {uploading ? (
-            <Loader2 className="w-5 h-5 text-primary animate-spin mx-auto mb-1" />
+            <Loader2 className="w-5 h-5 text-primary animate-spin mx-auto mb-1" aria-hidden="true" />
           ) : (
-            <Paperclip className="w-5 h-5 text-muted-foreground mx-auto mb-1" />
+            <Paperclip className="w-5 h-5 text-muted-foreground mx-auto mb-1" aria-hidden="true" />
           )}
           <p className="text-xs text-muted-foreground">
             {uploading ? "Uploading…" : "Drop files or click to upload"}
           </p>
           <p className="text-[10px] text-muted-foreground/60 mt-0.5">PDF, DOCX, CSV, TXT · max 10 MB</p>
           <p className="text-[10px] text-amber-600/80 mt-1">Only upload templates and criteria, not personal data.</p>
-        </div>
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          className="sr-only"
+          multiple
+          accept=".pdf,.docx,.csv,.txt,.json"
+          onChange={(e) => { Array.from(e.target.files ?? []).forEach(uploadFile); e.target.value = ""; }}
+          aria-label="Knowledge base files"
+        />
 
         {/* File list */}
         <div className="flex-1 overflow-y-auto px-4 py-2 space-y-2 mt-2">

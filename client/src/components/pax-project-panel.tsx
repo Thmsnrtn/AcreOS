@@ -244,9 +244,10 @@ export function PaxProjectPanel({ open, onClose, activeProjectId, onSelectProjec
               </div>
 
               {/* File upload zone */}
-              <div
+              <button
+                type="button"
                 className={cn(
-                  "rounded-lg border-2 border-dashed p-3 text-center cursor-pointer transition-colors",
+                  "w-full rounded-lg border-2 border-dashed p-3 text-center cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                   isDragOver ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"
                 )}
                 onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
@@ -257,27 +258,29 @@ export function PaxProjectPanel({ open, onClose, activeProjectId, onSelectProjec
                   Array.from(e.dataTransfer.files).forEach((f) => uploadFile(currentProject.id, f));
                 }}
                 onClick={() => fileInputRef.current?.click()}
+                aria-label={`Add files to ${currentProject.name ?? "project"}`}
               >
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  className="hidden"
-                  multiple
-                  accept=".pdf,.docx,.csv,.txt,.json"
-                  onChange={(e) => {
-                    Array.from(e.target.files ?? []).forEach((f) => uploadFile(currentProject.id, f));
-                    e.target.value = "";
-                  }}
-                />
                 {uploadingFor === currentProject.id ? (
-                  <Loader2 className="w-4 h-4 animate-spin text-primary mx-auto mb-1" />
+                  <Loader2 className="w-4 h-4 animate-spin text-primary mx-auto mb-1" aria-hidden="true" />
                 ) : (
-                  <Paperclip className="w-4 h-4 text-muted-foreground mx-auto mb-1" />
+                  <Paperclip className="w-4 h-4 text-muted-foreground mx-auto mb-1" aria-hidden="true" />
                 )}
                 <p className="text-[11px] text-muted-foreground">
                   {uploadingFor === currentProject.id ? "Uploading…" : "Add files to this project"}
                 </p>
-              </div>
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                className="sr-only"
+                multiple
+                accept=".pdf,.docx,.csv,.txt,.json"
+                onChange={(e) => {
+                  Array.from(e.target.files ?? []).forEach((f) => uploadFile(currentProject.id, f));
+                  e.target.value = "";
+                }}
+                aria-label="Project files"
+              />
 
               {/* Project files list */}
               {projectFiles.length > 0 && (
