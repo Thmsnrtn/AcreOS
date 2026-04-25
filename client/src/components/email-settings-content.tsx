@@ -498,19 +498,34 @@ export function EmailSettingsContent() {
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>Add Custom Domain</DialogTitle>
+                  <DialogTitle>Add custom domain</DialogTitle>
                   <DialogDescription>
                     Enter your domain and the email address you want to send from.
                   </DialogDescription>
                 </DialogHeader>
-                <div className="space-y-4 py-4">
+                <form
+                  id="add-custom-domain-form"
+                  className="space-y-4 py-4"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (!newFromEmail || !newFromName || addCustomDomainMutation.isPending) return;
+                    addCustomDomainMutation.mutate({
+                      domain: newDomain,
+                      fromEmail: newFromEmail,
+                      fromName: newFromName,
+                    });
+                  }}
+                >
                   <div className="space-y-2">
-                    <Label htmlFor="fromName">Display Name</Label>
+                    <Label htmlFor="fromName">Display name</Label>
                     <Input
                       id="fromName"
-                      placeholder="Your Name or Company"
+                      placeholder="Your name or company"
                       value={newFromName}
                       onChange={(e) => setNewFromName(e.target.value)}
+                      autoCapitalize="words"
+                      autoComplete="organization"
+                      required
                       data-testid="input-from-name"
                     />
                     <p className="text-xs text-muted-foreground">
@@ -518,9 +533,15 @@ export function EmailSettingsContent() {
                     </p>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="fromEmail">From Email Address</Label>
+                    <Label htmlFor="fromEmail">From email address</Label>
                     <Input
                       id="fromEmail"
+                      type="email"
+                      inputMode="email"
+                      autoCapitalize="off"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      autoComplete="email"
                       placeholder="info@yourdomain.com"
                       value={newFromEmail}
                       onChange={(e) => {
@@ -528,6 +549,7 @@ export function EmailSettingsContent() {
                         const domain = getDomainFromEmail(e.target.value);
                         if (domain) setNewDomain(domain);
                       }}
+                      required
                       data-testid="input-from-email"
                     />
                     <p className="text-xs text-muted-foreground">
@@ -542,10 +564,11 @@ export function EmailSettingsContent() {
                       </p>
                     </div>
                   )}
-                </div>
+                </form>
                 <DialogFooter>
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    type="button"
+                    variant="outline"
                     onClick={() => {
                       setIsAddDomainDialogOpen(false);
                       setNewDomain("");
@@ -557,18 +580,15 @@ export function EmailSettingsContent() {
                     Cancel
                   </Button>
                   <Button
-                    onClick={() => addCustomDomainMutation.mutate({
-                      domain: newDomain,
-                      fromEmail: newFromEmail,
-                      fromName: newFromName,
-                    })}
+                    type="submit"
+                    form="add-custom-domain-form"
                     disabled={!newFromEmail || !newFromName || addCustomDomainMutation.isPending}
                     data-testid="button-confirm-add-domain"
                   >
-                    {addCustomDomainMutation.isPending ? (
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    ) : null}
-                    {addCustomDomainMutation.isPending ? "Adding..." : "Add Domain"}
+                    {addCustomDomainMutation.isPending && (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
+                    )}
+                    {addCustomDomainMutation.isPending ? "Adding…" : "Add domain"}
                   </Button>
                 </DialogFooter>
               </DialogContent>
