@@ -3258,8 +3258,8 @@ export function StaticPropertyMap({
         />
         <div className="absolute inset-0 flex items-center justify-center bg-black/20">
           <Badge variant="secondary" className="text-xs">
-            <MapPin className="h-3 w-3 mr-1" />
-            View Details
+            <MapPin className="h-3 w-3 mr-1" aria-hidden="true" />
+            View details
           </Badge>
         </div>
       </div>
@@ -3274,8 +3274,14 @@ export function StaticPropertyMap({
       data-testid="static-property-map"
     >
       {isLoading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-muted/50">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <div
+          role="status"
+          aria-busy="true"
+          aria-label="Loading property map"
+          className="absolute inset-0 flex items-center justify-center bg-muted/50"
+        >
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" aria-hidden="true" />
+          <span className="sr-only">Loading…</span>
         </div>
       )}
       <img 
