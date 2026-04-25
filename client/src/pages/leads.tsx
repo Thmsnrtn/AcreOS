@@ -59,6 +59,7 @@ const leadFormSchema = insertLeadSchema.omit({ organizationId: true }).extend({
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Search, Mail, Phone, Trash2, Edit, Loader2, Users, FileText, Download, Upload, CheckCircle, XCircle, AlertCircle, Flame, Sun, Snowflake, Skull, ArrowUpDown, ArrowUp, ArrowDown, X, Clock, Eye, User, Calendar, MapPin, StickyNote, PhoneOff, Shield, CheckSquare, RefreshCw, TrendingUp, TrendingDown, Minus, History, Filter, ChevronDown, MoreVertical } from "lucide-react";
@@ -661,6 +662,9 @@ export default function LeadsPage() {
   const [offerLetterLead, setOfferLetterLead] = useState<Lead | null>(null);
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>("");
   const [offerAmount, setOfferAmount] = useState<string>("");
+  const offerPropertyId = useId();
+  const offerAmountId = useId();
+  const offerFormId = useId();
   const [isGeneratingOffer, setIsGeneratingOffer] = useState(false);
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState(stageFromUrl);
@@ -1829,11 +1833,18 @@ export default function LeadsPage() {
               Create an offer letter for {offerLetterLead?.firstName} {offerLetterLead?.lastName}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
+          <form
+            id={offerFormId}
+            className="space-y-4 py-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (selectedPropertyId && !isGeneratingOffer) handleGenerateOfferLetter();
+            }}
+          >
             <div className="space-y-2">
-              <label className="text-sm font-medium">Select Property</label>
+              <Label htmlFor={offerPropertyId} className="text-sm font-medium">Select Property</Label>
               <Select value={selectedPropertyId} onValueChange={setSelectedPropertyId}>
-                <SelectTrigger data-testid="select-property-offer">
+                <SelectTrigger id={offerPropertyId} data-testid="select-property-offer">
                   <SelectValue placeholder="Choose a property..." />
                 </SelectTrigger>
                 <SelectContent>
@@ -1846,8 +1857,9 @@ export default function LeadsPage() {
               </Select>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Offer Amount (Optional)</label>
+              <Label htmlFor={offerAmountId} className="text-sm font-medium">Offer Amount (Optional)</Label>
               <Input
+                id={offerAmountId}
                 type="number"
                 inputMode="decimal"
                 placeholder="Enter offer amount..."
@@ -1857,13 +1869,14 @@ export default function LeadsPage() {
               />
               <p className="text-xs text-muted-foreground">Leave blank to use 30% of assessed value</p>
             </div>
-          </div>
+          </form>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOfferLetterLead(null)}>
+            <Button type="button" variant="outline" onClick={() => setOfferLetterLead(null)}>
               Cancel
             </Button>
-            <Button 
-              onClick={handleGenerateOfferLetter} 
+            <Button
+              type="submit"
+              form={offerFormId}
               disabled={!selectedPropertyId || isGeneratingOffer}
               data-testid="button-generate-offer"
             >
