@@ -12,6 +12,7 @@
  */
 
 import { useMemo, useState } from "react";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -309,6 +310,7 @@ const BUCKET_ORDER: BucketKey[] = [
 ];
 
 export default function FounderDecisionsPage() {
+  useDocumentTitle("Founder decisions");
   const [windowDays, setWindowDays] = useState<number>(30);
   const [activeBucket, setActiveBucket] = useState<BucketKey>("needsYou");
   const [reverseInFlight, setReverseInFlight] = useState<number | null>(null);

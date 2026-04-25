@@ -2,6 +2,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Compass, Home, LifeBuoy } from "lucide-react";
 import { Link } from "wouter";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 /**
  * 404. Not an error the user caused — a dead link.  Intentionally warm:
@@ -9,6 +10,7 @@ import { Link } from "wouter";
  * and a quiet secondary link to help so the user isn't dead-ended.
  */
 export default function NotFound() {
+  useDocumentTitle("Page not found");
   return (
     <div
       className="min-h-screen w-full flex items-center justify-center bg-background px-4"

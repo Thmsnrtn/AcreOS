@@ -1,11 +1,13 @@
 import { useState, useEffect } from "react";
 import { PageShell } from "@/components/page-shell";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { HelpContent } from "@/components/help-content";
 import { SupportContent } from "@/components/support-content";
 import { HelpCircle, Headphones } from "lucide-react";
 
 export default function HelpPage() {
+  useDocumentTitle("Help & support");
   const [activeTab, setActiveTab] = useState("help");
 
   useEffect(() => {

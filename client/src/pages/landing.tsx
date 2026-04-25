@@ -1,5 +1,6 @@
 import { Link } from "wouter";
 import { useState } from "react";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { AcreosLogo } from "@/components/acreos-logo";
@@ -161,6 +162,7 @@ const SOCIAL_PROOF = [
 ];
 
 export default function LandingPage() {
+  useDocumentTitle("AcreOS — the operating system for land investors");
   return (
     <div className="min-h-screen bg-background">
       <SkipToContent />

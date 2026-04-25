@@ -4,6 +4,7 @@ import { usePayments, useRecordPayment } from "@/hooks/use-payments";
 import { useLeads } from "@/hooks/use-leads";
 import { useProperties } from "@/hooks/use-properties";
 import { useState, useEffect } from "react";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import { Label } from "@/components/ui/label";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -48,6 +49,7 @@ type NoteWithDetails = Note & {
 };
 
 export default function FinancePage() {
+  useDocumentTitle("Finance");
   const { data: notes, isLoading, error: notesError, refetch: refetchNotes } = useNotes();
   const { data: leads } = useLeads();
   const { data: properties } = useProperties();

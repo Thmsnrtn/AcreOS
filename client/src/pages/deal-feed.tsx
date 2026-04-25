@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PageShell } from "@/components/page-shell";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import { DailyDealFeed } from "@/components/deal-feed/daily-deal-feed";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,6 +12,7 @@ import { RefreshCw, Bookmark, Filter } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 
 export default function DealFeedPage() {
+  useDocumentTitle("Deal feed");
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<"feed" | "saved">("feed");
 

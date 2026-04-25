@@ -11,6 +11,7 @@ import { QueryErrorState } from "@/components/query-error-state";
 import { telemetry } from "@/lib/telemetry";
 import { useDealChecklist, useChecklistTemplates, useApplyChecklistTemplate, useUpdateChecklistItem, useStageGate } from "@/hooks/use-checklists";
 import { useState, useMemo, useEffect, useRef } from "react";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import {
   DndContext,
   type DragEndEvent,
@@ -106,6 +107,7 @@ const statusColors: Record<string, string> = {
 };
 
 export default function DealsPage() {
+  useDocumentTitle("Deals");
   const [dealCurrentPage, setDealCurrentPage] = useState(1);
   const [dealPageSize, setDealPageSize] = useState(25);
   const { data: dealsResponse, isLoading, isError, error, refetch } = useDealsPaginated({ page: dealCurrentPage, pageSize: dealPageSize });

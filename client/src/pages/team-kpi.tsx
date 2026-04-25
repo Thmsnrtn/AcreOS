@@ -1,10 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Users, TrendingUp, Clock, Target, DollarSign, BarChart2 } from "lucide-react";
 
 export default function TeamKPI() {
+  useDocumentTitle("Team KPI");
   const { data, isLoading, error } = useQuery({
     queryKey: ["/api/analytics/team-kpi"],
     queryFn: async () => {

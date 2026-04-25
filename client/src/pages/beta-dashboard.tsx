@@ -8,6 +8,7 @@
  *   - Feedback triage (bugs, feature requests, NPS)
  */
 import { useState } from "react";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -103,6 +104,7 @@ const FEEDBACK_ICONS: Record<string, React.ComponentType<{ className?: string }>
 };
 
 export default function BetaDashboardPage() {
+  useDocumentTitle("Beta dashboard");
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [inviteEmail, setInviteEmail] = useState("");
