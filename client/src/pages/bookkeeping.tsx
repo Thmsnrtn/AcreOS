@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DollarSign, FileText, TrendingUp, Loader2, Download } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 interface AnnualInterestReport {
   taxYear: number;
@@ -34,6 +35,7 @@ const currentYear = new Date().getFullYear();
 const taxYear = currentYear - 1;
 
 export default function BookkeepingPage() {
+  useDocumentTitle("Bookkeeping");
   const { toast } = useToast();
 
   const { data: report, isLoading: loadingReport } = useQuery<AnnualInterestReport>({
@@ -46,92 +48,99 @@ export default function BookkeepingPage() {
     queryFn: () => fetch(`/api/bookkeeping/portfolio-summary?year=${taxYear}`).then(r => r.json()),
   });
 
+  // cents → "$X,XXX.XX" with full precision so $1,234.56 never rounds to $1,235.
   const fmt = (n: number) =>
-    `$${(n / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
+    `$${(n / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   return (
     <PageShell>
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-bookkeeping-title">
             Bookkeeping
           </h1>
           <p className="text-muted-foreground text-sm md:text-base">
-            {taxYear} tax year — interest income, P&L, and 1099 reports.
+            <span className="tabular-nums">{taxYear}</span> tax year — interest income, P&amp;L, and 1099 reports.
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => toast({ title: "Export feature coming soon" })}>
-          <Download className="w-4 h-4 mr-2" /> Export
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => toast({ title: "Export coming soon", description: "Your bookkeeping data is unchanged — we'll add download in a follow-up release." })}
+        >
+          <Download className="w-4 h-4 mr-2" aria-hidden="true" /> Export
         </Button>
       </div>
 
       {loadingReport || loadingSummary ? (
-        <div className="flex items-center gap-2 text-muted-foreground">
-          <Loader2 className="w-4 h-4 animate-spin" /> Loading bookkeeping data...
+        <div className="flex items-center gap-2 text-muted-foreground" role="status" aria-live="polite">
+          <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> Loading bookkeeping data…
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <dl className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Card>
               <CardContent className="p-4">
-                <div className="flex items-center gap-2 text-muted-foreground mb-1">
-                  <DollarSign className="w-4 h-4" />
-                  <span className="text-xs">Interest Income</span>
-                </div>
-                <p className="text-xl font-bold">
+                <dt className="flex items-center gap-2 text-muted-foreground mb-1">
+                  <DollarSign className="w-4 h-4" aria-hidden="true" />
+                  <span className="text-xs">Interest income</span>
+                </dt>
+                <dd className="text-xl font-bold tabular-nums">
                   {report ? fmt(report.totalInterestIncome) : "—"}
-                </p>
+                </dd>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
-                <p className="text-xs text-muted-foreground mb-1">Principal Collected</p>
-                <p className="text-xl font-bold">
+                <dt className="text-xs text-muted-foreground mb-1">Principal collected</dt>
+                <dd className="text-xl font-bold tabular-nums">
                   {report ? fmt(report.totalPrincipalReceived) : "—"}
-                </p>
+                </dd>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
-                <div className="flex items-center gap-2 text-muted-foreground mb-1">
-                  <TrendingUp className="w-4 h-4" />
-                  <span className="text-xs">Net P&L</span>
-                </div>
-                <p className="text-xl font-bold">
+                <dt className="flex items-center gap-2 text-muted-foreground mb-1">
+                  <TrendingUp className="w-4 h-4" aria-hidden="true" />
+                  <span className="text-xs">Net P&amp;L</span>
+                </dt>
+                <dd className="text-xl font-bold tabular-nums">
                   {summary ? fmt(summary.netProfit) : "—"}
-                </p>
+                </dd>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
-                <div className="flex items-center gap-2 text-muted-foreground mb-1">
-                  <FileText className="w-4 h-4" />
-                  <span className="text-xs">1099s Required</span>
-                </div>
-                <p className="text-xl font-bold">{report?.notesWith1099Required ?? "—"}</p>
+                <dt className="flex items-center gap-2 text-muted-foreground mb-1">
+                  <FileText className="w-4 h-4" aria-hidden="true" />
+                  <span className="text-xs">1099s required</span>
+                </dt>
+                <dd className="text-xl font-bold tabular-nums">{report?.notesWith1099Required ?? "—"}</dd>
               </CardContent>
             </Card>
-          </div>
+          </dl>
 
           {report && report.notes.length > 0 && (
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Note Interest Summary</CardTitle>
+                <CardTitle className="text-sm">Note interest summary</CardTitle>
               </CardHeader>
-              <CardContent className="p-4 pt-0 space-y-2">
-                {report.notes.map(n => (
-                  <div key={n.noteId} className="flex items-center justify-between text-sm">
-                    <div>
-                      <p className="font-medium text-xs">{n.borrowerName}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {fmt(n.interestCollected)} interest · {fmt(n.principalCollected)} principal
-                      </p>
-                    </div>
-                    {n.requires1099 && (
-                      <Badge variant="secondary" className="text-xs">1099</Badge>
-                    )}
-                  </div>
-                ))}
+              <CardContent className="p-4 pt-0">
+                <ul className="space-y-2" aria-label="Per-note interest summary">
+                  {report.notes.map(n => (
+                    <li key={n.noteId} className="flex items-center justify-between text-sm gap-3">
+                      <div className="min-w-0">
+                        <p className="font-medium text-xs truncate">{n.borrowerName}</p>
+                        <p className="text-xs text-muted-foreground tabular-nums">
+                          {fmt(n.interestCollected)} interest · {fmt(n.principalCollected)} principal
+                        </p>
+                      </div>
+                      {n.requires1099 && (
+                        <Badge variant="secondary" className="text-xs">1099</Badge>
+                      )}
+                    </li>
+                  ))}
+                </ul>
               </CardContent>
             </Card>
           )}
