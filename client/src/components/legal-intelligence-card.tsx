@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
+import { usd } from "@/lib/format";
 import {
   AlertTriangle,
   Users,
@@ -147,7 +148,7 @@ export function LegalIntelligenceCard({
             <AlertDescription className="text-amber-700 dark:text-amber-400 text-xs">
               This property has delinquent taxes
               {data.taxLien.delinquentAmount != null &&
-                ` ($${data.taxLien.delinquentAmount.toLocaleString()})`}
+                ` (${usd(data.taxLien.delinquentAmount)})`}
               . The redemption period is {data.taxLien.redemptionMonths}{" "}
               months. Factor the redemption timeline and outstanding tax
               amount into your acquisition strategy.
