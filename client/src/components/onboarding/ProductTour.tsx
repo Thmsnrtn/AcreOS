@@ -205,7 +205,7 @@ function TourTooltip({ step, stepIndex, totalSteps, onNext, onPrev, onSkip, targ
   if (isCenter) {
     return createPortal(
       <div className="fixed inset-0 z-[9998] flex items-center justify-center">
-        <div className="absolute inset-0 bg-black/30" onClick={onSkip} />
+        <div className="absolute inset-0 bg-black/30" onClick={onSkip} aria-hidden="true" />
         <div className="relative">{content}</div>
       </div>,
       document.body
@@ -278,6 +278,20 @@ export default function ProductTour({ steps = DEFAULT_STEPS, autoStart = true, o
       setTargetRect(null);
     }
   }, [isRunning, stepIndex, steps]);
+
+  // Esc key to dismiss the tour
+  useEffect(() => {
+    if (!isRunning) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        handleSkip();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRunning]);
 
   const handleNext = () => {
     if (stepIndex >= steps.length - 1) {

@@ -217,26 +217,29 @@ export default function OnboardingWalkthrough() {
         <div className="flex items-center justify-between px-6 pb-6">
           {step > 0 ? (
             <button
+              type="button"
               onClick={() => setStep(s => s - 1)}
-              className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-200"
+              className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
             >
-              <ChevronLeft className="w-4 h-4" /> Back
+              <ChevronLeft className="w-4 h-4" aria-hidden="true" /> Back
             </button>
           ) : (
             <button
+              type="button"
               onClick={handleSkip}
-              className="text-sm text-gray-500 hover:text-gray-300"
+              className="text-sm text-gray-500 hover:text-gray-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
             >
               Skip
             </button>
           )}
 
           <button
+            type="button"
             onClick={isLast ? handleComplete : () => setStep(s => s + 1)}
-            className="flex items-center gap-1 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-sm font-medium text-white transition-colors"
+            className="flex items-center gap-1 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-sm font-medium text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
             {isLast ? "Get started" : "Next"}
-            {!isLast && <ChevronRight className="w-4 h-4" />}
+            {!isLast && <ChevronRight className="w-4 h-4" aria-hidden="true" />}
           </button>
         </div>
       </motion.div>
