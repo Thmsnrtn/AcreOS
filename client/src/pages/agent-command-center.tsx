@@ -1,5 +1,15 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useDocumentTitle } from "@/hooks/use-document-title";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -113,18 +123,18 @@ const AGENT_ICONS: Record<string, React.ElementType> = {
 
 const AUTONOMY_LABELS: Record<AutonomyLevel, { label: string; description: string; color: string }> = {
   full_auto: {
-    label: "Full Auto",
-    description: "Agent acts on all tasks without waiting for approval",
+    label: "Full auto",
+    description: "Agent acts on all tasks without waiting for approval.",
     color: "text-green-600",
   },
   supervised: {
     label: "Supervised",
-    description: "Agent auto-executes low-risk tasks, escalates high-risk ones",
+    description: "Agent auto-executes low-risk tasks; escalates high-risk ones.",
     color: "text-amber-600",
   },
   manual: {
     label: "Manual",
-    description: "Agent only acts when you explicitly approve each task",
+    description: "Agent only acts when you explicitly approve each task.",
     color: "text-red-600",
   },
 };
@@ -170,7 +180,7 @@ function AgentCard({
       <CardHeader className="flex flex-row items-start justify-between gap-3 p-4 pb-3">
         <div className="flex items-center gap-3">
           <div className="rounded-lg bg-primary/10 p-2">
-            <Icon className="h-5 w-5 text-primary" />
+            <Icon className="h-5 w-5 text-primary" aria-hidden="true" />
           </div>
           <div>
             <CardTitle className="text-base">{agent.name}</CardTitle>
@@ -179,13 +189,18 @@ function AgentCard({
         </div>
         <div className="flex items-center gap-2">
           {agent.isActive && (
-            <span className="flex items-center gap-1 text-xs text-green-600">
-              <Activity className="h-3 w-3 animate-pulse" />
+            <span className="flex items-center gap-1 text-xs text-green-600" role="status" aria-live="polite">
+              <Activity className="h-3 w-3 animate-pulse" aria-hidden="true" />
               Active
             </span>
           )}
-          <Button variant="ghost" size="sm" onClick={() => onConfigure(agent)}>
-            <Settings className="h-4 w-4" />
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onConfigure(agent)}
+            aria-label={`Configure ${agent.name}`}
+          >
+            <Settings className="h-4 w-4" aria-hidden="true" />
           </Button>
         </div>
       </CardHeader>
@@ -194,40 +209,48 @@ function AgentCard({
         {/* Autonomy level */}
         <div className="flex items-center justify-between">
           <span className="text-xs text-muted-foreground">Autonomy</span>
-          <span className={`text-xs font-semibold ${autonomyInfo.color}`}>
+          <span className={`text-xs font-semibold ${autonomyInfo.color}`} aria-label={`Autonomy level: ${autonomyInfo.label}`}>
             {autonomyInfo.label}
           </span>
         </div>
 
         {/* Stats row */}
-        <div className="grid grid-cols-3 gap-2 text-center">
+        <dl className="grid grid-cols-3 gap-2 text-center m-0">
           <div className="rounded-md bg-muted/50 p-2">
-            <p className="text-lg font-bold">{agent.metrics.lastDayActions}</p>
-            <p className="text-[10px] text-muted-foreground">Today</p>
+            <dd className="text-lg font-bold tabular-nums m-0">{agent.metrics.lastDayActions}</dd>
+            <dt className="text-[10px] text-muted-foreground">Today</dt>
           </div>
           <div className="rounded-md bg-muted/50 p-2">
-            <p className="text-lg font-bold">{agent.pendingApprovalCount}</p>
-            <p className="text-[10px] text-muted-foreground">Pending</p>
+            <dd className="text-lg font-bold tabular-nums m-0">{agent.pendingApprovalCount}</dd>
+            <dt className="text-[10px] text-muted-foreground">Pending</dt>
           </div>
           <div className="rounded-md bg-muted/50 p-2">
-            <p className="text-lg font-bold">{successRate}%</p>
-            <p className="text-[10px] text-muted-foreground">Success</p>
+            <dd className="text-lg font-bold tabular-nums m-0">{successRate}%</dd>
+            <dt className="text-[10px] text-muted-foreground">Success</dt>
           </div>
-        </div>
+        </dl>
 
         {/* Success rate bar */}
         <div className="space-y-1">
           <div className="flex justify-between text-[10px] text-muted-foreground">
             <span>Success rate</span>
-            <span>{agent.metrics.successfulActions}/{agent.metrics.totalActions} actions</span>
+            <span className="tabular-nums">{agent.metrics.successfulActions}/{agent.metrics.totalActions} actions</span>
           </div>
-          <Progress value={successRate} className="h-1.5" />
+          <div
+            role="progressbar"
+            aria-label={`${agent.name} success rate`}
+            aria-valuenow={successRate}
+            aria-valuemin={0}
+            aria-valuemax={100}
+          >
+            <Progress value={successRate} className="h-1.5" aria-hidden="true" />
+          </div>
         </div>
 
         {/* Last active */}
         {agent.lastActiveAt && (
           <p className="text-[10px] text-muted-foreground">
-            Last active {relative(agent.lastActiveAt)}
+            Last active <time dateTime={new Date(agent.lastActiveAt).toISOString()}>{relative(agent.lastActiveAt)}</time>
           </p>
         )}
       </CardContent>
@@ -250,23 +273,27 @@ function TaskRow({
   const input = task.input as Record<string, any>;
   const action = input?.action || "unknown";
 
+  const actionLabel = action.replace(/_/g, " ");
+  const taskLabel = `${task.agentType} ${actionLabel} task`;
+
   return (
-    <div className="flex items-start gap-3 rounded-lg border p-3 hover:bg-muted/30 transition-colors">
+    <div className="flex items-start gap-3 rounded-lg border p-3 hover:bg-muted/30 transition-colors" role="group" aria-label={taskLabel}>
       <div className="rounded-md bg-primary/10 p-1.5 mt-0.5">
-        <Icon className="h-4 w-4 text-primary" />
+        <Icon className="h-4 w-4 text-primary" aria-hidden="true" />
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-sm font-medium capitalize">{task.agentType}</span>
-          <code className="text-xs bg-muted rounded px-1 py-0.5">{action.replace(/_/g, " ")}</code>
+          <code className="text-xs bg-muted rounded px-1 py-0.5">{actionLabel}</code>
           <Badge
             variant="outline"
             className={`text-[10px] px-1.5 py-0 ${STATUS_COLORS[task.status] || ""}`}
+            aria-label={`Status: ${task.status}`}
           >
             {task.status}
           </Badge>
           {task.requiresReview && (
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-amber-50 text-amber-700 border-amber-200">
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-amber-50 text-amber-700 border-amber-200" aria-label="Needs your approval">
               needs approval
             </Badge>
           )}
@@ -280,11 +307,11 @@ function TaskRow({
           </p>
         )}
         <p className="text-[10px] text-muted-foreground mt-0.5">
-          {relative(task.createdAt)}
-          {task.executionTimeMs && ` · ${task.executionTimeMs}ms`}
+          <time dateTime={new Date(task.createdAt).toISOString()}>{relative(task.createdAt)}</time>
+          {task.executionTimeMs ? <span className="tabular-nums"> · {task.executionTimeMs}ms</span> : null}
         </p>
         {task.error && (
-          <p className="text-xs text-red-600 mt-1">{task.error}</p>
+          <p className="text-xs text-red-600 mt-1" role="alert">{task.error}</p>
         )}
         {task.output && task.status === "completed" && (task.output as any).data?.analysis && (
           <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
@@ -300,18 +327,18 @@ function TaskRow({
               size="sm"
               className="h-7 w-7 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
               onClick={() => onApprove?.(task.id)}
-              title="Approve"
+              aria-label={`Approve ${taskLabel}`}
             >
-              <ThumbsUp className="h-3.5 w-3.5" />
+              <ThumbsUp className="h-3.5 w-3.5" aria-hidden="true" />
             </Button>
             <Button
               variant="ghost"
               size="sm"
               className="h-7 w-7 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
               onClick={() => onReject?.(task.id)}
-              title="Reject"
+              aria-label={`Reject ${taskLabel}`}
             >
-              <ThumbsDown className="h-3.5 w-3.5" />
+              <ThumbsDown className="h-3.5 w-3.5" aria-hidden="true" />
             </Button>
           </>
         )}
@@ -321,9 +348,9 @@ function TaskRow({
             size="sm"
             className="h-7 w-7 p-0"
             onClick={() => onRun(task.id)}
-            title="Run now"
+            aria-label={`Run ${taskLabel} now`}
           >
-            <PlayCircle className="h-3.5 w-3.5" />
+            <PlayCircle className="h-3.5 w-3.5" aria-hidden="true" />
           </Button>
         )}
       </div>
@@ -340,6 +367,10 @@ function AgentConfigPanel({
 }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const autonomyId = useId();
+  const maxActionsId = useId();
+  const notifyId = useId();
+  const customInstructionsId = useId();
 
   const [autonomyLevel, setAutonomyLevel] = useState<AutonomyLevel>(agent.autonomyLevel);
   const [autoApprove, setAutoApprove] = useState<ActionCategory[]>(agent.config.autoApproveCategories);
@@ -353,11 +384,11 @@ function AgentConfigPanel({
       apiRequest("PUT", `/api/autonomous/agents/${agent.agentType}/config`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/autonomous/agents"] });
-      toast({ title: "Configuration saved" });
+      toast({ title: "Configuration saved", description: `${agent.name} now uses your new autonomy settings.` });
       onClose();
     },
     onError: (err: any) => {
-      toast({ title: "Save failed", description: err.message, variant: "destructive" });
+      toast({ title: "Couldn't save configuration", description: `${err.message} — ${agent.name}'s settings are unchanged.`, variant: "destructive" });
     },
   });
 
@@ -369,27 +400,41 @@ function AgentConfigPanel({
     setList(list.includes(cat) ? list.filter(c => c !== cat) : [...list, cat]);
   };
 
+  const handleSubmit = () => {
+    updateMutation.mutate({
+      autonomyLevel,
+      autoApproveCategories: autoApprove,
+      escalateToHuman: escalate,
+      maxActionsPerDay: parseInt(maxActions) || 50,
+      notifyOnAction,
+      customInstructions,
+    });
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <Card className="w-full max-w-lg max-h-[90vh] overflow-y-auto">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Settings className="h-5 w-5" />
+    <Dialog open={true} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Settings className="h-5 w-5" aria-hidden="true" />
             Configure {agent.name}
-          </CardTitle>
-          <CardDescription>
-            Control how autonomously this agent operates
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-5">
+          </DialogTitle>
+          <DialogDescription>
+            Control how autonomously this agent operates.
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          className="space-y-5"
+          onSubmit={(e) => { e.preventDefault(); if (!updateMutation.isPending) handleSubmit(); }}
+        >
           {/* Autonomy level */}
           <div className="space-y-2">
-            <Label>Autonomy Level</Label>
+            <Label htmlFor={autonomyId}>Autonomy level</Label>
             <Select
               value={autonomyLevel}
               onValueChange={v => setAutonomyLevel(v as AutonomyLevel)}
             >
-              <SelectTrigger>
+              <SelectTrigger id={autonomyId}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -401,126 +446,135 @@ function AgentConfigPanel({
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-muted-foreground" aria-live="polite">
               {AUTONOMY_LABELS[autonomyLevel].description}
             </p>
           </div>
 
           {/* Auto-approve categories */}
-          <div className="space-y-2">
-            <Label>Always Auto-Approve</Label>
+          <fieldset className="space-y-2 border-0 p-0 m-0">
+            <legend className="text-sm font-medium">Always auto-approve</legend>
             <p className="text-xs text-muted-foreground">
               These action types will always execute without approval, even in supervised mode.
             </p>
-            <div className="flex flex-wrap gap-2">
-              {ALL_CATEGORIES.map(cat => (
-                <button
-                  key={cat}
-                  onClick={() => toggleCategory(cat, autoApprove, setAutoApprove)}
-                  className={`rounded-full px-3 py-1 text-xs border transition-colors ${
-                    autoApprove.includes(cat)
-                      ? "bg-green-100 border-green-400 text-green-800"
-                      : "bg-muted/50 border-border text-muted-foreground hover:bg-muted"
-                  }`}
-                >
-                  {cat}
-                </button>
-              ))}
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Always auto-approve action categories">
+              {ALL_CATEGORIES.map(cat => {
+                const pressed = autoApprove.includes(cat);
+                return (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => toggleCategory(cat, autoApprove, setAutoApprove)}
+                    aria-pressed={pressed}
+                    aria-label={`${pressed ? "Remove" : "Add"} auto-approve for ${cat.replace(/_/g, " ")}`}
+                    className={`rounded-full px-3 py-1 text-xs border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                      pressed
+                        ? "bg-green-100 border-green-400 text-green-800"
+                        : "bg-muted/50 border-border text-muted-foreground hover:bg-muted"
+                    }`}
+                  >
+                    {cat.replace(/_/g, " ")}
+                  </button>
+                );
+              })}
             </div>
-          </div>
+          </fieldset>
 
           {/* Always escalate categories */}
-          <div className="space-y-2">
-            <Label>Always Require Approval</Label>
+          <fieldset className="space-y-2 border-0 p-0 m-0">
+            <legend className="text-sm font-medium">Always require approval</legend>
             <p className="text-xs text-muted-foreground">
               These action types always require your sign-off, even in full-auto mode.
             </p>
-            <div className="flex flex-wrap gap-2">
-              {ALL_CATEGORIES.map(cat => (
-                <button
-                  key={cat}
-                  onClick={() => toggleCategory(cat, escalate, setEscalate)}
-                  className={`rounded-full px-3 py-1 text-xs border transition-colors ${
-                    escalate.includes(cat)
-                      ? "bg-red-100 border-red-400 text-red-800"
-                      : "bg-muted/50 border-border text-muted-foreground hover:bg-muted"
-                  }`}
-                >
-                  {cat}
-                </button>
-              ))}
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Always escalate action categories">
+              {ALL_CATEGORIES.map(cat => {
+                const pressed = escalate.includes(cat);
+                return (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => toggleCategory(cat, escalate, setEscalate)}
+                    aria-pressed={pressed}
+                    aria-label={`${pressed ? "Remove" : "Add"} approval requirement for ${cat.replace(/_/g, " ")}`}
+                    className={`rounded-full px-3 py-1 text-xs border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive ${
+                      pressed
+                        ? "bg-red-100 border-red-400 text-red-800"
+                        : "bg-muted/50 border-border text-muted-foreground hover:bg-muted"
+                    }`}
+                  >
+                    {cat.replace(/_/g, " ")}
+                  </button>
+                );
+              })}
             </div>
-          </div>
+          </fieldset>
 
           {/* Max actions per day */}
           <div className="space-y-2">
-            <Label>Max Actions Per Day</Label>
+            <Label htmlFor={maxActionsId}>Max actions per day</Label>
             <input
+              id={maxActionsId}
               type="number"
+              inputMode="numeric"
               min={1}
               max={1000}
               value={maxActions}
               onChange={e => setMaxActions(e.target.value)}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm tabular-nums"
             />
           </div>
 
           {/* Notify on action */}
           <div className="flex items-center justify-between rounded-lg border p-3">
             <div>
-              <Label>Notify on Each Action</Label>
+              <Label htmlFor={notifyId}>Notify on each action</Label>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Send a notification every time this agent takes an action
+                Send a notification every time this agent takes an action.
               </p>
             </div>
-            <Switch checked={notifyOnAction} onCheckedChange={setNotifyOnAction} />
+            <Switch id={notifyId} checked={notifyOnAction} onCheckedChange={setNotifyOnAction} />
           </div>
 
           {/* Custom instructions */}
           <div className="space-y-2">
-            <Label>Custom Instructions</Label>
+            <Label htmlFor={customInstructionsId}>Custom instructions</Label>
             <Textarea
+              id={customInstructionsId}
               value={customInstructions}
               onChange={e => setCustomInstructions(e.target.value)}
               placeholder="e.g. Only send emails on weekdays. Never contact leads marked as DNC."
               className="h-24 text-sm"
+              autoCapitalize="sentences"
             />
           </div>
 
-          <div className="flex gap-2 justify-end pt-2">
-            <Button variant="outline" onClick={onClose}>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
             <Button
-              onClick={() =>
-                updateMutation.mutate({
-                  autonomyLevel,
-                  autoApproveCategories: autoApprove,
-                  escalateToHuman: escalate,
-                  maxActionsPerDay: parseInt(maxActions) || 50,
-                  notifyOnAction,
-                  customInstructions,
-                })
-              }
+              type="submit"
               disabled={updateMutation.isPending}
             >
-              {updateMutation.isPending ? "Saving..." : "Save Configuration"}
+              {updateMutation.isPending ? "Saving…" : "Save configuration"}
             </Button>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function AgentCommandCenter() {
+  useDocumentTitle("Agent command center");
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [configuringAgent, setConfiguringAgent] = useState<AgentStatus | null>(null);
   const [activeTab, setActiveTab] = useState("overview");
   const [taskFilter, setTaskFilter] = useState<string>("all");
+  const [pendingApproveAll, setPendingApproveAll] = useState(false);
 
   // ── Data fetching ──────────────────────────────────────────────────────────
 
@@ -586,7 +640,10 @@ export default function AgentCommandCenter() {
     mutationFn: () => apiRequest("POST", "/api/autonomous/trigger-processor", {}),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/autonomous/tasks"] });
-      toast({ title: "Processor triggered" });
+      toast({ title: "Processor triggered", description: "Pending tasks will execute on the next cycle." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Couldn't trigger processor", description: `${err.message} — pending tasks will still execute on their normal schedule.`, variant: "destructive" });
     },
   });
 
@@ -612,17 +669,17 @@ export default function AgentCommandCenter() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Brain className="h-7 w-7 text-primary" />
-            Agent Command Center
+            <Brain className="h-7 w-7 text-primary" aria-hidden="true" />
+            Agent command center
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Monitor, configure, and control your autonomous AI agents
+            Monitor, configure, and control your autonomous AI agents.
           </p>
         </div>
         <div className="flex items-center gap-2">
           {totalPendingApprovals > 0 && (
-            <Badge variant="destructive" className="animate-pulse">
-              {totalPendingApprovals} pending approval{totalPendingApprovals !== 1 ? "s" : ""}
+            <Badge variant="destructive" className="animate-pulse" aria-live="polite" aria-label={`${totalPendingApprovals} task${totalPendingApprovals === 1 ? "" : "s"} awaiting your approval`}>
+              <span className="tabular-nums">{totalPendingApprovals}</span> pending approval{totalPendingApprovals !== 1 ? "s" : ""}
             </Badge>
           )}
           <Button
@@ -630,60 +687,61 @@ export default function AgentCommandCenter() {
             size="sm"
             onClick={() => triggerMutation.mutate()}
             disabled={triggerMutation.isPending}
+            aria-label="Run autonomous processor now"
           >
-            <RefreshCw className={`h-4 w-4 mr-1.5 ${triggerMutation.isPending ? "animate-spin" : ""}`} />
-            Run Now
+            <RefreshCw className={`h-4 w-4 mr-1.5 ${triggerMutation.isPending ? "animate-spin" : ""}`} aria-hidden="true" />
+            Run now
           </Button>
         </div>
       </div>
 
       {/* Summary stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <dl className="grid grid-cols-2 md:grid-cols-4 gap-4 m-0">
         <Card className="p-4">
           <div className="flex items-center gap-3">
             <div className="rounded-lg bg-blue-100 p-2">
-              <Bot className="h-5 w-5 text-blue-600" />
+              <Bot className="h-5 w-5 text-blue-600" aria-hidden="true" />
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Active Agents</p>
-              <p className="text-2xl font-bold">{totalActiveAgents}</p>
+              <dt className="text-xs text-muted-foreground">Active agents</dt>
+              <dd className="text-2xl font-bold tabular-nums m-0">{totalActiveAgents}</dd>
             </div>
           </div>
         </Card>
         <Card className="p-4">
           <div className="flex items-center gap-3">
             <div className="rounded-lg bg-amber-100 p-2">
-              <Clock className="h-5 w-5 text-amber-600" />
+              <Clock className="h-5 w-5 text-amber-600" aria-hidden="true" />
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Awaiting Approval</p>
-              <p className="text-2xl font-bold">{totalPendingApprovals}</p>
+              <dt className="text-xs text-muted-foreground">Awaiting approval</dt>
+              <dd className="text-2xl font-bold tabular-nums m-0">{totalPendingApprovals}</dd>
             </div>
           </div>
         </Card>
         <Card className="p-4">
           <div className="flex items-center gap-3">
             <div className="rounded-lg bg-green-100 p-2">
-              <Zap className="h-5 w-5 text-green-600" />
+              <Zap className="h-5 w-5 text-green-600" aria-hidden="true" />
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Actions Today</p>
-              <p className="text-2xl font-bold">{totalTodayActions}</p>
+              <dt className="text-xs text-muted-foreground">Actions today</dt>
+              <dd className="text-2xl font-bold tabular-nums m-0">{totalTodayActions}</dd>
             </div>
           </div>
         </Card>
         <Card className="p-4">
           <div className="flex items-center gap-3">
             <div className="rounded-lg bg-purple-100 p-2">
-              <BarChart3 className="h-5 w-5 text-purple-600" />
+              <BarChart3 className="h-5 w-5 text-purple-600" aria-hidden="true" />
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Success Rate</p>
-              <p className="text-2xl font-bold">{overallSuccess}%</p>
+              <dt className="text-xs text-muted-foreground">Success rate</dt>
+              <dd className="text-2xl font-bold tabular-nums m-0">{overallSuccess}%</dd>
             </div>
           </div>
         </Card>
-      </div>
+      </dl>
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -697,7 +755,7 @@ export default function AgentCommandCenter() {
               </span>
             )}
           </TabsTrigger>
-          <TabsTrigger value="tasks">Task Log</TabsTrigger>
+          <TabsTrigger value="tasks">Task log</TabsTrigger>
         </TabsList>
 
         {/* ── Overview ── */}
@@ -706,9 +764,9 @@ export default function AgentCommandCenter() {
             {/* Autonomy mode banner */}
             <div className="rounded-lg border bg-gradient-to-r from-primary/5 to-primary/10 p-4">
               <div className="flex items-start gap-3">
-                <Shield className="h-5 w-5 text-primary mt-0.5" />
+                <Shield className="h-5 w-5 text-primary mt-0.5" aria-hidden="true" />
                 <div>
-                  <p className="font-medium text-sm">Intelligent Autonomy System</p>
+                  <p className="font-medium text-sm">Intelligent autonomy system</p>
                   <p className="text-xs text-muted-foreground mt-0.5">
                     Each agent has its own autonomy level. Low-risk actions (research, drafts) execute
                     automatically. High-risk actions (offers, contracts, outbound comms) route to your
@@ -720,58 +778,59 @@ export default function AgentCommandCenter() {
 
             {/* Agent cards */}
             {agentsLoading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4" role="status" aria-label="Loading agents">
                 {[1, 2, 3, 4].map(i => (
                   <Card key={i} className="h-48 animate-pulse bg-muted/30" />
                 ))}
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <ul className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 list-none p-0 m-0" aria-label={`${agents.length} autonomous agent${agents.length === 1 ? "" : "s"}`}>
                 {agents.map(agent => (
-                  <AgentCard
-                    key={agent.agentType}
-                    agent={agent}
-                    onConfigure={setConfiguringAgent}
-                  />
+                  <li key={agent.agentType}>
+                    <AgentCard
+                      agent={agent}
+                      onConfigure={setConfiguringAgent}
+                    />
+                  </li>
                 ))}
-              </div>
+              </ul>
             )}
 
             {/* Risk level guide */}
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Risk Classification Guide</CardTitle>
+                <CardTitle className="text-sm">Risk classification guide</CardTitle>
                 <CardDescription className="text-xs">
-                  How the autonomy engine scores and routes actions
+                  How the autonomy engine scores and routes actions.
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="rounded-lg border border-green-200 bg-green-50 p-3">
+                <ul className="grid grid-cols-1 sm:grid-cols-3 gap-3 list-none p-0 m-0">
+                  <li className="rounded-lg border border-green-200 bg-green-50 p-3">
                     <div className="flex items-center gap-2 mb-1.5">
-                      <CheckCircle2 className="h-4 w-4 text-green-600" />
-                      <span className="text-xs font-semibold text-green-800">Auto-Execute</span>
+                      <CheckCircle2 className="h-4 w-4 text-green-600" aria-hidden="true" />
+                      <span className="text-xs font-semibold text-green-800">Auto-execute</span>
                     </div>
-                    <p className="text-[11px] text-green-700">Research, data lookups, drafts, calculations</p>
-                    <p className="text-[10px] text-green-600 mt-1">Risk score: 0–25</p>
-                  </div>
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                    <p className="text-[11px] text-green-700">Research, data lookups, drafts, calculations.</p>
+                    <p className="text-[10px] text-green-600 mt-1 tabular-nums">Risk score: 0–25</p>
+                  </li>
+                  <li className="rounded-lg border border-amber-200 bg-amber-50 p-3">
                     <div className="flex items-center gap-2 mb-1.5">
-                      <AlertTriangle className="h-4 w-4 text-amber-600" />
-                      <span className="text-xs font-semibold text-amber-800">Needs Approval</span>
+                      <AlertTriangle className="h-4 w-4 text-amber-600" aria-hidden="true" />
+                      <span className="text-xs font-semibold text-amber-800">Needs approval</span>
                     </div>
-                    <p className="text-[11px] text-amber-700">Outbound comms, scheduling, data writes</p>
-                    <p className="text-[10px] text-amber-600 mt-1">Risk score: 26–75</p>
-                  </div>
-                  <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+                    <p className="text-[11px] text-amber-700">Outbound comms, scheduling, data writes.</p>
+                    <p className="text-[10px] text-amber-600 mt-1 tabular-nums">Risk score: 26–75</p>
+                  </li>
+                  <li className="rounded-lg border border-red-200 bg-red-50 p-3">
                     <div className="flex items-center gap-2 mb-1.5">
-                      <XCircle className="h-4 w-4 text-red-600" />
-                      <span className="text-xs font-semibold text-red-800">Always Escalate</span>
+                      <XCircle className="h-4 w-4 text-red-600" aria-hidden="true" />
+                      <span className="text-xs font-semibold text-red-800">Always escalate</span>
                     </div>
-                    <p className="text-[11px] text-red-700">Offers, contracts, financial commitments</p>
-                    <p className="text-[10px] text-red-600 mt-1">Risk score: 76–100</p>
-                  </div>
-                </div>
+                    <p className="text-[11px] text-red-700">Offers, contracts, financial commitments.</p>
+                    <p className="text-[10px] text-red-600 mt-1 tabular-nums">Risk score: 76–100</p>
+                  </li>
+                </ul>
               </CardContent>
             </Card>
           </div>
@@ -787,9 +846,9 @@ export default function AgentCommandCenter() {
                 ))}
               </div>
             ) : pendingTasks.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 text-center">
-                <CheckCircle2 className="h-12 w-12 text-green-500 mb-3" />
-                <p className="font-medium">All caught up!</p>
+              <div className="flex flex-col items-center justify-center py-16 text-center" role="status">
+                <CheckCircle2 className="h-12 w-12 text-green-500 mb-3" aria-hidden="true" />
+                <p className="font-medium">All caught up.</p>
                 <p className="text-sm text-muted-foreground mt-1">
                   No tasks waiting for your approval.
                 </p>
@@ -797,30 +856,32 @@ export default function AgentCommandCenter() {
             ) : (
               <>
                 <div className="flex items-center justify-between">
-                  <p className="text-sm text-muted-foreground">
-                    {pendingTasks.length} task{pendingTasks.length !== 1 ? "s" : ""} awaiting your review
+                  <p className="text-sm text-muted-foreground" aria-live="polite">
+                    <span className="tabular-nums">{pendingTasks.length}</span> task{pendingTasks.length !== 1 ? "s" : ""} awaiting your review
                   </p>
                   {pendingTasks.length > 1 && (
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => {
-                        pendingTasks.forEach(t => approveMutation.mutate(t.id));
-                      }}
+                      onClick={() => setPendingApproveAll(true)}
+                      aria-label={`Approve all ${pendingTasks.length} pending tasks`}
                     >
-                      <ThumbsUp className="h-3.5 w-3.5 mr-1.5" />
-                      Approve All
+                      <ThumbsUp className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
+                      Approve all
                     </Button>
                   )}
                 </div>
-                {pendingTasks.map(task => (
-                  <TaskRow
-                    key={task.id}
-                    task={task}
-                    onApprove={id => approveMutation.mutate(id)}
-                    onReject={id => rejectMutation.mutate(id)}
-                  />
-                ))}
+                <ul className="space-y-3 list-none p-0 m-0" aria-label="Tasks awaiting your approval">
+                  {pendingTasks.map(task => (
+                    <li key={task.id}>
+                      <TaskRow
+                        task={task}
+                        onApprove={id => approveMutation.mutate(id)}
+                        onReject={id => rejectMutation.mutate(id)}
+                      />
+                    </li>
+                  ))}
+                </ul>
               </>
             )}
           </div>
@@ -831,11 +892,11 @@ export default function AgentCommandCenter() {
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <Select value={taskFilter} onValueChange={setTaskFilter}>
-                <SelectTrigger className="w-40">
+                <SelectTrigger className="w-40" aria-label="Filter tasks by status">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Tasks</SelectItem>
+                  <SelectItem value="all">All tasks</SelectItem>
                   <SelectItem value="pending">Pending</SelectItem>
                   <SelectItem value="processing">Processing</SelectItem>
                   <SelectItem value="completed">Completed</SelectItem>
@@ -843,31 +904,32 @@ export default function AgentCommandCenter() {
                   <SelectItem value="cancelled">Cancelled</SelectItem>
                 </SelectContent>
               </Select>
-              <span className="text-xs text-muted-foreground">
-                Showing {allTasks.length} tasks
+              <span className="text-xs text-muted-foreground" aria-live="polite">
+                Showing <span className="tabular-nums">{allTasks.length}</span> task{allTasks.length === 1 ? "" : "s"}
               </span>
             </div>
 
             {allTasks.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 text-center">
-                <ListChecks className="h-12 w-12 text-muted-foreground mb-3" />
+              <div className="flex flex-col items-center justify-center py-16 text-center" role="status">
+                <ListChecks className="h-12 w-12 text-muted-foreground mb-3" aria-hidden="true" />
                 <p className="font-medium">No tasks yet</p>
                 <p className="text-sm text-muted-foreground mt-1">
                   Agent tasks will appear here as they're created and processed.
                 </p>
               </div>
             ) : (
-              <div className="space-y-2">
+              <ul className="space-y-2 list-none p-0 m-0" aria-label={`${allTasks.length} agent task${allTasks.length === 1 ? "" : "s"}`}>
                 {allTasks.map(task => (
-                  <TaskRow
-                    key={task.id}
-                    task={task}
-                    onApprove={id => approveMutation.mutate(id)}
-                    onReject={id => rejectMutation.mutate(id)}
-                    onRun={id => runMutation.mutate(id)}
-                  />
+                  <li key={task.id}>
+                    <TaskRow
+                      task={task}
+                      onApprove={id => approveMutation.mutate(id)}
+                      onReject={id => rejectMutation.mutate(id)}
+                      onRun={id => runMutation.mutate(id)}
+                    />
+                  </li>
                 ))}
-              </div>
+              </ul>
             )}
           </div>
         </TabsContent>
@@ -880,6 +942,18 @@ export default function AgentCommandCenter() {
           onClose={() => setConfiguringAgent(null)}
         />
       )}
+
+      <ConfirmDialog
+        open={pendingApproveAll}
+        onOpenChange={(open) => { if (!open) setPendingApproveAll(false); }}
+        title={`Approve all ${pendingTasks.length} pending task${pendingTasks.length === 1 ? "" : "s"}?`}
+        description="Each task will be queued for autonomous execution. This includes any high-risk actions (offers, contracts, outbound comms) that were escalated for review."
+        confirmLabel={`Approve ${pendingTasks.length}`}
+        onConfirm={() => {
+          pendingTasks.forEach(t => approveMutation.mutate(t.id));
+          setPendingApproveAll(false);
+        }}
+      />
     </div>
   );
 }
