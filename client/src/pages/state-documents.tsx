@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useState, useId } from "react";
 import { PageShell } from "@/components/page-shell";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import { FileText, AlertTriangle, Scale } from "lucide-react";
 
-// Minimal state config for UI — full data comes from server
 const STATE_DOCS: Record<string, {
   stateName: string;
   primaryDeedType: string;
@@ -29,7 +30,9 @@ const STATE_DOCS: Record<string, {
 };
 
 export default function StateDocumentsPage() {
+  useDocumentTitle("State document requirements");
   const [search, setSearch] = useState("");
+  const searchId = useId();
 
   const filtered = Object.entries(STATE_DOCS).filter(([abbr, config]) => {
     if (!search) return true;
@@ -41,76 +44,95 @@ export default function StateDocumentsPage() {
     <PageShell>
       <div>
         <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-state-documents-title">
-          State Document Requirements
+          State document requirements
         </h1>
         <p className="text-muted-foreground text-sm md:text-base">
           Deed types, recording requirements, and seller-financing rules by state.
         </p>
       </div>
 
-      <Input
-        placeholder="Search states..."
-        value={search}
-        onChange={e => setSearch(e.target.value)}
-        className="max-w-xs"
-      />
-
-      <div className="grid gap-2">
-        {filtered.map(([abbr, config]) => (
-          <Card key={abbr}>
-            <CardContent className="p-4">
-              <div className="flex items-start justify-between">
-                <div className="space-y-2 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-sm">{abbr}</span>
-                    <span className="text-sm text-muted-foreground">{config.stateName}</span>
-                    {config.attorneyState && (
-                      <Badge variant="secondary" className="text-xs">
-                        <Scale className="w-3 h-3 mr-1" /> Attorney State
-                      </Badge>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-                    <div>
-                      <p className="text-muted-foreground">Primary Deed</p>
-                      <p className="font-medium">{config.primaryDeedType}</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Lien Instrument</p>
-                      <p className="font-medium">{config.lienInstrument}</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Land Contract</p>
-                      <p className="font-medium">{config.landContractName}</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Transfer Tax</p>
-                      <p className="font-medium">
-                        {config.transferTaxPercent === 0
-                          ? "None"
-                          : `${config.transferTaxPercent.toFixed(2)}%`}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                    <span>Notary: {config.notaryRequired ? "Required" : "Not required"}</span>
-                    {config.witnessCount > 0 && (
-                      <span className="flex items-center gap-1">
-                        <AlertTriangle className="w-3 h-3 text-amber-500" />
-                        {config.witnessCount} witness{config.witnessCount > 1 ? "es" : ""} required
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                <FileText className="w-4 h-4 text-muted-foreground ml-3" />
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+      <div>
+        <Label htmlFor={searchId} className="sr-only">Search states</Label>
+        <Input
+          id={searchId}
+          type="search"
+          placeholder="Search states…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="max-w-xs"
+          autoCapitalize="characters"
+          autoCorrect="off"
+          spellCheck={false}
+        />
       </div>
+
+      {filtered.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <FileText className="w-8 h-8 text-muted-foreground mx-auto mb-2" aria-hidden="true" />
+            <p className="text-muted-foreground text-sm">No states match your search.</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <ul className="grid gap-2" aria-label="State document requirements">
+          {filtered.map(([abbr, config]) => (
+            <li key={abbr}>
+              <Card>
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-2 flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-bold text-sm">{abbr}</span>
+                        <span className="text-sm text-muted-foreground">{config.stateName}</span>
+                        {config.attorneyState && (
+                          <Badge variant="secondary" className="text-xs">
+                            <Scale className="w-3 h-3 mr-1" aria-hidden="true" /> Attorney state
+                          </Badge>
+                        )}
+                      </div>
+
+                      <dl className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                        <div>
+                          <dt className="text-muted-foreground">Primary deed</dt>
+                          <dd className="font-medium">{config.primaryDeedType}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-muted-foreground">Lien instrument</dt>
+                          <dd className="font-medium">{config.lienInstrument}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-muted-foreground">Land contract</dt>
+                          <dd className="font-medium">{config.landContractName}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-muted-foreground">Transfer tax</dt>
+                          <dd className="font-medium tabular-nums">
+                            {config.transferTaxPercent === 0
+                              ? "None"
+                              : `${config.transferTaxPercent.toFixed(2)}%`}
+                          </dd>
+                        </div>
+                      </dl>
+
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
+                        <span>Notary: {config.notaryRequired ? "required" : "not required"}</span>
+                        {config.witnessCount > 0 && (
+                          <span className="flex items-center gap-1">
+                            <AlertTriangle className="w-3 h-3 text-amber-500" aria-hidden="true" />
+                            <span className="tabular-nums">{config.witnessCount}</span> witness{config.witnessCount > 1 ? "es" : ""} required
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <FileText className="w-4 h-4 text-muted-foreground ml-3 shrink-0" aria-hidden="true" />
+                  </div>
+                </CardContent>
+              </Card>
+            </li>
+          ))}
+        </ul>
+      )}
     </PageShell>
   );
 }

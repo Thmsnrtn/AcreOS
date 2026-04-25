@@ -15,9 +15,8 @@ const STATUS_CONFIG: Record<string, { tone: Tone; icon: typeof CheckCircle2; lab
   unknown:     { tone: "gray",  icon: AlertTriangle, label: "Unknown" },
 };
 
-// Proper display names. Tailwind's `capitalize` only uppercases the
-// first letter, so "openai" became "Openai" — wrong. Branded names
-// (OpenAI, Stripe, etc) need explicit casing.
+// Branded names need explicit casing — Tailwind's `capitalize` only
+// uppercases the first letter, so "openai" became "Openai".
 const SERVICE_DISPLAY_NAME: Record<string, string> = {
   database: "Database",
   redis: "Redis",
@@ -46,7 +45,6 @@ export default function StatusPage() {
 
   const overall = data?.status || "unknown";
   const config = STATUS_CONFIG[overall] || STATUS_CONFIG.unknown;
-  const OverallIcon = config.icon;
 
   return (
     <div className="min-h-screen bg-background">
@@ -54,13 +52,13 @@ export default function StatusPage() {
         <div className="mb-8">
           <Button variant="ghost" size="sm" asChild>
             <Link href="/">
-              <ArrowLeft className="w-4 h-4 mr-2" /> Back to AcreOS
+              <ArrowLeft className="w-4 h-4 mr-2" aria-hidden="true" /> Back to AcreOS
             </Link>
           </Button>
         </div>
 
         <div className="text-center mb-12">
-          <h1 className="text-3xl font-bold mb-2">AcreOS System Status</h1>
+          <h1 className="text-3xl font-bold mb-2">AcreOS system status</h1>
           <div className="flex items-center justify-center gap-2 mt-4">
             <StatusDot
               tone={config.tone}
@@ -74,37 +72,54 @@ export default function StatusPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-4">
             <CardTitle className="text-lg">Services</CardTitle>
-            <Button variant="ghost" size="icon" onClick={() => refetch()} className="min-h-[44px] min-w-[44px]" aria-label="Refresh status">
-              <RefreshCw className="w-4 h-4" />
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => refetch()}
+              className="min-h-[44px] min-w-[44px]"
+              aria-label="Refresh service status"
+            >
+              <RefreshCw className="w-4 h-4" aria-hidden="true" />
             </Button>
           </CardHeader>
-          <CardContent className="space-y-0 p-0">
+          <CardContent className="p-0">
             {isLoading ? (
-              <div className="p-6 text-center text-muted-foreground">Checking every service…</div>
+              <div className="p-6 text-center text-muted-foreground" role="status" aria-live="polite">
+                <span className="sr-only">Loading service status…</span>
+                Checking every service…
+              </div>
             ) : (
-              data?.services.map((service) => {
-                const svc = STATUS_CONFIG[service.status] || STATUS_CONFIG.unknown;
-                const SvcIcon = svc.icon;
-                return (
-                  <div key={service.name} className="flex items-center justify-between px-6 py-4 border-t first:border-t-0">
-                    <span className="font-medium">
-                      {SERVICE_DISPLAY_NAME[service.name.toLowerCase()] ??
-                        service.name.charAt(0).toUpperCase() + service.name.slice(1)}
-                    </span>
-                    <Badge variant="outline" className="gap-1.5">
-                      <SvcIcon className={`w-3.5 h-3.5 ${service.status === "operational" ? "text-green-600" : service.status === "degraded" ? "text-yellow-600" : "text-red-600"}`} />
-                      {svc.label}
-                    </Badge>
-                  </div>
-                );
-              })
+              <ul aria-label="Platform services">
+                {data?.services.map((service) => {
+                  const svc = STATUS_CONFIG[service.status] || STATUS_CONFIG.unknown;
+                  const SvcIcon = svc.icon;
+                  return (
+                    <li
+                      key={service.name}
+                      className="flex items-center justify-between px-6 py-4 border-t first:border-t-0"
+                    >
+                      <span className="font-medium">
+                        {SERVICE_DISPLAY_NAME[service.name.toLowerCase()] ??
+                          service.name.charAt(0).toUpperCase() + service.name.slice(1)}
+                      </span>
+                      <Badge variant="outline" className="gap-1.5">
+                        <SvcIcon
+                          className={`w-3.5 h-3.5 ${service.status === "operational" ? "text-green-600" : service.status === "degraded" ? "text-yellow-600" : "text-red-600"}`}
+                          aria-hidden="true"
+                        />
+                        {svc.label}
+                      </Badge>
+                    </li>
+                  );
+                })}
+              </ul>
             )}
           </CardContent>
         </Card>
 
         {data?.lastChecked && (
           <p className="text-center text-sm text-muted-foreground mt-6">
-            Last checked: {new Date(data.lastChecked).toLocaleString()}
+            Last checked: <span className="tabular-nums">{new Date(data.lastChecked).toLocaleString()}</span>
           </p>
         )}
 
