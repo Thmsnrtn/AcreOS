@@ -1,5 +1,5 @@
 import { PageShell } from "@/components/page-shell";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -10,10 +10,12 @@ import { ListSkeleton } from "@/components/list-skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { useToast } from "@/hooks/use-toast";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -32,11 +34,21 @@ const statusOptions = [
 ];
 
 const dataSourceTypes = [
-  { value: "tax_delinquent", label: "Tax Delinquent", color: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400" },
+  { value: "tax_delinquent", label: "Tax delinquent", color: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400" },
   { value: "probate", label: "Probate", color: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400" },
   { value: "vacant", label: "Vacant", color: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400" },
   { value: "absentee", label: "Absentee", color: "bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-400" },
 ];
+
+const PRIORITY_LABELS: Record<number, string> = {
+  1: "Highest",
+  2: "High",
+  3: "Medium",
+  4: "Low",
+  5: "Lowest",
+};
+
+const reassurance = "Your form input is unchanged — try again.";
 
 const US_STATES = [
   "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA",
@@ -65,7 +77,7 @@ function useCreateTargetCounty() {
       toast({ title: "County added", description: "Target county created successfully." });
     },
     onError: () => {
-      toast({ title: "Error", description: "Failed to create county.", variant: "destructive" });
+      toast({ title: "Couldn't create county", description: `Network error. ${reassurance}`, variant: "destructive" });
     },
   });
 }
@@ -83,7 +95,7 @@ function useUpdateTargetCounty() {
       toast({ title: "County updated", description: "Target county updated successfully." });
     },
     onError: () => {
-      toast({ title: "Error", description: "Failed to update county.", variant: "destructive" });
+      toast({ title: "Couldn't update county", description: `Network error. ${reassurance}`, variant: "destructive" });
     },
   });
 }
@@ -100,14 +112,18 @@ function useDeleteTargetCounty() {
       toast({ title: "County deleted", description: "Target county removed successfully." });
     },
     onError: () => {
-      toast({ title: "Error", description: "Failed to delete county.", variant: "destructive" });
+      toast({ title: "Couldn't delete county", description: "The county is still in your list. Try again in a moment.", variant: "destructive" });
     },
   });
 }
 
 function PriorityStars({ priority }: { priority: number }) {
   return (
-    <div className="flex items-center gap-0.5">
+    <div
+      className="flex items-center gap-0.5"
+      role="img"
+      aria-label={`Priority ${priority} of 5 (${PRIORITY_LABELS[priority] ?? "unset"})`}
+    >
       {[1, 2, 3, 4, 5].map((star) => (
         <Star
           key={star}
@@ -116,6 +132,7 @@ function PriorityStars({ priority }: { priority: number }) {
               ? "fill-amber-400 text-amber-400"
               : "text-muted-foreground/30"
           }`}
+          aria-hidden="true"
         />
       ))}
     </div>
@@ -139,14 +156,14 @@ function CountyCard({ county, onEdit, onDelete }: {
             <CardTitle className="text-lg" data-testid={`text-county-name-${county.id}`}>
               {county.name}
             </CardTitle>
-            <Badge className={statusConfig.color} data-testid={`badge-status-${county.id}`}>
+            <Badge className={statusConfig.color} data-testid={`badge-status-${county.id}`} aria-label={`Status: ${statusConfig.label}`}>
               {statusConfig.label}
             </Badge>
           </div>
           <div className="flex items-center gap-1 mt-1 text-sm text-muted-foreground">
-            <MapPin className="w-3.5 h-3.5" />
+            <MapPin className="w-3.5 h-3.5" aria-hidden="true" />
             <span data-testid={`text-county-state-${county.id}`}>{county.state}</span>
-            {county.fipsCode && <span className="text-xs">({county.fipsCode})</span>}
+            {county.fipsCode && <span className="text-xs tabular-nums" aria-label={`FIPS code ${county.fipsCode}`}>({county.fipsCode})</span>}
           </div>
         </div>
         <div className="flex items-center gap-1">
@@ -154,19 +171,19 @@ function CountyCard({ county, onEdit, onDelete }: {
             size="icon"
             variant="ghost"
             onClick={onEdit}
-            aria-label="Edit county"
+            aria-label={`Edit county: ${county.name}, ${county.state}`}
             data-testid={`button-edit-county-${county.id}`}
           >
-            <Pencil className="w-4 h-4" />
+            <Pencil className="w-4 h-4" aria-hidden="true" />
           </Button>
           <Button
             size="icon"
             variant="ghost"
             onClick={onDelete}
-            aria-label="Delete county"
+            aria-label={`Delete county: ${county.name}, ${county.state}`}
             data-testid={`button-delete-county-${county.id}`}
           >
-            <Trash2 className="w-4 h-4" />
+            <Trash2 className="w-4 h-4" aria-hidden="true" />
           </Button>
         </div>
       </CardHeader>
@@ -176,59 +193,61 @@ function CountyCard({ county, onEdit, onDelete }: {
           <PriorityStars priority={county.priority || 1} />
         </div>
 
-        <div className="grid grid-cols-3 gap-2 text-center">
+        <dl className="grid grid-cols-3 gap-2 text-center">
           <div className="p-2 rounded-md bg-muted/50">
             <div className="flex items-center justify-center gap-1">
-              <Users className="w-3.5 h-3.5 text-muted-foreground" />
+              <Users className="w-3.5 h-3.5 text-muted-foreground" aria-hidden="true" />
             </div>
-            <div className="text-lg font-semibold" data-testid={`text-leads-${county.id}`}>
+            <dd className="text-lg font-semibold tabular-nums" data-testid={`text-leads-${county.id}`}>
               {metrics.leadsGenerated ?? 0}
-            </div>
-            <div className="text-xs text-muted-foreground">Leads</div>
+            </dd>
+            <dt className="text-xs text-muted-foreground">Leads</dt>
           </div>
           <div className="p-2 rounded-md bg-muted/50">
             <div className="flex items-center justify-center gap-1">
-              <Target className="w-3.5 h-3.5 text-muted-foreground" />
+              <Target className="w-3.5 h-3.5 text-muted-foreground" aria-hidden="true" />
             </div>
-            <div className="text-lg font-semibold" data-testid={`text-deals-${county.id}`}>
+            <dd className="text-lg font-semibold tabular-nums" data-testid={`text-deals-${county.id}`}>
               {metrics.dealsCompleted ?? 0}
-            </div>
-            <div className="text-xs text-muted-foreground">Deals</div>
+            </dd>
+            <dt className="text-xs text-muted-foreground">Deals</dt>
           </div>
           <div className="p-2 rounded-md bg-muted/50">
             <div className="flex items-center justify-center gap-1">
-              <TrendingUp className="w-3.5 h-3.5 text-muted-foreground" />
+              <TrendingUp className="w-3.5 h-3.5 text-muted-foreground" aria-hidden="true" />
             </div>
-            <div className="text-lg font-semibold" data-testid={`text-response-rate-${county.id}`}>
+            <dd className="text-lg font-semibold tabular-nums" data-testid={`text-response-rate-${county.id}`}>
               {metrics.responseRate ? `${(metrics.responseRate * 100).toFixed(1)}%` : "0%"}
-            </div>
-            <div className="text-xs text-muted-foreground">Response</div>
+            </dd>
+            <dt className="text-xs text-muted-foreground">Response</dt>
           </div>
-        </div>
+        </dl>
 
         {dataSources.length > 0 && (
           <div>
-            <div className="flex items-center gap-1 mb-2 text-sm text-muted-foreground">
-              <Database className="w-3.5 h-3.5" />
-              <span>Data Sources</span>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
+            <p id={`data-sources-label-${county.id}`} className="flex items-center gap-1 mb-2 text-sm text-muted-foreground">
+              <Database className="w-3.5 h-3.5" aria-hidden="true" />
+              <span>Data sources</span>
+            </p>
+            <ul className="flex flex-wrap gap-1.5 list-none p-0 m-0" aria-labelledby={`data-sources-label-${county.id}`}>
               {dataSources.map((source, idx) => {
                 const typeConfig = dataSourceTypes.find(t => t.value === source.type);
                 return (
-                  <Badge
-                    key={idx}
-                    className={typeConfig?.color || ""}
-                    data-testid={`badge-source-${county.id}-${idx}`}
-                  >
-                    {source.name}
-                    {source.recordCount && (
-                      <span className="ml-1 opacity-70">({source.recordCount})</span>
-                    )}
-                  </Badge>
+                  <li key={idx}>
+                    <Badge
+                      className={typeConfig?.color || ""}
+                      data-testid={`badge-source-${county.id}-${idx}`}
+                      aria-label={`${typeConfig?.label || source.type} source: ${source.name}${source.recordCount ? `, ${source.recordCount} records` : ""}`}
+                    >
+                      {source.name}
+                      {source.recordCount && (
+                        <span className="ml-1 opacity-70 tabular-nums">({source.recordCount})</span>
+                      )}
+                    </Badge>
+                  </li>
                 );
               })}
-            </div>
+            </ul>
           </div>
         )}
 
@@ -279,7 +298,7 @@ function CountyForm({
             name="name"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>County Name</FormLabel>
+                <FormLabel>County name</FormLabel>
                 <FormControl>
                   <Input 
                     placeholder="e.g., Maricopa" 
@@ -323,7 +342,7 @@ function CountyForm({
             name="fipsCode"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>FIPS Code</FormLabel>
+                <FormLabel>FIPS code</FormLabel>
                 <FormControl>
                   <Input 
                     placeholder="e.g., 04013" 
@@ -398,7 +417,7 @@ function CountyForm({
                   <SelectContent>
                     {[1, 2, 3, 4, 5].map((p) => (
                       <SelectItem key={p} value={String(p)}>
-                        {p} - {p === 1 ? "Highest" : p === 5 ? "Lowest" : ""}
+                        {p} — {PRIORITY_LABELS[p]}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -415,7 +434,7 @@ function CountyForm({
             name="medianHomeValue"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Median Home Value</FormLabel>
+                <FormLabel>Median home value</FormLabel>
                 <FormControl>
                   <Input 
                     placeholder="e.g., 350000" 
@@ -433,7 +452,7 @@ function CountyForm({
             name="averageLotPrice"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Average Lot Price</FormLabel>
+                <FormLabel>Average lot price</FormLabel>
                 <FormControl>
                   <Input 
                     placeholder="e.g., 25000" 
@@ -474,8 +493,8 @@ function CountyForm({
             Cancel
           </Button>
           <Button type="submit" disabled={isPending} data-testid="button-submit">
-            {isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-            {county ? "Update County" : "Add County"}
+            {isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />}
+            {county ? "Update county" : "Add county"}
           </Button>
         </DialogFooter>
       </form>
@@ -484,6 +503,7 @@ function CountyForm({
 }
 
 export default function CountiesPage() {
+  useDocumentTitle("Target counties");
   const { data: counties, isLoading } = useTargetCounties();
   const { mutate: createCounty, isPending: isCreating } = useCreateTargetCounty();
   const { mutate: updateCounty, isPending: isUpdating } = useUpdateTargetCounty();
@@ -494,6 +514,8 @@ export default function CountiesPage() {
   const [deletingCounty, setDeletingCounty] = useState<TargetCounty | null>(null);
   const [filterState, setFilterState] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const filterStateId = useId();
+  const filterStatusId = useId();
 
   const filteredCounties = (counties || []).filter((county) => {
     if (filterState !== "all" && county.state !== filterState) return false;
@@ -537,49 +559,55 @@ export default function CountiesPage() {
     <PageShell>
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-2xl font-bold" data-testid="text-page-title">Target Counties</h1>
+            <h1 className="text-2xl font-bold" data-testid="text-page-title">Target counties</h1>
             <p className="text-muted-foreground">
               Manage your target markets and data sources
             </p>
           </div>
           <Button onClick={handleOpenCreate} data-testid="button-add-county">
-            <Plus className="w-4 h-4 mr-2" />
-            Add County
+            <Plus className="w-4 h-4 mr-2" aria-hidden="true" />
+            Add county
           </Button>
         </div>
 
         <div className="flex items-center gap-4 flex-wrap">
-          <Select value={filterState} onValueChange={setFilterState}>
-            <SelectTrigger className="w-[180px]" data-testid="select-filter-state">
-              <SelectValue placeholder="Filter by state" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All States</SelectItem>
-              {uniqueStates.map((state) => (
-                <SelectItem key={state} value={state}>
-                  {state}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div>
+            <Label htmlFor={filterStateId} className="sr-only">Filter by state</Label>
+            <Select value={filterState} onValueChange={setFilterState}>
+              <SelectTrigger id={filterStateId} className="w-[180px]" data-testid="select-filter-state">
+                <SelectValue placeholder="Filter by state" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All states</SelectItem>
+                {uniqueStates.map((state) => (
+                  <SelectItem key={state} value={state}>
+                    {state}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-          <Select value={filterStatus} onValueChange={setFilterStatus}>
-            <SelectTrigger className="w-[180px]" data-testid="select-filter-status">
-              <SelectValue placeholder="Filter by status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Statuses</SelectItem>
-              {statusOptions.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div>
+            <Label htmlFor={filterStatusId} className="sr-only">Filter by status</Label>
+            <Select value={filterStatus} onValueChange={setFilterStatus}>
+              <SelectTrigger id={filterStatusId} className="w-[180px]" data-testid="select-filter-status">
+                <SelectValue placeholder="Filter by status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                {statusOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
           {(filterState !== "all" || filterStatus !== "all") && (
-            <Button 
-              variant="ghost" 
+            <Button
+              variant="ghost"
               size="sm"
               onClick={() => {
                 setFilterState("all");
@@ -603,27 +631,28 @@ export default function CountiesPage() {
                 ? "Add your first target county to start tracking acquisition markets."
                 : "Try adjusting your filters to see more results."
             }
-            actionLabel={counties?.length === 0 ? "Add County" : undefined}
+            actionLabel={counties?.length === 0 ? "Add county" : undefined}
             onAction={counties?.length === 0 ? handleOpenCreate : undefined}
           />
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 list-none p-0 m-0" aria-label="Target counties">
             {filteredCounties.map((county) => (
-              <CountyCard
-                key={county.id}
-                county={county}
-                onEdit={() => handleOpenEdit(county)}
-                onDelete={() => setDeletingCounty(county)}
-              />
+              <li key={county.id}>
+                <CountyCard
+                  county={county}
+                  onEdit={() => handleOpenEdit(county)}
+                  onDelete={() => setDeletingCounty(county)}
+                />
+              </li>
             ))}
-          </div>
+          </ul>
         )}
 
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogContent className="max-w-lg">
             <DialogHeader>
               <DialogTitle data-testid="text-dialog-title">
-                {editingCounty ? "Edit County" : "Add Target County"}
+                {editingCounty ? "Edit county" : "Add target county"}
               </DialogTitle>
               <DialogDescription>
                 {editingCounty 
@@ -643,7 +672,7 @@ export default function CountiesPage() {
         <ConfirmDialog
           open={!!deletingCounty}
           onOpenChange={(open) => !open && setDeletingCounty(null)}
-          title="Delete County"
+          title="Delete county"
           description={`Are you sure you want to delete "${deletingCounty?.name}, ${deletingCounty?.state}"? This action cannot be undone.`}
           confirmLabel="Delete"
           onConfirm={handleDelete}
