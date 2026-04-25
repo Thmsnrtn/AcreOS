@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useId } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PageShell } from "@/components/page-shell";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,7 +10,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { Mail, Plus, Send, Users, DollarSign, BarChart3, Loader2, FileText } from "lucide-react";
+import { useDocumentTitle } from "@/hooks/use-document-title";
+import { usd } from "@/lib/format";
+import { Mail, Plus, Send, Users, DollarSign, BarChart3, Loader2 } from "lucide-react";
 
 interface DirectMailCampaign {
   id: number;
@@ -37,6 +39,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function DirectMailCampaignsPage() {
+  useDocumentTitle("Direct mail campaigns");
   const { toast } = useToast();
   const qc = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
@@ -44,6 +47,10 @@ export default function DirectMailCampaignsPage() {
   const [mailType, setMailType] = useState("postcard");
   const [messageTemplate, setMessageTemplate] = useState("");
   const [targetSegment, setTargetSegment] = useState("all_leads");
+  const nameId = useId();
+  const mailTypeId = useId();
+  const segmentId = useId();
+  const templateId = useId();
 
   const { data, isLoading } = useQuery<{ campaigns: DirectMailCampaign[] }>({
     queryKey: ["/api/direct-mail"],
@@ -55,21 +62,31 @@ export default function DirectMailCampaignsPage() {
       name, mailType, messageTemplate, targetSegment,
     }),
     onSuccess: () => {
-      toast({ title: `Campaign "${name}" created` });
+      toast({ title: `Campaign "${name}" created.` });
       qc.invalidateQueries({ queryKey: ["/api/direct-mail"] });
       setShowCreate(false);
       setName(""); setMessageTemplate("");
     },
-    onError: () => toast({ title: "Failed to create campaign", variant: "destructive" }),
+    onError: () =>
+      toast({
+        title: "Couldn't create campaign",
+        description: "No campaign was created — your input is preserved. Check your fields and try again.",
+        variant: "destructive",
+      }),
   });
 
   const sendMutation = useMutation({
     mutationFn: (id: number) => apiRequest("POST", `/api/direct-mail/campaigns/${id}/send`),
     onSuccess: () => {
-      toast({ title: "Campaign queued for sending" });
+      toast({ title: "Campaign queued for sending." });
       qc.invalidateQueries({ queryKey: ["/api/direct-mail"] });
     },
-    onError: () => toast({ title: "Send failed", variant: "destructive" }),
+    onError: () =>
+      toast({
+        title: "Couldn't send campaign",
+        description: "No mail pieces were sent. The campaign is still in draft — try again in a moment.",
+        variant: "destructive",
+      }),
   });
 
   const campaigns = data?.campaigns ?? [];
@@ -79,147 +96,184 @@ export default function DirectMailCampaignsPage() {
 
   return (
     <PageShell>
-      <div className="flex items-start justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-direct-mail-title">
-            Direct Mail Campaigns
+            Direct mail campaigns
           </h1>
           <p className="text-muted-foreground text-sm md:text-base">
-            Send postcards, letters, and yellow letters to targeted land owner lists.
+            Send postcards, letters, and yellow letters to targeted land-owner lists.
           </p>
         </div>
-        <Button onClick={() => setShowCreate(!showCreate)}>
-          <Plus className="w-4 h-4 mr-2" /> New Campaign
+        <Button
+          onClick={() => setShowCreate(!showCreate)}
+          className="min-h-11"
+          aria-expanded={showCreate}
+        >
+          <Plus className="w-4 h-4 mr-2" aria-hidden="true" /> New campaign
         </Button>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
+      <dl className="grid grid-cols-3 gap-3">
         <Card>
           <CardContent className="p-4">
-            <div className="flex items-center gap-2 text-muted-foreground mb-1">
-              <Send className="w-4 h-4" />
-              <span className="text-xs">Total Sent</span>
-            </div>
-            <p className="text-2xl font-bold">{totalSent.toLocaleString()}</p>
+            <dt className="flex items-center gap-2 text-muted-foreground mb-1">
+              <Send className="w-4 h-4" aria-hidden="true" />
+              <span className="text-xs">Total sent</span>
+            </dt>
+            <dd className="text-2xl font-bold tabular-nums">{totalSent.toLocaleString()}</dd>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
-            <div className="flex items-center gap-2 text-muted-foreground mb-1">
-              <Users className="w-4 h-4" />
+            <dt className="flex items-center gap-2 text-muted-foreground mb-1">
+              <Users className="w-4 h-4" aria-hidden="true" />
               <span className="text-xs">Responses</span>
-            </div>
-            <p className="text-2xl font-bold">{totalResponses.toLocaleString()}</p>
+            </dt>
+            <dd className="text-2xl font-bold tabular-nums">{totalResponses.toLocaleString()}</dd>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
-            <div className="flex items-center gap-2 text-muted-foreground mb-1">
-              <DollarSign className="w-4 h-4" />
-              <span className="text-xs">Total Spend</span>
-            </div>
-            <p className="text-2xl font-bold">${(totalSpend / 100).toLocaleString()}</p>
+            <dt className="flex items-center gap-2 text-muted-foreground mb-1">
+              <DollarSign className="w-4 h-4" aria-hidden="true" />
+              <span className="text-xs">Total spend</span>
+            </dt>
+            <dd className="text-2xl font-bold tabular-nums">{usd(totalSpend / 100)}</dd>
           </CardContent>
         </Card>
-      </div>
+      </dl>
 
       {showCreate && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Create Campaign</CardTitle>
+            <CardTitle className="text-base">Create campaign</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs">Campaign Name</Label>
-                <Input placeholder="Q1 Texas Outreach" value={name} onChange={e => setName(e.target.value)} />
+          <CardContent>
+            <form
+              className="space-y-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!name.trim() || createMutation.isPending) return;
+                createMutation.mutate();
+              }}
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <Label htmlFor={nameId} className="text-xs">
+                    Campaign name <span className="text-destructive" aria-label="required">*</span>
+                  </Label>
+                  <Input
+                    id={nameId}
+                    placeholder="Q1 Texas outreach"
+                    value={name}
+                    onChange={e => setName(e.target.value)}
+                    autoCapitalize="sentences"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor={mailTypeId} className="text-xs">Mail type</Label>
+                  <Select value={mailType} onValueChange={setMailType}>
+                    <SelectTrigger id={mailTypeId}><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="postcard">Postcard — fastest, lowest cost per piece</SelectItem>
+                      <SelectItem value="letter">Letter — higher open rate, more cost</SelectItem>
+                      <SelectItem value="yellow_letter">Yellow letter — handwritten-style, highest response rate</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               <div>
-                <Label className="text-xs">Mail Type</Label>
-                <Select value={mailType} onValueChange={setMailType}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                <Label htmlFor={segmentId} className="text-xs">Target segment</Label>
+                <Select value={targetSegment} onValueChange={setTargetSegment}>
+                  <SelectTrigger id={segmentId}><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="postcard">Postcard</SelectItem>
-                    <SelectItem value="letter">Letter</SelectItem>
-                    <SelectItem value="yellow_letter">Yellow Letter</SelectItem>
+                    <SelectItem value="all_leads">All leads</SelectItem>
+                    <SelectItem value="hot_leads">Hot leads</SelectItem>
+                    <SelectItem value="long_ownership">Long-term owners (10+ years)</SelectItem>
+                    <SelectItem value="absentee">Absentee owners</SelectItem>
+                    <SelectItem value="tax_delinquent">Tax-delinquent</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-            </div>
-            <div>
-              <Label className="text-xs">Target Segment</Label>
-              <Select value={targetSegment} onValueChange={setTargetSegment}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all_leads">All Leads</SelectItem>
-                  <SelectItem value="hot_leads">Hot Leads</SelectItem>
-                  <SelectItem value="long_ownership">Long-term Owners (10+ years)</SelectItem>
-                  <SelectItem value="absentee">Absentee Owners</SelectItem>
-                  <SelectItem value="tax_delinquent">Tax Delinquent</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-xs">Message Template</Label>
-              <Textarea
-                placeholder="Hi [OWNER_NAME], I'm interested in buying your land at [PROPERTY_ADDRESS]..."
-                value={messageTemplate}
-                onChange={e => setMessageTemplate(e.target.value)}
-                rows={3}
-              />
-            </div>
-            <div className="flex gap-2">
-              <Button disabled={!name || createMutation.isPending} onClick={() => createMutation.mutate()}>
-                {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Create Draft"}
-              </Button>
-              <Button variant="ghost" onClick={() => setShowCreate(false)}>Cancel</Button>
-            </div>
+              <div>
+                <Label htmlFor={templateId} className="text-xs">Message template</Label>
+                <Textarea
+                  id={templateId}
+                  placeholder="Hi [OWNER_NAME], I'm interested in buying your land at [PROPERTY_ADDRESS]…"
+                  value={messageTemplate}
+                  onChange={e => setMessageTemplate(e.target.value)}
+                  rows={3}
+                />
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  type="submit"
+                  disabled={!name || createMutation.isPending}
+                  className="min-h-11"
+                >
+                  {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : "Create draft"}
+                </Button>
+                <Button type="button" variant="ghost" onClick={() => setShowCreate(false)} className="min-h-11">Cancel</Button>
+              </div>
+            </form>
           </CardContent>
         </Card>
       )}
 
       {isLoading ? (
-        <div className="flex items-center gap-2 text-muted-foreground">
-          <Loader2 className="w-4 h-4 animate-spin" /> Loading campaigns...
+        <div className="flex items-center gap-2 text-muted-foreground" role="status" aria-live="polite">
+          <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> Loading campaigns…
         </div>
       ) : campaigns.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">
-            <Mail className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+            <Mail className="w-8 h-8 text-muted-foreground mx-auto mb-2" aria-hidden="true" />
             <p className="text-muted-foreground text-sm">No direct mail campaigns yet.</p>
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-2">
+        <ul className="space-y-2" aria-label="Direct mail campaigns">
           {campaigns.map(c => (
-            <Card key={c.id}>
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-sm">{c.name}</span>
-                      <Badge variant="outline" className="text-xs capitalize">{c.mailType.replace(/_/g, " ")}</Badge>
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_COLORS[c.status]}`}>
-                        {c.status}
-                      </span>
+            <li key={c.id}>
+              <Card>
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium text-sm">{c.name}</span>
+                        <Badge variant="outline" className="text-xs capitalize">{c.mailType.replace(/_/g, " ")}</Badge>
+                        <span
+                          className={`text-xs px-2 py-0.5 rounded-full capitalize ${STATUS_COLORS[c.status]}`}
+                          aria-label={`Status: ${c.status}`}
+                        >
+                          {c.status}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                        <span><Users className="w-3 h-3 inline mr-1" aria-hidden="true" /><span className="tabular-nums">{c.sentCount.toLocaleString()}</span> sent</span>
+                        <span><BarChart3 className="w-3 h-3 inline mr-1" aria-hidden="true" /><span className="tabular-nums">{c.responseCount.toLocaleString()}</span> response{c.responseCount === 1 ? "" : "s"}</span>
+                        {c.responseRate !== undefined && <span className="tabular-nums">{c.responseRate.toFixed(1)}% response rate</span>}
+                        <span><DollarSign className="w-3 h-3 inline mr-0.5" aria-hidden="true" /><span className="tabular-nums">{usd(c.totalCostCents / 100)}</span> total</span>
+                      </div>
                     </div>
-                    <div className="flex gap-4 text-xs text-muted-foreground">
-                      <span><Users className="w-3 h-3 inline mr-1" />{c.sentCount.toLocaleString()} sent</span>
-                      <span><BarChart3 className="w-3 h-3 inline mr-1" />{c.responseCount} responses</span>
-                      {c.responseRate !== undefined && <span>{c.responseRate.toFixed(1)}% response rate</span>}
-                      <span><DollarSign className="w-3 h-3 inline mr-0.5" />{(c.totalCostCents / 100).toLocaleString()} total</span>
-                    </div>
+                    {c.status === "draft" && (
+                      <Button
+                        size="sm"
+                        onClick={() => sendMutation.mutate(c.id)}
+                        disabled={sendMutation.isPending}
+                        className="min-h-9"
+                        aria-label={`Send campaign: ${c.name}`}
+                      >
+                        <Send className="w-3 h-3 mr-1" aria-hidden="true" /> Send
+                      </Button>
+                    )}
                   </div>
-                  {c.status === "draft" && (
-                    <Button size="sm" onClick={() => sendMutation.mutate(c.id)}>
-                      <Send className="w-3 h-3 mr-1" /> Send
-                    </Button>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
     </PageShell>
   );
