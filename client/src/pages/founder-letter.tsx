@@ -18,6 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import { FileText, Check, RefreshCw, Archive } from "lucide-react";
 import { format } from "date-fns";
 
@@ -55,12 +56,6 @@ function useArchive() {
   });
 }
 
-/**
- * Minimal inline markdown renderer — headings, bold, bullet lists,
- * paragraphs. Keeps dep surface small and gives us full control of
- * styling. Not a general-purpose renderer; tuned for the narrative
- * structure the AI produces.
- */
 function renderMarkdown(md: string): React.ReactNode {
   const blocks = md.trim().split(/\n{2,}/);
   return blocks.map((block, i) => {
@@ -127,6 +122,7 @@ function inline(text: string): React.ReactNode {
 }
 
 export default function FounderLetterPage() {
+  useDocumentTitle("Founder letter");
   const [selectedMonth, setSelectedMonth] = useState<string | undefined>(undefined);
   const { data, isLoading, isError, refetch } = useCurrentLetter(selectedMonth);
   const archive = useArchive();
@@ -143,7 +139,12 @@ export default function FounderLetterPage() {
       qc.invalidateQueries({ queryKey: ["/api/founder/intelligence/letter/archive"] });
       toast({ title: "Letter generated", description: "Fresh content loaded." });
     },
-    onError: (e: Error) => toast({ title: "Generate failed", description: e.message, variant: "destructive" }),
+    onError: (e: Error) =>
+      toast({
+        title: "Couldn't generate letter",
+        description: `${e.message}. Your previous letter (if any) is unchanged — try again in a moment.`,
+        variant: "destructive",
+      }),
   });
 
   const markDelivered = useMutation({
@@ -155,6 +156,12 @@ export default function FounderLetterPage() {
       qc.invalidateQueries({ queryKey: ["/api/founder/intelligence/letter/current"] });
       qc.invalidateQueries({ queryKey: ["/api/founder/intelligence/letter/archive"] });
     },
+    onError: () =>
+      toast({
+        title: "Couldn't mark letter as read",
+        description: "The letter status is unchanged. Try again in a moment.",
+        variant: "destructive",
+      }),
   });
 
   const letter = data?.letter ?? null;
@@ -162,11 +169,11 @@ export default function FounderLetterPage() {
   return (
     <PageShell label="Founder Letter">
       <div className="grid gap-6 lg:grid-cols-[1fr_280px] max-w-6xl mx-auto">
-        {/* Main letter */}
         <div className="space-y-4">
           {isLoading ? (
             <Card>
-              <CardContent className="p-8 space-y-3">
+              <CardContent className="p-8 space-y-3" role="status" aria-live="polite">
+                <span className="sr-only">Loading founder letter…</span>
                 <Skeleton className="h-8 w-64" />
                 <Skeleton className="h-4 w-full" />
                 <Skeleton className="h-4 w-11/12" />
@@ -177,7 +184,7 @@ export default function FounderLetterPage() {
             <EmptyState
               icon={FileText}
               title="Couldn't load the letter"
-              description="Try generating it or come back in a moment."
+              description="Your previous letter (if any) is still saved. Try generating a fresh one or come back in a moment."
               actionLabel="Retry"
               onAction={() => refetch()}
             />
@@ -192,14 +199,13 @@ export default function FounderLetterPage() {
             />
           ) : (
             <>
-              {/* Status row */}
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div className="flex items-center gap-2">
-                  <Badge variant={letter.status === "delivered" ? "secondary" : "default"}>
+                  <Badge variant={letter.status === "delivered" ? "secondary" : "default"} className="capitalize">
                     {letter.status}
                   </Badge>
-                  <span className="text-xs text-muted-foreground">
-                    generated {format(new Date(letter.generatedAt), "MMM d, yyyy h:mm a")}
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    Generated {format(new Date(letter.generatedAt), "MMM d, yyyy h:mm a")}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -209,8 +215,9 @@ export default function FounderLetterPage() {
                     variant="ghost"
                     size="sm"
                     data-testid="button-regenerate-letter"
+                    aria-label={`Regenerate letter for ${letter.monthKey}`}
                   >
-                    <RefreshCw className="h-4 w-4 mr-2" />
+                    <RefreshCw className={`h-4 w-4 mr-2 ${generate.isPending ? "animate-spin" : ""}`} aria-hidden="true" />
                     {generate.isPending ? "Regenerating…" : "Regenerate"}
                   </Button>
                   {letter.status !== "delivered" && (
@@ -220,24 +227,23 @@ export default function FounderLetterPage() {
                       variant="outline"
                       size="sm"
                       data-testid="button-mark-delivered"
+                      aria-label={`Mark ${letter.monthKey} letter as read`}
                     >
-                      <Check className="h-4 w-4 mr-2" />
+                      <Check className="h-4 w-4 mr-2" aria-hidden="true" />
                       Read
                     </Button>
                   )}
                 </div>
               </div>
 
-              {/* The letter */}
               <Card>
                 <CardContent className="p-8 prose prose-neutral dark:prose-invert max-w-none">
                   {renderMarkdown(letter.letterMarkdown)}
                 </CardContent>
               </Card>
 
-              {/* Pending founder decision — call-out card */}
               {letter.pendingFounderDecision && (
-                <Card className="bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800">
+                <Card className="bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800" role="region" aria-label="Founder decision required">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-base text-amber-900 dark:text-amber-200">
                       The one thing I need from you
@@ -254,38 +260,46 @@ export default function FounderLetterPage() {
           )}
         </div>
 
-        {/* Archive sidebar */}
-        <aside className="space-y-3">
+        <aside className="space-y-3" aria-label="Letter archive">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-base flex items-center gap-2">
-                <Archive className="h-4 w-4 text-muted-foreground" />
+                <Archive className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                 Archive
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-3 pt-0 space-y-1">
+            <CardContent className="p-3 pt-0">
               {archive.isLoading ? (
-                <Skeleton className="h-4 w-full" />
+                <div role="status" aria-live="polite">
+                  <span className="sr-only">Loading archive…</span>
+                  <Skeleton className="h-4 w-full" />
+                </div>
               ) : archive.data?.letters.length === 0 ? (
                 <p className="text-xs text-muted-foreground">No previous letters yet.</p>
               ) : (
-                archive.data?.letters.map((row) => {
-                  const isSelected = selectedMonth === row.monthKey;
-                  return (
-                    <button
-                      key={row.monthKey}
-                      onClick={() => setSelectedMonth(isSelected ? undefined : row.monthKey)}
-                      className={`w-full text-left p-2 rounded text-xs hover:bg-muted/60 transition ${isSelected ? "bg-muted" : ""}`}
-                      data-testid={`archive-${row.monthKey}`}
-                    >
-                      <div className="font-medium text-foreground">{row.monthKey}</div>
-                      <div className="text-[11px] text-muted-foreground">
-                        {row.status}
-                        {row.deliveredAt ? ` · read ${format(new Date(row.deliveredAt), "MMM d")}` : ""}
-                      </div>
-                    </button>
-                  );
-                })
+                <ol className="space-y-1" aria-label="Previous founder letters, newest first">
+                  {archive.data?.letters.map((row) => {
+                    const isSelected = selectedMonth === row.monthKey;
+                    return (
+                      <li key={row.monthKey}>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedMonth(isSelected ? undefined : row.monthKey)}
+                          className={`w-full text-left p-2 rounded text-xs hover:bg-muted/60 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${isSelected ? "bg-muted" : ""}`}
+                          aria-pressed={isSelected}
+                          aria-label={`${isSelected ? "Hide" : "View"} ${row.monthKey} letter`}
+                          data-testid={`archive-${row.monthKey}`}
+                        >
+                          <div className="font-medium text-foreground tabular-nums">{row.monthKey}</div>
+                          <div className="text-[11px] text-muted-foreground">
+                            <span className="capitalize">{row.status}</span>
+                            {row.deliveredAt ? <> · read <span className="tabular-nums">{format(new Date(row.deliveredAt), "MMM d")}</span></> : ""}
+                          </div>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ol>
               )}
             </CardContent>
           </Card>
