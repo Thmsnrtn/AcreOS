@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useId } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,11 +8,12 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine,
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
 import { useToast } from "@/hooks/use-toast";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import {
-  TrendingUp, TrendingDown, Search, Target, Calendar, BarChart2,
+  TrendingUp, Search, Target, Calendar, BarChart2,
   ArrowUpRight, ArrowDownRight, Clock, AlertCircle, CheckCircle2,
 } from "lucide-react";
 
@@ -96,15 +97,23 @@ function Skeleton({ className = "" }: { className?: string }) {
 // ─── Main Page ────────────────────────────────────────────────────────────
 
 export default function PredictionsPage() {
+  useDocumentTitle("Market predictions");
   const { toast } = useToast();
   const [county, setCounty] = useState("");
   const [state, setState] = useState("");
   const [horizon, setHorizon] = useState<"30" | "90" | "365">("90");
   const [submitted, setSubmitted] = useState<{ county: string; state: string; horizon: string } | null>(null);
+  const countyId = useId();
+  const stateId = useId();
+  const horizonId = useId();
 
   function handleSearch() {
     if (!county.trim() || !state) {
-      toast({ title: "Please enter a county and select a state", variant: "destructive" });
+      toast({
+        title: "Can't analyze yet",
+        description: "Enter a county and select a state before analyzing — your filters are unchanged.",
+        variant: "destructive",
+      });
       return;
     }
     setSubmitted({ county: county.trim(), state, horizon });
@@ -183,64 +192,73 @@ export default function PredictionsPage() {
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2">
-          <TrendingUp className="w-7 h-7 text-primary" /> Market Predictions
+          <TrendingUp className="w-7 h-7 text-primary" aria-hidden="true" /> Market predictions
         </h1>
         <p className="text-muted-foreground mt-1">
-          AI-powered price trajectory forecasts with buy/sell window indicators per county
+          AI-powered price trajectory forecasts with buy/sell window indicators per county.
         </p>
       </div>
 
       {/* Search Panel */}
       <Card>
         <CardContent className="p-4">
-          <div className="flex flex-wrap items-end gap-3">
+          <form
+            className="flex flex-wrap items-end gap-3"
+            onSubmit={(e) => { e.preventDefault(); handleSearch(); }}
+          >
             <div className="flex-1 min-w-[180px]">
-              <Label className="text-xs">County</Label>
+              <Label htmlFor={countyId} className="text-xs">
+                County <span className="text-destructive" aria-label="required">*</span>
+              </Label>
               <div className="relative">
-                <Search className="absolute left-2.5 top-2.5 w-4 h-4 text-muted-foreground" />
+                <Search className="absolute left-2.5 top-2.5 w-4 h-4 text-muted-foreground" aria-hidden="true" />
                 <Input
+                  id={countyId}
                   className="pl-8"
                   placeholder="e.g. Travis"
                   value={county}
                   onChange={e => setCounty(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && handleSearch()}
+                  autoCapitalize="words"
+                  autoComplete="address-level2"
                 />
               </div>
             </div>
             <div className="w-32">
-              <Label className="text-xs">State</Label>
+              <Label htmlFor={stateId} className="text-xs">
+                State <span className="text-destructive" aria-label="required">*</span>
+              </Label>
               <Select value={state} onValueChange={setState}>
-                <SelectTrigger><SelectValue placeholder="State" /></SelectTrigger>
+                <SelectTrigger id={stateId}><SelectValue placeholder="State" /></SelectTrigger>
                 <SelectContent>
                   {US_STATES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
             <div className="w-40">
-              <Label className="text-xs">Forecast Horizon</Label>
+              <Label htmlFor={horizonId} className="text-xs">Forecast horizon</Label>
               <Select value={horizon} onValueChange={v => setHorizon(v as any)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger id={horizonId}><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="30">30 days</SelectItem>
-                  <SelectItem value="90">90 days</SelectItem>
-                  <SelectItem value="365">365 days</SelectItem>
+                  <SelectItem value="30">30 days — short-term tactical</SelectItem>
+                  <SelectItem value="90">90 days — seasonal planning</SelectItem>
+                  <SelectItem value="365">365 days — annual investment horizon</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <Button onClick={handleSearch} disabled={isLoading && !!submitted}>
+            <Button type="submit" disabled={isLoading && !!submitted} className="min-h-11">
               {isLoading && submitted ? "Loading…" : "Analyze"}
             </Button>
-          </div>
+          </form>
         </CardContent>
       </Card>
 
       {!submitted && (
         <Card>
           <CardContent className="py-16 text-center">
-            <BarChart2 className="w-12 h-12 mx-auto mb-3 text-muted-foreground" />
-            <p className="text-muted-foreground font-medium">Enter a county and state to see price predictions</p>
+            <BarChart2 className="w-12 h-12 mx-auto mb-3 text-muted-foreground" aria-hidden="true" />
+            <p className="text-muted-foreground font-medium">Enter a county and state to see price predictions.</p>
             <p className="text-sm text-muted-foreground mt-1">
-              Get 30, 90, or 365-day price trajectories with confidence intervals
+              Get 30, 90, or 365-day price trajectories with confidence intervals.
             </p>
           </CardContent>
         </Card>
@@ -254,12 +272,13 @@ export default function PredictionsPage() {
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm flex items-center gap-2">
-                  <Target className="w-4 h-4 text-primary" /> Market Momentum Score
+                  <Target className="w-4 h-4 text-primary" aria-hidden="true" /> Market momentum score
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 {momentumLoading ? (
-                  <div className="space-y-2">
+                  <div className="space-y-2" role="status" aria-live="polite">
+                    <span className="sr-only">Loading momentum…</span>
                     <Skeleton className="h-8 w-24" />
                     <Skeleton className="h-4 w-full" />
                     <Skeleton className="h-4 w-3/4" />
@@ -267,24 +286,30 @@ export default function PredictionsPage() {
                 ) : momentum ? (
                   <div className="space-y-3">
                     <div className="flex items-center gap-3">
-                      <span className="text-4xl font-bold">{momentum.score}</span>
+                      <span className="text-4xl font-bold tabular-nums" aria-label={`Momentum score ${momentum.score} of 100, ${momentum.direction}`}>
+                        {momentum.score}
+                      </span>
                       <div>
                         <DirectionBadge direction={momentum.direction} />
                         <p className="text-xs text-muted-foreground mt-1">out of 100</p>
                       </div>
                     </div>
-                    <Progress value={momentum.score} className="h-2" />
-                    <div className="space-y-1">
+                    <Progress
+                      value={momentum.score}
+                      className="h-2"
+                      aria-label={`Momentum score: ${momentum.score} out of 100`}
+                    />
+                    <ul className="space-y-1" aria-label="Momentum drivers">
                       {momentum.drivers.map((d, i) => (
-                        <div key={i} className="flex items-start gap-1.5 text-xs text-muted-foreground">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-green-500 mt-0.5 shrink-0" />
+                        <li key={i} className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-green-500 mt-0.5 shrink-0" aria-hidden="true" />
                           {d}
-                        </div>
+                        </li>
                       ))}
-                    </div>
+                    </ul>
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">No momentum data available</p>
+                  <p className="text-sm text-muted-foreground">No momentum data available.</p>
                 )}
               </CardContent>
             </Card>
@@ -293,39 +318,40 @@ export default function PredictionsPage() {
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-primary" /> Prediction Accuracy Metrics
+                  <CheckCircle2 className="w-4 h-4 text-primary" aria-hidden="true" /> Prediction accuracy metrics
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 {accuracyLoading ? (
-                  <div className="space-y-2">
+                  <div className="space-y-2" role="status" aria-live="polite">
+                    <span className="sr-only">Loading accuracy metrics…</span>
                     {[1,2,3,4].map(i => <Skeleton key={i} className="h-6 w-full" />)}
                   </div>
                 ) : accuracy ? (
-                  <div className="grid grid-cols-2 gap-3">
+                  <dl className="grid grid-cols-2 gap-3">
                     <div className="bg-muted/50 rounded p-2 text-center">
-                      <p className="text-xs text-muted-foreground">MAPE</p>
-                      <p className="text-lg font-bold">{accuracy.mape.toFixed(1)}%</p>
-                      <p className="text-xs text-muted-foreground">Mean Abs. % Error</p>
+                      <dt className="text-xs text-muted-foreground">MAPE</dt>
+                      <dd className="text-lg font-bold tabular-nums">{accuracy.mape.toFixed(1)}%</dd>
+                      <p className="text-xs text-muted-foreground">Mean abs. % error</p>
                     </div>
                     <div className="bg-muted/50 rounded p-2 text-center">
-                      <p className="text-xs text-muted-foreground">R²</p>
-                      <p className="text-lg font-bold">{accuracy.r2.toFixed(3)}</p>
-                      <p className="text-xs text-muted-foreground">Fit Quality</p>
+                      <dt className="text-xs text-muted-foreground">R²</dt>
+                      <dd className="text-lg font-bold tabular-nums">{accuracy.r2.toFixed(3)}</dd>
+                      <p className="text-xs text-muted-foreground">Fit quality</p>
                     </div>
                     <div className="bg-muted/50 rounded p-2 text-center">
-                      <p className="text-xs text-muted-foreground">RMSE</p>
-                      <p className="text-lg font-bold">{formatPrice(accuracy.rmse)}</p>
-                      <p className="text-xs text-muted-foreground">Root Mean Sq. Err</p>
+                      <dt className="text-xs text-muted-foreground">RMSE</dt>
+                      <dd className="text-lg font-bold tabular-nums">{formatPrice(accuracy.rmse)}</dd>
+                      <p className="text-xs text-muted-foreground">Root mean sq. err</p>
                     </div>
                     <div className="bg-muted/50 rounded p-2 text-center">
-                      <p className="text-xs text-muted-foreground">Sample</p>
-                      <p className="text-lg font-bold">{accuracy.sampleSize.toLocaleString()}</p>
-                      <p className="text-xs text-muted-foreground">{accuracy.periodMonths}mo history</p>
+                      <dt className="text-xs text-muted-foreground">Sample</dt>
+                      <dd className="text-lg font-bold tabular-nums">{accuracy.sampleSize.toLocaleString()}</dd>
+                      <p className="text-xs text-muted-foreground"><span className="tabular-nums">{accuracy.periodMonths}</span>mo history</p>
                     </div>
-                  </div>
+                  </dl>
                 ) : (
-                  <p className="text-sm text-muted-foreground">No accuracy data available</p>
+                  <p className="text-sm text-muted-foreground">No accuracy data available.</p>
                 )}
               </CardContent>
             </Card>
@@ -335,18 +361,21 @@ export default function PredictionsPage() {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm flex items-center gap-2">
-                <BarChart2 className="w-4 h-4 text-primary" />
-                Price Trajectory — {submitted.county}, {submitted.state} ({submitted.horizon}-day forecast)
+                <BarChart2 className="w-4 h-4 text-primary" aria-hidden="true" />
+                Price trajectory — {submitted.county}, {submitted.state} (<span className="tabular-nums">{submitted.horizon}</span>-day forecast)
               </CardTitle>
             </CardHeader>
             <CardContent>
               {trajectoryLoading ? (
-                <Skeleton className="h-64 w-full" />
+                <div role="status" aria-live="polite">
+                  <span className="sr-only">Loading price trajectory…</span>
+                  <Skeleton className="h-64 w-full" />
+                </div>
               ) : trajectory.length === 0 ? (
                 <div className="h-64 flex items-center justify-center text-muted-foreground">
                   <div className="text-center">
-                    <AlertCircle className="w-8 h-8 mx-auto mb-2" />
-                    <p>No trajectory data available for this county</p>
+                    <AlertCircle className="w-8 h-8 mx-auto mb-2" aria-hidden="true" />
+                    <p>No trajectory data available for this county.</p>
                   </div>
                 </div>
               ) : (
@@ -406,43 +435,50 @@ export default function PredictionsPage() {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm flex items-center gap-2">
-                <Clock className="w-4 h-4 text-primary" /> Opportunity Windows
+                <Clock className="w-4 h-4 text-primary" aria-hidden="true" /> Opportunity windows
               </CardTitle>
             </CardHeader>
             <CardContent>
               {windowsLoading ? (
-                <div className="space-y-3">
+                <div className="space-y-3" role="status" aria-live="polite">
+                  <span className="sr-only">Loading opportunity windows…</span>
                   {[1,2,3].map(i => <Skeleton key={i} className="h-20 w-full" />)}
                 </div>
               ) : windows.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-4 text-center">
-                  No opportunity windows identified for this period
+                  No opportunity windows identified for this period.
                 </p>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                <ul className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3" aria-label="Opportunity windows">
                   {windows.map((w, i) => (
-                    <div key={i} className="border rounded-lg p-3 space-y-2">
+                    <li key={i} className="border rounded-lg p-3 space-y-2">
                       <div className="flex items-center justify-between">
                         <WindowBadge type={w.type} />
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-xs text-muted-foreground tabular-nums">
                           {Math.round(w.confidence * 100)}% confidence
                         </span>
                       </div>
-                      <Progress value={w.confidence * 100} className="h-1.5" />
+                      <Progress
+                        value={w.confidence * 100}
+                        className="h-1.5"
+                        aria-label={`${w.type} window confidence: ${Math.round(w.confidence * 100)}%`}
+                      />
                       <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <Calendar className="w-3 h-3" />
-                        {new Date(w.startDate).toLocaleDateString()} – {new Date(w.endDate).toLocaleDateString()}
+                        <Calendar className="w-3 h-3" aria-hidden="true" />
+                        <span className="tabular-nums">
+                          {new Date(w.startDate).toLocaleDateString()} – {new Date(w.endDate).toLocaleDateString()}
+                        </span>
                       </div>
                       <p className="text-xs">{w.reasoning}</p>
                       {w.estimatedGain != null && (
                         <div className="flex items-center gap-1 text-xs font-medium text-green-600">
-                          {w.estimatedGain >= 0 ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
-                          Est. {w.estimatedGain >= 0 ? "+" : ""}{w.estimatedGain.toFixed(1)}% gain
+                          {w.estimatedGain >= 0 ? <ArrowUpRight className="w-3 h-3" aria-hidden="true" /> : <ArrowDownRight className="w-3 h-3" aria-hidden="true" />}
+                          <span className="tabular-nums">Est. {w.estimatedGain >= 0 ? "+" : ""}{w.estimatedGain.toFixed(1)}% gain</span>
                         </div>
                       )}
-                    </div>
+                    </li>
                   ))}
-                </div>
+                </ul>
               )}
             </CardContent>
           </Card>
