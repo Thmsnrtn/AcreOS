@@ -8,6 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { useToast } from "@/hooks/use-toast";
 import {
   Minus,
   X,
@@ -169,6 +170,7 @@ type AgentId = typeof AGENTS[number]["id"];
 
 export function FloatingAssistant() {
   const [location] = useLocation();
+  const { toast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -368,7 +370,11 @@ export function FloatingAssistant() {
     const SpeechRecognition =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      alert('Voice input is not supported in this browser. Try Chrome or Edge.');
+      toast({
+        variant: "destructive",
+        title: "Voice input isn't supported here",
+        description: "Your browser doesn't expose the Speech Recognition API. Try Chrome or Edge — or type your message instead.",
+      });
       return;
     }
     if (recognitionRef.current) {

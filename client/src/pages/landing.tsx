@@ -1,6 +1,7 @@
 import { Link } from "wouter";
 import { useState } from "react";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { AcreosLogo } from "@/components/acreos-logo";
@@ -101,7 +102,11 @@ function WaitlistSection() {
               );
               setSubmitted(true);
             } catch {
-              alert("Something went wrong. Please try again.");
+              toast({
+                variant: "destructive",
+                title: "Couldn't add you to the waitlist",
+                description: "Network error. Your email is still in the form — try again in a moment.",
+              });
             }
           }}
         >
@@ -163,6 +168,7 @@ const SOCIAL_PROOF = [
 
 export default function LandingPage() {
   useDocumentTitle("AcreOS — the operating system for land investors");
+  const { toast } = useToast();
   return (
     <div className="min-h-screen bg-background">
       <SkipToContent />

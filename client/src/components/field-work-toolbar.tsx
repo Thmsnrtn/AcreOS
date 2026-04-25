@@ -2,6 +2,7 @@ import { Camera, ScanLine, MapPin, Mic } from "lucide-react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useMobile } from "@/hooks/use-mobile";
+import { useToast } from "@/hooks/use-toast";
 
 /**
  * FieldWorkToolbar — mobile-only bottom toolbar with 4 quick-action buttons
@@ -11,6 +12,7 @@ import { useMobile } from "@/hooks/use-mobile";
 export function FieldWorkToolbar() {
   const isMobile = useMobile();
   const [, navigate] = useLocation();
+  const { toast } = useToast();
 
   const isCapacitor =
     typeof window !== "undefined" &&
@@ -60,8 +62,8 @@ export function FieldWorkToolbar() {
         variant="ghost"
         size="sm"
         className="flex flex-col items-center gap-1 h-auto py-2 px-3"
-        aria-label="Voice Note"
-        onClick={() => alert("Voice notes coming soon")}
+        aria-label="Voice note"
+        onClick={() => toast({ title: "Voice notes coming soon", description: "We're shipping in-field voice memos in an upcoming release." })}
       >
         <Mic className="h-5 w-5" />
         <span className="text-xs text-muted-foreground">Voice</span>
