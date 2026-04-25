@@ -1,8 +1,31 @@
+import { useEffect, useState } from "react";
 import { Sidebar, useSidebarCollapsed } from "@/components/layout-sidebar";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { PageHeaderSkeleton } from "@/components/list-skeleton";
 import { usePaxRail } from "@/contexts/pax-rail-context";
 import { UsageLimitBanner } from "@/components/usage-limit-banner";
+
+/**
+ * Read document.title and strip the " · AcreOS" suffix that useDocumentTitle
+ * appends. Falls back to "Main content" when nothing useful is set yet.
+ * Re-runs on each render — the consumer's useDocumentTitle effect runs in the
+ * same commit, so the value is current by the second render in practice.
+ */
+function useDocumentTitleFallback(explicit: string | undefined): string {
+  const [value, setValue] = useState<string>(() => deriveTitle(explicit));
+  useEffect(() => {
+    setValue(deriveTitle(explicit));
+  }, [explicit]);
+  return value;
+}
+
+function deriveTitle(explicit: string | undefined): string {
+  if (explicit) return explicit;
+  if (typeof document === "undefined") return "Main content";
+  const t = document.title || "";
+  const stripped = t.replace(/\s·\sAcreOS$/, "").trim();
+  return stripped || "Main content";
+}
 
 interface PageShellProps {
   children: React.ReactNode;
@@ -47,6 +70,7 @@ const MAX_WIDTH_CLASSES = {
 export function PageShell({ children, isLoading, loadingFallback, maxWidth = "7xl", label }: PageShellProps) {
   const { isCollapsed } = useSidebarCollapsed();
   const { isOpen: railOpen } = usePaxRail();
+  const resolvedLabel = useDocumentTitleFallback(label);
   return (
     <div className="flex min-h-screen desert-gradient isolate">
       <a
@@ -58,7 +82,7 @@ export function PageShell({ children, isLoading, loadingFallback, maxWidth = "7x
       <Sidebar />
       <main
         id="main-content"
-        aria-label={label ?? "Main content"}
+        aria-label={resolvedLabel}
         className={`flex-1 p-4 pt-16 md:pt-8 md:p-8 pb-8 overflow-x-hidden content-spring will-change-[margin-left] transition-[margin-right] duration-200 ${
           isCollapsed ? "md:ml-[76px]" : "md:ml-[17rem]"
         } ${railOpen ? "md:mr-[360px]" : "md:mr-12"}`}
