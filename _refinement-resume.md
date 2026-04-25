@@ -773,6 +773,7 @@ to a dedicated 9b slice.
 **Raw button hardening 6 (187):** ✅ complete — 6 surfaces: portfolio-health-card "View Full Health" + tax "Review" CTAs (Link-wrapped), comment-thread delete-comment row (focus-visible on tab) + collapsed pill (aria-expanded + pluralized aria-label) + close-comments + "Load older". (commit `46e268a`)
 **Credential-field a11y (188):** ✅ complete — founder-setup-wizard CredField (rendered per credential): Label htmlFor → Input id (useId), aria-required, autoComplete="off" + autoCorrect/spellCheck/autoCapitalize off, required-asterisk aria-hidden. Docs link got aria-label "(opens in new tab)" + focus-visible. (commit `ed22b12`)
 **External-link a11y (189):** ✅ complete — 4 surfaces with aria-label ending "(opens in new tab)" + focus-visible: integrations-settings (per-provider API key link), info-card (learnMore), empty-state (learnMore), pax-connector-panel (setup guide). All ExternalLink icons aria-hidden. (commit `b63ec4c`)
+**External-link a11y final (190):** ✅ complete — 3 more: ApiKeySetup ("How to get your {service} API key"), finance Borrower Portal, founder-dashboard data-source portal link. External-link a11y now consistent across codebase. (commit `76ad2fc`)
 **/onboarding-v2 targeted (18):** ✅ complete (commit `70df779`) — 18b deferred
 **/settings targeted (19):** ✅ complete (commit `809044c`) — 19b remaining components deferred
 **/pipeline (20):** ✅ complete (commit `1b5d0f7`)
