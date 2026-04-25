@@ -38,7 +38,7 @@ import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { format } from "date-fns";
-import { relative } from "@/lib/format";
+import { relative, usd } from "@/lib/format";
 import { InspectionChecklist, type ChecklistResults } from "@/components/field-scout/inspection-checklist";
 import { PhotoGallery, type ScoutPhoto } from "@/components/field-scout/photo-gallery";
 import { ScoutReportCard, type FieldScoutVisit } from "@/components/field-scout/scout-report-card";
@@ -1279,8 +1279,8 @@ export default function FieldScout() {
                         </div>
                       )}
                       {lead.assessedValue && (
-                        <div className="text-xs text-gray-500">
-                          ${parseInt(lead.assessedValue).toLocaleString()}
+                        <div className="text-xs text-gray-500 tabular-nums">
+                          {usd(parseInt(lead.assessedValue), { noCents: true })}
                         </div>
                       )}
                     </div>

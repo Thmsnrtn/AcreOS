@@ -619,7 +619,7 @@ export default function AVMPage() {
                         <YAxis tickFormatter={(v) => `$${(v / 1000).toFixed(0)}K`} />
                         <Tooltip
                           formatter={((v: any, name: string) => [
-                            name === 'pricePerAcre' ? `$${v.toLocaleString()}/acre` : `${v}%`,
+                            name === 'pricePerAcre' ? `${usd(Number(v), { noCents: Number.isInteger(Number(v)) })}/acre` : `${v}%`,
                             name === 'pricePerAcre' ? 'Price/Acre' : 'Similarity',
                           ]) as any}
                         />

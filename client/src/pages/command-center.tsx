@@ -72,7 +72,7 @@ import {
   Image as ImageIcon,
 } from "lucide-react";
 import { AISettings } from "@/components/ai-settings";
-import { relative } from "@/lib/format";
+import { relative, usd } from "@/lib/format";
 import { DisclaimerBanner } from "@/components/disclaimer-banner";
 import { LowBalanceAlert } from "@/components/low-balance-alert";
 
@@ -1186,9 +1186,9 @@ function AIOperationsTabContent() {
       return res.json();
     },
     onSuccess: (data) => {
-      toast({ 
-        title: "Price Recommendation Ready", 
-        description: data.recommendedPrice ? `Recommended: $${data.recommendedPrice.toLocaleString()}` : "Analysis complete"
+      toast({
+        title: "Price recommendation ready",
+        description: data.recommendedPrice ? `Recommended: ${usd(data.recommendedPrice, { noCents: Number.isInteger(data.recommendedPrice) })}` : "Analysis complete",
       });
       setPricingDialogOpen(false);
       setPropertyIdInput("");
