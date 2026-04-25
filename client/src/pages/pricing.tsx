@@ -25,7 +25,7 @@ const TIERS = [
     price: 20,
     yearlyPrice: 192,
     description: "Replace your spreadsheet",
-    cta: "Start 14-Day Free Trial",
+    cta: "Start 14-day free trial",
     highlighted: false,
   },
   {
@@ -34,7 +34,7 @@ const TIERS = [
     price: 49,
     yearlyPrice: 470,
     description: "For serious operators",
-    cta: "Start 14-Day Free Trial",
+    cta: "Start 14-day free trial",
     highlighted: true,
   },
   {
@@ -43,7 +43,7 @@ const TIERS = [
     price: 79,
     yearlyPrice: 758,
     description: "For growing teams",
-    cta: "Start 14-Day Free Trial",
+    cta: "Start 14-day free trial",
     highlighted: false,
   },
 ];
@@ -60,19 +60,19 @@ const FEATURES: Feature[] = [
   { name: "Leads", free: "10", starter: "250", pro: "500", scale: "Unlimited" },
   { name: "Properties", free: "3", starter: "50", pro: "100", scale: "Unlimited" },
   { name: "Notes", free: "2", starter: "25", pro: "50", scale: "Unlimited" },
-  { name: "AI Requests / day", free: "25", starter: "500", pro: "1,000", scale: "Unlimited" },
+  { name: "AI requests / day", free: "25", starter: "500", pro: "1,000", scale: "Unlimited" },
   { name: "Campaigns", free: false, starter: "5", pro: "Unlimited", scale: "Unlimited" },
   { name: "Sequences", free: false, starter: "2", pro: "Unlimited", scale: "Unlimited" },
-  { name: "BYOK Data Providers", free: false, starter: false, pro: true, scale: true },
-  { name: "Team Seats", free: "1", starter: "1", pro: "2 (add more at $20/seat)", scale: "10 (add more at $40/seat)" },
-  { name: "Data Sources (6 free + 3 premium)", free: true, starter: true, pro: true, scale: true },
-  { name: "AI Deal Intelligence", free: true, starter: true, pro: true, scale: true },
-  { name: "Document Generation", free: true, starter: true, pro: true, scale: true },
-  { name: "Portfolio Mapping", free: true, starter: true, pro: true, scale: true },
-  { name: "Stripe Connect Payments", free: false, starter: true, pro: true, scale: true },
-  { name: "Direct Mail Integration", free: false, starter: true, pro: true, scale: true },
-  { name: "SMS/Voice Outreach", free: false, starter: false, pro: true, scale: true },
-  { name: "Priority Support", free: false, starter: false, pro: true, scale: true },
+  { name: "BYOK data providers", free: false, starter: false, pro: true, scale: true },
+  { name: "Team seats", free: "1", starter: "1", pro: "2 (add more at $20/seat)", scale: "10 (add more at $40/seat)" },
+  { name: "Data sources (6 free + 3 premium)", free: true, starter: true, pro: true, scale: true },
+  { name: "AI deal intelligence", free: true, starter: true, pro: true, scale: true },
+  { name: "Document generation", free: true, starter: true, pro: true, scale: true },
+  { name: "Portfolio mapping", free: true, starter: true, pro: true, scale: true },
+  { name: "Stripe Connect payments", free: false, starter: true, pro: true, scale: true },
+  { name: "Direct mail integration", free: false, starter: true, pro: true, scale: true },
+  { name: "SMS/voice outreach", free: false, starter: false, pro: true, scale: true },
+  { name: "Priority support", free: false, starter: false, pro: true, scale: true },
 ];
 
 function FeatureValue({ value }: { value: string | boolean }) {
@@ -97,7 +97,7 @@ export default function PricingPage() {
   const [annual, setAnnual] = useState(false);
   usePageMeta(
     "Pricing",
-    "Transparent plans for land investors — from the free Starter tier to full-team tooling. CRM, direct mail, AI-powered due diligence, and seller financing in one platform."
+    "Transparent plans for land investors — from the free tier to full-team tooling. CRM, direct mail, AI-powered due diligence, and seller financing in one platform."
   );
 
   return (
@@ -107,7 +107,7 @@ export default function PricingPage() {
       <nav className="border-b bg-background/95 backdrop-blur sticky top-0 z-50">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-            <ArrowLeft className="h-4 w-4" />
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
             <AcreosLogo size={30} />
           </Link>
           <div className="flex items-center gap-2">
@@ -123,7 +123,7 @@ export default function PricingPage() {
       <section id="main-content" className="py-16 px-6 text-center">
         <h1 className="text-4xl font-bold">Simple, transparent pricing</h1>
         <p className="text-muted-foreground mt-3 max-w-lg mx-auto">
-          Start free. Upgrade when you're ready. Every paid plan includes a 14-day free trial.
+          Start free. Upgrade when you're ready. Every paid plan includes a <span className="tabular-nums">14</span>-day free trial.
         </p>
 
         {/* Billing toggle */}
@@ -175,7 +175,7 @@ export default function PricingPage() {
               >
                 {tier.highlighted && (
                   <Badge className="absolute -top-3 left-1/2 -translate-x-1/2">
-                    Most Popular
+                    Most popular
                   </Badge>
                 )}
                 <CardHeader className="text-center pb-2">
@@ -184,14 +184,14 @@ export default function PricingPage() {
                 </CardHeader>
                 <CardContent className="text-center space-y-4">
                   <div>
-                    <span className="text-4xl font-bold">
+                    <span className="text-4xl font-bold tabular-nums">
                       ${displayPrice}
                     </span>
                     {tier.price > 0 && (
                       <span className="text-muted-foreground text-sm">/mo</span>
                     )}
                     {annual && tier.yearlyPrice > 0 && (
-                      <p className="text-xs text-muted-foreground mt-1">
+                      <p className="text-xs text-muted-foreground mt-1 tabular-nums">
                         ${tier.yearlyPrice}/year
                       </p>
                     )}
@@ -213,28 +213,28 @@ export default function PricingPage() {
       {/* Feature comparison table */}
       <section className="px-6 pb-24">
         <div className="max-w-5xl mx-auto">
-          <h2 className="text-2xl font-bold text-center mb-2">Feature Comparison</h2>
+          <h2 className="text-2xl font-bold text-center mb-2">Feature comparison</h2>
           <p className="text-xs text-muted-foreground text-center mb-6 sm:hidden">
             Swipe the table to compare all tiers →
           </p>
-          <div className="border rounded-lg overflow-x-auto relative">
+          <div className="border rounded-lg overflow-x-auto relative" role="region" aria-label="Plan feature comparison" tabIndex={0}>
             {/* min-w-[640px] forces the comparison table to keep its
                 natural width on mobile instead of crushing columns;
                 the parent overflow-x-auto gives horizontal scroll. */}
             <table className="w-full min-w-[640px] text-sm">
               <thead>
                 <tr className="border-b bg-muted/50">
-                  <th className="text-left p-3 font-medium">Feature</th>
-                  <th className="text-center p-3 font-medium w-28">Free</th>
-                  <th className="text-center p-3 font-medium w-28">Starter</th>
-                  <th className="text-center p-3 font-medium w-28 text-primary">Pro</th>
-                  <th className="text-center p-3 font-medium w-28">Scale</th>
+                  <th scope="col" className="text-left p-3 font-medium">Feature</th>
+                  <th scope="col" className="text-center p-3 font-medium w-28">Free</th>
+                  <th scope="col" className="text-center p-3 font-medium w-28">Starter</th>
+                  <th scope="col" className="text-center p-3 font-medium w-28 text-primary">Pro</th>
+                  <th scope="col" className="text-center p-3 font-medium w-28">Scale</th>
                 </tr>
               </thead>
               <tbody>
                 {FEATURES.map((feature, i) => (
                   <tr key={feature.name} className={i % 2 === 0 ? "bg-background" : "bg-muted/20"}>
-                    <td className="p-3 font-medium">{feature.name}</td>
+                    <th scope="row" className="p-3 font-medium text-left">{feature.name}</th>
                     <td className="p-3 text-center">
                       <FeatureValue value={feature.free} />
                     </td>
