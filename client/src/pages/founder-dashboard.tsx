@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useId, useState, useEffect, useRef, useCallback } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { PageShell } from "@/components/page-shell";
@@ -1952,7 +1952,14 @@ export default function FounderDashboard() {
                   Your goal will appear as a reference line on the revenue chart.
                 </DialogDescription>
               </DialogHeader>
-              <div className="space-y-3">
+              <form
+                id="founder-mrr-goal-form"
+                className="space-y-3"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleSaveGoal();
+                }}
+              >
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
                   <Input
@@ -1960,15 +1967,19 @@ export default function FounderDashboard() {
                     placeholder="e.g. 10000"
                     value={goalInputValue}
                     onChange={e => setGoalInputValue(e.target.value)}
-                    onKeyDown={e => { if (e.key === "Enter") handleSaveGoal(); }}
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    autoComplete="off"
+                    aria-label="Monthly revenue target in USD"
                     autoFocus
                   />
                 </div>
                 <p className="text-xs text-muted-foreground">Enter monthly revenue target in USD</p>
-              </div>
+              </form>
               <DialogFooter>
                 {goalCents > 0 && (
-                  <Button variant="ghost" size="sm" onClick={() => {
+                  <Button type="button" variant="ghost" size="sm" onClick={() => {
                     setGoalCents(0);
                     try { localStorage.removeItem("founder_mrr_goal_cents"); } catch {}
                     setGoalDialogOpen(false);
@@ -1977,7 +1988,7 @@ export default function FounderDashboard() {
                     Clear goal
                   </Button>
                 )}
-                <Button onClick={handleSaveGoal}>Save goal</Button>
+                <Button type="submit" form="founder-mrr-goal-form">Save goal</Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
