@@ -1,14 +1,16 @@
-import { useState } from 'react';
+import { useState, useId } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
+import { useDocumentTitle } from '@/hooks/use-document-title';
 import {
   BarChart,
   Bar,
@@ -34,9 +36,9 @@ import {
 
 const OPPORTUNITY_LABELS: Record<string, { label: string; color: string }> = {
   undervalued: { label: 'Undervalued', color: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300' },
-  motivated_seller: { label: 'Motivated Seller', color: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300' },
-  market_shift: { label: 'Market Shift', color: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300' },
-  off_market: { label: 'Off Market', color: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300' },
+  motivated_seller: { label: 'Motivated seller', color: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300' },
+  market_shift: { label: 'Market shift', color: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300' },
+  off_market: { label: 'Off market', color: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300' },
 };
 
 const SCORE_COLOR = (score: number) => {
@@ -53,8 +55,11 @@ function ScoreBadge({ score }: { score: number }) {
     : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300';
 
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${bg}`}>
-      {score >= 80 && <Flame className="w-3 h-3" />}
+    <span
+      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold tabular-nums ${bg}`}
+      aria-label={`Score ${score} of 100${score >= 80 ? ', hot' : ''}`}
+    >
+      {score >= 80 && <Flame className="w-3 h-3" aria-hidden="true" />}
       {score}
     </span>
   );
@@ -62,9 +67,22 @@ function ScoreBadge({ score }: { score: number }) {
 
 function OpportunityCard({ opp, onView }: { opp: any; onView: (o: any) => void }) {
   const typeInfo = OPPORTUNITY_LABELS[opp.opportunityType] || { label: opp.opportunityType, color: 'bg-gray-100 text-gray-700' };
+  const label = opp.apn ? `APN: ${opp.apn}` : `Parcel #${opp.id}`;
 
   return (
-    <Card className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => onView(opp)}>
+    <Card
+      role="button"
+      tabIndex={0}
+      aria-label={`${label}, score ${opp.score}, ${typeInfo.label}, ${opp.county} ${opp.state}`}
+      className="hover:shadow-md transition-shadow cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      onClick={() => onView(opp)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onView(opp);
+        }
+      }}
+    >
       <CardContent className="pt-4 pb-4">
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
@@ -72,18 +90,16 @@ function OpportunityCard({ opp, onView }: { opp: any; onView: (o: any) => void }
               <ScoreBadge score={opp.score} />
               <Badge className={typeInfo.color + ' text-xs'}>{typeInfo.label}</Badge>
             </div>
-            <p className="font-medium text-sm truncate">
-              {opp.apn ? `APN: ${opp.apn}` : `Parcel #${opp.id}`}
-            </p>
+            <p className="font-medium text-sm truncate">{label}</p>
             <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-              <MapPin className="w-3 h-3" />
+              <MapPin className="w-3 h-3" aria-hidden="true" />
               {opp.county}, {opp.state}
             </p>
             {opp.explanation && (
               <p className="text-xs text-muted-foreground mt-2 line-clamp-2">{opp.explanation}</p>
             )}
           </div>
-          <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0 mt-1" />
+          <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0 mt-1" aria-hidden="true" />
         </div>
       </CardContent>
     </Card>
@@ -96,9 +112,15 @@ function FactorBar({ label, factor }: { label: string; factor: any }) {
     <div className="space-y-1">
       <div className="flex justify-between text-sm">
         <span className="font-medium">{label}</span>
-        <span className="text-muted-foreground">{Math.round(factor.score)}/100 ({factor.weight > 0 ? '+' : ''}{factor.weight}% weight)</span>
+        <span className="text-muted-foreground tabular-nums">
+          {Math.round(factor.score)}/100 ({factor.weight > 0 ? '+' : ''}{factor.weight}% weight)
+        </span>
       </div>
-      <Progress value={Math.abs(factor.score)} className="h-2" />
+      <Progress
+        value={Math.abs(factor.score)}
+        className="h-2"
+        aria-label={`${label}: ${Math.round(factor.score)} out of 100, ${factor.weight}% weight`}
+      />
       {factor.details?.explanation && (
         <p className="text-xs text-muted-foreground">{factor.details.explanation}</p>
       )}
@@ -107,6 +129,7 @@ function FactorBar({ label, factor }: { label: string; factor: any }) {
 }
 
 export default function AcquisitionRadarPage() {
+  useDocumentTitle('Acquisition radar');
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -114,6 +137,9 @@ export default function AcquisitionRadarPage() {
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [minScore, setMinScore] = useState<string>('40');
   const [selectedOpp, setSelectedOpp] = useState<any>(null);
+  const stateFilterId = useId();
+  const typeFilterId = useId();
+  const minScoreId = useId();
 
   const queryParams = new URLSearchParams({
     limit: '50',
@@ -161,10 +187,16 @@ export default function AcquisitionRadarPage() {
       return res.json();
     },
     onSuccess: () => {
-      toast({ title: 'Status updated' });
+      toast({ title: 'Status updated.' });
       queryClient.invalidateQueries({ queryKey: ['radar'] });
       setSelectedOpp(null);
     },
+    onError: () =>
+      toast({
+        title: "Couldn't update status",
+        description: "The opportunity is still in its previous state. Try again in a moment.",
+        variant: 'destructive',
+      }),
   });
 
   const opportunities = oppsData?.opportunities ?? [];
@@ -186,8 +218,8 @@ export default function AcquisitionRadarPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-2">
-            <Target className="w-8 h-8 text-primary" />
-            Acquisition Radar
+            <Target className="w-8 h-8 text-primary" aria-hidden="true" />
+            Acquisition radar
           </h1>
           <p className="text-muted-foreground mt-1">
             AI-scored deal opportunities ranked by acquisition potential across all markets.
@@ -197,97 +229,113 @@ export default function AcquisitionRadarPage() {
 
       {/* Stats row */}
       {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <dl className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card>
             <CardContent className="pt-4">
-              <div className="text-2xl font-bold">{stats.totalOpportunities}</div>
-              <div className="text-sm text-muted-foreground">Total Opportunities</div>
+              <dd className="text-2xl font-bold tabular-nums">{stats.totalOpportunities}</dd>
+              <dt className="text-sm text-muted-foreground">Total opportunities</dt>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-4">
-              <div className="text-2xl font-bold text-red-500 flex items-center gap-1">
-                <Flame className="w-5 h-5" />
+              <dd className="text-2xl font-bold text-red-500 flex items-center gap-1 tabular-nums">
+                <Flame className="w-5 h-5" aria-hidden="true" />
                 {stats.hotOpportunities}
-              </div>
-              <div className="text-sm text-muted-foreground">Hot (80+ score)</div>
+              </dd>
+              <dt className="text-sm text-muted-foreground">Hot (80+ score)</dt>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-4">
-              <div className="text-2xl font-bold">{stats.avgScore ?? '—'}</div>
-              <div className="text-sm text-muted-foreground">Avg Score</div>
+              <dd className="text-2xl font-bold tabular-nums">{stats.avgScore ?? '—'}</dd>
+              <dt className="text-sm text-muted-foreground">Avg score</dt>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-4">
-              <div className="text-2xl font-bold">
+              <dd className="text-2xl font-bold tabular-nums">
                 {stats.lastScanAt ? new Date(stats.lastScanAt).toLocaleDateString() : 'Never'}
-              </div>
-              <div className="text-sm text-muted-foreground">Last Scan</div>
+              </dd>
+              <dt className="text-sm text-muted-foreground">Last scan</dt>
             </CardContent>
           </Card>
-        </div>
+        </dl>
       )}
 
       <Tabs defaultValue="opportunities">
         <TabsList>
-          <TabsTrigger value="opportunities">All Opportunities</TabsTrigger>
-          <TabsTrigger value="markets">By Market</TabsTrigger>
+          <TabsTrigger value="opportunities">All opportunities</TabsTrigger>
+          <TabsTrigger value="markets">By market</TabsTrigger>
         </TabsList>
 
         {/* ── ALL OPPORTUNITIES ── */}
         <TabsContent value="opportunities" className="space-y-4">
           {/* Filters */}
           <div className="flex items-center gap-3 flex-wrap">
-            <Filter className="w-4 h-4 text-muted-foreground" />
+            <Filter className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
+            <Label htmlFor={stateFilterId} className="sr-only">Filter by state</Label>
             <Input
+              id={stateFilterId}
               placeholder="State (e.g. TX)"
               value={stateFilter}
               onChange={(e) => setStateFilter(e.target.value.toUpperCase())}
-              className="w-28"
+              className="w-28 uppercase"
+              maxLength={2}
+              autoCapitalize="characters"
+              autoComplete="address-level1"
+              autoCorrect="off"
+              spellCheck={false}
             />
+            <Label htmlFor={typeFilterId} className="sr-only">Opportunity type</Label>
             <Select value={typeFilter} onValueChange={setTypeFilter}>
-              <SelectTrigger className="w-44">
+              <SelectTrigger id={typeFilterId} className="w-56">
                 <SelectValue placeholder="Opportunity type" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Types</SelectItem>
-                <SelectItem value="undervalued">Undervalued</SelectItem>
-                <SelectItem value="motivated_seller">Motivated Seller</SelectItem>
-                <SelectItem value="market_shift">Market Shift</SelectItem>
-                <SelectItem value="off_market">Off Market</SelectItem>
+                <SelectItem value="all">All types</SelectItem>
+                <SelectItem value="undervalued">Undervalued — price below comparable values</SelectItem>
+                <SelectItem value="motivated_seller">Motivated seller — signals suggest urgency</SelectItem>
+                <SelectItem value="market_shift">Market shift — recent trend change</SelectItem>
+                <SelectItem value="off_market">Off market — not publicly listed</SelectItem>
               </SelectContent>
             </Select>
+            <Label htmlFor={minScoreId} className="sr-only">Minimum score</Label>
             <Select value={minScore} onValueChange={setMinScore}>
-              <SelectTrigger className="w-36">
+              <SelectTrigger id={minScoreId} className="w-36">
                 <SelectValue placeholder="Min score" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="40">Min Score: 40</SelectItem>
-                <SelectItem value="60">Min Score: 60</SelectItem>
-                <SelectItem value="80">Hot Only (80+)</SelectItem>
+                <SelectItem value="40">Min score: 40</SelectItem>
+                <SelectItem value="60">Min score: 60</SelectItem>
+                <SelectItem value="80">Hot only (80+)</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           {isLoading && (
-            <div className="text-center py-16 text-muted-foreground">Scanning for opportunities…</div>
+            <div className="text-center py-16 text-muted-foreground" role="status" aria-live="polite">
+              Scanning for opportunities…
+            </div>
           )}
 
           {!isLoading && opportunities.length === 0 && (
             <div className="text-center py-20 text-muted-foreground">
-              <Target className="w-12 h-12 mx-auto mb-4 opacity-30" />
-              <p className="text-lg font-medium">No opportunities found</p>
-              <p className="text-sm mt-1">Adjust filters or configure the radar to scan your target markets</p>
+              <Target className="w-12 h-12 mx-auto mb-4 opacity-30" aria-hidden="true" />
+              <p className="text-lg font-medium">No opportunities found.</p>
+              <p className="text-sm mt-1">Adjust filters or configure the radar to scan your target markets.</p>
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          <ul
+            className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"
+            aria-label="Acquisition opportunities"
+          >
             {opportunities.map((opp: any) => (
-              <OpportunityCard key={opp.id} opp={opp} onView={setSelectedOpp} />
+              <li key={opp.id}>
+                <OpportunityCard opp={opp} onView={setSelectedOpp} />
+              </li>
             ))}
-          </div>
+          </ul>
         </TabsContent>
 
         {/* ── BY MARKET ── */}
@@ -295,8 +343,8 @@ export default function AcquisitionRadarPage() {
           {marketChartData.length > 0 ? (
             <Card>
               <CardHeader>
-                <CardTitle>Top Markets by Avg Opportunity Score</CardTitle>
-                <CardDescription>Counties with highest-quality acquisition opportunities</CardDescription>
+                <CardTitle>Top markets by avg opportunity score</CardTitle>
+                <CardDescription>Counties with highest-quality acquisition opportunities.</CardDescription>
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={320}>
@@ -318,43 +366,50 @@ export default function AcquisitionRadarPage() {
             </Card>
           ) : (
             <div className="text-center py-20 text-muted-foreground">
-              <TrendingUp className="w-12 h-12 mx-auto mb-4 opacity-30" />
-              <p>No market data available yet</p>
+              <TrendingUp className="w-12 h-12 mx-auto mb-4 opacity-30" aria-hidden="true" />
+              <p>No market data available yet.</p>
             </div>
           )}
 
-          <div className="space-y-4">
+          <ul className="space-y-4" aria-label="Opportunities by market">
             {Object.entries(byMarket).map(([market, opps]: [string, any]) => (
-              <Card key={market}>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <MapPin className="w-4 h-4 text-primary" />
-                    {market}
-                    <Badge variant="secondary">{opps.length} opportunities</Badge>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex gap-2 flex-wrap">
-                    {opps.slice(0, 5).map((o: any) => (
-                      <button
-                        key={o.id}
-                        onClick={() => setSelectedOpp(o)}
-                        className="flex items-center gap-1 text-xs px-2 py-1 rounded border hover:bg-muted transition-colors"
-                      >
-                        <ScoreBadge score={o.score} />
-                        {o.apn || `#${o.id}`}
-                      </button>
-                    ))}
-                    {opps.length > 5 && (
-                      <span className="text-xs text-muted-foreground self-center">
-                        +{opps.length - 5} more
-                      </span>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
+              <li key={market}>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <MapPin className="w-4 h-4 text-primary" aria-hidden="true" />
+                      {market}
+                      <Badge variant="secondary">
+                        <span className="tabular-nums mr-1">{opps.length}</span> opportunities
+                      </Badge>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ul className="flex gap-2 flex-wrap" aria-label={`Top opportunities in ${market}`}>
+                      {opps.slice(0, 5).map((o: any) => (
+                        <li key={o.id}>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedOpp(o)}
+                            className="flex items-center gap-1 text-xs px-2 py-1 rounded border hover:bg-muted transition-colors min-h-9 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            aria-label={`Open ${o.apn || `opportunity #${o.id}`}, score ${o.score}`}
+                          >
+                            <ScoreBadge score={o.score} />
+                            {o.apn || `#${o.id}`}
+                          </button>
+                        </li>
+                      ))}
+                      {opps.length > 5 && (
+                        <li className="text-xs text-muted-foreground self-center">
+                          +<span className="tabular-nums">{opps.length - 5}</span> more
+                        </li>
+                      )}
+                    </ul>
+                  </CardContent>
+                </Card>
+              </li>
             ))}
-          </div>
+          </ul>
         </TabsContent>
       </Tabs>
 
@@ -387,42 +442,44 @@ export default function AcquisitionRadarPage() {
                 {/* Factor breakdown */}
                 {selectedOpp.scoreFactors && (
                   <div className="space-y-4">
-                    <h3 className="font-semibold">Score Breakdown</h3>
-                    <FactorBar label="Price vs Assessed Value" factor={selectedOpp.scoreFactors.priceVsAssessed} />
-                    <FactorBar label="Days on Market" factor={selectedOpp.scoreFactors.daysOnMarket} />
-                    <FactorBar label="Seller Motivation" factor={selectedOpp.scoreFactors.sellerMotivation} />
-                    <FactorBar label="Market Velocity" factor={selectedOpp.scoreFactors.marketVelocity} />
-                    <FactorBar label="Comparable Spreads" factor={selectedOpp.scoreFactors.comparableSpreads} />
-                    <FactorBar label="Environmental Risk" factor={selectedOpp.scoreFactors.environmentalRisk} />
-                    <FactorBar label="Owner Signals" factor={selectedOpp.scoreFactors.ownerSignals} />
+                    <h3 className="font-semibold">Score breakdown</h3>
+                    <FactorBar label="Price vs. assessed value" factor={selectedOpp.scoreFactors.priceVsAssessed} />
+                    <FactorBar label="Days on market" factor={selectedOpp.scoreFactors.daysOnMarket} />
+                    <FactorBar label="Seller motivation" factor={selectedOpp.scoreFactors.sellerMotivation} />
+                    <FactorBar label="Market velocity" factor={selectedOpp.scoreFactors.marketVelocity} />
+                    <FactorBar label="Comparable spreads" factor={selectedOpp.scoreFactors.comparableSpreads} />
+                    <FactorBar label="Environmental risk" factor={selectedOpp.scoreFactors.environmentalRisk} />
+                    <FactorBar label="Owner signals" factor={selectedOpp.scoreFactors.ownerSignals} />
                   </div>
                 )}
 
                 {/* Actions */}
-                <div className="flex gap-3 pt-2">
+                <div className="flex flex-col sm:flex-row gap-3 pt-2">
                   <Button
                     variant="default"
-                    className="flex-1"
+                    className="flex-1 min-h-11"
                     onClick={() => statusMutation.mutate({ id: selectedOpp.id, status: 'pursuing' })}
                     disabled={statusMutation.isPending}
                   >
-                    <Zap className="w-4 h-4 mr-2" />
-                    Pursue This Deal
+                    <Zap className="w-4 h-4 mr-2" aria-hidden="true" />
+                    Pursue this deal
                   </Button>
                   <Button
                     variant="outline"
+                    className="min-h-11"
                     onClick={() => statusMutation.mutate({ id: selectedOpp.id, status: 'reviewed' })}
                     disabled={statusMutation.isPending}
                   >
-                    <Eye className="w-4 h-4 mr-2" />
-                    Mark Reviewed
+                    <Eye className="w-4 h-4 mr-2" aria-hidden="true" />
+                    Mark reviewed
                   </Button>
                   <Button
                     variant="ghost"
+                    className="min-h-11"
                     onClick={() => statusMutation.mutate({ id: selectedOpp.id, status: 'dismissed' })}
                     disabled={statusMutation.isPending}
                   >
-                    <CheckCheck className="w-4 h-4 mr-2" />
+                    <CheckCheck className="w-4 h-4 mr-2" aria-hidden="true" />
                     Dismiss
                   </Button>
                 </div>
