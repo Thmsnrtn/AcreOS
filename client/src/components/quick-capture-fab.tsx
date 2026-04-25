@@ -1,11 +1,12 @@
 import { useState, useRef } from "react";
 import { Camera, Plus, X, Loader2, UserPlus, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useMobile } from "@/hooks/use-mobile";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
+import { useLocation } from "wouter";
 import { fadeInUp } from "@/lib/animations";
 
 interface QuickCaptureResult {
@@ -21,6 +22,7 @@ export function QuickCaptureFab() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
 
   const captureMutation = useMutation<QuickCaptureResult, Error, string>({
     mutationFn: async (base64Image: string) => {
@@ -42,6 +44,13 @@ export function QuickCaptureFab() {
         setOpen(false);
         setCapturedImage(null);
       }
+    },
+    onError: (err) => {
+      toast({
+        title: "Couldn't read the sign",
+        description: `${err.message} — your photo was kept; try a clearer shot or create the lead manually.`,
+        variant: "destructive",
+      });
     },
   });
 
@@ -102,6 +111,9 @@ export function QuickCaptureFab() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Quick capture</DialogTitle>
+            <DialogDescription className="sr-only">
+              Take a photo of a "For Sale" sign to extract lead info automatically.
+            </DialogDescription>
           </DialogHeader>
 
           <AnimatePresence mode="wait">
@@ -129,7 +141,7 @@ export function QuickCaptureFab() {
                     variant="default"
                     onClick={() => {
                       setOpen(false);
-                      window.location.href = "/leads?action=create";
+                      setLocation("/leads?action=create");
                     }}
                   >
                     <UserPlus className="h-4 w-4 mr-1" aria-hidden="true" />
@@ -167,7 +179,7 @@ export function QuickCaptureFab() {
               <motion.div key="idle" {...fadeInUp} className="flex flex-col items-center gap-3 py-6">
                 <Camera className="h-12 w-12 text-muted-foreground" aria-hidden="true" />
                 <p className="text-sm text-muted-foreground text-center">
-                  Photograph a "For Sale" sign to capture lead info automatically.
+                  Photograph a “For Sale” sign to capture lead info automatically.
                 </p>
                 <Button onClick={() => fileInputRef.current?.click()}>
                   <Camera className="h-4 w-4 mr-1" aria-hidden="true" />
