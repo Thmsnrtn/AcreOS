@@ -78,6 +78,19 @@ export function NewItemMenu() {
     };
   }, [isNewMenuOpen, setNewMenuOpen]);
 
+  // Esc-to-dismiss
+  useEffect(() => {
+    if (!isNewMenuOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setNewMenuOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [isNewMenuOpen, setNewMenuOpen]);
+
   const handleSelect = (href: string) => {
     setNewMenuOpen(false);
     setLocation(href);
@@ -94,10 +107,14 @@ export function NewItemMenu() {
             transition={{ duration: 0.15 }}
             className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm"
             onClick={() => setNewMenuOpen(false)}
+            aria-hidden="true"
             data-testid="new-item-menu-backdrop"
           />
           <motion.div
             ref={containerRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="new-item-menu-title"
             initial={{ opacity: 0, scale: 0.95, y: -20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: -20 }}
@@ -108,35 +125,38 @@ export function NewItemMenu() {
             <div className="rounded-xl border bg-card shadow-xl overflow-hidden">
               <div className="flex items-center justify-between p-4 border-b">
                 <div>
-                  <h2 className="font-semibold">Create New</h2>
+                  <h2 id="new-item-menu-title" className="font-semibold">Create new</h2>
                   <p className="text-sm text-muted-foreground">
                     Choose what to create
                   </p>
                 </div>
                 <button
+                  type="button"
                   onClick={() => setNewMenuOpen(false)}
-                  className="p-2 rounded-lg hover:bg-muted transition-colors"
+                  aria-label="Close create-new menu"
+                  className="p-2 rounded-lg hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   data-testid="close-new-item-menu"
                 >
-                  <X className="h-4 w-4" />
+                  <X className="h-4 w-4" aria-hidden="true" />
                 </button>
               </div>
-              
+
               <div className="p-2 space-y-1">
                 {newItemOptions.map((option) => (
                   <button
                     key={option.testId}
+                    type="button"
                     onClick={() => handleSelect(option.href)}
                     className={cn(
                       "w-full flex items-center gap-3 p-3 rounded-lg text-left",
-                      "hover-elevate active-elevate-2 transition-all"
+                      "hover-elevate active-elevate-2 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     )}
                     data-testid={option.testId}
                   >
                     <div className={cn(
                       "w-10 h-10 rounded-lg flex items-center justify-center text-white",
                       option.color
-                    )}>
+                    )} aria-hidden="true">
                       <option.icon className="h-5 w-5" />
                     </div>
                     <div className="flex-1 min-w-0">
