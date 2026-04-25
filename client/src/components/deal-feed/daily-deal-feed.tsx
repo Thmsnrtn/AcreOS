@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { usd } from "@/lib/format";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -104,7 +105,7 @@ function lcsColor(grade: string): string {
 function formatCurrency(val: number | null | undefined): string {
   if (val == null) return "—";
   if (val === 0) return "$0";
-  return `$${val.toLocaleString()}`;
+  return usd(val, { noCents: Number.isInteger(val) });
 }
 
 /** Determines an acreage bucket for pass-tracking (e.g. "8+" or "0-5") */
@@ -537,7 +538,12 @@ export function DailyDealFeed({ compact = false }: { compact?: boolean }) {
   // Loading state: hero skeleton + 2 card skeletons
   if (isLoading) {
     return (
-      <div className="space-y-4">
+      <div
+        role="status"
+        aria-busy="true"
+        aria-label="Loading daily deal feed"
+        className="space-y-4"
+      >
         <Card className="floating-window">
           <CardContent className="p-6 space-y-4">
             <div className="flex justify-between">
@@ -580,6 +586,7 @@ export function DailyDealFeed({ compact = false }: { compact?: boolean }) {
             </Card>
           ))}
         </div>
+        <span className="sr-only">Loading…</span>
       </div>
     );
   }
@@ -587,9 +594,9 @@ export function DailyDealFeed({ compact = false }: { compact?: boolean }) {
   // Error state
   if (error) {
     return (
-      <Card className="border-destructive/20">
+      <Card className="border-destructive/20" role="alert">
         <CardContent className="p-6 text-center space-y-3">
-          <AlertCircle className="w-8 h-8 text-destructive mx-auto" />
+          <AlertCircle className="w-8 h-8 text-destructive mx-auto" aria-hidden="true" />
           <p className="text-sm">
             Couldn't generate today's deals — one of our data sources is taking a break.
           </p>
