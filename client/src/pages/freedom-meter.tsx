@@ -1,5 +1,6 @@
 import { useState, useId } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -294,6 +295,7 @@ function buildMockSnapshot(monthlyExpenses: number): FreedomSnapshot {
 export default function FreedomMeterPage() {
   useDocumentTitle("Freedom meter");
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const [monthlyExpenses, setMonthlyExpenses] = useState(4500);
   const [editingExpenses, setEditingExpenses] = useState(false);
   const [expenseInput, setExpenseInput] = useState("4500");
@@ -553,7 +555,7 @@ export default function FreedomMeterPage() {
                 <DollarSign className="w-12 h-12 mx-auto mb-3 opacity-30" aria-hidden="true" />
                 <p className="font-semibold mb-1">No active notes yet.</p>
                 <p className="text-sm">Close your first owner-financed deal and it will appear here. That first monthly payment is the start of your passive income portfolio.</p>
-                <Button className="mt-4 min-h-11" onClick={() => window.location.href = "/blind-offer-wizard"}>
+                <Button className="mt-4 min-h-11" onClick={() => setLocation("/blind-offer-wizard")}>
                   Find your first deal <ChevronRight className="w-4 h-4 ml-1" aria-hidden="true" />
                 </Button>
               </CardContent>
@@ -669,7 +671,7 @@ export default function FreedomMeterPage() {
             </div>
             <Button
               size="sm"
-              onClick={() => window.location.href = "/blind-offer-wizard"}
+              onClick={() => setLocation("/blind-offer-wizard")}
               className="min-h-9"
               aria-label="Start Blind Offer Wizard"
             >
@@ -689,7 +691,7 @@ export default function FreedomMeterPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => window.location.href = "/dunning"}
+              onClick={() => setLocation("/dunning")}
               className="min-h-9"
               aria-label="Open dunning manager"
             >
