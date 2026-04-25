@@ -167,21 +167,26 @@ export function CohortAnalytics() {
                 <CardTitle className="text-sm">Conversion Rates by {SEGMENT_OPTIONS.find(o => o.value === segment)?.label}</CardTitle>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={220}>
-                  <BarChart data={chartData} margin={{ top: 0, right: 8, bottom: 0, left: -20 }}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                    <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 11 }} unit="%" domain={[0, 100]} />
-                    <Tooltip
-                      formatter={((v: number) => `${v}%`) as any}
-                      labelFormatter={(label, payload) => payload?.[0]?.payload?.fullName ?? label}
-                    />
-                    <Legend wrapperStyle={{ fontSize: 11 }} />
-                    <Bar dataKey="Contacted" fill="#60a5fa" radius={[2, 2, 0, 0]} />
-                    <Bar dataKey="Offer Sent" fill="#f59e0b" radius={[2, 2, 0, 0]} />
-                    <Bar dataKey="Closed" fill="#22c55e" radius={[2, 2, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
+                <div
+                  role="img"
+                  aria-label={`Conversion rates by ${SEGMENT_OPTIONS.find(o => o.value === segment)?.label ?? "segment"}: ${chartData.map((d: any) => `${d.fullName ?? d.name} contacted ${d.Contacted}%, offer sent ${d["Offer Sent"]}%, closed ${d.Closed}%`).join("; ")}`}
+                >
+                  <ResponsiveContainer width="100%" height={220}>
+                    <BarChart data={chartData} margin={{ top: 0, right: 8, bottom: 0, left: -20 }}>
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                      <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                      <YAxis tick={{ fontSize: 11 }} unit="%" domain={[0, 100]} />
+                      <Tooltip
+                        formatter={((v: number) => `${v}%`) as any}
+                        labelFormatter={(label, payload) => payload?.[0]?.payload?.fullName ?? label}
+                      />
+                      <Legend wrapperStyle={{ fontSize: 11 }} />
+                      <Bar dataKey="Contacted" fill="#60a5fa" radius={[2, 2, 0, 0]} />
+                      <Bar dataKey="Offer Sent" fill="#f59e0b" radius={[2, 2, 0, 0]} />
+                      <Bar dataKey="Closed" fill="#22c55e" radius={[2, 2, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
               </CardContent>
             </Card>
           )}

@@ -173,17 +173,22 @@ export function AttributionAnalytics() {
                   <CardTitle className="text-sm">Conversions by Channel</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <ResponsiveContainer width="100%" height={200}>
-                    <PieChart>
-                      <Pie data={channelPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80}>
-                        {channelPieData.map((entry) => (
-                          <Cell key={entry.name} fill={CHANNEL_COLORS[entry.name] ?? CHANNEL_COLORS.unknown} />
-                        ))}
-                      </Pie>
-                      <Tooltip />
-                      <Legend wrapperStyle={{ fontSize: 11 }} />
-                    </PieChart>
-                  </ResponsiveContainer>
+                  <div
+                    role="img"
+                    aria-label={`Conversions by channel: ${channelPieData.map(d => `${d.name} ${d.value}`).join(", ")}`}
+                  >
+                    <ResponsiveContainer width="100%" height={200}>
+                      <PieChart>
+                        <Pie data={channelPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80}>
+                          {channelPieData.map((entry) => (
+                            <Cell key={entry.name} fill={CHANNEL_COLORS[entry.name] ?? CHANNEL_COLORS.unknown} />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                        <Legend wrapperStyle={{ fontSize: 11 }} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
                 </CardContent>
               </Card>
             )}
@@ -195,15 +200,20 @@ export function AttributionAnalytics() {
                   <CardTitle className="text-sm">Conversion by Touch Number</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <ResponsiveContainer width="100%" height={200}>
-                    <BarChart data={touchChartData} margin={{ top: 0, right: 8, bottom: 0, left: -20 }}>
-                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                      <XAxis dataKey="name" tick={{ fontSize: 10 }} />
-                      <YAxis tick={{ fontSize: 10 }} />
-                      <Tooltip />
-                      <Bar dataKey="Conversions" fill="#60a5fa" radius={[2, 2, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  <div
+                    role="img"
+                    aria-label={`Conversions by touch number: ${touchChartData.map(d => `${d.name} ${d.Conversions}`).join(", ")}`}
+                  >
+                    <ResponsiveContainer width="100%" height={200}>
+                      <BarChart data={touchChartData} margin={{ top: 0, right: 8, bottom: 0, left: -20 }}>
+                        <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                        <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+                        <YAxis tick={{ fontSize: 10 }} />
+                        <Tooltip />
+                        <Bar dataKey="Conversions" fill="#60a5fa" radius={[2, 2, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
                 </CardContent>
               </Card>
             )}
