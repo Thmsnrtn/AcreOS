@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
@@ -73,27 +74,38 @@ export function PaxScheduleButton({ currentPrompt, disabled }: PaxScheduleButton
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="text-sm flex items-center gap-2">
-              <Clock className="w-4 h-4 text-primary" />
-              Schedule Task
+              <Clock className="w-4 h-4 text-primary" aria-hidden="true" />
+              Schedule task
             </DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-3">
+          <form
+            id="pax-schedule-form"
+            className="space-y-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!taskName.trim() || createMutation.isPending) return;
+              createMutation.mutate();
+            }}
+          >
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Task name</label>
+              <Label htmlFor="pax-task-name" className="text-xs text-muted-foreground mb-1 block">Task name</Label>
               <Input
+                id="pax-task-name"
                 autoFocus
-                placeholder="Morning Briefing"
+                placeholder="Morning briefing"
                 value={taskName}
                 onChange={(e) => setTaskName(e.target.value)}
+                autoCapitalize="sentences"
+                required
                 className="text-sm"
               />
             </div>
 
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Schedule</label>
+              <Label htmlFor="pax-schedule" className="text-xs text-muted-foreground mb-1 block">Schedule</Label>
               <Select value={schedule} onValueChange={setSchedule}>
-                <SelectTrigger className="text-sm">
+                <SelectTrigger id="pax-schedule" className="text-sm">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -107,21 +119,22 @@ export function PaxScheduleButton({ currentPrompt, disabled }: PaxScheduleButton
             </div>
 
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Prompt preview</label>
+              <p className="text-xs text-muted-foreground mb-1 block">Prompt preview</p>
               <div className="rounded-md border bg-muted/30 p-2 text-[11px] text-muted-foreground line-clamp-3">
                 {currentPrompt}
               </div>
             </div>
-          </div>
+          </form>
 
           <DialogFooter>
-            <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>Cancel</Button>
             <Button
+              type="submit"
+              form="pax-schedule-form"
               size="sm"
-              onClick={() => createMutation.mutate()}
               disabled={!taskName.trim() || createMutation.isPending}
             >
-              {createMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
+              {createMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" aria-hidden="true" /> : null}
               Schedule
             </Button>
           </DialogFooter>
