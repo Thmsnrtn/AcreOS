@@ -224,31 +224,41 @@ export function SequencesContent() {
           </DialogTrigger>
           <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>{selectedSequence ? "Edit Sequence" : "Create New Sequence"}</DialogTitle>
+              <DialogTitle>{selectedSequence ? "Edit sequence" : "Create new sequence"}</DialogTitle>
               <DialogDescription>
                 Build a multi-step automated follow-up sequence
               </DialogDescription>
             </DialogHeader>
-            
-            <div className="space-y-6 py-4">
+
+            <form
+              id="sequence-form"
+              className="space-y-6 py-4"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (createMutation.isPending || updateMutation.isPending) return;
+                handleSubmit();
+              }}
+            >
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="name">Sequence Name</Label>
+                  <Label htmlFor="name">Sequence name</Label>
                   <Input
                     id="name"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="e.g., New Lead Welcome Series"
+                    placeholder="e.g., New lead welcome series"
+                    autoCapitalize="sentences"
+                    required
                     data-testid="input-sequence-name"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="trigger">Enrollment Trigger</Label>
+                  <Label htmlFor="trigger">Enrollment trigger</Label>
                   <Select
                     value={formData.enrollmentTrigger}
                     onValueChange={(value) => setFormData({ ...formData, enrollmentTrigger: value as any })}
                   >
-                    <SelectTrigger data-testid="select-enrollment-trigger">
+                    <SelectTrigger id="trigger" data-testid="select-enrollment-trigger">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -259,46 +269,49 @@ export function SequencesContent() {
                   </Select>
                 </div>
               </div>
-              
+
               <div className="space-y-2">
                 <Label htmlFor="description">Description</Label>
                 <Textarea
                   id="description"
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Describe the purpose of this sequence..."
+                  placeholder="Describe the purpose of this sequence…"
+                  autoCapitalize="sentences"
                   data-testid="textarea-sequence-description"
                 />
               </div>
 
               <div className="flex items-center gap-2">
                 <Switch
+                  id="is-active"
                   checked={formData.isActive}
                   onCheckedChange={(checked) => setFormData({ ...formData, isActive: checked })}
                   data-testid="switch-is-active"
                 />
-                <Label>Active (new enrollments allowed)</Label>
+                <Label htmlFor="is-active">Active (new enrollments allowed)</Label>
               </div>
 
               <div className="border-t pt-6">
-                <h3 className="text-lg font-medium mb-4">Sequence Steps</h3>
+                <h3 className="text-lg font-medium mb-4">Sequence steps</h3>
                 <SequenceBuilder steps={steps} onStepsChange={setSteps} />
               </div>
-            </div>
+            </form>
 
             <DialogFooter>
-              <Button variant="outline" onClick={() => { setIsDialogOpen(false); resetForm(); }}>
+              <Button type="button" variant="outline" onClick={() => { setIsDialogOpen(false); resetForm(); }}>
                 Cancel
               </Button>
               <Button
-                onClick={handleSubmit}
+                type="submit"
+                form="sequence-form"
                 disabled={createMutation.isPending || updateMutation.isPending}
                 data-testid="button-save-sequence"
               >
                 {(createMutation.isPending || updateMutation.isPending) && (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
                 )}
-                {selectedSequence ? "Update Sequence" : "Create Sequence"}
+                {selectedSequence ? "Update sequence" : "Create sequence"}
               </Button>
             </DialogFooter>
           </DialogContent>
