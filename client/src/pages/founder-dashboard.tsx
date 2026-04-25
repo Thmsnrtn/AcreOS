@@ -5767,27 +5767,33 @@ function GrowthSection() {
                         {isEditing ? (
                           <div className="space-y-1.5 text-sm">
                             <div>
-                              <label className="text-xs text-muted-foreground">Headline (≤40 chars)</label>
+                              <Label htmlFor={`copy-headline-${copy.angle}`} className="text-xs text-muted-foreground">Headline <span className="text-muted-foreground/70">(≤40 chars)</span></Label>
                               <Input
+                                id={`copy-headline-${copy.angle}`}
                                 value={editDraft.headline || ""}
                                 onChange={(e) => setEditDraft((d) => ({ ...d, headline: e.target.value.slice(0, 40) }))}
+                                maxLength={40}
                                 className="h-7 text-xs mt-0.5"
                               />
                             </div>
                             <div>
-                              <label className="text-xs text-muted-foreground">Primary Text (≤125 chars)</label>
+                              <Label htmlFor={`copy-primary-${copy.angle}`} className="text-xs text-muted-foreground">Primary text <span className="text-muted-foreground/70">(≤125 chars)</span></Label>
                               <Textarea
+                                id={`copy-primary-${copy.angle}`}
                                 value={editDraft.primaryText || ""}
                                 onChange={(e) => setEditDraft((d) => ({ ...d, primaryText: e.target.value.slice(0, 125) }))}
+                                maxLength={125}
                                 className="text-xs min-h-[60px] mt-0.5 resize-none"
                                 rows={3}
                               />
                             </div>
                             <div>
-                              <label className="text-xs text-muted-foreground">Description (≤30 chars)</label>
+                              <Label htmlFor={`copy-description-${copy.angle}`} className="text-xs text-muted-foreground">Description <span className="text-muted-foreground/70">(≤30 chars)</span></Label>
                               <Input
+                                id={`copy-description-${copy.angle}`}
                                 value={editDraft.description || ""}
                                 onChange={(e) => setEditDraft((d) => ({ ...d, description: e.target.value.slice(0, 30) }))}
+                                maxLength={30}
                                 className="h-7 text-xs mt-0.5"
                               />
                             </div>
@@ -6219,16 +6225,18 @@ function ActionQueuePanel() {
                         </Button>
                       ) : (
                         <div className="space-y-2">
-                          <label className="text-xs font-medium text-muted-foreground">AI-drafted reply (edit if needed)</label>
+                          <Label htmlFor={`ai-reply-${ticketId}`} className="text-xs font-medium text-muted-foreground">AI-drafted reply <span className="text-muted-foreground/70">(edit if needed)</span></Label>
                           {isEditing ? (
                             <Textarea
+                              id={`ai-reply-${ticketId}`}
                               value={drafts[ticketId]}
                               onChange={(e) => setDrafts((d) => ({ ...d, [ticketId]: e.target.value }))}
                               className="text-sm min-h-[120px] resize-none"
                               rows={5}
+                              autoCapitalize="sentences"
                             />
                           ) : (
-                            <div className="p-2.5 bg-background rounded border text-sm leading-relaxed whitespace-pre-wrap">
+                            <div id={`ai-reply-${ticketId}`} className="p-2.5 bg-background rounded border text-sm leading-relaxed whitespace-pre-wrap">
                               {drafts[ticketId]}
                             </div>
                           )}
