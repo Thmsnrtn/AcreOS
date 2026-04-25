@@ -85,8 +85,8 @@ export function WorkspaceManager() {
     onError: (err) => {
       console.error("Failed to delete workspace:", err);
       toast({
-        title: "Failed to delete workspace",
-        description: "Please try again.",
+        title: "Couldn't delete workspace",
+        description: "The workspace is still in your list. Try again.",
         variant: "destructive",
       });
     },

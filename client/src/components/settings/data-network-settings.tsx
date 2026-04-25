@@ -56,8 +56,8 @@ export function DataNetworkSettings() {
     onError: () => {
       setOptimisticEnabled(null);
       toast({
-        title: "Error",
-        description: "Failed to update your data network preference. Please try again.",
+        title: "Couldn't update preference",
+        description: "Your existing data-network setting is unchanged. Try again.",
         variant: "destructive",
       });
     },

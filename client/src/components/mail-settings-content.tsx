@@ -186,8 +186,8 @@ export function MailSettingsContent() {
     },
     onError: (err: Error) => {
       toast({
-        title: "Failed to Create",
-        description: err.message,
+        title: "Couldn't create return address",
+        description: `${err.message} — your draft is preserved.`,
         variant: "destructive",
       });
     },
@@ -209,8 +209,8 @@ export function MailSettingsContent() {
     },
     onError: (err: Error) => {
       toast({
-        title: "Failed to Update",
-        description: err.message,
+        title: "Couldn't update return address",
+        description: `${err.message} — the existing address is unchanged.`,
         variant: "destructive",
       });
     },
@@ -233,8 +233,8 @@ export function MailSettingsContent() {
     },
     onError: (err: Error) => {
       toast({
-        title: "Failed to Delete",
-        description: err.message,
+        title: "Couldn't delete return address",
+        description: `${err.message} — the address is still on your account.`,
         variant: "destructive",
       });
     },
@@ -255,8 +255,8 @@ export function MailSettingsContent() {
     },
     onError: (err: Error) => {
       toast({
-        title: "Failed to Update",
-        description: err.message,
+        title: "Couldn't set default",
+        description: `${err.message} — the previous default is unchanged.`,
         variant: "destructive",
       });
     },

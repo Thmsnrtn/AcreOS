@@ -1172,8 +1172,8 @@ export function PropertyMap({
       });
     } catch (err) {
       toast({
-        title: "Error",
-        description: err instanceof Error ? err.message : "Failed to fetch nearby parcels",
+        title: "Couldn't fetch nearby parcels",
+        description: err instanceof Error ? `${err.message} — try a wider radius or try again later.` : "Try a wider radius or try again later.",
         variant: "destructive",
       });
     } finally {
@@ -1222,8 +1222,8 @@ export function PropertyMap({
       });
     } catch (err) {
       toast({
-        title: "Error",
-        description: err instanceof Error ? err.message : "Failed to fetch comparables",
+        title: "Couldn't fetch comparables",
+        description: err instanceof Error ? `${err.message} — try again or check the system status.` : "Try again or check the system status.",
         variant: "destructive",
       });
     } finally {

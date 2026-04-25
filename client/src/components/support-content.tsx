@@ -178,8 +178,8 @@ export function SupportContent() {
     },
     onError: (err: any) => {
       toast({
-        title: "Error",
-        description: err.message || "Failed to submit feature request",
+        title: "Couldn't submit feature request",
+        description: `${err.message || "No request was sent"} — your draft is preserved.`,
         variant: "destructive",
       });
     },
@@ -203,8 +203,8 @@ export function SupportContent() {
     },
     onError: (err: any) => {
       toast({
-        title: "Error",
-        description: err.message || "Failed to create support case",
+        title: "Couldn't create support case",
+        description: `${err.message || "No case was created"} — your draft is preserved.`,
         variant: "destructive",
       });
     },
@@ -222,8 +222,8 @@ export function SupportContent() {
     },
     onError: (err: any) => {
       toast({
-        title: "Error",
-        description: err.message || "Failed to send message",
+        title: "Couldn't send message",
+        description: `${err.message || "No message was sent"} — your draft is preserved.`,
         variant: "destructive",
       });
     },
@@ -245,8 +245,8 @@ export function SupportContent() {
     },
     onError: (err: any) => {
       toast({
-        title: "Error",
-        description: err.message || "Failed to resolve case",
+        title: "Couldn't resolve case",
+        description: `${err.message || "Case status is unchanged"} — the case is still open.`,
         variant: "destructive",
       });
     },
@@ -269,8 +269,8 @@ export function SupportContent() {
     },
     onError: (err: any) => {
       toast({
-        title: "Error",
-        description: err.message || "Failed to submit rating",
+        title: "Couldn't submit rating",
+        description: `${err.message || "Your rating wasn't saved"} — try again or leave the rating dialog open.`,
         variant: "destructive",
       });
     },
