@@ -176,7 +176,14 @@ export function RequestSignaturesDialog({
             </div>
           </div>
         ) : (
-          <div className="space-y-3">
+          <form
+            id="request-signatures-form"
+            className="space-y-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!mutation.isPending) mutation.mutate();
+            }}
+          >
             {signers.map((s, i) => (
               <div key={i} className="grid grid-cols-12 gap-2 items-end">
                 <div className="col-span-4">
@@ -185,6 +192,9 @@ export function RequestSignaturesDialog({
                     value={s.name}
                     onChange={(e) => updateSigner(i, { name: e.target.value })}
                     placeholder="Jane Seller"
+                    autoComplete="name"
+                    autoCapitalize="words"
+                    required
                   />
                 </div>
                 <div className="col-span-4">
@@ -233,7 +243,7 @@ export function RequestSignaturesDialog({
             <Button type="button" variant="outline" size="sm" onClick={addSigner}>
               <Plus className="h-3 w-3 mr-1" /> Add another signer
             </Button>
-          </div>
+          </form>
         )}
 
         <DialogFooter>
@@ -241,10 +251,10 @@ export function RequestSignaturesDialog({
             <Button onClick={() => handleClose(false)}>Done</Button>
           ) : (
             <>
-              <Button variant="outline" onClick={() => handleClose(false)} disabled={mutation.isPending}>
+              <Button type="button" variant="outline" onClick={() => handleClose(false)} disabled={mutation.isPending}>
                 Cancel
               </Button>
-              <Button onClick={() => mutation.mutate()} disabled={mutation.isPending}>
+              <Button type="submit" form="request-signatures-form" disabled={mutation.isPending}>
                 {mutation.isPending ? (
                   <Loader2 className="h-4 w-4 mr-1 animate-spin" />
                 ) : (
