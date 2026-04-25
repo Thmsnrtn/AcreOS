@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { usd } from "@/lib/format";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -548,10 +549,10 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
       const summaryData = [
         ['Borrower:', data.borrowerName],
         ['Loan Number:', `#${data.noteId}`],
-        ['Original Principal:', `$${data.originalPrincipal.toLocaleString()}`],
-        ['Current Balance:', `$${data.currentBalance.toLocaleString()}`],
+        ['Original Principal:', usd(data.originalPrincipal)],
+        ['Current Balance:', usd(data.currentBalance)],
         ['Interest Rate:', `${data.interestRate}% APR`],
-        ['Monthly Payment:', `$${data.monthlyPayment.toLocaleString()}`],
+        ['Monthly Payment:', usd(data.monthlyPayment)],
         ['Next Payment Due:', data.nextPaymentDate ? format(new Date(data.nextPaymentDate), 'MMM d, yyyy') : 'N/A'],
         ['Autopay Status:', data.autopayEnabled ? 'Enabled' : 'Disabled'],
       ];
@@ -575,13 +576,13 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
       doc.text(data.summary.paymentsCount.toString(), 80, y);
       y += 6;
       doc.text('Total Paid:', 14, y);
-      doc.text(`$${data.summary.totalPaid.toLocaleString()}`, 80, y);
+      doc.text(usd(data.summary.totalPaid), 80, y);
       y += 6;
       doc.text('Principal Paid:', 14, y);
-      doc.text(`$${data.summary.totalPrincipal.toLocaleString()}`, 80, y);
+      doc.text(usd(data.summary.totalPrincipal), 80, y);
       y += 6;
       doc.text('Interest Paid:', 14, y);
-      doc.text(`$${data.summary.totalInterest.toLocaleString()}`, 80, y);
+      doc.text(usd(data.summary.totalInterest), 80, y);
       y += 15;
       
       if (data.payments && data.payments.length > 0) {
@@ -606,9 +607,9 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
             y = 20;
           }
           doc.text(format(new Date(p.date), 'MM/dd/yy'), 14, y);
-          doc.text(`$${p.amount.toLocaleString()}`, 50, y);
-          doc.text(`$${p.principal.toLocaleString()}`, 80, y);
-          doc.text(`$${p.interest.toLocaleString()}`, 110, y);
+          doc.text(usd(p.amount), 50, y);
+          doc.text(usd(p.principal), 80, y);
+          doc.text(usd(p.interest), 110, y);
           doc.text(p.method || 'N/A', 140, y);
           y += 5;
         });
