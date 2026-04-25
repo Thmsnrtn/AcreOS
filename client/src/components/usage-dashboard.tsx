@@ -115,7 +115,11 @@ export function UsageDashboard() {
           {usageLoading ? (
             <Skeleton className="h-64 w-full" />
           ) : chartData.length > 0 ? (
-            <div className="h-64">
+            <div
+              className="h-64"
+              role="img"
+              aria-label={`Credit cost by category this month across ${chartData.length} action types: ${chartData.map(d => `${d.name} $${d.cost.toFixed(2)}`).join(", ")}`}
+            >
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData} margin={{ top: 10, right: 10, left: 10, bottom: 20 }}>
                   <XAxis 

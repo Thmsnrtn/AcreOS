@@ -611,6 +611,7 @@ export default function AVMPage() {
                     <CardDescription>Ranked by similarity score</CardDescription>
                   </CardHeader>
                   <CardContent>
+                    <div role="img" aria-label={`Price-per-acre comparison across ${compsData.length} comparable sales ranked by similarity to subject property at ${formatDollar(latest.pricePerAcre)}/acre`}>
                     <ResponsiveContainer width="100%" height={260}>
                       <BarChart data={compsData}>
                         <CartesianGrid strokeDasharray="3 3" />
@@ -626,6 +627,7 @@ export default function AVMPage() {
                         <Bar dataKey="pricePerAcre" fill="#4f8ef7" radius={[4, 4, 0, 0]} name="pricePerAcre" />
                       </BarChart>
                     </ResponsiveContainer>
+                    </div>
                   </CardContent>
                 </Card>
 
@@ -671,6 +673,7 @@ export default function AVMPage() {
                   <CardDescription>Factors that increased or decreased the baseline comparable value</CardDescription>
                 </CardHeader>
                 <CardContent>
+                  <div role="img" aria-label={`Market adjustments applied: ${adjustmentsData.length} factors with percentage impact`}>
                   <ResponsiveContainer width="100%" height={260}>
                     <BarChart data={adjustmentsData} layout="vertical" margin={{ left: 20 }}>
                       <CartesianGrid strokeDasharray="3 3" />
@@ -685,6 +688,7 @@ export default function AVMPage() {
                       />
                     </BarChart>
                   </ResponsiveContainer>
+                  </div>
 
                   <div className="mt-4 space-y-3">
                     {latest.marketAdjustments.map((a: any, i: number) => (

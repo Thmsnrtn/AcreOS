@@ -335,7 +335,12 @@ export function TeamDashboardContent() {
                     <CardTitle>Revenue by Team Member</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="h-[300px]" data-testid="chart-team-revenue">
+                    <div
+                      className="h-[300px]"
+                      data-testid="chart-team-revenue"
+                      role="img"
+                      aria-label={`Revenue by team member across ${revenueChartData.length} members: ${revenueChartData.map(d => `${d.name} ${formatCurrency(d.revenue)}`).join(", ")}`}
+                    >
                       <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={revenueChartData}>
                           <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
@@ -364,7 +369,12 @@ export function TeamDashboardContent() {
                     <CardTitle>Conversion Rate by Team Member</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="h-[300px]" data-testid="chart-team-conversion">
+                    <div
+                      className="h-[300px]"
+                      data-testid="chart-team-conversion"
+                      role="img"
+                      aria-label={`Conversion rate by team member across ${conversionChartData.length} members: ${conversionChartData.map(d => `${d.name} ${d.rate}%`).join(", ")}`}
+                    >
                       <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={conversionChartData}>
                           <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
@@ -398,7 +408,12 @@ export function TeamDashboardContent() {
                     <CardTitle>Activity Trends Over Time</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="h-[300px]" data-testid="chart-team-trends">
+                    <div
+                      className="h-[300px]"
+                      data-testid="chart-team-trends"
+                      role="img"
+                      aria-label={`Activity trends over ${data.members[0].activityTrends.length} periods: activities and deals`}
+                    >
                       <ResponsiveContainer width="100%" height="100%">
                         <LineChart data={data.members[0].activityTrends}>
                           <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />

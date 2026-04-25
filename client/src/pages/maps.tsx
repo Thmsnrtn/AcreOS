@@ -433,6 +433,7 @@ function PropertyIntelligencePanel({
               const color = intel.marketTrend === "up" ? "#22c55e" :
                             intel.marketTrend === "down" ? "#ef4444" : "#6366f1";
               return (
+                <div role="img" aria-label={`Price-per-acre sparkline trending ${intel.marketTrend ?? "flat"} ${intel.marketTrendPct ?? 0}% over ${data.length} months`}>
                 <ResponsiveContainer width="100%" height={52}>
                   <AreaChart data={data} margin={{ top: 2, right: 2, left: 2, bottom: 2 }}>
                     <defs>
@@ -463,6 +464,7 @@ function PropertyIntelligencePanel({
                     />
                   </AreaChart>
                 </ResponsiveContainer>
+                </div>
               );
             })()}
           </div>
@@ -487,6 +489,7 @@ function PropertyIntelligencePanel({
               { axis: "Road Access", value: intel.roadAccess ? 95 : 20 },
             ];
             return (
+              <div role="img" aria-label={`Environmental risk radar across 6 dimensions: ${radarData.map(d => `${d.axis} ${d.value}`).join(", ")}`}>
               <ResponsiveContainer width="100%" height={130}>
                 <RadarChart data={radarData} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
                   <PolarGrid stroke="hsl(var(--border))" />
@@ -504,6 +507,7 @@ function PropertyIntelligencePanel({
                   />
                 </RadarChart>
               </ResponsiveContainer>
+              </div>
             );
           })()}
         </div>
