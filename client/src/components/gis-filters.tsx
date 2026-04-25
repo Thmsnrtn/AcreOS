@@ -75,21 +75,23 @@ export function GisFilters({ filters, onChange, activeFilterCount = 0, onShare, 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen} className="w-full sm:w-auto">
       <CollapsibleTrigger asChild>
-        <Button 
-          variant="outline" 
+        <Button
+          variant="outline"
+          aria-expanded={isOpen}
+          aria-label={hasActiveFilters ? `GIS filters, ${activeFilterCount} active` : "GIS filters"}
           className="gap-2 min-h-[44px] sm:min-h-8 w-full sm:w-auto justify-between sm:justify-center"
           data-testid="button-toggle-gis-filters"
         >
           <div className="flex items-center gap-2">
-            <MapPin className="w-4 h-4" />
+            <MapPin className="w-4 h-4" aria-hidden="true" />
             <span>GIS Filters</span>
             {hasActiveFilters && (
-              <Badge variant="secondary" className="ml-1 px-[6px] py-0 text-xs" data-testid="badge-gis-filter-count">
+              <Badge variant="secondary" className="ml-1 px-[6px] py-0 text-xs" data-testid="badge-gis-filter-count" aria-hidden="true">
                 {activeFilterCount}
               </Badge>
             )}
           </div>
-          {isOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          {isOpen ? <ChevronUp className="w-4 h-4" aria-hidden="true" /> : <ChevronDown className="w-4 h-4" aria-hidden="true" />}
         </Button>
       </CollapsibleTrigger>
       
@@ -111,16 +113,17 @@ export function GisFilters({ filters, onChange, activeFilterCount = 0, onShare, 
               {hasActiveFilters && onShare && (
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button 
-                      variant="ghost" 
+                    <Button
+                      variant="ghost"
                       onClick={handleShare}
+                      aria-label={showCopied ? "Link copied" : "Copy shareable link with filters"}
                       className="text-xs min-h-[44px] sm:min-h-7 px-2"
                       data-testid="button-share-gis-filters"
                     >
                       {showCopied ? (
-                        <><Check className="w-4 h-4 sm:w-3 sm:h-3 text-green-600" /></>
+                        <Check className="w-4 h-4 sm:w-3 sm:h-3 text-green-600" aria-hidden="true" />
                       ) : (
-                        <><Share2 className="w-4 h-4 sm:w-3 sm:h-3" /></>
+                        <Share2 className="w-4 h-4 sm:w-3 sm:h-3" aria-hidden="true" />
                       )}
                     </Button>
                   </TooltipTrigger>
@@ -130,13 +133,14 @@ export function GisFilters({ filters, onChange, activeFilterCount = 0, onShare, 
                 </Tooltip>
               )}
               {hasActiveFilters && (
-                <Button 
-                  variant="ghost" 
+                <Button
+                  variant="ghost"
                   onClick={handleClearFilters}
+                  aria-label={`Clear ${activeFilterCount} GIS filter${activeFilterCount === 1 ? "" : "s"}`}
                   className="text-xs min-h-[44px] sm:min-h-7 px-3"
                   data-testid="button-clear-gis-filters"
                 >
-                  <X className="w-4 h-4 sm:w-3 sm:h-3 mr-1" />
+                  <X className="w-4 h-4 sm:w-3 sm:h-3 mr-1" aria-hidden="true" />
                   Clear
                 </Button>
               )}
