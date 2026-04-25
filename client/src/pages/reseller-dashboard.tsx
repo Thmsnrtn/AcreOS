@@ -600,9 +600,9 @@ function WhiteLabelPanel() {
             </div>
 
             <div>
-              <Label>Font Family</Label>
+              <Label htmlFor="branding-font-family">Font family</Label>
               <Select value={branding.fontFamily} onValueChange={(v) => setBranding((b) => ({ ...b, fontFamily: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger id="branding-font-family"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {FONT_OPTIONS.map((f) => (
                     <SelectItem key={f.value} value={f.value} style={{ fontFamily: f.value }}>
@@ -614,21 +614,37 @@ function WhiteLabelPanel() {
             </div>
 
             <div>
-              <Label>Support Email</Label>
-              <Input type="email" value={branding.supportEmail} onChange={set("supportEmail")} placeholder="support@mybrand.com" />
+              <Label htmlFor="branding-support-email">Support email</Label>
+              <Input
+                id="branding-support-email"
+                type="email"
+                inputMode="email"
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
+                autoComplete="email"
+                value={branding.supportEmail}
+                onChange={set("supportEmail")}
+                placeholder="support@mybrand.com"
+              />
             </div>
 
             <div>
-              <Label>Footer Text</Label>
-              <Input value={branding.footerText} onChange={set("footerText")} placeholder="Powered by MyBrand" />
+              <Label htmlFor="branding-footer-text">Footer text</Label>
+              <Input
+                id="branding-footer-text"
+                value={branding.footerText}
+                onChange={set("footerText")}
+                placeholder="Powered by MyBrand"
+              />
             </div>
 
             <div className="flex gap-2 pt-2">
               <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} className="flex-1">
-                {saveMutation.isPending ? "Saving…" : "Save Branding"}
+                {saveMutation.isPending ? "Saving…" : "Save branding"}
               </Button>
               <Button variant="outline" onClick={() => setPreview((p) => !p)}>
-                <Eye className="w-4 h-4 mr-1" /> {preview ? "Hide" : "Preview"}
+                <Eye className="w-4 h-4 mr-1" aria-hidden="true" /> {preview ? "Hide" : "Preview"}
               </Button>
             </div>
           </CardContent>

@@ -187,8 +187,9 @@ export function RequestSignaturesDialog({
             {signers.map((s, i) => (
               <div key={i} className="grid grid-cols-12 gap-2 items-end">
                 <div className="col-span-4">
-                  <Label className="text-xs">Name</Label>
+                  <Label htmlFor={`signer-name-${i}`} className="text-xs">Name</Label>
                   <Input
+                    id={`signer-name-${i}`}
                     value={s.name}
                     onChange={(e) => updateSigner(i, { name: e.target.value })}
                     placeholder="Jane Seller"
@@ -198,8 +199,9 @@ export function RequestSignaturesDialog({
                   />
                 </div>
                 <div className="col-span-4">
-                  <Label className="text-xs">Email</Label>
+                  <Label htmlFor={`signer-email-${i}`} className="text-xs">Email</Label>
                   <Input
+                    id={`signer-email-${i}`}
                     type="email"
                     inputMode="email"
                     autoCapitalize="off"
@@ -212,9 +214,9 @@ export function RequestSignaturesDialog({
                   />
                 </div>
                 <div className="col-span-3">
-                  <Label className="text-xs">Role</Label>
+                  <Label htmlFor={`signer-role-${i}`} className="text-xs">Role</Label>
                   <Select value={s.role} onValueChange={(v) => updateSigner(i, { role: v })}>
-                    <SelectTrigger>
+                    <SelectTrigger id={`signer-role-${i}`}>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
