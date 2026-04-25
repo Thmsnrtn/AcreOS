@@ -803,6 +803,7 @@ to a dedicated 9b slice.
 **A/B-test dialog (217):** ✅ complete — Create-test dialog converted to `<form id>`, name field autoCapitalize=sentences + required, sentence-case throughout. (commit `67f983c`)
 **EmailSettings custom-domain (218):** ✅ complete — add-custom-domain dialog converted to `<form id>`, display name autoCapitalize=words + autoComplete=organization, from-email full email-keyboard stack, sentence-case. (commit `5c23624`)
 **SupportContent create-case (219):** ✅ complete — create-support-case dialog converted to `<form id>`, subject + message Textarea both autoCapitalize=sentences + required, sentence-case throughout. (commit `141c284`)
+**SupportContent feature-request (220):** ✅ complete — slice 220 milestone. submit-feature-request dialog converted to `<form id>`, title + description Textarea both autoCapitalize=sentences + required, Category SelectTrigger gained id↔htmlFor, sentence-case for all enum labels. (commit `cee35f0`)
 **/onboarding-v2 targeted (18):** ✅ complete (commit `70df779`) — 18b deferred
 **/settings targeted (19):** ✅ complete (commit `809044c`) — 19b remaining components deferred
 **/pipeline (20):** ✅ complete (commit `1b5d0f7`)
