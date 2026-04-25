@@ -172,12 +172,24 @@ export function EmailDomainsSettings() {
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Add Email Domain</DialogTitle>
+                <DialogTitle>Add email domain</DialogTitle>
                 <DialogDescription>
                   Enter your domain to begin the verification process. You'll need to add DNS records to verify ownership.
                 </DialogDescription>
               </DialogHeader>
-              <div className="space-y-4 py-4">
+              <form
+                id="add-domain-form"
+                className="space-y-4 py-4"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!newDomain || addDomainMutation.isPending) return;
+                  addDomainMutation.mutate({
+                    domain: newDomain,
+                    fromEmail: newFromEmail || undefined,
+                    fromName: newFromName || undefined,
+                  });
+                }}
+              >
                 <div className="space-y-2">
                   <Label htmlFor="domain">Domain</Label>
                   <Input
@@ -185,13 +197,24 @@ export function EmailDomainsSettings() {
                     placeholder="example.com"
                     value={newDomain}
                     onChange={(e) => setNewDomain(e.target.value)}
+                    autoCapitalize="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    autoComplete="off"
+                    required
                     data-testid="input-domain"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="fromEmail">From Email (optional)</Label>
+                  <Label htmlFor="fromEmail">From email <span className="text-muted-foreground font-normal">(optional)</span></Label>
                   <Input
                     id="fromEmail"
+                    type="email"
+                    inputMode="email"
+                    autoCapitalize="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    autoComplete="email"
                     placeholder="noreply@example.com"
                     value={newFromEmail}
                     onChange={(e) => setNewFromEmail(e.target.value)}
@@ -199,30 +222,29 @@ export function EmailDomainsSettings() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="fromName">From Name (optional)</Label>
+                  <Label htmlFor="fromName">From name <span className="text-muted-foreground font-normal">(optional)</span></Label>
                   <Input
                     id="fromName"
                     placeholder="My Company"
                     value={newFromName}
                     onChange={(e) => setNewFromName(e.target.value)}
+                    autoCapitalize="words"
+                    autoComplete="organization"
                     data-testid="input-from-name"
                   />
                 </div>
-              </div>
+              </form>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+                <Button type="button" variant="outline" onClick={() => setIsAddDialogOpen(false)}>
                   Cancel
                 </Button>
                 <Button
-                  onClick={() => addDomainMutation.mutate({
-                    domain: newDomain,
-                    fromEmail: newFromEmail || undefined,
-                    fromName: newFromName || undefined,
-                  })}
+                  type="submit"
+                  form="add-domain-form"
                   disabled={!newDomain || addDomainMutation.isPending}
                   data-testid="button-confirm-add-domain"
                 >
-                  {addDomainMutation.isPending ? "Adding..." : "Add Domain"}
+                  {addDomainMutation.isPending ? "Adding…" : "Add domain"}
                 </Button>
               </DialogFooter>
             </DialogContent>
