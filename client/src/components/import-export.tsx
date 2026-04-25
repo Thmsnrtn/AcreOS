@@ -284,15 +284,15 @@ export function ImportExportManager() {
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="mb-4">
             <TabsTrigger value="import" data-testid="tab-import">
-              <Upload className="w-4 h-4 mr-2" />
+              <Upload className="w-4 h-4 mr-2" aria-hidden="true" />
               Import
             </TabsTrigger>
             <TabsTrigger value="export" data-testid="tab-export">
-              <Download className="w-4 h-4 mr-2" />
+              <Download className="w-4 h-4 mr-2" aria-hidden="true" />
               Export
             </TabsTrigger>
             <TabsTrigger value="backup" data-testid="tab-backup">
-              <Database className="w-4 h-4 mr-2" />
+              <Database className="w-4 h-4 mr-2" aria-hidden="true" />
               Backup
             </TabsTrigger>
           </TabsList>
@@ -365,7 +365,7 @@ export function ImportExportManager() {
                 className="hidden"
                 data-testid="input-file-import"
               />
-              <Upload className="w-10 h-10 mx-auto mb-4 text-muted-foreground" />
+              <Upload className="w-10 h-10 mx-auto mb-4 text-muted-foreground" aria-hidden="true" />
               <p className="text-sm text-muted-foreground mb-2">
                 Drag and drop a CSV file here, or
               </p>
@@ -376,7 +376,7 @@ export function ImportExportManager() {
                 data-testid="button-select-file"
               >
                 {previewMutation.isPending ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
                 ) : (
                   <FileText className="w-4 h-4 mr-2" />
                 )}
