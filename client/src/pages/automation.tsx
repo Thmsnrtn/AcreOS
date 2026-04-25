@@ -1,6 +1,6 @@
 import { PageShell } from "@/components/page-shell";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   Zap, 
@@ -34,39 +35,41 @@ import { format } from "date-fns";
 import type { AutomationRule, AutomationExecution } from "@shared/schema";
 
 const TRIGGERS = [
-  { value: "lead_created", label: "Lead Created", description: "When a new lead is added" },
-  { value: "lead_status_changed", label: "Lead Status Changed", description: "When lead status updates" },
-  { value: "deal_stage_changed", label: "Deal Stage Changed", description: "When deal moves to new stage" },
-  { value: "payment_received", label: "Payment Received", description: "When a payment is recorded" },
-  { value: "payment_missed", label: "Payment Missed", description: "When payment is overdue" },
-  { value: "task_completed", label: "Task Completed", description: "When a task is marked done" },
-  { value: "note_created", label: "Note Created", description: "When a note is added" },
-  { value: "property_added", label: "Property Added", description: "When property is created" },
+  { value: "lead_created", label: "Lead created", description: "When a new lead is added" },
+  { value: "lead_status_changed", label: "Lead status changed", description: "When lead status updates" },
+  { value: "deal_stage_changed", label: "Deal stage changed", description: "When deal moves to new stage" },
+  { value: "payment_received", label: "Payment received", description: "When a payment is recorded" },
+  { value: "payment_missed", label: "Payment missed", description: "When payment is overdue" },
+  { value: "task_completed", label: "Task completed", description: "When a task is marked done" },
+  { value: "note_created", label: "Note created", description: "When a note is added" },
+  { value: "property_added", label: "Property added", description: "When property is created" },
 ];
 
 const CONDITIONS = [
   { value: "equals", label: "Equals" },
-  { value: "not_equals", label: "Not Equals" },
+  { value: "not_equals", label: "Not equals" },
   { value: "contains", label: "Contains" },
-  { value: "not_contains", label: "Does Not Contain" },
-  { value: "greater_than", label: "Greater Than" },
-  { value: "less_than", label: "Less Than" },
-  { value: "is_empty", label: "Is Empty" },
-  { value: "is_not_empty", label: "Is Not Empty" },
+  { value: "not_contains", label: "Does not contain" },
+  { value: "greater_than", label: "Greater than" },
+  { value: "less_than", label: "Less than" },
+  { value: "is_empty", label: "Is empty" },
+  { value: "is_not_empty", label: "Is not empty" },
 ];
 
 const ACTIONS = [
-  { value: "send_email", label: "Send Email", icon: "mail" },
+  { value: "send_email", label: "Send email", icon: "mail" },
   { value: "send_sms", label: "Send SMS", icon: "message" },
-  { value: "create_task", label: "Create Task", icon: "check" },
-  { value: "add_tag", label: "Add Tag", icon: "tag" },
-  { value: "remove_tag", label: "Remove Tag", icon: "tag" },
-  { value: "change_lead_status", label: "Change Lead Status", icon: "user" },
-  { value: "change_deal_stage", label: "Change Deal Stage", icon: "git-branch" },
-  { value: "notify_team", label: "Notify Team", icon: "bell" },
-  { value: "assign_to", label: "Assign To", icon: "user-plus" },
-  { value: "add_note", label: "Add Note", icon: "file-text" },
+  { value: "create_task", label: "Create task", icon: "check" },
+  { value: "add_tag", label: "Add tag", icon: "tag" },
+  { value: "remove_tag", label: "Remove tag", icon: "tag" },
+  { value: "change_lead_status", label: "Change lead status", icon: "user" },
+  { value: "change_deal_stage", label: "Change deal stage", icon: "git-branch" },
+  { value: "notify_team", label: "Notify team", icon: "bell" },
+  { value: "assign_to", label: "Assign to", icon: "user-plus" },
+  { value: "add_note", label: "Add note", icon: "file-text" },
 ];
+
+const reassurance = "Your rule is unchanged — try again.";
 
 type Condition = {
   field: string;
@@ -81,12 +84,16 @@ type Action = {
 };
 
 export default function AutomationPage() {
+  useDocumentTitle("Automation rules");
   const { toast } = useToast();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [deleteRuleId, setDeleteRuleId] = useState<number | null>(null);
   const [selectedRule, setSelectedRule] = useState<AutomationRule | null>(null);
   const [wizardStep, setWizardStep] = useState(1);
+  const ruleNameId = useId();
+  const ruleDescId = useId();
+  const ruleTriggerId = useId();
   
   const [formData, setFormData] = useState({
     name: "",
@@ -117,7 +124,7 @@ export default function AutomationPage() {
       toast({ title: "Rule created", description: "Automation rule has been created successfully." });
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't save rule", description: `${error.message}. ${reassurance}`, variant: "destructive" });
     },
   });
 
@@ -134,7 +141,7 @@ export default function AutomationPage() {
       toast({ title: "Rule updated", description: "Automation rule has been updated." });
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't save rule", description: `${error.message}. ${reassurance}`, variant: "destructive" });
     },
   });
 
@@ -148,7 +155,7 @@ export default function AutomationPage() {
       toast({ title: "Rule updated", description: "Rule status has been changed." });
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't save rule", description: `${error.message}. ${reassurance}`, variant: "destructive" });
     },
   });
 
@@ -161,7 +168,7 @@ export default function AutomationPage() {
       toast({ title: "Rule deleted", description: "Automation rule has been removed." });
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't delete rule", description: `${error.message}. The rule is still in your list — try again.`, variant: "destructive" });
     },
   });
 
@@ -243,44 +250,55 @@ export default function AutomationPage() {
 
   const RuleWizard = ({ onClose }: { onClose: () => void }) => (
     <div className="space-y-6">
-      <div className="flex items-center gap-2 mb-4">
+      <ol
+        className="flex items-center gap-2 mb-4 list-none p-0 m-0"
+        aria-label={`Rule wizard step ${wizardStep} of 3`}
+      >
         {[1, 2, 3].map((step) => (
-          <div key={step} className="flex items-center gap-2">
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-              wizardStep >= step ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-            }`}>
+          <li key={step} className="flex items-center gap-2">
+            <div
+              className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium tabular-nums ${
+                wizardStep >= step ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+              }`}
+              aria-current={wizardStep === step ? "step" : undefined}
+              aria-label={`Step ${step}${wizardStep > step ? " (completed)" : wizardStep === step ? " (current)" : ""}`}
+            >
               {step}
             </div>
-            {step < 3 && <ChevronRight className="w-4 h-4 text-muted-foreground" />}
-          </div>
+            {step < 3 && <ChevronRight className="w-4 h-4 text-muted-foreground" aria-hidden="true" />}
+          </li>
         ))}
-      </div>
+      </ol>
 
       {wizardStep === 1 && (
         <div className="space-y-4">
           <div>
-            <Label>Rule Name</Label>
+            <Label htmlFor={ruleNameId}>Rule name</Label>
             <Input
+              id={ruleNameId}
               placeholder="e.g., Welcome new leads"
               value={formData.name}
               onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+              autoCapitalize="words"
               data-testid="input-rule-name"
             />
           </div>
           <div>
-            <Label>Description (optional)</Label>
+            <Label htmlFor={ruleDescId}>Description (optional)</Label>
             <Textarea
-              placeholder="Describe what this rule does..."
+              id={ruleDescId}
+              placeholder="Describe what this rule does…"
               value={formData.description}
               onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+              autoCapitalize="sentences"
               data-testid="input-rule-description"
             />
           </div>
           <div>
-            <Label>Trigger Event</Label>
+            <Label htmlFor={ruleTriggerId}>Trigger event</Label>
             <Select value={formData.trigger} onValueChange={(v) => setFormData(prev => ({ ...prev, trigger: v }))}>
-              <SelectTrigger data-testid="select-trigger">
-                <SelectValue placeholder="Select trigger..." />
+              <SelectTrigger id={ruleTriggerId} data-testid="select-trigger">
+                <SelectValue placeholder="Select trigger…" />
               </SelectTrigger>
               <SelectContent>
                 {TRIGGERS.map((t) => (
@@ -300,9 +318,9 @@ export default function AutomationPage() {
       {wizardStep === 2 && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <Label>Conditions (Optional)</Label>
+            <Label>Conditions (optional)</Label>
             <Button type="button" variant="outline" size="sm" onClick={addCondition} data-testid="button-add-condition">
-              <Plus className="w-4 h-4 mr-1" /> Add Condition
+              <Plus className="w-4 h-4 mr-1" aria-hidden="true" /> Add condition
             </Button>
           </div>
           
@@ -348,8 +366,14 @@ export default function AutomationPage() {
                     onChange={(e) => updateCondition(index, { value: e.target.value })}
                     className="flex-1"
                   />
-                  <Button type="button" variant="ghost" size="icon" onClick={() => removeCondition(index)} aria-label="Remove condition">
-                    <Trash2 className="w-4 h-4" />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => removeCondition(index)}
+                    aria-label={`Remove condition ${index + 1}`}
+                  >
+                    <Trash2 className="w-4 h-4" aria-hidden="true" />
                   </Button>
                 </div>
               ))}
@@ -363,7 +387,7 @@ export default function AutomationPage() {
           <div className="flex items-center justify-between">
             <Label>Actions</Label>
             <Button type="button" variant="outline" size="sm" onClick={addAction} data-testid="button-add-action">
-              <Plus className="w-4 h-4 mr-1" /> Add Action
+              <Plus className="w-4 h-4 mr-1" aria-hidden="true" /> Add action
             </Button>
           </div>
           
@@ -384,8 +408,14 @@ export default function AutomationPage() {
                         ))}
                       </SelectContent>
                     </Select>
-                    <Button type="button" variant="ghost" size="icon" onClick={() => removeAction(index)} aria-label="Remove action">
-                      <Trash2 className="w-4 h-4" />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => removeAction(index)}
+                      aria-label={`Remove action ${index + 1}`}
+                    >
+                      <Trash2 className="w-4 h-4" aria-hidden="true" />
                     </Button>
                   </div>
                   
@@ -465,14 +495,14 @@ export default function AutomationPage() {
             Next
           </Button>
         ) : (
-          <Button 
-            type="button" 
+          <Button
+            type="button"
             onClick={handleSubmit}
             disabled={formData.actions.length === 0 || createMutation.isPending || updateMutation.isPending}
             data-testid="button-save-rule"
           >
-            {(createMutation.isPending || updateMutation.isPending) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-            {selectedRule ? "Update Rule" : "Create Rule"}
+            {(createMutation.isPending || updateMutation.isPending) && <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />}
+            {selectedRule ? "Update rule" : "Create rule"}
           </Button>
         )}
       </DialogFooter>
@@ -483,100 +513,121 @@ export default function AutomationPage() {
     <PageShell>
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-3xl font-bold" data-testid="text-page-title">Automation Rules</h1>
+            <h1 className="text-3xl font-bold" data-testid="text-page-title">Automation rules</h1>
             <p className="text-muted-foreground">Automate workflows based on triggers and conditions</p>
           </div>
-          
+
           <Button onClick={() => { resetForm(); setIsCreateOpen(true); }} data-testid="button-create-rule">
-            <Plus className="w-4 h-4 mr-2" /> Create Rule
+            <Plus className="w-4 h-4 mr-2" aria-hidden="true" /> Create rule
           </Button>
         </div>
 
         <Tabs defaultValue="rules" className="space-y-4">
           <TabsList>
             <TabsTrigger value="rules" className="gap-2">
-              <Workflow className="w-4 h-4" /> Rules
+              <Workflow className="w-4 h-4" aria-hidden="true" /> Rules
             </TabsTrigger>
             <TabsTrigger value="executions" className="gap-2">
-              <History className="w-4 h-4" /> Execution Log
+              <History className="w-4 h-4" aria-hidden="true" /> Execution log
             </TabsTrigger>
           </TabsList>
 
           <TabsContent value="rules" className="space-y-4">
             {isLoading ? (
               <Card>
-                <CardContent className="flex items-center justify-center py-12">
-                  <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+                <CardContent className="flex items-center justify-center py-12" role="status" aria-label="Loading automation rules">
+                  <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" aria-hidden="true" />
                 </CardContent>
               </Card>
             ) : rules && rules.length > 0 ? (
-              <div className="grid gap-4">
-                {rules.map((rule) => (
-                  <Card key={rule.id} data-testid={`card-rule-${rule.id}`}>
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex-1 space-y-2">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className="font-semibold">{rule.name}</h3>
-                            <Badge variant={rule.isEnabled ? "default" : "secondary"}>
-                              {rule.isEnabled ? "Active" : "Paused"}
-                            </Badge>
+              <ul className="grid gap-4 list-none p-0 m-0" aria-label="Your automation rules">
+                {rules.map((rule) => {
+                  const actionCount = (rule.actions as Action[])?.length || 0;
+                  return (
+                    <li key={rule.id}>
+                      <Card data-testid={`card-rule-${rule.id}`}>
+                        <CardContent className="p-4">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex-1 space-y-2">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h3 className="font-semibold">{rule.name}</h3>
+                                <Badge
+                                  variant={rule.isEnabled ? "default" : "secondary"}
+                                  aria-label={rule.isEnabled ? "Status: active" : "Status: paused"}
+                                >
+                                  {rule.isEnabled ? "Active" : "Paused"}
+                                </Badge>
+                              </div>
+
+                              {rule.description && (
+                                <p className="text-sm text-muted-foreground">{rule.description}</p>
+                              )}
+
+                              <dl className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
+                                <div className="flex items-center gap-1">
+                                  <Zap className="w-4 h-4" aria-hidden="true" />
+                                  <dt className="sr-only">Trigger</dt>
+                                  <dd>{TRIGGERS.find(t => t.value === rule.trigger)?.label || rule.trigger}</dd>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <Settings2 className="w-4 h-4" aria-hidden="true" />
+                                  <dt className="sr-only">Actions</dt>
+                                  <dd className="tabular-nums">
+                                    {actionCount} action{actionCount === 1 ? "" : "s"}
+                                  </dd>
+                                </div>
+                                {rule.executionCount !== null && rule.executionCount > 0 && (
+                                  <div className="flex items-center gap-1">
+                                    <Clock className="w-4 h-4" aria-hidden="true" />
+                                    <dt className="sr-only">Runs</dt>
+                                    <dd className="tabular-nums">
+                                      {rule.executionCount} run{rule.executionCount === 1 ? "" : "s"}
+                                    </dd>
+                                  </div>
+                                )}
+                              </dl>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              <Switch
+                                checked={rule.isEnabled ?? true}
+                                onCheckedChange={(checked) => toggleMutation.mutate({ id: rule.id, enabled: checked })}
+                                data-testid={`switch-rule-${rule.id}`}
+                                aria-label={`${rule.isEnabled ? "Pause" : "Activate"} rule: ${rule.name}`}
+                              />
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => openEditDialog(rule)}
+                                aria-label={`Edit rule: ${rule.name}`}
+                              >
+                                <Edit className="w-4 h-4" aria-hidden="true" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => setDeleteRuleId(rule.id)}
+                                disabled={deleteMutation.isPending}
+                                aria-label={`Delete rule: ${rule.name}`}
+                              >
+                                <Trash2 className="w-4 h-4" aria-hidden="true" />
+                              </Button>
+                            </div>
                           </div>
-                          
-                          {rule.description && (
-                            <p className="text-sm text-muted-foreground">{rule.description}</p>
-                          )}
-                          
-                          <div className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
-                            <span className="flex items-center gap-1">
-                              <Zap className="w-4 h-4" />
-                              {TRIGGERS.find(t => t.value === rule.trigger)?.label || rule.trigger}
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <Settings2 className="w-4 h-4" />
-                              {(rule.actions as Action[])?.length || 0} action(s)
-                            </span>
-                            {rule.executionCount !== null && rule.executionCount > 0 && (
-                              <span className="flex items-center gap-1">
-                                <Clock className="w-4 h-4" />
-                                {rule.executionCount} runs
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        
-                        <div className="flex items-center gap-2">
-                          <Switch
-                            checked={rule.isEnabled ?? true}
-                            onCheckedChange={(checked) => toggleMutation.mutate({ id: rule.id, enabled: checked })}
-                            data-testid={`switch-rule-${rule.id}`}
-                          />
-                          <Button variant="ghost" size="icon" onClick={() => openEditDialog(rule)} aria-label="Edit rule">
-                            <Edit className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => setDeleteRuleId(rule.id)}
-                            disabled={deleteMutation.isPending}
-                            aria-label="Delete rule"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+                        </CardContent>
+                      </Card>
+                    </li>
+                  );
+                })}
+              </ul>
             ) : (
               <Card>
                 <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-                  <Workflow className="w-12 h-12 text-muted-foreground mb-4" />
+                  <Workflow className="w-12 h-12 text-muted-foreground mb-4" aria-hidden="true" />
                   <h3 className="text-lg font-semibold mb-2">No automation rules yet</h3>
                   <p className="text-muted-foreground mb-4">Create your first rule to automate your workflows</p>
                   <Button onClick={() => { resetForm(); setIsCreateOpen(true); }}>
-                    <Plus className="w-4 h-4 mr-2" /> Create Rule
+                    <Plus className="w-4 h-4 mr-2" aria-hidden="true" /> Create rule
                   </Button>
                 </CardContent>
               </Card>
@@ -585,41 +636,57 @@ export default function AutomationPage() {
 
           <TabsContent value="executions" className="space-y-4">
             {executions && executions.length > 0 ? (
-              <div className="space-y-2">
-                {executions.map((exec) => (
-                  <Card key={exec.id}>
-                    <CardContent className="p-4">
-                      <div className="flex items-center justify-between gap-4">
-                        <div className="flex items-center gap-3">
-                          {exec.status === "completed" ? (
-                            <CheckCircle2 className="w-5 h-5 text-green-500" />
-                          ) : exec.status === "failed" ? (
-                            <AlertCircle className="w-5 h-5 text-red-500" />
-                          ) : (
-                            <Clock className="w-5 h-5 text-amber-500" />
-                          )}
-                          <div>
-                            <p className="font-medium">Rule #{exec.ruleId}</p>
-                            <p className="text-sm text-muted-foreground">
-                              {TRIGGERS.find(t => t.value === exec.trigger)?.label || exec.trigger}
-                            </p>
+              <ul className="space-y-2 list-none p-0 m-0" aria-label="Automation rule execution history">
+                {executions.map((exec) => {
+                  const statusLabel = exec.status === "completed"
+                    ? "Completed"
+                    : exec.status === "failed"
+                    ? "Failed"
+                    : "Pending";
+                  return (
+                    <li key={exec.id}>
+                      <Card>
+                        <CardContent className="p-4">
+                          <div className="flex items-center justify-between gap-4">
+                            <div className="flex items-center gap-3">
+                              {exec.status === "completed" ? (
+                                <CheckCircle2 className="w-5 h-5 text-green-500" aria-label="Completed" />
+                              ) : exec.status === "failed" ? (
+                                <AlertCircle className="w-5 h-5 text-red-500" aria-label="Failed" />
+                              ) : (
+                                <Clock className="w-5 h-5 text-amber-500" aria-label="Pending" />
+                              )}
+                              <div>
+                                <p className="font-medium">
+                                  Rule <span className="tabular-nums">#{exec.ruleId}</span>
+                                  <span className="sr-only"> — {statusLabel}</span>
+                                </p>
+                                <p className="text-sm text-muted-foreground">
+                                  {TRIGGERS.find(t => t.value === exec.trigger)?.label || exec.trigger}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="text-right text-sm text-muted-foreground">
+                              {exec.executedAt && (
+                                <time dateTime={String(exec.executedAt)}>
+                                  {format(new Date(exec.executedAt), "MMM d, yyyy h:mm a")}
+                                </time>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                        <div className="text-right text-sm text-muted-foreground">
-                          {exec.executedAt && format(new Date(exec.executedAt), "MMM d, yyyy h:mm a")}
-                        </div>
-                      </div>
-                      {exec.error && (
-                        <p className="text-sm text-red-500 mt-2">{exec.error}</p>
-                      )}
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+                          {exec.error && (
+                            <p className="text-sm text-red-500 mt-2" role="alert">{exec.error}</p>
+                          )}
+                        </CardContent>
+                      </Card>
+                    </li>
+                  );
+                })}
+              </ul>
             ) : (
               <Card>
                 <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-                  <History className="w-12 h-12 text-muted-foreground mb-4" />
+                  <History className="w-12 h-12 text-muted-foreground mb-4" aria-hidden="true" />
                   <h3 className="text-lg font-semibold mb-2">No executions yet</h3>
                   <p className="text-muted-foreground">Automation executions will appear here when rules are triggered</p>
                 </CardContent>
@@ -631,7 +698,7 @@ export default function AutomationPage() {
         <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
           <DialogContent className="max-w-2xl">
             <DialogHeader>
-              <DialogTitle>Create Automation Rule</DialogTitle>
+              <DialogTitle>Create automation rule</DialogTitle>
             </DialogHeader>
             <RuleWizard onClose={() => setIsCreateOpen(false)} />
           </DialogContent>
@@ -640,7 +707,7 @@ export default function AutomationPage() {
         <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
           <DialogContent className="max-w-2xl">
             <DialogHeader>
-              <DialogTitle>Edit Automation Rule</DialogTitle>
+              <DialogTitle>Edit automation rule</DialogTitle>
             </DialogHeader>
             <RuleWizard onClose={() => setIsEditOpen(false)} />
           </DialogContent>
@@ -649,9 +716,9 @@ export default function AutomationPage() {
         <ConfirmDialog
           open={deleteRuleId !== null}
           onOpenChange={(open) => !open && setDeleteRuleId(null)}
-          title="Delete Automation Rule"
+          title="Delete automation rule"
           description="Are you sure you want to delete this automation rule? This action cannot be undone."
-          confirmLabel="Delete Rule"
+          confirmLabel="Delete rule"
           onConfirm={() => { deleteMutation.mutate(deleteRuleId!); setDeleteRuleId(null); }}
           isLoading={deleteMutation.isPending}
           variant="destructive"
