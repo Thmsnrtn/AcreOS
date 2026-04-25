@@ -464,9 +464,11 @@ export function WorkflowBuilder({ open, onOpenChange, workflow, onSave, isSaving
           <div className="space-y-3" data-testid={`action-config-${action.id}`}>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label>Amount</Label>
+                <Label htmlFor={`input-delay-amount-${action.id}`}>Amount</Label>
                 <Input
+                  id={`input-delay-amount-${action.id}`}
                   type="number"
+                  inputMode="numeric"
                   min={1}
                   placeholder="30"
                   value={displayValue || ""}
@@ -479,7 +481,7 @@ export function WorkflowBuilder({ open, onOpenChange, workflow, onSave, isSaving
                 />
               </div>
               <div>
-                <Label>Unit</Label>
+                <Label htmlFor={`select-delay-unit-${action.id}`}>Unit</Label>
                 <Select
                   value={displayUnit}
                   onValueChange={(v) => {
@@ -492,7 +494,7 @@ export function WorkflowBuilder({ open, onOpenChange, workflow, onSave, isSaving
                     });
                   }}
                 >
-                  <SelectTrigger data-testid={`select-delay-unit-${action.id}`}>
+                  <SelectTrigger id={`select-delay-unit-${action.id}`} data-testid={`select-delay-unit-${action.id}`}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
