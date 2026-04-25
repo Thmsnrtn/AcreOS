@@ -2,7 +2,6 @@ import { PageShell } from "@/components/page-shell";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
@@ -16,14 +15,14 @@ import { motion } from "framer-motion";
 import { staggerContainer, staggerItem } from "@/lib/animations";
 import {
   DollarSign, Users, Smile, Frown, Meh, AlertTriangle, TrendingUp,
-  TrendingDown, CheckCircle2, Bot, Clock, Sparkles, Sun, Moon, Sunset,
+  TrendingDown, CheckCircle2, Bot, Sparkles, Sun, Moon, Sunset,
   ShieldCheck, ShieldAlert, ShieldX,
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
-import { relative } from "@/lib/format";
+import { relative, usd } from "@/lib/format";
+import { useToast } from "@/hooks/use-toast";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useState } from "react";
-
-// ── Types ────────────────────────────────────────────────────────────
 
 interface ExecutiveMetrics {
   mrr: number;
@@ -69,11 +68,12 @@ interface AgentHealth {
   runCount: number;
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────
-
 const AGENT_NAMES: Record<string, string> = {
-  customer_success: "Customer Success", growth: "Growth Engine",
-  revenue: "Revenue Optimizer", operations: "Operations Monitor", digest: "Daily Digest",
+  customer_success: "Customer success",
+  growth: "Growth engine",
+  revenue: "Revenue optimizer",
+  operations: "Operations monitor",
+  digest: "Daily digest",
 };
 
 const STATUS_CFG: Record<string, { label: string; color: string }> = {
@@ -83,9 +83,7 @@ const STATUS_CFG: Record<string, { label: string; color: string }> = {
   disabled: { label: "Paused", color: "bg-muted-foreground" },
 };
 
-function fmtCurrency(v: number) {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(v);
-}
+const reassurance = "Your settings are unchanged — try again.";
 
 function getGreeting() {
   const h = new Date().getHours();
@@ -93,8 +91,6 @@ function getGreeting() {
   if (h < 18) return { text: "Good afternoon", Icon: Sunset };
   return { text: "Good evening", Icon: Moon };
 }
-
-// ── Data Hooks ───────────────────────────────────────────────────────
 
 const useMetrics = () => useQuery<ExecutiveMetrics>({ queryKey: ["/api/founder/executive-dashboard"], staleTime: 120_000 });
 const useActionQueue = () => useQuery<ActionQueueData>({ queryKey: ["/api/founder/action-queue"], staleTime: 300_000 });
@@ -107,8 +103,6 @@ const useFounderTodo = () =>
     staleTime: 60_000,
   });
 
-// ── Section 1c: What needs you ───────────────────────────────────────
-
 function WhatNeedsYouCard({
   data,
 }: {
@@ -120,7 +114,7 @@ function WhatNeedsYouCard({
       <motion.div variants={staggerItem}>
         <Card>
           <CardContent className="p-6 flex items-center gap-3">
-            <CheckCircle2 className="h-6 w-6 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <CheckCircle2 className="h-6 w-6 text-emerald-600 dark:text-emerald-400 shrink-0" aria-hidden="true" />
             <div>
               <h2 className="text-lg font-semibold text-foreground">Inbox zero</h2>
               <p className="text-sm text-muted-foreground">
@@ -146,37 +140,40 @@ function WhatNeedsYouCard({
               See all →
             </a>
           </div>
-          <ul>
-            {top5.map((item) => (
-              <li key={`${item.type}-${item.id}`} className="border-b border-border last:border-b-0">
-                <a
-                  href={item.actionUrl}
-                  className={`flex items-start gap-3 p-3 hover:bg-muted/40 transition border-l-4 ${urgencyTint(item.urgency)}`}
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-foreground truncate">{item.title}</p>
-                    <p className="text-[11px] text-muted-foreground truncate mt-0.5">
-                      {item.type.replace(/_/g, " ")}
-                      {item.badge ? ` · ${item.badge}` : ""}
-                      {item.estimatedImpactCents != null && item.estimatedImpactCents !== 0
-                        ? ` · ${item.estimatedImpactCents > 0 ? "+" : ""}$${Math.abs(item.estimatedImpactCents / 100).toLocaleString()}`
-                        : ""}
-                    </p>
-                  </div>
-                  <span className="text-[10px] text-muted-foreground shrink-0 mt-1">
-                    {item.urgency}
-                  </span>
-                </a>
-              </li>
-            ))}
+          <ul aria-label="Top 5 items needing your attention">
+            {top5.map((item) => {
+              const impactCents = item.estimatedImpactCents;
+              const impactLabel = impactCents != null && impactCents !== 0
+                ? `${impactCents > 0 ? "+" : "−"}${usd(Math.abs(impactCents) / 100, { noCents: true })}`
+                : null;
+              return (
+                <li key={`${item.type}-${item.id}`} className="border-b border-border last:border-b-0">
+                  <a
+                    href={item.actionUrl}
+                    className={`flex items-start gap-3 p-3 hover:bg-muted/40 transition border-l-4 ${urgencyTint(item.urgency)}`}
+                    aria-label={`${item.title} — urgency ${item.urgency}${impactLabel ? `, impact ${impactLabel}` : ""}`}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-foreground truncate">{item.title}</p>
+                      <p className="text-[11px] text-muted-foreground truncate mt-0.5">
+                        {item.type.replace(/_/g, " ")}
+                        {item.badge ? ` · ${item.badge}` : ""}
+                        {impactLabel ? ` · ${impactLabel}` : ""}
+                      </p>
+                    </div>
+                    <span className="text-[10px] text-muted-foreground shrink-0 mt-1 tabular-nums" aria-hidden="true">
+                      {item.urgency}
+                    </span>
+                  </a>
+                </li>
+              );
+            })}
           </ul>
         </CardContent>
       </Card>
     </motion.div>
   );
 }
-
-// ── Section 1b: Autonomy Health ──────────────────────────────────────
 
 function AutonomyHealthCard({ report }: { report: AutonomyHealthReport }) {
   const bandCfg: Record<Band, { bg: string; text: string; Icon: typeof ShieldCheck; label: string }> = {
@@ -195,27 +192,37 @@ function AutonomyHealthCard({ report }: { report: AutonomyHealthReport }) {
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 mb-1">
                 <h2 className={`text-lg font-semibold ${cfg.text}`}>Autonomy: {cfg.label}</h2>
-                <Badge variant="secondary" className="text-xs">{report.band.toUpperCase()}</Badge>
+                <Badge variant="secondary" className="text-xs" aria-label={`Band: ${report.band}`}>{report.band.toUpperCase()}</Badge>
               </div>
               <p className="text-sm text-foreground mb-2">{report.verdict}</p>
               <p className="text-xs text-muted-foreground">{report.recommendedAction}</p>
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mt-4">
+              <ul className="grid grid-cols-2 sm:grid-cols-5 gap-2 mt-4 list-none p-0" aria-label="Autonomy dimensions">
                 {dims.map(([key, d]) => {
                   const dotColor =
                     d.band === "green" ? "bg-emerald-500" : d.band === "yellow" ? "bg-amber-500" : "bg-red-500";
+                  const niceKey = key.replace(/([A-Z])/g, " $1").trim();
                   return (
-                    <div key={key} className="flex items-start gap-2" title={d.note}>
-                      <span className={`h-2 w-2 rounded-full mt-1.5 shrink-0 ${dotColor}`} />
+                    <li
+                      key={key}
+                      className="flex items-start gap-2"
+                      title={d.note}
+                      aria-label={`${niceKey}: ${d.value}, band ${d.band}. ${d.note}`}
+                    >
+                      <span
+                        className={`h-2 w-2 rounded-full mt-1.5 shrink-0 ${dotColor}`}
+                        role="img"
+                        aria-label={`Band: ${d.band}`}
+                      />
                       <div className="min-w-0">
                         <p className="text-[11px] font-medium text-foreground capitalize leading-tight">
-                          {key.replace(/([A-Z])/g, " $1").trim()}
+                          {niceKey}
                         </p>
-                        <p className="text-[10px] text-muted-foreground truncate">{String(d.value)}</p>
+                        <p className="text-[10px] text-muted-foreground truncate tabular-nums">{String(d.value)}</p>
                       </div>
-                    </div>
+                    </li>
                   );
                 })}
-              </div>
+              </ul>
             </div>
           </div>
         </CardContent>
@@ -223,8 +230,6 @@ function AutonomyHealthCard({ report }: { report: AutonomyHealthReport }) {
     </motion.div>
   );
 }
-
-// ── Section 1: Hero ──────────────────────────────────────────────────
 
 function HeroCard({ metrics, actionCount }: { metrics?: ExecutiveMetrics; actionCount: number }) {
   const { text, Icon } = getGreeting();
@@ -242,8 +247,8 @@ function HeroCard({ metrics, actionCount }: { metrics?: ExecutiveMetrics; action
     <motion.div variants={staggerItem}>
       <Card className={statusBg}>
         <CardContent className="p-6 flex items-center gap-4">
-          <Icon className={`h-8 w-8 ${statusColor} shrink-0`} />
-          <div>
+          <Icon className={`h-8 w-8 ${statusColor} shrink-0`} aria-hidden="true" />
+          <div role="status" aria-label={`${text}. ${statusText}`}>
             <h1 className="text-2xl font-bold text-foreground">{text}</h1>
             <p className={`text-sm font-medium ${statusColor}`}>{statusText}</p>
           </div>
@@ -253,87 +258,53 @@ function HeroCard({ metrics, actionCount }: { metrics?: ExecutiveMetrics; action
   );
 }
 
-// ── Section 2: Metrics ───────────────────────────────────────────────
-
 function MetricCards({ metrics }: { metrics: ExecutiveMetrics }) {
   const nps = metrics.nps.score;
   const NpsIcon = nps > 50 ? Smile : nps >= 20 ? Meh : Frown;
   const npsColor = nps > 50 ? "text-emerald-600" : nps >= 20 ? "text-amber-600" : "text-red-600";
   const cards = [
-    { icon: DollarSign, label: "Monthly Revenue", value: fmtCurrency(metrics.mrr), iconColor: "text-emerald-600",
+    { icon: DollarSign, label: "Monthly revenue", value: usd(metrics.mrr, { noCents: true }), iconColor: "text-emerald-600",
       trend: null as { up: boolean; text: string } | null },
-    { icon: Users, label: "Active Customers", value: metrics.activeOrganizations.toLocaleString(), iconColor: "text-blue-600",
+    { icon: Users, label: "Active customers", value: metrics.activeOrganizations.toLocaleString(), iconColor: "text-blue-600",
       trend: metrics.newOrgsLast30Days > 0 ? { up: true, text: `+${metrics.newOrgsLast30Days} this month` } : null },
-    { icon: NpsIcon, label: "Customer Satisfaction", value: `${nps}`, iconColor: npsColor, trend: null },
-    { icon: AlertTriangle, label: "Churn Risk",
+    { icon: NpsIcon, label: "Customer satisfaction", value: `${nps}`, iconColor: npsColor, trend: null },
+    { icon: AlertTriangle, label: "Churn risk",
       value: `${metrics.churnedOrgsLast30Days} customer${metrics.churnedOrgsLast30Days !== 1 ? "s" : ""} at risk`,
       iconColor: metrics.churnedOrgsLast30Days > 0 ? "text-red-600" : "text-emerald-600",
       trend: metrics.churnRate > 0 ? { up: false, text: `${metrics.churnRate}% churn rate` } : null },
   ];
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       {cards.map((c) => (
         <motion.div key={c.label} variants={staggerItem}>
           <Card className="h-full">
             <CardContent className="p-5">
-              <c.icon className={`h-5 w-5 mb-3 ${c.iconColor}`} />
-              <p className="text-sm text-muted-foreground mb-1">{c.label}</p>
-              <p className="text-2xl font-bold text-foreground">{c.value}</p>
+              <c.icon className={`h-5 w-5 mb-3 ${c.iconColor}`} aria-hidden="true" />
+              <dt className="text-sm text-muted-foreground mb-1">{c.label}</dt>
+              <dd className="text-2xl font-bold text-foreground tabular-nums">{c.value}</dd>
               {c.trend && (
                 <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                  {c.trend.up ? <TrendingUp className="h-3 w-3 text-emerald-500" /> : <TrendingDown className="h-3 w-3 text-red-500" />}
-                  {c.trend.text}
+                  {c.trend.up ? <TrendingUp className="h-3 w-3 text-emerald-500" aria-hidden="true" /> : <TrendingDown className="h-3 w-3 text-red-500" aria-hidden="true" />}
+                  <span className="tabular-nums">{c.trend.text}</span>
                 </p>
               )}
             </CardContent>
           </Card>
         </motion.div>
       ))}
-    </div>
+    </dl>
   );
 }
-
-// ── Section 3: Attention Queue ───────────────────────────────────────
-
-function AttentionQueue({ data }: { data: ActionQueueData }) {
-  const items = data.items.slice(0, 8);
-  if (items.length === 0) {
-    return <EmptyState icon={CheckCircle2} title="All clear!" description="Your platform is humming along. Nothing needs your attention right now." />;
-  }
-  return (
-    <div className="space-y-2">
-      {items.map((item) => (
-        <motion.div key={item.id} variants={staggerItem}>
-          <Card>
-            <CardContent className="p-4 flex items-center justify-between gap-4">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 mb-0.5">
-                  <p className="text-sm font-medium text-foreground truncate">{item.title}</p>
-                  {item.priority === "critical" && <Badge variant="destructive" className="text-xs shrink-0">Urgent</Badge>}
-                  {item.priority === "high" && (
-                    <Badge variant="secondary" className="text-xs bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 shrink-0">Important</Badge>
-                  )}
-                </div>
-                <p className="text-xs text-muted-foreground truncate">{item.description}</p>
-              </div>
-              <Button variant="outline" size="sm" className="shrink-0">Review</Button>
-            </CardContent>
-          </Card>
-        </motion.div>
-      ))}
-    </div>
-  );
-}
-
-// ── Section 4: Agent Cards ───────────────────────────────────────────
 
 function AgentCards({ agents }: { agents: AgentHealth[] }) {
   const qc = useQueryClient();
+  const { toast } = useToast();
   const [pending, setPending] = useState<{ name: string; enabled: boolean } | null>(null);
   const toggle = useMutation({
     mutationFn: async ({ name, enabled }: { name: string; enabled: boolean }) =>
       (await apiRequest("POST", `/api/admin/agents/${name}/toggle`, { enabled })).json(),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/admin/agents/status"] }),
+    onError: (e: any) => toast({ title: "Couldn't toggle agent", description: `${e.message}. ${reassurance}`, variant: "destructive" }),
   });
 
   function summary(a: AgentHealth) {
@@ -346,22 +317,32 @@ function AgentCards({ agents }: { agents: AgentHealth[] }) {
   if (agents.length === 0) return <EmptyState icon={Bot} title="No agents configured" description="Autonomous agents will appear here once set up." />;
 
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
+    <ul className="grid gap-3 sm:grid-cols-2 list-none p-0 m-0" aria-label="Autonomous agents">
       {agents.map((agent) => {
         const st = STATUS_CFG[agent.status] ?? STATUS_CFG.disabled;
         const friendly = AGENT_NAMES[agent.name] ?? agent.name;
         return (
-          <motion.div key={agent.name} variants={staggerItem}>
+          <motion.li key={agent.name} variants={staggerItem}>
             <Card>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    <span className={`h-2.5 w-2.5 rounded-full ${st.color}`} />
+                    <span
+                      className={`h-2.5 w-2.5 rounded-full ${st.color}`}
+                      role="img"
+                      aria-label={`Status: ${st.label.toLowerCase()}`}
+                    />
                     <h3 className="text-sm font-medium text-foreground">{friendly}</h3>
                   </div>
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
-                      <div><Switch checked={agent.enabled} onCheckedChange={() => setPending({ name: agent.name, enabled: !agent.enabled })} aria-label={`Toggle ${friendly}`} /></div>
+                      <div>
+                        <Switch
+                          checked={agent.enabled}
+                          onCheckedChange={() => setPending({ name: agent.name, enabled: !agent.enabled })}
+                          aria-label={`${agent.enabled ? "Pause" : "Enable"} agent: ${friendly}`}
+                        />
+                      </div>
                     </AlertDialogTrigger>
                     {pending?.name === agent.name && (
                       <AlertDialogContent>
@@ -382,25 +363,22 @@ function AgentCards({ agents }: { agents: AgentHealth[] }) {
                   </AlertDialog>
                 </div>
                 <p className="text-xs text-muted-foreground">{summary(agent)}</p>
-                <Badge variant="secondary" className="mt-2 text-xs">{st.label}</Badge>
+                <Badge variant="secondary" className="mt-2 text-xs" aria-label={`Status: ${st.label}`}>{st.label}</Badge>
               </CardContent>
             </Card>
-          </motion.div>
+          </motion.li>
         );
       })}
-    </div>
+    </ul>
   );
 }
-
-// ── Skeletons ────────────────────────────────────────────────────────
 
 const Skel = ({ children, className = "" }: { children: React.ReactNode; className?: string }) => (
   <Card className={className}><CardContent className="p-5">{children}</CardContent></Card>
 );
 
-// ── Main Page ────────────────────────────────────────────────────────
-
 export default function FounderHome() {
+  useDocumentTitle("Founder home");
   const metrics = useMetrics();
   const actions = useActionQueue();
   const agents = useAgents();
@@ -412,7 +390,7 @@ export default function FounderHome() {
 
   if (isAnyError) {
     return (
-      <PageShell label="Founder Home">
+      <PageShell label="Founder home">
         <QueryErrorState
           error={metrics.error || actions.error || agents.error}
           onRetry={() => { metrics.refetch(); actions.refetch(); agents.refetch(); }}
@@ -424,52 +402,43 @@ export default function FounderHome() {
   }
 
   return (
-    <PageShell label="Founder Home" isLoading={allLoading}>
+    <PageShell label="Founder home" isLoading={allLoading}>
       <motion.div variants={staggerContainer} initial="hidden" animate="visible" className="space-y-8 max-w-5xl mx-auto">
-        {/* Section 1: Greeting */}
         {metrics.isLoading ? (
           <Skel><Skeleton className="h-8 w-48 mb-2" /><Skeleton className="h-5 w-64" /></Skel>
         ) : (
           <HeroCard metrics={metrics.data} actionCount={actions.data?.items.length ?? 0} />
         )}
 
-        {/* Section 1b: Autonomy Health — single glance signal */}
         {autonomy.isLoading ? (
           <Skel><Skeleton className="h-8 w-40 mb-2" /><Skeleton className="h-4 w-72" /></Skel>
         ) : autonomy.data ? (
           <AutonomyHealthCard report={autonomy.data} />
         ) : null}
 
-        {/* Section 1c: What needs you — top-5 unified todos */}
         {todo.isLoading ? (
           <Skel><Skeleton className="h-5 w-32 mb-3" /><Skeleton className="h-12 w-full" /></Skel>
         ) : (
           <WhatNeedsYouCard data={todo.data} />
         )}
 
-        {/* Section 2: Business Metrics */}
-        <section>
-          <h2 className="text-lg font-semibold text-foreground mb-3 flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-muted-foreground" />Your Business Today
+        <section aria-labelledby="business-today-heading">
+          <h2 id="business-today-heading" className="text-lg font-semibold text-foreground mb-3 flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-muted-foreground" aria-hidden="true" />Your business today
           </h2>
           {metrics.isLoading ? (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" role="status" aria-label="Loading business metrics">
               {[1, 2, 3, 4].map((i) => <Skel key={i}><Skeleton className="h-4 w-4 mb-3 rounded" /><Skeleton className="h-3 w-24 mb-2" /><Skeleton className="h-7 w-16" /></Skel>)}
             </div>
           ) : metrics.data ? <MetricCards metrics={metrics.data} /> : null}
         </section>
 
-        {/* Section 3 (Attention Queue) was removed — the new
-            WhatNeedsYouCard above (section 1c) supersedes it with a
-            unified ranked feed across 7 inbox sources instead of one. */}
-
-        {/* Section 4: Agent Team */}
-        <section>
-          <h2 className="text-lg font-semibold text-foreground mb-3 flex items-center gap-2">
-            <Bot className="h-4 w-4 text-muted-foreground" />Your Automation Team
+        <section aria-labelledby="automation-team-heading">
+          <h2 id="automation-team-heading" className="text-lg font-semibold text-foreground mb-3 flex items-center gap-2">
+            <Bot className="h-4 w-4 text-muted-foreground" aria-hidden="true" />Your automation team
           </h2>
           {agents.isLoading ? (
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-2" role="status" aria-label="Loading agents">
               {[1, 2, 3, 4].map((i) => <Skel key={i}><div className="flex items-center justify-between"><div className="space-y-1"><Skeleton className="h-4 w-32" /><Skeleton className="h-3 w-48" /></div><Skeleton className="h-5 w-9 rounded-full" /></div></Skel>)}
             </div>
           ) : agents.data ? <AgentCards agents={agents.data} /> : null}
