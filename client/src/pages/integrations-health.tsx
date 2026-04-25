@@ -4,6 +4,7 @@
  * Mounted at /admin/integrations-health — founder-only
  */
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { RefreshCw, CheckCircle2, AlertTriangle, XCircle, HelpCircle, Activity } from "lucide-react";
@@ -192,9 +193,9 @@ export default function IntegrationsHealth() {
           <p>
             Sophie Observer automatically sends an alert when any integration degrades below
             operational status. Configure notification preferences in{" "}
-            <a href="/settings" className="underline text-primary">
+            <Link href="/settings" className="underline text-primary">
               Settings → Notifications
-            </a>
+            </Link>
             .
           </p>
         </CardContent>

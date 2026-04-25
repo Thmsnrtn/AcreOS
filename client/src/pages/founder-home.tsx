@@ -1,5 +1,6 @@
 import { PageShell } from "@/components/page-shell";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
@@ -136,9 +137,9 @@ function WhatNeedsYouCard({
             <h2 className="text-base font-semibold text-foreground">
               What needs you ({data?.total ?? 0})
             </h2>
-            <a href="/founder/todo" className="text-xs text-muted-foreground hover:text-foreground">
+            <Link href="/founder/todo" className="text-xs text-muted-foreground hover:text-foreground">
               See all →
-            </a>
+            </Link>
           </div>
           <ul aria-label="Top 5 items needing your attention">
             {top5.map((item) => {

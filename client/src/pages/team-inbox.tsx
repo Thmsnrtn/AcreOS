@@ -1,5 +1,6 @@
 import { useId, useState, useEffect, useRef, type FormEvent } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { fetchJsonArray } from "@/lib/queryClient";
 import { Sidebar, useSidebarCollapsed } from "@/components/layout-sidebar";
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -525,7 +526,7 @@ export default function TeamInboxPage() {
                 Team messaging requires a plan with 2 or more seats.
               </p>
               <Button asChild variant="outline">
-                <a href="/settings/billing">Upgrade plan</a>
+                <Link href="/settings/billing">Upgrade plan</Link>
               </Button>
             </div>
           )}

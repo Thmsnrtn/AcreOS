@@ -1,5 +1,5 @@
 import React, { useId, useState, useEffect, useRef, useCallback } from "react";
-import { useLocation } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -2242,9 +2242,9 @@ export default function FounderDashboard() {
                   <p className="text-sm text-muted-foreground mb-3">
                     View status of all external API integrations and get CLI commands to configure them.
                   </p>
-                  <a href="/founder/integrations" className="text-sm text-primary hover:underline font-medium">
-                    Open Integrations Dashboard &rarr;
-                  </a>
+                  <Link href="/founder/integrations" className="text-sm text-primary hover:underline font-medium">
+                    Open integrations dashboard &rarr;
+                  </Link>
                 </CardContent>
               </Card>
               <ThePulse decisionsInboxCount={decisionsInboxData?.totalPending} />

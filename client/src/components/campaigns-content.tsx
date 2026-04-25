@@ -3,6 +3,7 @@ import { usd } from "@/lib/format";
 import { useLeads } from "@/hooks/use-leads";
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -1505,7 +1506,7 @@ function CampaignForm({ onSuccess }: { onSuccess: () => void }) {
           <option value="new">New (never contacted)</option>
         </select>
         <p className="text-xs text-muted-foreground">
-          Or upload a fresh CSV on the <a href="/leads" className="underline hover:text-foreground">Leads</a> page and come back here.
+          Or upload a fresh CSV on the <Link href="/leads" className="underline hover:text-foreground">Leads</Link> page and come back here.
         </p>
       </div>
 
