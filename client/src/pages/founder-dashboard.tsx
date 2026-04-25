@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { SystemHealth } from "@/components/system-health";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -3992,12 +3993,12 @@ export default function FounderDashboard() {
                 </div>
                 <div className="flex items-center gap-3 flex-wrap">
                   <div className="flex items-center gap-2">
-                    <label className="text-sm text-muted-foreground">Filter by state:</label>
-                    <Select 
-                      value={discoveryStateFilter} 
+                    <Label htmlFor="discovery-state-filter" className="text-sm text-muted-foreground">Filter by state:</Label>
+                    <Select
+                      value={discoveryStateFilter}
                       onValueChange={setDiscoveryStateFilter}
                     >
-                      <SelectTrigger className="w-32" data-testid="select-discovery-state-filter">
+                      <SelectTrigger id="discovery-state-filter" className="w-32" data-testid="select-discovery-state-filter">
                         <SelectValue placeholder="All states" />
                       </SelectTrigger>
                       <SelectContent>
@@ -4054,12 +4055,15 @@ export default function FounderDashboard() {
                     </Select>
                   </div>
                   <div className="flex items-center gap-2">
-                    <label className="text-sm text-muted-foreground">Scan target states:</label>
+                    <Label htmlFor="scan-target-states" className="text-sm text-muted-foreground">Scan target states:</Label>
                     <input
+                      id="scan-target-states"
                       type="text"
                       placeholder="e.g., TX, AZ, NM"
                       value={scanTargetStates}
                       onChange={(e) => setScanTargetStates(e.target.value)}
+                      autoCapitalize="characters"
+                      autoComplete="off"
                       className="h-9 w-40 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
                       data-testid="input-scan-target-states"
                     />
@@ -5479,26 +5483,30 @@ function GrowthSection() {
       {/* Ad account connection form */}
       {showAdAccountForm && (
         <div className="p-4 border rounded-lg bg-muted/30 space-y-3">
-          <h3 className="font-medium text-sm">Meta Ad Account Credentials</h3>
+          <h3 className="font-medium text-sm">Meta ad-account credentials</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Ad Account ID</label>
-              <Input placeholder="act_123456789" className="h-8 text-sm" value={adForm.adAccountId}
+              <Label htmlFor="ad-account-id" className="text-xs text-muted-foreground mb-1 block">Ad account ID</Label>
+              <Input id="ad-account-id" placeholder="act_123456789" className="h-8 text-sm" value={adForm.adAccountId}
+                autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
                 onChange={(e) => setAdForm((f) => ({ ...f, adAccountId: e.target.value }))} />
             </div>
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Access Token</label>
-              <Input type="password" placeholder="EAAxxxxxxx" className="h-8 text-sm" value={adForm.accessToken}
+              <Label htmlFor="meta-access-token" className="text-xs text-muted-foreground mb-1 block">Access token</Label>
+              <Input id="meta-access-token" type="password" placeholder="EAAxxxxxxx" className="h-8 text-sm" value={adForm.accessToken}
+                autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
                 onChange={(e) => setAdForm((f) => ({ ...f, accessToken: e.target.value }))} />
             </div>
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Pixel ID (for conversion tracking)</label>
-              <Input placeholder="123456789" className="h-8 text-sm" value={adForm.pixelId}
+              <Label htmlFor="meta-pixel-id" className="text-xs text-muted-foreground mb-1 block">Pixel ID <span className="text-muted-foreground/70">(for conversion tracking)</span></Label>
+              <Input id="meta-pixel-id" placeholder="123456789" className="h-8 text-sm" value={adForm.pixelId}
+                inputMode="numeric" autoComplete="off"
                 onChange={(e) => setAdForm((f) => ({ ...f, pixelId: e.target.value }))} />
             </div>
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Facebook Page / App ID</label>
-              <Input placeholder="Meta Page or App ID" className="h-8 text-sm" value={adForm.appId}
+              <Label htmlFor="meta-app-id" className="text-xs text-muted-foreground mb-1 block">Facebook page / app ID</Label>
+              <Input id="meta-app-id" placeholder="Meta page or app ID" className="h-8 text-sm" value={adForm.appId}
+                autoComplete="off"
                 onChange={(e) => setAdForm((f) => ({ ...f, appId: e.target.value }))} />
             </div>
           </div>
