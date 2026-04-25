@@ -244,7 +244,7 @@ function ConfigureDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Icon className={`w-5 h-5 ${provider.iconColor}`} />
+            <Icon className={`w-5 h-5 ${provider.iconColor}`} aria-hidden="true" />
             Configure {provider.name}
           </DialogTitle>
           <DialogDescription>
@@ -263,7 +263,14 @@ function ConfigureDialog({
           </DialogDescription>
         </DialogHeader>
         
-        <div className="space-y-4 py-4">
+        <form
+          id="configure-integration-form"
+          className="space-y-4 py-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!isSaving && apiKey.trim()) handleSave();
+          }}
+        >
           {provider.additionalFields?.map(field => (
             <div key={field.key} className="space-y-2">
               <Label htmlFor={field.key}>{field.label}</Label>
@@ -276,11 +283,14 @@ function ConfigureDialog({
                   [field.key]: e.target.value,
                 }))}
                 placeholder={`Enter ${field.label.toLowerCase()}`}
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
                 data-testid={`input-${provider.id}-${field.key}`}
               />
             </div>
           ))}
-          
+
           <div className="space-y-2">
             <Label htmlFor="apiKey">{provider.apiKeyLabel}</Label>
             <div className="relative">
@@ -290,6 +300,10 @@ function ConfigureDialog({
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
                 placeholder="Enter your API key"
+                autoComplete="off"
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
                 className="pr-10"
                 data-testid={`input-${provider.id}-apikey`}
               />
@@ -301,23 +315,24 @@ function ConfigureDialog({
                 onClick={() => setShowKey(!showKey)}
                 aria-label={showKey ? "Hide API key" : "Show API key"}
               >
-                {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                {showKey ? <EyeOff className="w-4 h-4" aria-hidden="true" /> : <Eye className="w-4 h-4" aria-hidden="true" />}
               </Button>
             </div>
           </div>
-        </div>
-        
+        </form>
+
         <DialogFooter>
-          <Button variant="outline" onClick={handleClose}>
+          <Button type="button" variant="outline" onClick={handleClose}>
             Cancel
           </Button>
-          <Button 
-            onClick={handleSave} 
+          <Button
+            type="submit"
+            form="configure-integration-form"
             disabled={!apiKey.trim() || isSaving}
             data-testid={`button-save-${provider.id}`}
           >
-            {isSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-            Save Credentials
+            {isSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />}
+            {isSaving ? "Saving…" : "Save credentials"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -448,8 +463,9 @@ export function IntegrationsSettings() {
         />
         
         {isLoading ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+          <div role="status" aria-busy="true" aria-label="Loading integrations" className="flex items-center justify-center py-8">
+            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" aria-hidden="true" />
+            <span className="sr-only">Loading…</span>
           </div>
         ) : (
           PROVIDERS.map(provider => (
