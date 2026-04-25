@@ -40,7 +40,7 @@ export function InfoCard({
       data-testid={testId}
     >
       <div className="flex items-start gap-3">
-        <div className="flex-shrink-0 mt-0.5 text-muted-foreground">
+        <div className="flex-shrink-0 mt-0.5 text-muted-foreground" aria-hidden="true">
           {icon || <Info className="w-4 h-4" />}
         </div>
         <div className="flex-1 min-w-0">
@@ -58,12 +58,12 @@ export function InfoCard({
                 >
                   {isOpen ? (
                     <>
-                      <ChevronUp className="w-3 h-3 mr-1" />
+                      <ChevronUp className="w-3 h-3 mr-1" aria-hidden="true" />
                       Show less
                     </>
                   ) : (
                     <>
-                      <ChevronDown className="w-3 h-3 mr-1" />
+                      <ChevronDown className="w-3 h-3 mr-1" aria-hidden="true" />
                       Show more
                     </>
                   )}
