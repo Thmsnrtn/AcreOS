@@ -1934,10 +1934,10 @@ export default function CommandCenterPage() {
                               size="icon"
                               className="opacity-0 group-hover:opacity-100 shrink-0"
                               onClick={(e) => handleDeleteConversation(e, conv.id)}
-                              aria-label="Delete conversation"
+                              aria-label={`Delete conversation ${conv.title ?? ""}`.trim()}
                               data-testid={`button-delete-conversation-${conv.id}`}
                             >
-                              <Trash2 className="w-4 h-4 text-destructive" />
+                              <Trash2 className="w-4 h-4 text-destructive" aria-hidden="true" />
                             </Button>
                           </div>
                         ))

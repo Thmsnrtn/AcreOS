@@ -150,16 +150,16 @@ export function PaxTasksSettingsTab() {
                       aria-label="View run history"
                       onClick={() => { setHistoryTaskId(task.id); setHistoryTaskName(task.name); }}
                     >
-                      <History className="w-3.5 h-3.5" />
+                      <History className="w-3.5 h-3.5" aria-hidden="true" />
                     </Button>
                     <Button
                       size="icon"
                       variant="ghost"
                       className="h-7 w-7 text-muted-foreground hover:text-destructive"
                       onClick={() => deleteMut.mutate(task.id)}
-                      aria-label="Delete scheduled task"
+                      aria-label={`Delete scheduled task ${task.name ?? ""}`.trim()}
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
                     </Button>
                   </div>
                 </div>

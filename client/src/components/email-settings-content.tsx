@@ -667,10 +667,10 @@ export function EmailSettingsContent() {
                         variant="ghost"
                         onClick={() => deleteIdentityMutation.mutate(identity.id)}
                         disabled={deleteIdentityMutation.isPending}
-                        aria-label="Delete email identity"
+                        aria-label={`Delete email identity ${identity.fromEmail}`}
                         data-testid={`button-delete-identity-${identity.id}`}
                       >
-                        <Trash2 className="w-4 h-4 text-destructive" />
+                        <Trash2 className="w-4 h-4 text-destructive" aria-hidden="true" />
                       </Button>
                     </div>
                   </div>
@@ -851,10 +851,10 @@ export function EmailSettingsContent() {
                       variant="ghost"
                       onClick={() => deleteIdentityMutation.mutate(identity.id)}
                       disabled={deleteIdentityMutation.isPending}
-                      aria-label="Delete email identity"
+                      aria-label={`Delete email identity ${identity.fromEmail}`}
                       data-testid={`button-delete-all-${identity.id}`}
                     >
-                      <Trash2 className="w-4 h-4 text-destructive" />
+                      <Trash2 className="w-4 h-4 text-destructive" aria-hidden="true" />
                     </Button>
                   </div>
                 </div>
