@@ -1313,9 +1313,9 @@ function CampaignForm({ onSuccess }: { onSuccess: () => void }) {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-2">
-          <label className="text-sm font-medium">
+          <Label htmlFor="campaign-type-trigger" className="text-sm font-medium">
             Type <span className="text-destructive" aria-hidden="true">*</span>
-          </label>
+          </Label>
           <TooltipProvider>
             <Select
               value={form.watch("type")}
@@ -1325,7 +1325,7 @@ function CampaignForm({ onSuccess }: { onSuccess: () => void }) {
                 setSelectedTemplate("");
               }}
             >
-              <SelectTrigger aria-label="Campaign type" data-testid="select-campaign-type">
+              <SelectTrigger id="campaign-type-trigger" aria-label="Campaign type" data-testid="select-campaign-type">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
