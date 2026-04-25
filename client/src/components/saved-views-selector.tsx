@@ -170,7 +170,7 @@ export function SavedViewsSelector({
                 {defaultView ? defaultView.name : "All"}
               </>
             )}
-            <ChevronDown className="w-4 h-4" />
+            <ChevronDown className="w-4 h-4" aria-hidden="true" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-56">
@@ -196,7 +196,7 @@ export function SavedViewsSelector({
             }}
             data-testid="dropdown-view-all"
           >
-            <Eye className="w-4 h-4 mr-2" />
+            <Eye className="w-4 h-4 mr-2" aria-hidden="true" />
             All {entityType}s
           </DropdownMenuItem>
           {views.length > 0 && <DropdownMenuSeparator />}
@@ -217,7 +217,7 @@ export function SavedViewsSelector({
           ))}
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => setIsSaveDialogOpen(true)} data-testid="dropdown-save-view">
-            <Plus className="w-4 h-4 mr-2" />
+            <Plus className="w-4 h-4 mr-2" aria-hidden="true" />
             Save current view
           </DropdownMenuItem>
         </DropdownMenuContent>
@@ -227,24 +227,24 @@ export function SavedViewsSelector({
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" aria-label="View actions" data-testid="button-view-actions">
-              <Settings className="w-4 h-4" />
+              <Settings className="w-4 h-4" aria-hidden="true" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
-            <DropdownMenuItem 
+            <DropdownMenuItem
               onClick={() => setDefaultMutation.mutate(selectedView.id)}
               disabled={selectedView.isDefault ?? false}
               data-testid="button-set-default-view"
             >
-              <Star className="w-4 h-4 mr-2" />
+              <Star className="w-4 h-4 mr-2" aria-hidden="true" />
               Set as default
             </DropdownMenuItem>
-            <DropdownMenuItem 
+            <DropdownMenuItem
               className="text-destructive"
               onClick={() => deleteMutation.mutate(selectedView.id)}
               data-testid="button-delete-view"
             >
-              <Trash2 className="w-4 h-4 mr-2" />
+              <Trash2 className="w-4 h-4 mr-2" aria-hidden="true" />
               Delete view
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -255,13 +255,13 @@ export function SavedViewsSelector({
         <Popover>
           <PopoverTrigger asChild>
             <Button variant="outline" size="sm" className="gap-2" data-testid="button-column-visibility">
-              <Eye className="w-4 h-4" />
+              <Eye className="w-4 h-4" aria-hidden="true" />
               Columns
             </Button>
           </PopoverTrigger>
           <PopoverContent align="start" className="w-56">
             <div className="space-y-2">
-              <Label className="text-sm font-medium">Visible Columns</Label>
+              <h3 className="text-sm font-medium">Visible columns</h3>
               {allColumns.map((column) => (
                 <div key={column.key} className="flex items-center space-x-2">
                   <Checkbox
