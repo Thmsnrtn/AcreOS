@@ -64,7 +64,7 @@ export function AISettings({ compact = false }: AISettingsProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/organization"] });
       toast({
-        title: "Settings Updated",
+        title: "Settings updated",
         description: "Your AI settings have been saved.",
       });
     },
@@ -106,7 +106,7 @@ export function AISettings({ compact = false }: AISettingsProps) {
   const content = (
     <div className={`space-y-${compact ? "4" : "6"}`}>
       <div className="space-y-2">
-        <Label htmlFor="response-style">AI Response Style</Label>
+        <Label htmlFor="response-style">AI response style</Label>
         <Select value={responseStyle} onValueChange={(v) => setResponseStyle(v as typeof responseStyle)}>
           <SelectTrigger id="response-style" data-testid="select-ai-response-style">
             <SelectValue placeholder="Select response style" />
@@ -125,7 +125,7 @@ export function AISettings({ compact = false }: AISettingsProps) {
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="default-agent">Default AI Agent</Label>
+        <Label htmlFor="default-agent">Default AI agent</Label>
         <Select value={defaultAgent} onValueChange={setDefaultAgent}>
           <SelectTrigger id="default-agent" data-testid="select-ai-default-agent">
             <SelectValue placeholder="Select default agent" />
@@ -160,7 +160,7 @@ export function AISettings({ compact = false }: AISettingsProps) {
 
       <div className="flex items-center justify-between gap-4">
         <div className="space-y-0.5">
-          <Label htmlFor="remember-context">Remember Context</Label>
+          <Label htmlFor="remember-context">Remember context</Label>
           <p className="text-xs text-muted-foreground">
             AI remembers conversation context
           </p>
@@ -175,17 +175,19 @@ export function AISettings({ compact = false }: AISettingsProps) {
 
       <div className={compact ? "pt-2" : "pt-4"}>
         <Button
+          type="button"
           onClick={handleSave}
           disabled={updateSettingsMutation.isPending}
+          aria-busy={updateSettingsMutation.isPending}
           className="w-full"
           data-testid="button-save-ai-settings"
         >
           {updateSettingsMutation.isPending ? (
-            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
           ) : (
-            <Save className="w-4 h-4 mr-2" />
+            <Save className="w-4 h-4 mr-2" aria-hidden="true" />
           )}
-          Save Settings
+          {updateSettingsMutation.isPending ? "Saving…" : "Save settings"}
         </Button>
       </div>
     </div>
@@ -199,8 +201,8 @@ export function AISettings({ compact = false }: AISettingsProps) {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Sparkles className="w-5 h-5" />
-          AI Settings
+          <Sparkles className="w-5 h-5" aria-hidden="true" />
+          AI settings
         </CardTitle>
         <CardDescription>
           Configure how AI assistants behave across your organization
