@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { usd } from "@/lib/format";
 import {
   AreaChart, Area, BarChart, Bar, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
@@ -21,9 +22,14 @@ import {
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function fmt(n: number) {
+  // Compact display for KPI cards + chart axes. M/K bands round
+  // intentionally for screen real estate; sub-$1K falls through to
+  // usd() so cents are preserved on note payments + small surplus
+  // numbers (a $329 monthly payment shouldn't show as $329 if the
+  // underlying value is $329.50).
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
   if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}K`;
-  return `$${Math.round(n).toLocaleString()}`;
+  return usd(n, { noCents: true });
 }
 
 function fmtPct(n: number) { return `${Math.round(n)}%`; }
@@ -189,6 +195,10 @@ function NoteCard({ note }: { note: NotePayment }) {
           <Progress
             value={progressPct}
             className="h-1.5"
+            role="progressbar"
+            aria-valuenow={progressPct}
+            aria-valuemin={0}
+            aria-valuemax={100}
             aria-label={`${note.propertyName} paid ${progressPct}%`}
           />
         </div>
@@ -508,16 +518,21 @@ export default function FreedomMeterPage() {
             <CardDescription>Track your progress toward the day note income exceeds your fixed expenses.</CardDescription>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <AreaChart data={data.historicalProgress}>
-                <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 12 }} tickFormatter={v => `$${(v/1000).toFixed(1)}K`} />
-                <Tooltip formatter={((v: number) => [`$${Math.round(v).toLocaleString()}`, ""]) as any} />
-                <ReferenceLine y={data.totalMonthlyExpenses} stroke="#ef4444" strokeDasharray="4 4" label={{ value: "Freedom Line", position: "right", fontSize: 11, fill: "#ef4444" }} />
-                <Area type="monotone" dataKey="noteIncome" stroke="#10b981" fill="#10b981" fillOpacity={0.2} name="Note Income" strokeWidth={2} />
-              </AreaChart>
-            </ResponsiveContainer>
+            <div
+              role="img"
+              aria-label={`12-month note income history vs. ${fmt(data.totalMonthlyExpenses)} monthly expenses freedom line; latest income ${fmt(data.historicalProgress[data.historicalProgress.length - 1]?.noteIncome ?? 0)}`}
+            >
+              <ResponsiveContainer width="100%" height={300}>
+                <AreaChart data={data.historicalProgress}>
+                  <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                  <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 12 }} tickFormatter={v => fmt(v)} />
+                  <Tooltip formatter={((v: number) => [usd(v, { noCents: true }), ""]) as any} />
+                  <ReferenceLine y={data.totalMonthlyExpenses} stroke="#ef4444" strokeDasharray="4 4" label={{ value: "Freedom line", position: "right", fontSize: 11, fill: "#ef4444" }} />
+                  <Area type="monotone" dataKey="noteIncome" stroke="#10b981" fill="#10b981" fillOpacity={0.2} name="Note income" strokeWidth={2} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -590,20 +605,25 @@ export default function FreedomMeterPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={320}>
-              <AreaChart data={projectionData}>
-                <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                <XAxis dataKey="month" tick={{ fontSize: 11 }} interval={5} />
-                <YAxis tick={{ fontSize: 12 }} tickFormatter={v => `$${(v/1000).toFixed(1)}K`} />
-                <Tooltip formatter={((v: number) => [`$${Math.round(v).toLocaleString()}`, ""]) as any} />
-                <ReferenceLine y={data.totalMonthlyExpenses} stroke="#ef4444" strokeDasharray="4 4" label={{ value: "Freedom Line", position: "right", fontSize: 11, fill: "#ef4444" }} />
-                {freedomMonth && (
-                  <ReferenceLine x={freedomMonth.month} stroke="#10b981" strokeDasharray="4 4" label={{ value: "Freedom!", position: "top", fontSize: 11, fill: "#10b981" }} />
-                )}
-                <Area type="monotone" dataKey="noteIncome" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.15} name="Projected Note Income" strokeWidth={2} />
-                <Area type="monotone" dataKey="expenses" stroke="#ef4444" fill="none" name="Fixed Expenses" strokeWidth={2} strokeDasharray="4 4" />
-              </AreaChart>
-            </ResponsiveContainer>
+            <div
+              role="img"
+              aria-label={`36-month freedom projection vs. ${fmt(data.totalMonthlyExpenses)} fixed expenses${freedomMonth ? `; projected freedom in ${freedomMonth.month}` : ""}`}
+            >
+              <ResponsiveContainer width="100%" height={320}>
+                <AreaChart data={projectionData}>
+                  <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                  <XAxis dataKey="month" tick={{ fontSize: 11 }} interval={5} />
+                  <YAxis tick={{ fontSize: 12 }} tickFormatter={v => fmt(v)} />
+                  <Tooltip formatter={((v: number) => [usd(v, { noCents: true }), ""]) as any} />
+                  <ReferenceLine y={data.totalMonthlyExpenses} stroke="#ef4444" strokeDasharray="4 4" label={{ value: "Freedom line", position: "right", fontSize: 11, fill: "#ef4444" }} />
+                  {freedomMonth && (
+                    <ReferenceLine x={freedomMonth.month} stroke="#10b981" strokeDasharray="4 4" label={{ value: "Freedom!", position: "top", fontSize: 11, fill: "#10b981" }} />
+                  )}
+                  <Area type="monotone" dataKey="noteIncome" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.15} name="Projected note income" strokeWidth={2} />
+                  <Area type="monotone" dataKey="expenses" stroke="#ef4444" fill="none" name="Fixed expenses" strokeWidth={2} strokeDasharray="4 4" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
 
             <dl className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
               <div className="p-3 rounded-lg bg-muted/40">
