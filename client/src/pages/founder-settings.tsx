@@ -12,16 +12,18 @@
  * behaves when you're not watching."
  */
 
-import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState, useId } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Label } from "@/components/ui/label";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import { Shield, Brain, Clock, Settings, Save } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 
@@ -52,7 +54,8 @@ const CATEGORY_META: Record<
 };
 
 export default function FounderSettingsPage() {
-  const { data, isLoading, isError } = useQuery<{ settings: SettingRow[] }>({
+  useDocumentTitle("Customization center");
+  const { data, isLoading, isError, refetch } = useQuery<{ settings: SettingRow[] }>({
     queryKey: ["/api/founder/intelligence/settings"],
     staleTime: 30_000,
   });
@@ -71,13 +74,14 @@ export default function FounderSettingsPage() {
       <div className="space-y-6 max-w-4xl mx-auto">
         <PageHeader
           title="Customization center"
-          icon={<Settings className="h-5 w-5 text-muted-foreground" />}
+          icon={<Settings className="h-5 w-5 text-muted-foreground" aria-hidden="true" />}
           description="Operational knobs the system reads on every decision. Changes take effect on the next decision — no restart, no deploy. Values you set here override environment variables."
         />
 
         {isLoading ? (
           <Card>
-            <CardContent className="p-8 space-y-3">
+            <CardContent className="p-8 space-y-3" role="status" aria-live="polite">
+              <span className="sr-only">Loading settings…</span>
               <Skeleton className="h-5 w-40" />
               <Skeleton className="h-12 w-full" />
               <Skeleton className="h-12 w-full" />
@@ -85,8 +89,15 @@ export default function FounderSettingsPage() {
           </Card>
         ) : isError ? (
           <Card>
-            <CardContent className="p-6 text-sm text-red-600 dark:text-red-400">
-              Could not load settings. Retry in a moment.
+            <CardContent className="p-6 text-sm text-red-600 dark:text-red-400" role="alert">
+              Couldn't load settings. The system continues to use the previously loaded values —{" "}
+              <button
+                type="button"
+                className="underline hover:no-underline"
+                onClick={() => refetch()}
+              >
+                try again
+              </button>.
             </CardContent>
           </Card>
         ) : (
@@ -96,30 +107,37 @@ export default function FounderSettingsPage() {
               <Card key={category}>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base flex items-center gap-2">
-                    <meta.icon className={`h-4 w-4 ${meta.colorClass}`} />
+                    <meta.icon className={`h-4 w-4 ${meta.colorClass}`} aria-hidden="true" />
                     {meta.label}
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  {rows.map((row) => (
-                    <SettingRowEditor
-                      key={row.key}
-                      row={row}
-                      onSave={async (val) => {
-                        try {
-                          const res = await apiRequest("POST", `/api/founder/intelligence/settings/${row.key}`, { value: val });
-                          if (!res.ok) {
-                            const err = await res.json();
-                            throw new Error(err.error ?? "save failed");
-                          }
-                          qc.invalidateQueries({ queryKey: ["/api/founder/intelligence/settings"] });
-                          toast({ title: "Saved", description: `${row.key} updated.` });
-                        } catch (e: any) {
-                          toast({ title: "Save failed", description: e.message, variant: "destructive" });
-                        }
-                      }}
-                    />
-                  ))}
+                <CardContent>
+                  <ul className="space-y-4" aria-label={`${meta.label} settings`}>
+                    {rows.map((row) => (
+                      <li key={row.key}>
+                        <SettingRowEditor
+                          row={row}
+                          onSave={async (val) => {
+                            try {
+                              const res = await apiRequest("POST", `/api/founder/intelligence/settings/${row.key}`, { value: val });
+                              if (!res.ok) {
+                                const err = await res.json();
+                                throw new Error(err.error ?? "save failed");
+                              }
+                              qc.invalidateQueries({ queryKey: ["/api/founder/intelligence/settings"] });
+                              toast({ title: "Saved", description: `${row.key} updated.` });
+                            } catch (e: any) {
+                              toast({
+                                title: "Couldn't save setting",
+                                description: `${e.message}. The setting wasn't changed and the system continues to use the previous value.`,
+                                variant: "destructive",
+                              });
+                            }
+                          }}
+                        />
+                      </li>
+                    ))}
+                  </ul>
                 </CardContent>
               </Card>
             );
@@ -139,9 +157,12 @@ function SettingRowEditor({
 }) {
   const [draft, setDraft] = useState(row.value);
   const [saving, setSaving] = useState(false);
+  const inputId = useId();
+  const descId = useId();
   const dirty = draft !== row.value;
+  const isNumber = row.definition.valueType === "number";
 
-  const displayValue = row.definition.valueType === "number"
+  const displayValue = isNumber
     ? row.definition.units === "cents"
       ? `$${(Number(row.value) / 100).toLocaleString()}`
       : `${Number(row.value).toLocaleString()}${row.definition.units ? ` ${row.definition.units}` : ""}`
@@ -162,22 +183,25 @@ function SettingRowEditor({
               {sourceLabel}
             </Badge>
           </div>
-          <p className="text-xs text-muted-foreground mb-3">{row.definition.description}</p>
+          <p id={descId} className="text-xs text-muted-foreground mb-3">{row.definition.description}</p>
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs text-muted-foreground">Current:</span>
-            <span className="text-sm font-medium text-foreground">{displayValue}</span>
+            <span className={`text-sm font-medium text-foreground ${isNumber ? "tabular-nums" : ""}`}>{displayValue}</span>
           </div>
         </div>
       </div>
       <div className="flex items-end gap-2 mt-3">
         <div className="flex-1 min-w-[160px]">
+          <Label htmlFor={inputId} className="sr-only">New value for {row.key}</Label>
           <Input
-            type={row.definition.valueType === "number" ? "number" : "text"}
+            id={inputId}
+            type={isNumber ? "number" : "text"}
             value={draft}
             min={row.definition.min}
             max={row.definition.max}
+            inputMode={isNumber ? "decimal" : undefined}
             onChange={(e) => setDraft(e.target.value)}
-            aria-label={`New value for ${row.key}`}
+            aria-describedby={descId}
             data-testid={`input-${row.key}`}
           />
         </div>
@@ -189,9 +213,10 @@ function SettingRowEditor({
             setSaving(false);
           }}
           size="sm"
+          aria-label={`Save ${row.key}`}
           data-testid={`save-${row.key}`}
         >
-          <Save className="h-4 w-4 mr-2" />
+          <Save className="h-4 w-4 mr-2" aria-hidden="true" />
           {saving ? "Saving…" : "Save"}
         </Button>
       </div>

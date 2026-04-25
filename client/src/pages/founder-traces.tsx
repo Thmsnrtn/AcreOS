@@ -8,13 +8,14 @@
  *
  * Roadmap top-20 #8 (action-replay) + #10 (reasoning-trace viewer).
  */
-import { useState } from "react";
+import { useState, useId } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -54,8 +55,9 @@ const AGENT_CHOICES = ["pax", "sophie_csm", "forge_revenue", "atlas_cto", "beaco
 export default function FounderTracesPage() {
   useDocumentTitle("Agent traces");
   const [agentFilter, setAgentFilter] = useState<string>("all");
+  const filterId = useId();
 
-  const { data, isLoading, isError } = useQuery<{ traces: TraceSummary[] }>({
+  const { data, isLoading, isError, refetch } = useQuery<{ traces: TraceSummary[] }>({
     queryKey: [
       `/api/founder/intelligence/traces${agentFilter === "all" ? "" : `?agent=${agentFilter}`}`,
     ],
@@ -69,28 +71,32 @@ export default function FounderTracesPage() {
       <div className="space-y-6 max-w-5xl mx-auto">
         <PageHeader
           title="Agent traces"
-          icon={<FileCode className="h-5 w-5 text-muted-foreground" />}
+          icon={<FileCode className="h-5 w-5 text-muted-foreground" aria-hidden="true" />}
           description="Every LLM call an agent makes lands here — the exact prompt sent, the exact response received, model, latency, token usage. Expand a row to see the full trace. This is the canonical answer to 'why did the system do that?'"
           actions={
-            <Select value={agentFilter} onValueChange={setAgentFilter}>
-              <SelectTrigger className="w-[180px]" data-testid="select-trace-agent">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All agents</SelectItem>
-                {AGENT_CHOICES.map((a) => (
-                  <SelectItem key={a} value={a}>
-                    {a}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex items-center gap-2">
+              <Label htmlFor={filterId} className="sr-only">Filter by agent</Label>
+              <Select value={agentFilter} onValueChange={setAgentFilter}>
+                <SelectTrigger id={filterId} className="w-[180px]" data-testid="select-trace-agent" aria-label="Filter by agent">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All agents</SelectItem>
+                  {AGENT_CHOICES.map((a) => (
+                    <SelectItem key={a} value={a}>
+                      {a}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           }
         />
 
         {isLoading ? (
           <Card>
-            <CardContent className="p-6 space-y-3">
+            <CardContent className="p-6 space-y-3" role="status" aria-live="polite">
+              <span className="sr-only">Loading agent traces…</span>
               <Skeleton className="h-14 w-full" />
               <Skeleton className="h-14 w-full" />
               <Skeleton className="h-14 w-full" />
@@ -98,8 +104,15 @@ export default function FounderTracesPage() {
           </Card>
         ) : isError ? (
           <Card>
-            <CardContent className="p-6 text-sm text-red-600">
-              Could not load traces.
+            <CardContent className="p-6 text-sm text-red-600" role="alert">
+              Couldn't load traces. The trace log is unchanged —{" "}
+              <button
+                type="button"
+                className="underline hover:no-underline"
+                onClick={() => refetch()}
+              >
+                try again
+              </button>.
             </CardContent>
           </Card>
         ) : traces.length === 0 ? (
@@ -113,11 +126,13 @@ export default function FounderTracesPage() {
             }
           />
         ) : (
-          <div className="space-y-2">
+          <ul className="space-y-2" aria-label="Recent agent traces">
             {traces.map((t) => (
-              <TraceRow key={t.id} trace={t} />
+              <li key={t.id}>
+                <TraceRow trace={t} />
+              </li>
             ))}
-          </div>
+          </ul>
         )}
       </div>
     </PageShell>
@@ -126,6 +141,7 @@ export default function FounderTracesPage() {
 
 function TraceRow({ trace }: { trace: TraceSummary }) {
   const [expanded, setExpanded] = useState(false);
+  const detailsId = useId();
   const { data: detailData, isLoading } = useQuery<{ trace: TraceDetail }>({
     queryKey: [`/api/founder/intelligence/traces/${trace.id}`],
     enabled: expanded,
@@ -137,14 +153,18 @@ function TraceRow({ trace }: { trace: TraceSummary }) {
     <Card>
       <CardContent className="p-3 space-y-2">
         <button
-          className="w-full flex items-center gap-3 text-left"
+          type="button"
+          className="w-full flex items-center gap-3 text-left flex-wrap"
           onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+          aria-controls={detailsId}
+          aria-label={`${expanded ? "Collapse" : "Expand"} ${trace.agentCodename} trace: ${trace.purpose}`}
           data-testid={`trace-toggle-${trace.id}`}
         >
           {expanded ? (
-            <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
+            <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" aria-hidden="true" />
           ) : (
-            <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+            <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" aria-hidden="true" />
           )}
           <Badge variant="secondary" className="text-[10px] font-mono">
             {trace.agentCodename}
@@ -159,23 +179,29 @@ function TraceRow({ trace }: { trace: TraceSummary }) {
           <span className="ml-auto flex items-center gap-2 text-xs text-muted-foreground shrink-0">
             {trace.latencyMs != null && (
               <>
-                <Clock className="h-3 w-3" />
-                {trace.latencyMs}ms
+                <Clock className="h-3 w-3" aria-hidden="true" />
+                <span className="tabular-nums">{trace.latencyMs}ms</span>
               </>
             )}
-            {trace.costCents != null && <span>{dollars(trace.costCents)}</span>}
-            {relative(trace.createdAt)}
+            {trace.costCents != null && <span className="tabular-nums">{dollars(trace.costCents)}</span>}
+            <span className="tabular-nums">{relative(trace.createdAt)}</span>
           </span>
         </button>
 
         {expanded && (
-          <div className="pt-2 border-t space-y-3">
+          <div id={detailsId} className="pt-2 border-t space-y-3">
             {isLoading ? (
-              <Skeleton className="h-24 w-full" />
+              <div role="status" aria-live="polite">
+                <span className="sr-only">Loading trace details…</span>
+                <Skeleton className="h-24 w-full" />
+              </div>
             ) : detail ? (
               <>
                 {detail.error && (
-                  <div className="rounded-md bg-rose-500/5 border border-rose-500/30 p-2 text-xs text-rose-700 dark:text-rose-300 font-mono whitespace-pre-wrap">
+                  <div
+                    role="alert"
+                    className="rounded-md bg-rose-500/5 border border-rose-500/30 p-2 text-xs text-rose-700 dark:text-rose-300 font-mono whitespace-pre-wrap"
+                  >
                     {detail.error}
                   </div>
                 )}
@@ -200,10 +226,20 @@ function TraceRow({ trace }: { trace: TraceSummary }) {
                   </pre>
                 </div>
                 {(detail.inputTokens != null || detail.outputTokens != null) && (
-                  <p className="text-[11px] text-muted-foreground">
-                    {detail.inputTokens != null && <>in: {detail.inputTokens} </>}
-                    {detail.outputTokens != null && <>out: {detail.outputTokens}</>}
-                  </p>
+                  <dl className="flex gap-4 text-[11px] text-muted-foreground">
+                    {detail.inputTokens != null && (
+                      <div className="flex gap-1">
+                        <dt>In:</dt>
+                        <dd className="tabular-nums">{detail.inputTokens.toLocaleString()}</dd>
+                      </div>
+                    )}
+                    {detail.outputTokens != null && (
+                      <div className="flex gap-1">
+                        <dt>Out:</dt>
+                        <dd className="tabular-nums">{detail.outputTokens.toLocaleString()}</dd>
+                      </div>
+                    )}
+                  </dl>
                 )}
               </>
             ) : null}
