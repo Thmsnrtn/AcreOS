@@ -1108,13 +1108,15 @@ function StressTestTab() {
               {STRESS_SCENARIOS.map(s => (
                 <button
                   key={s.id}
+                  type="button"
                   onClick={() => setSelectedScenario(s)}
-                  className={`w-full text-left p-3 rounded-lg border transition-colors ${
+                  aria-pressed={selectedScenario.id === s.id}
+                  className={`w-full text-left p-3 rounded-lg border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                     selectedScenario.id === s.id ? "border-primary bg-primary/5" : "border-border hover:bg-muted/40"
                   }`}
                 >
                   <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: s.color }} />
+                    <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: s.color }} aria-hidden="true" />
                     <span className="text-sm font-medium">{s.label}</span>
                     <span className={`text-sm ml-auto font-semibold ${s.priceImpact < 0 ? "text-red-600" : "text-emerald-600"}`}>
                       {s.priceImpact > 0 ? "+" : ""}{(s.priceImpact * 100).toFixed(0)}%

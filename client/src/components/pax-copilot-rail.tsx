@@ -1026,13 +1026,16 @@ export function PaxCopilotRail() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
+                  type="button"
                   onClick={toggle}
-                  className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-primary/10 transition-colors relative"
+                  aria-label={observations.length > 0 ? `Open Pax copilot (${observations.length} unread)` : "Open Pax copilot"}
+                  aria-expanded={isOpen}
+                  className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-primary/10 transition-colors relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   data-testid="pax-rail-expand"
                 >
-                  <Sparkles className="w-4 h-4 text-primary" />
+                  <Sparkles className="w-4 h-4 text-primary" aria-hidden="true" />
                   {observations.length > 0 && (
-                    <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-red-500 rounded-full" />
+                    <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-red-500 rounded-full" aria-hidden="true" />
                   )}
                 </button>
               </TooltipTrigger>
@@ -1223,13 +1226,16 @@ export function PaxCopilotRail() {
                       filtered.map((conv) => (
                         <button
                           key={conv.id}
+                          type="button"
                           onClick={() => switchConversation(conv.id)}
+                          aria-current={conv.id === activeConversationId ? "true" : undefined}
+                          aria-label={`Switch to conversation: ${conv.title}`}
                           className={cn(
-                            "w-full text-left px-3 py-2 text-xs hover:bg-muted/50 flex items-start gap-2",
+                            "w-full text-left px-3 py-2 text-xs hover:bg-muted/50 flex items-start gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                             conv.id === activeConversationId && "bg-primary/5"
                           )}
                         >
-                          <MessageSquare className="w-3 h-3 text-muted-foreground mt-0.5 flex-shrink-0" />
+                          <MessageSquare className="w-3 h-3 text-muted-foreground mt-0.5 flex-shrink-0" aria-hidden="true" />
                           <div className="flex-1 min-w-0">
                             <p className="truncate font-medium text-foreground">{conv.title}</p>
                             <p className="text-[10px] text-muted-foreground">
@@ -1245,8 +1251,9 @@ export function PaxCopilotRail() {
                   })()}
                   <div className="px-3 py-2 border-t">
                     <button
+                      type="button"
                       onClick={handleNewChat}
-                      className="text-[11px] text-primary hover:underline"
+                      className="text-[11px] text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
                     >
                       + New conversation
                     </button>
@@ -1263,7 +1270,8 @@ export function PaxCopilotRail() {
                   Pax ran <span className="font-semibold">{pendingResults.length} task{pendingResults.length > 1 ? "s" : ""}</span> while you were away.
                   {pendingResults[0].lastRunConversationId && (
                     <button
-                      className="text-primary hover:underline ml-1"
+                      type="button"
+                      className="text-primary hover:underline ml-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
                       onClick={() => {
                         if (pendingResults[0].lastRunConversationId) {
                           switchConversation(pendingResults[0].lastRunConversationId);
@@ -1302,14 +1310,18 @@ export function PaxCopilotRail() {
                     </div>
                     <div className="flex items-center gap-1.5 mt-1.5">
                       <button
-                        className="text-primary hover:underline text-[10px]"
+                        type="button"
+                        className="text-primary hover:underline text-[10px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
                         onClick={() => sendMessage(`Tell me more about this: "${obs.title}" — ${obs.description}`)}
+                        aria-label={`Discuss observation: ${obs.title}`}
                       >
                         Handle it →
                       </button>
                       <button
-                        className="text-muted-foreground hover:text-foreground text-[10px] ml-auto"
+                        type="button"
+                        className="text-muted-foreground hover:text-foreground text-[10px] ml-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
                         onClick={() => dismissMutation.mutate(obs.id)}
+                        aria-label={`Dismiss observation: ${obs.title}`}
                       >
                         Dismiss
                       </button>
