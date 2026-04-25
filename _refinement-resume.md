@@ -775,6 +775,7 @@ to a dedicated 9b slice.
 **External-link a11y (189):** ✅ complete — 4 surfaces with aria-label ending "(opens in new tab)" + focus-visible: integrations-settings (per-provider API key link), info-card (learnMore), empty-state (learnMore), pax-connector-panel (setup guide). All ExternalLink icons aria-hidden. (commit `b63ec4c`)
 **External-link a11y final (190):** ✅ complete — 3 more: ApiKeySetup ("How to get your {service} API key"), finance Borrower Portal, founder-dashboard data-source portal link. External-link a11y now consistent across codebase. (commit `76ad2fc`)
 **PageShell skip-to-content + main label (191):** ✅ complete — wired unused `label` prop into `<main aria-label>` defaulting to "Main content", added a sr-only-until-focused skip-to-main-content link that anchors to `#main-content`. Keyboard users now skip the sidebar without a mouse. (commit `3799675`)
+**Sidebar landmark labels (192):** ✅ complete — desktop `<aside aria-label="Sidebar">`, mobile drawer `<nav aria-label="Mobile navigation">` + `<SheetContent aria-label="Mobile sidebar">`. Distinct landmark names for screen-reader navigation. (commit `075f99d`)
 **/onboarding-v2 targeted (18):** ✅ complete (commit `70df779`) — 18b deferred
 **/settings targeted (19):** ✅ complete (commit `809044c`) — 19b remaining components deferred
 **/pipeline (20):** ✅ complete (commit `1b5d0f7`)
