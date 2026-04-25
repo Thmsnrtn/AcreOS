@@ -493,11 +493,11 @@ export default function TodayPage() {
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <Link href="/onboarding-v2">
-                <Button size="sm" className="min-h-11 sm:min-h-9">
+              <Button asChild size="sm" className="min-h-11 sm:min-h-9">
+                <Link href="/onboarding-v2">
                   Get started <ArrowRight className="w-3.5 h-3.5 ml-1" aria-hidden="true" />
-                </Button>
-              </Link>
+                </Link>
+              </Button>
               <Button
                 variant="ghost"
                 size="icon"
@@ -810,11 +810,11 @@ export default function TodayPage() {
               AI
             </Badge>
           </div>
-          <Link href="/evening-review">
-            <Button variant="ghost" size="sm" className="gap-1 text-xs">
+          <Button asChild variant="ghost" size="sm" className="gap-1 text-xs">
+            <Link href="/evening-review">
               <Moon className="w-3 h-3" aria-hidden="true" /> Evening review
-            </Button>
-          </Link>
+            </Link>
+          </Button>
         </div>
 
         {prioritiesLoading ? (
@@ -867,11 +867,11 @@ export default function TodayPage() {
               </Badge>
             )}
           </div>
-          <Link href="/pipeline">
-            <Button variant="ghost" size="sm" className="gap-1 text-xs">
+          <Button asChild variant="ghost" size="sm" className="gap-1 text-xs">
+            <Link href="/pipeline">
               All tasks <ArrowRight className="w-3 h-3" aria-hidden="true" />
-            </Button>
-          </Link>
+            </Link>
+          </Button>
         </div>
 
         {tasksLoading ? (
@@ -954,9 +954,9 @@ export default function TodayPage() {
                     <p className="text-xs text-muted-foreground mt-0.5">{alert.message}</p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <Link href={href}>
-                      <Button variant="outline" size="sm" className="text-xs h-7">{linkLabel}</Button>
-                    </Link>
+                    <Button asChild variant="outline" size="sm" className="text-xs h-7">
+                      <Link href={href}>{linkLabel}</Link>
+                    </Button>
                     <Button
                       variant="ghost"
                       size="icon"
@@ -991,11 +991,11 @@ export default function TodayPage() {
                 </Badge>
               )}
             </div>
-            <Link href="/pax#insights">
-              <Button variant="ghost" size="sm" className="gap-1 text-xs">
+            <Button asChild variant="ghost" size="sm" className="gap-1 text-xs">
+              <Link href="/pax#insights">
                 View all <ArrowRight className="w-3 h-3" aria-hidden="true" />
-              </Button>
-            </Link>
+              </Link>
+            </Button>
           </div>
 
           <div className="space-y-2">
@@ -1046,9 +1046,9 @@ export default function TodayPage() {
                     {lead.daysSinceContact >= 999 ? "Never contacted" : `${lead.daysSinceContact} days since last contact`}
                   </p>
                 </div>
-                <Link href="/leads">
-                  <Button variant="outline" size="sm" className="text-xs h-7 shrink-0">Follow up</Button>
-                </Link>
+                <Button asChild variant="outline" size="sm" className="text-xs h-7 shrink-0">
+                  <Link href="/leads">Follow up</Link>
+                </Button>
               </div>
             ))}
 
@@ -1066,9 +1066,9 @@ export default function TodayPage() {
                     Offer expires {offer.offerExpiresAt ? format(new Date(offer.offerExpiresAt), "MMM d, h:mm a") : "soon"}
                   </p>
                 </div>
-                <Link href="/deals">
-                  <Button variant="outline" size="sm" className="text-xs h-7 shrink-0">View deal</Button>
-                </Link>
+                <Button asChild variant="outline" size="sm" className="text-xs h-7 shrink-0">
+                  <Link href="/deals">View deal</Link>
+                </Button>
               </div>
             ))}
           </div>
@@ -1085,11 +1085,11 @@ export default function TodayPage() {
               AI
             </Badge>
           </div>
-          <Link href="/leads">
-            <Button variant="ghost" size="sm" className="gap-1 text-xs">
+          <Button asChild variant="ghost" size="sm" className="gap-1 text-xs">
+            <Link href="/leads">
               All leads <ArrowRight className="w-3 h-3" aria-hidden="true" />
-            </Button>
-          </Link>
+            </Link>
+          </Button>
         </div>
 
         {paxLoading ? (
@@ -1147,11 +1147,11 @@ export default function TodayPage() {
                 {activeGoals.length}
               </Badge>
             </div>
-            <Link href="/settings">
-              <Button variant="ghost" size="sm" className="gap-1 text-xs">
+            <Button asChild variant="ghost" size="sm" className="gap-1 text-xs">
+              <Link href="/settings">
                 Manage goals <ArrowRight className="w-3 h-3" aria-hidden="true" />
-              </Button>
-            </Link>
+              </Link>
+            </Button>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {activeGoals.map((goal) => (
@@ -1188,11 +1188,11 @@ export default function TodayPage() {
             <GitBranch className="w-4 h-4 text-primary" aria-hidden="true" />
             <h2 className="text-lg font-semibold">AI action queue</h2>
           </div>
-          <Link href="/pipeline">
-            <Button variant="ghost" size="sm" className="gap-1 text-xs">
+          <Button asChild variant="ghost" size="sm" className="gap-1 text-xs">
+            <Link href="/pipeline">
               View pipeline <ArrowRight className="w-3 h-3" aria-hidden="true" />
-            </Button>
-          </Link>
+            </Link>
+          </Button>
         </div>
 
         {intelligenceLoading ? (
@@ -1243,11 +1243,11 @@ export default function TodayPage() {
                 </Badge>
               )}
             </div>
-            <Link href="/finance">
-              <Button variant="ghost" size="sm" className="gap-1 text-xs">
+            <Button asChild variant="ghost" size="sm" className="gap-1 text-xs">
+              <Link href="/finance">
                 View finance <ArrowRight className="w-3 h-3" aria-hidden="true" />
-              </Button>
-            </Link>
+              </Link>
+            </Button>
           </div>
           {notesLoading ? (
             <Skeleton className="h-28 w-full" />
