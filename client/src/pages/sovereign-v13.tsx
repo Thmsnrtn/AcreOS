@@ -44,6 +44,7 @@ import {
 } from "lucide-react";
 import { InfoTooltip } from "@/components/info-tooltip";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -52,6 +53,7 @@ type PillarTab = "memory" | "strategy" | "collaboration" | "healing" | "governan
 // ─── Main Component ──────────────────────────────────────────────────
 
 export default function SovereignV13Page() {
+  useDocumentTitle("Sovereign Company Protocol v13");
   const [activeTab, setActiveTab] = useState<PillarTab>("intelligence");
   const [pendingAction, setPendingAction] = useState<"consolidate" | "cleanup" | null>(null);
   const { toast } = useToast();
@@ -117,15 +119,21 @@ export default function SovereignV13Page() {
   const consolidateMutation = useMutation({
     mutationFn: (codename: string) => apiRequest("POST", `/api/founder/v13/memory/consolidate/${codename}`).then(r => r.json()),
     onSuccess: (data) => {
-      toast({ title: "Memory Consolidated", description: `${data.factsCreated} facts created, ${data.episodesDecayed} episodes decayed, ${data.episodesArchived} archived` });
+      toast({ title: "Memory consolidated", description: `${data.factsCreated} facts created, ${data.episodesDecayed} episodes decayed, ${data.episodesArchived} archived` });
       queryClient.invalidateQueries({ queryKey: ["/api/founder/v13/memory/stats"] });
+    },
+    onError: () => {
+      toast({ variant: "destructive", title: "Couldn't consolidate memory", description: "Memory state is unchanged. Try again or check the system status." });
     },
   });
 
   const cleanupMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/founder/v13/memory/cleanup").then(r => r.json()),
     onSuccess: (data) => {
-      toast({ title: "Working Memory Cleaned", description: `${data.deleted} expired entries removed` });
+      toast({ title: "Working memory cleaned", description: `${data.deleted} expired entries removed` });
+    },
+    onError: () => {
+      toast({ variant: "destructive", title: "Couldn't clean working memory", description: "No entries were removed. Try again or check the system status." });
     },
   });
 
@@ -135,7 +143,7 @@ export default function SovereignV13Page() {
     {
       id: "memory" as PillarTab,
       icon: Brain,
-      title: "Cognitive Memory",
+      title: "Cognitive memory",
       subtitle: "Remember, learn, forget",
       color: "text-purple-500",
       bgColor: "bg-purple-500/10",
@@ -148,7 +156,7 @@ export default function SovereignV13Page() {
     {
       id: "strategy" as PillarTab,
       icon: Target,
-      title: "Adaptive Strategy",
+      title: "Adaptive strategy",
       subtitle: "Evolve & optimize",
       color: "text-amber-500",
       bgColor: "bg-amber-500/10",
@@ -174,7 +182,7 @@ export default function SovereignV13Page() {
     {
       id: "healing" as PillarTab,
       icon: HeartPulse,
-      title: "Self-Healing",
+      title: "Self-healing",
       subtitle: "Detect, heal, harden",
       color: "text-red-500",
       bgColor: "bg-red-500/10",
@@ -200,7 +208,7 @@ export default function SovereignV13Page() {
     {
       id: "intelligence" as PillarTab,
       icon: Lightbulb,
-      title: "Founder Intelligence",
+      title: "Founder intelligence",
       subtitle: "Insights & foresight",
       color: "text-cyan-500",
       bgColor: "bg-cyan-500/10",
@@ -235,34 +243,45 @@ export default function SovereignV13Page() {
           </AlertDescription>
         </Alert>
 
-        {/* Pillar Summary Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-          {pillars.map((pillar) => (
-            <Card
-              key={pillar.id}
-              className={`cursor-pointer transition-all hover:shadow-md ${activeTab === pillar.id ? "ring-2 ring-primary shadow-md" : ""}`}
-              onClick={() => setActiveTab(pillar.id)}
-            >
-              <CardContent className="p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className={`p-1.5 rounded-lg ${pillar.bgColor}`}>
-                    <pillar.icon className={`h-4 w-4 ${pillar.color}`} />
-                  </div>
-                  <span className="text-xs font-semibold truncate">{pillar.title}</span>
-                </div>
-                <p className="text-[10px] text-muted-foreground mb-2">{pillar.subtitle}</p>
-                <div className="space-y-1">
-                  {pillar.stats.map((s) => (
-                    <div key={s.label} className="flex justify-between text-xs">
-                      <span className="text-muted-foreground">{s.label}</span>
-                      <span className="font-mono font-medium">{s.value}</span>
+        {/* Pillar summary grid */}
+        <ul className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 list-none p-0 m-0">
+          {pillars.map((pillar) => {
+            const isActive = activeTab === pillar.id;
+            return (
+              <li key={pillar.id}>
+                <Card
+                  role="button"
+                  tabIndex={0}
+                  aria-current={isActive ? "true" : undefined}
+                  aria-label={`Show ${pillar.title} pillar`}
+                  className={`cursor-pointer transition-all hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${isActive ? "ring-2 ring-primary shadow-md" : ""}`}
+                  onClick={() => setActiveTab(pillar.id)}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setActiveTab(pillar.id); } }}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className={`p-1.5 rounded-lg ${pillar.bgColor}`}>
+                        <pillar.icon className={`h-4 w-4 ${pillar.color}`} aria-hidden="true" />
+                      </div>
+                      <span className="text-xs font-semibold truncate">{pillar.title}</span>
                     </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                    <p className="text-[10px] text-muted-foreground mb-2">{pillar.subtitle}</p>
+                    {pillar.stats.length > 0 && (
+                      <dl className="space-y-1 m-0">
+                        {pillar.stats.map((s) => (
+                          <div key={s.label} className="flex justify-between text-xs">
+                            <dt className="text-muted-foreground">{s.label}</dt>
+                            <dd className="font-mono font-medium tabular-nums m-0">{s.value}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    )}
+                  </CardContent>
+                </Card>
+              </li>
+            );
+          })}
+        </ul>
 
         {/* Active Tab Content */}
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as PillarTab)}>
@@ -270,12 +289,12 @@ export default function SovereignV13Page() {
               into 390px. Flex + overflow keeps the full labels visible
               with a swipe gesture; on md+ the 6-col grid locks back. */}
           <TabsList className="flex md:grid md:grid-cols-6 w-full overflow-x-auto no-scrollbar">
-            <TabsTrigger value="memory" className="shrink-0 md:shrink"><Brain className="h-3 w-3 mr-1" />Memory</TabsTrigger>
-            <TabsTrigger value="strategy" className="shrink-0 md:shrink"><Target className="h-3 w-3 mr-1" />Strategy</TabsTrigger>
-            <TabsTrigger value="collaboration" className="shrink-0 md:shrink"><Users className="h-3 w-3 mr-1" />Collab</TabsTrigger>
-            <TabsTrigger value="healing" className="shrink-0 md:shrink"><HeartPulse className="h-3 w-3 mr-1" />Healing</TabsTrigger>
-            <TabsTrigger value="governance" className="shrink-0 md:shrink"><Shield className="h-3 w-3 mr-1" />Governance</TabsTrigger>
-            <TabsTrigger value="intelligence" className="shrink-0 md:shrink"><Lightbulb className="h-3 w-3 mr-1" />Intel</TabsTrigger>
+            <TabsTrigger value="memory" className="shrink-0 md:shrink"><Brain className="h-3 w-3 mr-1" aria-hidden="true" />Memory</TabsTrigger>
+            <TabsTrigger value="strategy" className="shrink-0 md:shrink"><Target className="h-3 w-3 mr-1" aria-hidden="true" />Strategy</TabsTrigger>
+            <TabsTrigger value="collaboration" className="shrink-0 md:shrink"><Users className="h-3 w-3 mr-1" aria-hidden="true" />Collab</TabsTrigger>
+            <TabsTrigger value="healing" className="shrink-0 md:shrink"><HeartPulse className="h-3 w-3 mr-1" aria-hidden="true" />Healing</TabsTrigger>
+            <TabsTrigger value="governance" className="shrink-0 md:shrink"><Shield className="h-3 w-3 mr-1" aria-hidden="true" />Governance</TabsTrigger>
+            <TabsTrigger value="intelligence" className="shrink-0 md:shrink"><Lightbulb className="h-3 w-3 mr-1" aria-hidden="true" />Intel</TabsTrigger>
           </TabsList>
 
           {/* ─── Memory Tab ─────────────────────────────────────────── */}
@@ -332,11 +351,11 @@ export default function SovereignV13Page() {
                 <CardContent>
                   <div className="text-3xl font-bold">{memoryStats?.workingCount ?? 0}</div>
                   <div className="mt-3 flex gap-2">
-                    <Button size="sm" variant="outline" onClick={() => setPendingAction("consolidate")}>
-                      <RefreshCw className="h-3 w-3 mr-1" /><InfoTooltip term="Consolidate" explanation="Archive and organize old records to keep the system fast.">Consolidate</InfoTooltip>
+                    <Button size="sm" variant="outline" onClick={() => setPendingAction("consolidate")} aria-label="Consolidate working memory">
+                      <RefreshCw className="h-3 w-3 mr-1" aria-hidden="true" /><InfoTooltip term="Consolidate" explanation="Archive and organize old records to keep the system fast.">Consolidate</InfoTooltip>
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => setPendingAction("cleanup")}>
-                      Cleanup Expired
+                    <Button size="sm" variant="outline" onClick={() => setPendingAction("cleanup")} aria-label="Clean up expired working-memory entries">
+                      Cleanup expired
                     </Button>
                   </div>
                 </CardContent>
@@ -350,37 +369,37 @@ export default function SovereignV13Page() {
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm flex items-center gap-2">
-                    <BarChart3 className="h-4 w-4 text-amber-500" />
-                    Strategy Performance
+                    <BarChart3 className="h-4 w-4 text-amber-500" aria-hidden="true" />
+                    Strategy performance
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-3">
+                  <dl className="space-y-3 m-0">
                     <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Total Strategies</span>
-                      <span className="font-mono font-bold">{strategyStats?.totalStrategies ?? 0}</span>
+                      <dt className="text-sm text-muted-foreground">Total strategies</dt>
+                      <dd className="font-mono font-bold tabular-nums m-0">{strategyStats?.totalStrategies ?? 0}</dd>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Active</span>
-                      <span className="font-mono font-bold text-green-500">{strategyStats?.activeStrategies ?? 0}</span>
+                      <dt className="text-sm text-muted-foreground">Active</dt>
+                      <dd className="font-mono font-bold tabular-nums text-green-500 m-0">{strategyStats?.activeStrategies ?? 0}</dd>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Avg Success Rate</span>
-                      <span className="font-mono font-bold">{Number(strategyStats?.avgSuccessRate ?? 0).toFixed(1)}%</span>
+                      <dt className="text-sm text-muted-foreground">Avg success rate</dt>
+                      <dd className="font-mono font-bold tabular-nums m-0">{Number(strategyStats?.avgSuccessRate ?? 0).toFixed(1)}%</dd>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Total Assignments</span>
-                      <span className="font-mono">{strategyStats?.totalAssignments ?? 0}</span>
+                      <dt className="text-sm text-muted-foreground">Total assignments</dt>
+                      <dd className="font-mono tabular-nums m-0">{strategyStats?.totalAssignments ?? 0}</dd>
                     </div>
-                  </div>
+                  </dl>
                 </CardContent>
               </Card>
 
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm flex items-center gap-2">
-                    <FlaskConical className="h-4 w-4 text-amber-500" />
-                    Strategy Proposals
+                    <FlaskConical className="h-4 w-4 text-amber-500" aria-hidden="true" />
+                    Strategy proposals
                   </CardTitle>
                   <CardDescription>Agent-proposed strategy mutations</CardDescription>
                 </CardHeader>
@@ -389,7 +408,7 @@ export default function SovereignV13Page() {
                   <p className="text-xs text-muted-foreground mt-1">pending review</p>
                   {strategyStats?.topPerformingStrategy && (
                     <div className="mt-3 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                      <p className="text-xs font-medium text-amber-600">Top Strategy</p>
+                      <p className="text-xs font-medium text-amber-600">Top strategy</p>
                       <p className="text-xs">{strategyStats.topPerformingStrategy}</p>
                     </div>
                   )}
@@ -404,8 +423,8 @@ export default function SovereignV13Page() {
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm flex items-center gap-2">
-                    <MessageSquare className="h-4 w-4 text-blue-500" />
-                    Active Dialogues
+                    <MessageSquare className="h-4 w-4 text-blue-500" aria-hidden="true" />
+                    Active dialogues
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -429,7 +448,7 @@ export default function SovereignV13Page() {
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm flex items-center gap-2">
-                    <ArrowRight className="h-4 w-4 text-blue-500" />
+                    <ArrowRight className="h-4 w-4 text-blue-500" aria-hidden="true" />
                     Delegations
                   </CardTitle>
                 </CardHeader>
@@ -444,8 +463,8 @@ export default function SovereignV13Page() {
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm flex items-center gap-2">
-                    <Network className="h-4 w-4 text-blue-500" />
-                    Skill Registry
+                    <Network className="h-4 w-4 text-blue-500" aria-hidden="true" />
+                    Skill registry
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -465,7 +484,7 @@ export default function SovereignV13Page() {
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm flex items-center gap-2">
-                    <AlertTriangle className="h-4 w-4 text-red-500" />
+                    <AlertTriangle className="h-4 w-4 text-red-500" aria-hidden="true" />
                     Anomalies
                   </CardTitle>
                 </CardHeader>
@@ -488,8 +507,8 @@ export default function SovereignV13Page() {
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm flex items-center gap-2">
-                    <Activity className="h-4 w-4 text-red-500" />
-                    Agent Health
+                    <Activity className="h-4 w-4 text-red-500" aria-hidden="true" />
+                    Agent health
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -507,7 +526,7 @@ export default function SovereignV13Page() {
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm flex items-center gap-2">
-                    <FileText className="h-4 w-4 text-red-500" />
+                    <FileText className="h-4 w-4 text-red-500" aria-hidden="true" />
                     Playbooks
                   </CardTitle>
                 </CardHeader>
@@ -520,8 +539,8 @@ export default function SovereignV13Page() {
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm flex items-center gap-2">
-                    <Flame className="h-4 w-4 text-red-500" />
-                    Chaos Engineering
+                    <Flame className="h-4 w-4 text-red-500" aria-hidden="true" />
+                    Chaos engineering
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -540,7 +559,7 @@ export default function SovereignV13Page() {
             {Array.isArray(anomalies) && anomalies.length > 0 && (
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-sm">Active Anomalies</CardTitle>
+                  <CardTitle className="text-sm">Active anomalies</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2">
@@ -555,8 +574,8 @@ export default function SovereignV13Page() {
                         </div>
                         <div className="flex items-center gap-2 text-xs">
                           <span className="text-muted-foreground">Expected: {Number(a.expectedValue).toFixed(1)}</span>
-                          <ArrowRight className="h-3 w-3" />
-                          <span className="font-bold text-red-500">Actual: {Number(a.actualValue).toFixed(1)}</span>
+                          <ArrowRight className="h-3 w-3" aria-hidden="true" />
+                          <span className="font-bold tabular-nums text-red-500">Actual: {Number(a.actualValue).toFixed(1)}</span>
                         </div>
                       </div>
                     ))}
@@ -572,8 +591,8 @@ export default function SovereignV13Page() {
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm flex items-center gap-2">
-                    <Shield className="h-4 w-4 text-emerald-500" />
-                    Policy Engine
+                    <Shield className="h-4 w-4 text-emerald-500" aria-hidden="true" />
+                    Policy engine
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -595,48 +614,48 @@ export default function SovereignV13Page() {
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm flex items-center gap-2">
-                    <Eye className="h-4 w-4 text-emerald-500" />
+                    <Eye className="h-4 w-4 text-emerald-500" aria-hidden="true" />
                     Evaluations
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-2">
+                  <dl className="space-y-2 m-0">
                     <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Total evaluated</span>
-                      <span className="font-mono font-bold">{governanceStats?.totalEvaluations ?? 0}</span>
+                      <dt className="text-muted-foreground">Total evaluated</dt>
+                      <dd className="font-mono font-bold tabular-nums m-0">{governanceStats?.totalEvaluations ?? 0}</dd>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span className="flex items-center gap-1">
-                        <CheckCircle2 className="h-3 w-3 text-green-500" />Pass
-                      </span>
-                      <span className="font-mono text-green-500">{governanceStats?.passCount ?? 0}</span>
+                      <dt className="flex items-center gap-1">
+                        <CheckCircle2 className="h-3 w-3 text-green-500" aria-hidden="true" />Pass
+                      </dt>
+                      <dd className="font-mono tabular-nums text-green-500 m-0">{governanceStats?.passCount ?? 0}</dd>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span className="flex items-center gap-1">
-                        <AlertTriangle className="h-3 w-3 text-yellow-500" />Warning
-                      </span>
-                      <span className="font-mono text-yellow-500">{governanceStats?.warningCount ?? 0}</span>
+                      <dt className="flex items-center gap-1">
+                        <AlertTriangle className="h-3 w-3 text-yellow-500" aria-hidden="true" />Warning
+                      </dt>
+                      <dd className="font-mono tabular-nums text-yellow-500 m-0">{governanceStats?.warningCount ?? 0}</dd>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span className="flex items-center gap-1">
-                        <AlertTriangle className="h-3 w-3 text-red-500" />Blocked
-                      </span>
-                      <span className="font-mono text-red-500">{governanceStats?.blockedCount ?? 0}</span>
+                      <dt className="flex items-center gap-1">
+                        <AlertTriangle className="h-3 w-3 text-red-500" aria-hidden="true" />Blocked
+                      </dt>
+                      <dd className="font-mono tabular-nums text-red-500 m-0">{governanceStats?.blockedCount ?? 0}</dd>
                     </div>
-                  </div>
+                  </dl>
                 </CardContent>
               </Card>
 
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm flex items-center gap-2">
-                    <TrendingUp className="h-4 w-4 text-emerald-500" />
-                    Compliance Score
+                    <TrendingUp className="h-4 w-4 text-emerald-500" aria-hidden="true" />
+                    Compliance score
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-3xl font-bold text-emerald-500">{governanceStats?.avgScore ?? 100}</div>
-                  <Progress value={governanceStats?.avgScore ?? 100} className="mt-2" />
+                  <div className="text-3xl font-bold tabular-nums text-emerald-500" role="progressbar" aria-valuenow={governanceStats?.avgScore ?? 100} aria-valuemin={0} aria-valuemax={100} aria-label="Compliance score">{governanceStats?.avgScore ?? 100}</div>
+                  <Progress value={governanceStats?.avgScore ?? 100} className="mt-2" aria-hidden="true" />
                   <p className="text-xs text-muted-foreground mt-2">
                     Sandbox runs: {governanceStats?.sandboxRuns ?? 0}
                   </p>
@@ -651,8 +670,8 @@ export default function SovereignV13Page() {
               <Card className="md:col-span-2">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm flex items-center gap-2">
-                    <Sparkles className="h-4 w-4 text-cyan-500" />
-                    Founder Intelligence Center
+                    <Sparkles className="h-4 w-4 text-cyan-500" aria-hidden="true" />
+                    Founder intelligence center
                   </CardTitle>
                   <CardDescription>
                     Your AI-powered executive briefing, what-if simulator, and strategic advisor
@@ -662,8 +681,8 @@ export default function SovereignV13Page() {
                   <div className="grid md:grid-cols-3 gap-4">
                     <div className="p-4 rounded-lg border bg-cyan-500/5">
                       <div className="flex items-center gap-2 mb-2">
-                        <BookOpen className="h-4 w-4 text-cyan-500" />
-                        <h3 className="text-sm font-semibold">Daily Briefings</h3>
+                        <BookOpen className="h-4 w-4 text-cyan-500" aria-hidden="true" />
+                        <h3 className="text-sm font-semibold">Daily briefings</h3>
                       </div>
                       <p className="text-xs text-muted-foreground">
                         AI-generated executive summaries with key insights, agent highlights, and actionable recommendations.
@@ -672,8 +691,8 @@ export default function SovereignV13Page() {
 
                     <div className="p-4 rounded-lg border bg-cyan-500/5">
                       <div className="flex items-center gap-2 mb-2">
-                        <FlaskConical className="h-4 w-4 text-cyan-500" />
-                        <h3 className="text-sm font-semibold">What-If Simulator</h3>
+                        <FlaskConical className="h-4 w-4 text-cyan-500" aria-hidden="true" />
+                        <h3 className="text-sm font-semibold">What-if simulator</h3>
                       </div>
                       <p className="text-xs text-muted-foreground">
                         Run Monte Carlo simulations on scenarios like full autonomy, trust adjustments, and strategy changes.
@@ -682,8 +701,8 @@ export default function SovereignV13Page() {
 
                     <div className="p-4 rounded-lg border bg-cyan-500/5">
                       <div className="flex items-center gap-2 mb-2">
-                        <Lightbulb className="h-4 w-4 text-cyan-500" />
-                        <h3 className="text-sm font-semibold">Strategic Recommendations</h3>
+                        <Lightbulb className="h-4 w-4 text-cyan-500" aria-hidden="true" />
+                        <h3 className="text-sm font-semibold">Strategic recommendations</h3>
                       </div>
                       <p className="text-xs text-muted-foreground">
                         Data-driven suggestions for growth, efficiency, risk mitigation, and compliance improvements.
@@ -701,16 +720,16 @@ export default function SovereignV13Page() {
           <CardContent className="py-3">
             <div className="flex items-center justify-between text-xs text-muted-foreground">
               <div className="flex items-center gap-4">
-                <span className="flex items-center gap-1">
-                  <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-                  V13 Sentient Enterprise Online
+                <span className="flex items-center gap-1" role="status" aria-live="polite">
+                  <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" aria-hidden="true" />
+                  V13 sentient enterprise online
                 </span>
-                <span>6 Cognitive Pillars Active</span>
+                <span>6 cognitive pillars active</span>
               </div>
               <div className="flex items-center gap-4">
                 <span>
-                  <Clock className="h-3 w-3 inline mr-1" />
-                  Last refresh: {new Date().toLocaleTimeString()}
+                  <Clock className="h-3 w-3 inline mr-1" aria-hidden="true" />
+                  Last refresh: <time dateTime={new Date().toISOString()}>{new Date().toLocaleTimeString()}</time>
                 </span>
               </div>
             </div>
