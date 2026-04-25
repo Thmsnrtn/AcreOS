@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState, type FormEvent } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -35,7 +35,9 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import { apiRequest } from "@/lib/queryClient";
+import { usd } from "@/lib/format";
 import {
   DollarSign,
   Download,
@@ -88,33 +90,36 @@ interface AgentSummary {
   records: CommissionRecord[];
 }
 
-function fmt(cents: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(cents / 100);
+// Money helpers — commission records preserve cents (individual
+// commission amounts can be partial-dollar values like $1,234.56);
+// KPI cards round to whole dollars for compact display.
+function money(cents: number) {
+  return usd(cents / 100);
 }
+function moneyKpi(cents: number) {
+  return usd(cents / 100, { noCents: true });
+}
+
+const reassurance = "The commission record is unchanged — try again.";
 
 function StatusBadge({ status }: { status: CommissionRecord["status"] }) {
   if (status === "paid")
     return (
-      <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
-        <CheckCircle2 className="w-3 h-3 mr-1" />
+      <Badge className="bg-green-100 text-green-800 hover:bg-green-100" aria-label="Status: paid in full">
+        <CheckCircle2 className="w-3 h-3 mr-1" aria-hidden="true" />
         Paid
       </Badge>
     );
   if (status === "partial")
     return (
-      <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100">
-        <Clock className="w-3 h-3 mr-1" />
+      <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100" aria-label="Status: partially paid">
+        <Clock className="w-3 h-3 mr-1" aria-hidden="true" />
         Partial
       </Badge>
     );
   return (
-    <Badge className="bg-red-100 text-red-800 hover:bg-red-100">
-      <AlertCircle className="w-3 h-3 mr-1" />
+    <Badge className="bg-red-100 text-red-800 hover:bg-red-100" aria-label="Status: owed, not yet paid">
+      <AlertCircle className="w-3 h-3 mr-1" aria-hidden="true" />
       Owed
     </Badge>
   );
@@ -139,64 +144,72 @@ function AgentCard({
   return (
     <Card>
       <CardHeader className="pb-3">
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-bold">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-center gap-3 min-w-0">
+            <div
+              className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-bold shrink-0"
+              aria-hidden="true"
+            >
               {initials}
             </div>
-            <div>
-              <p className="font-semibold">{summary.displayName}</p>
-              <p className="text-sm text-muted-foreground">{summary.email}</p>
+            <div className="min-w-0">
+              <p className="font-semibold truncate">{summary.displayName}</p>
+              <p className="text-sm text-muted-foreground truncate">{summary.email}</p>
             </div>
           </div>
           {summary.currentTier && (
-            <Badge variant="outline" className="text-xs">
-              <Trophy className="w-3 h-3 mr-1" />
-              {summary.currentTier.label} ({summary.currentTier.ratePercent}%)
+            <Badge
+              variant="outline"
+              className="text-xs shrink-0"
+              aria-label={`Current commission tier: ${summary.currentTier.label}, ${summary.currentTier.ratePercent} percent rate`}
+            >
+              <Trophy className="w-3 h-3 mr-1" aria-hidden="true" />
+              {summary.currentTier.label} (<span className="tabular-nums">{summary.currentTier.ratePercent}%</span>)
             </Badge>
           )}
         </div>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-2 gap-4 mb-4">
+        <dl className="grid grid-cols-2 gap-4 mb-4">
           <div>
-            <p className="text-xs text-muted-foreground">Deals Closed (YTD)</p>
-            <p className="text-xl font-bold">{summary.ytdDeals}</p>
+            <dt className="text-xs text-muted-foreground">Deals closed (YTD)</dt>
+            <dd className="text-xl font-bold tabular-nums">{summary.ytdDeals}</dd>
           </div>
           <div>
-            <p className="text-xs text-muted-foreground">Sale Volume</p>
-            <p className="text-xl font-bold">
-              {fmt(summary.ytdSaleVolumeCents)}
-            </p>
+            <dt className="text-xs text-muted-foreground">Sale volume</dt>
+            <dd className="text-xl font-bold tabular-nums">
+              {moneyKpi(summary.ytdSaleVolumeCents)}
+            </dd>
           </div>
           <div>
-            <p className="text-xs text-muted-foreground">Commission Owed</p>
-            <p className="text-xl font-bold text-amber-600">
-              {fmt(summary.ytdOwedCents)}
-            </p>
+            <dt className="text-xs text-muted-foreground">Commission owed</dt>
+            <dd className="text-xl font-bold text-amber-600 tabular-nums">
+              {moneyKpi(summary.ytdOwedCents)}
+            </dd>
           </div>
           <div>
-            <p className="text-xs text-muted-foreground">Outstanding</p>
-            <p
-              className={`text-xl font-bold ${
+            <dt className="text-xs text-muted-foreground">Outstanding</dt>
+            <dd
+              className={`text-xl font-bold tabular-nums ${
                 summary.ytdOutstandingCents > 0
                   ? "text-red-600"
                   : "text-green-600"
               }`}
             >
-              {fmt(summary.ytdOutstandingCents)}
-            </p>
+              {moneyKpi(summary.ytdOutstandingCents)}
+            </dd>
           </div>
-        </div>
+        </dl>
         <div className="flex gap-2">
           {summary.ytdOutstandingCents > 0 && (
             <Button
               size="sm"
               className="flex-1"
               onClick={() => onPayClick(summary)}
+              aria-label={`Record commission payment for ${summary.displayName}`}
             >
-              <DollarSign className="w-3 h-3 mr-1" />
-              Record Payment
+              <DollarSign className="w-3 h-3 mr-1" aria-hidden="true" />
+              Record payment
             </Button>
           )}
           <Button
@@ -208,8 +221,9 @@ function AgentCard({
                 "_blank"
               );
             }}
+            aria-label={`Download ${year} commission statement for ${summary.displayName} (opens in new tab)`}
           >
-            <Download className="w-3 h-3 mr-1" />
+            <Download className="w-3 h-3 mr-1" aria-hidden="true" />
             Statement
           </Button>
         </div>
@@ -229,71 +243,81 @@ function PaymentDialog({
 }) {
   const [selectedRecord, setSelectedRecord] = useState<string>("");
   const [amount, setAmount] = useState("");
+  const recordSelectId = useId();
+  const amountInputId = useId();
 
   if (!summary) return null;
 
   const unpaid = summary.records.filter((r) => r.status !== "paid");
+  const dollars = parseFloat(amount);
+  const canSubmit = !!selectedRecord && Number.isFinite(dollars) && dollars > 0;
+
+  function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!canSubmit) return;
+    onPay(selectedRecord, Math.round(dollars * 100));
+    onClose();
+  }
 
   return (
     <Dialog open onOpenChange={onClose}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Record Commission Payment — {summary.displayName}</DialogTitle>
+          <DialogTitle>Record commission payment — {summary.displayName}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-4 py-2">
-          <div>
-            <Label>Commission Record</Label>
-            <Select value={selectedRecord} onValueChange={setSelectedRecord}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select commission record..." />
-              </SelectTrigger>
-              <SelectContent>
-                {unpaid.map((r) => (
-                  <SelectItem key={r.id} value={r.id}>
-                    Deal #{r.dealId} — Outstanding:{" "}
-                    {fmt(r.totalOwedCents - r.paidCents)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        <form onSubmit={handleSubmit}>
+          <div className="space-y-4 py-2">
+            <div>
+              <Label htmlFor={recordSelectId}>Commission record</Label>
+              <Select value={selectedRecord} onValueChange={setSelectedRecord}>
+                <SelectTrigger id={recordSelectId}>
+                  <SelectValue placeholder="Select commission record…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {unpaid.map((r) => (
+                    <SelectItem key={r.id} value={r.id}>
+                      Deal #{r.dealId} — outstanding:{" "}
+                      {money(r.totalOwedCents - r.paidCents)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor={amountInputId}>Payment amount ($)</Label>
+              <Input
+                id={amountInputId}
+                type="number"
+                inputMode="decimal"
+                min="0"
+                step="0.01"
+                placeholder="0.00"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+              />
+            </div>
           </div>
-          <div>
-            <Label>Payment Amount ($)</Label>
-            <Input
-              type="number"
-              min="0"
-              step="0.01"
-              placeholder="0.00"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-            />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            onClick={() => {
-              if (!selectedRecord || !amount) return;
-              onPay(selectedRecord, Math.round(parseFloat(amount) * 100));
-              onClose();
-            }}
-            disabled={!selectedRecord || !amount}
-          >
-            Record Payment
-          </Button>
-        </DialogFooter>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={!canSubmit}>
+              Record payment
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );
 }
 
 export default function CommissionsPage() {
+  useDocumentTitle("Commissions");
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [year, setYear] = useState(new Date().getFullYear());
   const [payTarget, setPayTarget] = useState<AgentSummary | null>(null);
+  const yearSelectId = useId();
 
   const { data: summaries = [], isLoading } = useQuery<AgentSummary[]>({
     queryKey: ["/api/commissions/summaries", year],
@@ -326,8 +350,8 @@ export default function CommissionsPage() {
     },
     onError: (err: any) => {
       toast({
-        title: "Error",
-        description: err.message,
+        title: "Couldn't record payment",
+        description: `${err.message ?? "Network error"}. ${reassurance}`,
         variant: "destructive",
       });
     },
@@ -339,7 +363,6 @@ export default function CommissionsPage() {
     0
   );
   const totalDeals = summaries.reduce((s, a) => s + a.ytdDeals, 0);
-  const totalVolume = summaries.reduce((s, a) => s + a.ytdSaleVolumeCents, 0);
 
   const availableYears = [
     new Date().getFullYear(),
@@ -350,34 +373,37 @@ export default function CommissionsPage() {
   return (
     <PageShell>
       <div className="space-y-6">
-        {/* Year selector + summary stats */}
-        <div className="flex items-center justify-between">
-          <Select
-            value={String(year)}
-            onValueChange={(v) => setYear(parseInt(v))}
-          >
-            <SelectTrigger className="w-32">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {availableYears.map((y) => (
-                <SelectItem key={y} value={String(y)}>
-                  {y}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        {/* Year selector */}
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <Label htmlFor={yearSelectId} className="sr-only">Commission year</Label>
+            <Select
+              value={String(year)}
+              onValueChange={(v) => setYear(parseInt(v))}
+            >
+              <SelectTrigger id={yearSelectId} className="w-32">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {availableYears.map((y) => (
+                  <SelectItem key={y} value={String(y)}>
+                    {y}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         {/* Summary stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <dl className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center gap-3">
-                <Users className="w-8 h-8 text-blue-500" />
+                <Users className="w-8 h-8 text-blue-500" aria-hidden="true" />
                 <div>
-                  <p className="text-2xl font-bold">{summaries.length}</p>
-                  <p className="text-sm text-muted-foreground">Agents</p>
+                  <dd className="text-2xl font-bold tabular-nums">{summaries.length}</dd>
+                  <dt className="text-sm text-muted-foreground">Agents</dt>
                 </div>
               </div>
             </CardContent>
@@ -385,10 +411,10 @@ export default function CommissionsPage() {
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center gap-3">
-                <TrendingUp className="w-8 h-8 text-green-500" />
+                <TrendingUp className="w-8 h-8 text-green-500" aria-hidden="true" />
                 <div>
-                  <p className="text-2xl font-bold">{totalDeals}</p>
-                  <p className="text-sm text-muted-foreground">Deals Closed</p>
+                  <dd className="text-2xl font-bold tabular-nums">{totalDeals}</dd>
+                  <dt className="text-sm text-muted-foreground">Deals closed</dt>
                 </div>
               </div>
             </CardContent>
@@ -396,10 +422,10 @@ export default function CommissionsPage() {
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center gap-3">
-                <DollarSign className="w-8 h-8 text-amber-500" />
+                <DollarSign className="w-8 h-8 text-amber-500" aria-hidden="true" />
                 <div>
-                  <p className="text-2xl font-bold">{fmt(totalOwed)}</p>
-                  <p className="text-sm text-muted-foreground">Total Commissions</p>
+                  <dd className="text-2xl font-bold tabular-nums">{moneyKpi(totalOwed)}</dd>
+                  <dt className="text-sm text-muted-foreground">Total commissions</dt>
                 </div>
               </div>
             </CardContent>
@@ -411,95 +437,101 @@ export default function CommissionsPage() {
                   className={`w-8 h-8 ${
                     totalOutstanding > 0 ? "text-red-500" : "text-green-500"
                   }`}
+                  aria-hidden="true"
                 />
                 <div>
-                  <p className="text-2xl font-bold">{fmt(totalOutstanding)}</p>
-                  <p className="text-sm text-muted-foreground">Outstanding</p>
+                  <dd className="text-2xl font-bold tabular-nums">{moneyKpi(totalOutstanding)}</dd>
+                  <dt className="text-sm text-muted-foreground">Outstanding</dt>
                 </div>
               </div>
             </CardContent>
           </Card>
-        </div>
+        </dl>
 
         <Tabs defaultValue="agents">
           <TabsList>
-            <TabsTrigger value="agents">By Agent</TabsTrigger>
-            <TabsTrigger value="records">All Records</TabsTrigger>
-            <TabsTrigger value="tiers">Tier Config</TabsTrigger>
+            <TabsTrigger value="agents">By agent</TabsTrigger>
+            <TabsTrigger value="records">All records</TabsTrigger>
+            <TabsTrigger value="tiers">Tier config</TabsTrigger>
           </TabsList>
 
           <TabsContent value="agents" className="mt-4">
             {isLoading ? (
-              <div className="flex justify-center py-12">
-                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+              <div className="flex justify-center py-12" role="status" aria-label="Loading agent summaries">
+                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" aria-hidden="true" />
               </div>
             ) : summaries.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">
                 No team members found.
               </div>
             ) : (
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <ul className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 list-none p-0 m-0" aria-label="Commission summary by agent">
                 {summaries.map((s) => (
-                  <AgentCard
-                    key={s.teamMemberId}
-                    summary={s}
-                    year={year}
-                    onPayClick={setPayTarget}
-                  />
+                  <li key={s.teamMemberId}>
+                    <AgentCard
+                      summary={s}
+                      year={year}
+                      onPayClick={setPayTarget}
+                    />
+                  </li>
                 ))}
-              </div>
+              </ul>
             )}
           </TabsContent>
 
           <TabsContent value="records" className="mt-4">
             <Card>
               <CardContent className="p-0">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Agent</TableHead>
-                      <TableHead>Deal #</TableHead>
-                      <TableHead>Closed</TableHead>
-                      <TableHead>Sale Price</TableHead>
-                      <TableHead>Rate</TableHead>
-                      <TableHead>Commission</TableHead>
-                      <TableHead>Paid</TableHead>
-                      <TableHead>Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {summaries.flatMap((s) =>
-                      s.records.map((r) => (
-                        <TableRow key={r.id}>
-                          <TableCell className="font-medium">
-                            {s.displayName}
-                          </TableCell>
-                          <TableCell>#{r.dealId}</TableCell>
-                          <TableCell>
-                            {format(new Date(r.dealClosedAt), "MMM d, yyyy")}
-                          </TableCell>
-                          <TableCell>{fmt(r.salePrice)}</TableCell>
-                          <TableCell>{r.commissionRatePercent}%</TableCell>
-                          <TableCell>{fmt(r.totalOwedCents)}</TableCell>
-                          <TableCell>{fmt(r.paidCents)}</TableCell>
-                          <TableCell>
-                            <StatusBadge status={r.status} />
+                <div role="region" aria-label="All commission records" tabIndex={0}>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead scope="col">Agent</TableHead>
+                        <TableHead scope="col">Deal #</TableHead>
+                        <TableHead scope="col">Closed</TableHead>
+                        <TableHead scope="col">Sale price</TableHead>
+                        <TableHead scope="col">Rate</TableHead>
+                        <TableHead scope="col">Commission</TableHead>
+                        <TableHead scope="col">Paid</TableHead>
+                        <TableHead scope="col">Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {summaries.flatMap((s) =>
+                        s.records.map((r) => (
+                          <TableRow key={r.id}>
+                            <TableCell scope="row" className="font-medium">
+                              {s.displayName}
+                            </TableCell>
+                            <TableCell className="tabular-nums">#{r.dealId}</TableCell>
+                            <TableCell>
+                              <time dateTime={r.dealClosedAt}>
+                                {format(new Date(r.dealClosedAt), "MMM d, yyyy")}
+                              </time>
+                            </TableCell>
+                            <TableCell className="tabular-nums">{money(r.salePrice)}</TableCell>
+                            <TableCell className="tabular-nums">{r.commissionRatePercent}%</TableCell>
+                            <TableCell className="tabular-nums">{money(r.totalOwedCents)}</TableCell>
+                            <TableCell className="tabular-nums">{money(r.paidCents)}</TableCell>
+                            <TableCell>
+                              <StatusBadge status={r.status} />
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                      {summaries.every((s) => s.records.length === 0) && (
+                        <TableRow>
+                          <TableCell
+                            colSpan={8}
+                            className="text-center text-muted-foreground py-8"
+                          >
+                            No commission records for {year}.
                           </TableCell>
                         </TableRow>
-                      ))
-                    )}
-                    {summaries.every((s) => s.records.length === 0) && (
-                      <TableRow>
-                        <TableCell
-                          colSpan={8}
-                          className="text-center text-muted-foreground py-8"
-                        >
-                          No commission records for {year}.
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
@@ -507,7 +539,7 @@ export default function CommissionsPage() {
           <TabsContent value="tiers" className="mt-4">
             <Card>
               <CardHeader>
-                <CardTitle>Commission Tiers</CardTitle>
+                <CardTitle>Commission tiers</CardTitle>
               </CardHeader>
               <CardContent>
                 {config ? (
@@ -518,38 +550,40 @@ export default function CommissionsPage() {
                         {config.trackingPeriod}
                       </span>
                     </p>
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Tier</TableHead>
-                          <TableHead>Min Deals</TableHead>
-                          <TableHead>Rate</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {config.tiers.map((t, i) => (
-                          <TableRow key={i}>
-                            <TableCell className="font-medium">
-                              {t.label}
-                            </TableCell>
-                            <TableCell>{t.minDeals}+</TableCell>
-                            <TableCell>{t.ratePercent}%</TableCell>
+                    <div role="region" aria-label="Commission tier configuration" tabIndex={0}>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead scope="col">Tier</TableHead>
+                            <TableHead scope="col">Min deals</TableHead>
+                            <TableHead scope="col">Rate</TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                        </TableHeader>
+                        <TableBody>
+                          {config.tiers.map((t, i) => (
+                            <TableRow key={i}>
+                              <TableCell scope="row" className="font-medium">
+                                {t.label}
+                              </TableCell>
+                              <TableCell className="tabular-nums">{t.minDeals}+</TableCell>
+                              <TableCell className="tabular-nums">{t.ratePercent}%</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
                     {config.baseFlatAmount && config.baseFlatAmount > 0 && (
                       <p className="text-sm text-muted-foreground">
                         Flat bonus per deal:{" "}
-                        <span className="font-medium">
-                          {fmt(config.baseFlatAmount)}
+                        <span className="font-medium tabular-nums">
+                          {money(config.baseFlatAmount)}
                         </span>
                       </p>
                     )}
                   </div>
                 ) : (
-                  <div className="flex justify-center py-8">
-                    <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                  <div className="flex justify-center py-8" role="status" aria-label="Loading tier configuration">
+                    <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" aria-hidden="true" />
                   </div>
                 )}
               </CardContent>
