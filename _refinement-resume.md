@@ -793,6 +793,7 @@ to a dedicated 9b slice.
 **Empty-states polish (207):** ✅ complete — parallel polish on Deals/Properties/Tasks/Campaigns empty states: decorative icon clusters aria-hidden, button icons aria-hidden, sentence-case CTAs ("Create your first deal/task/campaign", "Add a property"). (commit `8a08dd2`)
 **BulkActionBar a11y (208):** ✅ complete — converted outer fixed div to `<aside aria-label>` with dynamic count+entity, count Badge aria-live="polite", Clear button gained aria-label + X icon aria-hidden. (commit `e92ad52`)
 **ActivityTimeline a11y (209):** ✅ complete — decorative left-rail (icon+line) aria-hidden, relative date promoted to `<time dateTime>`, collapsible trigger gained state-aware aria-label + aria-expanded, chevrons aria-hidden. (commit `7a5b0ee`)
+**FieldWorkToolbar a11y (210):** ✅ complete — bottom mobile toolbar promoted to `<nav aria-label="Field work tools">`, sentence-case button labels ("Quick capture" etc.), all icons aria-hidden. (commit `d500403`)
 **/onboarding-v2 targeted (18):** ✅ complete (commit `70df779`) — 18b deferred
 **/settings targeted (19):** ✅ complete (commit `809044c`) — 19b remaining components deferred
 **/pipeline (20):** ✅ complete (commit `1b5d0f7`)
