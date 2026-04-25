@@ -31,21 +31,21 @@ export function QuickActionsMenu() {
   const quickActions: QuickAction[] = [
     {
       icon: Users,
-      label: "New Lead",
+      label: "New lead",
       href: "/leads?action=new",
       color: "bg-blue-500 hover:bg-blue-600",
       testId: "quick-action-lead",
     },
     {
       icon: Map,
-      label: "New Property",
+      label: "New property",
       href: "/properties?action=new",
       color: "bg-green-500 hover:bg-green-600",
       testId: "quick-action-property",
     },
     {
       icon: Briefcase,
-      label: "New Deal",
+      label: "New deal",
       href: "/deals?action=new",
       color: "bg-purple-500 hover:bg-purple-600",
       testId: "quick-action-deal",
@@ -104,37 +104,51 @@ export function QuickActionsMenu() {
       data-testid="quick-actions-fab"
     >
       {isOpen && (
-        <div className="absolute bottom-16 right-0 mb-2 flex flex-col-reverse gap-3">
+        <ul
+          id="quick-actions-menu"
+          role="menu"
+          aria-label="Quick actions"
+          className="absolute bottom-16 right-0 mb-2 flex flex-col-reverse gap-3 list-none p-0 m-0"
+        >
           {quickActions.map((action, index) => (
-            <button
-              key={action.testId}
-              onClick={() => handleActionClick(action)}
-              className={cn(
-                "flex items-center gap-3 pl-4 pr-3 py-2.5 rounded-full text-white shadow-lg",
-                "transition-all duration-200",
-                "animate-in slide-in-from-bottom-2 fade-in",
-                action.color
-              )}
-              style={{ animationDelay: `${index * 50}ms` }}
-              data-testid={action.testId}
-            >
-              <span className="text-sm font-medium whitespace-nowrap">{action.label}</span>
-              <action.icon className="w-5 h-5" />
-            </button>
+            <li key={action.testId} role="none">
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => handleActionClick(action)}
+                className={cn(
+                  "flex items-center gap-3 pl-4 pr-3 py-2.5 rounded-full text-white shadow-lg",
+                  "transition-all duration-200",
+                  "animate-in slide-in-from-bottom-2 fade-in",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                  action.color
+                )}
+                style={{ animationDelay: `${index * 50}ms` }}
+                data-testid={action.testId}
+              >
+                <span className="text-sm font-medium whitespace-nowrap">{action.label}</span>
+                <action.icon className="w-5 h-5" aria-hidden="true" />
+              </button>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
 
       <Button
+        type="button"
         size="lg"
         onClick={() => setIsOpen(!isOpen)}
+        aria-expanded={isOpen}
+        aria-haspopup="menu"
+        aria-controls="quick-actions-menu"
+        aria-label={isOpen ? "Close quick actions" : "Open quick actions"}
         className={cn(
           "rounded-full shadow-lg transition-transform duration-200 h-14 w-14",
           isOpen && "rotate-45 bg-muted text-muted-foreground"
         )}
         data-testid="quick-actions-toggle"
       >
-        {isOpen ? <X className="w-6 h-6" /> : <Plus className="w-6 h-6" />}
+        {isOpen ? <X className="w-6 h-6" aria-hidden="true" /> : <Plus className="w-6 h-6" aria-hidden="true" />}
       </Button>
     </div>
   );
