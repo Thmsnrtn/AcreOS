@@ -134,17 +134,18 @@ function ActivityFeedItem({ event }: ActivityFeedItemProps) {
             {relative(eventDate)}
           </span>
           {entityLink && (
-            <Link href={entityLink}>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                className="h-6 px-2 text-xs"
-                data-testid={`activity-feed-link-${event.id}`}
-              >
-                <ExternalLink className="w-3 h-3 mr-1" />
+            <Button
+              asChild
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2 text-xs"
+              data-testid={`activity-feed-link-${event.id}`}
+            >
+              <Link href={entityLink}>
+                <ExternalLink className="w-3 h-3 mr-1" aria-hidden="true" />
                 View
-              </Button>
-            </Link>
+              </Link>
+            </Button>
           )}
         </div>
       </div>

@@ -159,11 +159,11 @@ export function OnboardingChecklist() {
                   <div className="text-xs text-muted-foreground">{step.description}</div>
                 </div>
                 {!done && (
-                  <Link href={step.href}>
-                    <Button variant="ghost" size="sm" className="h-6 px-2 text-xs shrink-0">
-                      Go <ChevronRight className="w-3 h-3 ml-0.5" />
-                    </Button>
-                  </Link>
+                  <Button asChild variant="ghost" size="sm" className="h-6 px-2 text-xs shrink-0">
+                    <Link href={step.href} aria-label={`Go to ${step.label}`}>
+                      Go <ChevronRight className="w-3 h-3 ml-0.5" aria-hidden="true" />
+                    </Link>
+                  </Button>
                 )}
               </div>
             );

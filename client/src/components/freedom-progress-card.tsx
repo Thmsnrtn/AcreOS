@@ -94,11 +94,11 @@ export function FreedomProgressCard() {
           <p className="text-xs text-muted-foreground">
             Your freedom meter shows how close you are to replacing your income with passive cash flow.
           </p>
-          <Link href="/finance">
-            <Button variant="outline" size="sm">
-              Create First Note <ArrowRight className="w-3 h-3 ml-1" />
-            </Button>
-          </Link>
+          <Button asChild variant="outline" size="sm">
+            <Link href="/finance">
+              Create first note <ArrowRight className="w-3 h-3 ml-1" aria-hidden="true" />
+            </Link>
+          </Button>
         </CardContent>
       </Card>
     );
@@ -111,9 +111,9 @@ export function FreedomProgressCard() {
         <CardContent className="p-6 text-center space-y-3">
           <ProgressRing percentage={0} />
           <p className="text-sm font-medium">Set your freedom target to start tracking</p>
-          <Link href="/goals">
-            <Button variant="outline" size="sm">Set Target</Button>
-          </Link>
+          <Button asChild variant="outline" size="sm">
+            <Link href="/goals">Set target</Link>
+          </Button>
         </CardContent>
       </Card>
     );

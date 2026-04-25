@@ -168,22 +168,24 @@ export function PlaybookSteps({ template, instance, onCompleteStep, onUncomplete
                           {status !== "completed" && (
                             <>
                               {step.actionUrl ? (
-                                <Link href={step.actionUrl}>
-                                  <Button 
-                                    size="sm"
-                                    data-testid={`button-action-${step.id}`}
-                                  >
+                                <Button
+                                  asChild
+                                  size="sm"
+                                  data-testid={`button-action-${step.id}`}
+                                >
+                                  <Link href={step.actionUrl}>
                                     {step.actionLabel}
-                                  </Button>
-                                </Link>
+                                  </Link>
+                                </Button>
                               ) : (
-                                <Button 
-                                  size="sm" 
+                                <Button
+                                  type="button"
+                                  size="sm"
                                   variant="outline"
                                   onClick={() => onCompleteStep(step.id)}
                                   data-testid={`button-complete-${step.id}`}
                                 >
-                                  <CheckCircle2 className="w-4 h-4 mr-1" />
+                                  <CheckCircle2 className="w-4 h-4 mr-1" aria-hidden="true" />
                                   {step.actionLabel}
                                 </Button>
                               )}
