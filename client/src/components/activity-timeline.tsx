@@ -264,7 +264,13 @@ export function ActivityTimeline({ entityType, entityId, className }: ActivityTi
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <div className="space-y-4 py-2" data-testid="timeline-loading">
+          <div
+            className="space-y-4 py-2"
+            data-testid="timeline-loading"
+            role="status"
+            aria-busy="true"
+            aria-label="Loading activity timeline"
+          >
             {[1, 2, 3, 4, 5].map((i) => (
               <div key={i} className="flex gap-3">
                 <Skeleton className="w-8 h-8 rounded-full shrink-0" />
@@ -275,10 +281,11 @@ export function ActivityTimeline({ entityType, entityId, className }: ActivityTi
                 </div>
               </div>
             ))}
+            <span className="sr-only">Loading…</span>
           </div>
         ) : error ? (
-          <div className="py-8 text-center text-muted-foreground" data-testid="timeline-error">
-            Failed to load timeline
+          <div role="alert" className="py-8 text-center text-muted-foreground" data-testid="timeline-error">
+            Couldn't load timeline. Refresh the page or try again in a moment.
           </div>
         ) : events.length === 0 ? (
           <EmptyState
@@ -288,18 +295,19 @@ export function ActivityTimeline({ entityType, entityId, className }: ActivityTi
           />
         ) : (
           <ScrollArea className="h-[400px] pr-4">
-            <motion.div
+            <motion.ol
               variants={staggerContainer}
               initial="hidden"
               animate="visible"
-              className="space-y-0 relative"
+              aria-label="Activity timeline"
+              className="space-y-0 relative list-none p-0 m-0"
             >
               {events.map((event) => (
-                <motion.div key={event.id} variants={staggerItem}>
+                <motion.li key={event.id} variants={staggerItem}>
                   <TimelineEvent event={event} />
-                </motion.div>
+                </motion.li>
               ))}
-            </motion.div>
+            </motion.ol>
           </ScrollArea>
         )}
       </CardContent>
