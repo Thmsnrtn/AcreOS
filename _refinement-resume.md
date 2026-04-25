@@ -808,6 +808,7 @@ to a dedicated 9b slice.
 **campaigns-form campaign-type Label (222):** ✅ complete — CampaignForm "Type" Select raw `<label>` replaced with `<Label htmlFor>` matched to SelectTrigger id. (commit `536d5e8`)
 **HelpPanel + properties raw labels (223):** ✅ complete — HelpPanel's create-ticket form: 4 raw `<label>` elements converted to `<Label htmlFor>` (subject/description/category/priority) with id↔htmlFor; subject + description autoCapitalize=sentences + required; sentence-case throughout. properties.tsx Upload icon aria-hidden, ellipsis polish. (commit `1a9fe77`)
 **pax-schedule-button (224):** ✅ complete — dialog converted to `<form id>`, raw labels → `<Label htmlFor>`, task name autoCapitalize=sentences + required, sentence-case throughout. (commit `85fe0a3`)
+**founder-dashboard raw labels (225):** ✅ complete — 6 raw labels converted to `<Label htmlFor>`: discovery state filter, scan-target-states (autoCapitalize=characters), 4 Meta ad-account inputs (autoComplete=off + autoCorrect/spellCheck off; Pixel ID inputMode=numeric). Sentence-case throughout. Label component imported. (commit `09fa5ba`)
 **/onboarding-v2 targeted (18):** ✅ complete (commit `70df779`) — 18b deferred
 **/settings targeted (19):** ✅ complete (commit `809044c`) — 19b remaining components deferred
 **/pipeline (20):** ✅ complete (commit `1b5d0f7`)
