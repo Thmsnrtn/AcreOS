@@ -794,9 +794,12 @@ export default function FieldScout() {
         ].map(({ key, label, icon: Icon }) => (
           <button
             key={key}
+            type="button"
+            role="tab"
+            aria-selected={activeView === key}
             onClick={() => setActiveView(key as any)}
             className={cn(
-              "flex-1 py-3 text-xs font-medium flex flex-col items-center gap-1 transition-colors",
+              "flex-1 py-3 text-xs font-medium flex flex-col items-center gap-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400",
               activeView === key
                 ? "text-emerald-400 border-b-2 border-emerald-400"
                 : "text-gray-500 hover:text-gray-300"
@@ -1022,8 +1025,10 @@ export default function FieldScout() {
           {/* Inspection Checklist (collapsible) */}
           <Card className="bg-gray-900 border-gray-800">
             <button
+              type="button"
               onClick={() => setShowChecklist(!showChecklist)}
-              className="w-full px-4 py-3 flex items-center justify-between text-left"
+              aria-expanded={showChecklist}
+              className="w-full px-4 py-3 flex items-center justify-between text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
             >
               <div className="flex items-center gap-2">
                 <ClipboardList className="w-4 h-4 text-emerald-400" />
@@ -1410,17 +1415,21 @@ export default function FieldScout() {
       <div className="fixed bottom-6 right-4 flex flex-col gap-2">
         {isRecording ? (
           <button
+            type="button"
             onClick={stopRecording}
-            className="w-14 h-14 bg-red-600 rounded-full flex items-center justify-center shadow-lg animate-pulse"
+            aria-label="Stop voice recording"
+            className="w-14 h-14 bg-red-600 rounded-full flex items-center justify-center shadow-lg animate-pulse focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
           >
-            <MicOff className="w-6 h-6 text-white" />
+            <MicOff className="w-6 h-6 text-white" aria-hidden="true" />
           </button>
         ) : (
           <button
+            type="button"
             onClick={startRecording}
-            className="w-14 h-14 bg-gray-700 rounded-full flex items-center justify-center shadow-lg"
+            aria-label="Start voice recording"
+            className="w-14 h-14 bg-gray-700 rounded-full flex items-center justify-center shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
           >
-            <Mic className="w-6 h-6 text-white" />
+            <Mic className="w-6 h-6 text-white" aria-hidden="true" />
           </button>
         )}
         <button

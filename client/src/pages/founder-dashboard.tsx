@@ -6546,7 +6546,7 @@ function FounderNavBar() {
   };
 
   return (
-    <div className="sticky top-0 z-30 -mx-4 px-4 bg-background/95 backdrop-blur-sm border-b border-border/60 py-0">
+    <nav aria-label="Founder dashboard sections" className="sticky top-0 z-30 -mx-4 px-4 bg-background/95 backdrop-blur-sm border-b border-border/60 py-0">
       <div
         ref={scrollRef}
         className="flex items-center gap-1 overflow-x-auto py-2"
@@ -6557,20 +6557,22 @@ function FounderNavBar() {
           return (
             <button
               key={href}
+              type="button"
               onClick={() => scrollTo(href)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition-all ${
+              aria-current={isActive ? "true" : undefined}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                 isActive
                   ? "bg-primary text-primary-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground hover:bg-muted"
               }`}
             >
-              <Icon className="w-3 h-3" />
+              <Icon className="w-3 h-3" aria-hidden="true" />
               {label}
             </button>
           );
         })}
       </div>
-    </div>
+    </nav>
   );
 }
 

@@ -897,8 +897,10 @@ export default function MarketplacePage() {
                             {listing.listingType}
                           </Badge>
                           <button
+                            type="button"
                             title="Copy shareable link"
-                            className="text-muted-foreground hover:text-foreground"
+                            aria-label={`Copy shareable link for listing ${listing.title || listing.id}`}
+                            className="text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
                             onClick={(e) => {
                               e.stopPropagation();
                               const url = `${window.location.origin}/marketplace?listing=${listing.id}`;
@@ -906,7 +908,7 @@ export default function MarketplacePage() {
                               toast({ title: 'Link copied', description: 'Shareable link copied to clipboard' });
                             }}
                           >
-                            <Copy className="w-3.5 h-3.5" />
+                            <Copy className="w-3.5 h-3.5" aria-hidden="true" />
                           </button>
                         </div>
                       </div>
