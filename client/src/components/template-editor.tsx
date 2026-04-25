@@ -201,7 +201,7 @@ export function TemplateEditor({ template, onSave, onCancel, mode = "create" }: 
       onSave?.(response as unknown as DocumentTemplate);
     },
     onError: (error: any) => {
-      toast({ title: "Failed to create template", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't create template", description: `${error.message} — your draft is preserved.`, variant: "destructive" });
     },
   });
 
@@ -216,7 +216,7 @@ export function TemplateEditor({ template, onSave, onCancel, mode = "create" }: 
       onSave?.(response as unknown as DocumentTemplate);
     },
     onError: (error: any) => {
-      toast({ title: "Failed to update template", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't update template", description: `${error.message} — the existing template is unchanged.`, variant: "destructive" });
     },
   });
 
@@ -228,7 +228,7 @@ export function TemplateEditor({ template, onSave, onCancel, mode = "create" }: 
       setPreviewContent(response.previewContent);
     },
     onError: (error: any) => {
-      toast({ title: "Failed to load preview", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't load preview", description: `${error.message} — your template content is unchanged.`, variant: "destructive" });
     },
   });
 

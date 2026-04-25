@@ -152,7 +152,7 @@ export function CommentThread({ entityType, entityId, currentUserId }: CommentTh
       qc.invalidateQueries({ queryKey });
       qc.invalidateQueries({ queryKey: [...queryKey, "count"] });
     },
-    onError: () => toast({ title: "Failed to post comment", variant: "destructive" }),
+    onError: () => toast({ title: "Couldn't post comment", description: "Your draft is preserved. Try again or check the system status.", variant: "destructive" }),
   });
 
   const deleteMutation = useMutation({
@@ -163,7 +163,7 @@ export function CommentThread({ entityType, entityId, currentUserId }: CommentTh
       qc.invalidateQueries({ queryKey });
       qc.invalidateQueries({ queryKey: [...queryKey, "count"] });
     },
-    onError: () => toast({ title: "Failed to delete comment", variant: "destructive" }),
+    onError: () => toast({ title: "Couldn't delete comment", description: "The comment is still on the thread. Try again.", variant: "destructive" }),
   });
 
   const handleSubmit = useCallback(() => {

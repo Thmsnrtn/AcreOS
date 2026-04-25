@@ -38,14 +38,14 @@ export function ApiKeySetup({
       const valid = await onSave(key);
       setIsValid(valid);
       if (valid) {
-        toast({ title: `${serviceName} connected successfully` });
+        toast({ title: `${serviceName} connected`, description: "Your key passed validation and is now active." });
         setKey("");
       } else {
-        toast({ title: "Invalid API key", variant: "destructive" });
+        toast({ title: `${serviceName} key didn't validate`, description: "The key is still in the form — double-check the value and try again. No connection was made.", variant: "destructive" });
       }
     } catch (error) {
       setIsValid(false);
-      toast({ title: "Failed to validate key", variant: "destructive" });
+      toast({ title: "Couldn't validate key", description: "Network error. Your key is still in the form — try again in a moment.", variant: "destructive" });
     } finally {
       setIsValidating(false);
     }

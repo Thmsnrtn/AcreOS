@@ -25,7 +25,7 @@ export function BetaFeedbackWidget() {
       setOpen(false);
     },
     onError: () => {
-      toast({ title: "Failed to submit feedback", variant: "destructive" });
+      toast({ title: "Couldn't submit feedback", description: "Your message is preserved in the form. Try again or check the system status.", variant: "destructive" });
     },
   });
 

@@ -100,7 +100,7 @@ export function SavedViewsSelector({
       setIsShared(false);
     },
     onError: (err: Error) => {
-      toast({ title: "Failed to save view", description: err.message, variant: "destructive" });
+      toast({ title: "Couldn't save view", description: `${err.message} — your draft name and filters are preserved.`, variant: "destructive" });
     },
   });
 
@@ -116,7 +116,7 @@ export function SavedViewsSelector({
       }
     },
     onError: (err: Error) => {
-      toast({ title: "Failed to delete view", description: err.message, variant: "destructive" });
+      toast({ title: "Couldn't delete view", description: `${err.message} — the view still exists.`, variant: "destructive" });
     },
   });
 
@@ -129,7 +129,7 @@ export function SavedViewsSelector({
       toast({ title: "Default view updated" });
     },
     onError: (err: Error) => {
-      toast({ title: "Failed to set default view", description: err.message, variant: "destructive" });
+      toast({ title: "Couldn't set default view", description: `${err.message} — the previous default is unchanged.`, variant: "destructive" });
     },
   });
 
