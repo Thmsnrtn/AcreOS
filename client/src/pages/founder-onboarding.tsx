@@ -18,6 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import { Rocket, AlertTriangle, CheckCircle2, Clock, RefreshCw } from "lucide-react";
 import { relative } from "@/lib/format";
 import { Link } from "wouter";
@@ -60,7 +61,8 @@ const STATUS_META: Record<
 };
 
 export default function FounderOnboardingPage() {
-  const { data, isLoading, isError } = useQuery<{ journeys: JourneyRow[]; stats: ActivationStats }>({
+  useDocumentTitle("Customer onboarding");
+  const { data, isLoading, isError, refetch } = useQuery<{ journeys: JourneyRow[]; stats: ActivationStats }>({
     queryKey: ["/api/founder/intelligence/onboarding/journeys"],
     staleTime: 60_000,
   });
@@ -71,8 +73,14 @@ export default function FounderOnboardingPage() {
     mutationFn: async () => (await apiRequest("POST", "/api/founder/intelligence/onboarding/sweep-now", {})).json(),
     onSuccess: (r: any) => {
       qc.invalidateQueries({ queryKey: ["/api/founder/intelligence/onboarding/journeys"] });
-      toast({ title: "Swept", description: `fired ${r.fired} step(s)` });
+      toast({ title: "Swept", description: `Fired ${r.fired} step(s).` });
     },
+    onError: () =>
+      toast({
+        title: "Couldn't run sweep",
+        description: "No journeys advanced. The next scheduled sweep will run on its normal cadence.",
+        variant: "destructive",
+      }),
   });
 
   const journeys = data?.journeys ?? [];
@@ -88,7 +96,7 @@ export default function FounderOnboardingPage() {
           <CardContent className="p-6 flex items-start justify-between gap-3 flex-wrap">
             <div>
               <h1 className="text-2xl font-semibold text-foreground mb-2 flex items-center gap-2">
-                <Rocket className="h-5 w-5 text-muted-foreground" />
+                <Rocket className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
                 Customer onboarding
               </h1>
               <p className="text-sm text-muted-foreground max-w-2xl">
@@ -102,50 +110,64 @@ export default function FounderOnboardingPage() {
               disabled={sweep.isPending}
               size="sm"
               variant="outline"
+              aria-label="Sweep all onboarding journeys now"
             >
-              <RefreshCw className="h-4 w-4 mr-1" />
+              <RefreshCw className={`h-4 w-4 mr-1 ${sweep.isPending ? "animate-spin" : ""}`} aria-hidden="true" />
               {sweep.isPending ? "Sweeping…" : "Sweep now"}
             </Button>
           </CardContent>
         </Card>
 
-        {/* Stats strip */}
         {stats && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <dl className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <StatCard label="Total journeys" value={stats.total} />
             <StatCard label="In progress" value={stats.byStatus.pending ?? 0} />
             <StatCard label="Activated" value={stats.byStatus.active ?? 0} />
             <StatCard label="Activation rate" value={`${stats.activationRatePct}%`} />
-          </div>
+          </dl>
         )}
 
-        {/* Flagged (urgent) */}
         {flagged.length > 0 && (
           <Card className="bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800/40">
             <CardHeader className="pb-2">
               <CardTitle className="text-base flex items-center gap-2 text-amber-900 dark:text-amber-200">
-                <AlertTriangle className="h-4 w-4" />
+                <AlertTriangle className="h-4 w-4" aria-hidden="true" />
                 Flagged — Sophie wants you on a call
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2">
-              {flagged.map((j) => (
-                <JourneyRowDisplay key={j.id} journey={j} />
-              ))}
+            <CardContent>
+              <ul className="space-y-2" aria-label="Flagged onboarding journeys needing a call">
+                {flagged.map((j) => (
+                  <li key={j.id}>
+                    <JourneyRowDisplay journey={j} />
+                  </li>
+                ))}
+              </ul>
             </CardContent>
           </Card>
         )}
 
-        {/* Active */}
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">In progress ({active.length})</CardTitle>
+            <CardTitle className="text-base">In progress (<span className="tabular-nums">{active.length}</span>)</CardTitle>
           </CardHeader>
           <CardContent>
             {isLoading ? (
-              <Skeleton className="h-16 w-full" />
+              <div role="status" aria-live="polite">
+                <span className="sr-only">Loading onboarding journeys…</span>
+                <Skeleton className="h-16 w-full" />
+              </div>
             ) : isError ? (
-              <p className="text-sm text-red-600">Could not load.</p>
+              <p className="text-sm text-red-600" role="alert">
+                Couldn't load journeys. The list is unchanged —{" "}
+                <button
+                  type="button"
+                  className="underline hover:no-underline"
+                  onClick={() => refetch()}
+                >
+                  try again
+                </button>.
+              </p>
             ) : active.length === 0 ? (
               <EmptyState
                 icon={Rocket}
@@ -153,27 +175,30 @@ export default function FounderOnboardingPage() {
                 description="Journeys start automatically when a new Land Investor org signs up."
               />
             ) : (
-              <div className="space-y-2">
+              <ul className="space-y-2" aria-label="Onboarding journeys in progress">
                 {active.map((j) => (
-                  <JourneyRowDisplay key={j.id} journey={j} />
+                  <li key={j.id}>
+                    <JourneyRowDisplay journey={j} />
+                  </li>
                 ))}
-              </div>
+              </ul>
             )}
           </CardContent>
         </Card>
 
-        {/* Completed */}
         {complete.length > 0 && (
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-base">Completed ({complete.length})</CardTitle>
+              <CardTitle className="text-base">Completed (<span className="tabular-nums">{complete.length}</span>)</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-2">
+              <ul className="space-y-2" aria-label="Completed onboarding journeys">
                 {complete.map((j) => (
-                  <JourneyRowDisplay key={j.id} journey={j} />
+                  <li key={j.id}>
+                    <JourneyRowDisplay journey={j} />
+                  </li>
                 ))}
-              </div>
+              </ul>
             </CardContent>
           </Card>
         )}
@@ -186,8 +211,8 @@ function StatCard({ label, value }: { label: string; value: string | number }) {
   return (
     <Card>
       <CardContent className="p-4">
-        <p className="text-xs text-muted-foreground">{label}</p>
-        <p className="text-2xl font-semibold text-foreground mt-1">{value}</p>
+        <dt className="text-xs text-muted-foreground">{label}</dt>
+        <dd className="text-2xl font-semibold text-foreground mt-1 tabular-nums">{value}</dd>
       </CardContent>
     </Card>
   );
@@ -198,12 +223,15 @@ function JourneyRowDisplay({ journey }: { journey: JourneyRow }) {
   const stepLabel = STEP_LABEL[journey.currentStepKey] ?? journey.currentStepKey;
   return (
     <Link href={`/organizations/${journey.organizationId}`}>
-      <a className="block border border-border rounded p-3 hover:bg-muted/40 transition">
+      <a
+        className="block border border-border rounded p-3 hover:bg-muted/40 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        aria-label={`Org ${journey.organizationId}, ${status.label}, current step ${stepLabel}`}
+      >
         <div className="flex items-center gap-3 flex-wrap">
-          <status.icon className={`h-4 w-4 ${status.color} shrink-0`} />
+          <status.icon className={`h-4 w-4 ${status.color} shrink-0`} aria-hidden="true" />
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-foreground">Org #{journey.organizationId}</p>
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-sm font-medium text-foreground">Org #<span className="tabular-nums">{journey.organizationId}</span></p>
+            <p className="text-[11px] text-muted-foreground tabular-nums">
               Started {relative(journey.startedAt)} · {stepLabel}
             </p>
           </div>
@@ -212,7 +240,7 @@ function JourneyRowDisplay({ journey }: { journey: JourneyRow }) {
           </Badge>
           {journey.founderFlag === "escalate" && (
             <Badge variant="destructive" className="text-[10px]">
-              call requested
+              Call requested
             </Badge>
           )}
         </div>
