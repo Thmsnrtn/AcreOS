@@ -778,6 +778,7 @@ to a dedicated 9b slice.
 **Sidebar landmark labels (192):** ✅ complete — desktop `<aside aria-label="Sidebar">`, mobile drawer `<nav aria-label="Mobile navigation">` + `<SheetContent aria-label="Mobile sidebar">`. Distinct landmark names for screen-reader navigation. (commit `075f99d`)
 **Pax rail aside landmark (193):** ✅ complete — converted pax-copilot-rail outer `<div>` to `<aside aria-label>`, label switches to "Pax copilot (collapsed)" when narrow. (commit `623aad7`)
 **Autopilot + floating-assistant landmarks (194):** ✅ complete — founder AutopilotStatusBar `<aside aria-label="Autopilot status">`, floating-assistant container `<aside aria-label="Floating assistant">`, FAB button got type/aria-label varying by state + aria-expanded. (commit `c0c6200`)
+**PageShell labels per consumer (195):** ✅ complete — wired page-specific `<PageShell label>` for finance/leads/properties/tasks/maps/counties/investor-directory/data-export/founder-dashboard. Each `<main>` now has a meaningful aria-label for screen-reader landmark navigation. (commit `b7df23c`)
 **/onboarding-v2 targeted (18):** ✅ complete (commit `70df779`) — 18b deferred
 **/settings targeted (19):** ✅ complete (commit `809044c`) — 19b remaining components deferred
 **/pipeline (20):** ✅ complete (commit `1b5d0f7`)
