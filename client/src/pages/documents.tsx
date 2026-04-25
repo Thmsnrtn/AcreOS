@@ -13,6 +13,7 @@ import { TemplateEditor } from "@/components/template-editor";
 import { RequestSignaturesDialog } from "@/components/request-signatures-dialog";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { QueryErrorState } from "@/components/query-error-state";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -80,6 +81,7 @@ const generateDocFormSchema = z.object({
 type GenerateDocFormValues = z.infer<typeof generateDocFormSchema>;
 
 export default function DocumentsPage() {
+  useDocumentTitle("Documents");
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("templates");
   const [templateFilter, setTemplateFilter] = useState<"all" | "my" | "system">("all");
@@ -189,7 +191,7 @@ export default function DocumentsPage() {
       toast({ title: "Version restored successfully" });
     },
     onError: (error: any) => {
-      toast({ title: "Failed to restore version", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't restore version", description: `${error.message} — the current version is unchanged.`, variant: "destructive" });
     },
   });
 
@@ -208,7 +210,7 @@ export default function DocumentsPage() {
       toast({ title: "Template created successfully" });
     },
     onError: (error: any) => {
-      toast({ title: "Failed to create template", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't create template", description: `${error.message} — your draft is preserved.`, variant: "destructive" });
     },
   });
 
@@ -228,7 +230,7 @@ export default function DocumentsPage() {
       toast({ title: "Template updated successfully" });
     },
     onError: (error: any) => {
-      toast({ title: "Failed to update template", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't update template", description: `${error.message} — the existing template is unchanged.`, variant: "destructive" });
     },
   });
 
@@ -241,7 +243,7 @@ export default function DocumentsPage() {
       toast({ title: "Template deleted" });
     },
     onError: (error: any) => {
-      toast({ title: "Failed to delete template", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't delete template", description: `${error.message} — the template still exists.`, variant: "destructive" });
     },
   });
 
@@ -258,7 +260,7 @@ export default function DocumentsPage() {
       toast({ title: "Document generated successfully" });
     },
     onError: (error: any) => {
-      toast({ title: "Failed to generate document", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't generate document", description: `${error.message} — your variable values are preserved. Try again.`, variant: "destructive" });
     },
   });
 
@@ -277,7 +279,7 @@ export default function DocumentsPage() {
       toast({ title: "Package created successfully" });
     },
     onError: (error: any) => {
-      toast({ title: "Failed to create package", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't create package", description: `${error.message} — your draft is preserved.`, variant: "destructive" });
     },
   });
 
@@ -290,7 +292,7 @@ export default function DocumentsPage() {
       toast({ title: "Package updated successfully" });
     },
     onError: (error: any) => {
-      toast({ title: "Failed to update package", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't update package", description: `${error.message} — the existing package is unchanged.`, variant: "destructive" });
     },
   });
 
@@ -305,7 +307,7 @@ export default function DocumentsPage() {
       toast({ title: "Package deleted" });
     },
     onError: (error: any) => {
-      toast({ title: "Failed to delete package", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't delete package", description: `${error.message} — the package still exists.`, variant: "destructive" });
     },
   });
 
@@ -319,7 +321,7 @@ export default function DocumentsPage() {
       toast({ title: "Documents generated successfully", description: data?.message });
     },
     onError: (error: any) => {
-      toast({ title: "Failed to generate documents", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't generate documents", description: `${error.message} — no documents were generated.`, variant: "destructive" });
     },
   });
 
