@@ -242,19 +242,19 @@ export function LiveDemoMode({
       >
         <div className="flex items-center justify-between gap-4 mb-3">
           <div className="flex items-center gap-2">
-            <div className="relative">
-              <div 
+            <div className="relative" aria-hidden="true">
+              <div
                 className={cn(
                   "w-3 h-3 rounded-full",
                   "bg-gradient-to-br from-white via-white/90 to-white/70",
                   "shadow-[0_0_10px_rgba(255,255,255,0.7)]"
                 )}
               />
-              <div 
+              <div
                 className="absolute inset-0 rounded-full bg-white/50 animate-ping"
               />
             </div>
-            <span className="font-semibold text-sm">Live Demo Mode</span>
+            <span className="font-semibold text-sm">Live demo mode</span>
           </div>
           <Button
             size="icon"
@@ -264,21 +264,30 @@ export function LiveDemoMode({
             aria-label="Cancel demo"
             data-testid="button-cancel-demo"
           >
-            <X className="w-4 h-4" />
+            <X className="w-4 h-4" aria-hidden="true" />
           </Button>
         </div>
 
-        <div className="bg-muted/50 rounded-lg p-3 mb-3 min-h-[40px]">
+        <div
+          role="status"
+          aria-live="polite"
+          className="bg-muted/50 rounded-lg p-3 mb-3 min-h-[40px]"
+        >
           <p className="text-sm text-foreground">
-            {narration || "Preparing to execute..."}
+            {narration || "Preparing to execute…"}
           </p>
         </div>
 
         <div className="flex items-center justify-between gap-2 mb-3">
-          <div className="flex items-center gap-1">
+          <div
+            className="flex items-center gap-1"
+            role="img"
+            aria-label={`Step ${currentActionIndex + 1} of ${actions.length}`}
+          >
             {actions.map((_, idx) => (
               <div
                 key={idx}
+                aria-hidden="true"
                 className={cn(
                   "w-2 h-2 rounded-full transition-all",
                   idx < currentActionIndex
@@ -290,7 +299,7 @@ export function LiveDemoMode({
               />
             ))}
           </div>
-          <Badge variant="secondary" className="text-xs">
+          <Badge variant="secondary" className="text-xs tabular-nums">
             {currentActionIndex + 1} / {actions.length}
           </Badge>
         </div>
@@ -301,13 +310,13 @@ export function LiveDemoMode({
             variant="outline"
             onClick={cycleSpeed}
             className="h-9 w-12"
-            aria-label="Change playback speed"
+            aria-label={`Change playback speed (current: ${SPEED_LABELS[speed]})`}
             data-testid="button-speed-demo"
           >
             {speed < 1 ? (
-              <Rewind className="w-4 h-4" />
+              <Rewind className="w-4 h-4" aria-hidden="true" />
             ) : speed > 1 ? (
-              <FastForward className="w-4 h-4" />
+              <FastForward className="w-4 h-4" aria-hidden="true" />
             ) : (
               <span className="text-xs font-medium">{SPEED_LABELS[speed]}</span>
             )}
@@ -322,9 +331,9 @@ export function LiveDemoMode({
             data-testid="button-pause-resume-demo"
           >
             {isPaused ? (
-              <Play className="w-5 h-5" />
+              <Play className="w-5 h-5" aria-hidden="true" />
             ) : (
-              <Pause className="w-5 h-5" />
+              <Pause className="w-5 h-5" aria-hidden="true" />
             )}
           </Button>
 
@@ -336,13 +345,13 @@ export function LiveDemoMode({
             aria-label="Stop demo"
             data-testid="button-stop-demo"
           >
-            <Square className="w-4 h-4" />
+            <Square className="w-4 h-4" aria-hidden="true" />
           </Button>
         </div>
 
-        <div className="flex justify-center mt-3">
-          <Badge 
-            variant="outline" 
+        <div className="flex justify-center mt-3" role="status" aria-live="polite">
+          <Badge
+            variant="outline"
             className={cn(
               "text-xs",
               isPaused && "bg-yellow-500/10 text-yellow-600 border-yellow-500/30"
