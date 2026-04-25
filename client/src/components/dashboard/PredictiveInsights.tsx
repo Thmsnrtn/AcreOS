@@ -35,8 +35,8 @@ export function PredictiveInsights({ predictions, isLoading }: PredictiveInsight
       >
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-lg">
-            <TrendingUp className="w-5 h-5 text-blue-500" />
-            Predictive Insights
+            <TrendingUp className="w-5 h-5 text-blue-500" aria-hidden="true" />
+            Predictive insights
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -55,8 +55,8 @@ export function PredictiveInsights({ predictions, isLoading }: PredictiveInsight
       >
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-lg">
-            <TrendingUp className="w-5 h-5 text-blue-500" />
-            Predictive Insights
+            <TrendingUp className="w-5 h-5 text-blue-500" aria-hidden="true" />
+            Predictive insights
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -73,62 +73,68 @@ export function PredictiveInsights({ predictions, isLoading }: PredictiveInsight
     >
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-lg">
-          <TrendingUp className="w-5 h-5 text-blue-500" />
-          Predictive Insights
+          <TrendingUp className="w-5 h-5 text-blue-500" aria-hidden="true" />
+          Predictive insights
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {predictions.map((prediction) => (
-          <div 
-            key={prediction.id}
-            className="p-3 rounded-md bg-background/60 border border-border/50"
-            data-testid={`prediction-${prediction.id}`}
-          >
-            <div className="flex items-start justify-between gap-3 mb-2">
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium">{prediction.title}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">{prediction.message}</p>
+        <ul aria-label="Predictions" className="space-y-4 list-none p-0 m-0">
+          {predictions.map((prediction) => (
+            <li
+              key={prediction.id}
+              className="p-3 rounded-md bg-background/60 border border-border/50"
+              data-testid={`prediction-${prediction.id}`}
+            >
+              <div className="flex items-start justify-between gap-3 mb-2">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium">{prediction.title}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{prediction.message}</p>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <p className="text-lg font-semibold text-primary tabular-nums">
+                    {formatValue(prediction.projectedValue, prediction.type)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">{prediction.timeframe}</p>
+                </div>
               </div>
-              <div className="text-right flex-shrink-0">
-                <p className="text-lg font-semibold text-primary">
-                  {formatValue(prediction.projectedValue, prediction.type)}
-                </p>
-                <p className="text-xs text-muted-foreground">{prediction.timeframe}</p>
-              </div>
-            </div>
-            {prediction.trendData && prediction.trendData.length > 0 && (
-              <div className="h-12 mt-2">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={prediction.trendData}>
-                    <defs>
-                      <linearGradient id={`gradient-${prediction.id}`} x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
-                        <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <Area
-                      type="monotone"
-                      dataKey="value"
-                      stroke="hsl(var(--primary))"
-                      strokeWidth={2}
-                      fill={`url(#gradient-${prediction.id})`}
-                    />
-                    <XAxis dataKey="name" hide />
-                    <Tooltip
-                      contentStyle={{
-                        borderRadius: "8px",
-                        border: "none",
-                        boxShadow: "0 4px 12px rgba(0, 0, 0, 0.1)",
-                        background: "hsl(var(--card))",
-                        fontSize: "12px",
-                      }}
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-          </div>
-        ))}
+              {prediction.trendData && prediction.trendData.length > 0 && (
+                <div
+                  role="img"
+                  aria-label={`${prediction.title} trend: projected ${formatValue(prediction.projectedValue, prediction.type)} ${prediction.timeframe}`}
+                  className="h-12 mt-2"
+                >
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={prediction.trendData}>
+                      <defs>
+                        <linearGradient id={`gradient-${prediction.id}`} x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
+                          <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <Area
+                        type="monotone"
+                        dataKey="value"
+                        stroke="hsl(var(--primary))"
+                        strokeWidth={2}
+                        fill={`url(#gradient-${prediction.id})`}
+                      />
+                      <XAxis dataKey="name" hide />
+                      <Tooltip
+                        contentStyle={{
+                          borderRadius: "8px",
+                          border: "none",
+                          boxShadow: "0 4px 12px rgba(0, 0, 0, 0.1)",
+                          background: "hsl(var(--card))",
+                          fontSize: "12px",
+                        }}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
       </CardContent>
     </Card>
   );
