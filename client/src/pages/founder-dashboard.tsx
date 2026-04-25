@@ -1438,7 +1438,7 @@ export default function FounderDashboard() {
       return res.json();
     },
     onSuccess: () => toast({ title: "Daily digest sent", description: "Check your email for the founder digest" }),
-    onError: (error: Error) => toast({ title: "Digest failed", description: error.message, variant: "destructive" }),
+    onError: (error: Error) => toast({ title: "Couldn't generate digest", description: `${error.message} — no email was sent.`, variant: "destructive" }),
   });
 
   const { data: countyGisEndpoints, isLoading: gisEndpointsLoading } = useQuery<CountyGisEndpoint[]>({
@@ -1544,7 +1544,7 @@ export default function FounderDashboard() {
         next.delete(id);
         return next;
       });
-      toast({ title: "Test failed", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't test endpoint", description: `${error.message} — the endpoint's last-known status is unchanged.`, variant: "destructive" });
     },
   });
 
@@ -1565,7 +1565,7 @@ export default function FounderDashboard() {
       });
     },
     onError: (error: Error) => {
-      toast({ title: "Test failed", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't test endpoints", description: `${error.message} — endpoint statuses are unchanged.`, variant: "destructive" });
     },
   });
 
@@ -1582,7 +1582,7 @@ export default function FounderDashboard() {
     },
     onError: (error: Error) => {
       setDiagnosingEndpoint(null);
-      toast({ title: "Diagnosis failed", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't diagnose endpoint", description: `${error.message} — try again or test the endpoint manually.`, variant: "destructive" });
     },
   });
 
@@ -1604,7 +1604,7 @@ export default function FounderDashboard() {
       }
     },
     onError: (error: Error) => {
-      toast({ title: "Scan failed", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't scan for endpoints", description: `${error.message} — your existing endpoints are unchanged.`, variant: "destructive" });
     },
   });
 
@@ -1687,7 +1687,7 @@ export default function FounderDashboard() {
       });
     },
     onError: (error: Error) => {
-      toast({ title: "Scan failed", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't scan ArcGIS", description: `${error.message} — discovered endpoints are unchanged.`, variant: "destructive" });
     },
   });
 
@@ -1702,7 +1702,7 @@ export default function FounderDashboard() {
       toast({ title: "Validation complete" });
     },
     onError: (error: Error) => {
-      toast({ title: "Validation failed", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't validate endpoint", description: `${error.message} — the endpoint's status is unchanged.`, variant: "destructive" });
     },
   });
 
@@ -1718,7 +1718,7 @@ export default function FounderDashboard() {
       toast({ title: data.success ? "Endpoint approved" : "Could not approve", description: data.message });
     },
     onError: (error: Error) => {
-      toast({ title: "Approve failed", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't approve endpoint", description: `${error.message} — the endpoint is still pending review.`, variant: "destructive" });
     },
   });
 
@@ -1733,7 +1733,7 @@ export default function FounderDashboard() {
       toast({ title: "Endpoint rejected" });
     },
     onError: (error: Error) => {
-      toast({ title: "Reject failed", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't reject endpoint", description: `${error.message} — the endpoint is still pending review.`, variant: "destructive" });
     },
   });
 
@@ -1751,7 +1751,7 @@ export default function FounderDashboard() {
       });
     },
     onError: (error: Error) => {
-      toast({ title: "Batch validation failed", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't run batch validation", description: `${error.message} — endpoint statuses are unchanged.`, variant: "destructive" });
     },
   });
 
@@ -1783,7 +1783,7 @@ export default function FounderDashboard() {
         next.delete(id);
         return next;
       });
-      toast({ title: "Test failed", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't test data source", description: `${error.message} — the data source's last-known status is unchanged.`, variant: "destructive" });
     },
   });
 
@@ -1828,7 +1828,7 @@ export default function FounderDashboard() {
       }
     },
     onError: (error: Error) => {
-      toast({ title: "Validation failed", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't start validation", description: `${error.message} — data source statuses are unchanged.`, variant: "destructive" });
     },
   });
 
@@ -1848,7 +1848,7 @@ export default function FounderDashboard() {
         description: data.skipped > 0 ? `${data.skipped} skipped (duplicates or errors)` : "All sources imported successfully",
       });
     },
-    onError: (err: Error) => toast({ title: "Import failed", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Couldn't import sources", description: `${err.message} — your existing data sources are unchanged.`, variant: "destructive" }),
   });
 
   const getAgentStatusColor = (status: string) => {
@@ -4690,14 +4690,14 @@ function AIModelsSection() {
     mutationFn: async ({ id, enabled }: { id: number; enabled: boolean }) =>
       apiRequest("PUT", `/api/admin/ai-models/${id}`, { enabled }),
     onSuccess: () => { refetch(); },
-    onError: () => toast({ title: "Update failed", variant: "destructive" }),
+    onError: () => toast({ title: "Couldn't update model", description: "The model's existing enabled state is unchanged.", variant: "destructive" }),
   });
 
   const updateWeightMutation = useMutation({
     mutationFn: async ({ id, weight }: { id: number; weight: number }) =>
       apiRequest("PUT", `/api/admin/ai-models/${id}`, { weight }),
     onSuccess: () => { refetch(); },
-    onError: () => toast({ title: "Update failed", variant: "destructive" }),
+    onError: () => toast({ title: "Couldn't update weight", description: "The model's existing weight is unchanged.", variant: "destructive" }),
   });
 
   return (
@@ -4811,7 +4811,7 @@ function SystemApiKeysSection() {
       setNewKey("");
       toast({ title: "API key saved" });
     },
-    onError: () => toast({ title: "Save failed", variant: "destructive" }),
+    onError: () => toast({ title: "Couldn't save API key", description: "The previous key is still in use.", variant: "destructive" }),
   });
 
   // Build display list: merge DB rows with common providers that aren't set yet
@@ -5306,7 +5306,7 @@ function GrowthSection() {
       setSelectedImageIdx(0);
     }
     if (bundleData?.status === "error" && wizardStep === "generating") {
-      toast({ title: "Creative generation failed", description: bundleData.error || "Try again", variant: "destructive" });
+      toast({ title: "Couldn't generate creative", description: `${bundleData.error || "Try again"} — no bundle was saved.`, variant: "destructive" });
       setWizardStep("setup");
       setBundleId(null);
     }
