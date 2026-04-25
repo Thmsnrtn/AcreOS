@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useId } from 'react';
 import { DisclaimerBanner } from '@/components/disclaimer-banner';
 import { RequiredDisclaimer } from '@/components/required-disclaimer';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useDocumentTitle } from '@/hooks/use-document-title';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -100,12 +101,20 @@ function AVMAlertForm({ propertyId }: { propertyId: string }) {
   const { toast } = useToast();
   const [threshold, setThreshold] = useState('5');
   const [saved, setSaved] = useState(false);
+  const thresholdId = useId();
 
   const handleSave = () => {
-    if (!threshold || isNaN(parseFloat(threshold))) return;
+    if (!threshold || isNaN(parseFloat(threshold))) {
+      toast({
+        title: "Can't save alert",
+        description: "Enter a valid percentage — your previous threshold is unchanged.",
+        variant: 'destructive',
+      });
+      return;
+    }
     setSaved(true);
     toast({
-      title: 'Value alert set',
+      title: 'Value alert set.',
       description: `You'll be notified when the AVM value moves more than ${threshold}% from current estimate.`,
     });
   };
@@ -114,28 +123,46 @@ function AVMAlertForm({ propertyId }: { propertyId: string }) {
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm flex items-center gap-2">
-          <Bell className="w-4 h-4 text-primary" /> Valuation Change Alert
+          <Bell className="w-4 h-4 text-primary" aria-hidden="true" /> Valuation change alert
         </CardTitle>
         <CardDescription>Get notified when this property's AVM value moves beyond your threshold.</CardDescription>
       </CardHeader>
-      <CardContent className="flex items-end gap-3">
-        <div className="space-y-1">
-          <Label className="text-xs">Alert when value moves &gt;</Label>
-          <div className="relative w-28">
-            <Input
-              type="number"
-              min="1"
-              max="50"
-              value={threshold}
-              onChange={e => { setThreshold(e.target.value); setSaved(false); }}
-              className="h-8 pr-6 text-sm"
-            />
-            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
+      <CardContent>
+        <form
+          className="flex items-end gap-3"
+          onSubmit={(e) => { e.preventDefault(); handleSave(); }}
+        >
+          <div className="space-y-1">
+            <Label htmlFor={thresholdId} className="text-xs">Alert when value moves &gt;</Label>
+            <div className="relative w-28">
+              <Input
+                id={thresholdId}
+                type="number"
+                inputMode="decimal"
+                min="1"
+                max="50"
+                step="any"
+                value={threshold}
+                onChange={e => { setThreshold(e.target.value); setSaved(false); }}
+                className="h-8 pr-6 text-sm tabular-nums"
+                aria-describedby={`${thresholdId}-unit`}
+              />
+              <span
+                id={`${thresholdId}-unit`}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground"
+                aria-hidden="true"
+              >%</span>
+            </div>
           </div>
-        </div>
-        <Button size="sm" onClick={handleSave} variant={saved ? 'secondary' : 'default'}>
-          {saved ? <><CheckCircle className="w-3.5 h-3.5 mr-1.5" /> Saved</> : <><Bell className="w-3.5 h-3.5 mr-1.5" /> Set Alert</>}
-        </Button>
+          <Button
+            type="submit"
+            size="sm"
+            variant={saved ? 'secondary' : 'default'}
+            className="min-h-9"
+          >
+            {saved ? <><CheckCircle className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" /> Saved</> : <><Bell className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" /> Set alert</>}
+          </Button>
+        </form>
       </CardContent>
     </Card>
   );
@@ -192,20 +219,20 @@ function CompsMapTable({ comparables, pricePerAcre }: { comparables: any[]; pric
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm flex items-center gap-2">
-          <MapPin className="w-4 h-4 text-primary" /> Comparable Sales — Location & Price
+          <MapPin className="w-4 h-4 text-primary" aria-hidden="true" /> Comparable sales — location &amp; price
         </CardTitle>
       </CardHeader>
       <CardContent className="p-0">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto" role="region" aria-label="Comparable sales" tabIndex={0}>
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b bg-muted/40">
-                <th className="text-left px-4 py-2">#</th>
-                <th className="text-left px-4 py-2">Distance</th>
-                <th className="text-right px-4 py-2">Sale Price</th>
-                <th className="text-right px-4 py-2">Price/Acre</th>
-                <th className="text-right px-4 py-2">vs. Subject</th>
-                <th className="text-right px-4 py-2">Similarity</th>
+                <th scope="col" className="text-left px-4 py-2">#</th>
+                <th scope="col" className="text-left px-4 py-2">Distance</th>
+                <th scope="col" className="text-right px-4 py-2">Sale price</th>
+                <th scope="col" className="text-right px-4 py-2">Price/acre</th>
+                <th scope="col" className="text-right px-4 py-2">vs. subject</th>
+                <th scope="col" className="text-right px-4 py-2">Similarity</th>
               </tr>
             </thead>
             <tbody>
@@ -214,15 +241,18 @@ function CompsMapTable({ comparables, pricePerAcre }: { comparables: any[]; pric
                 const diffPct = ((diff / pricePerAcre) * 100).toFixed(1);
                 return (
                   <tr key={i} className="border-b last:border-0">
-                    <td className="px-4 py-2 text-muted-foreground">#{i + 1}</td>
-                    <td className="px-4 py-2">{c.distance?.toFixed(1) ?? '—'} mi</td>
-                    <td className="px-4 py-2 text-right font-medium">{formatDollar(c.salePrice)}</td>
-                    <td className="px-4 py-2 text-right">{formatDollar(c.pricePerAcre)}</td>
-                    <td className={`px-4 py-2 text-right font-semibold ${diff >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                    <td className="px-4 py-2 text-muted-foreground tabular-nums">#{i + 1}</td>
+                    <td className="px-4 py-2 tabular-nums">{c.distance?.toFixed(1) ?? '—'} mi</td>
+                    <td className="px-4 py-2 text-right font-medium tabular-nums">{formatDollar(c.salePrice)}</td>
+                    <td className="px-4 py-2 text-right tabular-nums">{formatDollar(c.pricePerAcre)}</td>
+                    <td className={`px-4 py-2 text-right font-semibold tabular-nums ${diff >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
                       {diff >= 0 ? '+' : ''}{diffPct}%
                     </td>
                     <td className="px-4 py-2 text-right">
-                      <span className={`px-1.5 py-0.5 rounded text-xs ${c.similarity >= 70 ? 'bg-green-100 text-green-800' : 'bg-muted text-muted-foreground'}`}>
+                      <span
+                        className={`px-1.5 py-0.5 rounded text-xs tabular-nums ${c.similarity >= 70 ? 'bg-green-100 text-green-800' : 'bg-muted text-muted-foreground'}`}
+                        aria-label={`${c.similarity}% similarity${c.similarity >= 70 ? ', high' : ''}`}
+                      >
                         {c.similarity}%
                       </span>
                     </td>
@@ -242,21 +272,27 @@ function ConfidenceBar({ confidence }: { confidence: number }) {
   return (
     <div className="space-y-1">
       <div className="flex justify-between text-sm">
-        <span className="text-muted-foreground">Model Confidence</span>
-        <span className={`font-semibold ${color}`}>{confidence}%</span>
+        <span className="text-muted-foreground">Model confidence</span>
+        <span className={`font-semibold tabular-nums ${color}`}>{confidence}%</span>
       </div>
-      <Progress value={confidence} className="h-2" />
+      <Progress
+        value={confidence}
+        className="h-2"
+        aria-label={`Model confidence: ${confidence} percent`}
+      />
     </div>
   );
 }
 
 export default function AVMPage() {
+  useDocumentTitle('Valuation model (AVM)');
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { data: propertiesData } = useProperties();
   const properties = (propertiesData as any)?.properties ?? [];
 
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>('');
+  const propertySelectId = useId();
 
   const { data: statsData } = useQuery({
     queryKey: ['avm', 'stats'],
@@ -291,11 +327,15 @@ export default function AVMPage() {
       return res.json();
     },
     onSuccess: () => {
-      toast({ title: 'Valuation complete', description: 'AVM estimate ready.' });
+      toast({ title: 'Valuation complete.', description: 'AVM estimate ready.' });
       queryClient.invalidateQueries({ queryKey: ['avm', 'history', selectedPropertyId] });
     },
     onError: (err: Error) => {
-      toast({ title: 'Valuation failed', description: err.message, variant: 'destructive' });
+      toast({
+        title: "Couldn't value property",
+        description: `${err.message} — your existing valuation (if any) is unchanged.`,
+        variant: 'destructive',
+      });
     },
   });
 
@@ -310,10 +350,14 @@ export default function AVMPage() {
       return res.json();
     },
     onSuccess: () => {
-      toast({ title: 'Bulk valuation started', description: 'All owned properties are being valued.' });
+      toast({ title: 'Bulk valuation started.', description: 'All owned properties are being valued.' });
     },
     onError: (err: Error) => {
-      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+      toast({
+        title: "Couldn't start bulk valuation",
+        description: `${err.message} — no properties were revalued.`,
+        variant: 'destructive',
+      });
     },
   });
 
@@ -341,11 +385,11 @@ export default function AVMPage() {
       <DisclaimerBanner type="avm" />
       <RequiredDisclaimer type="valuation" />
       {/* Header */}
-      <div className="flex items-start justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-2">
-            <TrendingUp className="w-8 h-8 text-primary" />
-            Valuation Model (AVM)
+            <TrendingUp className="w-8 h-8 text-primary" aria-hidden="true" />
+            Valuation model (AVM)
           </h1>
           <p className="text-muted-foreground mt-1">
             Proprietary ML valuation model trained on land transactions — instant estimates with confidence intervals.
@@ -355,76 +399,83 @@ export default function AVMPage() {
           variant="outline"
           onClick={() => bulkMutation.mutate()}
           disabled={bulkMutation.isPending}
+          className="min-h-11"
         >
-          <RefreshCw className={`w-4 h-4 mr-2 ${bulkMutation.isPending ? 'animate-spin' : ''}`} />
-          Value All Properties
+          <RefreshCw className={`w-4 h-4 mr-2 ${bulkMutation.isPending ? 'animate-spin' : ''}`} aria-hidden="true" />
+          Value all properties
         </Button>
       </div>
 
       {/* Model Stats */}
       {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <dl className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card>
             <CardContent className="pt-4">
-              <div className="text-2xl font-bold">{stats.totalTransactions?.toLocaleString() ?? '—'}</div>
-              <div className="text-sm text-muted-foreground">Training Transactions</div>
+              <dd className="text-2xl font-bold tabular-nums">{stats.totalTransactions?.toLocaleString() ?? '—'}</dd>
+              <dt className="text-sm text-muted-foreground">Training transactions</dt>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-4">
-              <div className="text-2xl font-bold">{stats.avgDataQuality ?? '—'}/100</div>
-              <div className="text-sm text-muted-foreground">Avg Data Quality</div>
+              <dd className="text-2xl font-bold tabular-nums">{stats.avgDataQuality ?? '—'}/100</dd>
+              <dt className="text-sm text-muted-foreground">Avg data quality</dt>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-4">
-              <div className="text-2xl font-bold">{stats.statesCovered ?? '—'}</div>
-              <div className="text-sm text-muted-foreground">States Covered</div>
+              <dd className="text-2xl font-bold tabular-nums">{stats.statesCovered ?? '—'}</dd>
+              <dt className="text-sm text-muted-foreground">States covered</dt>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-4">
-              <div className="text-2xl font-bold">{stats.avgPricePerAcre ? formatDollar(stats.avgPricePerAcre) : '—'}</div>
-              <div className="text-sm text-muted-foreground">Avg Price / Acre</div>
+              <dd className="text-2xl font-bold tabular-nums">{stats.avgPricePerAcre ? formatDollar(stats.avgPricePerAcre) : '—'}</dd>
+              <dt className="text-sm text-muted-foreground">Avg price / acre</dt>
             </CardContent>
           </Card>
-        </div>
+        </dl>
       )}
 
       {/* Property selector */}
-      <div className="flex items-center gap-4">
-        <Select value={selectedPropertyId} onValueChange={setSelectedPropertyId}>
-          <SelectTrigger className="w-80">
-            <SelectValue placeholder="Select a property to value…" />
-          </SelectTrigger>
-          <SelectContent>
-            {properties.map((p: any) => (
-              <SelectItem key={p.id} value={p.id.toString()}>
-                {p.address || `Parcel ${p.apn || p.id}`} — {p.county}, {p.state}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+        <div className="flex-1 sm:flex-initial">
+          <Label htmlFor={propertySelectId} className="text-xs mb-1 block">Property to value</Label>
+          <Select value={selectedPropertyId} onValueChange={setSelectedPropertyId}>
+            <SelectTrigger id={propertySelectId} className="w-full sm:w-80">
+              <SelectValue placeholder="Select a property to value…" />
+            </SelectTrigger>
+            <SelectContent>
+              {properties.map((p: any) => (
+                <SelectItem key={p.id} value={p.id.toString()}>
+                  {p.address || `Parcel ${p.apn || p.id}`} — {p.county}, {p.state}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         <Button
           disabled={!selectedPropertyId || valuationMutation.isPending}
           onClick={() => valuationMutation.mutate(selectedPropertyId)}
+          className="min-h-11"
         >
-          <RefreshCw className={`w-4 h-4 mr-2 ${valuationMutation.isPending ? 'animate-spin' : ''}`} />
-          {valuationMutation.isPending ? 'Valuing…' : 'Generate Valuation'}
+          <RefreshCw className={`w-4 h-4 mr-2 ${valuationMutation.isPending ? 'animate-spin' : ''}`} aria-hidden="true" />
+          {valuationMutation.isPending ? 'Valuing…' : 'Generate valuation'}
         </Button>
       </div>
 
       {historyLoading && (
-        <div className="text-center py-16 text-muted-foreground">Loading valuation history…</div>
+        <div className="text-center py-16 text-muted-foreground" role="status" aria-live="polite">
+          Loading valuation history…
+        </div>
       )}
 
       {latest && (
         <Tabs defaultValue="estimate">
           <TabsList>
             <TabsTrigger value="estimate">Estimate</TabsTrigger>
-            <TabsTrigger value="comparables">Comparable Sales ({latest.comparables?.length ?? 0})</TabsTrigger>
-            <TabsTrigger value="adjustments">Market Adjustments</TabsTrigger>
-            {history.length > 1 && <TabsTrigger value="history">History ({history.length})</TabsTrigger>}
+            <TabsTrigger value="comparables">Comparable sales (<span className="tabular-nums">{latest.comparables?.length ?? 0}</span>)</TabsTrigger>
+            <TabsTrigger value="adjustments">Market adjustments</TabsTrigger>
+            {history.length > 1 && <TabsTrigger value="history">History (<span className="tabular-nums">{history.length}</span>)</TabsTrigger>}
           </TabsList>
 
           {/* ── ESTIMATE ── */}
@@ -435,15 +486,18 @@ export default function AVMPage() {
               {/* Main estimate */}
               <Card className="md:col-span-2 border-primary/30">
                 <CardHeader>
-                  <CardTitle>Estimated Value</CardTitle>
+                  <CardTitle>Estimated value</CardTitle>
                   <CardDescription>{latest.methodology}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="flex items-baseline gap-4">
-                    <span className="text-5xl font-bold text-primary">
+                    <span
+                      className="text-5xl font-bold text-primary tabular-nums"
+                      aria-label={`Estimated value ${formatDollar(latest.estimatedValue)}`}
+                    >
                       {formatDollar(latest.estimatedValue)}
                     </span>
-                    <span className="text-xl text-muted-foreground">
+                    <span className="text-xl text-muted-foreground tabular-nums">
                       ({formatDollar(latest.pricePerAcre)}/acre)
                     </span>
                   </div>
