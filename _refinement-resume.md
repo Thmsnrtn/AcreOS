@@ -785,6 +785,7 @@ to a dedicated 9b slice.
 **PageShell document.title fallback (199):** ✅ complete — strategy shift: PageShell now falls back to `document.title` (with " · AcreOS" suffix stripped) when no `label` is passed. Every page that calls useDocumentTitle/usePageMeta now auto-supplies a meaningful `<main aria-label>` without per-page wiring. Explicit label still overrides. (commit `95d906b`)
 **ConfirmDialog + QueryErrorState polish (200):** ✅ complete — 200-slice milestone. ConfirmDialog Loader2 aria-hidden + "Processing…" aria-live=polite. QueryErrorState compact mode role=alert + aria-live, decorative icons aria-hidden, retry button aria-label varies by isRetrying. Sentence-case titles ("Authentication required", "Data not found", "Something went wrong", "Try again"). (commit `9c8b195`)
 **Skeleton a11y (201):** ✅ complete — ListSkeleton (table/card/compact) and PageShellSkeleton got role="status" + aria-live="polite" + aria-busy="true" + sr-only "Loading…". Decorative shimmer divs aria-hidden. Screen readers now announce loading state. (commit `f62d159`)
+**ErrorBoundary fallback a11y (202):** ✅ complete — role="alert" + aria-live="assertive" on the fallback container, decorative icons aria-hidden, error ID wrapped in `<code>`, sentence-case microcopy. (commit `a5fda7c`)
 **/onboarding-v2 targeted (18):** ✅ complete (commit `70df779`) — 18b deferred
 **/settings targeted (19):** ✅ complete (commit `809044c`) — 19b remaining components deferred
 **/pipeline (20):** ✅ complete (commit `1b5d0f7`)
