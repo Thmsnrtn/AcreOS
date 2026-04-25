@@ -10,6 +10,8 @@ import {
 } from "lucide-react";
 import { format, isAfter, subDays, addDays } from "date-fns";
 import { relative } from "@/lib/format";
+import { useDocumentTitle } from "@/hooks/use-document-title";
+import { useToast } from "@/hooks/use-toast";
 
 interface Task {
   id: number;
@@ -64,8 +66,8 @@ function StatPanel({
           <span className="flex items-center gap-2">{icon}{title}</span>
           {linkTo && (
             <Link href={linkTo}>
-              <Button variant="ghost" size="sm" className="h-6 px-2 text-xs">
-                View all <ChevronRight className="w-3 h-3 ml-1" />
+              <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" aria-label={`View all ${title.toLowerCase()}`}>
+                View all <ChevronRight className="w-3 h-3 ml-1" aria-hidden="true" />
               </Button>
             </Link>
           )}
@@ -73,8 +75,8 @@ function StatPanel({
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <div className="flex items-center gap-2 text-muted-foreground text-sm">
-            <Loader2 className="w-4 h-4 animate-spin" /> Loading…
+          <div className="flex items-center gap-2 text-muted-foreground text-sm" role="status" aria-live="polite">
+            <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> Loading…
           </div>
         ) : (
           children
@@ -85,11 +87,10 @@ function StatPanel({
 }
 
 export default function OpsDashboardPage() {
+  useDocumentTitle("Ops dashboard");
   const qc = useQueryClient();
+  const { toast } = useToast();
 
-  // Cycle 10 F04: all three endpoints return {data, total} pagination
-  // envelopes now — unwrap to array or fall back to [] to prevent the
-  // downstream .filter() crash.
   const unwrapArr = async <T,>(url: string): Promise<T[]> => {
     const r = await fetch(url, { credentials: "include" });
     if (!r.ok) return [];
@@ -121,6 +122,12 @@ export default function OpsDashboardPage() {
     mutationFn: (taskId: number) =>
       fetch(`/api/tasks/${taskId}/complete`, { method: "POST" }).then(r => r.json()),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/tasks"] }),
+    onError: () =>
+      toast({
+        title: "Couldn't mark task done",
+        description: "The task is still open. Try again, or open the task to complete it manually.",
+        variant: "destructive",
+      }),
   });
 
   const now = new Date();
@@ -149,20 +156,20 @@ export default function OpsDashboardPage() {
 
   const stageOrder = ["new", "contacted", "offer_sent", "countered", "accepted", "in_escrow", "closed"];
   const pipelineStages = stats?.pipelineStages ?? {};
+  const dealsTotal = Math.max(1, (deals ?? []).length);
 
   return (
     <PageShell>
       <div className="space-y-4">
         <div>
-          <h1 className="text-2xl font-semibold">Ops Dashboard</h1>
-          <p className="text-muted-foreground text-sm mt-1">Operational overview — {format(now, "EEEE, MMMM d")}</p>
+          <h1 className="text-2xl font-semibold">Ops dashboard</h1>
+          <p className="text-muted-foreground text-sm mt-1 tabular-nums">Operational overview — {format(now, "EEEE, MMMM d")}.</p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {/* Tasks Due Today */}
           <StatPanel
-            title="Tasks Due Today"
-            icon={<CheckSquare className="w-4 h-4 text-blue-500" />}
+            title="Tasks due today"
+            icon={<CheckSquare className="w-4 h-4 text-blue-500" aria-hidden="true" />}
             linkTo="/tasks"
             isLoading={tasksLoading}
           >
@@ -170,8 +177,8 @@ export default function OpsDashboardPage() {
               <p className="text-sm text-muted-foreground">No tasks due today.</p>
             ) : (
               <div className="space-y-2">
-                <p className="text-2xl font-bold">{todayTasks.length}</p>
-                <ul className="space-y-1">
+                <p className="text-2xl font-bold tabular-nums">{todayTasks.length}</p>
+                <ul className="space-y-1" aria-label="Tasks due today">
                   {todayTasks.slice(0, 5).map(t => (
                     <li key={t.id} className="flex items-start justify-between gap-2 text-sm">
                       <span className="truncate">{t.title}</span>
@@ -181,23 +188,23 @@ export default function OpsDashboardPage() {
                         className="h-5 text-xs shrink-0 text-green-600"
                         onClick={() => completeTask.mutate(t.id)}
                         disabled={completeTask.isPending}
+                        aria-label={`Mark "${t.title}" as done`}
                       >
                         Done
                       </Button>
                     </li>
                   ))}
                   {todayTasks.length > 5 && (
-                    <li className="text-xs text-muted-foreground">+{todayTasks.length - 5} more</li>
+                    <li className="text-xs text-muted-foreground">+<span className="tabular-nums">{todayTasks.length - 5}</span> more</li>
                   )}
                 </ul>
               </div>
             )}
           </StatPanel>
 
-          {/* Offers Expiring */}
           <StatPanel
-            title="Offers Expiring This Week"
-            icon={<FileText className="w-4 h-4 text-orange-500" />}
+            title="Offers expiring this week"
+            icon={<FileText className="w-4 h-4 text-orange-500" aria-hidden="true" />}
             linkTo="/pipeline"
             isLoading={dealsLoading}
           >
@@ -205,15 +212,15 @@ export default function OpsDashboardPage() {
               <p className="text-sm text-muted-foreground">No offers expiring soon.</p>
             ) : (
               <div className="space-y-2">
-                <p className="text-2xl font-bold">{expiringOffers.length}</p>
-                <ul className="space-y-1">
+                <p className="text-2xl font-bold tabular-nums">{expiringOffers.length}</p>
+                <ul className="space-y-1" aria-label="Offers expiring within 7 days">
                   {expiringOffers.slice(0, 5).map(d => {
                     const expires = addDays(new Date(d.offerDate!), 7);
                     return (
                       <li key={d.id} className="flex items-center justify-between text-sm gap-2">
-                        <span className="truncate">Deal #{d.id}</span>
-                        <Badge variant="outline" className="text-xs shrink-0">
-                          <Clock className="w-3 h-3 mr-1" />
+                        <span className="truncate">Deal #<span className="tabular-nums">{d.id}</span></span>
+                        <Badge variant="outline" className="text-xs shrink-0 tabular-nums">
+                          <Clock className="w-3 h-3 mr-1" aria-hidden="true" />
                           {relative(expires)}
                         </Badge>
                       </li>
@@ -224,10 +231,9 @@ export default function OpsDashboardPage() {
             )}
           </StatPanel>
 
-          {/* Overdue Follow-ups */}
           <StatPanel
-            title="Overdue Follow-ups"
-            icon={<UserX className="w-4 h-4 text-red-500" />}
+            title="Overdue follow-ups"
+            icon={<UserX className="w-4 h-4 text-red-500" aria-hidden="true" />}
             linkTo="/leads"
             isLoading={leadsLoading}
           >
@@ -235,66 +241,75 @@ export default function OpsDashboardPage() {
               <p className="text-sm text-muted-foreground">All leads are current.</p>
             ) : (
               <div className="space-y-2">
-                <p className="text-2xl font-bold text-red-600">{staleLeads.length}</p>
-                <ul className="space-y-1">
+                <p className="text-2xl font-bold text-red-600 tabular-nums">{staleLeads.length}</p>
+                <ul className="space-y-1" aria-label="Leads needing follow-up">
                   {staleLeads.slice(0, 5).map(l => (
                     <li key={l.id} className="flex items-center justify-between text-sm gap-2">
                       <span className="truncate">
                         {l.firstName} {l.lastName}
                       </span>
-                      <span className="text-xs text-muted-foreground shrink-0">
+                      <span className="text-xs text-muted-foreground shrink-0 tabular-nums">
                         {l.lastContactedAt
                           ? relative(l.lastContactedAt)
-                          : "never contacted"}
+                          : "Never contacted"}
                       </span>
                     </li>
                   ))}
                   {staleLeads.length > 5 && (
-                    <li className="text-xs text-muted-foreground">+{staleLeads.length - 5} more</li>
+                    <li className="text-xs text-muted-foreground">+<span className="tabular-nums">{staleLeads.length - 5}</span> more</li>
                   )}
                 </ul>
               </div>
             )}
           </StatPanel>
 
-          {/* Pipeline Health */}
           <StatPanel
-            title="Pipeline Health"
-            icon={<TrendingUp className="w-4 h-4 text-green-500" />}
+            title="Pipeline health"
+            icon={<TrendingUp className="w-4 h-4 text-green-500" aria-hidden="true" />}
             linkTo="/pipeline"
             isLoading={statsLoading}
           >
             {Object.keys(pipelineStages).length === 0 && !statsLoading ? (
               <p className="text-sm text-muted-foreground">No pipeline data yet.</p>
             ) : (
-              <div className="space-y-2">
+              <ul className="space-y-2" aria-label="Deal counts per pipeline stage">
                 {stageOrder.map(stage => {
                   const count = pipelineStages[stage] ?? 0;
+                  const pct = Math.min(100, (count / dealsTotal) * 100);
+                  const stageLabel = stage.replace(/_/g, " ");
                   return (
-                    <div key={stage} className="flex items-center gap-2">
+                    <li key={stage} className="flex items-center gap-2">
                       <span className="text-xs text-muted-foreground w-24 capitalize shrink-0">
-                        {stage.replace(/_/g, " ")}
+                        {stageLabel}
                       </span>
-                      <div className="flex-1 bg-muted rounded-full h-1.5">
+                      <div
+                        className="flex-1 bg-muted rounded-full h-1.5"
+                        role="progressbar"
+                        aria-valuenow={Math.round(pct)}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-label={`${stageLabel}: ${count} deals, ${Math.round(pct)}% of total`}
+                      >
                         <div
                           className="bg-primary h-1.5 rounded-full"
-                          style={{
-                            width: `${Math.min(100, (count / Math.max(1, (deals ?? []).length)) * 100)}%`,
-                          }}
+                          style={{ width: `${pct}%` }}
                         />
                       </div>
-                      <span className="text-xs font-medium w-4 text-right">{count}</span>
-                    </div>
+                      <span className="text-xs font-medium w-4 text-right tabular-nums">{count}</span>
+                    </li>
                   );
                 })}
-              </div>
+              </ul>
             )}
           </StatPanel>
         </div>
 
         {(expiringOffers.length > 0 || staleLeads.length > 0) && (
-          <div className="flex items-center gap-2 text-sm text-amber-600 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg px-4 py-3">
-            <AlertCircle className="w-4 h-4 shrink-0" />
+          <div
+            className="flex items-center gap-2 text-sm text-amber-600 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg px-4 py-3"
+            role="status"
+          >
+            <AlertCircle className="w-4 h-4 shrink-0" aria-hidden="true" />
             {[
               expiringOffers.length > 0 && `${expiringOffers.length} offer${expiringOffers.length > 1 ? "s" : ""} expiring`,
               staleLeads.length > 0 && `${staleLeads.length} overdue follow-up${staleLeads.length > 1 ? "s" : ""}`,
