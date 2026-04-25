@@ -47,6 +47,7 @@ import { AnimatedCounter } from "@/components/ui/animated-counter";
 import { plural, usd, dollarsCompact } from "@/lib/format";
 import { VerticalBadge } from "@/components/ui/vertical-badge";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { useToast } from "@/hooks/use-toast";
 
 interface GoalWithProgress {
   id: number;
@@ -186,6 +187,7 @@ const WELCOME_BACK_THRESHOLD_DAYS = 7;
 
 export default function TodayPage() {
   useDocumentTitle("Today — AcreOS");
+  const { toast } = useToast();
   const { data: organization } = useOrganization();
   const { user } = useAuth();
   const { data: stats, isLoading: statsLoading } = useDashboardStats();
@@ -287,6 +289,13 @@ export default function TodayPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/alerts/active"] });
+    },
+    onError: () => {
+      toast({
+        variant: "destructive",
+        title: "Couldn't dismiss alert",
+        description: "The alert is still active. Try again, or check the system status.",
+      });
     },
   });
 
