@@ -777,6 +777,7 @@ to a dedicated 9b slice.
 **PageShell skip-to-content + main label (191):** ✅ complete — wired unused `label` prop into `<main aria-label>` defaulting to "Main content", added a sr-only-until-focused skip-to-main-content link that anchors to `#main-content`. Keyboard users now skip the sidebar without a mouse. (commit `3799675`)
 **Sidebar landmark labels (192):** ✅ complete — desktop `<aside aria-label="Sidebar">`, mobile drawer `<nav aria-label="Mobile navigation">` + `<SheetContent aria-label="Mobile sidebar">`. Distinct landmark names for screen-reader navigation. (commit `075f99d`)
 **Pax rail aside landmark (193):** ✅ complete — converted pax-copilot-rail outer `<div>` to `<aside aria-label>`, label switches to "Pax copilot (collapsed)" when narrow. (commit `623aad7`)
+**Autopilot + floating-assistant landmarks (194):** ✅ complete — founder AutopilotStatusBar `<aside aria-label="Autopilot status">`, floating-assistant container `<aside aria-label="Floating assistant">`, FAB button got type/aria-label varying by state + aria-expanded. (commit `c0c6200`)
 **/onboarding-v2 targeted (18):** ✅ complete (commit `70df779`) — 18b deferred
 **/settings targeted (19):** ✅ complete (commit `809044c`) — 19b remaining components deferred
 **/pipeline (20):** ✅ complete (commit `1b5d0f7`)
