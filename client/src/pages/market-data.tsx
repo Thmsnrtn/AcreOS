@@ -8,6 +8,7 @@ import { TrendingUp, TrendingDown, Minus, ArrowRight, MapPin } from "lucide-reac
 import { motion } from "framer-motion";
 import { staggerContainer, staggerItem } from "@/lib/animations";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { usd } from "@/lib/format";
 
 interface StateMarketData {
   state: string;
@@ -110,7 +111,7 @@ export default function MarketDataPage() {
                   <CardContent className="space-y-3">
                     <dl>
                       <dd className="text-2xl font-bold tabular-nums">
-                        ${state.avgPricePerAcre.toLocaleString()}
+                        {usd(state.avgPricePerAcre, { noCents: Number.isInteger(state.avgPricePerAcre) })}
                       </dd>
                       <dt className="text-xs text-muted-foreground">avg $/acre</dt>
                     </dl>

@@ -22,6 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Label } from "@/components/ui/label";
 import { apiRequest } from "@/lib/queryClient";
+import { usd } from "@/lib/format";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { Shield, Brain, Clock, Settings, Save } from "lucide-react";
@@ -164,7 +165,7 @@ function SettingRowEditor({
 
   const displayValue = isNumber
     ? row.definition.units === "cents"
-      ? `$${(Number(row.value) / 100).toLocaleString()}`
+      ? usd(Number(row.value) / 100)
       : `${Number(row.value).toLocaleString()}${row.definition.units ? ` ${row.definition.units}` : ""}`
     : row.value;
 

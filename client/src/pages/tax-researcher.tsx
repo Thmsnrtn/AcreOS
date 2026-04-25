@@ -9,12 +9,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { Search, Bell, BookmarkPlus, Calendar, MapPin, Gavel, ArrowRight, Star } from "lucide-react";
+import { usd } from "@/lib/format";
 
 function fmt(n: number) {
   if (!n) return "—";
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
-  return `$${n.toLocaleString()}`;
+  return usd(n, { noCents: Number.isInteger(n) });
 }
 
 export default function TaxResearcherPage() {
