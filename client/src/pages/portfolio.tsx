@@ -1,5 +1,9 @@
+import { useState } from "react";
 import { PageShell } from "@/components/page-shell";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useDocumentTitle } from "@/hooks/use-document-title";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { usd } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -152,18 +156,15 @@ const STATUS_COLORS: Record<string, string> = {
 
 const STATUS_LABELS: Record<string, string> = {
   active: "Active",
-  paid_off: "Paid Off",
+  paid_off: "Paid off",
   defaulted: "Defaulted",
   pending: "Pending",
 };
 
+// P1 money-precision: canonical usd() preserves cents; portfolio dashboards
+// hide cents on display via { noCents: true } since these are aggregate roll-ups.
 function formatCurrency(value: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(value);
+  return usd(value, { noCents: true });
 }
 
 function formatPercent(value: number): string {
@@ -171,6 +172,8 @@ function formatPercent(value: number): string {
 }
 
 export default function PortfolioPage() {
+  useDocumentTitle("Portfolio analytics");
+  const [pendingDismiss, setPendingDismiss] = useState<PortfolioAlert | null>(null);
   const { data: summary, isLoading: summaryLoading } = useQuery<PortfolioSummary>({
     queryKey: ["/api/finance/portfolio-summary"],
     queryFn: async () => {
@@ -225,15 +228,16 @@ export default function PortfolioPage() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/ai/portfolio/alerts"] });
+      const count = data.alertsGenerated || 0;
       toast({
-        title: "Portfolio Scan Complete",
-        description: `Scan complete. ${data.alertsGenerated || 0} new alerts generated.`,
+        title: "Portfolio scan complete",
+        description: `${count} new alert${count === 1 ? "" : "s"} generated.`,
       });
     },
     onError: () => {
       toast({
-        title: "Scan Failed",
-        description: "Failed to scan portfolio. Please try again.",
+        title: "Couldn't scan portfolio",
+        description: "Existing alerts are unchanged. Try again or check the system status.",
         variant: "destructive",
       });
     },
@@ -247,14 +251,14 @@ export default function PortfolioPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/ai/portfolio/alerts"] });
       toast({
-        title: "Alert Dismissed",
-        description: "The alert has been dismissed.",
+        title: "Alert dismissed",
+        description: "It will no longer appear in your active alerts.",
       });
     },
     onError: () => {
       toast({
-        title: "Dismiss Failed",
-        description: "Failed to dismiss alert. Please try again.",
+        title: "Couldn't dismiss alert",
+        description: "The alert is still active. Try again.",
         variant: "destructive",
       });
     },
@@ -287,27 +291,27 @@ export default function PortfolioPage() {
     <PageShell>
         
           <div>
-            <h1 className="text-3xl font-bold" data-testid="text-portfolio-title">Portfolio Analytics</h1>
+            <h1 className="text-3xl font-bold" data-testid="text-portfolio-title">Portfolio analytics</h1>
             <p className="text-muted-foreground">Financial performance metrics and projections for your note portfolio.</p>
           </div>
 
-          <section>
-            <h2 className="text-xl font-semibold mb-4">Portfolio Overview</h2>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <section aria-labelledby="portfolio-overview-heading">
+            <h2 id="portfolio-overview-heading" className="text-xl font-semibold mb-4">Portfolio overview</h2>
+            <dl className="grid grid-cols-1 md:grid-cols-4 gap-4 m-0">
               <Card className="glass-panel">
                 <CardContent className="p-6">
                   <div className="flex items-center gap-3">
                     <div className="p-3 rounded-xl bg-emerald-500/10">
-                      <DollarSign className="w-5 h-5 text-emerald-600" />
+                      <DollarSign className="w-5 h-5 text-emerald-600" aria-hidden="true" />
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">Total Portfolio Value</p>
+                      <dt className="text-sm text-muted-foreground">Total portfolio value</dt>
                       {isLoading ? (
                         <Skeleton className="h-8 w-24" />
                       ) : (
-                        <p className="text-2xl font-bold font-mono" data-testid="text-total-portfolio-value">
+                        <dd className="text-2xl font-bold font-mono tabular-nums m-0" data-testid="text-total-portfolio-value">
                           {formatCurrency(summary?.totalPortfolioValue || 0)}
-                        </p>
+                        </dd>
                       )}
                     </div>
                   </div>
@@ -318,16 +322,16 @@ export default function PortfolioPage() {
                 <CardContent className="p-6">
                   <div className="flex items-center gap-3">
                     <div className="p-3 rounded-xl bg-blue-500/10">
-                      <TrendingUp className="w-5 h-5 text-blue-600" />
+                      <TrendingUp className="w-5 h-5 text-blue-600" aria-hidden="true" />
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">Monthly Cash Flow</p>
+                      <dt className="text-sm text-muted-foreground">Monthly cash flow</dt>
                       {isLoading ? (
                         <Skeleton className="h-8 w-24" />
                       ) : (
-                        <p className="text-2xl font-bold font-mono text-emerald-600" data-testid="text-monthly-cashflow">
+                        <dd className="text-2xl font-bold font-mono tabular-nums text-emerald-600 m-0" data-testid="text-monthly-cashflow">
                           {formatCurrency(summary?.totalMonthlyPayment || 0)}
-                        </p>
+                        </dd>
                       )}
                     </div>
                   </div>
@@ -338,16 +342,16 @@ export default function PortfolioPage() {
                 <CardContent className="p-6">
                   <div className="flex items-center gap-3">
                     <div className="p-3 rounded-xl bg-purple-500/10">
-                      <Percent className="w-5 h-5 text-purple-600" />
+                      <Percent className="w-5 h-5 text-purple-600" aria-hidden="true" />
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">Avg Interest Rate</p>
+                      <dt className="text-sm text-muted-foreground">Avg interest rate</dt>
                       {isLoading ? (
                         <Skeleton className="h-8 w-24" />
                       ) : (
-                        <p className="text-2xl font-bold" data-testid="text-avg-interest-rate">
+                        <dd className="text-2xl font-bold tabular-nums m-0" data-testid="text-avg-interest-rate">
                           {formatPercent(summary?.averageInterestRate || 0)}
-                        </p>
+                        </dd>
                       )}
                     </div>
                   </div>
@@ -358,22 +362,22 @@ export default function PortfolioPage() {
                 <CardContent className="p-6">
                   <div className="flex items-center gap-3">
                     <div className="p-3 rounded-xl bg-primary/10">
-                      <FileText className="w-5 h-5 text-primary" />
+                      <FileText className="w-5 h-5 text-primary" aria-hidden="true" />
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">Active Notes</p>
+                      <dt className="text-sm text-muted-foreground">Active notes</dt>
                       {isLoading ? (
                         <Skeleton className="h-8 w-16" />
                       ) : (
-                        <p className="text-2xl font-bold" data-testid="text-active-notes-count">
+                        <dd className="text-2xl font-bold tabular-nums m-0" data-testid="text-active-notes-count">
                           {summary?.activeNotes || 0}
-                        </p>
+                        </dd>
                       )}
                     </div>
                   </div>
                 </CardContent>
               </Card>
-            </div>
+            </dl>
           </section>
 
           <section data-testid="section-portfolio-alerts">
@@ -381,11 +385,11 @@ export default function PortfolioPage() {
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div className="flex items-center gap-2">
-                    <Bell className="w-5 h-5 text-muted-foreground" />
-                    <CardTitle>Portfolio Alerts</CardTitle>
+                    <Bell className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
+                    <CardTitle>Portfolio alerts</CardTitle>
                     {!alertsLoading && activeAlerts.length > 0 && (
-                      <Badge variant="secondary" className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">
-                        {activeAlerts.length} Active
+                      <Badge variant="secondary" className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400" aria-live="polite" aria-label={`${activeAlerts.length} active alert${activeAlerts.length === 1 ? "" : "s"}`}>
+                        <span className="tabular-nums">{activeAlerts.length}</span> active
                       </Badge>
                     )}
                   </div>
@@ -394,12 +398,13 @@ export default function PortfolioPage() {
                     onClick={() => scanMutation.mutate()}
                     disabled={scanMutation.isPending}
                     data-testid="button-scan-portfolio"
+                    aria-label="Scan portfolio for new alerts"
                   >
-                    <Scan className="w-4 h-4 mr-2" />
-                    {scanMutation.isPending ? "Scanning..." : "Scan Portfolio"}
+                    <Scan className="w-4 h-4 mr-2" aria-hidden="true" />
+                    {scanMutation.isPending ? "Scanning…" : "Scan portfolio"}
                   </Button>
                 </div>
-                <CardDescription>Active alerts and issues requiring attention across your portfolio</CardDescription>
+                <CardDescription>Active alerts and issues requiring attention across your portfolio.</CardDescription>
               </CardHeader>
               <CardContent>
                 {alertsLoading ? (
@@ -408,95 +413,98 @@ export default function PortfolioPage() {
                     <Skeleton className="h-24 w-full" />
                   </div>
                 ) : activeAlerts.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-                    <CheckCircle className="w-12 h-12 mb-3 text-emerald-500" />
-                    <p className="text-lg font-medium">No Active Alerts</p>
+                  <div className="flex flex-col items-center justify-center py-8 text-muted-foreground" role="status">
+                    <CheckCircle className="w-12 h-12 mb-3 text-emerald-500" aria-hidden="true" />
+                    <p className="text-lg font-medium">No active alerts</p>
                     <p className="text-sm">Your portfolio is looking healthy. Run a scan to check for new issues.</p>
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    <div className="flex flex-wrap gap-2 mb-4">
+                    <ul className="flex flex-wrap gap-2 mb-4 list-none p-0 m-0" aria-label="Alerts by severity">
                       {criticalAlerts > 0 && (
-                        <Badge className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">
-                          <AlertCircle className="w-3 h-3 mr-1" />
-                          {criticalAlerts} Critical
-                        </Badge>
+                        <li><Badge className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400" aria-label={`${criticalAlerts} critical alert${criticalAlerts === 1 ? "" : "s"}`}>
+                          <AlertCircle className="w-3 h-3 mr-1" aria-hidden="true" />
+                          <span className="tabular-nums">{criticalAlerts}</span> critical
+                        </Badge></li>
                       )}
                       {highAlerts > 0 && (
-                        <Badge className="bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400">
-                          <AlertTriangle className="w-3 h-3 mr-1" />
-                          {highAlerts} High
-                        </Badge>
+                        <li><Badge className="bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400" aria-label={`${highAlerts} high-severity alert${highAlerts === 1 ? "" : "s"}`}>
+                          <AlertTriangle className="w-3 h-3 mr-1" aria-hidden="true" />
+                          <span className="tabular-nums">{highAlerts}</span> high
+                        </Badge></li>
                       )}
                       {mediumAlerts > 0 && (
-                        <Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400">
-                          <Info className="w-3 h-3 mr-1" />
-                          {mediumAlerts} Medium
-                        </Badge>
+                        <li><Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400" aria-label={`${mediumAlerts} medium-severity alert${mediumAlerts === 1 ? "" : "s"}`}>
+                          <Info className="w-3 h-3 mr-1" aria-hidden="true" />
+                          <span className="tabular-nums">{mediumAlerts}</span> medium
+                        </Badge></li>
                       )}
                       {lowAlerts > 0 && (
-                        <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400">
-                          <Info className="w-3 h-3 mr-1" />
-                          {lowAlerts} Low
-                        </Badge>
+                        <li><Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400" aria-label={`${lowAlerts} low-severity alert${lowAlerts === 1 ? "" : "s"}`}>
+                          <Info className="w-3 h-3 mr-1" aria-hidden="true" />
+                          <span className="tabular-nums">{lowAlerts}</span> low
+                        </Badge></li>
                       )}
-                    </div>
-                    {activeAlerts.slice(0, 5).map((alert) => {
-                      const AlertIcon = ALERT_TYPE_ICONS[alert.alertType] || AlertTriangle;
-                      const severityStyle = SEVERITY_STYLES[alert.severity] || SEVERITY_STYLES.medium;
-                      return (
-                        <div
-                          key={alert.id}
-                          className={`p-4 rounded-lg border ${severityStyle.bg} ${severityStyle.border}`}
-                          data-testid={`alert-item-${alert.id}`}
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="flex items-start gap-3">
-                              <div className={`p-2 rounded-lg ${severityStyle.bg}`}>
-                                <AlertIcon className={`w-4 h-4 ${severityStyle.text}`} />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <h4 className={`font-medium ${severityStyle.text}`}>{alert.title}</h4>
-                                  <Badge variant="outline" className={`text-xs ${severityStyle.text} ${severityStyle.border}`}>
-                                    {alert.severity.charAt(0).toUpperCase() + alert.severity.slice(1)}
-                                  </Badge>
+                    </ul>
+                    <ul className="space-y-3 list-none p-0 m-0" aria-label="Active portfolio alerts">
+                      {activeAlerts.slice(0, 5).map((alert) => {
+                        const AlertIcon = ALERT_TYPE_ICONS[alert.alertType] || AlertTriangle;
+                        const severityStyle = SEVERITY_STYLES[alert.severity] || SEVERITY_STYLES.medium;
+                        return (
+                          <li
+                            key={alert.id}
+                            className={`p-4 rounded-lg border ${severityStyle.bg} ${severityStyle.border}`}
+                            data-testid={`alert-item-${alert.id}`}
+                            role={alert.severity === "critical" ? "alert" : undefined}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex items-start gap-3">
+                                <div className={`p-2 rounded-lg ${severityStyle.bg}`}>
+                                  <AlertIcon className={`w-4 h-4 ${severityStyle.text}`} aria-hidden="true" />
                                 </div>
-                                <p className="text-sm text-muted-foreground mt-1">{alert.description}</p>
-                                {alert.property && (
-                                  <div className="flex items-center gap-1 mt-2 text-xs text-muted-foreground">
-                                    <MapPin className="w-3 h-3" />
-                                    <span>{alert.property.county}, {alert.property.state}</span>
-                                    {alert.property.parcelNumber && (
-                                      <span className="ml-1">({alert.property.parcelNumber})</span>
-                                    )}
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <h4 className={`font-medium ${severityStyle.text}`}>{alert.title}</h4>
+                                    <Badge variant="outline" className={`text-xs ${severityStyle.text} ${severityStyle.border}`} aria-label={`Severity: ${alert.severity}`}>
+                                      {alert.severity.charAt(0).toUpperCase() + alert.severity.slice(1)}
+                                    </Badge>
                                   </div>
-                                )}
-                                {alert.recommendedAction && (
-                                  <div className="mt-2 p-2 rounded bg-muted/50">
-                                    <p className="text-xs font-medium">Recommended Action:</p>
-                                    <p className="text-xs text-muted-foreground">{alert.recommendedAction}</p>
-                                  </div>
-                                )}
+                                  <p className="text-sm text-muted-foreground mt-1">{alert.description}</p>
+                                  {alert.property && (
+                                    <div className="flex items-center gap-1 mt-2 text-xs text-muted-foreground">
+                                      <MapPin className="w-3 h-3" aria-hidden="true" />
+                                      <span>{alert.property.county}, {alert.property.state}</span>
+                                      {alert.property.parcelNumber && (
+                                        <span className="ml-1">({alert.property.parcelNumber})</span>
+                                      )}
+                                    </div>
+                                  )}
+                                  {alert.recommendedAction && (
+                                    <div className="mt-2 p-2 rounded bg-muted/50">
+                                      <p className="text-xs font-medium">Recommended action:</p>
+                                      <p className="text-xs text-muted-foreground">{alert.recommendedAction}</p>
+                                    </div>
+                                  )}
+                                </div>
                               </div>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={() => setPendingDismiss(alert)}
+                                disabled={dismissMutation.isPending}
+                                aria-label={`Dismiss ${alert.severity} alert: ${alert.title}`}
+                                data-testid={`button-dismiss-alert-${alert.id}`}
+                              >
+                                <X className="w-4 h-4" aria-hidden="true" />
+                              </Button>
                             </div>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              onClick={() => dismissMutation.mutate(alert.id)}
-                              disabled={dismissMutation.isPending}
-                              aria-label="Dismiss alert"
-                              data-testid={`button-dismiss-alert-${alert.id}`}
-                            >
-                              <X className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      );
-                    })}
+                          </li>
+                        );
+                      })}
+                    </ul>
                     {activeAlerts.length > 5 && (
                       <p className="text-sm text-muted-foreground text-center pt-2">
-                        And {activeAlerts.length - 5} more alerts...
+                        And <span className="tabular-nums">{activeAlerts.length - 5}</span> more alert{activeAlerts.length - 5 === 1 ? "" : "s"}…
                       </p>
                     )}
                   </div>
@@ -509,66 +517,68 @@ export default function PortfolioPage() {
             <Card className="floating-window">
               <CardHeader className="pb-2">
                 <div className="flex items-center gap-2">
-                  <Shield className="w-5 h-5 text-muted-foreground" />
-                  <CardTitle>Compliance Dashboard</CardTitle>
+                  <Shield className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
+                  <CardTitle>Compliance dashboard</CardTitle>
                 </div>
-                <CardDescription>Overview of compliance rules and property compliance status</CardDescription>
+                <CardDescription>Overview of compliance rules and property compliance status.</CardDescription>
               </CardHeader>
               <CardContent>
                 {rulesLoading ? (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4" role="status" aria-label="Loading compliance rules">
                     <Skeleton className="h-24 w-full" />
                     <Skeleton className="h-24 w-full" />
                     <Skeleton className="h-24 w-full" />
                   </div>
                 ) : (
                   <>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    <dl className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 m-0">
                       <div className="p-4 rounded-lg bg-muted/50">
                         <div className="flex items-center gap-2 mb-2">
-                          <Gavel className="w-4 h-4 text-muted-foreground" />
-                          <p className="text-sm text-muted-foreground">Total Rules</p>
+                          <Gavel className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
+                          <dt className="text-sm text-muted-foreground">Total rules</dt>
                         </div>
-                        <p className="text-2xl font-bold" data-testid="text-total-rules">
+                        <dd className="text-2xl font-bold tabular-nums m-0" data-testid="text-total-rules">
                           {complianceRules?.length || 0}
-                        </p>
+                        </dd>
                       </div>
                       <div className="p-4 rounded-lg bg-emerald-50 dark:bg-emerald-900/20">
                         <div className="flex items-center gap-2 mb-2">
-                          <CheckCircle className="w-4 h-4 text-emerald-600" />
-                          <p className="text-sm text-muted-foreground">Active Rules</p>
+                          <CheckCircle className="w-4 h-4 text-emerald-600" aria-hidden="true" />
+                          <dt className="text-sm text-muted-foreground">Active rules</dt>
                         </div>
-                        <p className="text-2xl font-bold text-emerald-600" data-testid="text-active-rules">
+                        <dd className="text-2xl font-bold tabular-nums text-emerald-600 m-0" data-testid="text-active-rules">
                           {complianceRules?.filter(r => r.isActive).length || 0}
-                        </p>
+                        </dd>
                       </div>
                       <div className="p-4 rounded-lg bg-blue-50 dark:bg-blue-900/20">
                         <div className="flex items-center gap-2 mb-2">
-                          <Leaf className="w-4 h-4 text-blue-600" />
-                          <p className="text-sm text-muted-foreground">Rule Types</p>
+                          <Leaf className="w-4 h-4 text-blue-600" aria-hidden="true" />
+                          <dt className="text-sm text-muted-foreground">Rule types</dt>
                         </div>
-                        <p className="text-2xl font-bold text-blue-600" data-testid="text-rule-types">
+                        <dd className="text-2xl font-bold tabular-nums text-blue-600 m-0" data-testid="text-rule-types">
                           {new Set(complianceRules?.map(r => r.ruleType)).size || 0}
-                        </p>
+                        </dd>
                       </div>
-                    </div>
+                    </dl>
                     {complianceRules && complianceRules.length > 0 ? (
                       <div className="space-y-2">
-                        <h4 className="text-sm font-medium mb-3">Rule Types Breakdown</h4>
-                        <div className="flex flex-wrap gap-2">
+                        <h4 className="text-sm font-medium mb-3">Rule-types breakdown</h4>
+                        <ul className="flex flex-wrap gap-2 list-none p-0 m-0">
                           {Array.from(new Set(complianceRules.map(r => r.ruleType))).map(type => {
                             const count = complianceRules.filter(r => r.ruleType === type).length;
                             return (
-                              <Badge key={type} variant="secondary" data-testid={`badge-rule-type-${type}`}>
-                                {type.charAt(0).toUpperCase() + type.slice(1)}: {count}
-                              </Badge>
+                              <li key={type}>
+                                <Badge variant="secondary" data-testid={`badge-rule-type-${type}`} aria-label={`${type.charAt(0).toUpperCase() + type.slice(1)}: ${count} rule${count === 1 ? "" : "s"}`}>
+                                  {type.charAt(0).toUpperCase() + type.slice(1)}: <span className="tabular-nums ml-1">{count}</span>
+                                </Badge>
+                              </li>
                             );
                           })}
-                        </div>
+                        </ul>
                       </div>
                     ) : (
-                      <div className="flex flex-col items-center justify-center py-6 text-muted-foreground">
-                        <Shield className="w-10 h-10 mb-2 opacity-50" />
+                      <div className="flex flex-col items-center justify-center py-6 text-muted-foreground" role="status">
+                        <Shield className="w-10 h-10 mb-2 opacity-50" aria-hidden="true" />
                         <p className="text-sm">No compliance rules configured yet.</p>
                       </div>
                     )}
@@ -582,18 +592,23 @@ export default function PortfolioPage() {
             <Card className="floating-window">
               <CardHeader className="pb-2">
                 <div className="flex items-center gap-2">
-                  <PieChartIcon className="w-5 h-5 text-muted-foreground" />
-                  <CardTitle>Portfolio by Status</CardTitle>
+                  <PieChartIcon className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
+                  <CardTitle>Portfolio by status</CardTitle>
                 </div>
-                <CardDescription>Distribution of notes by current status</CardDescription>
+                <CardDescription>Distribution of notes by current status.</CardDescription>
               </CardHeader>
               <CardContent>
                 {isLoading ? (
-                  <div className="h-64 flex items-center justify-center">
+                  <div className="h-64 flex items-center justify-center" role="status" aria-label="Loading status chart">
                     <Skeleton className="h-48 w-48 rounded-full" />
                   </div>
                 ) : pieChartData.length > 0 ? (
-                  <div className="h-64" data-testid="chart-status-pie">
+                  <div
+                    className="h-64"
+                    data-testid="chart-status-pie"
+                    role="img"
+                    aria-label={`Notes by status: ${pieChartData.map(d => `${d.name} ${d.value}`).join(", ")}`}
+                  >
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
                         <Pie
@@ -616,8 +631,8 @@ export default function PortfolioPage() {
                     </ResponsiveContainer>
                   </div>
                 ) : (
-                  <div className="h-64 flex items-center justify-center text-muted-foreground">
-                    No notes to display
+                  <div className="h-64 flex items-center justify-center text-muted-foreground" role="status">
+                    No notes to display.
                   </div>
                 )}
               </CardContent>
@@ -626,56 +641,61 @@ export default function PortfolioPage() {
             <Card className="floating-window">
               <CardHeader className="pb-2">
                 <div className="flex items-center gap-2">
-                  <AlertTriangle className="w-5 h-5 text-muted-foreground" />
-                  <CardTitle>Delinquency Metrics</CardTitle>
+                  <AlertTriangle className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
+                  <CardTitle>Delinquency metrics</CardTitle>
                 </div>
-                <CardDescription>Payment status and risk analysis</CardDescription>
+                <CardDescription>Payment status and risk analysis.</CardDescription>
               </CardHeader>
               <CardContent>
                 {isLoading ? (
-                  <div className="space-y-4">
+                  <div className="space-y-4" role="status" aria-label="Loading delinquency data">
                     <Skeleton className="h-16 w-full" />
                     <Skeleton className="h-16 w-full" />
                     <Skeleton className="h-16 w-full" />
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
+                    <dl className="grid grid-cols-2 gap-4 m-0">
                       <div className="p-4 rounded-lg bg-muted/50">
-                        <p className="text-sm text-muted-foreground">Delinquency Rate</p>
-                        <p className="text-2xl font-bold" data-testid="text-delinquency-rate">
+                        <dt className="text-sm text-muted-foreground">Delinquency rate</dt>
+                        <dd className="text-2xl font-bold tabular-nums m-0" data-testid="text-delinquency-rate">
                           {formatPercent(delinquency?.delinquencyRate || 0)}
-                        </p>
+                        </dd>
                       </div>
                       <div className="p-4 rounded-lg bg-muted/50">
-                        <p className="text-sm text-muted-foreground">At-Risk Amount</p>
-                        <p className="text-2xl font-bold text-red-600" data-testid="text-at-risk-amount">
+                        <dt className="text-sm text-muted-foreground">At-risk amount</dt>
+                        <dd className="text-2xl font-bold tabular-nums text-red-600 m-0" data-testid="text-at-risk-amount">
                           {formatCurrency(delinquency?.atRiskAmount || 0)}
-                        </p>
+                        </dd>
                       </div>
-                    </div>
+                    </dl>
                     <div>
-                      <p className="text-sm font-medium mb-2">Aging Buckets</p>
-                      <div className="flex flex-wrap gap-2">
-                        <Badge variant="secondary" className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400">
-                          <CheckCircle className="w-3 h-3 mr-1" />
-                          Current: {delinquency?.agingBuckets.current.count || 0}
-                        </Badge>
-                        <Badge variant="secondary" className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
-                          <Clock className="w-3 h-3 mr-1" />
-                          30 Days: {delinquency?.agingBuckets.days30.count || 0}
-                        </Badge>
-                        <Badge variant="secondary" className="bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400">
-                          <Clock className="w-3 h-3 mr-1" />
-                          60 Days: {delinquency?.agingBuckets.days60.count || 0}
-                        </Badge>
-                        <Badge variant="secondary" className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">
-                          <AlertTriangle className="w-3 h-3 mr-1" />
-                          90+ Days: {delinquency?.agingBuckets.days90Plus.count || 0}
-                        </Badge>
-                      </div>
+                      <p className="text-sm font-medium mb-2">Aging buckets</p>
+                      <ul className="flex flex-wrap gap-2 list-none p-0 m-0" aria-label="Notes by aging bucket">
+                        <li><Badge variant="secondary" className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400" aria-label={`Current: ${delinquency?.agingBuckets.current.count || 0}`}>
+                          <CheckCircle className="w-3 h-3 mr-1" aria-hidden="true" />
+                          Current: <span className="tabular-nums ml-1">{delinquency?.agingBuckets.current.count || 0}</span>
+                        </Badge></li>
+                        <li><Badge variant="secondary" className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400" aria-label={`30 days late: ${delinquency?.agingBuckets.days30.count || 0}`}>
+                          <Clock className="w-3 h-3 mr-1" aria-hidden="true" />
+                          30 days: <span className="tabular-nums ml-1">{delinquency?.agingBuckets.days30.count || 0}</span>
+                        </Badge></li>
+                        <li><Badge variant="secondary" className="bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400" aria-label={`60 days late: ${delinquency?.agingBuckets.days60.count || 0}`}>
+                          <Clock className="w-3 h-3 mr-1" aria-hidden="true" />
+                          60 days: <span className="tabular-nums ml-1">{delinquency?.agingBuckets.days60.count || 0}</span>
+                        </Badge></li>
+                        <li><Badge variant="secondary" className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400" aria-label={`90+ days late: ${delinquency?.agingBuckets.days90Plus.count || 0}`}>
+                          <AlertTriangle className="w-3 h-3 mr-1" aria-hidden="true" />
+                          90+ days: <span className="tabular-nums ml-1">{delinquency?.agingBuckets.days90Plus.count || 0}</span>
+                        </Badge></li>
+                      </ul>
                     </div>
-                    <div data-testid="chart-aging-buckets" className="h-40">
+                    <div
+                      data-testid="chart-aging-buckets"
+                      className="h-40"
+                      role="img"
+                      aria-label={`Aging buckets bar chart: ${agingChartData.map(d => `${d.bucket} ${formatCurrency(d.value)}`).join(", ")}`}
+                    >
                       <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={agingChartData}>
                           <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
@@ -692,21 +712,26 @@ export default function PortfolioPage() {
             </Card>
           </div>
 
-          <section>
-            <h2 className="text-xl font-semibold mb-4">Principal vs Interest Breakdown</h2>
+          <section aria-labelledby="principal-interest-heading">
+            <h2 id="principal-interest-heading" className="text-xl font-semibold mb-4">Principal vs interest breakdown</h2>
             <Card className="floating-window">
               <CardHeader className="pb-2">
                 <div className="flex items-center gap-2">
-                  <BarChart3 className="w-5 h-5 text-muted-foreground" />
-                  <CardTitle>Monthly Collections (Last 12 Months)</CardTitle>
+                  <BarChart3 className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
+                  <CardTitle>Monthly collections (last 12 months)</CardTitle>
                 </div>
-                <CardDescription>Breakdown of principal and interest payments received</CardDescription>
+                <CardDescription>Breakdown of principal and interest payments received.</CardDescription>
               </CardHeader>
               <CardContent>
                 {isLoading ? (
                   <Skeleton className="h-64 w-full" />
                 ) : (
-                  <div className="h-64" data-testid="chart-principal-interest">
+                  <div
+                    className="h-64"
+                    data-testid="chart-principal-interest"
+                    role="img"
+                    aria-label={`Monthly collections bar chart: ${(delinquency?.monthlyBreakdown || []).slice(-3).map(m => `${m.month} principal ${formatCurrency(m.principal)} interest ${formatCurrency(m.interest)}`).join("; ")}${(delinquency?.monthlyBreakdown?.length || 0) > 3 ? "; more months in chart" : ""}`}
+                  >
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={delinquency?.monthlyBreakdown || []}>
                         <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
@@ -720,41 +745,41 @@ export default function PortfolioPage() {
                     </ResponsiveContainer>
                   </div>
                 )}
-                <div className="flex justify-center gap-8 mt-4 text-sm">
+                <dl className="flex justify-center gap-8 mt-4 text-sm m-0">
                   <div>
-                    <span className="text-muted-foreground">Total Principal Collected: </span>
-                    <span className="font-mono font-semibold" data-testid="text-total-principal-collected">
+                    <dt className="text-muted-foreground inline">Total principal collected: </dt>
+                    <dd className="font-mono font-semibold tabular-nums inline m-0" data-testid="text-total-principal-collected">
                       {formatCurrency(delinquency?.totalPrincipalCollected || 0)}
-                    </span>
+                    </dd>
                   </div>
                   <div>
-                    <span className="text-muted-foreground">Total Interest Collected: </span>
-                    <span className="font-mono font-semibold text-emerald-600" data-testid="text-total-interest-collected">
+                    <dt className="text-muted-foreground inline">Total interest collected: </dt>
+                    <dd className="font-mono font-semibold tabular-nums text-emerald-600 inline m-0" data-testid="text-total-interest-collected">
                       {formatCurrency(delinquency?.totalInterestCollected || 0)}
-                    </span>
+                    </dd>
                   </div>
-                </div>
+                </dl>
               </CardContent>
             </Card>
           </section>
 
-          <section>
-            <h2 className="text-xl font-semibold mb-4">Cash-on-Cash & ROI</h2>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          <section aria-labelledby="cash-on-cash-heading">
+            <h2 id="cash-on-cash-heading" className="text-xl font-semibold mb-4">Cash-on-cash & ROI</h2>
+            <dl className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 m-0">
               <Card className="glass-panel">
                 <CardContent className="p-6">
                   <div className="flex items-center gap-3">
                     <div className="p-3 rounded-xl bg-blue-500/10">
-                      <DollarSign className="w-5 h-5 text-blue-600" />
+                      <DollarSign className="w-5 h-5 text-blue-600" aria-hidden="true" />
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">Total Invested</p>
+                      <dt className="text-sm text-muted-foreground">Total invested</dt>
                       {isLoading ? (
                         <Skeleton className="h-8 w-24" />
                       ) : (
-                        <p className="text-2xl font-bold font-mono" data-testid="text-total-invested">
+                        <dd className="text-2xl font-bold font-mono tabular-nums m-0" data-testid="text-total-invested">
                           {formatCurrency(projections?.totalInvested || 0)}
-                        </p>
+                        </dd>
                       )}
                     </div>
                   </div>
@@ -765,16 +790,16 @@ export default function PortfolioPage() {
                 <CardContent className="p-6">
                   <div className="flex items-center gap-3">
                     <div className="p-3 rounded-xl bg-emerald-500/10">
-                      <TrendingUp className="w-5 h-5 text-emerald-600" />
+                      <TrendingUp className="w-5 h-5 text-emerald-600" aria-hidden="true" />
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">Total Collected</p>
+                      <dt className="text-sm text-muted-foreground">Total collected</dt>
                       {isLoading ? (
                         <Skeleton className="h-8 w-24" />
                       ) : (
-                        <p className="text-2xl font-bold font-mono text-emerald-600" data-testid="text-total-collected">
+                        <dd className="text-2xl font-bold font-mono tabular-nums text-emerald-600 m-0" data-testid="text-total-collected">
                           {formatCurrency(projections?.totalCollected || 0)}
-                        </p>
+                        </dd>
                       )}
                     </div>
                   </div>
@@ -785,16 +810,16 @@ export default function PortfolioPage() {
                 <CardContent className="p-6">
                   <div className="flex items-center gap-3">
                     <div className="p-3 rounded-xl bg-purple-500/10">
-                      <Percent className="w-5 h-5 text-purple-600" />
+                      <Percent className="w-5 h-5 text-purple-600" aria-hidden="true" />
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">Annual Yield</p>
+                      <dt className="text-sm text-muted-foreground">Annual yield</dt>
                       {isLoading ? (
                         <Skeleton className="h-8 w-24" />
                       ) : (
-                        <p className="text-2xl font-bold" data-testid="text-annual-yield">
+                        <dd className="text-2xl font-bold tabular-nums m-0" data-testid="text-annual-yield">
                           {formatPercent(projections?.annualYield || 0)}
-                        </p>
+                        </dd>
                       )}
                     </div>
                   </div>
@@ -805,39 +830,44 @@ export default function PortfolioPage() {
                 <CardContent className="p-6">
                   <div className="flex items-center gap-3">
                     <div className="p-3 rounded-xl bg-amber-500/10">
-                      <TrendingUp className="w-5 h-5 text-amber-600" />
+                      <TrendingUp className="w-5 h-5 text-amber-600" aria-hidden="true" />
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">Cash-on-Cash Return</p>
+                      <dt className="text-sm text-muted-foreground">Cash-on-cash return</dt>
                       {isLoading ? (
                         <Skeleton className="h-8 w-24" />
                       ) : (
-                        <p className="text-2xl font-bold" data-testid="text-cash-on-cash">
+                        <dd className="text-2xl font-bold tabular-nums m-0" data-testid="text-cash-on-cash">
                           {formatPercent(projections?.cashOnCashReturn || 0)}
-                        </p>
+                        </dd>
                       )}
                     </div>
                   </div>
                 </CardContent>
               </Card>
-            </div>
+            </dl>
           </section>
 
-          <section>
-            <h2 className="text-xl font-semibold mb-4">Projected Income (Next 12 Months)</h2>
+          <section aria-labelledby="projected-income-heading">
+            <h2 id="projected-income-heading" className="text-xl font-semibold mb-4">Projected income (next 12 months)</h2>
             <Card className="floating-window">
               <CardHeader className="pb-2">
                 <div className="flex items-center gap-2">
-                  <Calendar className="w-5 h-5 text-muted-foreground" />
-                  <CardTitle>Income Projections</CardTitle>
+                  <Calendar className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
+                  <CardTitle>Income projections</CardTitle>
                 </div>
-                <CardDescription>Expected principal and interest payments based on current active notes</CardDescription>
+                <CardDescription>Expected principal and interest payments based on current active notes.</CardDescription>
               </CardHeader>
               <CardContent>
                 {isLoading ? (
                   <Skeleton className="h-64 w-full" />
                 ) : (
-                  <div className="h-64" data-testid="chart-projected-income">
+                  <div
+                    className="h-64"
+                    data-testid="chart-projected-income"
+                    role="img"
+                    aria-label={`Projected income area chart: ${(projections?.projectedIncome || []).slice(0, 3).map(m => `${m.month} principal ${formatCurrency(m.principal)} interest ${formatCurrency(m.interest)}`).join("; ")}${(projections?.projectedIncome?.length || 0) > 3 ? "; more months in chart" : ""}`}
+                  >
                     <ResponsiveContainer width="100%" height="100%">
                       <AreaChart data={projections?.projectedIncome || []}>
                         <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
@@ -871,49 +901,61 @@ export default function PortfolioPage() {
             </Card>
           </section>
 
-          <section>
-            <h2 className="text-xl font-semibold mb-4">Amortization Summary</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <section aria-labelledby="amortization-summary-heading">
+            <h2 id="amortization-summary-heading" className="text-xl font-semibold mb-4">Amortization summary</h2>
+            <dl className="grid grid-cols-1 md:grid-cols-3 gap-4 m-0">
               <Card className="glass-panel">
                 <CardContent className="p-6">
-                  <p className="text-sm text-muted-foreground">Active Notes</p>
+                  <dt className="text-sm text-muted-foreground">Active notes</dt>
                   {isLoading ? (
                     <Skeleton className="h-8 w-16 mt-1" />
                   ) : (
-                    <p className="text-2xl font-bold" data-testid="text-amort-active-notes">
+                    <dd className="text-2xl font-bold tabular-nums m-0" data-testid="text-amort-active-notes">
                       {projections?.amortizationSummary.activeNotes || 0}
-                    </p>
+                    </dd>
                   )}
                 </CardContent>
               </Card>
 
               <Card className="glass-panel">
                 <CardContent className="p-6">
-                  <p className="text-sm text-muted-foreground">Payments Remaining</p>
+                  <dt className="text-sm text-muted-foreground">Payments remaining</dt>
                   {isLoading ? (
                     <Skeleton className="h-8 w-16 mt-1" />
                   ) : (
-                    <p className="text-2xl font-bold" data-testid="text-payments-remaining">
+                    <dd className="text-2xl font-bold tabular-nums m-0" data-testid="text-payments-remaining">
                       {projections?.amortizationSummary.totalPaymentsRemaining || 0}
-                    </p>
+                    </dd>
                   )}
                 </CardContent>
               </Card>
 
               <Card className="glass-panel">
                 <CardContent className="p-6">
-                  <p className="text-sm text-muted-foreground">Expected Interest Remaining</p>
+                  <dt className="text-sm text-muted-foreground">Expected interest remaining</dt>
                   {isLoading ? (
                     <Skeleton className="h-8 w-24 mt-1" />
                   ) : (
-                    <p className="text-2xl font-bold font-mono text-emerald-600" data-testid="text-expected-interest">
+                    <dd className="text-2xl font-bold font-mono tabular-nums text-emerald-600 m-0" data-testid="text-expected-interest">
                       {formatCurrency(projections?.amortizationSummary.totalExpectedInterest || 0)}
-                    </p>
+                    </dd>
                   )}
                 </CardContent>
               </Card>
-            </div>
+            </dl>
           </section>
+
+          <ConfirmDialog
+            open={!!pendingDismiss}
+            onOpenChange={(open) => { if (!open) setPendingDismiss(null); }}
+            title={`Dismiss ${pendingDismiss?.severity || ""} alert?`}
+            description={pendingDismiss ? `"${pendingDismiss.title}" will be removed from your active alerts. The underlying issue isn't resolved by dismissing — it just stops appearing here.` : ""}
+            confirmLabel="Dismiss alert"
+            onConfirm={() => {
+              if (pendingDismiss) dismissMutation.mutate(pendingDismiss.id);
+              setPendingDismiss(null);
+            }}
+          />
     </PageShell>
   );
 }
