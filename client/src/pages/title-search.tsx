@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useId } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -8,6 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { useDocumentTitle } from "@/hooks/use-document-title";
+import { usd } from "@/lib/format";
 import { Search, FileCheck, AlertTriangle, XCircle, CheckCircle2, Loader2, DollarSign, Calendar } from "lucide-react";
 
 interface TitleIssue {
@@ -39,11 +41,19 @@ const SEVERITY_CONFIG = {
   informational: { color: "text-blue-600", bg: "bg-blue-50", icon: FileCheck },
 };
 
+function humanizeType(s: string): string {
+  const spaced = s.replace(/_/g, " ");
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
 export default function TitleSearchPage() {
+  useDocumentTitle("Title search");
   const { toast } = useToast();
   const [parcelId, setParcelId] = useState("");
   const [address, setAddress] = useState("");
   const [result, setResult] = useState<TitleSearchResult | null>(null);
+  const parcelInputId = useId();
+  const addressInputId = useId();
 
   const searchMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/title-search/search", { parcelId, address }),
@@ -51,7 +61,12 @@ export default function TitleSearchPage() {
       const data = await res.json();
       setResult(data);
     },
-    onError: () => toast({ title: "Title search failed", variant: "destructive" }),
+    onError: () =>
+      toast({
+        title: "Couldn't run title search",
+        description: "Your previous result (if any) is unchanged. Try again in a moment.",
+        variant: "destructive",
+      }),
   });
 
   const blockingCount = result?.issues.filter(i => i.severity === "blocking").length ?? 0;
@@ -61,7 +76,7 @@ export default function TitleSearchPage() {
     <PageShell>
       <div>
         <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-title-search-title">
-          Title Search
+          Title search
         </h1>
         <p className="text-muted-foreground text-sm md:text-base">
           Run preliminary title searches to identify liens, encumbrances, and ownership gaps.
@@ -70,30 +85,52 @@ export default function TitleSearchPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Search Title</CardTitle>
+          <CardTitle className="text-base">Search title</CardTitle>
           <CardDescription>Provide a parcel ID or address to begin.</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <Label className="text-xs">Parcel ID</Label>
-              <Input placeholder="123-456-789" value={parcelId} onChange={e => setParcelId(e.target.value)} />
-            </div>
-            <div>
-              <Label className="text-xs">Property Address</Label>
-              <Input placeholder="123 Main St, Austin TX" value={address} onChange={e => setAddress(e.target.value)} />
-            </div>
-          </div>
-          <Button
-            disabled={(!parcelId && !address) || searchMutation.isPending}
-            onClick={() => searchMutation.mutate()}
+        <CardContent>
+          <form
+            className="space-y-3"
+            onSubmit={(e) => { e.preventDefault(); if ((parcelId || address) && !searchMutation.isPending) searchMutation.mutate(); }}
           >
-            {searchMutation.isPending ? (
-              <><Loader2 className="w-4 h-4 animate-spin mr-2" />Searching...</>
-            ) : (
-              <><Search className="w-4 h-4 mr-2" />Run Title Search</>
-            )}
-          </Button>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor={parcelInputId} className="text-xs">Parcel ID</Label>
+                <Input
+                  id={parcelInputId}
+                  placeholder="123-456-789"
+                  value={parcelId}
+                  onChange={e => setParcelId(e.target.value)}
+                  className="font-mono"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                />
+              </div>
+              <div>
+                <Label htmlFor={addressInputId} className="text-xs">Property address</Label>
+                <Input
+                  id={addressInputId}
+                  placeholder="123 Main St, Austin TX"
+                  value={address}
+                  onChange={e => setAddress(e.target.value)}
+                  autoCapitalize="words"
+                  autoComplete="street-address"
+                />
+              </div>
+            </div>
+            <Button
+              type="submit"
+              disabled={(!parcelId && !address) || searchMutation.isPending}
+              className="min-h-11"
+            >
+              {searchMutation.isPending ? (
+                <><Loader2 className="w-4 h-4 animate-spin mr-2" aria-hidden="true" />Searching…</>
+              ) : (
+                <><Search className="w-4 h-4 mr-2" aria-hidden="true" />Run title search</>
+              )}
+            </Button>
+          </form>
         </CardContent>
       </Card>
 
@@ -101,44 +138,46 @@ export default function TitleSearchPage() {
         <div className="space-y-4">
           <Card>
             <CardHeader className="pb-2">
-              <div className="flex items-start justify-between">
+              <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div>
                   <CardTitle className="text-base">{result.address}</CardTitle>
-                  <p className="text-xs text-muted-foreground">Parcel {result.parcelId} · Report #{result.reportId}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Parcel <span className="font-mono">{result.parcelId}</span> · Report <span className="font-mono">#{result.reportId}</span>
+                  </p>
                 </div>
                 <Badge variant={result.titleClear ? "default" : "destructive"}>
                   {result.titleClear ? (
-                    <><CheckCircle2 className="w-3 h-3 mr-1" />Clear</>
+                    <><CheckCircle2 className="w-3 h-3 mr-1" aria-hidden="true" />Clear</>
                   ) : (
-                    <><XCircle className="w-3 h-3 mr-1" />Issues Found</>
+                    <><XCircle className="w-3 h-3 mr-1" aria-hidden="true" />Issues found</>
                   )}
                 </Badge>
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+              <dl className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                 <div>
-                  <p className="text-muted-foreground">Current Owner</p>
-                  <p className="font-medium">{result.currentOwner}</p>
+                  <dt className="text-muted-foreground">Current owner</dt>
+                  <dd className="font-medium">{result.currentOwner}</dd>
                 </div>
                 <div>
-                  <p className="text-muted-foreground">Owner Since</p>
-                  <p className="font-medium">{new Date(result.ownerSince).toLocaleDateString()}</p>
+                  <dt className="text-muted-foreground">Owner since</dt>
+                  <dd className="font-medium tabular-nums">{new Date(result.ownerSince).toLocaleDateString()}</dd>
                 </div>
                 <div>
-                  <p className="text-muted-foreground">Blocking Issues</p>
-                  <p className={`font-medium ${blockingCount > 0 ? "text-red-600" : "text-green-600"}`}>{blockingCount}</p>
+                  <dt className="text-muted-foreground">Blocking issues</dt>
+                  <dd className={`font-medium tabular-nums ${blockingCount > 0 ? "text-red-600" : "text-green-600"}`}>{blockingCount}</dd>
                 </div>
                 <div>
-                  <p className="text-muted-foreground">Warnings</p>
-                  <p className={`font-medium ${warningCount > 0 ? "text-yellow-600" : ""}`}>{warningCount}</p>
+                  <dt className="text-muted-foreground">Warnings</dt>
+                  <dd className={`font-medium tabular-nums ${warningCount > 0 ? "text-yellow-600" : ""}`}>{warningCount}</dd>
                 </div>
-              </div>
+              </dl>
 
               {result.estimatedClearanceCost && result.estimatedClearanceCost > 0 && (
                 <div className="flex items-center gap-2 text-sm">
-                  <DollarSign className="w-4 h-4 text-muted-foreground" />
-                  Est. clearance cost: <strong>${(result.estimatedClearanceCost / 100).toLocaleString()}</strong>
+                  <DollarSign className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
+                  Est. clearance cost: <strong className="tabular-nums">{usd(result.estimatedClearanceCost / 100)}</strong>
                 </div>
               )}
             </CardContent>
@@ -147,32 +186,40 @@ export default function TitleSearchPage() {
           {result.issues.length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm">Title Issues</CardTitle>
+                <CardTitle className="text-sm">Title issues</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-2">
-                {result.issues.map((issue, i) => {
-                  const config = SEVERITY_CONFIG[issue.severity];
-                  const Icon = config.icon;
-                  return (
-                    <div key={i} className={`rounded-md p-3 ${config.bg}`}>
-                      <div className={`flex items-center gap-2 text-xs font-medium ${config.color}`}>
-                        <Icon className="w-3.5 h-3.5" />
-                        {issue.type.replace(/_/g, " ").toUpperCase()}
-                      </div>
-                      <p className="text-xs mt-1">{issue.description}</p>
-                      <div className="flex gap-3 mt-1 text-xs text-muted-foreground">
-                        {issue.holder && <span>Holder: {issue.holder}</span>}
-                        {issue.amount && <span>Amount: ${(issue.amount / 100).toLocaleString()}</span>}
-                        {issue.recordedDate && (
-                          <span className="flex items-center gap-1">
-                            <Calendar className="w-3 h-3" />
-                            {new Date(issue.recordedDate).toLocaleDateString()}
+              <CardContent>
+                <ul className="space-y-2" aria-label="Title issues">
+                  {result.issues.map((issue, i) => {
+                    const config = SEVERITY_CONFIG[issue.severity];
+                    const Icon = config.icon;
+                    return (
+                      <li
+                        key={i}
+                        className={`rounded-md p-3 ${config.bg}`}
+                        role={issue.severity === "blocking" ? "alert" : undefined}
+                      >
+                        <div className={`flex items-center gap-2 text-xs font-medium ${config.color}`}>
+                          <Icon className="w-3.5 h-3.5" aria-hidden="true" />
+                          <span aria-label={`${issue.severity} issue: ${humanizeType(issue.type)}`}>
+                            {humanizeType(issue.type)}
                           </span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
+                        </div>
+                        <p className="text-xs mt-1">{issue.description}</p>
+                        <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1 text-xs text-muted-foreground">
+                          {issue.holder && <span>Holder: {issue.holder}</span>}
+                          {issue.amount && <span className="tabular-nums">Amount: {usd(issue.amount / 100)}</span>}
+                          {issue.recordedDate && (
+                            <span className="flex items-center gap-1">
+                              <Calendar className="w-3 h-3" aria-hidden="true" />
+                              <span className="tabular-nums">{new Date(issue.recordedDate).toLocaleDateString()}</span>
+                            </span>
+                          )}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
               </CardContent>
             </Card>
           )}
@@ -180,21 +227,21 @@ export default function TitleSearchPage() {
           {result.chainOfTitle.length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm">Chain of Title</CardTitle>
+                <CardTitle className="text-sm">Chain of title</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-2">
+                <ol className="space-y-2" aria-label="Chain of title">
                   {result.chainOfTitle.map((entry, i) => (
-                    <div key={i} className="flex items-center gap-3 text-xs">
-                      <div className="w-2 h-2 rounded-full bg-primary flex-shrink-0" />
+                    <li key={i} className="flex items-center gap-3 text-xs">
+                      <div className="w-2 h-2 rounded-full bg-primary flex-shrink-0" aria-hidden="true" />
                       <span className="font-medium">{entry.owner}</span>
-                      <span className="text-muted-foreground">
+                      <span className="text-muted-foreground tabular-nums">
                         {new Date(entry.from).toLocaleDateString()}
                         {entry.to ? ` — ${new Date(entry.to).toLocaleDateString()}` : " — Present"}
                       </span>
-                    </div>
+                    </li>
                   ))}
-                </div>
+                </ol>
               </CardContent>
             </Card>
           )}

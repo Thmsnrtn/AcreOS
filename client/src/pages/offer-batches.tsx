@@ -76,8 +76,8 @@ export default function OfferBatchesPage() {
           </Card>
         ) : isError ? (
           <Card>
-            <CardContent className="p-6 text-sm text-red-600">
-              Could not load batches.
+            <CardContent className="p-6 text-sm text-red-600" role="alert">
+              Couldn't load batches. Your existing batches are unchanged — reload the page to try again.
             </CardContent>
           </Card>
         ) : data.length === 0 ? (
@@ -87,7 +87,7 @@ export default function OfferBatchesPage() {
             description="Create batches via POST /api/offers/batch with a pricing matrix and a parcel list. A guided create-batch dialog is on the roadmap — for now, the server-side flow is the quickest path."
           />
         ) : (
-          <div className="space-y-3">
+          <ul className="space-y-3" aria-label="Offer batches">
             {data.map((b) => {
               const tone = STATUS_TONE[b.status] ?? "gray";
               const total = b.totalOffers ?? 0;
@@ -96,48 +96,50 @@ export default function OfferBatchesPage() {
               const accepted = b.offersAccepted ?? 0;
               const cfg = b.metadata?.config;
               return (
-                <Card key={b.id}>
-                  <CardContent className="p-4 space-y-2">
-                    <div className="flex items-start justify-between gap-3 flex-wrap">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <StatusDot tone={tone} label={<span className="capitalize">{b.status}</span>} />
-                          <span className="text-xs text-muted-foreground">
-                            Created {relative(b.createdAt)}
-                          </span>
-                          {b.sentAt && (
-                            <Badge variant="outline" className="text-xs">
-                              <Send className="h-3 w-3 mr-1" />
-                              Sent {relative(b.sentAt)}
-                            </Badge>
+                <li key={b.id}>
+                  <Card>
+                    <CardContent className="p-4 space-y-2">
+                      <div className="flex items-start justify-between gap-3 flex-wrap">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <StatusDot tone={tone} label={<span className="capitalize">{b.status}</span>} />
+                            <span className="text-xs text-muted-foreground tabular-nums">
+                              Created {relative(b.createdAt)}
+                            </span>
+                            {b.sentAt && (
+                              <Badge variant="outline" className="text-xs">
+                                <Send className="h-3 w-3 mr-1" aria-hidden="true" />
+                                <span className="tabular-nums">Sent {relative(b.sentAt)}</span>
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-sm font-medium text-foreground mt-1.5 truncate">{b.name}</p>
+                          {cfg && (
+                            <p className="text-[11px] text-muted-foreground">
+                              {cfg.targetMargin != null && (
+                                <>Target <span className="tabular-nums">{Math.round(cfg.targetMargin * 100)}%</span> of ARV · </>
+                              )}
+                              {cfg.minOfferAmount != null && cfg.maxOfferAmount != null && (
+                                <span className="tabular-nums">
+                                  {dollarsCompact(cfg.minOfferAmount * 100)} – {dollarsCompact(cfg.maxOfferAmount * 100)}
+                                </span>
+                              )}
+                            </p>
                           )}
                         </div>
-                        <p className="text-sm font-medium text-foreground mt-1.5 truncate">{b.name}</p>
-                        {cfg && (
-                          <p className="text-[11px] text-muted-foreground">
-                            {cfg.targetMargin != null && (
-                              <>Target {Math.round(cfg.targetMargin * 100)}% of ARV · </>
-                            )}
-                            {cfg.minOfferAmount != null && cfg.maxOfferAmount != null && (
-                              <>
-                                {dollarsCompact(cfg.minOfferAmount * 100)} – {dollarsCompact(cfg.maxOfferAmount * 100)}
-                              </>
-                            )}
-                          </p>
-                        )}
+                        <dl className="grid grid-cols-4 gap-2 text-center min-w-[240px]">
+                          <Metric label="Total" value={plural(total, "offer")} compact />
+                          <Metric label="Generated" value={generated} icon={Clock} />
+                          <Metric label="Sent" value={sent} icon={Send} />
+                          <Metric label="Accepted" value={accepted} icon={CheckCircle2} success={accepted > 0} />
+                        </dl>
                       </div>
-                      <div className="grid grid-cols-4 gap-2 text-center min-w-[240px]">
-                        <Metric label="Total" value={plural(total, "offer")} compact />
-                        <Metric label="Generated" value={generated} icon={Clock} />
-                        <Metric label="Sent" value={sent} icon={Send} />
-                        <Metric label="Accepted" value={accepted} icon={CheckCircle2} success={accepted > 0} />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                    </CardContent>
+                  </Card>
+                </li>
               );
             })}
-          </div>
+          </ul>
         )}
       </div>
     </PageShell>
@@ -159,11 +161,11 @@ function Metric({
 }) {
   return (
     <div>
-      <p className={`text-xs font-semibold flex items-center justify-center gap-1 ${success ? "text-emerald-600 dark:text-emerald-400" : "text-foreground"}`}>
-        {Icon ? <Icon className="h-3 w-3" /> : null}
+      <dd className={`text-xs font-semibold flex items-center justify-center gap-1 tabular-nums ${success ? "text-emerald-600 dark:text-emerald-400" : "text-foreground"}`}>
+        {Icon ? <Icon className="h-3 w-3" aria-hidden="true" /> : null}
         {value}
-      </p>
-      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
+      </dd>
+      <dt className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</dt>
       {compact && null}
     </div>
   );
