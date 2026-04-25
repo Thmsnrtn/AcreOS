@@ -64,7 +64,7 @@ export function useApiRetry<T>(
           
           if (showToast) {
             toast({
-              title: "Session Expired",
+              title: "Session expired",
               description: "Please sign in again to continue.",
               variant: "destructive",
             });
@@ -88,7 +88,7 @@ export function useApiRetry<T>(
           
           if (showToast) {
             toast({
-              title: "Request Failed",
+              title: "Couldn't complete request",
               description: err.message || "Something went wrong. Please try again.",
               variant: "destructive",
               // Intentionally omit action in dev baseline to avoid strict type coupling
@@ -133,15 +133,15 @@ export function useQueryRefetch(queryKey: string | string[]) {
       await queryClient.invalidateQueries({ queryKey: key });
       
       toast({
-        title: "Data Refreshed",
+        title: "Data refreshed",
         description: "The data has been successfully refreshed.",
       });
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
       
       toast({
-        title: "Refresh Failed",
-        description: err.message || "Failed to refresh data. Please try again.",
+        title: "Couldn't refresh data",
+        description: err.message || "Refresh failed. Please try again.",
         variant: "destructive",
       });
     } finally {

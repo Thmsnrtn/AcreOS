@@ -175,7 +175,7 @@ export function AIOfferGenerator({ property }: AIOfferGeneratorProps) {
       setLetterContent(data.letter);
       setLetterSubject(data.subject);
       toast({
-        title: "Letter Generated",
+        title: "Letter generated",
         description: "Your offer letter has been generated successfully.",
       });
     },

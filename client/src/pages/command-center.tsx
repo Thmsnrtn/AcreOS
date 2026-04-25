@@ -1707,7 +1707,7 @@ export default function CommandCenterPage() {
 
       if (response.status === 402) {
         toast({
-          title: "Insufficient AI Credits",
+          title: "Insufficient AI credits",
           description: "Please add credits to continue using the AI assistant. Visit Settings to purchase more.",
           variant: "destructive",
         });
@@ -1792,7 +1792,7 @@ export default function CommandCenterPage() {
     if (!suggestion.available && suggestion.category === "action") {
       if (suggestion.canUseTrialToken && trialTokens > 0) {
         toast({
-          title: "Trial Token Available",
+          title: "Trial token available",
           description: `You have ${trialTokens} trial tokens. This action will use 1 token. Type your request to try it!`,
           variant: "default",
         });
@@ -1800,7 +1800,7 @@ export default function CommandCenterPage() {
         textareaRef.current?.focus();
       } else {
         toast({
-          title: "Upgrade Required",
+          title: "Upgrade required",
           description: `This action requires ${suggestion.requiredTier || 'a higher'} tier. Upgrade in Settings to unlock it.`,
           variant: "default",
         });

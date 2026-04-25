@@ -32,7 +32,7 @@ async function throwIfResNotOk(res: Response) {
         const body = parsed ?? JSON.parse(text);
         if (body.error === "limit_exceeded" || body.error === "LIMIT_EXCEEDED") {
           toast({
-            title: "Usage Limit Reached",
+            title: "Usage limit reached",
             description: body.message || `You've reached the plan limit.`,
             variant: "destructive",
             action: React.createElement(
@@ -102,7 +102,7 @@ function handleMutationError(error: unknown): void {
 
   if (isAuthError(err)) {
     toast({
-      title: "Session Expired",
+      title: "Session expired",
       description: "Your session has expired. Please sign in again.",
       variant: "destructive",
     });

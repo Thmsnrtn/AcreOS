@@ -1316,7 +1316,7 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
   const handleStatusChange = (newStatus: string) => {
     if (stageGate && !stageGate.canAdvance && stageGate.incompleteItems.length > 0) {
       toast({
-        title: "Cannot Advance Stage",
+        title: "Couldn't advance stage",
         description: `Complete ${stageGate.incompleteItems.length} required checklist item(s) first.`,
         variant: "destructive",
       });
@@ -1331,7 +1331,7 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
       {
         onSuccess: () => {
           toast({
-            title: "Analysis Saved",
+            title: "Analysis saved",
             description: "ROI analysis has been saved to this deal.",
           });
         },
