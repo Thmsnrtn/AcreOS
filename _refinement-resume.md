@@ -780,6 +780,7 @@ to a dedicated 9b slice.
 **Autopilot + floating-assistant landmarks (194):** ✅ complete — founder AutopilotStatusBar `<aside aria-label="Autopilot status">`, floating-assistant container `<aside aria-label="Floating assistant">`, FAB button got type/aria-label varying by state + aria-expanded. (commit `c0c6200`)
 **PageShell labels per consumer (195):** ✅ complete — wired page-specific `<PageShell label>` for finance/leads/properties/tasks/maps/counties/investor-directory/data-export/founder-dashboard. Each `<main>` now has a meaningful aria-label for screen-reader landmark navigation. (commit `b7df23c`)
 **PageShell labels — high-traffic (196):** ✅ complete — 7 more: settings (preserved maxWidth), deals, listings, today, dashboard, portfolio, offers, documents. ~90 consumers remaining. (commit `2ca2940`)
+**PageShell labels batch 2 (197):** ✅ complete — 9 more: beta-dashboard, help, deal-feed, blind-offer-wizard, freedom-meter, regulatory-intel, automation, pax, commissions. (commit `0d40345`)
 **/onboarding-v2 targeted (18):** ✅ complete (commit `70df779`) — 18b deferred
 **/settings targeted (19):** ✅ complete (commit `809044c`) — 19b remaining components deferred
 **/pipeline (20):** ✅ complete (commit `1b5d0f7`)
