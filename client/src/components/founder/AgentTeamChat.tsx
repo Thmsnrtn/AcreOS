@@ -225,6 +225,9 @@ export function AgentTeamChat() {
       {/* Messages area */}
       <div
         ref={scrollRef}
+        role="log"
+        aria-live="polite"
+        aria-label="Agent team conversation"
         className="flex-1 overflow-y-auto px-4 py-3 space-y-3 min-h-[200px]"
       >
         {messages.length === 0 && (
@@ -281,10 +284,12 @@ export function AgentTeamChat() {
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
+            role="status"
+            aria-live="polite"
             className="flex items-center gap-2 text-muted-foreground"
           >
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            <span className="text-xs">Thinking...</span>
+            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+            <span className="text-xs">Thinking…</span>
           </motion.div>
         )}
       </div>
@@ -298,10 +303,12 @@ export function AgentTeamChat() {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={selectedAgent
-              ? `Ask ${AGENT_ROLES[selectedAgent]}...`
-              : "Ask your team anything..."
+              ? `Ask ${AGENT_ROLES[selectedAgent]}…`
+              : "Ask your team anything…"
             }
             rows={1}
+            autoCapitalize="sentences"
+            aria-label="Message your agent team"
             className="flex-1 resize-none rounded-xl border bg-background px-4 py-2.5 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring min-h-[40px] max-h-[120px]"
           />
           <Button
