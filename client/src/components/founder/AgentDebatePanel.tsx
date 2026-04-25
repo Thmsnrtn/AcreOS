@@ -109,10 +109,17 @@ function DebateCard({ debate }: { debate: Debate }) {
       {/* CEO Decision */}
       {debate.status === "awaiting_decision" && (
         <div className="space-y-2 border-t pt-2">
-          <Textarea value={reasoning} onChange={e => setReasoning(e.target.value)} placeholder="Your reasoning (optional)..." className="text-sm h-16" />
+          <Textarea
+            value={reasoning}
+            onChange={e => setReasoning(e.target.value)}
+            placeholder="Your reasoning (optional)…"
+            className="text-sm h-16"
+            autoCapitalize="sentences"
+            aria-label="CEO decision reasoning"
+          />
           <div className="flex gap-2">
-            <Button size="sm" className="h-7 text-xs" onClick={() => decideMutation.mutate({ decision: "approved", reasoning })}><ThumbsUp className="h-3 w-3 mr-1" /> Approve</Button>
-            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => decideMutation.mutate({ decision: "rejected", reasoning })}><ThumbsDown className="h-3 w-3 mr-1" /> Reject</Button>
+            <Button size="sm" className="h-7 text-xs" onClick={() => decideMutation.mutate({ decision: "approved", reasoning })}><ThumbsUp className="h-3 w-3 mr-1" aria-hidden="true" /> Approve</Button>
+            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => decideMutation.mutate({ decision: "rejected", reasoning })}><ThumbsDown className="h-3 w-3 mr-1" aria-hidden="true" /> Reject</Button>
             <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => decideMutation.mutate({ decision: "deferred", reasoning })}>Defer</Button>
           </div>
         </div>
@@ -143,7 +150,14 @@ export function AgentDebatePanel() {
     onSuccess: () => { setProposition(""); queryClient.invalidateQueries({ queryKey: ["/api/founder/v8/debates"] }); },
   });
 
-  if (isLoading) return <Skeleton className="h-48 w-full rounded-xl" />;
+  if (isLoading) {
+    return (
+      <div role="status" aria-busy="true" aria-label="Loading agent debates">
+        <Skeleton className="h-48 w-full rounded-xl" />
+        <span className="sr-only">Loading…</span>
+      </div>
+    );
+  }
   const debateList = (debates || []) as Debate[];
   const pending = debateList.filter(d => d.status === "awaiting_decision").length;
 
@@ -152,7 +166,7 @@ export function AgentDebatePanel() {
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-base flex items-center gap-2">
-            <Swords className="h-4 w-4" /> Agent Debates
+            <Swords className="h-4 w-4" aria-hidden="true" /> Agent debates
             {pending > 0 && <Badge variant="outline" className="bg-amber-100 text-amber-800">{pending} awaiting</Badge>}
           </CardTitle>
         </div>
@@ -174,7 +188,7 @@ export function AgentDebatePanel() {
             autoCapitalize="sentences"
           />
           <Button type="submit" size="sm" className="h-8 text-xs" disabled={!proposition.trim() || initiateMutation.isPending}>
-            <Swords className="h-3 w-3 mr-1" /> Debate
+            <Swords className="h-3 w-3 mr-1" aria-hidden="true" /> Debate
           </Button>
         </form>
         {debateList.map(d => <DebateCard key={d.id} debate={d} />)}
