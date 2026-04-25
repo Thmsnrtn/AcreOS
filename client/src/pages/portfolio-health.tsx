@@ -1,12 +1,13 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PageShell } from "@/components/page-shell";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import {
-  AlertTriangle, AlertCircle, Info, CheckCircle2, RefreshCw, X, Loader2, ShieldCheck
+  AlertTriangle, AlertCircle, Info, RefreshCw, X, Loader2, ShieldCheck
 } from "lucide-react";
 
 interface PortfolioAlert {
@@ -36,10 +37,14 @@ function AlertCard({ alert, onDismiss }: { alert: PortfolioAlert; onDismiss: (id
     : 0;
 
   return (
-    <div className={`border rounded-lg p-4 space-y-2 ${config.bg}`}>
+    <div
+      className={`border rounded-lg p-4 space-y-2 ${config.bg}`}
+      role={alert.severity === "critical" ? "alert" : "status"}
+      aria-live={alert.severity === "critical" ? "assertive" : "polite"}
+    >
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2">
-          <Icon className={`w-4 h-4 shrink-0 mt-0.5 ${config.color}`} />
+          <Icon className={`w-4 h-4 shrink-0 mt-0.5 ${config.color}`} aria-hidden="true" />
           <div>
             <p className="font-medium text-sm">{alert.title}</p>
             <p className="text-xs text-muted-foreground mt-0.5">{alert.message}</p>
@@ -48,11 +53,11 @@ function AlertCard({ alert, onDismiss }: { alert: PortfolioAlert; onDismiss: (id
         <Button
           variant="ghost"
           size="icon"
-          className="h-6 w-6 shrink-0"
+          className="h-9 w-9 min-h-9 min-w-9 shrink-0"
           onClick={() => onDismiss(alert.id)}
-          aria-label="Dismiss alert"
+          aria-label={`Dismiss alert: ${alert.title}`}
         >
-          <X className="w-3 h-3" />
+          <X className="w-3 h-3" aria-hidden="true" />
         </Button>
       </div>
       <div className="flex items-center gap-2 flex-wrap">
@@ -61,9 +66,11 @@ function AlertCard({ alert, onDismiss }: { alert: PortfolioAlert; onDismiss: (id
           <Badge variant="outline" className="text-xs capitalize">{alert.relatedEntityType}</Badge>
         )}
         {entityCount > 0 && (
-          <span className="text-xs text-muted-foreground">{entityCount} affected records</span>
+          <span className="text-xs text-muted-foreground">
+            <span className="tabular-nums">{entityCount}</span> affected record{entityCount === 1 ? "" : "s"}
+          </span>
         )}
-        <span className="text-xs text-muted-foreground ml-auto">
+        <span className="text-xs text-muted-foreground ml-auto tabular-nums">
           {new Date(alert.createdAt).toLocaleDateString()}
         </span>
       </div>
@@ -72,6 +79,7 @@ function AlertCard({ alert, onDismiss }: { alert: PortfolioAlert; onDismiss: (id
 }
 
 export default function PortfolioHealthPage() {
+  useDocumentTitle("Portfolio health");
   const qc = useQueryClient();
   const { toast } = useToast();
 
@@ -84,21 +92,31 @@ export default function PortfolioHealthPage() {
     mutationFn: () => apiRequest("POST", "/api/portfolio-health/run"),
     onSuccess: (data: any) => {
       toast({
-        title: "Health scan complete",
-        description: `${data.alertsGenerated ?? 0} active alerts found.`,
+        title: "Health scan complete.",
+        description: `${data.alertsGenerated ?? 0} active alert${data.alertsGenerated === 1 ? "" : "s"} found.`,
       });
       qc.invalidateQueries({ queryKey: ["/api/portfolio-health/alerts"] });
     },
-    onError: () => toast({ title: "Scan failed", variant: "destructive" }),
+    onError: () =>
+      toast({
+        title: "Couldn't run health scan",
+        description: "Your existing alerts are unchanged. Try again in a moment.",
+        variant: "destructive",
+      }),
   });
 
   const dismissAlert = useMutation({
     mutationFn: (id: number) => apiRequest("DELETE", `/api/portfolio-health/alerts/${id}`),
     onSuccess: () => {
-      toast({ title: "Alert dismissed" });
+      toast({ title: "Alert dismissed." });
       qc.invalidateQueries({ queryKey: ["/api/portfolio-health/alerts"] });
     },
-    onError: () => toast({ title: "Failed to dismiss", variant: "destructive" }),
+    onError: () =>
+      toast({
+        title: "Couldn't dismiss alert",
+        description: "The alert is still active.",
+        variant: "destructive",
+      }),
   });
 
   const alerts = data?.alerts ?? [];
@@ -108,81 +126,86 @@ export default function PortfolioHealthPage() {
 
   return (
     <PageShell>
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-portfolio-health-title">
-            Portfolio Health
+            Portfolio health
           </h1>
           <p className="text-muted-foreground text-sm md:text-base">
             Proactive alerts for notes, leads, deals, and properties.
           </p>
         </div>
-        <Button onClick={() => runScan.mutate()} disabled={runScan.isPending}>
+        <Button onClick={() => runScan.mutate()} disabled={runScan.isPending} className="min-h-11">
           {runScan.isPending ? (
-            <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Scanning...</>
+            <><Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />Scanning…</>
           ) : (
-            <><RefreshCw className="w-4 h-4 mr-2" />Run Health Scan</>
+            <><RefreshCw className="w-4 h-4 mr-2" aria-hidden="true" />Run health scan</>
           )}
         </Button>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
+      <dl className="grid grid-cols-3 gap-3">
         <Card className={criticalCount > 0 ? "border-red-300 dark:border-red-700" : ""}>
           <CardContent className="p-4">
-            <div className="flex items-center gap-2 text-red-600 mb-1">
-              <AlertCircle className="w-4 h-4" />
+            <dt className="flex items-center gap-2 text-red-600 mb-1">
+              <AlertCircle className="w-4 h-4" aria-hidden="true" />
               <span className="text-xs font-medium">Critical</span>
-            </div>
-            <p className="text-2xl font-bold">{criticalCount}</p>
+            </dt>
+            <dd className="text-2xl font-bold tabular-nums">{criticalCount}</dd>
           </CardContent>
         </Card>
         <Card className={warningCount > 0 ? "border-yellow-300 dark:border-yellow-700" : ""}>
           <CardContent className="p-4">
-            <div className="flex items-center gap-2 text-yellow-600 mb-1">
-              <AlertTriangle className="w-4 h-4" />
+            <dt className="flex items-center gap-2 text-yellow-600 mb-1">
+              <AlertTriangle className="w-4 h-4" aria-hidden="true" />
               <span className="text-xs font-medium">Warnings</span>
-            </div>
-            <p className="text-2xl font-bold">{warningCount}</p>
+            </dt>
+            <dd className="text-2xl font-bold tabular-nums">{warningCount}</dd>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
-            <div className="flex items-center gap-2 text-blue-600 mb-1">
-              <Info className="w-4 h-4" />
+            <dt className="flex items-center gap-2 text-blue-600 mb-1">
+              <Info className="w-4 h-4" aria-hidden="true" />
               <span className="text-xs font-medium">Info</span>
-            </div>
-            <p className="text-2xl font-bold">{infoCount}</p>
+            </dt>
+            <dd className="text-2xl font-bold tabular-nums">{infoCount}</dd>
           </CardContent>
         </Card>
-      </div>
+      </dl>
 
       {isLoading ? (
-        <div className="flex items-center gap-2 text-muted-foreground py-8 justify-center">
-          <Loader2 className="w-4 h-4 animate-spin" /> Loading alerts...
+        <div className="flex items-center gap-2 text-muted-foreground py-8 justify-center" role="status" aria-live="polite">
+          <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> Loading alerts…
         </div>
       ) : alerts.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 py-16 text-center">
-          <ShieldCheck className="w-12 h-12 text-green-500" />
-          <h3 className="font-semibold text-lg">Portfolio is Healthy</h3>
+        <div className="flex flex-col items-center gap-3 py-16 text-center" role="status" aria-live="polite">
+          <ShieldCheck className="w-12 h-12 text-green-500" aria-hidden="true" />
+          <h2 className="font-semibold text-lg">Portfolio is healthy.</h2>
           <p className="text-muted-foreground text-sm max-w-md">
             No active alerts. Run a health scan to check for issues across your notes, leads, deals, and properties.
           </p>
         </div>
       ) : (
         <div className="space-y-3">
-          <h2 className="text-sm font-medium text-muted-foreground">{alerts.length} Active Alert{alerts.length !== 1 ? "s" : ""}</h2>
-          {alerts
-            .sort((a, b) => {
-              const order = { critical: 0, warning: 1, info: 2 };
-              return (order[a.severity] ?? 3) - (order[b.severity] ?? 3);
-            })
-            .map(alert => (
-              <AlertCard
-                key={alert.id}
-                alert={alert}
-                onDismiss={(id) => dismissAlert.mutate(id)}
-              />
-            ))}
+          <h2 className="text-sm font-medium text-muted-foreground">
+            <span className="tabular-nums">{alerts.length}</span> active alert{alerts.length !== 1 ? "s" : ""}
+          </h2>
+          <ul className="space-y-3" aria-label="Portfolio health alerts">
+            {alerts
+              .sort((a, b) => {
+                const order = { critical: 0, warning: 1, info: 2 };
+                return (order[a.severity] ?? 3) - (order[b.severity] ?? 3);
+              })
+              .map(alert => (
+                <li key={alert.id}>
+                  <AlertCard
+                    alert={alert}
+                    onDismiss={(id) => dismissAlert.mutate(id)}
+                  />
+                </li>
+              ))}
+          </ul>
         </div>
       )}
     </PageShell>

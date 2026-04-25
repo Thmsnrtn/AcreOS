@@ -4,6 +4,7 @@ import { PageShell } from "@/components/page-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import {
   Mail, MessageSquare, Phone, FileText, DollarSign,
   GitBranch, Plus, AlertCircle, Loader2,
@@ -44,17 +45,17 @@ const FILTER_TABS = [
 ] as const;
 
 const EVENT_META: Record<string, { icon: React.ReactNode; color: string; label: string }> = {
-  email_sent:       { icon: <Mail className="w-4 h-4" />,          color: "border-blue-400",    label: "Email" },
-  sms_sent:         { icon: <MessageSquare className="w-4 h-4" />, color: "border-green-400",   label: "SMS" },
-  mail_sent:        { icon: <Mail className="w-4 h-4" />,          color: "border-purple-400",  label: "Mail" },
-  call_made:        { icon: <Phone className="w-4 h-4" />,         color: "border-cyan-400",    label: "Call" },
-  note_added:       { icon: <FileText className="w-4 h-4" />,      color: "border-gray-400",    label: "Note" },
-  stage_changed:    { icon: <GitBranch className="w-4 h-4" />,     color: "border-yellow-400",  label: "Stage" },
-  offer_sent:       { icon: <FileText className="w-4 h-4" />,      color: "border-orange-400",  label: "Offer" },
-  offer_accepted:   { icon: <FileText className="w-4 h-4" />,      color: "border-green-500",   label: "Accepted" },
-  offer_rejected:   { icon: <FileText className="w-4 h-4" />,      color: "border-red-400",     label: "Rejected" },
-  payment_received: { icon: <DollarSign className="w-4 h-4" />,    color: "border-emerald-500", label: "Payment" },
-  deal_created:     { icon: <Plus className="w-4 h-4" />,          color: "border-indigo-400",  label: "Deal" },
+  email_sent:       { icon: <Mail className="w-4 h-4" aria-hidden="true" />,          color: "border-blue-400",    label: "Email" },
+  sms_sent:         { icon: <MessageSquare className="w-4 h-4" aria-hidden="true" />, color: "border-green-400",   label: "SMS" },
+  mail_sent:        { icon: <Mail className="w-4 h-4" aria-hidden="true" />,          color: "border-purple-400",  label: "Mail" },
+  call_made:        { icon: <Phone className="w-4 h-4" aria-hidden="true" />,         color: "border-cyan-400",    label: "Call" },
+  note_added:       { icon: <FileText className="w-4 h-4" aria-hidden="true" />,      color: "border-gray-400",    label: "Note" },
+  stage_changed:    { icon: <GitBranch className="w-4 h-4" aria-hidden="true" />,     color: "border-yellow-400",  label: "Stage" },
+  offer_sent:       { icon: <FileText className="w-4 h-4" aria-hidden="true" />,      color: "border-orange-400",  label: "Offer" },
+  offer_accepted:   { icon: <FileText className="w-4 h-4" aria-hidden="true" />,      color: "border-green-500",   label: "Accepted" },
+  offer_rejected:   { icon: <FileText className="w-4 h-4" aria-hidden="true" />,      color: "border-red-400",     label: "Rejected" },
+  payment_received: { icon: <DollarSign className="w-4 h-4" aria-hidden="true" />,    color: "border-emerald-500", label: "Payment" },
+  deal_created:     { icon: <Plus className="w-4 h-4" aria-hidden="true" />,          color: "border-indigo-400",  label: "Deal" },
 };
 
 function dayLabel(dateStr: string): string {
@@ -75,6 +76,7 @@ function groupByDay(events: ActivityEvent[]): [string, ActivityEvent[]][] {
 }
 
 export default function ActivityPage() {
+  useDocumentTitle("Activity feed");
   const [activeFilter, setActiveFilter] = useState<string>("all");
   const [offset, setOffset] = useState(0);
   const PAGE_SIZE = 50;
@@ -84,7 +86,7 @@ export default function ActivityPage() {
     ? `&eventTypes=${filterConfig.eventTypes.join(",")}`
     : "";
 
-  const { data, isLoading, isError } = useQuery<ActivityResponse>({
+  const { data, isLoading, isError, refetch } = useQuery<ActivityResponse>({
     queryKey: ["/api/activity", activeFilter, offset],
     queryFn: () =>
       fetch(`/api/activity?limit=${PAGE_SIZE}&offset=${offset}${eventTypesParam}`)
@@ -102,18 +104,20 @@ export default function ActivityPage() {
     <PageShell>
       <div className="space-y-4">
         <div>
-          <h1 className="text-2xl font-semibold">Activity Feed</h1>
-          <p className="text-muted-foreground text-sm mt-1">All actions across your organization</p>
+          <h1 className="text-2xl font-semibold">Activity feed</h1>
+          <p className="text-muted-foreground text-sm mt-1">All actions across your organization.</p>
         </div>
 
         {/* Filter pills */}
-        <div className="flex gap-2 flex-wrap">
+        <div role="group" aria-label="Filter activity by category" className="flex gap-2 flex-wrap">
           {FILTER_TABS.map(tab => (
             <Button
               key={tab.id}
               size="sm"
               variant={activeFilter === tab.id ? "default" : "outline"}
               onClick={() => handleFilterChange(tab.id)}
+              aria-pressed={activeFilter === tab.id}
+              className="min-h-9"
             >
               {tab.label}
             </Button>
@@ -121,16 +125,28 @@ export default function ActivityPage() {
         </div>
 
         {isLoading && (
-          <div className="flex items-center justify-center py-16 text-muted-foreground">
-            <Loader2 className="w-5 h-5 animate-spin mr-2" />
+          <div
+            className="flex items-center justify-center py-16 text-muted-foreground"
+            role="status"
+            aria-live="polite"
+          >
+            <Loader2 className="w-5 h-5 animate-spin mr-2" aria-hidden="true" />
             Loading activity…
           </div>
         )}
 
         {isError && (
-          <div className="flex items-center gap-2 text-destructive py-8">
-            <AlertCircle className="w-4 h-4" />
-            Failed to load activity feed.
+          <div className="flex items-center gap-2 text-destructive py-8" role="alert">
+            <AlertCircle className="w-4 h-4" aria-hidden="true" />
+            <span>Couldn't load the activity feed. The records themselves are unchanged —{" "}
+              <button
+                type="button"
+                className="underline hover:no-underline"
+                onClick={() => refetch()}
+              >
+                try again
+              </button>.
+            </span>
           </div>
         )}
 
@@ -141,40 +157,49 @@ export default function ActivityPage() {
         )}
 
         {groups.map(([day, events]) => (
-          <div key={day} className="space-y-2">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider pt-2">{day}</p>
-            {events.map(event => {
-              const meta = EVENT_META[event.eventType] ?? {
-                icon: <FileText className="w-4 h-4" />,
-                color: "border-gray-300",
-                label: event.eventType,
-              };
-              return (
-                <Card key={event.id} className={`border-l-4 ${meta.color}`}>
-                  <CardContent className="py-3 px-4 flex items-start gap-3">
-                    <span className="mt-0.5 text-muted-foreground">{meta.icon}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm leading-snug">{event.description}</p>
-                      {event.metadata?.subject && (
-                        <p className="text-xs text-muted-foreground truncate">"{event.metadata.subject}"</p>
-                      )}
-                    </div>
-                    <div className="text-right shrink-0 space-y-1">
-                      <Badge variant="outline" className="text-xs">{meta.label}</Badge>
-                      <p className="text-xs text-muted-foreground">
-                        {relative(event.eventDate)}
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
+          <section key={day} className="space-y-2" aria-label={`Activity on ${day}`}>
+            <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider pt-2">{day}</h2>
+            <ul className="space-y-2" aria-label={`Events on ${day}`}>
+              {events.map(event => {
+                const meta = EVENT_META[event.eventType] ?? {
+                  icon: <FileText className="w-4 h-4" aria-hidden="true" />,
+                  color: "border-gray-300",
+                  label: event.eventType.replace(/_/g, ' '),
+                };
+                return (
+                  <li key={event.id}>
+                    <Card className={`border-l-4 ${meta.color}`}>
+                      <CardContent className="py-3 px-4 flex items-start gap-3">
+                        <span className="mt-0.5 text-muted-foreground">{meta.icon}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm leading-snug">{event.description}</p>
+                          {event.metadata?.subject && (
+                            <p className="text-xs text-muted-foreground truncate">"{event.metadata.subject}"</p>
+                          )}
+                        </div>
+                        <div className="text-right shrink-0 space-y-1">
+                          <Badge variant="outline" className="text-xs">{meta.label}</Badge>
+                          <p className="text-xs text-muted-foreground tabular-nums">
+                            {relative(event.eventDate)}
+                          </p>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
         ))}
 
         {data?.hasMore && (
           <div className="flex justify-center pt-2 pb-4">
-            <Button variant="outline" onClick={() => setOffset(o => o + PAGE_SIZE)}>
+            <Button
+              variant="outline"
+              onClick={() => setOffset(o => o + PAGE_SIZE)}
+              className="min-h-11"
+              aria-label="Load more activity events"
+            >
               Load more
             </Button>
           </div>
