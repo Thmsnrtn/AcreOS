@@ -148,8 +148,8 @@ function TourTooltip({ step, stepIndex, totalSteps, onNext, onPrev, onSkip, targ
           <Sparkles className="h-4 w-4 text-green-600 flex-shrink-0" />
           <h3 className="font-semibold text-sm">{step.title}</h3>
         </div>
-        <button onClick={onSkip} className="text-muted-foreground hover:text-foreground transition-colors ml-2">
-          <X className="h-4 w-4" />
+        <button type="button" onClick={onSkip} aria-label="Skip product tour" className="text-muted-foreground hover:text-foreground transition-colors ml-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
+          <X className="h-4 w-4" aria-hidden="true" />
         </button>
       </div>
 

@@ -261,15 +261,18 @@ export default function SellerFinanceCalculator({
                   Amortization Schedule
                 </h4>
                 <button
+                  type="button"
                   onClick={() => setShowFullSchedule(s => !s)}
-                  className="text-xs text-primary underline-offset-2 hover:underline"
+                  className="text-xs text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-sm"
+                  aria-pressed={showFullSchedule}
+                  aria-controls="amortization-schedule-table"
                 >
                   {showFullSchedule ? "Show Year 1 Only" : `Show All ${termMonths} Months`}
                 </button>
               </div>
 
               <div className="overflow-x-auto">
-                <table className="w-full text-xs">
+                <table id="amortization-schedule-table" className="w-full text-xs">
                   <thead>
                     <tr className="text-muted-foreground border-b">
                       <th scope="col" className="text-left pb-1 pr-2">Mo.</th>

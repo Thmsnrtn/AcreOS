@@ -1275,8 +1275,8 @@ export function PaxCopilotRail() {
                     </button>
                   )}
                 </p>
-                <button onClick={() => setShowResultsBanner(false)}>
-                  <X className="w-3 h-3 text-muted-foreground" />
+                <button type="button" onClick={() => setShowResultsBanner(false)} aria-label="Dismiss results banner" className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
+                  <X className="w-3 h-3 text-muted-foreground" aria-hidden="true" />
                 </button>
               </div>
             )}

@@ -6116,8 +6116,8 @@ function ActionQueuePanel() {
             <span className="text-xs text-muted-foreground">~{totalMinutes} min total</span>
           )}
         </div>
-        <button onClick={() => refetch()} className="p-1.5 rounded hover:bg-muted text-muted-foreground">
-          <RefreshCw className="w-3.5 h-3.5" />
+        <button type="button" onClick={() => refetch()} aria-label="Refresh support queue" className="p-1.5 rounded hover:bg-muted text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
         </button>
       </div>
 

@@ -106,8 +106,8 @@ export default function OnboardingWalkthrough() {
               />
             ))}
           </div>
-          <button onClick={handleSkip} className="p-1 text-gray-500 hover:text-gray-300">
-            <X className="w-4 h-4" />
+          <button type="button" onClick={handleSkip} aria-label="Skip onboarding walkthrough" className="p-1 text-gray-500 hover:text-gray-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
+            <X className="w-4 h-4" aria-hidden="true" />
           </button>
         </div>
 
