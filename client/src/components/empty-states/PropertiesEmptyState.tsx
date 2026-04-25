@@ -16,7 +16,7 @@ export function PropertiesEmptyState({ onAddProperty, onImportProperties }: Prop
       className="flex flex-col items-center justify-center py-16 px-4"
       data-testid="empty-state-properties"
     >
-      <div className="relative mb-6">
+      <div className="relative mb-6" aria-hidden="true">
         <motion.div
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
@@ -62,18 +62,18 @@ export function PropertiesEmptyState({ onAddProperty, onImportProperties }: Prop
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
           {onAddProperty && (
             <Button onClick={onAddProperty} data-testid="button-add-property">
-              <Plus className="w-4 h-4 mr-2" />
-              Add a Property
+              <Plus className="w-4 h-4 mr-2" aria-hidden="true" />
+              Add a property
             </Button>
           )}
           {onImportProperties && (
             <Button variant="outline" onClick={onImportProperties} data-testid="button-import-properties">
-              <Upload className="w-4 h-4 mr-2" />
+              <Upload className="w-4 h-4 mr-2" aria-hidden="true" />
               Import from CSV
             </Button>
           )}
         </div>
-        
+
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -81,7 +81,7 @@ export function PropertiesEmptyState({ onAddProperty, onImportProperties }: Prop
           className="mt-8 p-4 rounded-lg bg-muted/50 text-left"
         >
           <div className="flex items-start gap-3">
-            <Sparkles className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
+            <Sparkles className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" aria-hidden="true" />
             <div>
               <p className="text-sm font-medium mb-1">Pro tip</p>
               <p className="text-sm text-muted-foreground">

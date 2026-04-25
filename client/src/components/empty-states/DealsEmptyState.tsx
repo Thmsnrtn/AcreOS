@@ -15,7 +15,7 @@ export function DealsEmptyState({ onAddDeal }: DealsEmptyStateProps) {
       className="flex flex-col items-center justify-center py-16 px-4"
       data-testid="empty-state-deals"
     >
-      <div className="relative mb-6">
+      <div className="relative mb-6" aria-hidden="true">
         <motion.div
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
@@ -61,12 +61,12 @@ export function DealsEmptyState({ onAddDeal }: DealsEmptyStateProps) {
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
           {onAddDeal && (
             <Button onClick={onAddDeal} data-testid="button-add-deal">
-              <Plus className="w-4 h-4 mr-2" />
-              Create Your First Deal
+              <Plus className="w-4 h-4 mr-2" aria-hidden="true" />
+              Create your first deal
             </Button>
           )}
         </div>
-        
+
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -74,7 +74,7 @@ export function DealsEmptyState({ onAddDeal }: DealsEmptyStateProps) {
           className="mt-8 p-4 rounded-lg bg-muted/50 text-left"
         >
           <div className="flex items-start gap-3">
-            <Sparkles className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
+            <Sparkles className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" aria-hidden="true" />
             <div>
               <p className="text-sm font-medium mb-1">Pro tip</p>
               <p className="text-sm text-muted-foreground">

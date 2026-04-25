@@ -15,7 +15,7 @@ export function TasksEmptyState({ onAddTask }: TasksEmptyStateProps) {
       className="flex flex-col items-center justify-center py-16 px-4"
       data-testid="empty-state-tasks"
     >
-      <div className="relative mb-6">
+      <div className="relative mb-6" aria-hidden="true">
         <motion.div
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
@@ -47,8 +47,8 @@ export function TasksEmptyState({ onAddTask }: TasksEmptyStateProps) {
 
         {onAddTask && (
           <Button onClick={onAddTask} data-testid="button-add-task-empty">
-            <Plus className="w-4 h-4 mr-2" />
-            Create Your First Task
+            <Plus className="w-4 h-4 mr-2" aria-hidden="true" />
+            Create your first task
           </Button>
         )}
 
@@ -59,7 +59,7 @@ export function TasksEmptyState({ onAddTask }: TasksEmptyStateProps) {
           className="mt-8 p-4 rounded-lg bg-muted/50 text-left"
         >
           <div className="flex items-start gap-3">
-            <Sparkles className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
+            <Sparkles className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" aria-hidden="true" />
             <div>
               <p className="text-sm font-medium mb-1">Pro tip</p>
               <p className="text-sm text-muted-foreground">
