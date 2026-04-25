@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useId } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { PageShell } from "@/components/page-shell";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
@@ -21,21 +22,19 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  DollarSign,
-  TrendingDown,
-  AlertTriangle,
-  CheckCircle2,
   RefreshCw,
   FileText,
   Loader2,
   ArrowRightLeft,
   Calendar,
-  Info,
   ChevronRight,
+  CheckCircle2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useDocumentTitle } from "@/hooks/use-document-title";
+import { usd } from "@/lib/format";
 
 interface TaxPosition {
   taxYear: number;
@@ -100,17 +99,12 @@ const PRIORITY_CONFIG = {
   low: { label: "Low", variant: "outline" as const, color: "text-blue-600" },
 };
 
-function fmt(n: number): string {
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}k`;
-  return `$${Math.abs(n).toLocaleString()}`;
-}
-
 export default function TaxOptimizerPage() {
+  useDocumentTitle("Tax optimizer");
   const { toast } = useToast();
+  const yearSelectId = useId();
   const currentYear = new Date().getFullYear();
   const [taxYear, setTaxYear] = useState(currentYear.toString());
-  const [reportOpen, setReportOpen] = useState(false);
 
   const { data: position, isLoading, refetch } = useQuery<TaxPosition>({
     queryKey: ["/api/tax-optimizer/position", taxYear],
@@ -121,18 +115,23 @@ export default function TaxOptimizerPage() {
   const reportMutation = useMutation({
     mutationFn: () =>
       apiRequest("POST", "/api/tax-optimizer/report", { taxYear: parseInt(taxYear) }).then(r => r.json()),
-    onSuccess: (data) => {
+    onSuccess: () => {
       toast({ title: "Report generated", description: "AI tax planning report ready." });
     },
     onError: (err: any) =>
-      toast({ title: "Failed to generate report", description: err.message, variant: "destructive" }),
+      toast({
+        title: "Couldn't generate AI report",
+        description: `${err.message}. Your tax position is unchanged — try again.`,
+        variant: "destructive",
+      }),
   });
 
   if (isLoading) {
     return (
       <PageShell>
-        <div className="flex items-center justify-center h-48">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <div className="flex items-center justify-center h-48" role="status" aria-live="polite">
+          <span className="sr-only">Loading tax position…</span>
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" aria-hidden="true" />
         </div>
       </PageShell>
     );
@@ -142,70 +141,74 @@ export default function TaxOptimizerPage() {
 
   return (
     <PageShell>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold">Tax Optimizer</h1>
-          <p className="text-muted-foreground text-sm mt-0.5">Capital gains analysis, 1031 exchanges, and year-end tax planning</p>
+          <h1 className="text-2xl font-bold">Tax optimizer</h1>
+          <p className="text-muted-foreground text-sm mt-0.5">Capital gains analysis, 1031 exchanges, and year-end tax planning.</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Label htmlFor={yearSelectId} className="sr-only">Tax year</Label>
           <Select value={taxYear} onValueChange={setTaxYear}>
-            <SelectTrigger className="w-32">
+            <SelectTrigger id={yearSelectId} className="w-32 tabular-nums" aria-label="Tax year">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               {[currentYear, currentYear - 1, currentYear - 2].map(y => (
-                <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
+                <SelectItem key={y} value={y.toString()} className="tabular-nums">{y}</SelectItem>
               ))}
             </SelectContent>
           </Select>
-          <Button variant="outline" size="sm" onClick={() => refetch()}>
-            <RefreshCw className="h-4 w-4" />
+          <Button variant="outline" size="sm" onClick={() => refetch()} aria-label="Refresh tax position">
+            <RefreshCw className="h-4 w-4" aria-hidden="true" />
           </Button>
-          <Button onClick={() => reportMutation.mutate()} disabled={reportMutation.isPending}>
-            {reportMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FileText className="h-4 w-4 mr-2" />}
-            AI Report
+          <Button
+            onClick={() => reportMutation.mutate()}
+            disabled={reportMutation.isPending}
+            aria-label={`Generate AI tax planning report for ${taxYear}`}
+          >
+            {reportMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" aria-hidden="true" /> : <FileText className="h-4 w-4 mr-2" aria-hidden="true" />}
+            AI report
           </Button>
         </div>
       </div>
-      {/* Tax Position Summary */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <Card>
-          <CardContent className="pt-5">
-            <p className="text-sm text-muted-foreground">Total Gains</p>
-            <p className="text-2xl font-bold text-emerald-600">{fmt(p?.totalRealizedGains || 0)}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Realized {taxYear}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-5">
-            <p className="text-sm text-muted-foreground">Est. Federal Tax</p>
-            <p className="text-2xl font-bold text-red-600">{fmt(p?.estimatedFederalTax || 0)}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">+{fmt(p?.estimatedNIIT || 0)} NIIT</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-5">
-            <p className="text-sm text-muted-foreground">Long-Term Gains</p>
-            <p className="text-2xl font-bold">{fmt(p?.longTermGains || 0)}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">≤15% rate</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-5">
-            <p className="text-sm text-muted-foreground">Total Tax Owed</p>
-            <p className="text-2xl font-bold text-orange-600">{fmt(p?.totalEstimatedTax || 0)}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Est. {taxYear}</p>
-          </CardContent>
-        </Card>
-      </div>
 
-      {/* AI Report output */}
+      <dl className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <Card>
+          <CardContent className="pt-5">
+            <dt className="text-sm text-muted-foreground">Total gains</dt>
+            <dd className="text-2xl font-bold text-emerald-600 tabular-nums">{usd(p?.totalRealizedGains || 0, { noCents: true })}</dd>
+            <p className="text-xs text-muted-foreground mt-0.5 tabular-nums">Realized {taxYear}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-5">
+            <dt className="text-sm text-muted-foreground">Est. federal tax</dt>
+            <dd className="text-2xl font-bold text-red-600 tabular-nums">{usd(p?.estimatedFederalTax || 0, { noCents: true })}</dd>
+            <p className="text-xs text-muted-foreground mt-0.5 tabular-nums">+{usd(p?.estimatedNIIT || 0, { noCents: true })} NIIT</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-5">
+            <dt className="text-sm text-muted-foreground">Long-term gains</dt>
+            <dd className="text-2xl font-bold tabular-nums">{usd(p?.longTermGains || 0, { noCents: true })}</dd>
+            <p className="text-xs text-muted-foreground mt-0.5">≤ <span className="tabular-nums">15</span>% rate</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-5">
+            <dt className="text-sm text-muted-foreground">Total tax owed</dt>
+            <dd className="text-2xl font-bold text-orange-600 tabular-nums">{usd(p?.totalEstimatedTax || 0, { noCents: true })}</dd>
+            <p className="text-xs text-muted-foreground mt-0.5 tabular-nums">Est. {taxYear}</p>
+          </CardContent>
+        </Card>
+      </dl>
+
       {reportMutation.data && (
-        <Card className="mb-6 border-blue-200 dark:border-blue-800">
+        <Card className="mb-6 border-blue-200 dark:border-blue-800" role="region" aria-label="AI tax planning report">
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2">
-              <FileText className="h-4 w-4 text-blue-600" />
-              AI Tax Planning Report — {taxYear}
+              <FileText className="h-4 w-4 text-blue-600" aria-hidden="true" />
+              AI tax planning report — <span className="tabular-nums">{taxYear}</span>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -217,200 +220,204 @@ export default function TaxOptimizerPage() {
       <Tabs defaultValue="recommendations">
         <TabsList>
           <TabsTrigger value="recommendations">
-            Recommendations ({p?.recommendations?.length || 0})
+            Recommendations (<span className="tabular-nums">{p?.recommendations?.length || 0}</span>)
           </TabsTrigger>
           <TabsTrigger value="transactions">
-            Transactions ({p?.transactions?.length || 0})
+            Transactions (<span className="tabular-nums">{p?.transactions?.length || 0}</span>)
           </TabsTrigger>
           <TabsTrigger value="1031">
-            1031 Exchange ({p?.exchange1031Candidates?.length || 0})
+            1031 exchange (<span className="tabular-nums">{p?.exchange1031Candidates?.length || 0}</span>)
           </TabsTrigger>
           <TabsTrigger value="installment">
-            Installment Sales ({p?.installmentSaleOpportunities?.length || 0})
+            Installment sales (<span className="tabular-nums">{p?.installmentSaleOpportunities?.length || 0}</span>)
           </TabsTrigger>
         </TabsList>
 
-        {/* Recommendations Tab */}
         <TabsContent value="recommendations" className="mt-4">
           {!p?.recommendations?.length ? (
             <Card>
               <CardContent className="py-10 text-center">
-                <CheckCircle2 className="h-10 w-10 text-emerald-500 mx-auto mb-3" />
-                <p className="text-muted-foreground">No tax recommendations for {taxYear}. No realized gains found.</p>
+                <CheckCircle2 className="h-10 w-10 text-emerald-500 mx-auto mb-3" aria-hidden="true" />
+                <p className="text-muted-foreground">No tax recommendations for <span className="tabular-nums">{taxYear}</span>. No realized gains found.</p>
               </CardContent>
             </Card>
           ) : (
-            <div className="space-y-3">
+            <ol className="space-y-3" aria-label="Tax recommendations, ranked by priority">
               {p.recommendations.map((rec, i) => {
                 const cfg = PRIORITY_CONFIG[rec.priority];
                 return (
-                  <Card key={i}>
-                    <CardContent className="pt-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            <Badge variant={cfg.variant}>{cfg.label}</Badge>
-                            <span className="font-medium text-sm">{rec.title}</span>
+                  <li key={i}>
+                    <Card role={rec.priority === "critical" ? "alert" : undefined}>
+                      <CardContent className="pt-4">
+                        <div className="flex items-start justify-between gap-3 flex-wrap">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1 flex-wrap">
+                              <Badge variant={cfg.variant}>{cfg.label}</Badge>
+                              <span className="font-medium text-sm">{rec.title}</span>
+                            </div>
+                            <p className="text-sm text-muted-foreground mb-2">{rec.description}</p>
+                            {rec.estimatedSavings > 0 && (
+                              <p className="text-sm text-emerald-600 font-medium mb-2 tabular-nums">
+                                Potential savings: {usd(rec.estimatedSavings, { noCents: true })}
+                              </p>
+                            )}
+                            {rec.deadline && (
+                              <p className="text-xs text-amber-600 flex items-center gap-1 mb-2 tabular-nums">
+                                <Calendar className="h-3 w-3" aria-hidden="true" />
+                                Deadline: {rec.deadline}
+                              </p>
+                            )}
+                            <ul className="space-y-1" aria-label={`Action items for ${rec.title}`}>
+                              {rec.actionItems.map((item, j) => (
+                                <li key={j} className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                                  <ChevronRight className="h-3 w-3 mt-0.5 flex-shrink-0 text-blue-500" aria-hidden="true" />
+                                  {item}
+                                </li>
+                              ))}
+                            </ul>
                           </div>
-                          <p className="text-sm text-muted-foreground mb-2">{rec.description}</p>
-                          {rec.estimatedSavings > 0 && (
-                            <p className="text-sm text-emerald-600 font-medium mb-2">
-                              Potential savings: {fmt(rec.estimatedSavings)}
-                            </p>
-                          )}
-                          {rec.deadline && (
-                            <p className="text-xs text-amber-600 flex items-center gap-1 mb-2">
-                              <Calendar className="h-3 w-3" />
-                              Deadline: {rec.deadline}
-                            </p>
-                          )}
-                          <ul className="space-y-1">
-                            {rec.actionItems.map((item, j) => (
-                              <li key={j} className="flex items-start gap-1.5 text-xs text-muted-foreground">
-                                <ChevronRight className="h-3 w-3 mt-0.5 flex-shrink-0 text-blue-500" />
-                                {item}
-                              </li>
-                            ))}
-                          </ul>
                         </div>
-                      </div>
-                    </CardContent>
-                  </Card>
+                      </CardContent>
+                    </Card>
+                  </li>
                 );
               })}
-            </div>
+            </ol>
           )}
         </TabsContent>
 
-        {/* Transactions Tab */}
         <TabsContent value="transactions" className="mt-4">
           {!p?.transactions?.length ? (
             <Card>
               <CardContent className="py-10 text-center">
-                <p className="text-muted-foreground">No closed deals found for {taxYear}.</p>
+                <p className="text-muted-foreground">No closed deals found for <span className="tabular-nums">{taxYear}</span>.</p>
               </CardContent>
             </Card>
           ) : (
             <Card>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Property</TableHead>
-                    <TableHead className="text-right">Sale Price</TableHead>
-                    <TableHead className="text-right">Gain/Loss</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead className="text-right">Est. Tax</TableHead>
-                    <TableHead>Opportunities</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {p.transactions.map(tx => (
-                    <TableRow key={tx.dealId}>
-                      <TableCell className="font-medium max-w-[200px] truncate">{tx.propertyAddress}</TableCell>
-                      <TableCell className="text-right">{fmt(tx.saleProceeds)}</TableCell>
-                      <TableCell className={`text-right font-medium ${tx.realizedGain >= 0 ? "text-emerald-600" : "text-red-600"}`}>
-                        {tx.realizedGain >= 0 ? "+" : ""}{fmt(tx.realizedGain)}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={tx.isLongTerm ? "default" : "secondary"}>
-                          {tx.isLongTerm ? "LT" : "ST"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right text-red-600">{fmt(tx.estimatedTax)}</TableCell>
-                      <TableCell className="max-w-[200px]">
-                        {tx.taxSavingOpportunities.length > 0 ? (
-                          <span className="text-xs text-emerald-600">{tx.taxSavingOpportunities[0]}</span>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
-                      </TableCell>
+              <div role="region" aria-label="Capital gains transactions" tabIndex={0}>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead scope="col">Property</TableHead>
+                      <TableHead scope="col" className="text-right">Sale price</TableHead>
+                      <TableHead scope="col" className="text-right">Gain/loss</TableHead>
+                      <TableHead scope="col">Type</TableHead>
+                      <TableHead scope="col" className="text-right">Est. tax</TableHead>
+                      <TableHead scope="col">Opportunities</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {p.transactions.map(tx => (
+                      <TableRow key={tx.dealId}>
+                        <th scope="row" className="font-medium max-w-[200px] truncate px-4 text-left">{tx.propertyAddress}</th>
+                        <TableCell className="text-right tabular-nums">{usd(tx.saleProceeds, { noCents: true })}</TableCell>
+                        <TableCell className={`text-right font-medium tabular-nums ${tx.realizedGain >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                          {tx.realizedGain >= 0 ? "+" : ""}{usd(tx.realizedGain, { noCents: true })}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={tx.isLongTerm ? "default" : "secondary"} aria-label={tx.isLongTerm ? "Long-term capital gain" : "Short-term capital gain"}>
+                            {tx.isLongTerm ? "LT" : "ST"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right text-red-600 tabular-nums">{usd(tx.estimatedTax, { noCents: true })}</TableCell>
+                        <TableCell className="max-w-[200px]">
+                          {tx.taxSavingOpportunities.length > 0 ? (
+                            <span className="text-xs text-emerald-600">{tx.taxSavingOpportunities[0]}</span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             </Card>
           )}
         </TabsContent>
 
-        {/* 1031 Exchange Tab */}
         <TabsContent value="1031" className="mt-4">
           {!p?.exchange1031Candidates?.length ? (
             <Card>
               <CardContent className="py-10 text-center">
-                <ArrowRightLeft className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-                <p className="text-muted-foreground">No 1031 exchange candidates for {taxYear}.</p>
-                <p className="text-sm text-muted-foreground mt-1">Long-term capital gains over $25k qualify.</p>
+                <ArrowRightLeft className="h-10 w-10 text-muted-foreground mx-auto mb-3" aria-hidden="true" />
+                <p className="text-muted-foreground">No 1031 exchange candidates for <span className="tabular-nums">{taxYear}</span>.</p>
+                <p className="text-sm text-muted-foreground mt-1">Long-term capital gains over <span className="tabular-nums">$25,000</span> qualify.</p>
               </CardContent>
             </Card>
           ) : (
-            <div className="space-y-3">
+            <ul className="space-y-3" aria-label="1031 exchange candidates">
               {p.exchange1031Candidates.map((c, i) => (
-                <Card key={i}>
-                  <CardContent className="pt-4">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <h4 className="font-medium">{c.propertyAddress}</h4>
-                        <p className="text-sm text-muted-foreground mt-0.5">
-                          Gain: <span className="text-emerald-600 font-medium">{fmt(c.gain)}</span>
-                          {" · "}Tax deferred: <span className="text-blue-600 font-medium">{fmt(c.potentialTaxDeferred)}</span>
-                        </p>
+                <li key={i}>
+                  <Card>
+                    <CardContent className="pt-4">
+                      <div className="flex items-start justify-between gap-3 flex-wrap">
+                        <div>
+                          <h3 className="font-medium">{c.propertyAddress}</h3>
+                          <p className="text-sm text-muted-foreground mt-0.5 tabular-nums">
+                            Gain: <span className="text-emerald-600 font-medium">{usd(c.gain, { noCents: true })}</span>
+                            {" · "}Tax deferred: <span className="text-blue-600 font-medium">{usd(c.potentialTaxDeferred, { noCents: true })}</span>
+                          </p>
+                        </div>
+                        <Badge variant="outline">Deal #<span className="tabular-nums">{c.dealId}</span></Badge>
                       </div>
-                      <Badge variant="outline">Deal #{c.dealId}</Badge>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3 mt-3 p-3 bg-amber-50 dark:bg-amber-900/10 rounded-lg">
-                      <div>
-                        <p className="text-xs text-amber-700 dark:text-amber-400 font-medium">45-Day ID Deadline</p>
-                        <p className="text-sm font-bold">{format(new Date(c.deadline45Day), "MMM d, yyyy")}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-amber-700 dark:text-amber-400 font-medium">180-Day Close Deadline</p>
-                        <p className="text-sm font-bold">{format(new Date(c.deadline180Day), "MMM d, yyyy")}</p>
-                      </div>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      Must reinvest at least {fmt(c.potentialTaxDeferred)} in like-kind property to defer 100% of the gain.
-                    </p>
-                  </CardContent>
-                </Card>
+                      <dl className="grid grid-cols-2 gap-3 mt-3 p-3 bg-amber-50 dark:bg-amber-900/10 rounded-lg">
+                        <div>
+                          <dt className="text-xs text-amber-700 dark:text-amber-400 font-medium">45-day ID deadline</dt>
+                          <dd className="text-sm font-bold tabular-nums">{format(new Date(c.deadline45Day), "MMM d, yyyy")}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-xs text-amber-700 dark:text-amber-400 font-medium">180-day close deadline</dt>
+                          <dd className="text-sm font-bold tabular-nums">{format(new Date(c.deadline180Day), "MMM d, yyyy")}</dd>
+                        </div>
+                      </dl>
+                      <p className="text-xs text-muted-foreground mt-2 tabular-nums">
+                        Must reinvest at least {usd(c.potentialTaxDeferred, { noCents: true })} in like-kind property to defer 100% of the gain.
+                      </p>
+                    </CardContent>
+                  </Card>
+                </li>
               ))}
-            </div>
+            </ul>
           )}
         </TabsContent>
 
-        {/* Installment Sales Tab */}
         <TabsContent value="installment" className="mt-4">
           {!p?.installmentSaleOpportunities?.length ? (
             <Card>
               <CardContent className="py-10 text-center">
-                <p className="text-muted-foreground">No installment sale opportunities identified for {taxYear}.</p>
-                <p className="text-sm text-muted-foreground mt-1">Long-term gains over $50k qualify for installment sale treatment.</p>
+                <p className="text-muted-foreground">No installment sale opportunities identified for <span className="tabular-nums">{taxYear}</span>.</p>
+                <p className="text-sm text-muted-foreground mt-1">Long-term gains over <span className="tabular-nums">$50,000</span> qualify for installment sale treatment.</p>
               </CardContent>
             </Card>
           ) : (
-            <div className="space-y-3">
+            <ul className="space-y-3" aria-label="Installment sale opportunities">
               {p.installmentSaleOpportunities.map((s, i) => (
-                <Card key={i}>
-                  <CardContent className="pt-4">
-                    <h4 className="font-medium">{s.propertyAddress}</h4>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-3">
-                      <div>
-                        <p className="text-xs text-muted-foreground">Total Gain</p>
-                        <p className="font-semibold text-emerald-600">{fmt(s.totalGain)}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground">Spread Over</p>
-                        <p className="font-semibold">{s.spreadOverYears} years</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground">Annual Tax Savings</p>
-                        <p className="font-semibold text-blue-600">{fmt(s.annualTaxSavings)}</p>
-                      </div>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-2">{s.notes}</p>
-                  </CardContent>
-                </Card>
+                <li key={i}>
+                  <Card>
+                    <CardContent className="pt-4">
+                      <h3 className="font-medium">{s.propertyAddress}</h3>
+                      <dl className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-3">
+                        <div>
+                          <dt className="text-xs text-muted-foreground">Total gain</dt>
+                          <dd className="font-semibold text-emerald-600 tabular-nums">{usd(s.totalGain, { noCents: true })}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-xs text-muted-foreground">Spread over</dt>
+                          <dd className="font-semibold tabular-nums">{s.spreadOverYears} years</dd>
+                        </div>
+                        <div>
+                          <dt className="text-xs text-muted-foreground">Annual tax savings</dt>
+                          <dd className="font-semibold text-blue-600 tabular-nums">{usd(s.annualTaxSavings, { noCents: true })}</dd>
+                        </div>
+                      </dl>
+                      <p className="text-xs text-muted-foreground mt-2">{s.notes}</p>
+                    </CardContent>
+                  </Card>
+                </li>
               ))}
-            </div>
+            </ul>
           )}
         </TabsContent>
       </Tabs>
