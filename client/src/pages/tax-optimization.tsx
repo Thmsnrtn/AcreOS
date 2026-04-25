@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useDocumentTitle } from "@/hooks/use-document-title";
+import { usd } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -75,9 +77,15 @@ interface ProjectionYear {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+// Tax math: surface partial-dollar cents wherever they exist. Tax
+// liabilities, depreciation, and after-tax returns can have fractional
+// dollars and rounding silently undercounts/overcounts. usd() is the
+// canonical helper across the codebase.
 function fmtCurrency(val: number) {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(val);
+  return usd(val);
 }
+
+const reassurance = "Your inputs are unchanged — try again.";
 
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -94,7 +102,10 @@ function ComplexityBadge({ complexity }: { complexity: string }) {
     high: "bg-red-100 text-red-800",
   };
   return (
-    <span className={`px-2 py-0.5 rounded text-xs font-medium ${map[complexity] ?? "bg-gray-100 text-gray-600"}`}>
+    <span
+      className={`px-2 py-0.5 rounded text-xs font-medium ${map[complexity] ?? "bg-gray-100 text-gray-600"}`}
+      aria-label={`Complexity: ${complexity}`}
+    >
       {complexity} complexity
     </span>
   );
@@ -102,19 +113,22 @@ function ComplexityBadge({ complexity }: { complexity: string }) {
 
 function TypeBadge({ type }: { type: string }) {
   const labels: Record<string, string> = {
-    "1031_exchange": "1031 Exchange",
-    "opportunity_zone": "Opportunity Zone",
+    "1031_exchange": "1031 exchange",
+    "opportunity_zone": "Opportunity zone",
     "depreciation": "Depreciation",
-    "cost_segregation": "Cost Segregation",
-    "installment_sale": "Installment Sale",
+    "cost_segregation": "Cost segregation",
+    "installment_sale": "Installment sale",
     "charitable": "Charitable",
   };
-  return <Badge variant="outline" className="text-xs">{labels[type] ?? type}</Badge>;
+  const label = labels[type] ?? type;
+  return <Badge variant="outline" className="text-xs" aria-label={`Strategy type: ${label}`}>{label}</Badge>;
 }
 
 // ─── Strategy Cards Tab ───────────────────────────────────────────────────────
 
 function StrategiesTab() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: ["/api/tax-optimization/strategies"],
     queryFn: async () => {
@@ -136,16 +150,24 @@ function StrategiesTab() {
       if (!res.ok) throw new Error((await res.json()).error);
       return res.json();
     },
+    onSuccess: () => {
+      toast({ title: "Analysis complete", description: "Strategy recommendations refreshed." });
+      queryClient.invalidateQueries({ queryKey: ["/api/tax-optimization/strategies"] });
+    },
+    onError: (e: any) =>
+      toast({ title: "Couldn't run analysis", description: `${e?.message ?? "Network error"}. ${reassurance}`, variant: "destructive" }),
   });
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">{strategies.length} recommended strategies</p>
+        <p className="text-sm text-muted-foreground tabular-nums" aria-live="polite">
+          {strategies.length} recommended {strategies.length === 1 ? "strategy" : "strategies"}
+        </p>
         <Button size="sm" variant="outline" onClick={() => analysisMutation.mutate()}
           disabled={analysisMutation.isPending}>
-          <RefreshCw className={`w-4 h-4 mr-1 ${analysisMutation.isPending ? "animate-spin" : ""}`} />
-          Run Analysis
+          <RefreshCw className={`w-4 h-4 mr-1 ${analysisMutation.isPending ? "animate-spin" : ""}`} aria-hidden="true" />
+          Run analysis
         </Button>
       </div>
 
@@ -658,15 +680,16 @@ function DepreciationTab() {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function TaxOptimizationPage() {
+  useDocumentTitle("Tax optimization");
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2">
-          <DollarSign className="w-7 h-7 text-primary" /> Tax Optimization
+          <DollarSign className="w-7 h-7 text-primary" aria-hidden="true" /> Tax optimization
         </h1>
         <p className="text-muted-foreground mt-1">
-          Strategy recommendations, scenario modeling, cost basis tracking, and depreciation schedules
+          Strategy recommendations, scenario modeling, cost-basis tracking, and depreciation schedules
         </p>
       </div>
 
@@ -675,7 +698,7 @@ export default function TaxOptimizationPage() {
         <TabsList>
           <TabsTrigger value="strategies">Strategies</TabsTrigger>
           <TabsTrigger value="scenarios">Scenarios</TabsTrigger>
-          <TabsTrigger value="cost-basis">Cost Basis</TabsTrigger>
+          <TabsTrigger value="cost-basis">Cost basis</TabsTrigger>
           <TabsTrigger value="projections">Projections</TabsTrigger>
           <TabsTrigger value="depreciation">Depreciation</TabsTrigger>
         </TabsList>
