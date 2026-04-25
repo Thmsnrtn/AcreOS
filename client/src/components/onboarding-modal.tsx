@@ -23,25 +23,25 @@ function buildOnboardingSteps(brandName: string) {
   },
   {
     icon: Users,
-    title: "Manage Your Leads",
+    title: "Manage your leads",
     description: "Track sellers and buyers in one place. Import leads from tax lists, referrals, or manual entry.",
     highlight: "Add your first lead to start building your pipeline.",
   },
   {
     icon: Map,
-    title: "Track Your Properties",
+    title: "Track your properties",
     description: "Manage your entire inventory from prospect to sold. Track due diligence, listings, and closings.",
     highlight: "Create property listings with all the details buyers need.",
   },
   {
     icon: Handshake,
-    title: "Close Deals",
+    title: "Close deals",
     description: "Manage acquisitions and dispositions. Track offers, contracts, and closings in one workflow.",
     highlight: "Set up your first deal when you have a property under contract.",
   },
   {
     icon: Bell,
-    title: "Stay Notified",
+    title: "Stay notified",
     description: "Configure notifications to stay on top of payments, lead responses, and important deadlines.",
     highlight: "Customize your notification preferences in settings.",
   },
@@ -114,7 +114,7 @@ export function OnboardingModal() {
                 transition={{ duration: 0.2 }}
                 className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center"
               >
-                <StepIcon className="w-8 h-8 text-primary" />
+                <StepIcon className="w-8 h-8 text-primary" aria-hidden="true" />
               </motion.div>
             </AnimatePresence>
           </div>
@@ -151,17 +151,21 @@ export function OnboardingModal() {
           </motion.div>
         </AnimatePresence>
 
-        <div className="flex justify-center gap-1.5 py-2">
-          {onboardingSteps.map((_, index) => (
+        <div role="tablist" aria-label="Onboarding steps" className="flex justify-center gap-1.5 py-2">
+          {onboardingSteps.map((s, index) => (
             <button
               key={index}
+              type="button"
+              role="tab"
+              aria-selected={index === currentStep}
+              aria-label={`Step ${index + 1} of ${onboardingSteps.length}: ${s.title}`}
               onClick={() => setCurrentStep(index)}
-              className={`w-2 h-2 rounded-full transition-all ${
+              className={`h-2 rounded-full transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                 index === currentStep
                   ? "bg-primary w-6"
                   : index < currentStep
-                  ? "bg-primary/50"
-                  : "bg-muted-foreground/30"
+                  ? "bg-primary/50 w-2"
+                  : "bg-muted-foreground/30 w-2"
               }`}
               data-testid={`button-step-${index}`}
             />
@@ -170,20 +174,24 @@ export function OnboardingModal() {
 
         <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:justify-between">
           <Button
+            type="button"
             variant="ghost"
             onClick={handleSkip}
             disabled={updateOrg.isPending}
+            aria-busy={updateOrg.isPending}
             data-testid="button-skip-onboarding"
           >
             Skip
           </Button>
           <Button
+            type="button"
             onClick={handleNext}
             disabled={updateOrg.isPending}
+            aria-busy={updateOrg.isPending}
             data-testid="button-next-onboarding"
           >
-            {isLastStep ? "Get Started" : "Next"}
-            <ArrowRight className="w-4 h-4 ml-2" />
+            {isLastStep ? "Get started" : "Next"}
+            <ArrowRight className="w-4 h-4 ml-2" aria-hidden="true" />
           </Button>
         </DialogFooter>
       </DialogContent>
