@@ -651,6 +651,7 @@ to a dedicated 9b slice.
 **/founder-traces + /founder-settings (65):** ✅ complete — agent filter Select Label+useId, expand button aria-expanded/aria-controls + descriptive label, retry-on-error with reassurance copy, token counts → dl/dt/dd, save-failed reassurance toast, Input Label+useId+aria-describedby, inputMode=decimal (commit `6d008b8`)
 **/state-documents + /status (66):** ✅ complete — state info → dl/dt/dd, autoCapitalize=characters on state-code search, services → ul/li, loading state role=status, decorative icons aria-hidden, tabular-nums on tax/witness/timestamp (commit `491d836`)
 **/money + /changelog (67):** ✅ complete — useDocumentTitle on tabs router, TabFallback role=status, entries → ol/li (semantic ordered version history), per-section ul aria-labels, sentence-case headings (commit `29ea490`)
+**/bookkeeping + /integrations-health (68):** ✅ complete — bookkeeping stats → dl/dt/dd with money-precision pinning, per-note breakdown → ul/li, export coming-soon reassurance toast, integrations service grid → ul/li with status+latency aria-labels (commit `f92e1a8`)
 **/onboarding-v2 targeted (18):** ✅ complete (commit `70df779`) — 18b deferred
 **/settings targeted (19):** ✅ complete (commit `809044c`) — 19b remaining components deferred
 **/pipeline (20):** ✅ complete (commit `1b5d0f7`)
