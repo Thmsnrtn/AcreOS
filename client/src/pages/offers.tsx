@@ -1,9 +1,11 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useId } from "react";
 import { PageShell } from "@/components/page-shell";
 import { ListSkeleton } from "@/components/list-skeleton";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useDocumentTitle } from "@/hooks/use-document-title";
+import { usd } from "@/lib/format";
 import { OfferPreflightChecklist } from "@/components/offer-preflight-checklist";
 import type { OfferLetter, OfferTemplate, Lead, Property } from "@shared/schema";
 
@@ -43,6 +45,7 @@ const getStatusBadge = (status: string) => {
 };
 
 export default function OffersPage() {
+  useDocumentTitle("Offer letters");
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("queue");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -87,33 +90,48 @@ export default function OffersPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/offer-letters'] });
       setSelectedLeadIds([]);
-      toast({ title: "Batch Created", description: "Offer letters have been generated for selected leads." });
+      toast({ title: "Batch created.", description: "Offer letters have been generated for selected leads." });
     },
     onError: (error: any) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({
+        title: "Couldn't create batch",
+        description: `${error.message} — no offer letters were generated. Your lead selection is unchanged.`,
+        variant: "destructive",
+      });
     },
   });
-  
+
   const sendOfferMutation = useMutation({
     mutationFn: async (id: number) => {
       return apiRequest('POST', `/api/offer-letters/${id}/send`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/offer-letters'] });
-      toast({ title: "Offer Queued", description: "The offer letter has been queued for sending." });
+      toast({ title: "Offer queued.", description: "The offer letter has been queued for sending." });
     },
     onError: (error: any) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({
+        title: "Couldn't queue offer",
+        description: `${error.message} — the offer is still a draft and nothing was sent.`,
+        variant: "destructive",
+      });
     },
   });
-  
+
   const deleteOfferMutation = useMutation({
     mutationFn: async (id: number) => {
       return apiRequest('DELETE', `/api/offer-letters/${id}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/offer-letters'] });
-      toast({ title: "Deleted", description: "Offer letter has been deleted." });
+      toast({ title: "Offer letter deleted." });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Couldn't delete offer letter",
+        description: `${error.message} — the offer letter still exists.`,
+        variant: "destructive",
+      });
     },
   });
   
@@ -125,10 +143,17 @@ export default function OffersPage() {
       queryClient.invalidateQueries({ queryKey: ['/api/offer-templates'] });
       setIsTemplateDialogOpen(false);
       setTemplateForm({ name: "", type: "blind_offer", subject: "", content: "" });
-      toast({ title: "Template Created", description: "Your template has been saved." });
+      toast({ title: "Template created.", description: "Your template has been saved." });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Couldn't create template",
+        description: `${error.message} — no template was saved.`,
+        variant: "destructive",
+      });
     },
   });
-  
+
   const updateTemplateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: number; data: Partial<OfferTemplate> }) => {
       return apiRequest('PUT', `/api/offer-templates/${id}`, data);
@@ -137,17 +162,31 @@ export default function OffersPage() {
       queryClient.invalidateQueries({ queryKey: ['/api/offer-templates'] });
       setIsTemplateDialogOpen(false);
       setEditingTemplate(null);
-      toast({ title: "Template Updated", description: "Your template has been updated." });
+      toast({ title: "Template updated.", description: "Your template has been updated." });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Couldn't update template",
+        description: `${error.message} — the template is unchanged.`,
+        variant: "destructive",
+      });
     },
   });
-  
+
   const deleteTemplateMutation = useMutation({
     mutationFn: async (id: number) => {
       return apiRequest('DELETE', `/api/offer-templates/${id}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/offer-templates'] });
-      toast({ title: "Deleted", description: "Template has been deleted." });
+      toast({ title: "Template deleted." });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Couldn't delete template",
+        description: `${error.message} — the template still exists.`,
+        variant: "destructive",
+      });
     },
   });
   
@@ -191,25 +230,33 @@ export default function OffersPage() {
   
   const handlePreflightCheck = () => {
     if (selectedLeadIds.length === 0) {
-      toast({ title: "No Leads Selected", description: "Please select at least one lead.", variant: "destructive" });
+      toast({
+        title: "No leads selected",
+        description: "Select at least one lead before running the pre-flight check — nothing was checked.",
+        variant: "destructive",
+      });
       return;
     }
     setIsPreflightOpen(true);
   };
-  
+
   const handleGenerateBatch = () => {
     if (selectedLeadIds.length === 0) {
-      toast({ title: "No Leads Selected", description: "Please select at least one lead.", variant: "destructive" });
+      toast({
+        title: "No leads selected",
+        description: "Select at least one lead before generating a batch — no offers were created.",
+        variant: "destructive",
+      });
       return;
     }
     createBatchMutation.mutate({ leadIds: selectedLeadIds, offerPercent, expirationDays });
   };
-  
+
   const handleRemoveInvalidLeads = (leadIds: number[]) => {
     setSelectedLeadIds(prev => prev.filter(id => !leadIds.includes(id)));
-    toast({ 
-      title: "Leads Removed", 
-      description: `${leadIds.length} lead(s) with errors removed from selection.` 
+    toast({
+      title: "Leads removed from selection.",
+      description: `${leadIds.length} lead${leadIds.length === 1 ? "" : "s"} with errors removed from selection — no offers were sent.`,
     });
   };
   
@@ -265,7 +312,7 @@ export default function OffersPage() {
           
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-bold" data-testid="text-page-title">Offer Letters</h1>
+              <h1 className="text-3xl font-bold" data-testid="text-page-title">Offer letters</h1>
               <p className="text-muted-foreground">Generate and manage blind offer letters for property acquisitions.</p>
             </div>
           </div>
@@ -334,7 +381,7 @@ export default function OffersPage() {
               ) : filteredOffers.length === 0 ? (
                 <EmptyState
                   icon={Mail}
-                  title="No Offer Letters"
+                  title="No offer letters"
                   description="Generate batch offers using the calculator or create individual offers."
                   actionLabel="Open Calculator"
                   onAction={() => setActiveTab("calculator")}
@@ -390,11 +437,11 @@ export default function OffersPage() {
                               </div>
                             </TableCell>
                             <TableCell>
-                              <div className="font-mono font-medium">
-                                ${Number(offer.offerAmount).toLocaleString()}
+                              <div className="font-mono font-medium tabular-nums">
+                                {usd(Number(offer.offerAmount))}
                               </div>
                               {offer.offerPercent && (
-                                <div className="text-xs text-muted-foreground">
+                                <div className="text-xs text-muted-foreground tabular-nums">
                                   {offer.offerPercent}% of assessed
                                 </div>
                               )}
@@ -510,38 +557,38 @@ export default function OffersPage() {
                     
                     <div className="border-t pt-4 space-y-3">
                       <h4 className="font-medium">Preview Calculation</h4>
-                      <div className="grid grid-cols-3 gap-4 text-center">
+                      <dl className="grid grid-cols-3 gap-4 text-center">
                         <div className="p-3 rounded-lg bg-muted/50">
-                          <div className="text-2xl font-bold" data-testid="text-preview-count">{previewCalculation.count}</div>
-                          <div className="text-xs text-muted-foreground">Leads Selected</div>
+                          <dd className="text-2xl font-bold tabular-nums" data-testid="text-preview-count">{previewCalculation.count}</dd>
+                          <dt className="text-xs text-muted-foreground">Leads selected</dt>
                         </div>
                         <div className="p-3 rounded-lg bg-muted/50">
-                          <div className="text-2xl font-bold font-mono" data-testid="text-preview-total">
-                            ${previewCalculation.totalValue.toLocaleString()}
-                          </div>
-                          <div className="text-xs text-muted-foreground">Total Offers</div>
+                          <dd className="text-2xl font-bold font-mono tabular-nums" data-testid="text-preview-total">
+                            {usd(previewCalculation.totalValue)}
+                          </dd>
+                          <dt className="text-xs text-muted-foreground">Total offers</dt>
                         </div>
                         <div className="p-3 rounded-lg bg-muted/50">
-                          <div className="text-2xl font-bold font-mono" data-testid="text-preview-avg">
-                            ${previewCalculation.avgOffer.toLocaleString()}
-                          </div>
-                          <div className="text-xs text-muted-foreground">Avg. Offer</div>
+                          <dd className="text-2xl font-bold font-mono tabular-nums" data-testid="text-preview-avg">
+                            {usd(previewCalculation.avgOffer)}
+                          </dd>
+                          <dt className="text-xs text-muted-foreground">Avg offer</dt>
                         </div>
-                      </div>
+                      </dl>
                     </div>
-                    
-                    <Button 
-                      className="w-full" 
+
+                    <Button
+                      className="w-full min-h-11"
                       onClick={handlePreflightCheck}
                       disabled={createBatchMutation.isPending || selectedLeadIds.length === 0}
                       data-testid="button-preflight-check"
                     >
                       {createBatchMutation.isPending ? (
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
                       ) : (
-                        <ClipboardCheck className="w-4 h-4 mr-2" />
+                        <ClipboardCheck className="w-4 h-4 mr-2" aria-hidden="true" />
                       )}
-                      Review & Generate {selectedLeadIds.length} Offers
+                      Review &amp; generate <span className="tabular-nums mx-1">{selectedLeadIds.length}</span> offer{selectedLeadIds.length === 1 ? "" : "s"}
                     </Button>
                   </CardContent>
                 </Card>
@@ -592,11 +639,11 @@ export default function OffersPage() {
                               <div className="text-right">
                                 {assessedValue > 0 ? (
                                   <>
-                                    <div className="text-xs text-muted-foreground">
-                                      Assessed: ${assessedValue.toLocaleString()}
+                                    <div className="text-xs text-muted-foreground tabular-nums">
+                                      Assessed: {usd(assessedValue)}
                                     </div>
-                                    <div className="text-sm font-medium font-mono text-primary">
-                                      Offer: ${estimatedOffer.toLocaleString()}
+                                    <div className="text-sm font-medium font-mono text-primary tabular-nums">
+                                      Offer: {usd(estimatedOffer)}
                                     </div>
                                   </>
                                 ) : (
@@ -634,7 +681,7 @@ export default function OffersPage() {
             
             <TabsContent value="templates" className="space-y-4">
               <div className="flex justify-between items-center">
-                <h3 className="text-lg font-medium">Offer Letter Templates</h3>
+                <h3 className="text-lg font-medium">Offer letter templates</h3>
                 <Dialog open={isTemplateDialogOpen} onOpenChange={setIsTemplateDialogOpen}>
                   <DialogTrigger asChild>
                     <Button 
