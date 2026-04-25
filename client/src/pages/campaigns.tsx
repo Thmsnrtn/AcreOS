@@ -7,6 +7,7 @@ import { CampaignsContent } from "@/components/campaigns-content";
 import { AbTestsContent } from "@/components/ab-tests-content";
 import { SequencesContent } from "@/components/sequences-content";
 import { LowBalanceAlert } from "@/components/low-balance-alert";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 const menuItems = [
   { title: "Dashboard", href: "/", icon: TrendingUp },
@@ -15,6 +16,7 @@ const menuItems = [
 type TabValue = "campaigns" | "ab-tests" | "sequences";
 
 export default function MarketingHub() {
+  useDocumentTitle("Marketing hub");
   const [, setLocation] = useLocation();
   const [activeTab, setActiveTab] = useState<TabValue>("campaigns");
 
@@ -53,10 +55,10 @@ export default function MarketingHub() {
       <Sidebar>
         <SidebarHeader className="p-4 border-b">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center text-primary-foreground">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center text-primary-foreground" aria-hidden="true">
               <Target className="w-5 h-5" />
             </div>
-            <span className="font-bold text-lg">Marketing Hub</span>
+            <span className="font-bold text-lg">Marketing hub</span>
           </div>
         </SidebarHeader>
         <SidebarContent>
@@ -68,7 +70,7 @@ export default function MarketingHub() {
                   <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton asChild>
                       <Link href={item.href}>
-                        <item.icon className="w-4 h-4" />
+                        <item.icon className="w-4 h-4" aria-hidden="true" />
                         <span>{item.title}</span>
                       </Link>
                     </SidebarMenuButton>
@@ -85,35 +87,35 @@ export default function MarketingHub() {
         <div className="max-w-7xl mx-auto space-y-6 p-6 flex-1">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-bold" data-testid="text-marketing-hub-title">Marketing Hub</h1>
-              <p className="text-muted-foreground">Manage campaigns, A/B tests, and drip sequences</p>
+              <h1 className="text-3xl font-bold" data-testid="text-marketing-hub-title">Marketing hub</h1>
+              <p className="text-muted-foreground">Manage campaigns, A/B tests, and drip sequences.</p>
             </div>
           </div>
 
           <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
             <TabsList className="w-full md:w-auto overflow-x-auto flex" data-testid="marketing-hub-tabs">
-              <TabsTrigger 
-                value="campaigns" 
+              <TabsTrigger
+                value="campaigns"
                 className="flex items-center gap-2"
                 data-testid="tab-campaigns"
               >
-                <Target className="w-4 h-4" />
+                <Target className="w-4 h-4" aria-hidden="true" />
                 Campaigns
               </TabsTrigger>
-              <TabsTrigger 
-                value="ab-tests" 
+              <TabsTrigger
+                value="ab-tests"
                 className="flex items-center gap-2"
                 data-testid="tab-ab-tests"
               >
-                <TestTube className="w-4 h-4" />
-                A/B Tests
+                <TestTube className="w-4 h-4" aria-hidden="true" />
+                A/B tests
               </TabsTrigger>
-              <TabsTrigger 
-                value="sequences" 
+              <TabsTrigger
+                value="sequences"
                 className="flex items-center gap-2"
                 data-testid="tab-sequences"
               >
-                <GitBranch className="w-4 h-4" />
+                <GitBranch className="w-4 h-4" aria-hidden="true" />
                 Sequences
               </TabsTrigger>
             </TabsList>

@@ -8,6 +8,7 @@ import { CohortAnalytics } from "@/components/cohort-analytics";
 import { AttributionAnalytics } from "@/components/attribution-analytics";
 import { CohortRetentionDashboard } from "@/components/cohort-retention-dashboard";
 import { BarChart3, Users, Activity, GitBranch, Target, TrendingUp } from "lucide-react";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 type TabValue = "analytics" | "team" | "activity" | "cohorts" | "retention" | "attribution";
 
@@ -20,13 +21,14 @@ function getTabFromHash(): TabValue {
 
 function TabFallback() {
   return (
-    <div className="flex items-center justify-center py-16">
+    <div className="flex items-center justify-center py-16" role="status" aria-live="polite">
       <div className="animate-pulse text-muted-foreground text-sm">Loading analytics…</div>
     </div>
   );
 }
 
 export default function AnalyticsPage() {
+  useDocumentTitle("Insights");
   const [activeTab, setActiveTab] = useState<TabValue>(getTabFromHash);
 
   useEffect(() => {
@@ -49,7 +51,7 @@ export default function AnalyticsPage() {
     <PageShell>
       <div>
         <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-insights-title">Insights</h1>
-        <p className="text-muted-foreground text-sm md:text-base">Analytics, team performance, activity, cohort analysis, and attribution</p>
+        <p className="text-muted-foreground text-sm md:text-base">Analytics, team performance, activity, cohort analysis, and attribution.</p>
       </div>
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6" data-testid="tabs-insights">
@@ -59,7 +61,7 @@ export default function AnalyticsPage() {
             className="flex items-center gap-2 min-w-max"
             data-testid="tab-analytics"
           >
-            <BarChart3 className="h-4 w-4" />
+            <BarChart3 className="h-4 w-4" aria-hidden="true" />
             <span>Analytics</span>
           </TabsTrigger>
           <TabsTrigger
@@ -67,7 +69,7 @@ export default function AnalyticsPage() {
             className="flex items-center gap-2 min-w-max"
             data-testid="tab-team"
           >
-            <Users className="h-4 w-4" />
+            <Users className="h-4 w-4" aria-hidden="true" />
             <span>Team</span>
           </TabsTrigger>
           <TabsTrigger
@@ -75,7 +77,7 @@ export default function AnalyticsPage() {
             className="flex items-center gap-2 min-w-max"
             data-testid="tab-activity"
           >
-            <Activity className="h-4 w-4" />
+            <Activity className="h-4 w-4" aria-hidden="true" />
             <span>Activity</span>
           </TabsTrigger>
           <TabsTrigger
@@ -83,7 +85,7 @@ export default function AnalyticsPage() {
             className="flex items-center gap-2 min-w-max"
             data-testid="tab-cohorts"
           >
-            <GitBranch className="h-4 w-4" />
+            <GitBranch className="h-4 w-4" aria-hidden="true" />
             <span>Cohorts</span>
           </TabsTrigger>
           <TabsTrigger
@@ -91,7 +93,7 @@ export default function AnalyticsPage() {
             className="flex items-center gap-2 min-w-max"
             data-testid="tab-retention"
           >
-            <TrendingUp className="h-4 w-4" />
+            <TrendingUp className="h-4 w-4" aria-hidden="true" />
             <span>Retention</span>
           </TabsTrigger>
           <TabsTrigger
@@ -99,7 +101,7 @@ export default function AnalyticsPage() {
             className="flex items-center gap-2 min-w-max"
             data-testid="tab-attribution"
           >
-            <Target className="h-4 w-4" />
+            <Target className="h-4 w-4" aria-hidden="true" />
             <span>Attribution</span>
           </TabsTrigger>
         </TabsList>
