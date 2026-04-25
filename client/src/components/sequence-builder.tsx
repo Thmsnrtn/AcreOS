@@ -103,27 +103,29 @@ function StepCard({
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Channel</Label>
+              <Label htmlFor={`select-channel-${index}`}>Channel</Label>
               <Select
                 value={step.channel}
                 onValueChange={(value) => onUpdate({ ...step, channel: value as any })}
                 disabled={readOnly}
               >
-                <SelectTrigger data-testid={`select-channel-${index}`}>
+                <SelectTrigger id={`select-channel-${index}`} data-testid={`select-channel-${index}`}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="email">Email</SelectItem>
                   <SelectItem value="sms">SMS</SelectItem>
-                  <SelectItem value="direct_mail">Direct Mail</SelectItem>
+                  <SelectItem value="direct_mail">Direct mail</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            
+
             <div className="space-y-2">
-              <Label>Delay (days)</Label>
+              <Label htmlFor={`input-delay-${index}`}>Delay <span className="text-muted-foreground/70">(days)</span></Label>
               <Input
+                id={`input-delay-${index}`}
                 type="number"
+                inputMode="numeric"
                 min={0}
                 value={step.delayDays}
                 onChange={(e) => onUpdate({ ...step, delayDays: parseInt(e.target.value) || 0 })}
@@ -135,13 +137,13 @@ function StepCard({
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Condition</Label>
+              <Label htmlFor={`select-condition-${index}`}>Condition</Label>
               <Select
                 value={step.conditionType}
                 onValueChange={(value) => onUpdate({ ...step, conditionType: value as any })}
                 disabled={readOnly}
               >
-                <SelectTrigger data-testid={`select-condition-${index}`}>
+                <SelectTrigger id={`select-condition-${index}`} data-testid={`select-condition-${index}`}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -151,12 +153,14 @@ function StepCard({
                 </SelectContent>
               </Select>
             </div>
-            
+
             {step.conditionType === "no_response" && (
               <div className="space-y-2">
-                <Label>Check after (days)</Label>
+                <Label htmlFor={`input-condition-days-${index}`}>Check after <span className="text-muted-foreground/70">(days)</span></Label>
                 <Input
+                  id={`input-condition-days-${index}`}
                   type="number"
+                  inputMode="numeric"
                   min={1}
                   value={step.conditionDays || 3}
                   onChange={(e) => onUpdate({ ...step, conditionDays: parseInt(e.target.value) || 3 })}
@@ -169,11 +173,13 @@ function StepCard({
 
           {(step.channel === "email" || step.channel === "direct_mail") && (
             <div className="space-y-2">
-              <Label>Subject</Label>
+              <Label htmlFor={`input-subject-${index}`}>Subject</Label>
               <Input
+                id={`input-subject-${index}`}
                 value={step.subject || ""}
                 onChange={(e) => onUpdate({ ...step, subject: e.target.value })}
-                placeholder="Enter subject line..."
+                placeholder="Enter subject line…"
+                autoCapitalize="sentences"
                 disabled={readOnly}
                 data-testid={`input-subject-${index}`}
               />
@@ -181,12 +187,14 @@ function StepCard({
           )}
 
           <div className="space-y-2">
-            <Label>Content</Label>
+            <Label htmlFor={`textarea-content-${index}`}>Content</Label>
             <Textarea
+              id={`textarea-content-${index}`}
               value={step.content}
               onChange={(e) => onUpdate({ ...step, content: e.target.value })}
-              placeholder="Enter message content..."
+              placeholder="Enter message content…"
               rows={4}
+              autoCapitalize="sentences"
               disabled={readOnly}
               data-testid={`textarea-content-${index}`}
             />
