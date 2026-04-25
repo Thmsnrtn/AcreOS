@@ -329,19 +329,29 @@ export function SupportContent() {
           </DialogTrigger>
           <DialogContent className="sm:max-w-[500px]">
             <DialogHeader>
-              <DialogTitle>Create Support Case</DialogTitle>
+              <DialogTitle>Create support case</DialogTitle>
               <DialogDescription>
                 Describe your issue and our AI will assist you immediately.
               </DialogDescription>
             </DialogHeader>
-            <div className="space-y-4 py-4">
+            <form
+              id="create-case-form"
+              className="space-y-4 py-4"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!newSubject.trim() || !newMessage.trim() || createCaseMutation.isPending) return;
+                handleCreateCase();
+              }}
+            >
               <div className="space-y-2">
                 <Label htmlFor="subject">Subject</Label>
                 <Input
                   id="subject"
-                  placeholder="Brief summary of your issue..."
+                  placeholder="Brief summary of your issue…"
                   value={newSubject}
                   onChange={(e) => setNewSubject(e.target.value)}
+                  autoCapitalize="sentences"
+                  required
                   data-testid="input-case-subject"
                 />
               </div>
@@ -349,32 +359,35 @@ export function SupportContent() {
                 <Label htmlFor="message">Describe your issue</Label>
                 <Textarea
                   id="message"
-                  placeholder="Please provide details about your issue..."
+                  placeholder="Please provide details about your issue…"
                   rows={5}
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
+                  autoCapitalize="sentences"
+                  required
                   data-testid="input-case-message"
                 />
               </div>
-            </div>
+            </form>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setIsCreateOpen(false)} data-testid="button-cancel-case">
+              <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)} data-testid="button-cancel-case">
                 Cancel
               </Button>
               <Button
-                onClick={handleCreateCase}
+                type="submit"
+                form="create-case-form"
                 disabled={!newSubject.trim() || !newMessage.trim() || createCaseMutation.isPending}
                 data-testid="button-submit-case"
               >
                 {createCaseMutation.isPending ? (
                   <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Creating...
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
+                    Creating…
                   </>
                 ) : (
                   <>
-                    <MessageSquare className="w-4 h-4 mr-2" />
-                    Create Case
+                    <MessageSquare className="w-4 h-4 mr-2" aria-hidden="true" />
+                    Create case
                   </>
                 )}
               </Button>
