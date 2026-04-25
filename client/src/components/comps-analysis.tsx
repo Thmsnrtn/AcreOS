@@ -145,7 +145,7 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
     return (
       <div className="text-center py-8">
         <MapPin className="w-12 h-12 mx-auto text-muted-foreground mb-4" aria-hidden="true" />
-        <h3 className="font-medium mb-2">Location Data Required</h3>
+        <h3 className="font-medium mb-2">Location data required</h3>
         <p className="text-sm text-muted-foreground">
           Please fetch parcel data first to enable comparable property analysis.
         </p>
@@ -176,7 +176,7 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
         </p>
         <Button variant="outline" onClick={() => refetch()}>
           <RefreshCw className="w-4 h-4 mr-2" aria-hidden="true" />
-          Try Again
+          Try again
         </Button>
       </div>
     );
@@ -186,7 +186,7 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
     return (
       <div className="text-center py-8" role="alert">
         <AlertCircle className="w-12 h-12 mx-auto text-yellow-500 mb-4" aria-hidden="true" />
-        <h3 className="font-medium mb-2">Comps Data Unavailable</h3>
+        <h3 className="font-medium mb-2">Comps data unavailable</h3>
         <p className="text-sm text-muted-foreground mb-4">{data.error}</p>
         {data.limitedData && (
           <p className="text-xs text-muted-foreground">
@@ -256,7 +256,7 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
                 />
               </div>
               <div>
-                <Label htmlFor="minAcreage" className="text-xs">Min Acreage</Label>
+                <Label htmlFor="minAcreage" className="text-xs">Min acreage</Label>
                 <Input
                   id="minAcreage"
                   type="number"
@@ -268,7 +268,7 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
                 />
               </div>
               <div>
-                <Label htmlFor="maxAcreage" className="text-xs">Max Acreage</Label>
+                <Label htmlFor="maxAcreage" className="text-xs">Max acreage</Label>
                 <Input
                   id="maxAcreage"
                   type="number"
