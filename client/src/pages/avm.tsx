@@ -1,5 +1,6 @@
 import { useState, useId } from 'react';
 import { DisclaimerBanner } from '@/components/disclaimer-banner';
+import { usd } from '@/lib/format';
 import { RequiredDisclaimer } from '@/components/required-disclaimer';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useDocumentTitle } from '@/hooks/use-document-title';
@@ -42,9 +43,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
 function formatDollar(n: number) {
+  // Compact display for KPI cards + chart axes. M/K bands round
+  // intentionally for screen real estate; sub-$1K falls through to
+  // usd() so cents are preserved on small comp-distance prices and
+  // model-stat averages where partial-dollar precision matters.
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
   if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
-  return `$${Math.round(n).toLocaleString()}`;
+  return usd(n, { noCents: true });
 }
 
 // ─── SHAP Waterfall Placeholder ───────────────────────────────────────────────
@@ -53,9 +58,9 @@ function SHAPWaterfallPlaceholder({ adjustments }: { adjustments: any[] }) {
   const factors = adjustments?.length > 0
     ? adjustments.map((a: any, i: number) => ({ name: a.factor?.slice(0, 22) ?? `Factor ${i+1}`, value: a.adjustment, fill: a.adjustment >= 0 ? '#10b981' : '#ef4444' }))
     : [
-        { name: 'Base Value', value: 100, fill: '#6366f1' },
-        { name: 'Road Access', value: 8, fill: '#10b981' },
-        { name: 'Water Rights', value: 6, fill: '#10b981' },
+        { name: 'Base value', value: 100, fill: '#6366f1' },
+        { name: 'Road access', value: 8, fill: '#10b981' },
+        { name: 'Water rights', value: 6, fill: '#10b981' },
         { name: 'Zoning', value: -4, fill: '#ef4444' },
         { name: 'Terrain', value: -2, fill: '#ef4444' },
       ];
@@ -64,32 +69,36 @@ function SHAPWaterfallPlaceholder({ adjustments }: { adjustments: any[] }) {
     <Card>
       <CardHeader>
         <CardTitle className="text-sm flex items-center gap-2">
-          <BarChart3 className="w-4 h-4 text-primary" /> SHAP Feature Impact (Waterfall)
+          <BarChart3 className="w-4 h-4 text-primary" aria-hidden="true" /> SHAP feature impact (waterfall)
         </CardTitle>
         <CardDescription>Top factors driving this valuation away from the base estimate</CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="space-y-2">
+        <ul className="space-y-2 list-none p-0 m-0" aria-label="Per-factor adjustment vs. base estimate">
           {factors.map((f, i) => (
-            <div key={i} className="flex items-center gap-3 text-sm">
+            <li key={i} className="flex items-center gap-3 text-sm">
               <span className="w-36 text-xs text-muted-foreground truncate text-right">{f.name}</span>
-              <div className="flex-1 flex items-center gap-1">
+              <div
+                className="flex-1 flex items-center gap-1"
+                role="img"
+                aria-label={`${f.name}: ${f.value >= 0 ? "+" : ""}${f.value} percent`}
+              >
                 {f.value < 0 && (
                   <div className="flex justify-end" style={{ flex: Math.abs(f.value), maxWidth: '50%' }}>
-                    <div className="h-5 rounded" style={{ backgroundColor: f.fill, width: `${Math.abs(f.value) * 4}px`, minWidth: '8px' }} />
+                    <div className="h-5 rounded" style={{ backgroundColor: f.fill, width: `${Math.abs(f.value) * 4}px`, minWidth: '8px' }} aria-hidden="true" />
                   </div>
                 )}
-                <span className="text-xs font-mono w-12 text-center">{f.value > 0 ? '+' : ''}{f.value}%</span>
+                <span className="text-xs font-mono w-12 text-center tabular-nums">{f.value > 0 ? '+' : ''}{f.value}%</span>
                 {f.value >= 0 && (
                   <div style={{ flex: f.value, maxWidth: '50%' }}>
-                    <div className="h-5 rounded" style={{ backgroundColor: f.fill, width: `${f.value * 4}px`, minWidth: '8px' }} />
+                    <div className="h-5 rounded" style={{ backgroundColor: f.fill, width: `${f.value * 4}px`, minWidth: '8px' }} aria-hidden="true" />
                   </div>
                 )}
               </div>
-            </div>
+            </li>
           ))}
-        </div>
-        <p className="text-xs text-muted-foreground mt-3 italic">SHAP values show each feature's marginal contribution to the final estimate.</p>
+        </ul>
+        <p className="text-xs text-muted-foreground mt-3 italic">SHAP values show each feature&apos;s marginal contribution to the final estimate.</p>
       </CardContent>
     </Card>
   );
@@ -184,28 +193,33 @@ function PricePerAcreTrendChart({ history }: { history: any[] }) {
     <Card>
       <CardHeader>
         <CardTitle className="text-sm flex items-center gap-2">
-          <TrendingUp className="w-4 h-4 text-primary" /> Price-Per-Acre Trend
+          <TrendingUp className="w-4 h-4 text-primary" aria-hidden="true" /> Price-per-acre trend
         </CardTitle>
-        <CardDescription>Historical price/acre with confidence range band</CardDescription>
+        <CardDescription>Historical price per acre with confidence-range band</CardDescription>
       </CardHeader>
       <CardContent>
-        <ResponsiveContainer width="100%" height={200}>
-          <AreaChart data={chartData}>
-            <defs>
-              <linearGradient id="ciGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#4f8ef7" stopOpacity={0.15} />
-                <stop offset="95%" stopColor="#4f8ef7" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="date" tick={{ fontSize: 10 }} />
-            <YAxis tickFormatter={v => `$${(v / 1000).toFixed(0)}K`} tick={{ fontSize: 10 }} />
-            <Tooltip formatter={((v: any, name: string) => [`$${Number(v).toLocaleString()}/acre`, name === 'pricePerAcre' ? 'Price/Acre' : name === 'high' ? 'CI High' : 'CI Low']) as any} />
-            <Area type="monotone" dataKey="high" stroke="transparent" fill="url(#ciGrad)" />
-            <Area type="monotone" dataKey="low" stroke="transparent" fill="white" />
-            <Line type="monotone" dataKey="pricePerAcre" stroke="#4f8ef7" strokeWidth={2} dot={{ r: 3 }} />
-          </AreaChart>
-        </ResponsiveContainer>
+        <div
+          role="img"
+          aria-label={`Price-per-acre trend over ${chartData.length} valuations; latest ${formatDollar(chartData[chartData.length - 1]?.pricePerAcre ?? 0)}/acre`}
+        >
+          <ResponsiveContainer width="100%" height={200}>
+            <AreaChart data={chartData}>
+              <defs>
+                <linearGradient id="ciGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#4f8ef7" stopOpacity={0.15} />
+                  <stop offset="95%" stopColor="#4f8ef7" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+              <YAxis tickFormatter={v => formatDollar(v)} tick={{ fontSize: 10 }} />
+              <Tooltip formatter={((v: any, name: string) => [`${formatDollar(Number(v))}/acre`, name === 'pricePerAcre' ? 'Price per acre' : name === 'high' ? 'Upper bound (CI)' : 'Lower bound (CI)']) as any} />
+              <Area type="monotone" dataKey="high" stroke="transparent" fill="url(#ciGrad)" />
+              <Area type="monotone" dataKey="low" stroke="transparent" fill="white" />
+              <Line type="monotone" dataKey="pricePerAcre" stroke="#4f8ef7" strokeWidth={2} dot={{ r: 3 }} />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
       </CardContent>
     </Card>
   );
@@ -269,6 +283,7 @@ function CompsMapTable({ comparables, pricePerAcre }: { comparables: any[]; pric
 
 function ConfidenceBar({ confidence }: { confidence: number }) {
   const color = confidence >= 70 ? 'text-emerald-600' : confidence >= 40 ? 'text-yellow-600' : 'text-red-500';
+  const tier = confidence >= 70 ? 'high' : confidence >= 40 ? 'moderate' : 'low';
   return (
     <div className="space-y-1">
       <div className="flex justify-between text-sm">
@@ -278,7 +293,11 @@ function ConfidenceBar({ confidence }: { confidence: number }) {
       <Progress
         value={confidence}
         className="h-2"
-        aria-label={`Model confidence: ${confidence} percent`}
+        role="progressbar"
+        aria-valuenow={confidence}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={`Model confidence: ${confidence} percent (${tier})`}
       />
     </div>
   );
