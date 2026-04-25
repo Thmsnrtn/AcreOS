@@ -180,7 +180,7 @@ export function MailSettingsContent() {
       queryClient.invalidateQueries({ queryKey: ["/api/mail-identities"] });
       closeFormDialog();
       toast({
-        title: "Return Address Created",
+        title: "Return address created",
         description: "Your new mail sender identity has been added.",
       });
     },

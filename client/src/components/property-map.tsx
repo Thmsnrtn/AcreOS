@@ -1148,7 +1148,7 @@ export function PropertyMap({
   const fetchNearbyParcels = useCallback(async () => {
     if (!selectedPropertyId) {
       toast({
-        title: "No Property Selected",
+        title: "No property selected",
         description: "Please select a property to find nearby parcels.",
         variant: "destructive",
       });
@@ -1167,7 +1167,7 @@ export function PropertyMap({
       setShowNearbyParcels(true);
       setNearbyPanelOpen(true);
       toast({
-        title: "Nearby Parcels Found",
+        title: "Nearby parcels found",
         description: `Found ${data.parcels?.length || 0} parcels within ${nearbyRadius} mile${nearbyRadius !== "1" ? "s" : ""}.`,
       });
     } catch (err) {
@@ -1184,7 +1184,7 @@ export function PropertyMap({
   const fetchComps = useCallback(async () => {
     if (!selectedPropertyId) {
       toast({
-        title: "No Property Selected",
+        title: "No property selected",
         description: "Please select a property to view comparables.",
         variant: "destructive",
       });
