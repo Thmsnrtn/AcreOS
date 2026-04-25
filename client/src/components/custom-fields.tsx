@@ -107,7 +107,7 @@ export function CustomFieldsManager() {
       handleCloseDialog();
     },
     onError: (err: Error) => {
-      toast({ title: "Failed to create custom field", description: err.message, variant: "destructive" });
+      toast({ title: "Couldn't create custom field", description: `${err.message} — your draft is preserved.`, variant: "destructive" });
     },
   });
 
@@ -121,7 +121,7 @@ export function CustomFieldsManager() {
       handleCloseDialog();
     },
     onError: (err: Error) => {
-      toast({ title: "Failed to update custom field", description: err.message, variant: "destructive" });
+      toast({ title: "Couldn't update custom field", description: `${err.message} — the existing field is unchanged.`, variant: "destructive" });
     },
   });
 
@@ -134,7 +134,7 @@ export function CustomFieldsManager() {
       toast({ title: "Custom field deleted successfully" });
     },
     onError: (err: Error) => {
-      toast({ title: "Failed to delete custom field", description: err.message, variant: "destructive" });
+      toast({ title: "Couldn't delete custom field", description: `${err.message} — the field still exists. Records using it are unaffected.`, variant: "destructive" });
     },
   });
 
@@ -495,7 +495,7 @@ export function CustomFieldValuesEditor({ entityType, entityId, compact = false 
       toast({ title: "Custom field saved" });
     },
     onError: (err: Error) => {
-      toast({ title: "Failed to save custom field", description: err.message, variant: "destructive" });
+      toast({ title: "Couldn't save custom field", description: `${err.message} — the previous value is unchanged.`, variant: "destructive" });
     },
   });
 

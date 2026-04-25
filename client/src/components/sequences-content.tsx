@@ -69,7 +69,7 @@ export function SequencesContent() {
       toast({ title: "Sequence created successfully" });
     },
     onError: () => {
-      toast({ title: "Failed to create sequence", variant: "destructive" });
+      toast({ title: "Couldn't create sequence", description: "Your draft is preserved. Try again or check the system status.", variant: "destructive" });
     },
   });
 
@@ -100,7 +100,7 @@ export function SequencesContent() {
       toast({ title: "Sequence updated successfully" });
     },
     onError: () => {
-      toast({ title: "Failed to update sequence", variant: "destructive" });
+      toast({ title: "Couldn't update sequence", description: "The existing sequence is unchanged. Try again or check the system status.", variant: "destructive" });
     },
   });
 
@@ -112,7 +112,7 @@ export function SequencesContent() {
       toast({ title: "Sequence deleted successfully" });
     },
     onError: () => {
-      toast({ title: "Failed to delete sequence", variant: "destructive" });
+      toast({ title: "Couldn't delete sequence", description: "The sequence still exists. Active enrollments are unaffected.", variant: "destructive" });
     },
   });
 

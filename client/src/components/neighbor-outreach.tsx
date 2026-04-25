@@ -50,7 +50,7 @@ export function NeighborOutreach({ propertyId, isOwned }: NeighborOutreachProps)
       toast({ title: "Campaign created", description: "Mailer campaign targeting neighbors is ready." });
     },
     onError: () => {
-      toast({ title: "Failed to create campaign", variant: "destructive" });
+      toast({ title: "Couldn't create campaign", description: "No mailer was queued. Try again or check the system status.", variant: "destructive" });
     },
   });
 

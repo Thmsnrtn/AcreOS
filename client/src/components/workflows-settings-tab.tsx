@@ -52,7 +52,7 @@ export function WorkflowsSettingsTab() {
       setBuilderOpen(false);
       toast({ title: "Workflow created" });
     },
-    onError: () => toast({ title: "Failed to save workflow", variant: "destructive" }),
+    onError: () => toast({ title: "Couldn't save workflow", description: "Your draft is preserved. Try again or check the system status.", variant: "destructive" }),
   });
 
   const updateMut = useMutation({
@@ -72,7 +72,7 @@ export function WorkflowsSettingsTab() {
       setEditingWorkflow(null);
       toast({ title: "Workflow updated" });
     },
-    onError: () => toast({ title: "Failed to update workflow", variant: "destructive" }),
+    onError: () => toast({ title: "Couldn't update workflow", description: "The existing workflow is unchanged.", variant: "destructive" }),
   });
 
   const toggleMut = useMutation({
