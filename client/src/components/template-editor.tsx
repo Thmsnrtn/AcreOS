@@ -518,7 +518,7 @@ export function TemplateEditor({ template, onSave, onCancel, mode = "create" }: 
                     </FormDescription>
                     <FormControl>
                       <Textarea 
-                        placeholder={`Enter your document template content here...
+                        placeholder={`Enter your document template content here…
 
 Example:
 Dear {{lead.firstName}} {{lead.lastName}},
@@ -640,10 +640,10 @@ Sincerely,
                                 variant="ghost"
                                 size="icon"
                                 onClick={() => handleRemoveField(field.id)}
-                                aria-label="Remove field"
+                                aria-label={`Remove field ${field.name || `#${index + 1}`}`}
                                 data-testid={`button-remove-field-${index}`}
                               >
-                                <Trash2 className="w-4 h-4 text-destructive" />
+                                <Trash2 className="w-4 h-4 text-destructive" aria-hidden="true" />
                               </Button>
                             </div>
                           </div>
