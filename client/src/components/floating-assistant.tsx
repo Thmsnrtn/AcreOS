@@ -1010,7 +1010,7 @@ export function FloatingAssistant() {
   };
 
   return (
-    <div className="fixed z-50 bottom-20 right-4 md:bottom-24 md:right-6 safe-area-bottom" data-testid="floating-assistant-container">
+    <aside aria-label="Floating assistant" className="fixed z-50 bottom-20 right-4 md:bottom-24 md:right-6 safe-area-bottom" data-testid="floating-assistant-container">
       <input
         ref={fileInputRef}
         type="file"
@@ -1651,6 +1651,9 @@ export function FloatingAssistant() {
       />
 
       <button
+        type="button"
+        aria-label={isOpen ? (isMinimized ? "Restore floating assistant" : "Close floating assistant") : "Open floating assistant"}
+        aria-expanded={isOpen && !isMinimized}
         onClick={() => isOpen ? (isMinimized ? handleRestore() : handleClose()) : setIsOpen(true)}
         className={cn(
           "relative w-14 h-14 rounded-full",
@@ -1694,6 +1697,6 @@ export function FloatingAssistant() {
           )} 
         />
       </button>
-    </div>
+    </aside>
   );
 }

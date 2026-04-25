@@ -6460,7 +6460,7 @@ function AutopilotStatusBar() {
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-40 bg-background/95 border-t backdrop-blur-sm">
+    <aside aria-label="Autopilot status" className="fixed bottom-0 left-0 right-0 z-40 bg-background/95 border-t backdrop-blur-sm">
       <div className="max-w-screen-2xl mx-auto px-4 py-2">
         <button
           type="button"
@@ -6495,7 +6495,7 @@ function AutopilotStatusBar() {
           </div>
         )}
       </div>
-    </div>
+    </aside>
   );
 }
 
