@@ -633,6 +633,7 @@ to a dedicated 9b slice.
 **/direct-mail-campaigns (47):** ✅ complete — P1 money-precision on total spend, slice-25 teach-via-option-label on mail-type, form onSubmit, 2 reassurance toasts (commit `615c5d3`)
 **/tools + /acquisition-radar (48):** ✅ complete — P1 clickable-div fix on OpportunityCard, slice-25 teach on opportunity-type, ScoreBadge aria-label (commit `67ba4c6`)
 **/decision-queue (49):** ✅ complete — P1 money-precision on offer amounts, section landmarks with useId, 5 mis-click-protection aria-labels, 2 mutation reassurance toasts (commit `00979bb`)
+**/predictions (50):** ✅ complete — **milestone slice 50** — form onSubmit, slice-25 teach on forecast-horizon, momentum score aria-label, 4 loading states with role=status (commit `eac2ee7`)
 **/onboarding-v2 targeted (18):** ✅ complete (commit `70df779`) — 18b deferred
 **/settings targeted (19):** ✅ complete (commit `809044c`) — 19b remaining components deferred
 **/pipeline (20):** ✅ complete (commit `1b5d0f7`)
