@@ -799,6 +799,7 @@ to a dedicated 9b slice.
 **SavedViewsSelector (213):** ✅ complete — save-view dialog converted to `<form id>` so Enter submits; input gained autoCapitalize="sentences" + required; title-case → sentence-case ("Save view", "View name", placeholder "Hot leads"); default-view Star icons aria-hidden. (commit `864f25e`)
 **EmailDomainsSettings add-domain (214):** ✅ complete — dialog converted to `<form id>`; domain off-keyboard hardening + required; From email full email-keyboard stack; From name autoCapitalize=words + autoComplete=organization; sentence-case throughout. (commit `f161924`)
 **PhoneNumbersSettings purchase (215):** ✅ complete — search section wrapped in `<form id>`, area-code as type=tel + inputMode=numeric + pattern, no-results region role=status + aria-live, sentence-case throughout. (commit `3c1825b`)
+**SequencesContent dialog (216):** ✅ complete — create/edit-sequence dialog converted to `<form id>`, sequence-name autoCapitalize=sentences + required, description autoCapitalize=sentences, Switch+Trigger gained htmlFor↔id, sentence-case throughout. (commit `2794786`)
 **/onboarding-v2 targeted (18):** ✅ complete (commit `70df779`) — 18b deferred
 **/settings targeted (19):** ✅ complete (commit `809044c`) — 19b remaining components deferred
 **/pipeline (20):** ✅ complete (commit `1b5d0f7`)
