@@ -801,6 +801,7 @@ to a dedicated 9b slice.
 **PhoneNumbersSettings purchase (215):** ✅ complete — search section wrapped in `<form id>`, area-code as type=tel + inputMode=numeric + pattern, no-results region role=status + aria-live, sentence-case throughout. (commit `3c1825b`)
 **SequencesContent dialog (216):** ✅ complete — create/edit-sequence dialog converted to `<form id>`, sequence-name autoCapitalize=sentences + required, description autoCapitalize=sentences, Switch+Trigger gained htmlFor↔id, sentence-case throughout. (commit `2794786`)
 **A/B-test dialog (217):** ✅ complete — Create-test dialog converted to `<form id>`, name field autoCapitalize=sentences + required, sentence-case throughout. (commit `67f983c`)
+**EmailSettings custom-domain (218):** ✅ complete — add-custom-domain dialog converted to `<form id>`, display name autoCapitalize=words + autoComplete=organization, from-email full email-keyboard stack, sentence-case. (commit `5c23624`)
 **/onboarding-v2 targeted (18):** ✅ complete (commit `70df779`) — 18b deferred
 **/settings targeted (19):** ✅ complete (commit `809044c`) — 19b remaining components deferred
 **/pipeline (20):** ✅ complete (commit `1b5d0f7`)
