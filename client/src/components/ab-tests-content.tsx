@@ -104,7 +104,7 @@ export function AbTestsContent() {
       toast({ title: "A/B test created successfully" });
     },
     onError: () => {
-      toast({ title: "Failed to create A/B test", variant: "destructive" });
+      toast({ title: "Couldn't create A/B test", description: "Your draft is preserved. Try again or check the system status.", variant: "destructive" });
     },
   });
 

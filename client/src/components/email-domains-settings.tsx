@@ -88,7 +88,7 @@ export function EmailDomainsSettings() {
       toast({ title: "Domain added", description: "Add the DNS records shown below to verify your domain." });
     },
     onError: (err: any) => {
-      toast({ title: "Failed to add domain", description: err.message, variant: "destructive" });
+      toast({ title: "Couldn't add domain", description: `${err.message} — your draft is preserved.`, variant: "destructive" });
     },
   });
 
@@ -106,7 +106,7 @@ export function EmailDomainsSettings() {
       }
     },
     onError: (err: any) => {
-      toast({ title: "Verification failed", description: err.message, variant: "destructive" });
+      toast({ title: "Couldn't verify domain", description: `${err.message} — the domain is still pending verification.`, variant: "destructive" });
     },
   });
 
@@ -120,7 +120,7 @@ export function EmailDomainsSettings() {
       toast({ title: "Default domain updated" });
     },
     onError: (err: any) => {
-      toast({ title: "Failed to update", description: err.message, variant: "destructive" });
+      toast({ title: "Couldn't update default", description: `${err.message} — the previous default is unchanged.`, variant: "destructive" });
     },
   });
 
@@ -134,7 +134,7 @@ export function EmailDomainsSettings() {
       toast({ title: "Domain removed" });
     },
     onError: (err: any) => {
-      toast({ title: "Failed to remove domain", description: err.message, variant: "destructive" });
+      toast({ title: "Couldn't remove domain", description: `${err.message} — the domain is still on your account.`, variant: "destructive" });
     },
   });
 

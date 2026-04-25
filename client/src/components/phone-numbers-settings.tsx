@@ -90,7 +90,7 @@ export function PhoneNumbersSettings() {
       queryClient.setQueryData(["/api/phone-numbers/available", areaCode, searchContains], data);
     },
     onError: (err: any) => {
-      toast({ title: "Search failed", description: err.message, variant: "destructive" });
+      toast({ title: "Couldn't search numbers", description: `${err.message} — try a different area code or try again later.`, variant: "destructive" });
     },
   });
 
@@ -108,7 +108,7 @@ export function PhoneNumbersSettings() {
       toast({ title: "Phone number purchased", description: "Your new phone number is ready to use." });
     },
     onError: (err: any) => {
-      toast({ title: "Purchase failed", description: err.message, variant: "destructive" });
+      toast({ title: "Couldn't purchase number", description: `${err.message} — no charge was made and no number was added.`, variant: "destructive" });
     },
   });
 
@@ -122,7 +122,7 @@ export function PhoneNumbersSettings() {
       toast({ title: "Default number updated" });
     },
     onError: (err: any) => {
-      toast({ title: "Failed to update", description: err.message, variant: "destructive" });
+      toast({ title: "Couldn't update default", description: `${err.message} — the previous default is unchanged.`, variant: "destructive" });
     },
   });
 
@@ -136,7 +136,7 @@ export function PhoneNumbersSettings() {
       toast({ title: "Phone number released" });
     },
     onError: (err: any) => {
-      toast({ title: "Failed to release", description: err.message, variant: "destructive" });
+      toast({ title: "Couldn't release number", description: `${err.message} — the number is still active on your account.`, variant: "destructive" });
     },
   });
 

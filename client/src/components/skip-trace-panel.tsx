@@ -57,7 +57,7 @@ export function SkipTracePanel({ lead }: { lead: Lead }) {
       setIsPolling(true);
     },
     onError: (err: Error) => {
-      toast({ title: "Failed to run skip trace", description: err.message, variant: "destructive" });
+      toast({ title: "Couldn't run skip trace", description: `${err.message} — no credits were deducted.`, variant: "destructive" });
     },
   });
 

@@ -332,7 +332,7 @@ export function EmailSettingsContent() {
       await navigator.clipboard.writeText(text);
       toast({ title: "Copied to clipboard" });
     } catch {
-      toast({ title: "Failed to copy", variant: "destructive" });
+      toast({ title: "Couldn't copy", description: "Your browser blocked clipboard access. Select the text and copy manually.", variant: "destructive" });
     }
   };
 
