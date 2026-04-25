@@ -26,8 +26,8 @@ export function useCopy(resetAfterMs = 1500) {
         return true;
       } catch {
         toast({
-          title: "Could not copy",
-          description: "Select the text manually",
+          title: "Couldn't copy",
+          description: "Select the text manually.",
           variant: "destructive",
         });
         return false;

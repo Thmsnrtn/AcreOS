@@ -345,8 +345,8 @@ export default function FounderDecisionsPage() {
     },
     onError: (err: Error) => {
       toast({
-        title: "Could not record",
-        description: err.message,
+        title: "Couldn't record reversal",
+        description: `${err.message} — try again in a moment.`,
         variant: "destructive",
       });
     },

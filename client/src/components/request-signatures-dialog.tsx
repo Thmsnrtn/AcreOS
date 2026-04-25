@@ -100,7 +100,11 @@ export function RequestSignaturesDialog({
       onSuccess?.();
     },
     onError: (err: Error) => {
-      toast({ title: "Could not request signatures", description: err.message, variant: "destructive" });
+      toast({
+        title: "Couldn't request signatures",
+        description: `${err.message} — your signer list is preserved. Try again.`,
+        variant: "destructive",
+      });
     },
   });
 
