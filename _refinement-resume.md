@@ -647,6 +647,7 @@ to a dedicated 9b slice.
 **/cohort-analysis + /document-versions (61):** ✅ complete — P1 ConfirmDialog on version restore (slice-8 rule), versions → ol, dl/dt/dd metrics (commit `fe3f2ca`)
 **/usage-analytics + /founder-providers (62):** ✅ complete — chart bars role=img with aria-label, success-rate severity aria-label, retry-on-error (commit `0991ad2`)
 **/founder-todo + /founder-agents (63):** ✅ complete — urgency severity aria-label, status-dot aria-label, mutation reassurance, retry-on-error (commit `658e46a`)
+**/drip-sequences + /founder-daily-digest (64):** ✅ complete — sequences → ul/li with channel sub-list, pause/resume reassurance toasts, useId search input + mobile-keyboard checklist, digest sections → ul/li, proper TS types replacing any/any[] (commit `39630b0`)
 **/onboarding-v2 targeted (18):** ✅ complete (commit `70df779`) — 18b deferred
 **/settings targeted (19):** ✅ complete (commit `809044c`) — 19b remaining components deferred
 **/pipeline (20):** ✅ complete (commit `1b5d0f7`)
