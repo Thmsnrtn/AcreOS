@@ -30,7 +30,7 @@ export function FocusCard() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/founder/v7/focus-card"] }),
   });
 
-  if (isLoading) return <Skeleton className="h-24 w-full rounded-xl" />;
+  if (isLoading) return <Skeleton role="status" aria-busy="true" aria-label="Loading focus card" className="h-24 w-full rounded-xl" />;
 
   const focusCard = (focusData as any)?.focusCard;
 
@@ -40,18 +40,20 @@ export function FocusCard() {
         <CardContent className="py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Crosshair className="h-4 w-4" />
+              <Crosshair className="h-4 w-4" aria-hidden="true" />
               No focus card yet for today.
             </div>
             <Button
+              type="button"
               size="sm"
               variant="outline"
               className="h-7 text-xs"
               onClick={() => refreshMutation.mutate()}
               disabled={refreshMutation.isPending}
+              aria-busy={refreshMutation.isPending}
             >
-              <RefreshCw className={`h-3 w-3 mr-1 ${refreshMutation.isPending ? "animate-spin" : ""}`} />
-              Generate
+              <RefreshCw className={`h-3 w-3 mr-1 ${refreshMutation.isPending ? "animate-spin" : ""}`} aria-hidden="true" />
+              {refreshMutation.isPending ? "Generating…" : "Generate"}
             </Button>
           </div>
         </CardContent>
@@ -64,17 +66,20 @@ export function FocusCard() {
       <CardContent className="py-4">
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-start gap-3">
-            <Crosshair className="h-4 w-4 text-indigo-600 mt-0.5 shrink-0" />
+            <Crosshair className="h-4 w-4 text-indigo-600 mt-0.5 shrink-0" aria-hidden="true" />
             <div className="text-sm whitespace-pre-wrap leading-relaxed">{focusCard}</div>
           </div>
           <Button
+            type="button"
             size="sm"
             variant="ghost"
             className="h-6 text-[10px] shrink-0"
             onClick={() => refreshMutation.mutate()}
             disabled={refreshMutation.isPending}
+            aria-busy={refreshMutation.isPending}
+            aria-label={refreshMutation.isPending ? "Regenerating focus card" : "Regenerate focus card"}
           >
-            <RefreshCw className={`h-2.5 w-2.5 ${refreshMutation.isPending ? "animate-spin" : ""}`} />
+            <RefreshCw className={`h-2.5 w-2.5 ${refreshMutation.isPending ? "animate-spin" : ""}`} aria-hidden="true" />
           </Button>
         </div>
       </CardContent>
