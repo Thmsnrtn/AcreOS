@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Check, X, ArrowLeft } from "lucide-react";
 import { AcreosLogo } from "@/components/acreos-logo";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { usd } from "@/lib/format";
 import { SkipToContent } from "@/components/skip-to-content";
 import { usePageMeta } from "@/hooks/use-document-title";
 
@@ -185,14 +186,14 @@ export default function PricingPage() {
                 <CardContent className="text-center space-y-4">
                   <div>
                     <span className="text-4xl font-bold tabular-nums">
-                      ${displayPrice}
+                      {usd(displayPrice, { noCents: true })}
                     </span>
                     {tier.price > 0 && (
                       <span className="text-muted-foreground text-sm">/mo</span>
                     )}
                     {annual && tier.yearlyPrice > 0 && (
                       <p className="text-xs text-muted-foreground mt-1 tabular-nums">
-                        ${tier.yearlyPrice}/year
+                        {usd(tier.yearlyPrice, { noCents: true })}/year
                       </p>
                     )}
                   </div>
@@ -255,7 +256,11 @@ export default function PricingPage() {
 
           <p className="text-center text-sm text-muted-foreground mt-8">
             Need custom enterprise pricing?{" "}
-            <a href="mailto:support@acreos.io" className="text-primary hover:underline">
+            <a
+              href="mailto:support@acreos.io"
+              aria-label="Email support@acreos.io for enterprise pricing"
+              className="text-primary hover:underline"
+            >
               Contact us
             </a>
             .
