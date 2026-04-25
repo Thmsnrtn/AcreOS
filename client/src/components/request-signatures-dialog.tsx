@@ -144,8 +144,8 @@ export function RequestSignaturesDialog({
 
         {links ? (
           <div className="space-y-3">
-            <div className="flex items-start gap-2 rounded-md bg-emerald-500/5 border border-emerald-500/20 p-3 text-sm">
-              <CheckCircle2 className="h-4 w-4 text-emerald-600 mt-0.5 shrink-0" />
+            <div role="status" aria-live="polite" className="flex items-start gap-2 rounded-md bg-emerald-500/5 border border-emerald-500/20 p-3 text-sm">
+              <CheckCircle2 className="h-4 w-4 text-emerald-600 mt-0.5 shrink-0" aria-hidden="true" />
               <div>
                 <p className="font-medium text-foreground">Signing links ready</p>
                 <p className="text-xs text-muted-foreground">
@@ -154,9 +154,9 @@ export function RequestSignaturesDialog({
                 </p>
               </div>
             </div>
-            <div className="space-y-2">
+            <ul aria-label="Signing links" className="space-y-2 list-none p-0 m-0">
               {links.map((link) => (
-                <div key={link.signerId} className="rounded-md border p-3 space-y-2">
+                <li key={link.signerId} className="rounded-md border p-3 space-y-2">
                   <div className="flex items-center justify-between gap-2 flex-wrap">
                     <div className="min-w-0">
                       <p className="font-medium text-sm">
@@ -175,9 +175,9 @@ export function RequestSignaturesDialog({
                   <pre className="text-[10px] bg-muted/40 rounded px-2 py-1 overflow-x-auto whitespace-pre-wrap break-all">
                     {link.url}
                   </pre>
-                </div>
+                </li>
               ))}
-            </div>
+            </ul>
           </div>
         ) : (
           <form
@@ -239,15 +239,15 @@ export function RequestSignaturesDialog({
                     size="icon"
                     onClick={() => removeSigner(i)}
                     disabled={signers.length <= 1}
-                    aria-label={`Remove signer ${i + 1}`}
+                    aria-label={`Remove signer ${s.name.trim() || i + 1}`}
                   >
-                    <Trash2 className="h-4 w-4" />
+                    <Trash2 className="h-4 w-4" aria-hidden="true" />
                   </Button>
                 </div>
               </div>
             ))}
             <Button type="button" variant="outline" size="sm" onClick={addSigner}>
-              <Plus className="h-3 w-3 mr-1" /> Add another signer
+              <Plus className="h-3 w-3 mr-1" aria-hidden="true" /> Add another signer
             </Button>
           </form>
         )}
@@ -260,13 +260,13 @@ export function RequestSignaturesDialog({
               <Button type="button" variant="outline" onClick={() => handleClose(false)} disabled={mutation.isPending}>
                 Cancel
               </Button>
-              <Button type="submit" form="request-signatures-form" disabled={mutation.isPending}>
+              <Button type="submit" form="request-signatures-form" disabled={mutation.isPending} aria-busy={mutation.isPending}>
                 {mutation.isPending ? (
-                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                  <Loader2 className="h-4 w-4 mr-1 animate-spin" aria-hidden="true" />
                 ) : (
-                  <Send className="h-4 w-4 mr-1" />
+                  <Send className="h-4 w-4 mr-1" aria-hidden="true" />
                 )}
-                Generate signing links
+                {mutation.isPending ? "Generating…" : "Generate signing links"}
               </Button>
             </>
           )}
