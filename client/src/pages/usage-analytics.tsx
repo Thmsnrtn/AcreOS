@@ -4,6 +4,8 @@ import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useDocumentTitle } from "@/hooks/use-document-title";
+import { usd } from "@/lib/format";
 import { BarChart3, TrendingUp, DollarSign, Activity } from "lucide-react";
 
 const PERIODS = [
@@ -15,11 +17,11 @@ const PERIODS = [
 const ACTION_LABELS: Record<string, string> = {
   email_sent: "Emails",
   sms_sent: "SMS",
-  ai_chat: "AI Chat",
-  ai_image: "AI Images",
+  ai_chat: "AI chat",
+  ai_image: "AI images",
   pdf_generated: "PDFs",
   comps_query: "Comps",
-  direct_mail: "Direct Mail",
+  direct_mail: "Direct mail",
 };
 
 const ACTION_COLORS: Record<string, string> = {
@@ -33,6 +35,7 @@ const ACTION_COLORS: Record<string, string> = {
 };
 
 export default function UsageAnalyticsPage() {
+  useDocumentTitle("Usage analytics");
   const [period, setPeriod] = useState("30d");
 
   const { data, isLoading } = useQuery<{
@@ -63,13 +66,15 @@ export default function UsageAnalyticsPage() {
   return (
     <PageShell>
       {/* Period selector */}
-      <div className="flex gap-2">
+      <div role="group" aria-label="Select time period" className="flex gap-2">
         {PERIODS.map((p) => (
           <Button
             key={p.value}
             variant={period === p.value ? "default" : "outline"}
             size="sm"
             onClick={() => setPeriod(p.value)}
+            aria-pressed={period === p.value}
+            className="min-h-9"
           >
             {p.label}
           </Button>
@@ -77,14 +82,14 @@ export default function UsageAnalyticsPage() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <CardContent className="p-5">
             <div className="flex items-center gap-3">
-              <Activity className="w-5 h-5 text-primary" />
+              <Activity className="w-5 h-5 text-primary" aria-hidden="true" />
               <div>
-                <p className="text-sm text-muted-foreground">Total Actions</p>
-                <p className="text-2xl font-bold">{isLoading ? "—" : totalActions.toLocaleString()}</p>
+                <dt className="text-sm text-muted-foreground">Total actions</dt>
+                <dd className="text-2xl font-bold tabular-nums">{isLoading ? "—" : totalActions.toLocaleString()}</dd>
               </div>
             </div>
           </CardContent>
@@ -92,10 +97,12 @@ export default function UsageAnalyticsPage() {
         <Card>
           <CardContent className="p-5">
             <div className="flex items-center gap-3">
-              <DollarSign className="w-5 h-5 text-primary" />
+              <DollarSign className="w-5 h-5 text-primary" aria-hidden="true" />
               <div>
-                <p className="text-sm text-muted-foreground">Total Cost</p>
-                <p className="text-2xl font-bold">{isLoading ? "—" : `$${((data?.totalCostCents || 0) / 100).toFixed(2)}`}</p>
+                <dt className="text-sm text-muted-foreground">Total cost</dt>
+                <dd className="text-2xl font-bold tabular-nums">
+                  {isLoading ? "—" : usd((data?.totalCostCents || 0) / 100)}
+                </dd>
               </div>
             </div>
           </CardContent>
@@ -103,10 +110,12 @@ export default function UsageAnalyticsPage() {
         <Card>
           <CardContent className="p-5">
             <div className="flex items-center gap-3">
-              <TrendingUp className="w-5 h-5 text-primary" />
+              <TrendingUp className="w-5 h-5 text-primary" aria-hidden="true" />
               <div>
-                <p className="text-sm text-muted-foreground">Top Action</p>
-                <p className="text-2xl font-bold">{isLoading ? "—" : ACTION_LABELS[topAction?.[0] || ""] || topAction?.[0] || "None"}</p>
+                <dt className="text-sm text-muted-foreground">Top action</dt>
+                <dd className="text-2xl font-bold">
+                  {isLoading ? "—" : ACTION_LABELS[topAction?.[0] || ""] || topAction?.[0] || "None"}
+                </dd>
               </div>
             </div>
           </CardContent>
@@ -114,48 +123,57 @@ export default function UsageAnalyticsPage() {
         <Card>
           <CardContent className="p-5">
             <div className="flex items-center gap-3">
-              <BarChart3 className="w-5 h-5 text-primary" />
+              <BarChart3 className="w-5 h-5 text-primary" aria-hidden="true" />
               <div>
-                <p className="text-sm text-muted-foreground">Active Days</p>
-                <p className="text-2xl font-bold">{isLoading ? "—" : data?.series.length || 0}</p>
+                <dt className="text-sm text-muted-foreground">Active days</dt>
+                <dd className="text-2xl font-bold tabular-nums">{isLoading ? "—" : data?.series.length || 0}</dd>
               </div>
             </div>
           </CardContent>
         </Card>
-      </div>
+      </dl>
 
       {/* Usage chart */}
       <Card>
         <CardHeader>
-          <CardTitle>Daily Usage</CardTitle>
+          <CardTitle>Daily usage</CardTitle>
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="h-48 flex items-center justify-center text-muted-foreground">Tallying daily usage…</div>
+            <div className="h-48 flex items-center justify-center text-muted-foreground" role="status" aria-live="polite">
+              Tallying daily usage…
+            </div>
           ) : !data?.series.length ? (
-            <div className="h-48 flex items-center justify-center text-muted-foreground">No usage data for this period</div>
+            <div className="h-48 flex items-center justify-center text-muted-foreground">No usage data for this period.</div>
           ) : (
-            <div className="space-y-1">
+            <ul className="space-y-1" aria-label="Daily usage breakdown">
               {data.series.slice(-30).map((day) => {
                 const dayTotal = Object.values(day.actions).reduce((s, a) => s + a.count, 0);
                 return (
-                  <div key={day.date} className="flex items-center gap-2 text-xs">
-                    <span className="w-16 text-muted-foreground shrink-0">{new Date(day.date + "T00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
-                    <div className="flex-1 flex h-5 rounded overflow-hidden bg-muted/30">
+                  <li key={day.date} className="flex items-center gap-2 text-xs">
+                    <span className="w-16 text-muted-foreground shrink-0 tabular-nums">
+                      {new Date(day.date + "T00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                    </span>
+                    <div
+                      className="flex-1 flex h-5 rounded overflow-hidden bg-muted/30"
+                      role="img"
+                      aria-label={`${day.date}: ${dayTotal} total actions`}
+                    >
                       {Object.entries(day.actions).map(([action, { count }]) => (
                         <div
                           key={action}
                           className={`${ACTION_COLORS[action] || "bg-gray-400"} transition-all`}
                           style={{ width: `${(count / maxDaily) * 100}%` }}
                           title={`${ACTION_LABELS[action] || action}: ${count}`}
+                          aria-hidden="true"
                         />
                       ))}
                     </div>
-                    <span className="w-8 text-right text-muted-foreground">{dayTotal}</span>
-                  </div>
+                    <span className="w-8 text-right text-muted-foreground tabular-nums">{dayTotal}</span>
+                  </li>
                 );
               })}
-            </div>
+            </ul>
           )}
         </CardContent>
       </Card>
@@ -163,31 +181,32 @@ export default function UsageAnalyticsPage() {
       {/* Breakdown by action type */}
       <Card>
         <CardHeader>
-          <CardTitle>Breakdown by Type</CardTitle>
+          <CardTitle>Breakdown by type</CardTitle>
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="text-muted-foreground">Grouping usage by type…</div>
+            <div className="text-muted-foreground" role="status" aria-live="polite">Grouping usage by type…</div>
+          ) : Object.keys(data?.totals || {}).length === 0 ? (
+            <div className="text-muted-foreground text-center py-4">No usage data for this period.</div>
           ) : (
-            <div className="space-y-3">
+            <ul className="space-y-3" aria-label="Usage by action type">
               {Object.entries(data?.totals || {})
                 .sort(([, a], [, b]) => b.count - a.count)
                 .map(([action, { count, costCents }]) => (
-                  <div key={action} className="flex items-center justify-between">
+                  <li key={action} className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div className={`w-3 h-3 rounded-full ${ACTION_COLORS[action] || "bg-gray-400"}`} />
+                      <div className={`w-3 h-3 rounded-full ${ACTION_COLORS[action] || "bg-gray-400"}`} aria-hidden="true" />
                       <span className="font-medium">{ACTION_LABELS[action] || action}</span>
                     </div>
                     <div className="flex items-center gap-4">
-                      <Badge variant="outline">{count.toLocaleString()} actions</Badge>
-                      <span className="text-sm text-muted-foreground w-16 text-right">${(costCents / 100).toFixed(2)}</span>
+                      <Badge variant="outline">
+                        <span className="tabular-nums">{count.toLocaleString()}</span> action{count === 1 ? "" : "s"}
+                      </Badge>
+                      <span className="text-sm text-muted-foreground w-16 text-right tabular-nums">{usd(costCents / 100)}</span>
                     </div>
-                  </div>
+                  </li>
                 ))}
-              {Object.keys(data?.totals || {}).length === 0 && (
-                <div className="text-muted-foreground text-center py-4">No usage data for this period</div>
-              )}
-            </div>
+            </ul>
           )}
         </CardContent>
       </Card>
