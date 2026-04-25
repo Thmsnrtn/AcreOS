@@ -163,7 +163,7 @@ export function SavedViewsSelector({
             {selectedView ? (
               <>
                 {selectedView.name}
-                {selectedView.isDefault && <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" />}
+                {selectedView.isDefault && <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" aria-hidden="true" />}
               </>
             ) : (
               <>
@@ -208,7 +208,7 @@ export function SavedViewsSelector({
               data-testid={`dropdown-view-${view.id}`}
             >
               <div className="flex items-center gap-2">
-                {view.isDefault && <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" />}
+                {view.isDefault && <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" aria-hidden="true" />}
                 {view.name}
                 {view.isShared && <Badge variant="secondary" className="text-xs">Shared</Badge>}
               </div>
@@ -283,19 +283,28 @@ export function SavedViewsSelector({
       <Dialog open={isSaveDialogOpen} onOpenChange={setIsSaveDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Save View</DialogTitle>
+            <DialogTitle>Save view</DialogTitle>
             <DialogDescription>
               Save the current filters, sort order, and column visibility as a reusable view.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <form
+            id="save-view-form"
+            className="space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (newViewName.trim() && !createMutation.isPending) handleSaveView();
+            }}
+          >
             <div className="space-y-2">
-              <Label htmlFor="viewName">View Name</Label>
+              <Label htmlFor="viewName">View name</Label>
               <Input
                 id="viewName"
                 value={newViewName}
                 onChange={(e) => setNewViewName(e.target.value)}
-                placeholder="e.g., Hot Leads, Active Properties"
+                placeholder="e.g., Hot leads, Active properties"
+                autoCapitalize="sentences"
+                required
                 data-testid="input-view-name"
               />
             </div>
@@ -310,17 +319,18 @@ export function SavedViewsSelector({
                 Share with team members
               </Label>
             </div>
-          </div>
+          </form>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsSaveDialogOpen(false)} data-testid="button-cancel-save">
+            <Button type="button" variant="outline" onClick={() => setIsSaveDialogOpen(false)} data-testid="button-cancel-save">
               Cancel
             </Button>
-            <Button 
-              onClick={handleSaveView}
+            <Button
+              type="submit"
+              form="save-view-form"
               disabled={!newViewName.trim() || createMutation.isPending}
               data-testid="button-confirm-save"
             >
-              Save View
+              Save view
             </Button>
           </DialogFooter>
         </DialogContent>
