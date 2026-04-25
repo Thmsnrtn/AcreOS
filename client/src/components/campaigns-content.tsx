@@ -16,6 +16,7 @@ const campaignFormSchema = insertCampaignSchema.omit({ organizationId: true });
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -843,9 +844,9 @@ function SendMailDialog({
 
         <div className="space-y-4 py-4">
           <div className="space-y-2">
-            <label className="text-sm font-medium">Mail piece type</label>
+            <Label htmlFor="piece-type-trigger">Mail piece type</Label>
             <Select value={pieceType} onValueChange={handlePieceTypeChange}>
-              <SelectTrigger aria-label="Mail piece type" data-testid="select-piece-type">
+              <SelectTrigger id="piece-type-trigger" aria-label="Mail piece type" data-testid="select-piece-type">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
