@@ -5074,6 +5074,7 @@ function PricingSection() {
                       <>
                         <Input
                           type="number"
+                          inputMode="numeric"
                           className="h-8 w-24 text-sm"
                           placeholder="Monthly ¢"
                           value={draftPrices.monthly}
@@ -5081,6 +5082,7 @@ function PricingSection() {
                         />
                         <Input
                           type="number"
+                          inputMode="numeric"
                           className="h-8 w-24 text-sm"
                           placeholder="Yearly ¢"
                           value={draftPrices.yearly}
@@ -5144,7 +5146,7 @@ function PricingSection() {
                     <div className="grid grid-cols-2 gap-2">
                       <Input placeholder="Label (e.g. Spring Sale)" className="h-8 text-sm"
                         value={promoForm.label} onChange={(e) => setPromoForm((p) => p ? { ...p, label: e.target.value } : null)} />
-                      <Input type="number" min="1" max="99" placeholder="Discount %" className="h-8 text-sm"
+                      <Input type="number" inputMode="numeric" min="1" max="99" placeholder="Discount %" className="h-8 text-sm"
                         value={promoForm.discount} onChange={(e) => setPromoForm((p) => p ? { ...p, discount: e.target.value } : null)} />
                       <Input type="datetime-local" className="h-8 text-sm col-span-2"
                         value={promoForm.endsAt} onChange={(e) => setPromoForm((p) => p ? { ...p, endsAt: e.target.value } : null)} />

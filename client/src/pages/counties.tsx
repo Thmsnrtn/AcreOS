@@ -362,9 +362,10 @@ function CountyForm({
               <FormItem>
                 <FormLabel>Population</FormLabel>
                 <FormControl>
-                  <Input 
+                  <Input
                     type="number"
-                    placeholder="e.g., 4500000" 
+                    inputMode="numeric"
+                    placeholder="e.g., 4500000"
                     {...field}
                     value={field.value || ""}
                     onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)}

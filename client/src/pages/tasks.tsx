@@ -327,13 +327,14 @@ export default function TasksPage() {
               <FormItem>
                 <FormLabel>Entity ID</FormLabel>
                 <FormControl>
-                  <Input 
-                    type="number" 
-                    placeholder="ID" 
-                    {...field} 
-                    value={field.value || ""} 
+                  <Input
+                    type="number"
+                    inputMode="numeric"
+                    placeholder="ID"
+                    {...field}
+                    value={field.value || ""}
                     onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : null)}
-                    data-testid="input-task-entity-id" 
+                    data-testid="input-task-entity-id"
                   />
                 </FormControl>
                 <FormMessage />
