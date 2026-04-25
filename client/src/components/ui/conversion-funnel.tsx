@@ -47,9 +47,13 @@ export function ConversionFunnel({
 }: ConversionFunnelProps) {
   const top = stages[0]?.count ?? 0;
 
+  const summary = stages.length > 0
+    ? `Conversion funnel: ${stages.map((s) => `${s.label} ${fmtCount(s.count)}`).join(", ")}`
+    : "Conversion funnel: no data";
+
   return (
-    <div className={cn("space-y-1.5", className)}>
-      <div className="flex items-stretch gap-0.5" style={{ height: barHeight }}>
+    <div className={cn("space-y-1.5", className)} role="img" aria-label={summary}>
+      <div className="flex items-stretch gap-0.5" style={{ height: barHeight }} aria-hidden="true">
         {stages.map((stage, idx) => {
           const widthPct =
             top > 0 ? Math.max(minWidthPct, (stage.count / top) * 100) : 100 / stages.length;
@@ -68,20 +72,20 @@ export function ConversionFunnel({
                   }}
                   data-testid={`funnel-stage-${stage.key}`}
                 >
-                  <span className="text-white text-[10px] font-bold truncate px-1">
+                  <span className="text-white text-[10px] font-bold truncate px-1 tabular-nums">
                     {stage.count > 0 ? fmtCount(stage.count) : ""}
                   </span>
                   {idx < stages.length - 1 && (
-                    <ChevronRight className="absolute -right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground z-10" />
+                    <ChevronRight className="absolute -right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground z-10" aria-hidden="true" />
                   )}
                 </div>
               </TooltipTrigger>
               <TooltipContent side="bottom" className="text-xs">
                 <div className="font-semibold">{stage.label}</div>
-                <div>{fmtCount(stage.count)}</div>
+                <div className="tabular-nums">{fmtCount(stage.count)}</div>
                 {convRate !== null && (
                   <div className="text-muted-foreground">
-                    {percent(convRate)} conv from prev
+                    <span className="tabular-nums">{percent(convRate)}</span> conv from prev
                   </div>
                 )}
               </TooltipContent>
@@ -91,18 +95,19 @@ export function ConversionFunnel({
       </div>
 
       {showLegend && (
-        <div className="flex items-center gap-4 flex-wrap">
+        <ul aria-label="Funnel stages" className="flex items-center gap-4 flex-wrap list-none p-0 m-0">
           {stages.map((stage) => (
-            <div key={stage.key} className="flex items-center gap-1.5">
-              <div
+            <li key={stage.key} className="flex items-center gap-1.5">
+              <span
+                aria-hidden="true"
                 className="w-2 h-2 rounded-full shrink-0"
                 style={{ backgroundColor: stage.color }}
               />
               <span className="text-[10px] text-muted-foreground">{stage.label}</span>
-              <span className="text-[10px] font-semibold">{fmtCount(stage.count)}</span>
-            </div>
+              <span className="text-[10px] font-semibold tabular-nums">{fmtCount(stage.count)}</span>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
     </div>
   );
