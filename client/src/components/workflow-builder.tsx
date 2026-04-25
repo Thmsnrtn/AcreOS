@@ -186,11 +186,16 @@ export function WorkflowBuilder({ open, onOpenChange, workflow, onSave, isSaving
         return (
           <div className="space-y-3" data-testid={`action-config-${action.id}`}>
             <div>
-              <Label>To (email or template variable)</Label>
+              <Label htmlFor={`input-email-to-${action.id}`}>To <span className="text-muted-foreground/70">(email or template variable)</span></Label>
               <Input
+                id={`input-email-to-${action.id}`}
                 placeholder="{{lead.email}} or user@example.com"
                 value={action.config.to || ""}
                 onChange={(e) => updateAction(action.id, { config: { ...action.config, to: e.target.value } })}
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
+                autoComplete="off"
                 data-testid={`input-email-to-${action.id}`}
               />
               <p className="text-xs text-muted-foreground mt-1">
@@ -198,21 +203,25 @@ export function WorkflowBuilder({ open, onOpenChange, workflow, onSave, isSaving
               </p>
             </div>
             <div>
-              <Label>Subject</Label>
+              <Label htmlFor={`input-email-subject-${action.id}`}>Subject</Label>
               <Input
+                id={`input-email-subject-${action.id}`}
                 placeholder="Welcome {{lead.firstName}}!"
                 value={action.config.subject || ""}
                 onChange={(e) => updateAction(action.id, { config: { ...action.config, subject: e.target.value } })}
+                autoCapitalize="sentences"
                 data-testid={`input-email-subject-${action.id}`}
               />
             </div>
             <div>
-              <Label>Body</Label>
+              <Label htmlFor={`textarea-email-body-${action.id}`}>Body</Label>
               <Textarea
-                placeholder="Hi {{lead.firstName}}, thank you for your interest..."
+                id={`textarea-email-body-${action.id}`}
+                placeholder="Hi {{lead.firstName}}, thank you for your interest…"
                 value={action.config.body || ""}
                 onChange={(e) => updateAction(action.id, { config: { ...action.config, body: e.target.value } })}
                 rows={4}
+                autoCapitalize="sentences"
                 data-testid={`textarea-email-body-${action.id}`}
               />
               <p className="text-xs text-muted-foreground mt-1">
@@ -226,29 +235,35 @@ export function WorkflowBuilder({ open, onOpenChange, workflow, onSave, isSaving
         return (
           <div className="space-y-3" data-testid={`action-config-${action.id}`}>
             <div>
-              <Label>Task Title</Label>
+              <Label htmlFor={`input-task-title-${action.id}`}>Task title</Label>
               <Input
+                id={`input-task-title-${action.id}`}
                 placeholder="Follow up with {{lead.firstName}}"
                 value={action.config.title || ""}
                 onChange={(e) => updateAction(action.id, { config: { ...action.config, title: e.target.value } })}
+                autoCapitalize="sentences"
                 data-testid={`input-task-title-${action.id}`}
               />
             </div>
             <div>
-              <Label>Description</Label>
+              <Label htmlFor={`textarea-task-description-${action.id}`}>Description</Label>
               <Textarea
-                placeholder="Task description..."
+                id={`textarea-task-description-${action.id}`}
+                placeholder="Task description…"
                 value={action.config.description || ""}
                 onChange={(e) => updateAction(action.id, { config: { ...action.config, description: e.target.value } })}
                 rows={2}
+                autoCapitalize="sentences"
                 data-testid={`textarea-task-description-${action.id}`}
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label>Due in (days)</Label>
+                <Label htmlFor={`input-task-due-${action.id}`}>Due in (days)</Label>
                 <Input
+                  id={`input-task-due-${action.id}`}
                   type="number"
+                  inputMode="numeric"
                   min={0}
                   placeholder="3"
                   value={action.config.dueInDays || ""}
@@ -257,12 +272,12 @@ export function WorkflowBuilder({ open, onOpenChange, workflow, onSave, isSaving
                 />
               </div>
               <div>
-                <Label>Priority</Label>
+                <Label htmlFor={`select-task-priority-${action.id}`}>Priority</Label>
                 <Select
                   value={action.config.priority || "medium"}
                   onValueChange={(v) => updateAction(action.id, { config: { ...action.config, priority: v as "low" | "medium" | "high" } })}
                 >
-                  <SelectTrigger data-testid={`select-task-priority-${action.id}`}>
+                  <SelectTrigger id={`select-task-priority-${action.id}`} data-testid={`select-task-priority-${action.id}`}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
