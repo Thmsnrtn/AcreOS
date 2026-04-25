@@ -61,10 +61,10 @@ function ItemCard({ item, onAction }: { item: DecisionsInboxItem; onAction: () =
     : "";
 
   return (
-    <div className="rounded-lg border bg-card p-4 space-y-3">
+    <li className="rounded-lg border bg-card p-4 space-y-3">
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-lg">{AGENT_AVATARS[(item as any).ownerAgentCodename || "sophie_csm"]}</span>
+          <span aria-hidden="true" className="text-lg">{AGENT_AVATARS[(item as any).ownerAgentCodename || "sophie_csm"]}</span>
           <Badge className={`text-xs border ${RISK_BADGE[item.riskLevel] ?? RISK_BADGE.medium}`}>
             {naturalRisk(item.riskLevel)}
           </Badge>
@@ -72,11 +72,13 @@ function ItemCard({ item, onAction }: { item: DecisionsInboxItem; onAction: () =
           <span className="text-xs text-muted-foreground">{naturalUrgency(item.urgencyScore)}</span>
         </div>
         <button
-          className="text-muted-foreground hover:text-foreground"
+          type="button"
+          className="text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
           onClick={() => setExpanded(e => !e)}
-          aria-label="Toggle context"
+          aria-expanded={expanded}
+          aria-label={expanded ? "Hide context" : "Show context"}
         >
-          {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          {expanded ? <ChevronUp className="h-4 w-4" aria-hidden="true" /> : <ChevronDown className="h-4 w-4" aria-hidden="true" />}
         </button>
       </div>
 
@@ -92,31 +94,37 @@ function ItemCard({ item, onAction }: { item: DecisionsInboxItem; onAction: () =
 
       <div className="flex items-center gap-2 flex-wrap">
         <Button
+          type="button"
           size="sm"
           className="bg-green-600 hover:bg-green-700 text-white"
           disabled={mutate.isPending}
+          aria-busy={mutate.isPending}
           onClick={() => mutate.mutate({ action: "approve" })}
         >
           Approve: {item.recommendedActionLabel}
         </Button>
         <Button
+          type="button"
           size="sm"
           variant="outline"
           disabled={mutate.isPending}
+          aria-busy={mutate.isPending}
           onClick={() => mutate.mutate({ action: "reject" })}
         >
-          <X className="h-3 w-3 mr-1" /> Reject
+          <X className="h-3 w-3 mr-1" aria-hidden="true" /> Reject
         </Button>
         <Button
+          type="button"
           size="sm"
           variant="outline"
           disabled={mutate.isPending}
+          aria-busy={mutate.isPending}
           onClick={() => mutate.mutate({ action: "defer", body: { hours: 24 } })}
         >
-          <Clock className="h-3 w-3 mr-1" /> Defer 24h
+          <Clock className="h-3 w-3 mr-1" aria-hidden="true" /> Defer 24h
         </Button>
       </div>
-    </div>
+    </li>
   );
 }
 
@@ -135,7 +143,7 @@ export function DecisionsInbox() {
     return (
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Decisions Inbox</CardTitle>
+          <CardTitle className="text-base">Decisions inbox</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-3 animate-pulse">
@@ -151,9 +159,9 @@ export function DecisionsInbox() {
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <CardTitle className="text-base">
-            Decisions Inbox
+            Decisions inbox
             {pending > 0 && (
-              <Badge className="ml-2 bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-900/30 dark:text-orange-300 text-xs">
+              <Badge className="ml-2 bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-900/30 dark:text-orange-300 text-xs tabular-nums" aria-label={`${pending} pending`}>
                 {pending}
               </Badge>
             )}
@@ -163,18 +171,20 @@ export function DecisionsInbox() {
       <CardContent className="space-y-3">
         {items.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8 text-center">
-            <CheckCircle2 className="h-10 w-10 text-green-500 mb-2" />
+            <CheckCircle2 className="h-10 w-10 text-green-500 mb-2" aria-hidden="true" />
             <p className="text-sm font-medium text-foreground">All clear. Sophie has handled everything.</p>
             <p className="text-xs text-muted-foreground mt-1">No decisions pending</p>
           </div>
         ) : (
-          items.map(item => (
-            <ItemCard
-              key={item.id}
-              item={item}
-              onAction={() => qc.invalidateQueries({ queryKey: ["/api/founder/intelligence/decisions-inbox"] })}
-            />
-          ))
+          <ul aria-label="Pending decisions" className="space-y-3 list-none p-0 m-0">
+            {items.map(item => (
+              <ItemCard
+                key={item.id}
+                item={item}
+                onAction={() => qc.invalidateQueries({ queryKey: ["/api/founder/intelligence/decisions-inbox"] })}
+              />
+            ))}
+          </ul>
         )}
       </CardContent>
     </Card>
