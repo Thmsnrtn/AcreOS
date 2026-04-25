@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { MessageSquarePlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -20,7 +19,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 /**
  * @deprecated FeedbackButton no longer renders its own floating
@@ -156,8 +154,8 @@ function FeedbackDialogInner({
                 <SelectValue placeholder="Select a category" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="bug">Bug Report</SelectItem>
-                <SelectItem value="feature_request">Feature Request</SelectItem>
+                <SelectItem value="bug">Bug report</SelectItem>
+                <SelectItem value="feature_request">Feature request</SelectItem>
                 <SelectItem value="confusion">Confusion</SelectItem>
                 <SelectItem value="other">Other</SelectItem>
               </SelectContent>
@@ -168,12 +166,13 @@ function FeedbackDialogInner({
             <Label htmlFor="feedback-message">Message</Label>
             <Textarea
               id="feedback-message"
-              placeholder="Tell us what happened, what you expected, or what you'd like to see..."
+              placeholder="Tell us what happened, what you expected, or what you'd like to see…"
               value={message}
               onChange={(e) => onMessageChange(e.target.value)}
               rows={4}
               minLength={10}
               required
+              autoCapitalize="sentences"
             />
             {message.length > 0 && message.trim().length < 10 && (
               <p className="text-xs text-muted-foreground">
@@ -205,7 +204,7 @@ function FeedbackDialogInner({
               Cancel
             </Button>
             <Button type="submit" disabled={submitting}>
-              {submitting ? "Sending..." : "Send Feedback"}
+              {submitting ? "Sending…" : "Send feedback"}
             </Button>
           </div>
         </form>
