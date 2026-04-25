@@ -805,6 +805,7 @@ to a dedicated 9b slice.
 **SupportContent create-case (219):** ✅ complete — create-support-case dialog converted to `<form id>`, subject + message Textarea both autoCapitalize=sentences + required, sentence-case throughout. (commit `141c284`)
 **SupportContent feature-request (220):** ✅ complete — slice 220 milestone. submit-feature-request dialog converted to `<form id>`, title + description Textarea both autoCapitalize=sentences + required, Category SelectTrigger gained id↔htmlFor, sentence-case for all enum labels. (commit `cee35f0`)
 **campaigns-content Label htmlFor (221):** ✅ complete — send-direct-mail dialog raw `<label>` replaced with shadcn `<Label htmlFor>` linked to piece-type SelectTrigger id. Label component imported. (commit `77e496a`)
+**campaigns-form campaign-type Label (222):** ✅ complete — CampaignForm "Type" Select raw `<label>` replaced with `<Label htmlFor>` matched to SelectTrigger id. (commit `536d5e8`)
 **/onboarding-v2 targeted (18):** ✅ complete (commit `70df779`) — 18b deferred
 **/settings targeted (19):** ✅ complete (commit `809044c`) — 19b remaining components deferred
 **/pipeline (20):** ✅ complete (commit `1b5d0f7`)
