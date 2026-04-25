@@ -105,10 +105,10 @@ export default function BulkActionBar({
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader>
-                    <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                    <AlertDialogTitle>{action.label} {selectedCount} {entityLabel}{selectedCount !== 1 ? "s" : ""}?</AlertDialogTitle>
                     <AlertDialogDescription>
                       {action.confirmMessage ||
-                        `This will ${action.label.toLowerCase()} ${selectedCount} ${entityLabel}(s). This action cannot be undone.`}
+                        `This will ${action.label.toLowerCase()} ${selectedCount} ${entityLabel}${selectedCount !== 1 ? "s" : ""}. This action cannot be undone.`}
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
