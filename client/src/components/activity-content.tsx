@@ -140,11 +140,11 @@ export function ActivityContent() {
                     </div>
                     
                     {route && activity.entityId && (
-                      <Link href={route}>
-                        <Button variant="ghost" size="icon" aria-label="View details" data-testid={`button-activity-nav-${activity.id}`}>
-                          <ChevronRight className="w-4 h-4" />
-                        </Button>
-                      </Link>
+                      <Button asChild variant="ghost" size="icon" data-testid={`button-activity-nav-${activity.id}`}>
+                        <Link href={route} aria-label={`View ${activity.entityType} details`}>
+                          <ChevronRight className="w-4 h-4" aria-hidden="true" />
+                        </Link>
+                      </Button>
                     )}
                   </div>
                 );

@@ -628,11 +628,11 @@ export function DailyDealFeed({ compact = false }: { compact?: boolean }) {
           <p className="text-xs text-muted-foreground">
             We'll scan daily and surface the best opportunities for your strategy.
           </p>
-          <Link href="/settings">
-            <Button variant="outline" size="sm">
-              Configure Target Counties <ArrowRight className="w-3 h-3 ml-1" />
-            </Button>
-          </Link>
+          <Button asChild variant="outline" size="sm">
+            <Link href="/settings">
+              Configure target counties <ArrowRight className="w-3 h-3 ml-1" aria-hidden="true" />
+            </Link>
+          </Button>
         </CardContent>
       </Card>
     );
@@ -674,11 +674,11 @@ export function DailyDealFeed({ compact = false }: { compact?: boolean }) {
         </AnimatePresence>
 
         {opportunities.length > 3 && (
-          <Link href="/deal-feed">
-            <Button variant="ghost" size="sm" className="w-full text-xs">
-              View All {opportunities.length} <ArrowRight className="w-3 h-3 ml-1" />
-            </Button>
-          </Link>
+          <Button asChild variant="ghost" size="sm" className="w-full text-xs">
+            <Link href="/deal-feed">
+              View all <span className="tabular-nums">{opportunities.length}</span> <ArrowRight className="w-3 h-3 ml-1" aria-hidden="true" />
+            </Link>
+          </Button>
         )}
       </div>
     );

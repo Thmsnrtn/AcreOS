@@ -59,9 +59,9 @@ export default function ResetPasswordPage() {
             <p className="text-muted-foreground text-sm">
               This password reset link is missing a token. It may have been copied incorrectly or expired.
             </p>
-            <Link href="/forgot-password">
-              <Button variant="outline" className="min-h-11">Request new link</Button>
-            </Link>
+            <Button asChild variant="outline" className="min-h-11">
+              <Link href="/forgot-password">Request new link</Link>
+            </Button>
           </CardContent>
         </Card>
       </div>

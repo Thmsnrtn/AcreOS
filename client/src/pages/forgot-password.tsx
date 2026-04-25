@@ -35,12 +35,12 @@ export default function ForgotPasswordPage() {
       <Card className="w-full max-w-md">
         <CardContent className="p-8 space-y-6">
           <div className="space-y-1">
-            <Link href="/auth">
-              <Button variant="ghost" size="sm" className="-ml-2 min-h-11">
+            <Button asChild variant="ghost" size="sm" className="-ml-2 min-h-11">
+              <Link href="/auth">
                 <ArrowLeft className="w-4 h-4 mr-2" aria-hidden="true" />
                 Back to sign in
-              </Button>
-            </Link>
+              </Link>
+            </Button>
             <h1 className="text-2xl font-bold">Forgot your password?</h1>
             <p className="text-muted-foreground text-sm">
               Enter your email and we'll send you a reset link.
@@ -54,9 +54,9 @@ export default function ForgotPasswordPage() {
                 If an account exists for <strong>{email}</strong>, you'll receive a
                 reset link within a few minutes.
               </p>
-              <Link href="/auth">
-                <Button variant="outline" className="mt-2 min-h-11">Return to sign in</Button>
-              </Link>
+              <Button asChild variant="outline" className="mt-2 min-h-11">
+                <Link href="/auth">Return to sign in</Link>
+              </Button>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
