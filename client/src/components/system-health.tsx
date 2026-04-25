@@ -117,38 +117,39 @@ export function SystemHealth() {
     <Card data-testid="card-system-health">
       <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
         <CardTitle className="flex items-center gap-2 text-sm font-medium">
-          <Activity className="h-4 w-4" />
-          System Health
+          <Activity className="h-4 w-4" aria-hidden="true" />
+          System health
         </CardTitle>
         <div className="flex items-center gap-2">
           {healthData && (
             <span className={`text-sm font-medium ${getOverallStatusColor(healthData.overall)}`} data-testid="text-overall-status">
-              {healthData.overall === 'healthy' && 'All Systems Operational'}
-              {healthData.overall === 'degraded' && 'Some Services Degraded'}
-              {healthData.overall === 'unavailable' && 'Services Unavailable'}
-              {healthData.overall === 'unconfigured' && 'Services Need Configuration'}
+              {healthData.overall === 'healthy' && 'All systems operational'}
+              {healthData.overall === 'degraded' && 'Some services degraded'}
+              {healthData.overall === 'unavailable' && 'Services unavailable'}
+              {healthData.overall === 'unconfigured' && 'Services need configuration'}
             </span>
           )}
-          <Button 
-            size="icon" 
-            variant="ghost" 
+          <Button
+            size="icon"
+            variant="ghost"
             onClick={handleRefresh}
             disabled={isRefreshing}
             aria-label="Refresh health status"
             data-testid="button-refresh-health"
           >
             {isRefreshing ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
             ) : (
-              <RefreshCw className="h-4 w-4" />
+              <RefreshCw className="h-4 w-4" aria-hidden="true" />
             )}
           </Button>
         </div>
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <div className="flex items-center justify-center py-4">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          <div className="flex items-center justify-center py-4" role="status" aria-busy="true" aria-label="Loading system health">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" aria-hidden="true" />
+            <span className="sr-only">Loading…</span>
           </div>
         ) : healthData ? (
           <Collapsible open={isOpen} onOpenChange={setIsOpen}>
