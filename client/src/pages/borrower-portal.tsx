@@ -1204,13 +1204,13 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
                   <Table>
                     <TableHeader className="sticky top-0 bg-card z-10">
                       <TableRow>
-                        <TableHead className="text-xs sm:text-sm">#</TableHead>
-                        <TableHead className="text-xs sm:text-sm">Due date</TableHead>
-                        <TableHead className="text-right text-xs sm:text-sm">Payment</TableHead>
-                        <TableHead className="text-right hidden sm:table-cell">Principal</TableHead>
-                        <TableHead className="text-right hidden sm:table-cell">Interest</TableHead>
-                        <TableHead className="text-right hidden md:table-cell">Balance</TableHead>
-                        <TableHead>Status</TableHead>
+                        <TableHead scope="col" className="text-xs sm:text-sm">#</TableHead>
+                        <TableHead scope="col" className="text-xs sm:text-sm">Due date</TableHead>
+                        <TableHead scope="col" className="text-right text-xs sm:text-sm">Payment</TableHead>
+                        <TableHead scope="col" className="text-right hidden sm:table-cell">Principal</TableHead>
+                        <TableHead scope="col" className="text-right hidden sm:table-cell">Interest</TableHead>
+                        <TableHead scope="col" className="text-right hidden md:table-cell">Balance</TableHead>
+                        <TableHead scope="col">Status</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1224,7 +1224,9 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
                         schedule.map((row) => (
                           <TableRow key={row.paymentNumber} data-testid={`schedule-row-${row.paymentNumber}`}>
                             <TableCell className="font-medium text-xs sm:text-sm tabular-nums">{row.paymentNumber}</TableCell>
-                            <TableCell className="text-xs sm:text-sm tabular-nums">{format(new Date(row.dueDate), 'MMM d, yyyy')}</TableCell>
+                            <TableCell className="text-xs sm:text-sm tabular-nums">
+                              <time dateTime={new Date(row.dueDate).toISOString()}>{format(new Date(row.dueDate), 'MMM d, yyyy')}</time>
+                            </TableCell>
                             <TableCell className="text-right font-mono text-xs sm:text-sm tabular-nums">${row.payment.toFixed(2)}</TableCell>
                             <TableCell className="text-right font-mono text-muted-foreground hidden sm:table-cell tabular-nums">
                               ${row.principal.toFixed(2)}
@@ -1237,6 +1239,7 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
                               <Badge
                                 variant={row.status === 'paid' ? 'default' : row.status === 'late' ? 'destructive' : 'secondary'}
                                 className="text-xs capitalize"
+                                aria-label={`Payment status: ${row.status}`}
                               >
                                 {row.status}
                               </Badge>
