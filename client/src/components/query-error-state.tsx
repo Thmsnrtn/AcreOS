@@ -58,24 +58,24 @@ function getErrorConfig(type: ErrorType, error: Error | null) {
     case "auth":
       return {
         icon: Shield,
-        title: "Authentication Required",
-        description: "Your session may have expired. Please sign in again to continue.",
+        title: "Authentication required",
+        description: "Your session may have expired. Sign in again to continue.",
         iconColor: "text-orange-600",
         bgColor: "from-orange-500/20 to-orange-500/5",
       };
     case "notFound":
       return {
         icon: Database,
-        title: "Data Not Found",
-        description: "The requested data could not be found. It may have been moved or deleted.",
+        title: "Data not found",
+        description: "The requested data couldn't be found. It may have been moved or deleted.",
         iconColor: "text-slate-600",
         bgColor: "from-slate-500/20 to-slate-500/5",
       };
     default:
       return {
         icon: AlertCircle,
-        title: "Something Went Wrong",
-        description: error?.message || "An unexpected error occurred. Please try again.",
+        title: "Something went wrong",
+        description: error?.message || "An unexpected error occurred. Try again.",
         iconColor: "text-destructive",
         bgColor: "from-destructive/20 to-destructive/5",
       };
@@ -98,10 +98,10 @@ export function QueryErrorState({
 
   if (compact) {
     return (
-      <Card className={`border-destructive/30 ${className}`} data-testid={testId}>
+      <Card className={`border-destructive/30 ${className}`} data-testid={testId} role="alert" aria-live="polite">
         <CardContent className="p-4">
           <div className="flex items-center gap-3">
-            <div className={`p-2 rounded-full bg-gradient-to-br ${config.bgColor}`}>
+            <div className={`p-2 rounded-full bg-gradient-to-br ${config.bgColor}`} aria-hidden="true">
               <Icon className={`w-5 h-5 ${config.iconColor}`} />
             </div>
             <div className="flex-1 min-w-0">
@@ -119,9 +119,10 @@ export function QueryErrorState({
                 onClick={onRetry}
                 disabled={isRetrying}
                 className="shrink-0"
+                aria-label={isRetrying ? "Retrying" : "Retry"}
                 data-testid={`${testId}-retry-button`}
               >
-                <RefreshCw className={`w-4 h-4 ${isRetrying ? "animate-spin" : ""}`} />
+                <RefreshCw className={`w-4 h-4 ${isRetrying ? "animate-spin" : ""}`} aria-hidden="true" />
               </Button>
             )}
           </div>
@@ -145,6 +146,7 @@ export function QueryErrorState({
         animate={{ scale: 1 }}
         transition={{ type: "spring", stiffness: 200, damping: 15, delay: 0.1 }}
         className={`w-20 h-20 rounded-full bg-gradient-to-br ${config.bgColor} flex items-center justify-center mb-6`}
+        aria-hidden="true"
       >
         <Icon className={`w-10 h-10 ${config.iconColor}`} />
       </motion.div>
@@ -169,8 +171,8 @@ export function QueryErrorState({
             className="min-h-[44px] md:min-h-9"
             data-testid={`${testId}-retry-button`}
           >
-            <RefreshCw className={`w-4 h-4 mr-2 ${isRetrying ? "animate-spin" : ""}`} />
-            {isRetrying ? "Retrying..." : "Try Again"}
+            <RefreshCw className={`w-4 h-4 mr-2 ${isRetrying ? "animate-spin" : ""}`} aria-hidden="true" />
+            {isRetrying ? "Retrying…" : "Try again"}
           </Button>
         )}
 
