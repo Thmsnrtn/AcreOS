@@ -3287,11 +3287,11 @@ export default function FounderDashboard() {
                           variant="ghost"
                           onClick={() => deleteGisEndpointMutation.mutate(endpoint.id)}
                           disabled={deleteGisEndpointMutation.isPending}
-                          aria-label="Delete endpoint"
+                          aria-label={`Delete endpoint ${endpoint.county}, ${endpoint.state}`}
                           data-testid={`button-delete-gis-${endpoint.id}`}
-                          title="Delete endpoint"
+                          title={`Delete endpoint ${endpoint.county}, ${endpoint.state}`}
                         >
-                          <Trash2 className="w-4 h-4 text-muted-foreground" />
+                          <Trash2 className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
                         </Button>
                       </span>
                     </div>

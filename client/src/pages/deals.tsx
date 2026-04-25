@@ -1374,7 +1374,14 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
               </div>
             </div>
             <div className="flex items-center gap-1 flex-shrink-0">
-              <Button size="icon" variant="ghost" onClick={onDelete} className="min-h-[44px] min-w-[44px]" aria-label="Delete deal" data-testid="button-delete-deal">
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={onDelete}
+                className="min-h-[44px] min-w-[44px]"
+                aria-label={`Delete ${deal.property ? `${deal.property.county}, ${deal.property.state}` : `deal #${deal.id}`}`}
+                data-testid="button-delete-deal"
+              >
                 <Trash2 className="w-5 h-5 text-destructive" aria-hidden="true" />
               </Button>
               <Button size="icon" variant="ghost" onClick={onClose} className="min-h-[44px] min-w-[44px]" aria-label="Close drawer">

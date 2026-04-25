@@ -974,7 +974,7 @@ function PropertyCard({ property, onDelete }: {
               e.stopPropagation();
               onDelete();
             }}
-            aria-label="Delete property"
+            aria-label={`Delete property ${property.county}, ${property.state}`}
             data-testid={`button-delete-property-${property.id}`}
           >
             <Trash2 className="w-4 h-4 sm:w-3 sm:h-3" aria-hidden="true" />
