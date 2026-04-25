@@ -2,9 +2,10 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Check, X, Sparkles } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
+import { usd } from "@/lib/format";
 
 export type TierKey = "free" | "starter" | "pro";
 
@@ -22,7 +23,7 @@ const LAUNCH_TIERS = [
     price: 0,
     yearlyPrice: 0,
     description: "Explore the platform",
-    cta: "Get Started",
+    cta: "Get started",
     highlighted: false,
   },
   {
@@ -31,7 +32,7 @@ const LAUNCH_TIERS = [
     price: 20,
     yearlyPrice: 192,
     description: "Replace your spreadsheet",
-    cta: "Start Free Trial",
+    cta: "Start free trial",
     highlighted: false,
   },
   {
@@ -40,7 +41,7 @@ const LAUNCH_TIERS = [
     price: 49,
     yearlyPrice: 470,
     description: "For serious operators",
-    cta: "Start Free Trial",
+    cta: "Start free trial",
     highlighted: true,
   },
 ];
@@ -49,17 +50,17 @@ const FEATURES: TierFeature[] = [
   { name: "Leads", free: "25", starter: "250", pro: "500" },
   { name: "Properties", free: "5", starter: "50", pro: "100" },
   { name: "Notes", free: "3", starter: "25", pro: "50" },
-  { name: "AI Requests", free: "50", starter: "500", pro: "1,000" },
+  { name: "AI requests", free: "50", starter: "500", pro: "1,000" },
   { name: "Campaigns", free: false, starter: "5", pro: "Unlimited" },
   { name: "Sequences", free: false, starter: "2", pro: "Unlimited" },
-  { name: "BYOK Data Providers", free: false, starter: false, pro: true },
-  { name: "Team Seats", free: "1", starter: "1", pro: "2" },
-  { name: "Data Sources (6 free + 3 premium)", free: true, starter: true, pro: true },
+  { name: "BYOK data providers", free: false, starter: false, pro: true },
+  { name: "Team seats", free: "1", starter: "1", pro: "2" },
+  { name: "Data sources (6 free + 3 premium)", free: true, starter: true, pro: true },
 ];
 
 function FeatureCell({ value }: { value: string | boolean }) {
-  if (value === true) return <Check className="h-4 w-4 text-green-500 mx-auto" />;
-  if (value === false) return <X className="h-4 w-4 text-muted-foreground/40 mx-auto" />;
+  if (value === true) return <Check className="h-4 w-4 text-green-500 mx-auto" aria-label="Included" role="img" />;
+  if (value === false) return <X className="h-4 w-4 text-muted-foreground/40 mx-auto" aria-label="Not included" role="img" />;
   return <span className="text-sm">{value}</span>;
 }
 
@@ -114,7 +115,7 @@ export function TierUpgradePanel({ onSelectTier, currentTier }: TierUpgradePanel
               {tier.highlighted && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2">
                   <Badge className="bg-primary text-primary-foreground">
-                    <Sparkles className="h-3 w-3 mr-1" /> Most Popular
+                    <Sparkles className="h-3 w-3 mr-1" aria-hidden="true" /> Most popular
                   </Badge>
                 </div>
               )}
@@ -122,13 +123,13 @@ export function TierUpgradePanel({ onSelectTier, currentTier }: TierUpgradePanel
                 <CardTitle className="text-lg">{tier.name}</CardTitle>
                 <p className="text-sm text-muted-foreground">{tier.description}</p>
                 <div className="mt-4">
-                  <span className="text-4xl font-bold">
-                    ${tier.price === 0 ? "0" : monthlyEquiv}
+                  <span className="text-4xl font-bold tabular-nums">
+                    {tier.price === 0 ? "$0" : usd(monthlyEquiv, { noCents: true })}
                   </span>
                   <span className="text-muted-foreground">/mo</span>
                   {annual && tier.price > 0 && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      ${tier.yearlyPrice}/year billed annually
+                    <p className="text-xs text-muted-foreground mt-1 tabular-nums">
+                      {usd(tier.yearlyPrice, { noCents: true })}/year billed annually
                     </p>
                   )}
                 </div>
@@ -140,7 +141,7 @@ export function TierUpgradePanel({ onSelectTier, currentTier }: TierUpgradePanel
                   disabled={isCurrentTier}
                   onClick={() => onSelectTier?.(tier.id)}
                 >
-                  {isCurrentTier ? "Current Plan" : tier.cta}
+                  {isCurrentTier ? "Current plan" : tier.cta}
                 </Button>
               </CardContent>
             </Card>
@@ -150,7 +151,7 @@ export function TierUpgradePanel({ onSelectTier, currentTier }: TierUpgradePanel
 
       {/* Feature comparison table */}
       <div className="border rounded-lg overflow-hidden">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm" aria-label="Plan feature comparison">
           <thead>
             <tr className="border-b bg-muted/50">
               <th scope="col" className="text-left p-3 font-medium">Feature</th>
@@ -191,7 +192,10 @@ export function PlanComparisonModal({ open, onClose, currentTier }: PlanComparis
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Compare Plans</DialogTitle>
+          <DialogTitle>Compare plans</DialogTitle>
+          <DialogDescription className="sr-only">
+            Compare Free, Starter, and Pro plan features and pricing.
+          </DialogDescription>
         </DialogHeader>
         <TierUpgradePanel currentTier={currentTier} />
       </DialogContent>
