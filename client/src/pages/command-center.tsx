@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Skeleton } from "@/components/ui/skeleton";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useToast } from "@/hooks/use-toast";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import {
   Accordion,
   AccordionContent,
@@ -231,7 +232,7 @@ function TeamTabContent() {
       toast({ title: "Agent updated", description: "Settings saved successfully" });
     },
     onError: () => {
-      toast({ title: "Update failed", description: "Could not save agent settings", variant: "destructive" });
+      toast({ title: "Couldn't save agent settings", description: "The agent's existing settings are unchanged. Try again.", variant: "destructive" });
     },
   });
 
@@ -242,10 +243,10 @@ function TeamTabContent() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/va/actions"] });
-      toast({ title: "Action approved", description: "The agent will proceed with this task" });
+      toast({ title: "Action approved", description: "The agent will proceed with this task." });
     },
     onError: () => {
-      toast({ title: "Approval failed", variant: "destructive" });
+      toast({ title: "Couldn't approve action", description: "The action is still pending. Try again.", variant: "destructive" });
     },
   });
 
@@ -256,10 +257,10 @@ function TeamTabContent() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/va/actions"] });
-      toast({ title: "Action rejected", description: "The agent will not proceed with this task" });
+      toast({ title: "Action rejected", description: "The agent will not proceed with this task." });
     },
     onError: () => {
-      toast({ title: "Rejection failed", variant: "destructive" });
+      toast({ title: "Couldn't reject action", description: "The action is still pending. Try again.", variant: "destructive" });
     },
   });
 
@@ -272,10 +273,10 @@ function TeamTabContent() {
       queryClient.invalidateQueries({ queryKey: ["/api/va/actions"] });
       setTaskDialogOpen(false);
       setTaskInput("");
-      toast({ title: "Task assigned", description: "The agent will work on this task" });
+      toast({ title: "Task assigned", description: "The agent will work on this task." });
     },
     onError: () => {
-      toast({ title: "Task submission failed", variant: "destructive" });
+      toast({ title: "Couldn't assign task", description: "Your draft is preserved. Try again.", variant: "destructive" });
     },
   });
 
@@ -286,10 +287,10 @@ function TeamTabContent() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/va/briefings/latest"] });
-      toast({ title: "Briefing generated", description: "Your daily briefing is ready" });
+      toast({ title: "Briefing generated", description: "Your daily briefing is ready." });
     },
     onError: () => {
-      toast({ title: "Briefing generation failed", variant: "destructive" });
+      toast({ title: "Couldn't generate briefing", description: "Try again or check the system status.", variant: "destructive" });
     },
   });
 
@@ -1170,12 +1171,12 @@ function AIOperationsTabContent() {
       return res.json();
     },
     onSuccess: () => {
-      toast({ title: "Due Diligence Started", description: "Analysis is now running in the background" });
+      toast({ title: "Due diligence started", description: "Analysis is now running in the background." });
       setDueDiligenceDialogOpen(false);
       setPropertyIdInput("");
     },
     onError: () => {
-      toast({ title: "Failed to start due diligence", variant: "destructive" });
+      toast({ title: "Couldn't start due diligence", description: "No analysis was queued. Try again or check the system status.", variant: "destructive" });
     },
   });
 
@@ -1193,7 +1194,7 @@ function AIOperationsTabContent() {
       setPropertyIdInput("");
     },
     onError: () => {
-      toast({ title: "Failed to get pricing", variant: "destructive" });
+      toast({ title: "Couldn't run pricing", description: "No pricing data was generated. Try again or check the system status.", variant: "destructive" });
     },
   });
 
@@ -1203,11 +1204,11 @@ function AIOperationsTabContent() {
       return res.json();
     },
     onSuccess: () => {
-      toast({ title: "Portfolio Scan Started", description: "Monitoring all properties for issues" });
+      toast({ title: "Portfolio scan started", description: "Monitoring all properties for issues." });
       queryClient.invalidateQueries({ queryKey: ["/api/ai/portfolio/alerts"] });
     },
     onError: () => {
-      toast({ title: "Failed to start portfolio scan", variant: "destructive" });
+      toast({ title: "Couldn't start portfolio scan", description: "No properties are being monitored yet. Try again or check the system status.", variant: "destructive" });
     },
   });
 
@@ -1217,10 +1218,10 @@ function AIOperationsTabContent() {
       return res.json();
     },
     onSuccess: () => {
-      toast({ title: "Compliance Check Complete", description: "All rules have been verified" });
+      toast({ title: "Compliance check complete", description: "All rules have been verified." });
     },
     onError: () => {
-      toast({ title: "Failed to check compliance", variant: "destructive" });
+      toast({ title: "Couldn't run compliance check", description: "No rules were verified. Try again or check the system status.", variant: "destructive" });
     },
   });
 
@@ -1508,6 +1509,7 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const MAX_ATTACHMENTS = 5;
 
 export default function CommandCenterPage() {
+  useDocumentTitle("Command center");
   const queryClient = useQueryClient();
   const { isMobile } = useIsMobile();
   const { toast } = useToast();
@@ -1762,7 +1764,7 @@ export default function CommandCenterPage() {
       }
     } catch (error) {
       console.error("Streaming error:", error);
-      toast({ title: "Error", description: "Failed to send message", variant: "destructive" });
+      toast({ title: "Couldn't send message", description: "Your draft is preserved. Try again or check the system status.", variant: "destructive" });
     } finally {
       setIsStreaming(false);
       setStreamingContent("");
