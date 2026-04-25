@@ -984,7 +984,8 @@ export function PaxCopilotRail() {
 
   return (
     <>
-      <div
+      <aside
+        aria-label={isOpen ? "Pax copilot" : "Pax copilot (collapsed)"}
         className={cn(
           "fixed right-0 top-0 h-screen z-40 flex flex-col",
           "border-l bg-background/95 backdrop-blur-sm",
@@ -1729,7 +1730,7 @@ export function PaxCopilotRail() {
             </div>
           </>
         )}
-      </div>
+      </aside>
 
       {/* Command Palette (Cmd+K) */}
       <PaxCommandPalette
