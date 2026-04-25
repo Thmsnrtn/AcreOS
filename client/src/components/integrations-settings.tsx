@@ -250,11 +250,12 @@ function ConfigureDialog({
           <DialogDescription>
             Enter your API credentials to enable {provider.name} integration.
             {provider.helpUrl && (
-              <a 
-                href={provider.helpUrl} 
-                target="_blank" 
+              <a
+                href={provider.helpUrl}
+                target="_blank"
                 rel="noopener noreferrer"
-                className="text-primary hover:underline ml-1"
+                aria-label={`Get your ${provider.name} API key (opens in new tab)`}
+                className="text-primary hover:underline ml-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
               >
                 Get your API key
               </a>

@@ -148,9 +148,10 @@ function ConnectDialog({
               href={connector.setupUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-1 text-xs text-primary hover:underline"
+              aria-label={`Setup guide for ${connector.name ?? "this connector"} (opens in new tab)`}
+              className="flex items-center gap-1 text-xs text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
             >
-              <ExternalLink className="w-3 h-3" /> Setup guide
+              <ExternalLink className="w-3 h-3" aria-hidden="true" /> Setup guide
             </a>
           )}
         </div>

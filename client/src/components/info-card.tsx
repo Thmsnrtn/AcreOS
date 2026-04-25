@@ -85,11 +85,12 @@ export function InfoCard({
               href={learnMoreUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-xs text-primary hover:underline mt-2"
+              aria-label={`${learnMoreText} (opens in new tab)`}
+              className="inline-flex items-center gap-1 text-xs text-primary hover:underline mt-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
               data-testid={testId ? `${testId}-learn-more` : undefined}
             >
               {learnMoreText}
-              <ExternalLink className="w-3 h-3" />
+              <ExternalLink className="w-3 h-3" aria-hidden="true" />
             </a>
           )}
         </div>

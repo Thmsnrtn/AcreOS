@@ -78,7 +78,8 @@ export function EmptyState({
           href={learnMoreUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-sm text-primary/90 hover:text-primary inline-flex items-center gap-1 mb-4 underline-offset-2 hover:underline"
+          aria-label={`${learnMoreLabel} (opens in new tab)`}
+          className="text-sm text-primary/90 hover:text-primary inline-flex items-center gap-1 mb-4 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
           data-testid="empty-state-learn-more"
         >
           {learnMoreLabel}
