@@ -110,8 +110,8 @@ export function NotificationPreferences() {
     },
     onError: () => {
       toast({
-        title: "Error",
-        description: "Failed to update notification preference",
+        title: "Couldn't update preference",
+        description: "Your existing notification setting is unchanged. Try again.",
         variant: "destructive",
       });
     },

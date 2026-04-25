@@ -86,8 +86,8 @@ export function PlaybookCard({ template, activeInstance, onStart, onContinue }: 
       } catch (error) {
         console.error("Failed to start playbook:", error);
         toast({
-          title: "Error",
-          description: "Failed to start playbook. Please try again.",
+          title: "Couldn't start playbook",
+          description: "No playbook run was created. Try again or check the system status.",
           variant: "destructive",
         });
       }

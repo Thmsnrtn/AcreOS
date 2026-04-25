@@ -434,8 +434,8 @@ function RetentionPoliciesPanel() {
     },
     onError: () => {
       toast({
-        title: "Error",
-        description: "Failed to update retention policies.",
+        title: "Couldn't update retention policies",
+        description: "Your existing policies are unchanged. Try again or check the system status.",
         variant: "destructive",
       });
     },
@@ -456,8 +456,8 @@ function RetentionPoliciesPanel() {
     },
     onError: () => {
       toast({
-        title: "Error",
-        description: "Failed to purge data.",
+        title: "Couldn't purge data",
+        description: "No records were deleted. Try again or check the system status.",
         variant: "destructive",
       });
     },

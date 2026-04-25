@@ -98,8 +98,8 @@ export function FeedbackDialog({
       toast({ title: "Feedback sent", description: "Thank you! We read every submission." });
     } catch {
       toast({
-        title: "Failed to send feedback",
-        description: "Please try again in a moment.",
+        title: "Couldn't send feedback",
+        description: "Your message is preserved in the form. Try again in a moment.",
         variant: "destructive",
       });
     } finally {

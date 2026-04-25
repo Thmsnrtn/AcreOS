@@ -205,8 +205,8 @@ export function CommandPalette() {
     },
     onError: () => {
       toast({
-        title: "Error",
-        description: "Failed to update lead status",
+        title: "Couldn't update lead status",
+        description: "The lead's existing status is unchanged.",
         variant: "destructive",
       });
     },
@@ -233,8 +233,8 @@ export function CommandPalette() {
     },
     onError: () => {
       toast({
-        title: "Error",
-        description: "Failed to update deal stage",
+        title: "Couldn't update deal stage",
+        description: "The deal's existing stage is unchanged.",
         variant: "destructive",
       });
     },

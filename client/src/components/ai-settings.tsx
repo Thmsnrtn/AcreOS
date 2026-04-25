@@ -70,8 +70,8 @@ export function AISettings({ compact = false }: AISettingsProps) {
     },
     onError: (error: any) => {
       toast({
-        title: "Error",
-        description: error.message || "Failed to update settings",
+        title: "Couldn't save AI settings",
+        description: `${error.message || "No changes were applied"} — your existing settings are unchanged.`,
         variant: "destructive",
       });
     },

@@ -51,8 +51,8 @@ export function NpsDialog({ open, trigger, onClose }: NpsDialogProps) {
     },
     onError: () => {
       toast({
-        title: "Failed to submit",
-        description: "Your feedback could not be saved. Please try again later.",
+        title: "Couldn't submit feedback",
+        description: "Your score and comment are still in the form. Try again in a moment.",
         variant: "destructive",
       });
     },

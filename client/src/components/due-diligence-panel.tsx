@@ -131,8 +131,8 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
     } catch (error: any) {
       toast({
         variant: "destructive",
-        title: "Failed to generate dossier",
-        description: error.message || "Please try again later.",
+        title: "Couldn't generate dossier",
+        description: `${error.message || "No analysis was started"} — your due-diligence settings are unchanged.`,
       });
     }
   };

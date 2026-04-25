@@ -191,8 +191,8 @@ export function FocusList() {
     },
     onError: () => {
       toast({
-        title: "Error",
-        description: "Failed to update lead",
+        title: "Couldn't update lead",
+        description: "The lead's existing status is unchanged. Try again.",
         variant: "destructive",
       });
     },
@@ -236,8 +236,8 @@ export function FocusList() {
         queryClient.setQueryData(["/api/leads/focus"], context.previousLeads);
       }
       toast({
-        title: "Error",
-        description: "Failed to record contact. Please try again.",
+        title: "Couldn't record contact",
+        description: "The lead is back on your focus list. Try again.",
         variant: "destructive",
       });
     },

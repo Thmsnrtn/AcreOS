@@ -246,8 +246,8 @@ export function OnboardingWizard() {
     },
     onError: (error) => {
       toast({
-        title: "Failed to load sample data",
-        description: error.message || "Something went wrong",
+        title: "Couldn't load sample data",
+        description: `${error.message || "No sample data was added"} — your workspace is unchanged.`,
         variant: "destructive",
       });
     },
