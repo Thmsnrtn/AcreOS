@@ -83,9 +83,9 @@ export function QuickCaptureFab() {
             setOpen(true);
             setTimeout(() => fileInputRef.current?.click(), 100);
           }}
-          aria-label="Quick capture lead"
+          aria-label="Quick capture lead from photo"
         >
-          <Camera className="h-6 w-6" />
+          <Camera className="h-6 w-6" aria-hidden="true" />
         </Button>
       </motion.div>
 
@@ -101,29 +101,29 @@ export function QuickCaptureFab() {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Quick Capture</DialogTitle>
+            <DialogTitle>Quick capture</DialogTitle>
           </DialogHeader>
 
           <AnimatePresence mode="wait">
             {captureMutation.isPending && (
-              <motion.div key="loading" {...fadeInUp} className="flex flex-col items-center gap-3 py-6">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                <p className="text-sm text-muted-foreground">Reading sign...</p>
+              <motion.div key="loading" {...fadeInUp} className="flex flex-col items-center gap-3 py-6" role="status" aria-live="polite">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" aria-hidden="true" />
+                <p className="text-sm text-muted-foreground">Reading sign…</p>
                 {capturedImage && (
-                  <img src={capturedImage} alt="Captured" className="w-32 h-32 object-cover rounded-lg" />
+                  <img src={capturedImage} alt="Captured photo" className="w-32 h-32 object-cover rounded-lg" />
                 )}
               </motion.div>
             )}
 
             {failed && (
-              <motion.div key="failed" {...fadeInUp} className="flex flex-col items-center gap-3 py-6">
+              <motion.div key="failed" {...fadeInUp} className="flex flex-col items-center gap-3 py-6" role="alert">
                 <p className="text-sm text-muted-foreground text-center">
                   We couldn't read the sign clearly.
                 </p>
                 <div className="flex gap-2">
                   <Button variant="outline" onClick={handleRetry}>
-                    <RotateCcw className="h-4 w-4 mr-1" />
-                    Try Again
+                    <RotateCcw className="h-4 w-4 mr-1" aria-hidden="true" />
+                    Try again
                   </Button>
                   <Button
                     variant="default"
@@ -132,15 +132,15 @@ export function QuickCaptureFab() {
                       window.location.href = "/leads?action=create";
                     }}
                   >
-                    <UserPlus className="h-4 w-4 mr-1" />
-                    Create Lead Manually
+                    <UserPlus className="h-4 w-4 mr-1" aria-hidden="true" />
+                    Create lead manually
                   </Button>
                 </div>
               </motion.div>
             )}
 
             {captureMutation.isSuccess && captureMutation.data?.extracted?.phone && (
-              <motion.div key="success" {...fadeInUp} className="flex flex-col items-center gap-3 py-6">
+              <motion.div key="success" {...fadeInUp} className="flex flex-col items-center gap-3 py-6" role="status" aria-live="polite">
                 <div className="text-center space-y-1">
                   <p className="text-sm font-medium">Found: {captureMutation.data.extracted.phone}</p>
                   {captureMutation.data.extracted.name && (
@@ -157,21 +157,21 @@ export function QuickCaptureFab() {
                     captureMutation.reset();
                   }}
                 >
-                  <UserPlus className="h-4 w-4 mr-1" />
-                  View Lead
+                  <UserPlus className="h-4 w-4 mr-1" aria-hidden="true" />
+                  View lead
                 </Button>
               </motion.div>
             )}
 
             {!captureMutation.isPending && !captureMutation.isSuccess && !captureMutation.isError && (
               <motion.div key="idle" {...fadeInUp} className="flex flex-col items-center gap-3 py-6">
-                <Camera className="h-12 w-12 text-muted-foreground" />
+                <Camera className="h-12 w-12 text-muted-foreground" aria-hidden="true" />
                 <p className="text-sm text-muted-foreground text-center">
                   Photograph a "For Sale" sign to capture lead info automatically.
                 </p>
                 <Button onClick={() => fileInputRef.current?.click()}>
-                  <Camera className="h-4 w-4 mr-1" />
-                  Open Camera
+                  <Camera className="h-4 w-4 mr-1" aria-hidden="true" />
+                  Open camera
                 </Button>
               </motion.div>
             )}
