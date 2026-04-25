@@ -1,5 +1,9 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { RequiredDisclaimer } from '@/components/required-disclaimer';
+import { useDocumentTitle } from '@/hooks/use-document-title';
+import { Label } from '@/components/ui/label';
+import { ConfirmDialog } from '@/components/confirm-dialog';
+import { usd } from '@/lib/format';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -51,10 +55,14 @@ const OBJECTION_COLORS: Record<string, string> = {
   competitive: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300',
 };
 
+// P1 money-precision: K/M compact bands intentionally kept for the copilot's hero
+// numbers (counter-offer amounts, BATNA outputs — readability over cents at scale).
+// Sub-$1K fall-through swapped to canonical usd(noCents).
 function formatDollar(n: number) {
+  if (!n || isNaN(n)) return '$0';
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
   if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
-  return `$${Math.round(n).toLocaleString()}`;
+  return usd(n, { noCents: true });
 }
 
 function SentimentIndicator({ score }: { score: number }) {
@@ -69,25 +77,25 @@ function SessionReplayPanel({ session }: { session: any }) {
   const moves = session?.moves ?? session?.moveHistory ?? [];
   if (!moves || moves.length === 0) {
     return (
-      <div className="text-center py-6 text-muted-foreground text-sm">
-        <History className="w-6 h-6 mx-auto mb-2 opacity-40" />
+      <div className="text-center py-6 text-muted-foreground text-sm" role="status">
+        <History className="w-6 h-6 mx-auto mb-2 opacity-40" aria-hidden="true" />
         No move history recorded for this session.
       </div>
     );
   }
   return (
     <div className="space-y-3">
-      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Move History</p>
-      <div className="relative pl-4 border-l-2 border-muted space-y-4">
+      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Move history</p>
+      <ol className="relative pl-4 border-l-2 border-muted space-y-4 list-none p-0 m-0" aria-label={`${moves.length} move${moves.length === 1 ? "" : "s"} in chronological order`}>
         {moves.map((move: any, i: number) => (
-          <div key={i} className="relative">
-            <div className="absolute -left-[1.125rem] top-1 w-3 h-3 rounded-full bg-primary/30 border-2 border-primary" />
+          <li key={i} className="relative pl-4">
+            <span className="absolute -left-[1.125rem] top-1 w-3 h-3 rounded-full bg-primary/30 border-2 border-primary" aria-hidden="true" />
             <div className="text-xs text-muted-foreground mb-0.5">
-              {move.timestamp ? new Date(move.timestamp).toLocaleString() : `Move ${i + 1}`}
+              {move.timestamp ? <time dateTime={new Date(move.timestamp).toISOString()}>{new Date(move.timestamp).toLocaleString()}</time> : `Move ${i + 1}`}
             </div>
             <div className="flex items-center gap-2 mb-1">
               {move.strategy && (
-                <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${STRATEGY_INFO[move.strategy]?.color ?? 'bg-gray-100 text-gray-800'}`}>
+                <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${STRATEGY_INFO[move.strategy]?.color ?? 'bg-gray-100 text-gray-800'}`} aria-label={`Strategy: ${STRATEGY_INFO[move.strategy]?.label ?? move.strategy}`}>
                   {STRATEGY_INFO[move.strategy]?.label ?? move.strategy}
                 </span>
               )}
@@ -96,13 +104,13 @@ function SessionReplayPanel({ session }: { session: any }) {
             {move.content && <p className="text-sm bg-muted/50 rounded p-2">{move.content}</p>}
             {move.aiReasoning && (
               <div className="mt-1.5 flex items-start gap-1.5 text-xs text-muted-foreground">
-                <Brain className="w-3 h-3 mt-0.5 shrink-0 text-primary" />
+                <Brain className="w-3 h-3 mt-0.5 shrink-0 text-primary" aria-hidden="true" />
                 <span className="italic">{move.aiReasoning}</span>
               </div>
             )}
-          </div>
+          </li>
         ))}
-      </div>
+      </ol>
     </div>
   );
 }
@@ -115,7 +123,7 @@ function StrategyExplainabilityPanel({ strategyResult }: { strategyResult: any }
     <Card className="border-primary/20 bg-primary/5">
       <CardHeader className="pb-2">
         <CardTitle className="text-sm flex items-center gap-2">
-          <Info className="w-4 h-4 text-primary" /> Why Atlas Recommends This Approach
+          <Info className="w-4 h-4 text-primary" aria-hidden="true" /> Why Atlas recommends this approach
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
@@ -151,8 +159,8 @@ function StrategyExplainabilityPanel({ strategyResult }: { strategyResult: any }
 
 function LearningLoopIndicator() {
   return (
-    <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-md text-xs text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-      <Activity className="w-3.5 h-3.5 animate-pulse" />
+    <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-md text-xs text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800" role="status" aria-live="polite">
+      <Activity className="w-3.5 h-3.5 animate-pulse" aria-hidden="true" />
       <span><strong>Learning loop active</strong> — strategy effectiveness is being tracked and will improve recommendations over time.</span>
     </div>
   );
@@ -199,83 +207,96 @@ function BATNACalculator() {
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="text-sm flex items-center gap-2">
-          <Shield className="w-4 h-4 text-primary" />
-          BATNA Calculator
+          <Shield className="w-4 h-4 text-primary" aria-hidden="true" />
+          BATNA calculator
           <span className="text-xs font-normal text-muted-foreground ml-1">— Best Alternative to Negotiated Agreement</span>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid grid-cols-2 gap-3">
-          {[
-            { label: "Seller Asking Price", value: askingPrice, set: setAskingPrice, prefix: "$" },
-            { label: "Your Offer", value: yourOffer, set: setYourOffer, prefix: "$" },
-            { label: "Market Comps (ARV)", value: marketComps, set: setMarketComps, prefix: "$" },
-            { label: "Renovation Cost", value: renovationCost, set: setRenovationCost, prefix: "$" },
-            { label: "Holding/Closing Cost", value: holdingCost, set: setHoldingCost, prefix: "$" },
-            { label: "Desired Profit %", value: desiredProfit, set: setDesiredProfit, prefix: "%" },
-          ].map(({ label, value, set, prefix }) => (
-            <div key={label}>
-              <label className="text-xs text-muted-foreground">{label}</label>
-              <div className="relative mt-1">
-                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">{prefix}</span>
-                <input
-                  className="w-full border rounded-md pl-6 pr-2 py-1.5 text-sm bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                  value={value}
-                  onChange={(e) => set(e.target.value)}
-                  placeholder={prefix === "$" ? "0" : "20"}
-                />
+        <fieldset className="border-0 p-0 m-0">
+          <legend className="sr-only">BATNA inputs</legend>
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { id: "batna-asking", label: "Seller asking price", value: askingPrice, set: setAskingPrice, prefix: "$" },
+              { id: "batna-offer", label: "Your offer", value: yourOffer, set: setYourOffer, prefix: "$" },
+              { id: "batna-comps", label: "Market comps (ARV)", value: marketComps, set: setMarketComps, prefix: "$" },
+              { id: "batna-reno", label: "Renovation cost", value: renovationCost, set: setRenovationCost, prefix: "$" },
+              { id: "batna-holding", label: "Holding/closing cost", value: holdingCost, set: setHoldingCost, prefix: "$" },
+              { id: "batna-profit", label: "Desired profit %", value: desiredProfit, set: setDesiredProfit, prefix: "%" },
+            ].map(({ id, label, value, set, prefix }) => (
+              <div key={id}>
+                <Label htmlFor={id} className="text-xs text-muted-foreground">{label}</Label>
+                <div className="relative mt-1">
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground" aria-hidden="true">{prefix}</span>
+                  <input
+                    id={id}
+                    type="number"
+                    inputMode="decimal"
+                    className="w-full border rounded-md pl-6 pr-2 py-1.5 text-sm tabular-nums bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                    value={value}
+                    onChange={(e) => set(e.target.value)}
+                    placeholder={prefix === "$" ? "0" : "20"}
+                  />
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        </fieldset>
 
         {(asking > 0 || offer > 0 || comps > 0) && (
-          <div className="space-y-3 pt-2 border-t">
+          <div className="space-y-3 pt-2 border-t" aria-live="polite">
             {/* Deal Viability */}
-            <div className={`rounded-lg border p-3 ${viabilityColor}`}>
+            <div className={`rounded-lg border p-3 ${viabilityColor}`} role="status">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold uppercase tracking-wide">Deal Viability</span>
-                <Badge className={`text-xs ${viabilityColor} border`}>{dealViability}</Badge>
+                <span className="text-xs font-semibold uppercase tracking-wide">Deal viability</span>
+                <Badge className={`text-xs ${viabilityColor} border`} aria-label={`Deal viability: ${dealViability}`}>{dealViability}</Badge>
               </div>
             </div>
 
             {/* Key outputs */}
-            <div className="grid grid-cols-2 gap-2">
+            <dl className="grid grid-cols-2 gap-2 m-0">
               {maxAllowable > 0 && (
                 <div className="rounded-lg border p-3 bg-muted/30">
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Max Allowable Offer</p>
-                  <p className="text-xl font-bold text-primary mt-0.5">{formatDollar(maxAllowable)}</p>
+                  <dt className="text-[10px] text-muted-foreground uppercase tracking-wide">Max allowable offer</dt>
+                  <dd className="text-xl font-bold tabular-nums text-primary mt-0.5 m-0">{formatDollar(maxAllowable)}</dd>
                   <p className="text-[10px] text-muted-foreground">your BATNA walkaway</p>
                 </div>
               )}
               {negotiationZone !== null && negotiationZone.mid > 0 && (
                 <div className="rounded-lg border p-3 bg-muted/30">
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Midpoint</p>
-                  <p className="text-xl font-bold mt-0.5">{formatDollar(negotiationZone.mid)}</p>
+                  <dt className="text-[10px] text-muted-foreground uppercase tracking-wide">Midpoint</dt>
+                  <dd className="text-xl font-bold tabular-nums mt-0.5 m-0">{formatDollar(negotiationZone.mid)}</dd>
                   <p className="text-[10px] text-muted-foreground">split-the-difference</p>
                 </div>
               )}
-            </div>
+            </dl>
 
             {/* Seller flexibility gauge */}
             {sellerFlexibility > 0 && (
               <div>
                 <div className="flex items-center justify-between text-xs mb-1">
                   <span className="text-muted-foreground flex items-center gap-1">
-                    <ArrowLeftRight className="w-3 h-3" /> Negotiation Range
+                    <ArrowLeftRight className="w-3 h-3" aria-hidden="true" /> Negotiation range
                   </span>
-                  <span className="font-semibold">{sellerFlexibility}% gap</span>
+                  <span className="font-semibold tabular-nums">{sellerFlexibility}% gap</span>
                 </div>
-                <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
+                <div
+                  className="w-full bg-muted rounded-full h-2 overflow-hidden"
+                  role="progressbar"
+                  aria-label="Negotiation gap between asking and offer"
+                  aria-valuenow={sellerFlexibility}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                >
                   <div
                     className={`h-full rounded-full ${sellerFlexibility > 30 ? "bg-emerald-500" : sellerFlexibility > 15 ? "bg-amber-500" : "bg-red-500"}`}
                     style={{ width: `${Math.min(sellerFlexibility, 100)}%` }}
                   />
                 </div>
                 <p className="text-[10px] text-muted-foreground mt-1">
-                  {sellerFlexibility > 30 ? "Wide gap — room to negotiate aggressively" :
-                   sellerFlexibility > 15 ? "Moderate gap — fair negotiation zone" :
-                   "Narrow gap — close to agreement"}
+                  {sellerFlexibility > 30 ? "Wide gap — room to negotiate aggressively." :
+                   sellerFlexibility > 15 ? "Moderate gap — fair negotiation zone." :
+                   "Narrow gap — close to agreement."}
                 </p>
               </div>
             )}
@@ -283,7 +304,7 @@ function BATNACalculator() {
             {/* Strategy hint */}
             {dealViability !== "unknown" && (
               <div className="flex items-start gap-2 text-xs bg-primary/5 rounded-md p-2.5 border border-primary/10">
-                <Lightbulb className="w-3.5 h-3.5 text-primary mt-0.5 shrink-0" />
+                <Lightbulb className="w-3.5 h-3.5 text-primary mt-0.5 shrink-0" aria-hidden="true" />
                 <span>
                   {dealViability === "viable"
                     ? "Your offer is within your BATNA range. Hold firm or offer a small concession to close faster."
@@ -340,15 +361,23 @@ function PsychologicalPressureGauge({
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm flex items-center gap-2">
-          <Gauge className="w-4 h-4 text-primary" />
-          Seller Motivation Gauge
+          <Gauge className="w-4 h-4 text-primary" aria-hidden="true" />
+          Seller motivation gauge
         </CardTitle>
       </CardHeader>
       <CardContent>
         <div className="flex flex-col items-center">
           {/* SVG semicircle gauge */}
-          <div className="relative w-32 h-16 overflow-hidden">
-            <svg viewBox="0 0 100 50" className="w-full h-full">
+          <div
+            className="relative w-32 h-16 overflow-hidden"
+            role="progressbar"
+            aria-label={`Seller motivation: ${pressureLabel}`}
+            aria-valuenow={Math.round(rawPressure)}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuetext={`${Math.round(rawPressure)} out of 100, ${pressureLabel}`}
+          >
+            <svg viewBox="0 0 100 50" className="w-full h-full" aria-hidden="true">
               {/* Background arc */}
               <path
                 d="M 5 50 A 45 45 0 0 1 95 50"
@@ -368,24 +397,24 @@ function PsychologicalPressureGauge({
               />
             </svg>
             <div className="absolute inset-x-0 bottom-0 flex flex-col items-center">
-              <span className="text-2xl font-bold" style={{ color: pressureColor }}>{Math.round(rawPressure)}</span>
+              <span className="text-2xl font-bold tabular-nums" style={{ color: pressureColor }}>{Math.round(rawPressure)}</span>
             </div>
           </div>
           <p className="text-sm font-semibold mt-1" style={{ color: pressureColor }}>{pressureLabel}</p>
-          <div className="grid grid-cols-3 gap-2 mt-3 w-full text-center">
+          <dl className="grid grid-cols-3 gap-2 mt-3 w-full text-center m-0">
             <div>
-              <p className="text-lg font-bold text-amber-500">{urgencySignals}</p>
-              <p className="text-[10px] text-muted-foreground">Urgency signals</p>
+              <dd className="text-lg font-bold tabular-nums text-amber-500 m-0">{urgencySignals}</dd>
+              <dt className="text-[10px] text-muted-foreground">Urgency signals</dt>
             </div>
             <div>
-              <p className="text-lg font-bold text-emerald-500">{motivationSignals}</p>
-              <p className="text-[10px] text-muted-foreground">Motivation cues</p>
+              <dd className="text-lg font-bold tabular-nums text-emerald-500 m-0">{motivationSignals}</dd>
+              <dt className="text-[10px] text-muted-foreground">Motivation cues</dt>
             </div>
             <div>
-              <p className="text-lg font-bold text-slate-400">{hesitationSignals}</p>
-              <p className="text-[10px] text-muted-foreground">Hesitation signs</p>
+              <dd className="text-lg font-bold tabular-nums text-slate-400 m-0">{hesitationSignals}</dd>
+              <dt className="text-[10px] text-muted-foreground">Hesitation signs</dt>
             </div>
-          </div>
+          </dl>
         </div>
       </CardContent>
     </Card>
@@ -393,12 +422,17 @@ function PsychologicalPressureGauge({
 }
 
 export default function NegotiationCopilotPage() {
+  useDocumentTitle('Negotiation copilot');
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const dealIdInputId = useId();
+  const messageTextId = useId();
+  const dealHistoryFilterId = useId();
 
   const [dealId, setDealId] = useState('');
   const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
   const [messageText, setMessageText] = useState('');
+  const [pendingEndSession, setPendingEndSession] = useState(false);
   const [counterResult, setCounterResult] = useState<any>(null);
   const [strategyResult, setStrategyResult] = useState<any>(null);
   const [objectionResult, setObjectionResult] = useState<any>(null);
@@ -446,7 +480,11 @@ export default function NegotiationCopilotPage() {
       queryClient.invalidateQueries({ queryKey: ['negotiation', 'deal', dealId] });
     },
     onError: (err: Error) => {
-      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+      toast({
+        title: "Couldn't start session",
+        description: `${err.message} — your deal ID is preserved. Try again.`,
+        variant: 'destructive',
+      });
     },
   });
 
@@ -465,7 +503,11 @@ export default function NegotiationCopilotPage() {
       return res.json();
     },
     onError: (err: Error) => {
-      toast({ title: 'Analysis failed', description: err.message, variant: 'destructive' });
+      toast({
+        title: "Couldn't run analysis",
+        description: `${err.message} — your message and prior results are preserved. Try again.`,
+        variant: 'destructive',
+      });
     },
   });
 
@@ -492,9 +534,21 @@ export default function NegotiationCopilotPage() {
 
   const handleGetStrategy = async () => {
     if (!activeSessionId) return;
-    const result = await fetch(`/api/negotiation/sessions/${activeSessionId}/strategy`, { credentials: 'include' });
-    const data = await result.json();
-    setStrategyResult(data.strategy);
+    try {
+      const result = await fetch(`/api/negotiation/sessions/${activeSessionId}/strategy`, { credentials: 'include' });
+      if (!result.ok) {
+        const err = await result.json().catch(() => ({}));
+        throw new Error(err.error || 'Strategy fetch failed');
+      }
+      const data = await result.json();
+      setStrategyResult(data.strategy);
+    } catch (err: any) {
+      toast({
+        title: "Couldn't fetch strategy",
+        description: `${err.message || 'Network error'} — prior recommendations are preserved.`,
+        variant: 'destructive',
+      });
+    }
   };
 
   const handleGenerateResponse = async (objectionId: string, strategy: string) => {
@@ -513,8 +567,8 @@ export default function NegotiationCopilotPage() {
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold flex items-center gap-2">
-          <Brain className="w-8 h-8 text-primary" />
-          Negotiation Copilot
+          <Brain className="w-8 h-8 text-primary" aria-hidden="true" />
+          Negotiation copilot
         </h1>
         <p className="text-muted-foreground mt-1">
           AI-powered objection detection, counter-offer suggestions, and strategy recommendations for every deal.
@@ -525,11 +579,11 @@ export default function NegotiationCopilotPage() {
 
       <Tabs defaultValue="session">
         <TabsList className="flex-wrap">
-          <TabsTrigger value="session">Active Session</TabsTrigger>
-          <TabsTrigger value="batna">BATNA Calculator</TabsTrigger>
-          <TabsTrigger value="sessions">Deal History</TabsTrigger>
-          <TabsTrigger value="analytics">Strategy Analytics</TabsTrigger>
-          <TabsTrigger value="replay">Session Replay</TabsTrigger>
+          <TabsTrigger value="session">Active session</TabsTrigger>
+          <TabsTrigger value="batna">BATNA calculator</TabsTrigger>
+          <TabsTrigger value="sessions">Deal history</TabsTrigger>
+          <TabsTrigger value="analytics">Strategy analytics</TabsTrigger>
+          <TabsTrigger value="replay">Session replay</TabsTrigger>
         </TabsList>
 
         {/* ── ACTIVE SESSION ── */}
@@ -538,46 +592,53 @@ export default function NegotiationCopilotPage() {
           {!activeSessionId ? (
             <Card>
               <CardHeader>
-                <CardTitle>Start Negotiation Session</CardTitle>
-                <CardDescription>Enter your deal ID to begin AI-assisted negotiation tracking</CardDescription>
+                <CardTitle>Start negotiation session</CardTitle>
+                <CardDescription>Enter your deal ID to begin AI-assisted negotiation tracking.</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex gap-3">
-                  <Input
-                    placeholder="Deal ID (numeric)"
-                    value={dealId}
-                    onChange={(e) => setDealId(e.target.value)}
-                    className="w-40"
-                    type="number"
-                  />
-                  <Button
-                    onClick={() =>
-                      startSessionMutation.mutate({
-                        dealId: parseInt(dealId),
-                        leadId: 0,
-                        propertyId: 0,
-                      })
+              <CardContent>
+                <form
+                  className="flex gap-3 flex-wrap items-end"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (dealId && !startSessionMutation.isPending) {
+                      startSessionMutation.mutate({ dealId: parseInt(dealId), leadId: 0, propertyId: 0 });
                     }
+                  }}
+                >
+                  <div className="space-y-1">
+                    <Label htmlFor={dealIdInputId}>Deal ID</Label>
+                    <Input
+                      id={dealIdInputId}
+                      placeholder="numeric"
+                      value={dealId}
+                      onChange={(e) => setDealId(e.target.value)}
+                      className="w-40 tabular-nums"
+                      type="number"
+                      inputMode="numeric"
+                    />
+                  </div>
+                  <Button
+                    type="submit"
                     disabled={!dealId || startSessionMutation.isPending}
                   >
-                    <Zap className="w-4 h-4 mr-2" />
-                    Start Session
+                    <Zap className="w-4 h-4 mr-2" aria-hidden="true" />
+                    Start session
                   </Button>
                   {sessions.length > 0 && (
-                    <Button variant="outline" onClick={() => setActiveSessionId(sessions[0].id)}>
-                      Resume Latest Session
+                    <Button type="button" variant="outline" onClick={() => setActiveSessionId(sessions[0].id)}>
+                      Resume latest session
                     </Button>
                   )}
-                </div>
+                </form>
               </CardContent>
             </Card>
           ) : (
-            <div className="flex items-center gap-3">
-              <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300">
-                Session #{activeSessionId} Active
+            <div className="flex items-center gap-3" role="status" aria-live="polite">
+              <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300" aria-label={`Session ${activeSessionId} is active`}>
+                Session #<span className="tabular-nums">{activeSessionId}</span> active
               </Badge>
-              <Button variant="ghost" size="sm" onClick={() => setActiveSessionId(null)}>
-                <X className="w-3 h-3 mr-1" /> End Session
+              <Button variant="ghost" size="sm" onClick={() => setPendingEndSession(true)} aria-label={`End negotiation session ${activeSessionId}`}>
+                <X className="w-3 h-3 mr-1" aria-hidden="true" /> End session
               </Button>
             </div>
           )}
@@ -587,48 +648,51 @@ export default function NegotiationCopilotPage() {
               {/* Message analysis */}
               <Card className="lg:col-span-2">
                 <CardHeader>
-                  <CardTitle>Analyze Seller Message</CardTitle>
-                  <CardDescription>Paste the seller's latest message for AI analysis</CardDescription>
+                  <CardTitle>Analyze seller message</CardTitle>
+                  <CardDescription>Paste the seller's latest message for AI analysis.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                  <Label htmlFor={messageTextId} className="sr-only">Seller message</Label>
                   <Textarea
+                    id={messageTextId}
                     placeholder="Paste seller message here…"
                     value={messageText}
                     onChange={(e) => setMessageText(e.target.value)}
                     rows={4}
+                    autoCapitalize="sentences"
                   />
-                  <div className="flex gap-3 flex-wrap">
+                  <div className="flex gap-3 flex-wrap" role="group" aria-label="Analysis actions for seller message">
                     <Button
                       variant="outline"
                       onClick={handleDetectObjection}
                       disabled={!messageText.trim() || analyzeMutation.isPending}
                     >
-                      <AlertCircle className="w-4 h-4 mr-2" />
-                      Detect Objection
+                      <AlertCircle className="w-4 h-4 mr-2" aria-hidden="true" />
+                      Detect objection
                     </Button>
                     <Button
                       variant="outline"
                       onClick={handleAnalyzeSentiment}
                       disabled={!messageText.trim() || analyzeMutation.isPending}
                     >
-                      <Target className="w-4 h-4 mr-2" />
-                      Analyze Sentiment
+                      <Target className="w-4 h-4 mr-2" aria-hidden="true" />
+                      Analyze sentiment
                     </Button>
                     <Button
                       variant="outline"
                       onClick={handleGetStrategy}
                       disabled={analyzeMutation.isPending}
                     >
-                      <Brain className="w-4 h-4 mr-2" />
-                      Recommend Strategy
+                      <Brain className="w-4 h-4 mr-2" aria-hidden="true" />
+                      Recommend strategy
                     </Button>
                     <Button
                       variant="outline"
                       onClick={handleCounterOffer}
                       disabled={analyzeMutation.isPending}
                     >
-                      <TrendingUp className="w-4 h-4 mr-2" />
-                      Suggest Counter
+                      <TrendingUp className="w-4 h-4 mr-2" aria-hidden="true" />
+                      Suggest counter
                     </Button>
                   </div>
                 </CardContent>
@@ -647,15 +711,15 @@ export default function NegotiationCopilotPage() {
               {sentimentResult && (
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-sm">Sentiment Analysis</CardTitle>
+                    <CardTitle className="text-sm">Sentiment analysis</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <SentimentIndicator score={sentimentResult.score} />
                     {sentimentResult.indicators?.length > 0 && (
-                      <ul className="mt-3 space-y-1">
+                      <ul className="mt-3 space-y-1 list-none p-0" aria-label="Sentiment indicators detected in message">
                         {sentimentResult.indicators.map((ind: string, i: number) => (
                           <li key={i} className="text-xs text-muted-foreground flex items-center gap-1">
-                            <ChevronRight className="w-3 h-3" /> {ind}
+                            <ChevronRight className="w-3 h-3" aria-hidden="true" /> {ind}
                           </li>
                         ))}
                       </ul>
@@ -668,31 +732,35 @@ export default function NegotiationCopilotPage() {
               {objectionResult && (
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-sm">Detected Objection</CardTitle>
+                    <CardTitle className="text-sm">Detected objection</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    <Badge className={OBJECTION_COLORS[objectionResult.category] || 'bg-gray-100'}>
+                    <Badge className={OBJECTION_COLORS[objectionResult.category] || 'bg-gray-100'} aria-label={`${objectionResult.category} objection`}>
                       {objectionResult.category?.toUpperCase()} objection
                     </Badge>
                     <p className="text-sm">{objectionResult.text}</p>
 
                     <div className="space-y-2 pt-2">
                       <p className="text-xs text-muted-foreground font-medium">Suggested responses:</p>
-                      {['empathy', 'logic', 'urgency'].map((strategy) => (
-                        <Button
-                          key={strategy}
-                          variant="outline"
-                          size="sm"
-                          className="w-full justify-start"
-                          onClick={() => handleGenerateResponse(objectionResult.id, strategy)}
-                          disabled={analyzeMutation.isPending}
-                        >
-                          <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs mr-2 ${STRATEGY_INFO[strategy]?.color}`}>
-                            {STRATEGY_INFO[strategy]?.label}
-                          </span>
-                          Generate response
-                        </Button>
-                      ))}
+                      <ul className="space-y-2 list-none p-0 m-0" role="group" aria-label="Generate response with strategy">
+                        {['empathy', 'logic', 'urgency'].map((strategy) => (
+                          <li key={strategy}>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="w-full justify-start"
+                              onClick={() => handleGenerateResponse(objectionResult.id, strategy)}
+                              disabled={analyzeMutation.isPending}
+                              aria-label={`Generate ${STRATEGY_INFO[strategy]?.label || strategy} response to ${objectionResult.category} objection`}
+                            >
+                              <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs mr-2 ${STRATEGY_INFO[strategy]?.color}`}>
+                                {STRATEGY_INFO[strategy]?.label}
+                              </span>
+                              Generate response
+                            </Button>
+                          </li>
+                        ))}
+                      </ul>
                     </div>
                   </CardContent>
                 </Card>
@@ -702,21 +770,21 @@ export default function NegotiationCopilotPage() {
               {strategyResult && (
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-sm">Recommended Strategy</CardTitle>
+                    <CardTitle className="text-sm">Recommended strategy</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3">
                     <div className="flex items-center gap-2">
                       <Badge className={STRATEGY_INFO[strategyResult.strategy]?.color || ''}>
                         {STRATEGY_INFO[strategyResult.strategy]?.label || strategyResult.strategy}
                       </Badge>
-                      <span className="text-sm text-muted-foreground">{strategyResult.confidence}% confidence</span>
+                      <span className="text-sm text-muted-foreground tabular-nums">{strategyResult.confidence}% confidence</span>
                     </div>
                     <p className="text-sm">{strategyResult.reasoning}</p>
                     {strategyResult.suggestedActions?.length > 0 && (
-                      <ul className="space-y-1">
+                      <ul className="space-y-1 list-none p-0 m-0" aria-label="Suggested actions">
                         {strategyResult.suggestedActions.map((a: string, i: number) => (
                           <li key={i} className="text-xs flex items-start gap-1">
-                            <Check className="w-3 h-3 mt-0.5 text-emerald-500 shrink-0" /> {a}
+                            <Check className="w-3 h-3 mt-0.5 text-emerald-500 shrink-0" aria-hidden="true" /> {a}
                           </li>
                         ))}
                       </ul>
@@ -734,24 +802,24 @@ export default function NegotiationCopilotPage() {
               {counterResult && (
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-sm">Suggested Counter Offer</CardTitle>
+                    <CardTitle className="text-sm">Suggested counter offer</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    <div className="text-3xl font-bold text-primary">
+                    <div className="text-3xl font-bold tabular-nums text-primary" aria-label={`Suggested counter offer: ${formatDollar(counterResult.suggestedAmount)}`}>
                       {formatDollar(counterResult.suggestedAmount)}
                     </div>
                     <p className="text-sm">{counterResult.reasoning}</p>
-                    <div className="text-sm text-muted-foreground">
+                    <div className="text-sm text-muted-foreground tabular-nums">
                       Confidence: {counterResult.confidence}%
                     </div>
                     {counterResult.alternativeAmounts?.length > 0 && (
                       <div className="space-y-1">
                         <p className="text-xs font-medium text-muted-foreground">Alternatives:</p>
-                        <div className="flex gap-2 flex-wrap">
+                        <ul className="flex gap-2 flex-wrap list-none p-0 m-0" aria-label="Alternative counter offers">
                           {counterResult.alternativeAmounts.map((a: number, i: number) => (
-                            <Badge key={i} variant="outline">{formatDollar(a)}</Badge>
+                            <li key={i}><Badge variant="outline" className="tabular-nums">{formatDollar(a)}</Badge></li>
                           ))}
-                        </div>
+                        </ul>
                       </div>
                     )}
                   </CardContent>
@@ -762,14 +830,26 @@ export default function NegotiationCopilotPage() {
               {responseResult && (
                 <Card className="lg:col-span-2">
                   <CardHeader>
-                    <CardTitle className="text-sm">Generated Response</CardTitle>
+                    <CardTitle className="text-sm">Generated response</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="p-4 bg-muted/50 rounded-lg text-sm leading-relaxed">
+                    <div className="p-4 bg-muted/50 rounded-lg text-sm leading-relaxed" aria-label="AI-generated response draft">
                       {responseResult.response || responseResult}
                     </div>
-                    <Button className="mt-3" size="sm" onClick={() => navigator.clipboard.writeText(responseResult.response || responseResult)}>
-                      Copy to Clipboard
+                    <Button
+                      className="mt-3"
+                      size="sm"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(responseResult.response || responseResult);
+                          toast({ title: "Copied to clipboard" });
+                        } catch {
+                          toast({ variant: "destructive", title: "Couldn't copy", description: "Your browser blocked clipboard access. Select the text and copy manually." });
+                        }
+                      }}
+                      aria-label="Copy AI-generated response to clipboard"
+                    >
+                      Copy to clipboard
                     </Button>
                   </CardContent>
                 </Card>
@@ -786,54 +866,67 @@ export default function NegotiationCopilotPage() {
         {/* ── DEAL HISTORY ── */}
         <TabsContent value="sessions" className="space-y-4">
           <div className="flex items-center gap-3">
+            <Label htmlFor={dealHistoryFilterId} className="sr-only">Deal ID</Label>
             <Input
+              id={dealHistoryFilterId}
               placeholder="Deal ID"
               value={dealId}
               onChange={(e) => setDealId(e.target.value)}
-              className="w-32"
+              className="w-32 tabular-nums"
               type="number"
+              inputMode="numeric"
+              aria-label="Deal ID to filter sessions"
             />
           </div>
 
-          {sessionsLoading && <div className="text-center py-12 text-muted-foreground">Loading sessions…</div>}
+          {sessionsLoading && <div className="text-center py-12 text-muted-foreground" role="status" aria-live="polite">Loading sessions…</div>}
 
           {sessions.length > 0 ? (
-            <div className="space-y-3">
+            <ul className="space-y-3 list-none p-0 m-0" aria-label={`${sessions.length} negotiation session${sessions.length === 1 ? "" : "s"} for deal ${dealId}`}>
               {sessions.map((s: any) => (
-                <Card key={s.id} className="cursor-pointer hover:shadow-md" onClick={() => setActiveSessionId(s.id)}>
-                  <CardContent className="pt-4 pb-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-medium text-sm">Session #{s.id}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          Started {new Date(s.createdAt).toLocaleDateString()}
-                          {s.outcome && ` · Outcome: ${s.outcome}`}
-                        </p>
+                <li key={s.id}>
+                  <Card
+                    className="cursor-pointer hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Open session ${s.id}, started ${new Date(s.createdAt).toLocaleDateString()}${s.outcome ? `, outcome ${s.outcome}` : ", active"}`}
+                    onClick={() => setActiveSessionId(s.id)}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setActiveSessionId(s.id); } }}
+                  >
+                    <CardContent className="pt-4 pb-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-medium text-sm">Session #<span className="tabular-nums">{s.id}</span></p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Started <time dateTime={new Date(s.createdAt).toISOString()}>{new Date(s.createdAt).toLocaleDateString()}</time>
+                            {s.outcome && ` · Outcome: ${s.outcome}`}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {s.outcome ? (
+                            <Badge className={s.outcome === 'accepted' ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-800'} aria-label={`Outcome: ${s.outcome}`}>
+                              {s.outcome}
+                            </Badge>
+                          ) : (
+                            <Badge className="bg-blue-100 text-blue-800">Active</Badge>
+                          )}
+                          <ChevronRight className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        {s.outcome ? (
-                          <Badge className={s.outcome === 'accepted' ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-800'}>
-                            {s.outcome}
-                          </Badge>
-                        ) : (
-                          <Badge className="bg-blue-100 text-blue-800">Active</Badge>
-                        )}
-                        <ChevronRight className="w-4 h-4 text-muted-foreground" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                    </CardContent>
+                  </Card>
+                </li>
               ))}
-            </div>
+            </ul>
           ) : dealId ? (
-            <div className="text-center py-16 text-muted-foreground">
-              <MessageSquare className="w-10 h-10 mx-auto mb-3 opacity-30" />
-              <p>No sessions found for deal #{dealId}</p>
+            <div className="text-center py-16 text-muted-foreground" role="status">
+              <MessageSquare className="w-10 h-10 mx-auto mb-3 opacity-30" aria-hidden="true" />
+              <p>No sessions found for deal #<span className="tabular-nums">{dealId}</span>.</p>
             </div>
           ) : (
-            <div className="text-center py-16 text-muted-foreground">
-              <MessageSquare className="w-10 h-10 mx-auto mb-3 opacity-30" />
-              <p>Enter a deal ID to see negotiation history</p>
+            <div className="text-center py-16 text-muted-foreground" role="status">
+              <MessageSquare className="w-10 h-10 mx-auto mb-3 opacity-30" aria-hidden="true" />
+              <p>Enter a deal ID to see negotiation history.</p>
             </div>
           )}
         </TabsContent>
@@ -843,9 +936,9 @@ export default function NegotiationCopilotPage() {
           <Card>
             <CardHeader>
               <CardTitle className="text-sm flex items-center gap-2">
-                <History className="w-4 h-4 text-primary" /> Session Replay
+                <History className="w-4 h-4 text-primary" aria-hidden="true" /> Session replay
               </CardTitle>
-              <CardDescription>Full move history with AI reasoning for the current session</CardDescription>
+              <CardDescription>Full move history with AI reasoning for the current session.</CardDescription>
             </CardHeader>
             <CardContent>
               {activeSessionId ? (
@@ -867,39 +960,46 @@ export default function NegotiationCopilotPage() {
               <Card>
                 <CardHeader>
                   <CardTitle className="text-sm flex items-center gap-2">
-                    <FlaskConical className="w-4 h-4 text-primary" /> A/B Strategy Win Rate Comparison
+                    <FlaskConical className="w-4 h-4 text-primary" aria-hidden="true" /> A/B strategy win-rate comparison
                   </CardTitle>
-                  <CardDescription>Strategy effectiveness comparison across all sessions</CardDescription>
+                  <CardDescription>Strategy effectiveness comparison across all sessions.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="overflow-x-auto">
+                  <div className="overflow-x-auto" role="region" aria-label="Strategy win rates" tabIndex={0}>
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b">
-                          <th className="text-left py-2 text-xs text-muted-foreground">Strategy</th>
-                          <th className="text-left py-2 text-xs text-muted-foreground">vs. Objection</th>
-                          <th className="text-right py-2 text-xs text-muted-foreground">Used</th>
-                          <th className="text-right py-2 text-xs text-muted-foreground">Win Rate</th>
-                          <th className="py-2 pl-4 text-xs text-muted-foreground">Bar</th>
+                          <th scope="col" className="text-left py-2 text-xs text-muted-foreground">Strategy</th>
+                          <th scope="col" className="text-left py-2 text-xs text-muted-foreground">vs. objection</th>
+                          <th scope="col" className="text-right py-2 text-xs text-muted-foreground">Used</th>
+                          <th scope="col" className="text-right py-2 text-xs text-muted-foreground">Win rate</th>
+                          <th scope="col" className="py-2 pl-4 text-xs text-muted-foreground">Bar</th>
                         </tr>
                       </thead>
                       <tbody>
                         {effectiveness.map((e: any, i: number) => (
                           <tr key={i} className="border-b last:border-0">
                             <td className="py-2">
-                              <Badge className={`${STRATEGY_INFO[e.strategy]?.color || ''} text-xs`}>
+                              <Badge className={`${STRATEGY_INFO[e.strategy]?.color || ''} text-xs`} aria-label={`Strategy: ${STRATEGY_INFO[e.strategy]?.label || e.strategy}`}>
                                 {STRATEGY_INFO[e.strategy]?.label || e.strategy}
                               </Badge>
                             </td>
                             <td className="py-2">
-                              <Badge className={`${OBJECTION_COLORS[e.category] || ''} text-xs`}>
+                              <Badge className={`${OBJECTION_COLORS[e.category] || ''} text-xs`} aria-label={`Objection: ${e.category}`}>
                                 {e.category}
                               </Badge>
                             </td>
-                            <td className="py-2 text-right text-muted-foreground">{e.timesUsed}×</td>
-                            <td className="py-2 text-right font-semibold">{(e.successRate * 100).toFixed(0)}%</td>
+                            <td className="py-2 text-right text-muted-foreground tabular-nums">{e.timesUsed}×</td>
+                            <td className="py-2 text-right font-semibold tabular-nums">{(e.successRate * 100).toFixed(0)}%</td>
                             <td className="py-2 pl-4 w-32">
-                              <div className="w-full bg-muted rounded-full h-1.5">
+                              <div
+                                className="w-full bg-muted rounded-full h-1.5"
+                                role="progressbar"
+                                aria-label={`${STRATEGY_INFO[e.strategy]?.label || e.strategy} vs ${e.category} win rate`}
+                                aria-valuenow={Math.round(e.successRate * 100)}
+                                aria-valuemin={0}
+                                aria-valuemax={100}
+                              >
                                 <div className="bg-primary h-1.5 rounded-full" style={{ width: `${e.successRate * 100}%` }} />
                               </div>
                             </td>
@@ -913,48 +1013,67 @@ export default function NegotiationCopilotPage() {
 
               <Card>
                 <CardHeader>
-                  <CardTitle>Strategy Effectiveness by Objection Type</CardTitle>
-                  <CardDescription>Success rate analysis across all closed negotiation sessions</CardDescription>
+                  <CardTitle>Strategy effectiveness by objection type</CardTitle>
+                  <CardDescription>Success rate analysis across all closed negotiation sessions.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-4">
+                  <ul className="space-y-4 list-none p-0 m-0" aria-label="Strategy effectiveness rows">
                     {effectiveness.map((e: any, i: number) => (
-                      <div key={i} className="space-y-2">
+                      <li key={i} className="space-y-2">
                         <div className="flex items-center justify-between text-sm">
                           <div className="flex items-center gap-2">
-                            <Badge className={OBJECTION_COLORS[e.category] || ''}>
+                            <Badge className={OBJECTION_COLORS[e.category] || ''} aria-label={`Objection: ${e.category}`}>
                               {e.category}
                             </Badge>
-                            <span className="text-muted-foreground">→</span>
+                            <span className="text-muted-foreground" aria-hidden="true">→</span>
                             <Badge className={STRATEGY_INFO[e.strategy]?.color || ''}>
                               {STRATEGY_INFO[e.strategy]?.label || e.strategy}
                             </Badge>
                           </div>
                           <div className="flex items-center gap-4">
-                            <span className="text-muted-foreground">{e.timesUsed}× used</span>
-                            <span className="font-semibold">{(e.successRate * 100).toFixed(0)}% success</span>
+                            <span className="text-muted-foreground tabular-nums">{e.timesUsed}× used</span>
+                            <span className="font-semibold tabular-nums">{(e.successRate * 100).toFixed(0)}% success</span>
                           </div>
                         </div>
-                        <div className="w-full bg-muted rounded-full h-2">
+                        <div
+                          className="w-full bg-muted rounded-full h-2"
+                          role="progressbar"
+                          aria-label={`${STRATEGY_INFO[e.strategy]?.label || e.strategy} vs ${e.category} success rate`}
+                          aria-valuenow={Math.round(e.successRate * 100)}
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                        >
                           <div
                             className="bg-primary h-2 rounded-full transition-all"
                             style={{ width: `${e.successRate * 100}%` }}
                           />
                         </div>
-                      </div>
+                      </li>
                     ))}
-                  </div>
+                  </ul>
                 </CardContent>
               </Card>
             </div>
           ) : (
-            <div className="text-center py-16 text-muted-foreground">
-              <BarChart2 className="w-10 h-10 mx-auto mb-3 opacity-30" />
-              <p>No effectiveness data yet — complete negotiation sessions to see analytics</p>
+            <div className="text-center py-16 text-muted-foreground" role="status">
+              <BarChart2 className="w-10 h-10 mx-auto mb-3 opacity-30" aria-hidden="true" />
+              <p>No effectiveness data yet — complete negotiation sessions to see analytics.</p>
             </div>
           )}
         </TabsContent>
       </Tabs>
+
+      <ConfirmDialog
+        open={pendingEndSession}
+        onOpenChange={(open) => { if (!open) setPendingEndSession(false); }}
+        title={`End negotiation session #${activeSessionId}?`}
+        description="Move history and analysis are preserved on the session record — you can resume it later from Deal history. The session itself stays open until you explicitly close it on the deal."
+        confirmLabel="End session"
+        onConfirm={() => {
+          setActiveSessionId(null);
+          setPendingEndSession(false);
+        }}
+      />
     </div>
   );
 }
