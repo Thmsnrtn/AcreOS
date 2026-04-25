@@ -1,13 +1,15 @@
-import { useState } from "react";
+import { useState, useId } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PageShell } from "@/components/page-shell";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, fetchJsonArray } from "@/lib/queryClient";
+import { apiRequest } from "@/lib/queryClient";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import { Mail, MessageSquare, Phone, Plus, Play, Pause, Users, BarChart3, Loader2, ChevronRight } from "lucide-react";
 
 interface Sequence {
@@ -30,13 +32,19 @@ const CHANNEL_ICONS: Record<string, React.ElementType> = {
   call: Phone,
 };
 
+const CHANNEL_LABELS: Record<string, string> = {
+  email: "Email",
+  sms: "SMS",
+  call: "Call",
+};
+
 export default function DripSequencesPage() {
+  useDocumentTitle("Drip sequences");
   const { toast } = useToast();
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
+  const searchId = useId();
 
-  // /api/sequences may return either a raw array or { sequences: [...] };
-  // normalize via fetch then unwrap.
   const { data, isLoading } = useQuery<{ sequences: Sequence[] }>({
     queryKey: ["/api/sequences"],
     queryFn: async () => {
@@ -53,19 +61,29 @@ export default function DripSequencesPage() {
   const pauseMutation = useMutation({
     mutationFn: (id: number) => apiRequest("POST", `/api/sequences/${id}/pause`),
     onSuccess: () => {
-      toast({ title: "Sequence paused" });
+      toast({ title: "Sequence paused." });
       qc.invalidateQueries({ queryKey: ["/api/sequences"] });
     },
-    onError: () => toast({ title: "Failed", variant: "destructive" }),
+    onError: () =>
+      toast({
+        title: "Couldn't pause sequence",
+        description: "The sequence is still active and enrolled leads will continue to receive messages.",
+        variant: "destructive",
+      }),
   });
 
   const resumeMutation = useMutation({
     mutationFn: (id: number) => apiRequest("POST", `/api/sequences/${id}/resume`),
     onSuccess: () => {
-      toast({ title: "Sequence resumed" });
+      toast({ title: "Sequence resumed." });
       qc.invalidateQueries({ queryKey: ["/api/sequences"] });
     },
-    onError: () => toast({ title: "Failed", variant: "destructive" }),
+    onError: () =>
+      toast({
+        title: "Couldn't resume sequence",
+        description: "The sequence is still paused and no messages will be sent.",
+        variant: "destructive",
+      }),
   });
 
   const sequences = (data?.sequences ?? []).filter(s =>
@@ -77,135 +95,180 @@ export default function DripSequencesPage() {
 
   return (
     <PageShell>
-      <div className="flex items-start justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-drip-sequences-title">
-            Drip Sequences
+            Drip sequences
           </h1>
           <p className="text-muted-foreground text-sm md:text-base">
             Automated multi-step outreach sequences for leads and prospects.
           </p>
         </div>
-        <Button asChild>
+        <Button asChild className="min-h-11">
           <a href="/sequences/new">
-            <Plus className="w-4 h-4 mr-2" /> New Sequence
+            <Plus className="w-4 h-4 mr-2" aria-hidden="true" /> New sequence
           </a>
         </Button>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <dl className="grid grid-cols-2 gap-3">
         <Card>
           <CardContent className="p-4">
-            <div className="flex items-center gap-2 text-muted-foreground mb-1">
-              <Users className="w-4 h-4" />
-              <span className="text-xs">Total Enrolled</span>
-            </div>
-            <p className="text-2xl font-bold">{totalEnrolled.toLocaleString()}</p>
+            <dt className="flex items-center gap-2 text-muted-foreground mb-1">
+              <Users className="w-4 h-4" aria-hidden="true" />
+              <span className="text-xs">Total enrolled</span>
+            </dt>
+            <dd className="text-2xl font-bold tabular-nums">{totalEnrolled.toLocaleString()}</dd>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
-            <div className="flex items-center gap-2 text-muted-foreground mb-1">
-              <BarChart3 className="w-4 h-4" />
-              <span className="text-xs">Avg Completion</span>
-            </div>
-            <p className="text-2xl font-bold">
+            <dt className="flex items-center gap-2 text-muted-foreground mb-1">
+              <BarChart3 className="w-4 h-4" aria-hidden="true" />
+              <span className="text-xs">Avg completion</span>
+            </dt>
+            <dd className="text-2xl font-bold tabular-nums">
               {totalEnrolled > 0
                 ? `${Math.round((totalCompleted / totalEnrolled) * 100)}%`
                 : "—"}
-            </p>
+            </dd>
           </CardContent>
         </Card>
+      </dl>
+
+      <div>
+        <Label htmlFor={searchId} className="sr-only">Search sequences</Label>
+        <Input
+          id={searchId}
+          type="search"
+          placeholder="Search sequences…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="max-w-xs"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+        />
       </div>
 
-      <Input
-        placeholder="Search sequences..."
-        value={search}
-        onChange={e => setSearch(e.target.value)}
-        className="max-w-xs"
-      />
-
       {isLoading ? (
-        <div className="flex items-center gap-2 text-muted-foreground">
-          <Loader2 className="w-4 h-4 animate-spin" /> Loading sequences...
+        <div className="flex items-center gap-2 text-muted-foreground" role="status" aria-live="polite">
+          <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> Loading sequences…
         </div>
       ) : sequences.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">
-            <Mail className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+            <Mail className="w-8 h-8 text-muted-foreground mx-auto mb-2" aria-hidden="true" />
             <p className="text-muted-foreground text-sm">
               {search ? "No sequences match your search." : "No sequences yet."}
             </p>
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-2">
+        <ul className="space-y-2" aria-label="Drip sequences">
           {sequences.map(seq => {
             const completionRate = seq.enrolledCount > 0
               ? Math.round((seq.completedCount / seq.enrolledCount) * 100)
               : 0;
 
             return (
-              <Card key={seq.id}>
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between">
-                    <div className="space-y-2 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-sm">{seq.name}</span>
-                        <Badge
-                          variant={seq.status === "active" ? "default" : seq.status === "paused" ? "secondary" : "outline"}
-                          className="text-xs"
-                        >
-                          {seq.status}
-                        </Badge>
-                        <span className="text-xs text-muted-foreground">{seq.stepCount} steps</span>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        {seq.channels.map(ch => {
-                          const Icon = CHANNEL_ICONS[ch] ?? Mail;
-                          return <Icon key={ch} className="w-3.5 h-3.5 text-muted-foreground" />;
-                        })}
-                      </div>
-
-                      <div className="flex gap-4 text-xs text-muted-foreground">
-                        <span><Users className="w-3 h-3 inline mr-0.5" />{seq.enrolledCount} enrolled</span>
-                        <span>{seq.completedCount} completed</span>
-                        <span>{seq.unsubscribedCount} unsubscribed</span>
-                        <span>~{seq.avgDaysDuration}d avg</span>
-                      </div>
-
-                      <div>
-                        <div className="flex justify-between text-xs mb-0.5">
-                          <span className="text-muted-foreground">Completion Rate</span>
-                          <span>{completionRate}%</span>
+              <li key={seq.id}>
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between gap-3 flex-wrap">
+                      <div className="space-y-2 flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-medium text-sm">{seq.name}</span>
+                          <Badge
+                            variant={seq.status === "active" ? "default" : seq.status === "paused" ? "secondary" : "outline"}
+                            className="text-xs capitalize"
+                          >
+                            {seq.status}
+                          </Badge>
+                          <span className="text-xs text-muted-foreground tabular-nums">{seq.stepCount} steps</span>
                         </div>
-                        <Progress value={completionRate} className="h-1" />
+
+                        {seq.channels.length > 0 && (
+                          <ul className="flex items-center gap-2" aria-label="Channels used">
+                            {seq.channels.map(ch => {
+                              const Icon = CHANNEL_ICONS[ch] ?? Mail;
+                              return (
+                                <li key={ch}>
+                                  <Icon
+                                    className="w-3.5 h-3.5 text-muted-foreground"
+                                    aria-label={CHANNEL_LABELS[ch] ?? ch}
+                                  />
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
+
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                          <span><Users className="w-3 h-3 inline mr-0.5" aria-hidden="true" /><span className="tabular-nums">{seq.enrolledCount}</span> enrolled</span>
+                          <span><span className="tabular-nums">{seq.completedCount}</span> completed</span>
+                          <span><span className="tabular-nums">{seq.unsubscribedCount}</span> unsubscribed</span>
+                          <span>~<span className="tabular-nums">{seq.avgDaysDuration}</span>d avg</span>
+                        </div>
+
+                        <div>
+                          <div className="flex justify-between text-xs mb-0.5">
+                            <span className="text-muted-foreground">Completion rate</span>
+                            <span className="tabular-nums">{completionRate}%</span>
+                          </div>
+                          <Progress
+                            value={completionRate}
+                            className="h-1"
+                            aria-label={`${seq.name} completion rate: ${completionRate}%`}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        {seq.status === "active" ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => pauseMutation.mutate(seq.id)}
+                            disabled={pauseMutation.isPending}
+                            className="min-h-9 min-w-9"
+                            aria-label={`Pause ${seq.name}`}
+                          >
+                            <Pause className="w-3.5 h-3.5" aria-hidden="true" />
+                          </Button>
+                        ) : seq.status === "paused" ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => resumeMutation.mutate(seq.id)}
+                            disabled={resumeMutation.isPending}
+                            className="min-h-9 min-w-9"
+                            aria-label={`Resume ${seq.name}`}
+                          >
+                            <Play className="w-3.5 h-3.5" aria-hidden="true" />
+                          </Button>
+                        ) : null}
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          asChild
+                          className="min-h-9 min-w-9"
+                        >
+                          <a
+                            href={`/sequences/${seq.id}`}
+                            aria-label={`Open ${seq.name} sequence details`}
+                          >
+                            <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
+                          </a>
+                        </Button>
                       </div>
                     </div>
-
-                    <div className="flex items-center gap-1 ml-3">
-                      {seq.status === "active" ? (
-                        <Button size="sm" variant="outline" onClick={() => pauseMutation.mutate(seq.id)}>
-                          <Pause className="w-3.5 h-3.5" />
-                        </Button>
-                      ) : seq.status === "paused" ? (
-                        <Button size="sm" variant="outline" onClick={() => resumeMutation.mutate(seq.id)}>
-                          <Play className="w-3.5 h-3.5" />
-                        </Button>
-                      ) : null}
-                      <Button size="sm" variant="ghost" asChild>
-                        <a href={`/sequences/${seq.id}`}>
-                          <ChevronRight className="w-3.5 h-3.5" />
-                        </a>
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+              </li>
             );
           })}
-        </div>
+        </ul>
       )}
     </PageShell>
   );
