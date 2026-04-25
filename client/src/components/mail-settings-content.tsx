@@ -274,14 +274,14 @@ export function MailSettingsContent() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/mail-identities"] });
       toast({
-        title: "Verification Initiated",
+        title: "Verification initiated",
         description: "Address verification has been submitted.",
       });
     },
     onError: (err: Error) => {
       toast({
-        title: "Verification Failed",
-        description: err.message,
+        title: "Couldn't verify address",
+        description: `${err.message} — your identity record is unchanged.`,
         variant: "destructive",
       });
     },

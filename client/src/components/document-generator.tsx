@@ -198,13 +198,13 @@ export function DocumentGenerator({
       document.body.removeChild(a);
 
       toast({
-        title: "Document Generated",
+        title: "Document generated",
         description: `${filename} has been downloaded.`,
       });
     } catch (error: any) {
       toast({
-        title: "Generation Failed",
-        description: error.message || "Failed to generate document",
+        title: "Couldn't generate document",
+        description: error.message || "Generation failed. Try again in a moment.",
         variant: "destructive",
       });
     } finally {

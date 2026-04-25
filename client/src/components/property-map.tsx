@@ -1217,7 +1217,7 @@ export function PropertyMap({
       setShowComps(true);
       setCompsPanelOpen(true);
       toast({
-        title: "Comparables Found",
+        title: "Comparables found",
         description: `Found ${compsList.length} comparable properties.`,
       });
     } catch (err) {
@@ -1839,13 +1839,13 @@ export function PropertyMap({
       link.click();
       
       toast({
-        title: "Map Exported",
+        title: "Map exported",
         description: "Image downloaded successfully.",
       });
     } catch (error) {
       toast({
-        title: "Export Failed",
-        description: "Could not export map image.",
+        title: "Couldn't export map",
+        description: "Image export failed. Try again in a moment.",
         variant: "destructive",
       });
     } finally {
@@ -1872,13 +1872,13 @@ export function PropertyMap({
           ]);
           
           toast({
-            title: "Copied to Clipboard",
+            title: "Copied to clipboard",
             description: "Map image copied successfully.",
           });
         } catch (err) {
           toast({
-            title: "Copy Failed",
-            description: "Could not copy to clipboard. Try downloading instead.",
+            title: "Couldn't copy to clipboard",
+            description: "Try downloading instead.",
             variant: "destructive",
           });
         } finally {
@@ -1887,8 +1887,8 @@ export function PropertyMap({
       }, "image/png");
     } catch (error) {
       toast({
-        title: "Export Failed",
-        description: "Could not export map image.",
+        title: "Couldn't export map",
+        description: "Image export failed. Try again in a moment.",
         variant: "destructive",
       });
       setIsExporting(false);
