@@ -612,10 +612,10 @@ function TestTable({ tests, onView, onStart, onComplete, onDelete, getCampaignNa
                         size="icon"
                         onClick={() => onDelete(test.id)}
                         disabled={isPending}
-                        aria-label="Delete test"
+                        aria-label={`Delete test ${test.name ?? ""}`.trim()}
                         data-testid={`button-delete-test-${test.id}`}
                       >
-                        <Trash2 className="w-4 h-4 text-destructive" />
+                        <Trash2 className="w-4 h-4 text-destructive" aria-hidden="true" />
                       </Button>
                     )}
                   </div>

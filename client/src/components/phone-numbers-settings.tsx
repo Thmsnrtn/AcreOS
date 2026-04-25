@@ -341,18 +341,18 @@ export function PhoneNumbersSettings() {
                         onClick={() => setDefaultMutation.mutate(phone.id)}
                         data-testid={`button-set-default-${phone.id}`}
                       >
-                        <Star className="w-4 h-4 mr-1" />
-                        Set Default
+                        <Star className="w-4 h-4 mr-1" aria-hidden="true" />
+                        Set default
                       </Button>
                     )}
                     <Button
                       size="icon"
                       variant="ghost"
                       onClick={() => deleteMutation.mutate(phone.id)}
-                      aria-label="Delete phone number"
+                      aria-label={`Delete phone number ${formatPhoneNumber(phone.phoneNumber)}`}
                       data-testid={`button-delete-phone-${phone.id}`}
                     >
-                      <Trash2 className="w-4 h-4 text-destructive" />
+                      <Trash2 className="w-4 h-4 text-destructive" aria-hidden="true" />
                     </Button>
                   </div>
                 </div>

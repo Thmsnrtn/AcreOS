@@ -170,18 +170,18 @@ export function WorkflowsSettingsTab() {
                       variant="ghost"
                       className="h-7 w-7"
                       onClick={() => { setEditingWorkflow(wf); setBuilderOpen(true); }}
-                      aria-label="Edit workflow"
+                      aria-label={`Edit workflow ${wf.name ?? ""}`.trim()}
                     >
-                      <Edit2 className="w-3.5 h-3.5" />
+                      <Edit2 className="w-3.5 h-3.5" aria-hidden="true" />
                     </Button>
                     <Button
                       size="icon"
                       variant="ghost"
                       className="h-7 w-7 text-muted-foreground hover:text-destructive"
                       onClick={() => deleteMut.mutate(wf.id)}
-                      aria-label="Delete workflow"
+                      aria-label={`Delete workflow ${wf.name ?? ""}`.trim()}
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
                     </Button>
                   </div>
                 </div>
