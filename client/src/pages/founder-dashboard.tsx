@@ -2023,12 +2023,16 @@ export default function FounderDashboard() {
           )}
 
           {/* Tab Navigation */}
-          <div className="flex items-center gap-1 border-b mb-6 overflow-x-auto pb-px">
+          <div role="tablist" aria-label="Founder dashboard sections" className="flex items-center gap-1 border-b mb-6 overflow-x-auto pb-px">
             {DASHBOARD_TABS.map((tab) => (
               <button
                 key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={activeTab === tab.id}
+                aria-controls={`founder-tab-panel-${tab.id}`}
                 onClick={() => handleTabChange(tab.id)}
-                className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
+                className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                   activeTab === tab.id
                     ? "border-primary text-primary"
                     : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
@@ -5976,12 +5980,14 @@ function TodaysBriefing() {
           </div>
         </div>
         <button
+          type="button"
           onClick={() => refetch()}
           disabled={isFetching}
-          className="p-1.5 rounded-lg hover:bg-muted/60 text-muted-foreground shrink-0"
+          className="p-1.5 rounded-lg hover:bg-muted/60 text-muted-foreground shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           title="Refresh briefing"
+          aria-label={isFetching ? "Refreshing briefing" : "Refresh briefing"}
         >
-          <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? "animate-spin" : ""}`} />
+          <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? "animate-spin" : ""}`} aria-hidden="true" />
         </button>
       </div>
 
@@ -6342,12 +6348,14 @@ function OrgHealthMonitor() {
             return (
               <button
                 key={status}
+                type="button"
                 onClick={() => setFilterStatus(filterStatus === status ? "all" : status)}
-                className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
+                aria-pressed={filterStatus === status}
+                className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                   filterStatus === status ? `${cfg.bg} ${cfg.text} ${cfg.bg}` : "border-border text-muted-foreground hover:border-primary/40"
                 }`}
               >
-                <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1.5 ${cfg.dot}`} />
+                <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1.5 ${cfg.dot}`} aria-hidden="true" />
                 {cfg.label} {count}
               </button>
             );
@@ -6413,8 +6421,10 @@ function OrgHealthMonitor() {
 
       {filtered.length > 12 && (
         <button
+          type="button"
           onClick={() => setShowAll(!showAll)}
-          className="text-xs text-primary hover:underline"
+          className="text-xs text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+          aria-expanded={showAll}
         >
           {showAll ? "Show less" : `Show ${filtered.length - 12} more`}
         </button>
@@ -6447,8 +6457,11 @@ function AutopilotStatusBar() {
     <div className="fixed bottom-0 left-0 right-0 z-40 bg-background/95 border-t backdrop-blur-sm">
       <div className="max-w-screen-2xl mx-auto px-4 py-2">
         <button
+          type="button"
           onClick={() => setExpanded(!expanded)}
-          className="flex items-center gap-2 w-full"
+          className="flex items-center gap-2 w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+          aria-expanded={expanded}
+          aria-label={expanded ? "Collapse autopilot status" : "Expand autopilot status"}
         >
           <div className="flex items-center gap-1.5">
             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
