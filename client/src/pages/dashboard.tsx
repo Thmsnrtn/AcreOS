@@ -639,7 +639,7 @@ export default function Dashboard() {
 
   if (orgError) {
     return (
-      <PageShell>
+      <PageShell label="Dashboard">
         <QueryErrorState
           error={orgError as Error}
           onRetry={() => refetchOrg()}
@@ -651,7 +651,7 @@ export default function Dashboard() {
   }
 
   return (
-    <PageShell>
+    <PageShell label="Dashboard">
       <OnboardingWizard />
       <PullToRefresh onRefresh={handleRefresh}>
           

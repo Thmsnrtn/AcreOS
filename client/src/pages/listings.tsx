@@ -208,7 +208,7 @@ export default function ListingsPage() {
   };
 
   return (
-    <PageShell>
+    <PageShell label="Listings">
         <div className="flex items-center justify-between gap-4 flex-wrap mb-6">
           <div>
             <h1 className="text-2xl font-bold" data-testid="text-page-title">Listings</h1>

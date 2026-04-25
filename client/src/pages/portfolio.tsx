@@ -288,7 +288,7 @@ export default function PortfolioPage() {
   ] : [];
 
   return (
-    <PageShell>
+    <PageShell label="Portfolio">
         
           <div>
             <h1 className="text-3xl font-bold" data-testid="text-portfolio-title">Portfolio analytics</h1>

@@ -478,7 +478,7 @@ export default function TodayPage() {
   const userName = user?.firstName || organization?.name || "";
 
   return (
-    <PageShell>
+    <PageShell label="Today">
       {/* Onboarding prompt for new users */}
       {showOnboardingBanner && (
         <Card className="border-primary/30 bg-primary/5">

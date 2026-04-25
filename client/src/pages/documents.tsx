@@ -888,7 +888,7 @@ export default function DocumentsPage() {
   };
 
   return (
-    <PageShell>
+    <PageShell label="Documents">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h1 className="text-2xl font-bold" data-testid="text-page-title">Documents</h1>

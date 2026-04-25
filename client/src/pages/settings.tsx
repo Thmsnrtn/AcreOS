@@ -764,7 +764,7 @@ export default function Settings() {
   };
 
   return (
-    <PageShell maxWidth="4xl">
+    <PageShell label="Settings" maxWidth="4xl">
           <div>
             <h1 className="text-3xl font-bold" data-testid="text-settings-title">
               Settings

@@ -432,7 +432,7 @@ export default function DealsPage() {
 
   if (error) {
     return (
-      <PageShell>
+      <PageShell label="Deals">
         <QueryErrorState
           error={error as Error}
           onRetry={() => refetch()}
@@ -444,7 +444,7 @@ export default function DealsPage() {
   }
 
   return (
-    <PageShell>
+    <PageShell label="Deals">
         
           
 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
