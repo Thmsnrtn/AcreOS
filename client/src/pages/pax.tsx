@@ -1,5 +1,6 @@
 import { useEffect, useState, lazy, Suspense } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { PageShell } from "@/components/page-shell";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -170,6 +171,7 @@ function revenueImpact(severity: string, type?: string): string | null {
 // ─── Insights Tab Content ─────────────────────────────────────────────────────
 
 function InsightsTabContent() {
+  const [, setLocation] = useLocation();
   const { data, isLoading, error, refetch, isRefetching } = useQuery<InsightsData>({
     queryKey: ["/api/pax/insights"],
   });
@@ -323,7 +325,7 @@ function InsightsTabContent() {
                       size="sm"
                       variant="outline"
                       className="h-7 text-xs"
-                      onClick={() => (window.location.href = `/leads/${lead.id}`)}
+                      onClick={() => setLocation(`/leads/${lead.id}`)}
                       aria-label={`Follow up with ${name}`}
                     >
                       Follow up
@@ -376,7 +378,7 @@ function InsightsTabContent() {
                     size="sm"
                     variant="destructive"
                     className="h-7 text-xs shrink-0"
-                    onClick={() => (window.location.href = `/deals/${offer.id}`)}
+                    onClick={() => setLocation(`/deals/${offer.id}`)}
                     aria-label={`Review expiring offer: ${offer.title}`}
                   >
                     Review now
@@ -431,7 +433,7 @@ function InsightsTabContent() {
                     size="sm"
                     variant="default"
                     className="h-7 text-xs"
-                    onClick={() => (window.location.href = `/leads/${caller.id}`)}
+                    onClick={() => setLocation(`/leads/${caller.id}`)}
                     aria-label={`View lead: ${caller.name}`}
                   >
                     View
