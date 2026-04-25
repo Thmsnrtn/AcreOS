@@ -295,12 +295,12 @@ export function WorkflowBuilder({ open, onOpenChange, workflow, onSave, isSaving
         return (
           <div className="space-y-3" data-testid={`action-config-${action.id}`}>
             <div>
-              <Label>Record Type</Label>
+              <Label htmlFor={`select-record-type-${action.id}`}>Record type</Label>
               <Select
                 value={action.config.entityType || ""}
                 onValueChange={(v) => updateAction(action.id, { config: { ...action.config, entityType: v as "lead" | "property" | "deal" } })}
               >
-                <SelectTrigger data-testid={`select-record-type-${action.id}`}>
+                <SelectTrigger id={`select-record-type-${action.id}`} data-testid={`select-record-type-${action.id}`}>
                   <SelectValue placeholder="Select record type" />
                 </SelectTrigger>
                 <SelectContent>
@@ -311,8 +311,9 @@ export function WorkflowBuilder({ open, onOpenChange, workflow, onSave, isSaving
               </Select>
             </div>
             <div>
-              <Label>Field to Update</Label>
+              <Label htmlFor={`input-record-field-${action.id}`}>Field to update</Label>
               <Input
+                id={`input-record-field-${action.id}`}
                 placeholder="status"
                 value={Object.keys(action.config.updates || {})[0] || ""}
                 onChange={(e) => {
@@ -325,12 +326,16 @@ export function WorkflowBuilder({ open, onOpenChange, workflow, onSave, isSaving
                     },
                   });
                 }}
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
                 data-testid={`input-record-field-${action.id}`}
               />
             </div>
             <div>
-              <Label>New Value</Label>
+              <Label htmlFor={`input-record-value-${action.id}`}>New value</Label>
               <Input
+                id={`input-record-value-${action.id}`}
                 placeholder="qualified"
                 value={Object.values(action.config.updates || {})[0] || ""}
                 onChange={(e) => {
@@ -342,6 +347,9 @@ export function WorkflowBuilder({ open, onOpenChange, workflow, onSave, isSaving
                     },
                   });
                 }}
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
                 data-testid={`input-record-value-${action.id}`}
               />
             </div>
@@ -352,26 +360,27 @@ export function WorkflowBuilder({ open, onOpenChange, workflow, onSave, isSaving
         return (
           <div className="space-y-3" data-testid={`action-config-${action.id}`}>
             <div>
-              <Label>Agent Skill</Label>
+              <Label htmlFor={`select-skill-${action.id}`}>Agent skill</Label>
               <Select
                 value={action.config.skillId || ""}
                 onValueChange={(v) => updateAction(action.id, { config: { ...action.config, skillId: v } })}
               >
-                <SelectTrigger data-testid={`select-skill-${action.id}`}>
+                <SelectTrigger id={`select-skill-${action.id}`} data-testid={`select-skill-${action.id}`}>
                   <SelectValue placeholder="Select an AI skill" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="analyze_lead">Analyze Lead</SelectItem>
-                  <SelectItem value="score_property">Score Property</SelectItem>
-                  <SelectItem value="generate_offer">Generate Offer</SelectItem>
-                  <SelectItem value="summarize_deal">Summarize Deal</SelectItem>
-                  <SelectItem value="draft_email">Draft Email</SelectItem>
+                  <SelectItem value="analyze_lead">Analyze lead</SelectItem>
+                  <SelectItem value="score_property">Score property</SelectItem>
+                  <SelectItem value="generate_offer">Generate offer</SelectItem>
+                  <SelectItem value="summarize_deal">Summarize deal</SelectItem>
+                  <SelectItem value="draft_email">Draft email</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div>
-              <Label>Additional Parameters (JSON)</Label>
+              <Label htmlFor={`textarea-skill-params-${action.id}`}>Additional parameters <span className="text-muted-foreground/70">(JSON)</span></Label>
               <Textarea
+                id={`textarea-skill-params-${action.id}`}
                 placeholder='{"maxResults": 5}'
                 value={JSON.stringify(action.config.skillParams || {}, null, 2)}
                 onChange={(e) => {
@@ -383,6 +392,10 @@ export function WorkflowBuilder({ open, onOpenChange, workflow, onSave, isSaving
                   }
                 }}
                 rows={2}
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
+                className="font-mono text-xs"
                 data-testid={`textarea-skill-params-${action.id}`}
               />
             </div>
@@ -393,31 +406,35 @@ export function WorkflowBuilder({ open, onOpenChange, workflow, onSave, isSaving
         return (
           <div className="space-y-3" data-testid={`action-config-${action.id}`}>
             <div>
-              <Label>Title</Label>
+              <Label htmlFor={`input-notification-title-${action.id}`}>Title</Label>
               <Input
-                placeholder="New Lead Alert"
+                id={`input-notification-title-${action.id}`}
+                placeholder="New lead alert"
                 value={action.config.title || ""}
                 onChange={(e) => updateAction(action.id, { config: { ...action.config, title: e.target.value } })}
+                autoCapitalize="sentences"
                 data-testid={`input-notification-title-${action.id}`}
               />
             </div>
             <div>
-              <Label>Message</Label>
+              <Label htmlFor={`textarea-notification-message-${action.id}`}>Message</Label>
               <Textarea
+                id={`textarea-notification-message-${action.id}`}
                 placeholder="A new lead {{lead.firstName}} has been created"
                 value={action.config.message || ""}
                 onChange={(e) => updateAction(action.id, { config: { ...action.config, message: e.target.value } })}
                 rows={2}
+                autoCapitalize="sentences"
                 data-testid={`textarea-notification-message-${action.id}`}
               />
             </div>
             <div>
-              <Label>Type</Label>
+              <Label htmlFor={`select-notification-type-${action.id}`}>Type</Label>
               <Select
                 value={action.config.notificationType || "info"}
                 onValueChange={(v) => updateAction(action.id, { config: { ...action.config, notificationType: v as "info" | "success" | "warning" } })}
               >
-                <SelectTrigger data-testid={`select-notification-type-${action.id}`}>
+                <SelectTrigger id={`select-notification-type-${action.id}`} data-testid={`select-notification-type-${action.id}`}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
