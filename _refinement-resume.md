@@ -753,6 +753,7 @@ to a dedicated 9b slice.
 **Email-input mobile hardening (167):** ✅ complete — lens shift to forms. 6 type="email" inputs got inputMode="email" + autoCapitalize="off" + autoCorrect="off" + spellCheck={false} + autoComplete="email": deal-inbox (reply-to), TeamInviteCard, request-signatures-dialog, email-compose-sheet (To/CC/BCC). (commit `f8947d4`)
 **Number-input mobile hardening (168):** ✅ complete — 13 inputs across document-generator (9) and ai-offer-generator (4) got inputMode="decimal" (money) or "numeric" (whole numbers). Mobile users now see the right keypad on first focus. (commit `a7b1183`)
 **Number-input mobile hardening cont. (169):** ✅ complete — 7 more inputs across pages: comps-analysis (radius/min/max acreage), custom-fields (generic), leads (offer amount), marketplace (bid amount/create price). (commit `f6c2a85`)
+**Number-input mobile hardening final (170):** ✅ complete — 5 inputs: founder-dashboard pricing (Monthly/Yearly ¢) + discount %, counties (population), tasks (entity ID). (commit `e03fdad`)
 **/onboarding-v2 targeted (18):** ✅ complete (commit `70df779`) — 18b deferred
 **/settings targeted (19):** ✅ complete (commit `809044c`) — 19b remaining components deferred
 **/pipeline (20):** ✅ complete (commit `1b5d0f7`)
