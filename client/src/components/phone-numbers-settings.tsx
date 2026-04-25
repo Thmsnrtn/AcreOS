@@ -175,21 +175,32 @@ export function PhoneNumbersSettings() {
             </DialogTrigger>
             <DialogContent className="max-w-lg">
               <DialogHeader>
-                <DialogTitle>Purchase Phone Number</DialogTitle>
+                <DialogTitle>Purchase phone number</DialogTitle>
                 <DialogDescription>
                   Search for available phone numbers and purchase one for your organization.
                 </DialogDescription>
               </DialogHeader>
-              <div className="space-y-4 py-4">
+              <form
+                id="search-numbers-form"
+                className="space-y-4 py-4"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!searchMutation.isPending) searchMutation.mutate();
+                }}
+              >
                 <div className="flex gap-2">
                   <div className="flex-1">
-                    <Label htmlFor="areaCode">Area Code</Label>
+                    <Label htmlFor="areaCode">Area code</Label>
                     <Input
                       id="areaCode"
                       placeholder="415"
                       value={areaCode}
                       onChange={(e) => setAreaCode(e.target.value)}
                       maxLength={3}
+                      type="tel"
+                      inputMode="numeric"
+                      autoComplete="off"
+                      pattern="[0-9]{3}"
                       data-testid="input-area-code"
                     />
                   </div>
@@ -200,19 +211,21 @@ export function PhoneNumbersSettings() {
                       placeholder="1234"
                       value={searchContains}
                       onChange={(e) => setSearchContains(e.target.value)}
+                      inputMode="numeric"
+                      autoComplete="off"
                       data-testid="input-contains"
                     />
                   </div>
                 </div>
                 <Button
+                  type="submit"
                   variant="outline"
                   className="w-full"
-                  onClick={() => searchMutation.mutate()}
                   disabled={searchMutation.isPending}
                   data-testid="button-search-numbers"
                 >
-                  <Search className="w-4 h-4 mr-2" />
-                  {searchMutation.isPending ? "Searching..." : "Search Available Numbers"}
+                  <Search className="w-4 h-4 mr-2" aria-hidden="true" />
+                  {searchMutation.isPending ? "Searching…" : "Search available numbers"}
                 </Button>
 
                 {searchMutation.data && (searchMutation.data as AvailableNumber[]).length > 0 && (
@@ -257,16 +270,17 @@ export function PhoneNumbersSettings() {
                 )}
 
                 {searchMutation.data && (searchMutation.data as AvailableNumber[]).length === 0 && (
-                  <div className="text-sm text-muted-foreground text-center py-4">
+                  <div className="text-sm text-muted-foreground text-center py-4" role="status" aria-live="polite">
                     No numbers found. Try a different area code or search term.
                   </div>
                 )}
-              </div>
+              </form>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+                <Button type="button" variant="outline" onClick={() => setIsAddDialogOpen(false)}>
                   Cancel
                 </Button>
                 <Button
+                  type="button"
                   onClick={() => selectedNumber && purchaseMutation.mutate({
                     phoneNumber: selectedNumber.phoneNumber,
                     friendlyName: selectedNumber.friendlyName,
@@ -274,7 +288,7 @@ export function PhoneNumbersSettings() {
                   disabled={!selectedNumber || purchaseMutation.isPending}
                   data-testid="button-confirm-purchase"
                 >
-                  {purchaseMutation.isPending ? "Purchasing..." : "Purchase Number"}
+                  {purchaseMutation.isPending ? "Purchasing…" : "Purchase number"}
                 </Button>
               </DialogFooter>
             </DialogContent>
