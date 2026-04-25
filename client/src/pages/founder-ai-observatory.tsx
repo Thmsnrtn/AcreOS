@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
+import { useDocumentTitle } from "@/hooks/use-document-title";
+import { usd } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -121,13 +123,10 @@ interface ModelCatalogResponse {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+// P1 money-precision: AI cost telemetry can run sub-dollar (sub-$1 per call) so
+// canonical usd() with cents enabled is required — never trim cents on this surface.
 function formatCents(cents: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(cents / 100);
+  return usd(cents / 100);
 }
 
 function formatMs(ms: number): string {
@@ -340,22 +339,22 @@ function DecisionCard({
 
   return (
     <motion.div variants={staggerItem}>
-      <div className="p-4 rounded-lg border border-border bg-muted/30 space-y-3">
+      <div className="p-4 rounded-lg border border-border bg-muted/30 space-y-3" role="article" aria-label={`${outcome.label} ${decision.actionType} decision: ${decision.summary}`}>
         {/* Top row: timestamp + category + summary + outcome */}
         <div className="flex items-start gap-3">
           <div className="p-2 rounded-lg bg-muted shrink-0 mt-0.5">
-            <CategoryIcon className="w-4 h-4 text-muted-foreground" />
+            <CategoryIcon className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs text-muted-foreground">
+              <time dateTime={new Date(decision.timestamp).toISOString()} className="text-xs text-muted-foreground">
                 {relative(decision.timestamp)}
-              </span>
-              <Badge variant="outline" className={`text-xs ${categoryColor(decision.actionType)}`}>
+              </time>
+              <Badge variant="outline" className={`text-xs ${categoryColor(decision.actionType)}`} aria-label={`Category: ${decision.actionType}`}>
                 {decision.actionType}
               </Badge>
-              <Badge variant="outline" className={`text-xs inline-flex items-center gap-1 ${outcome.className}`}>
-                {outcome.icon}
+              <Badge variant="outline" className={`text-xs inline-flex items-center gap-1 ${outcome.className}`} aria-label={`Outcome: ${outcome.label}`}>
+                <span aria-hidden="true">{outcome.icon}</span>
                 {outcome.label}
               </Badge>
             </div>
@@ -363,16 +362,24 @@ function DecisionCard({
 
             {/* Confidence meter */}
             <div className="flex items-center gap-2 mt-2">
-              <span className="text-xs text-muted-foreground w-20 shrink-0">
+              <span className="text-xs text-muted-foreground w-20 shrink-0" id={`conf-label-${decision.id}`}>
                 Confidence
               </span>
-              <div className="flex-1 max-w-[200px]">
+              <div
+                className="flex-1 max-w-[200px]"
+                role="progressbar"
+                aria-labelledby={`conf-label-${decision.id}`}
+                aria-valuenow={decision.confidence}
+                aria-valuemin={0}
+                aria-valuemax={100}
+              >
                 <Progress
                   value={decision.confidence}
                   className={`h-1.5 [&>div]:${confidenceColor(decision.confidence)}`}
+                  aria-hidden="true"
                 />
               </div>
-              <span className="text-xs font-medium text-foreground w-8 text-right">
+              <span className="text-xs font-medium text-foreground w-8 text-right tabular-nums">
                 {decision.confidence}%
               </span>
             </div>
@@ -382,24 +389,29 @@ function DecisionCard({
         {/* Action row: expand + feedback */}
         <div className="flex items-center justify-between pl-11">
           <button
+            type="button"
             onClick={() => setExpanded(!expanded)}
-            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            aria-expanded={expanded}
+            aria-controls={`decision-details-${decision.id}`}
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded px-1"
           >
             {expanded ? (
-              <ChevronDown className="w-3.5 h-3.5" />
+              <ChevronDown className="w-3.5 h-3.5" aria-hidden="true" />
             ) : (
-              <ChevronRight className="w-3.5 h-3.5" />
+              <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
             )}
             {expanded ? "Hide details" : "Show reasoning"}
           </button>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5" role="group" aria-label={`Feedback for decision: ${decision.summary}`}>
             <Button
               variant={decision.feedback === "good" ? "default" : "outline"}
               size="sm"
               className="h-7 text-xs gap-1"
               onClick={() => setPendingFeedback("good")}
+              aria-pressed={decision.feedback === "good"}
+              aria-label="Mark this decision as a good call"
             >
-              <ThumbsUp className="w-3 h-3" />
+              <ThumbsUp className="w-3 h-3" aria-hidden="true" />
               Good call
             </Button>
             <Button
@@ -407,8 +419,10 @@ function DecisionCard({
               size="sm"
               className="h-7 text-xs gap-1"
               onClick={() => setPendingFeedback("different")}
+              aria-pressed={decision.feedback === "different"}
+              aria-label="Flag this decision — I'd have decided differently"
             >
-              <ThumbsDown className="w-3 h-3" />
+              <ThumbsDown className="w-3 h-3" aria-hidden="true" />
               I'd have decided differently
             </Button>
           </div>
@@ -423,20 +437,21 @@ function DecisionCard({
               animate="visible"
               exit="hidden"
               className="overflow-hidden"
+              id={`decision-details-${decision.id}`}
             >
               <div className="pl-11 pt-2 space-y-3 border-t border-border mt-1 pt-3">
                 <div>
-                  <p className="text-xs font-medium text-foreground mb-1">AI Reasoning</p>
+                  <p className="text-xs font-medium text-foreground mb-1">AI reasoning</p>
                   <p className="text-xs text-muted-foreground leading-relaxed">
                     {decision.reasoning}
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs font-medium text-foreground mb-1">Data Considered</p>
-                  <ul className="space-y-1">
+                  <p className="text-xs font-medium text-foreground mb-1">Data considered</p>
+                  <ul className="space-y-1 list-none p-0 m-0">
                     {decision.dataConsidered.map((item, i) => (
                       <li key={i} className="text-xs text-muted-foreground flex items-start gap-1.5">
-                        <span className="text-muted-foreground/50 mt-0.5">-</span>
+                        <span className="text-muted-foreground/50 mt-0.5" aria-hidden="true">-</span>
                         {item}
                       </li>
                     ))}
@@ -690,6 +705,7 @@ function ModelDistributionSection({
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function AiObservatory() {
+  useDocumentTitle("AI observatory");
   const { isFounder, isLoading: authLoading } = useAuth();
 
   const { data: stats, isLoading: statsLoading } = useQuery<AiStats>({
@@ -739,9 +755,9 @@ export default function AiObservatory() {
 
   if (!isFounder) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen gap-4">
-        <ShieldAlert className="w-12 h-12 text-destructive" />
-        <h1 className="text-xl font-semibold text-foreground">Access Denied</h1>
+      <div className="flex flex-col items-center justify-center min-h-screen gap-4" role="alert">
+        <ShieldAlert className="w-12 h-12 text-destructive" aria-hidden="true" />
+        <h1 className="text-xl font-semibold text-foreground">Access denied</h1>
         <p className="text-sm text-muted-foreground">
           This page is restricted to founder administrators.
         </p>
@@ -765,16 +781,16 @@ export default function AiObservatory() {
         {/* Header */}
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <BrainCircuit className="w-6 h-6 text-violet-500" />
-            <h1 className="text-2xl font-bold text-foreground">AI Observatory</h1>
+            <BrainCircuit className="w-6 h-6 text-violet-500" aria-hidden="true" />
+            <h1 className="text-2xl font-bold text-foreground">AI observatory</h1>
           </div>
           <p className="text-sm text-muted-foreground">
-            Real-time intelligence across all organizations
+            Real-time intelligence across all organizations.
           </p>
         </div>
 
         <Alert>
-          <ShieldAlert className="h-4 w-4" />
+          <ShieldAlert className="h-4 w-4" aria-hidden="true" />
           <AlertTitle>Technical details ahead</AlertTitle>
           <AlertDescription>
             This page shows technical details about your AI system. Most founders don't need to check this — your system manages itself automatically.
@@ -784,29 +800,29 @@ export default function AiObservatory() {
         {/* Stats Row */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
-            title="Total AI Calls Today"
+            title="Total AI calls today"
             value={stats ? stats.totalCallsToday.toLocaleString() : "—"}
             icon={Activity}
             loading={statsLoading}
           />
           <StatCard
-            title="Total Cost Today"
+            title="Total cost today"
             value={stats ? formatCents(stats.totalCostTodayCents) : "—"}
             icon={DollarSign}
             loading={statsLoading}
           />
           <StatCard
-            title="Avg Latency"
+            title="Avg latency"
             value={stats ? formatMs(stats.avgLatencyMs) : "—"}
             icon={Clock}
             loading={statsLoading}
           />
           <StatCard
-            title="Cache Hit Rate"
+            title="Cache hit rate"
             value={
               stats ? `${(stats.cacheHitRate * 100).toFixed(1)}%` : "—"
             }
-            sub="Reuses previous answers instead of making new AI calls (saves money)"
+            sub="Reuses previous answers instead of making new AI calls (saves money)."
             icon={Zap}
             loading={statsLoading}
           />
@@ -874,19 +890,19 @@ export default function AiObservatory() {
                 No telemetry data available.
               </div>
             ) : (
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto" role="region" aria-label={`Recent ${interactions.length} AI interaction${interactions.length === 1 ? "" : "s"}`} tabIndex={0}>
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="whitespace-nowrap">Time</TableHead>
-                      <TableHead>Org</TableHead>
-                      <TableHead>Agent Role</TableHead>
-                      <TableHead>Model</TableHead>
-                      <TableHead>Complexity</TableHead>
-                      <TableHead>Tools Called</TableHead>
-                      <TableHead className="text-right"><InfoTooltip term="Tokens" explanation="Units of text processed by the AI — like words, but smaller.">Tokens</InfoTooltip></TableHead>
-                      <TableHead className="text-right">Cost</TableHead>
-                      <TableHead>Status</TableHead>
+                      <TableHead scope="col" className="whitespace-nowrap">Time</TableHead>
+                      <TableHead scope="col">Org</TableHead>
+                      <TableHead scope="col">Agent role</TableHead>
+                      <TableHead scope="col">Model</TableHead>
+                      <TableHead scope="col">Complexity</TableHead>
+                      <TableHead scope="col">Tools called</TableHead>
+                      <TableHead scope="col" className="text-right"><InfoTooltip term="Tokens" explanation="Units of text processed by the AI — like words, but smaller.">Tokens</InfoTooltip></TableHead>
+                      <TableHead scope="col" className="text-right">Cost</TableHead>
+                      <TableHead scope="col">Status</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -895,9 +911,9 @@ export default function AiObservatory() {
                       return (
                         <TableRow key={row.id}>
                           <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                            <span title={format(new Date(row.createdAt), "PPpp")}>
+                            <time dateTime={new Date(row.createdAt).toISOString()} title={format(new Date(row.createdAt), "PPpp")}>
                               {relative(row.createdAt)}
-                            </span>
+                            </time>
                           </TableCell>
                           <TableCell className="text-xs max-w-[120px] truncate">
                             {row.organizationName}
@@ -910,6 +926,7 @@ export default function AiObservatory() {
                             <Badge
                               variant="outline"
                               className={`text-xs ${complexityColor(row.complexity)}`}
+                              aria-label={`Complexity: ${row.complexity}`}
                             >
                               {row.complexity}
                             </Badge>
@@ -919,16 +936,17 @@ export default function AiObservatory() {
                               ? row.toolsCalled.join(", ")
                               : "—"}
                           </TableCell>
-                          <TableCell className="text-xs text-right">
+                          <TableCell className="text-xs text-right tabular-nums">
                             {totalTokens.toLocaleString()}
                           </TableCell>
-                          <TableCell className="text-xs text-right">
+                          <TableCell className="text-xs text-right tabular-nums">
                             {formatCents(row.costCents)}
                           </TableCell>
                           <TableCell>
                             <Badge
                               variant="outline"
                               className={`text-xs ${statusColor(row.status)}`}
+                              aria-label={`Status: ${row.status}`}
                             >
                               {row.status}
                             </Badge>
@@ -947,8 +965,8 @@ export default function AiObservatory() {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <Layers className="w-4 h-4 text-muted-foreground" />
-              Model Distribution
+              <Layers className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
+              Model distribution
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -968,25 +986,25 @@ export default function AiObservatory() {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <Bot className="w-4 h-4 text-muted-foreground" />
-              Evolution Proposals
+              <Bot className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
+              Evolution proposals
             </CardTitle>
           </CardHeader>
           <CardContent>
             {proposalsLoading ? (
-              <div className="space-y-3">
+              <div className="space-y-3" role="status" aria-label="Loading proposals">
                 {Array.from({ length: 3 }).map((_, i) => (
                   <Skeleton key={i} className="h-14 w-full" />
                 ))}
               </div>
             ) : proposals.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-muted-foreground" role="status">
                 No evolution proposals at this time.
               </p>
             ) : (
-              <div className="space-y-3">
+              <ul className="space-y-3 list-none p-0 m-0" aria-label={`${proposals.length} evolution proposal${proposals.length === 1 ? "" : "s"}`}>
                 {proposals.map((p) => (
-                  <div
+                  <li
                     key={p.id}
                     className="flex items-start gap-3 p-3 rounded-lg border border-border bg-muted/30"
                   >
@@ -1002,22 +1020,24 @@ export default function AiObservatory() {
                       <Badge
                         variant="outline"
                         className={`text-xs ${impactColor(p.estimatedImpact)}`}
+                        aria-label={`Estimated impact: ${p.estimatedImpact}`}
                       >
                         {p.estimatedImpact} impact
                       </Badge>
                       <Badge
                         variant="outline"
                         className={`text-xs ${proposalStatusColor(p.status)}`}
+                        aria-label={`Status: ${p.status}`}
                       >
                         {p.status}
                       </Badge>
-                      <span className="text-xs text-muted-foreground">
+                      <time dateTime={new Date(p.createdAt).toISOString()} className="text-xs text-muted-foreground">
                         {relative(p.createdAt)}
-                      </span>
+                      </time>
                     </div>
-                  </div>
+                  </li>
                 ))}
-              </div>
+              </ul>
             )}
           </CardContent>
         </Card>
@@ -1026,8 +1046,8 @@ export default function AiObservatory() {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <BrainCircuit className="w-4 h-4 text-muted-foreground" />
-              Model Catalog{" "}
+              <BrainCircuit className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
+              Model catalog{" "}
               <span className="text-xs font-normal text-muted-foreground">
                 (top 10 by benchmark score)
               </span>
@@ -1035,37 +1055,37 @@ export default function AiObservatory() {
           </CardHeader>
           <CardContent className="p-0">
             {catalogLoading ? (
-              <div className="p-6 space-y-3">
+              <div className="p-6 space-y-3" role="status" aria-label="Loading model catalog">
                 {Array.from({ length: 5 }).map((_, i) => (
                   <Skeleton key={i} className="h-8 w-full" />
                 ))}
               </div>
             ) : topModels.length === 0 ? (
-              <div className="p-6 text-sm text-muted-foreground text-center">
+              <div className="p-6 text-sm text-muted-foreground text-center" role="status">
                 No model catalog data available.
               </div>
             ) : (
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto" role="region" aria-label={`Top ${topModels.length} model${topModels.length === 1 ? "" : "s"} by benchmark score`} tabIndex={0}>
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Model ID</TableHead>
-                      <TableHead className="text-right">
-                        Benchmark Simple
+                      <TableHead scope="col">Model ID</TableHead>
+                      <TableHead scope="col" className="text-right">
+                        Benchmark simple
                       </TableHead>
-                      <TableHead className="text-right">
-                        Benchmark Moderate
+                      <TableHead scope="col" className="text-right">
+                        Benchmark moderate
                       </TableHead>
-                      <TableHead className="text-right">
-                        Benchmark Complex
+                      <TableHead scope="col" className="text-right">
+                        Benchmark complex
                       </TableHead>
-                      <TableHead className="text-right">
+                      <TableHead scope="col" className="text-right">
                         Input $/M tokens
                       </TableHead>
-                      <TableHead className="text-right">
+                      <TableHead scope="col" className="text-right">
                         Output $/M tokens
                       </TableHead>
-                      <TableHead>Status</TableHead>
+                      <TableHead scope="col">Status</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1074,25 +1094,26 @@ export default function AiObservatory() {
                         <TableCell className="text-xs font-mono">
                           {m.modelId}
                         </TableCell>
-                        <TableCell className="text-xs text-right">
+                        <TableCell className="text-xs text-right tabular-nums">
                           {m.benchmarkSimple.toFixed(2)}
                         </TableCell>
-                        <TableCell className="text-xs text-right">
+                        <TableCell className="text-xs text-right tabular-nums">
                           {m.benchmarkModerate.toFixed(2)}
                         </TableCell>
-                        <TableCell className="text-xs text-right">
+                        <TableCell className="text-xs text-right tabular-nums">
                           {m.benchmarkComplex.toFixed(2)}
                         </TableCell>
-                        <TableCell className="text-xs text-right">
+                        <TableCell className="text-xs text-right tabular-nums">
                           ${m.inputCostPerMTokens.toFixed(2)}
                         </TableCell>
-                        <TableCell className="text-xs text-right">
+                        <TableCell className="text-xs text-right tabular-nums">
                           ${m.outputCostPerMTokens.toFixed(2)}
                         </TableCell>
                         <TableCell>
                           <Badge
                             variant="outline"
                             className={`text-xs ${modelStatusColor(m.status)}`}
+                            aria-label={`Status: ${m.status}`}
                           >
                             {m.status}
                           </Badge>
