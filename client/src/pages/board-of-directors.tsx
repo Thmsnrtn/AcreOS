@@ -1,16 +1,18 @@
-import { useState } from "react";
+import { useState, useId } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
 import {
-  Shield, Users, AlertTriangle, CheckCircle, Clock,
-  MessageSquare, Gavel, ChevronDown, ChevronUp,
+  Shield, AlertTriangle, CheckCircle, Clock,
+  MessageSquare, ChevronDown, ChevronUp,
   ThumbsUp, ThumbsDown, XCircle,
 } from "lucide-react";
+import { useDocumentTitle } from "@/hooks/use-document-title";
+import { useToast } from "@/hooks/use-toast";
+import { usd } from "@/lib/format";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,6 +36,9 @@ function NegotiationCard({ negotiation }: { negotiation: any }) {
   const [expanded, setExpanded] = useState(false);
   const [pendingResolution, setPendingResolution] = useState<"approved" | "rejected" | null>(null);
   const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const detailsId = useId();
+  const topicLabel = negotiation.topic ?? negotiation.subject ?? "Agent negotiation";
 
   const resolveMutation = useMutation({
     mutationFn: async (resolution: string) => {
@@ -49,50 +54,68 @@ function NegotiationCard({ negotiation }: { negotiation: any }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/founder/v11/negotiation/active"] });
     },
+    onError: () =>
+      toast({
+        title: "Couldn't resolve negotiation",
+        description: "The negotiation is unchanged. Try again, or refresh to check current state.",
+        variant: "destructive",
+      }),
   });
 
   return (
     <Card>
       <CardContent className="pt-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <MessageSquare className="w-4 h-4 text-primary" />
-            <div>
-              <p className="font-medium text-sm">{negotiation.topic ?? negotiation.subject ?? "Agent Negotiation"}</p>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-3 min-w-0">
+            <MessageSquare className="w-4 h-4 text-primary shrink-0" aria-hidden="true" />
+            <div className="min-w-0">
+              <p className="font-medium text-sm">{topicLabel}</p>
               <p className="text-xs text-muted-foreground">
                 {negotiation.participants?.join(", ") ?? "Multiple agents"}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Badge variant={
-              negotiation.status === "resolved" ? "default" :
-              negotiation.status === "escalated" ? "destructive" :
-              "secondary"
-            }>
+            <Badge
+              variant={
+                negotiation.status === "resolved" ? "default" :
+                negotiation.status === "escalated" ? "destructive" :
+                "secondary"
+              }
+              className="capitalize"
+            >
               {negotiation.status}
             </Badge>
-            <Button variant="ghost" size="sm" onClick={() => setExpanded(!expanded)}>
-              {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="min-h-9 min-w-9"
+              onClick={() => setExpanded(!expanded)}
+              aria-expanded={expanded}
+              aria-controls={detailsId}
+              aria-label={`${expanded ? "Collapse" : "Expand"} ${topicLabel}`}
+            >
+              {expanded ? <ChevronUp className="w-4 h-4" aria-hidden="true" /> : <ChevronDown className="w-4 h-4" aria-hidden="true" />}
             </Button>
           </div>
         </div>
 
         {expanded && (
-          <div className="mt-4 space-y-3 pl-7">
+          <div id={detailsId} className="mt-4 space-y-3 pl-7">
             {negotiation.summary && (
               <p className="text-sm text-muted-foreground">{negotiation.summary}</p>
             )}
 
             {negotiation.messages && Array.isArray(negotiation.messages) && (
-              <div className="space-y-2 border-l-2 pl-3">
+              <ol className="space-y-2 border-l-2 pl-3" aria-label={`Recent messages in ${topicLabel}`}>
                 {negotiation.messages.slice(-5).map((msg: any, i: number) => (
-                  <div key={i} className="text-xs">
+                  <li key={i} className="text-xs">
                     <span className="font-medium">{msg.agent ?? msg.from}:</span>{" "}
                     <span className="text-muted-foreground">{msg.content ?? msg.message}</span>
-                  </div>
+                  </li>
                 ))}
-              </div>
+              </ol>
             )}
 
             {negotiation.status === "escalated" && (
@@ -101,16 +124,18 @@ function NegotiationCard({ negotiation }: { negotiation: any }) {
                   size="sm"
                   onClick={() => setPendingResolution("approved")}
                   disabled={resolveMutation.isPending}
+                  aria-label={`Approve "${topicLabel}"`}
                 >
-                  <ThumbsUp className="w-3 h-3 mr-1" /> Approve
+                  <ThumbsUp className="w-3 h-3 mr-1" aria-hidden="true" /> Approve
                 </Button>
                 <Button
                   size="sm"
                   variant="destructive"
                   onClick={() => setPendingResolution("rejected")}
                   disabled={resolveMutation.isPending}
+                  aria-label={`Reject "${topicLabel}"`}
                 >
-                  <ThumbsDown className="w-3 h-3 mr-1" /> Reject
+                  <ThumbsDown className="w-3 h-3 mr-1" aria-hidden="true" /> Reject
                 </Button>
               </div>
             )}
@@ -123,8 +148,8 @@ function NegotiationCard({ negotiation }: { negotiation: any }) {
                   </AlertDialogTitle>
                   <AlertDialogDescription>
                     {pendingResolution === "approved"
-                      ? `You're approving this decision regarding "${negotiation.topic ?? negotiation.subject ?? "this negotiation"}". The system will proceed with the proposed action.`
-                      : `You're rejecting this decision regarding "${negotiation.topic ?? negotiation.subject ?? "this negotiation"}". The system will not proceed and may escalate to you again later.`}
+                      ? `You're approving this decision regarding "${topicLabel}". The system will proceed with the proposed action.`
+                      : `You're rejecting this decision regarding "${topicLabel}". The system will not proceed and may escalate to you again later.`}
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
@@ -142,7 +167,7 @@ function NegotiationCard({ negotiation }: { negotiation: any }) {
             </AlertDialog>
 
             {negotiation.createdAt && (
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-muted-foreground tabular-nums">
                 Started {relative(negotiation.createdAt)}
               </p>
             )}
@@ -154,11 +179,12 @@ function NegotiationCard({ negotiation }: { negotiation: any }) {
 }
 
 export default function BoardOfDirectors() {
+  useDocumentTitle("Board of directors");
   const { data: negotiations = [], isLoading: negLoading } = useAgentNegotiations();
   const { data: tokens = [], isLoading: tokensLoading } = useDelegationTokens();
-  const { data: trustLog = [], isLoading: trustLoading } = useTrustEnforcement();
-  const { data: overrides = [], isLoading: overridesLoading } = useFounderOverrides();
-  const { data: cascade = [], isLoading: cascadeLoading } = useConfidenceCascade();
+  const { data: trustLog = [] } = useTrustEnforcement();
+  const { data: overrides = [] } = useFounderOverrides();
+  const { data: cascade = [] } = useConfidenceCascade();
 
   const isLoading = negLoading || tokensLoading;
 
@@ -171,22 +197,21 @@ export default function BoardOfDirectors() {
         {/* Header */}
         <div className="space-y-2">
           <h1 className="text-2xl font-semibold flex items-center gap-2">
-            <Shield className="w-6 h-6 text-primary" />
-            Board of Directors
+            <Shield className="w-6 h-6 text-primary" aria-hidden="true" />
+            Board of directors
           </h1>
           <p className="text-sm text-muted-foreground">
-            Agent negotiations, delegation authority, trust enforcement, and founder overrides
+            Agent negotiations, delegation authority, trust enforcement, and founder overrides.
           </p>
         </div>
 
-        {/* Escalation Alert */}
         {escalated.length > 0 && (
-          <Card className="border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950">
+          <Card className="border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950" role="alert">
             <CardContent className="pt-4">
               <div className="flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-red-500" />
+                <AlertTriangle className="w-4 h-4 text-red-500" aria-hidden="true" />
                 <p className="font-medium text-sm text-red-700 dark:text-red-400">
-                  {escalated.length} negotiation{escalated.length > 1 ? "s" : ""} require{escalated.length === 1 ? "s" : ""} your attention
+                  <span className="tabular-nums">{escalated.length}</span> negotiation{escalated.length > 1 ? "s" : ""} require{escalated.length === 1 ? "s" : ""} your attention.
                 </p>
               </div>
             </CardContent>
@@ -197,21 +222,22 @@ export default function BoardOfDirectors() {
           <TabsList>
             <TabsTrigger value="negotiations">
               Negotiations {Array.isArray(negotiations) && negotiations.length > 0 && (
-                <Badge variant="secondary" className="ml-1">{negotiations.length}</Badge>
+                <Badge variant="secondary" className="ml-1 tabular-nums">{negotiations.length}</Badge>
               )}
             </TabsTrigger>
             <TabsTrigger value="delegation">Delegation</TabsTrigger>
-            <TabsTrigger value="trust">Trust Log</TabsTrigger>
+            <TabsTrigger value="trust">Trust log</TabsTrigger>
             <TabsTrigger value="overrides">Overrides</TabsTrigger>
             <TabsTrigger value="cascade">Confidence</TabsTrigger>
           </TabsList>
 
-          {/* Negotiations */}
           <TabsContent value="negotiations" className="space-y-4">
             {Array.isArray(negotiations) && negotiations.length > 0 ? (
-              negotiations.map((neg: any) => (
-                <NegotiationCard key={neg.id} negotiation={neg} />
-              ))
+              <ul className="space-y-4" aria-label="Active agent negotiations">
+                {negotiations.map((neg: any) => (
+                  <li key={neg.id}><NegotiationCard negotiation={neg} /></li>
+                ))}
+              </ul>
             ) : (
               <Card>
                 <CardContent className="pt-6 text-center text-sm text-muted-foreground">
@@ -221,34 +247,33 @@ export default function BoardOfDirectors() {
             )}
           </TabsContent>
 
-          {/* Delegation Tokens */}
           <TabsContent value="delegation" className="space-y-4">
             {Array.isArray(tokens) && tokens.length > 0 ? (
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-sm">Active Delegation Tokens</CardTitle>
+                  <CardTitle className="text-sm">Active delegation tokens</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-3">
+                  <ul className="space-y-3" aria-label="Active delegation tokens">
                     {tokens.map((token: any) => (
-                      <div key={token.id} className="flex items-center justify-between text-sm border-b last:border-0 pb-2">
-                        <div>
+                      <li key={token.id} className="flex items-center justify-between text-sm border-b last:border-0 pb-2 gap-3 flex-wrap">
+                        <div className="min-w-0">
                           <p className="font-medium">{token.agentCodename ?? token.grantedTo}</p>
-                          <p className="text-xs text-muted-foreground">
-                            Scope: {token.scope ?? "general"} · Max: ${token.maxAmountCents ? (token.maxAmountCents / 100).toLocaleString() : "N/A"}
+                          <p className="text-xs text-muted-foreground tabular-nums">
+                            Scope: {token.scope ?? "general"} · Max: {token.maxAmountCents ? usd(token.maxAmountCents / 100) : "N/A"}
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
-                          <Badge variant={token.status === "active" ? "default" : "secondary"}>
+                          <Badge variant={token.status === "active" ? "default" : "secondary"} className="capitalize">
                             {token.status}
                           </Badge>
                           {token.usageCount != null && (
-                            <span className="text-xs text-muted-foreground">Used {token.usageCount}x</span>
+                            <span className="text-xs text-muted-foreground tabular-nums">Used {token.usageCount}x</span>
                           )}
                         </div>
-                      </div>
+                      </li>
                     ))}
-                  </div>
+                  </ul>
                 </CardContent>
               </Card>
             ) : (
@@ -260,38 +285,42 @@ export default function BoardOfDirectors() {
             )}
           </TabsContent>
 
-          {/* Trust Enforcement Log */}
           <TabsContent value="trust" className="space-y-4">
             {Array.isArray(trustLog) && trustLog.length > 0 ? (
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-sm">Trust Enforcement Events</CardTitle>
+                  <CardTitle className="text-sm">Trust enforcement events</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-2 max-h-96 overflow-y-auto">
-                    {trustLog.slice(0, 30).map((entry: any, i: number) => (
-                      <div key={entry.id ?? i} className="flex items-center justify-between text-sm border-b last:border-0 pb-2">
-                        <div className="flex items-center gap-2">
-                          {entry.action === "allowed" || entry.action === "approved" ? (
-                            <CheckCircle className="w-3.5 h-3.5 text-green-500" />
-                          ) : entry.action === "blocked" || entry.action === "denied" ? (
-                            <XCircle className="w-3.5 h-3.5 text-red-500" />
-                          ) : (
-                            <Clock className="w-3.5 h-3.5 text-yellow-500" />
-                          )}
-                          <div>
-                            <span className="font-medium">{entry.agent ?? entry.subject}</span>
-                            <span className="text-muted-foreground"> · {entry.description ?? entry.reason ?? entry.action}</span>
+                  <ol className="space-y-2 max-h-96 overflow-y-auto" aria-label="Trust enforcement log, newest first">
+                    {trustLog.slice(0, 30).map((entry: any, i: number) => {
+                      const isAllowed = entry.action === "allowed" || entry.action === "approved";
+                      const isBlocked = entry.action === "blocked" || entry.action === "denied";
+                      const actionLabel = isAllowed ? "Allowed" : isBlocked ? "Blocked" : "Pending";
+                      return (
+                        <li key={entry.id ?? i} className="flex items-center justify-between text-sm border-b last:border-0 pb-2 gap-3 flex-wrap">
+                          <div className="flex items-center gap-2 min-w-0">
+                            {isAllowed ? (
+                              <CheckCircle className="w-3.5 h-3.5 text-green-500" aria-label={actionLabel} />
+                            ) : isBlocked ? (
+                              <XCircle className="w-3.5 h-3.5 text-red-500" aria-label={actionLabel} />
+                            ) : (
+                              <Clock className="w-3.5 h-3.5 text-yellow-500" aria-label={actionLabel} />
+                            )}
+                            <div className="min-w-0">
+                              <span className="font-medium">{entry.agent ?? entry.subject}</span>
+                              <span className="text-muted-foreground"> · {entry.description ?? entry.reason ?? entry.action}</span>
+                            </div>
                           </div>
-                        </div>
-                        {entry.createdAt && (
-                          <span className="text-xs text-muted-foreground">
-                            {relative(entry.createdAt)}
-                          </span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
+                          {entry.createdAt && (
+                            <span className="text-xs text-muted-foreground tabular-nums">
+                              {relative(entry.createdAt)}
+                            </span>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ol>
                 </CardContent>
               </Card>
             ) : (
@@ -303,31 +332,30 @@ export default function BoardOfDirectors() {
             )}
           </TabsContent>
 
-          {/* Founder Overrides */}
           <TabsContent value="overrides" className="space-y-4">
             {Array.isArray(overrides) && overrides.length > 0 ? (
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-sm">Override History</CardTitle>
+                  <CardTitle className="text-sm">Override history</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-3 max-h-96 overflow-y-auto">
+                  <ol className="space-y-3 max-h-96 overflow-y-auto" aria-label="Founder override history, newest first">
                     {overrides.map((override: any, i: number) => (
-                      <div key={override.id ?? i} className="border-b last:border-0 pb-3">
-                        <div className="flex items-center justify-between">
-                          <p className="font-medium text-sm">{override.reason ?? override.description ?? "Manual Override"}</p>
-                          <Badge>{override.type ?? "override"}</Badge>
+                      <li key={override.id ?? i} className="border-b last:border-0 pb-3">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <p className="font-medium text-sm">{override.reason ?? override.description ?? "Manual override"}</p>
+                          <Badge className="capitalize">{override.type ?? "override"}</Badge>
                         </div>
-                        <p className="text-xs text-muted-foreground mt-1">
+                        <p className="text-xs text-muted-foreground mt-1 tabular-nums">
                           Agent: {override.agent ?? override.targetAgent ?? "System"} ·{" "}
                           {override.createdAt && relative(override.createdAt)}
                         </p>
                         {override.learningApplied && (
-                          <p className="text-xs text-green-600 mt-1">Learning applied to future decisions</p>
+                          <p className="text-xs text-green-600 mt-1">Learning applied to future decisions.</p>
                         )}
-                      </div>
+                      </li>
                     ))}
-                  </div>
+                  </ol>
                 </CardContent>
               </Card>
             ) : (
@@ -339,39 +367,40 @@ export default function BoardOfDirectors() {
             )}
           </TabsContent>
 
-          {/* Confidence Cascade */}
           <TabsContent value="cascade" className="space-y-4">
             {Array.isArray(cascade) && cascade.length > 0 ? (
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-sm">Confidence Cascade — Multi-Layer Resolution</CardTitle>
+                  <CardTitle className="text-sm">Confidence cascade — multi-layer resolution</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-3 max-h-96 overflow-y-auto">
+                  <ul className="space-y-3 max-h-96 overflow-y-auto" aria-label="Confidence cascade decisions">
                     {cascade.map((item: any, i: number) => (
-                      <div key={item.id ?? i} className="border-b last:border-0 pb-3">
-                        <div className="flex items-center justify-between">
-                          <p className="font-medium text-sm">{item.question ?? item.decision ?? "Decision Point"}</p>
+                      <li key={item.id ?? i} className="border-b last:border-0 pb-3">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <p className="font-medium text-sm">{item.question ?? item.decision ?? "Decision point"}</p>
                           <Badge variant={item.resolvedAt ? "default" : "secondary"}>
                             {item.resolvedBy ?? (item.resolvedAt ? "Resolved" : "Pending")}
                           </Badge>
                         </div>
-                        <p className="text-xs text-muted-foreground mt-1">
+                        <p className="text-xs text-muted-foreground mt-1 tabular-nums">
                           Confidence: {item.confidence != null ? `${Math.round(item.confidence * 100)}%` : "N/A"} ·{" "}
                           Layer: {item.layer ?? "unknown"}
                         </p>
                         {item.layers && Array.isArray(item.layers) && (
-                          <div className="mt-2 flex gap-1">
+                          <ul className="mt-2 flex gap-1 flex-wrap" aria-label="Resolution layers">
                             {item.layers.map((layer: any, j: number) => (
-                              <Badge key={j} variant={layer.resolved ? "default" : "outline"} className="text-xs">
-                                {layer.name}
-                              </Badge>
+                              <li key={j}>
+                                <Badge variant={layer.resolved ? "default" : "outline"} className="text-xs">
+                                  {layer.name}
+                                </Badge>
+                              </li>
                             ))}
-                          </div>
+                          </ul>
                         )}
-                      </div>
+                      </li>
                     ))}
-                  </div>
+                  </ul>
                 </CardContent>
               </Card>
             ) : (

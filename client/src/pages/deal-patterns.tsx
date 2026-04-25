@@ -1,12 +1,15 @@
-import { useState } from "react";
+import { useState, useId } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import { apiRequest } from "@/lib/queryClient";
+import { usd } from "@/lib/format";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Copy, Search, TrendingUp, BarChart3, Lightbulb, Loader2, GitBranch, Target, DollarSign, CheckCircle } from "lucide-react";
 
@@ -127,90 +130,86 @@ function PerformanceSection() {
   return (
     <div className="space-y-4">
       <h2 className="text-lg font-semibold flex items-center gap-2">
-        <BarChart3 className="w-5 h-5 text-primary" />
-        Pattern Performance
+        <BarChart3 className="w-5 h-5 text-primary" aria-hidden="true" />
+        Pattern performance
       </h2>
 
-      <div className="grid grid-cols-3 gap-3">
+      <dl className="grid grid-cols-3 gap-3">
         <Card>
           <CardContent className="p-4">
-            <div className="flex items-center gap-2 text-muted-foreground mb-1">
-              <Target className="w-4 h-4" />
-              <span className="text-xs">Success Rate</span>
-            </div>
-            <p className="text-2xl font-bold">{successPct}%</p>
-            <p className="text-xs text-muted-foreground">{perf.patternsByOutcome.success} of {total} deals</p>
+            <dt className="flex items-center gap-2 text-muted-foreground mb-1">
+              <Target className="w-4 h-4" aria-hidden="true" />
+              <span className="text-xs">Success rate</span>
+            </dt>
+            <dd className="text-2xl font-bold tabular-nums">{successPct}%</dd>
+            <p className="text-xs text-muted-foreground tabular-nums">{perf.patternsByOutcome.success} of {total} deals</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
-            <div className="flex items-center gap-2 text-muted-foreground mb-1">
-              <DollarSign className="w-4 h-4" />
+            <dt className="flex items-center gap-2 text-muted-foreground mb-1">
+              <DollarSign className="w-4 h-4" aria-hidden="true" />
               <span className="text-xs">Avg ROI</span>
-            </div>
-            <p className="text-2xl font-bold">{perf.averageRoi.toFixed(1)}%</p>
+            </dt>
+            <dd className="text-2xl font-bold tabular-nums">{perf.averageRoi.toFixed(1)}%</dd>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
-            <div className="flex items-center gap-2 text-muted-foreground mb-1">
-              <CheckCircle className="w-4 h-4" />
-              <span className="text-xs">Matches Found</span>
-            </div>
-            <p className="text-2xl font-bold">
+            <dt className="flex items-center gap-2 text-muted-foreground mb-1">
+              <CheckCircle className="w-4 h-4" aria-hidden="true" />
+              <span className="text-xs">Matches found</span>
+            </dt>
+            <dd className="text-2xl font-bold tabular-nums">
               {perf.topPerformingPatterns.reduce((sum, p) => sum + p.matchCount, 0)}
-            </p>
+            </dd>
           </CardContent>
         </Card>
-      </div>
+      </dl>
 
       {perf.topPerformingPatterns.length > 0 && (
         <div className="space-y-2">
-          <h3 className="text-sm font-semibold">Top Performing Patterns</h3>
-          {perf.topPerformingPatterns.slice(0, 5).map((p) => (
-            <div key={p.patternId} className="flex items-center justify-between p-3 rounded-lg border bg-card text-sm">
-              <div className="flex items-center gap-2">
-                <GitBranch className="w-4 h-4 text-primary" />
-                <span>Pattern #{p.patternId}</span>
-              </div>
-              <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                <span>{p.matchCount} matches</span>
-                <Badge variant={p.successRate >= 0.7 ? "default" : "secondary"} className="text-xs">
-                  {Math.round(p.successRate * 100)}% success
-                </Badge>
-                <span className="font-medium text-foreground">${p.avgProfit.toLocaleString()} avg profit</span>
-              </div>
-            </div>
-          ))}
+          <h3 className="text-sm font-semibold">Top performing patterns</h3>
+          <ol className="space-y-2" aria-label="Top performing deal patterns by match count">
+            {perf.topPerformingPatterns.slice(0, 5).map((p) => (
+              <li key={p.patternId} className="flex items-center justify-between p-3 rounded-lg border bg-card text-sm gap-3 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <GitBranch className="w-4 h-4 text-primary" aria-hidden="true" />
+                  <span>Pattern #<span className="tabular-nums">{p.patternId}</span></span>
+                </div>
+                <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
+                  <span className="tabular-nums">{p.matchCount} matches</span>
+                  <Badge variant={p.successRate >= 0.7 ? "default" : "secondary"} className="text-xs tabular-nums">
+                    {Math.round(p.successRate * 100)}% success
+                  </Badge>
+                  <span className="font-medium text-foreground tabular-nums">{usd(p.avgProfit)} avg profit</span>
+                </div>
+              </li>
+            ))}
+          </ol>
         </div>
       )}
 
-      {/* Outcome breakdown bar */}
       {total > 0 && (
         <div className="space-y-1">
           <div className="flex justify-between text-xs text-muted-foreground">
-            <span>Outcome Distribution</span>
-            <span>{total} patterns</span>
+            <span>Outcome distribution</span>
+            <span className="tabular-nums">{total} patterns</span>
           </div>
-          <div className="flex h-3 rounded-full overflow-hidden">
-            <div
-              className="bg-emerald-500"
-              style={{ width: `${(perf.patternsByOutcome.success / total) * 100}%` }}
-            />
-            <div
-              className="bg-amber-500"
-              style={{ width: `${(perf.patternsByOutcome.partialSuccess / total) * 100}%` }}
-            />
-            <div
-              className="bg-red-400"
-              style={{ width: `${(perf.patternsByOutcome.failure / total) * 100}%` }}
-            />
+          <div
+            className="flex h-3 rounded-full overflow-hidden"
+            role="img"
+            aria-label={`Outcome distribution: ${perf.patternsByOutcome.success} success, ${perf.patternsByOutcome.partialSuccess} partial, ${perf.patternsByOutcome.failure} failed`}
+          >
+            <div className="bg-emerald-500" style={{ width: `${(perf.patternsByOutcome.success / total) * 100}%` }} />
+            <div className="bg-amber-500" style={{ width: `${(perf.patternsByOutcome.partialSuccess / total) * 100}%` }} />
+            <div className="bg-red-400" style={{ width: `${(perf.patternsByOutcome.failure / total) * 100}%` }} />
           </div>
-          <div className="flex gap-4 text-xs text-muted-foreground">
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500" />Success ({perf.patternsByOutcome.success})</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500" />Partial ({perf.patternsByOutcome.partialSuccess})</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400" />Failed ({perf.patternsByOutcome.failure})</span>
-          </div>
+          <ul className="flex gap-4 text-xs text-muted-foreground" aria-label="Outcome legend">
+            <li className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500" aria-hidden="true" />Success (<span className="tabular-nums">{perf.patternsByOutcome.success}</span>)</li>
+            <li className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500" aria-hidden="true" />Partial (<span className="tabular-nums">{perf.patternsByOutcome.partialSuccess}</span>)</li>
+            <li className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400" aria-hidden="true" />Failed (<span className="tabular-nums">{perf.patternsByOutcome.failure}</span>)</li>
+          </ul>
         </div>
       )}
     </div>
@@ -218,8 +217,11 @@ function PerformanceSection() {
 }
 
 export default function DealPatternsPage() {
+  useDocumentTitle("Deal patterns");
   const { toast } = useToast();
   const qc = useQueryClient();
+  const dealIdInput = useId();
+  const propertyIdInput = useId();
   const [dealId, setDealId] = useState("");
   const [searchPropertyId, setSearchPropertyId] = useState("");
 
@@ -247,7 +249,12 @@ export default function DealPatternsPage() {
       qc.invalidateQueries({ queryKey: ["/api/deal-patterns/stats"] });
       qc.invalidateQueries({ queryKey: ["/api/deal-patterns/insights"] });
     },
-    onError: () => toast({ title: "Failed to extract pattern", variant: "destructive" }),
+    onError: () =>
+      toast({
+        title: "Couldn't extract pattern",
+        description: "The deal is unchanged — try again, or check that the deal ID exists and is closed.",
+        variant: "destructive",
+      }),
   });
 
   const patternStats = stats?.stats;
@@ -258,7 +265,7 @@ export default function DealPatternsPage() {
     <PageShell>
       <div>
         <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-deal-patterns-title">
-          Deal Patterns
+          Deal patterns
         </h1>
         <p className="text-muted-foreground text-sm md:text-base">
           Learn from closed deals and replicate what works.
@@ -266,81 +273,99 @@ export default function DealPatternsPage() {
       </div>
 
       {patternStats && (
-        <div className="grid grid-cols-3 gap-3">
+        <dl className="grid grid-cols-3 gap-3">
           <Card>
             <CardContent className="p-4">
-              <div className="flex items-center gap-2 text-muted-foreground mb-1">
-                <GitBranch className="w-4 h-4" />
-                <span className="text-xs">Total Patterns</span>
-              </div>
-              <p className="text-2xl font-bold">{patternStats.totalPatterns}</p>
+              <dt className="flex items-center gap-2 text-muted-foreground mb-1">
+                <GitBranch className="w-4 h-4" aria-hidden="true" />
+                <span className="text-xs">Total patterns</span>
+              </dt>
+              <dd className="text-2xl font-bold tabular-nums">{patternStats.totalPatterns}</dd>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4">
-              <div className="flex items-center gap-2 text-muted-foreground mb-1">
-                <TrendingUp className="w-4 h-4" />
-                <span className="text-xs">Avg Success Rate</span>
-              </div>
-              <p className="text-2xl font-bold">{Math.round(patternStats.avgSuccessRate * 100)}%</p>
+              <dt className="flex items-center gap-2 text-muted-foreground mb-1">
+                <TrendingUp className="w-4 h-4" aria-hidden="true" />
+                <span className="text-xs">Avg success rate</span>
+              </dt>
+              <dd className="text-2xl font-bold tabular-nums">{Math.round(patternStats.avgSuccessRate * 100)}%</dd>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4">
-              <div className="flex items-center gap-2 text-muted-foreground mb-1">
-                <Copy className="w-4 h-4" />
-                <span className="text-xs">Most Cloned</span>
-              </div>
-              <p className="text-sm font-bold truncate capitalize">
+              <dt className="flex items-center gap-2 text-muted-foreground mb-1">
+                <Copy className="w-4 h-4" aria-hidden="true" />
+                <span className="text-xs">Most cloned</span>
+              </dt>
+              <dd className="text-sm font-bold truncate capitalize">
                 {patternStats.mostClonedPattern?.patternType?.replace(/_/g, " ") || "—"}
-              </p>
+              </dd>
             </CardContent>
           </Card>
-        </div>
+        </dl>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Extract Pattern from Deal</CardTitle>
+            <CardTitle className="text-base">Extract pattern from deal</CardTitle>
             <CardDescription>Analyze a closed deal to extract reusable patterns.</CardDescription>
           </CardHeader>
-          <CardContent className="flex gap-2">
-            <Input
-              type="number"
-              placeholder="Deal ID"
-              value={dealId}
-              onChange={e => setDealId(e.target.value)}
-              className="w-32"
-            />
-            <Button
-              onClick={() => dealId && extractMutation.mutate(dealId)}
-              disabled={!dealId || extractMutation.isPending}
+          <CardContent>
+            <form
+              onSubmit={(e) => { e.preventDefault(); if (dealId) extractMutation.mutate(dealId); }}
+              className="flex gap-2"
             >
-              {extractMutation.isPending ? (
-                <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Extracting...</>
-              ) : (
-                "Extract"
-              )}
-            </Button>
+              <div>
+                <Label htmlFor={dealIdInput} className="sr-only">Deal ID</Label>
+                <Input
+                  id={dealIdInput}
+                  type="number"
+                  placeholder="Deal ID"
+                  value={dealId}
+                  onChange={e => setDealId(e.target.value)}
+                  className="w-32 tabular-nums"
+                  inputMode="numeric"
+                  min={1}
+                />
+              </div>
+              <Button
+                type="submit"
+                disabled={!dealId || extractMutation.isPending}
+                aria-label={dealId ? `Extract pattern from deal ${dealId}` : "Extract pattern"}
+              >
+                {extractMutation.isPending ? (
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />Extracting…</>
+                ) : (
+                  "Extract"
+                )}
+              </Button>
+            </form>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Find Similar Patterns</CardTitle>
+            <CardTitle className="text-base">Find similar patterns</CardTitle>
             <CardDescription>Find patterns matching a property you're evaluating.</CardDescription>
           </CardHeader>
           <CardContent className="flex gap-2">
-            <Input
-              type="number"
-              placeholder="Property ID"
-              value={searchPropertyId}
-              onChange={e => setSearchPropertyId(e.target.value)}
-              className="w-40"
-            />
-            <Button variant="outline" disabled>
-              <Search className="w-4 h-4" />
+            <div>
+              <Label htmlFor={propertyIdInput} className="sr-only">Property ID</Label>
+              <Input
+                id={propertyIdInput}
+                type="number"
+                placeholder="Property ID"
+                value={searchPropertyId}
+                onChange={e => setSearchPropertyId(e.target.value)}
+                className="w-40 tabular-nums"
+                inputMode="numeric"
+                min={1}
+              />
+            </div>
+            <Button variant="outline" disabled aria-label="Search (auto-runs as you type)">
+              <Search className="w-4 h-4" aria-hidden="true" />
             </Button>
           </CardContent>
         </Card>
@@ -349,35 +374,35 @@ export default function DealPatternsPage() {
       {insightsList.length > 0 && (
         <div>
           <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
-            <Lightbulb className="w-5 h-5 text-yellow-500" />
-            Pattern Insights
+            <Lightbulb className="w-5 h-5 text-yellow-500" aria-hidden="true" />
+            Pattern insights
           </h2>
-          <div className="space-y-2">
+          <ol className="space-y-2" aria-label="Pattern insights">
             {insightsList.map((insight, i) => (
-              <div key={i} className="flex items-start gap-2 text-sm p-3 rounded-lg border bg-card">
-                <span className="text-muted-foreground">#{i + 1}</span>
+              <li key={i} className="flex items-start gap-2 text-sm p-3 rounded-lg border bg-card">
+                <span className="text-muted-foreground tabular-nums">#{i + 1}</span>
                 <p>{insight}</p>
-              </div>
+              </li>
             ))}
-          </div>
+          </ol>
         </div>
       )}
 
       {searchPropertyId && (
         <div>
-          <h2 className="text-lg font-semibold mb-3">Similar Patterns for Property #{searchPropertyId}</h2>
+          <h2 className="text-lg font-semibold mb-3">Similar patterns for Property #<span className="tabular-nums">{searchPropertyId}</span></h2>
           {searchLoading ? (
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Loader2 className="w-4 h-4 animate-spin" /> Searching...
+            <div className="flex items-center gap-2 text-muted-foreground" role="status" aria-live="polite">
+              <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> Searching…
             </div>
           ) : patterns.length === 0 ? (
             <p className="text-muted-foreground text-sm">No similar patterns found.</p>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" aria-label={`Patterns matching property ${searchPropertyId}`}>
               {patterns.map(pattern => (
-                <PatternCard key={pattern.id} pattern={pattern} />
+                <li key={pattern.id}><PatternCard pattern={pattern} /></li>
               ))}
-            </div>
+            </ul>
           )}
         </div>
       )}
