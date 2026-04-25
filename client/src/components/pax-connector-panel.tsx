@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -121,8 +122,18 @@ function ConnectDialog({
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Connect {connector.name}</DialogTitle>
+          <DialogDescription className="sr-only">
+            Provide credentials to connect the {connector.name} integration.
+          </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4 py-2">
+        <form
+          id="connect-connector-form"
+          className="space-y-4 py-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!saving) handleSave();
+          }}
+        >
           {connector.credentialFields?.map((f) => (
             <div key={f.key} className="space-y-1.5">
               <Label htmlFor={f.key}>{f.label}</Label>
@@ -132,6 +143,10 @@ function ConnectDialog({
                 type={f.secret ? "password" : "text"}
                 value={fields[f.key] ?? ""}
                 onChange={(e) => setFields((prev) => ({ ...prev, [f.key]: e.target.value }))}
+                autoComplete={f.secret ? "off" : undefined}
+                autoCapitalize={f.secret ? "off" : undefined}
+                autoCorrect={f.secret ? "off" : undefined}
+                spellCheck={f.secret ? false : undefined}
               />
               {f.helpText && (
                 <p className="text-[11px] text-muted-foreground">{f.helpText}</p>
@@ -154,12 +169,12 @@ function ConnectDialog({
               <ExternalLink className="w-3 h-3" aria-hidden="true" /> Setup guide
             </a>
           )}
-        </div>
+        </form>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={handleSave} disabled={saving}>
-            {saving && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
-            Connect
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button type="submit" form="connect-connector-form" disabled={saving}>
+            {saving && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" aria-hidden="true" />}
+            {saving ? "Connecting…" : "Connect"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -229,8 +244,9 @@ export function PaxConnectorPanel({ open, onOpenChange }: PaxConnectorPanelProps
           </SheetHeader>
 
           {isLoading ? (
-            <div className="flex justify-center py-12">
-              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+            <div role="status" aria-busy="true" aria-label="Loading connectors" className="flex justify-center py-12">
+              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" aria-hidden="true" />
+              <span className="sr-only">Loading…</span>
             </div>
           ) : (
             <div className="space-y-6 pt-4">
