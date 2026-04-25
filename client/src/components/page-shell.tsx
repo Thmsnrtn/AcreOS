@@ -103,14 +103,15 @@ export function PageShell({ children, isLoading, loadingFallback, maxWidth = "7x
 /** Default full-page loading skeleton */
 function PageShellSkeleton() {
   return (
-    <div className="space-y-6" data-testid="skeleton-page-shell">
+    <div className="space-y-6" data-testid="skeleton-page-shell" role="status" aria-live="polite" aria-busy="true">
+      <span className="sr-only">Loading page…</span>
       <PageHeaderSkeleton />
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="h-24 rounded-xl skeleton-shimmer" />
+          <div key={i} className="h-24 rounded-xl skeleton-shimmer" aria-hidden="true" />
         ))}
       </div>
-      <div className="h-64 rounded-xl skeleton-shimmer" />
+      <div className="h-64 rounded-xl skeleton-shimmer" aria-hidden="true" />
     </div>
   );
 }

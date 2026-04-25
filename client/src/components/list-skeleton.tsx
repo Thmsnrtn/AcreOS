@@ -9,7 +9,8 @@ interface ListSkeletonProps {
 export function ListSkeleton({ count = 5, variant = "table" }: ListSkeletonProps) {
   if (variant === "card") {
     return (
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3" data-testid="skeleton-card-grid">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3" data-testid="skeleton-card-grid" role="status" aria-live="polite" aria-busy="true">
+        <span className="sr-only">Loading…</span>
         {Array.from({ length: count }).map((_, i) => (
           <Card key={i} data-testid={`skeleton-card-${i}`}>
             <CardHeader className="pb-2">
@@ -32,7 +33,8 @@ export function ListSkeleton({ count = 5, variant = "table" }: ListSkeletonProps
 
   if (variant === "compact") {
     return (
-      <div className="space-y-2" data-testid="skeleton-compact-list">
+      <div className="space-y-2" data-testid="skeleton-compact-list" role="status" aria-live="polite" aria-busy="true">
+        <span className="sr-only">Loading…</span>
         {Array.from({ length: count }).map((_, i) => (
           <div key={i} className="flex items-center gap-3 p-2" data-testid={`skeleton-compact-${i}`}>
             <Skeleton className="h-8 w-8 rounded-full" />
@@ -48,7 +50,8 @@ export function ListSkeleton({ count = 5, variant = "table" }: ListSkeletonProps
   }
 
   return (
-    <div className="space-y-3" data-testid="skeleton-table">
+    <div className="space-y-3" data-testid="skeleton-table" role="status" aria-live="polite" aria-busy="true">
+      <span className="sr-only">Loading…</span>
       <div className="flex items-center gap-4 p-3 border-b" data-testid="skeleton-header">
         <Skeleton className="h-4 w-4" />
         <Skeleton className="h-4 w-32" />
