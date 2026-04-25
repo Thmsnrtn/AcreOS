@@ -15,7 +15,6 @@
 
 import { useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useLocation } from "wouter";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -24,6 +23,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import { FileText, RefreshCw, Archive } from "lucide-react";
 import { format } from "date-fns";
 
@@ -46,7 +46,6 @@ interface ArchiveEntry {
   recommendedAction: string | null;
 }
 
-// Same minimal markdown renderer as founder-letter — keeps dep surface tight.
 function renderMarkdown(md: string): React.ReactNode {
   const blocks = md.trim().split(/\n{2,}/);
   return blocks.map((block, i) => {
@@ -103,7 +102,8 @@ function inline(text: string): React.ReactNode {
 }
 
 export default function MyLetterPage() {
-  const { data, isLoading, isError } = useQuery<{ letter: CustomerLetterRow | null }>({
+  useDocumentTitle("My monthly letter");
+  const { data, isLoading, isError, refetch } = useQuery<{ letter: CustomerLetterRow | null }>({
     queryKey: ["/api/my-letter/current"],
     staleTime: 60_000,
   });
@@ -124,7 +124,12 @@ export default function MyLetterPage() {
       qc.invalidateQueries({ queryKey: ["/api/my-letter/archive"] });
       toast({ title: "Letter generated", description: "Your latest brief is ready." });
     },
-    onError: (e: Error) => toast({ title: "Couldn't generate", description: e.message, variant: "destructive" }),
+    onError: (e: Error) =>
+      toast({
+        title: "Couldn't generate letter",
+        description: `${e.message}. Your previous letter (if any) is unchanged — try again in a moment.`,
+        variant: "destructive",
+      }),
   });
 
   const markOpened = useMutation({
@@ -134,7 +139,6 @@ export default function MyLetterPage() {
     },
   });
 
-  // Auto-mark as opened on first render
   const letter = data?.letter ?? null;
   useEffect(() => {
     if (letter && letter.status !== "opened") {
@@ -149,7 +153,8 @@ export default function MyLetterPage() {
         <div className="space-y-4">
           {isLoading ? (
             <Card>
-              <CardContent className="p-8 space-y-3">
+              <CardContent className="p-8 space-y-3" role="status" aria-live="polite">
+                <span className="sr-only">Loading your monthly letter…</span>
                 <Skeleton className="h-8 w-64" />
                 <Skeleton className="h-4 w-full" />
                 <Skeleton className="h-4 w-11/12" />
@@ -157,7 +162,16 @@ export default function MyLetterPage() {
             </Card>
           ) : isError ? (
             <Card>
-              <CardContent className="p-6 text-sm text-red-600">Could not load your letter.</CardContent>
+              <CardContent className="p-6 text-sm text-red-600" role="alert">
+                Couldn't load your letter. Your previous letter is still saved —{" "}
+                <button
+                  type="button"
+                  className="underline hover:no-underline"
+                  onClick={() => refetch()}
+                >
+                  try again
+                </button>.
+              </CardContent>
             </Card>
           ) : !letter ? (
             <EmptyState
@@ -170,10 +184,10 @@ export default function MyLetterPage() {
             />
           ) : (
             <>
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div className="flex items-center gap-2">
-                  <Badge variant="secondary">{letter.status}</Badge>
-                  <span className="text-xs text-muted-foreground">
+                  <Badge variant="secondary" className="capitalize">{letter.status}</Badge>
+                  <span className="text-xs text-muted-foreground tabular-nums">
                     {format(new Date(letter.generatedAt), "MMMM yyyy")}
                   </span>
                 </div>
@@ -182,9 +196,9 @@ export default function MyLetterPage() {
                   variant="ghost"
                   onClick={() => generate.mutate()}
                   disabled={generate.isPending}
-                  aria-label="Regenerate letter"
+                  aria-label={`Regenerate letter for ${format(new Date(letter.generatedAt), "MMMM yyyy")}`}
                 >
-                  <RefreshCw className="h-4 w-4 mr-2" />
+                  <RefreshCw className={`h-4 w-4 mr-2 ${generate.isPending ? "animate-spin" : ""}`} aria-hidden="true" />
                   {generate.isPending ? "Regenerating…" : "Regenerate"}
                 </Button>
               </div>
@@ -213,29 +227,34 @@ export default function MyLetterPage() {
           )}
         </div>
 
-        <aside>
+        <aside aria-label="Letter archive">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-base flex items-center gap-2">
-                <Archive className="h-4 w-4 text-muted-foreground" />
+                <Archive className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                 Archive
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-3 pt-0 space-y-1">
+            <CardContent className="p-3 pt-0">
               {archive.isLoading ? (
-                <Skeleton className="h-4 w-full" />
+                <div role="status" aria-live="polite">
+                  <span className="sr-only">Loading archive…</span>
+                  <Skeleton className="h-4 w-full" />
+                </div>
               ) : archive.data?.letters.length === 0 ? (
                 <p className="text-xs text-muted-foreground">No previous letters yet.</p>
               ) : (
-                archive.data?.letters.map((row) => (
-                  <div key={row.monthKey} className="p-2 rounded text-xs">
-                    <div className="font-medium text-foreground">{row.monthKey}</div>
-                    <div className="text-[11px] text-muted-foreground">
-                      {row.status}
-                      {row.openedAt ? ` · opened ${format(new Date(row.openedAt), "MMM d")}` : ""}
-                    </div>
-                  </div>
-                ))
+                <ol className="space-y-1" aria-label="Previous monthly letters, newest first">
+                  {archive.data?.letters.map((row) => (
+                    <li key={row.monthKey} className="p-2 rounded text-xs">
+                      <div className="font-medium text-foreground tabular-nums">{row.monthKey}</div>
+                      <div className="text-[11px] text-muted-foreground">
+                        <span className="capitalize">{row.status}</span>
+                        {row.openedAt ? <> · opened <span className="tabular-nums">{format(new Date(row.openedAt), "MMM d")}</span></> : ""}
+                      </div>
+                    </li>
+                  ))}
+                </ol>
               )}
             </CardContent>
           </Card>
