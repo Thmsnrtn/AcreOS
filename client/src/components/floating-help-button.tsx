@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import { Link } from "wouter";
-import { HelpCircle, MessageSquarePlus, ExternalLink } from "lucide-react";
+import { HelpCircle, MessageSquarePlus, BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { HelpPanel } from "@/components/help/HelpPanel";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { FeedbackDialog } from "@/components/feedback-button";
@@ -36,8 +36,9 @@ export function FloatingHelpButton() {
             className="fixed bottom-[232px] md:bottom-[176px] right-4 md:right-16 z-[48] rounded-full shadow-lg hover:shadow-xl transition-shadow safe-area-bottom bg-background border"
             data-testid="button-floating-help"
             aria-label="Open help panel"
+            aria-keyshortcuts="Meta+Shift+? Control+Shift+?"
           >
-            <HelpCircle className="w-5 h-5" />
+            <HelpCircle className="w-5 h-5" aria-hidden="true" />
           </Button>
         </TooltipTrigger>
         <TooltipContent side="left">
@@ -49,9 +50,12 @@ export function FloatingHelpButton() {
         <SheetContent side="right" className="w-full sm:w-96 sm:max-w-md overflow-y-auto">
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2">
-              <HelpCircle className="w-5 h-5" />
+              <HelpCircle className="w-5 h-5" aria-hidden="true" />
               Help
             </SheetTitle>
+            <SheetDescription className="sr-only">
+              Quick help, keyboard shortcuts, and feedback for the current page.
+            </SheetDescription>
           </SheetHeader>
           <div className="mt-6 space-y-6">
             <HelpPanel />
@@ -69,7 +73,7 @@ export function FloatingHelpButton() {
                 }}
                 data-testid="button-help-feedback"
               >
-                <MessageSquarePlus className="w-4 h-4 mr-2" />
+                <MessageSquarePlus className="w-4 h-4 mr-2" aria-hidden="true" />
                 Send feedback
               </Button>
               <Button
@@ -78,7 +82,7 @@ export function FloatingHelpButton() {
                 asChild
               >
                 <Link href="/help" onClick={() => setIsOpen(false)}>
-                  <ExternalLink className="w-4 h-4 mr-2" />
+                  <BookOpen className="w-4 h-4 mr-2" aria-hidden="true" />
                   Open full help center
                 </Link>
               </Button>
