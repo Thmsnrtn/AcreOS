@@ -395,7 +395,7 @@ function ChatView({
       <Separator />
       <div className="p-3 flex items-center gap-2">
         <Input
-          placeholder="Type a message..."
+          placeholder="Type a message…"
           value={messageInput}
           onChange={(e) => setMessageInput(e.target.value)}
           onKeyDown={handleKeyDown}

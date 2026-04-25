@@ -400,7 +400,7 @@ export default function AutomationPage() {
                   <div className="flex items-center gap-2">
                     <Select value={action.type} onValueChange={(v) => updateAction(index, { type: v })}>
                       <SelectTrigger className="flex-1">
-                        <SelectValue placeholder="Select action..." />
+                        <SelectValue placeholder="Select action…" />
                       </SelectTrigger>
                       <SelectContent>
                         {ACTIONS.map((a) => (

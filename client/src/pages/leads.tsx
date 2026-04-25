@@ -1226,7 +1226,7 @@ export default function LeadsPage() {
                   <div className="relative flex-1 max-w-sm">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <Input 
-                      placeholder="Search leads..." 
+                      placeholder="Search leads…" 
                       className="pl-9 bg-muted border-none"
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
@@ -1291,7 +1291,7 @@ export default function LeadsPage() {
                       <div className="relative flex-1">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                         <Input 
-                          placeholder="Search leads..." 
+                          placeholder="Search leads…" 
                           className="pl-9 bg-muted border-none min-h-[44px]"
                           value={search}
                           onChange={(e) => setSearch(e.target.value)}
@@ -1842,10 +1842,10 @@ export default function LeadsPage() {
             }}
           >
             <div className="space-y-2">
-              <Label htmlFor={offerPropertyId} className="text-sm font-medium">Select Property</Label>
+              <Label htmlFor={offerPropertyId} className="text-sm font-medium">Select property</Label>
               <Select value={selectedPropertyId} onValueChange={setSelectedPropertyId}>
                 <SelectTrigger id={offerPropertyId} data-testid="select-property-offer">
-                  <SelectValue placeholder="Choose a property..." />
+                  <SelectValue placeholder="Choose a property…" />
                 </SelectTrigger>
                 <SelectContent>
                   {properties?.map((prop) => (
@@ -1857,12 +1857,12 @@ export default function LeadsPage() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor={offerAmountId} className="text-sm font-medium">Offer Amount (Optional)</Label>
+              <Label htmlFor={offerAmountId} className="text-sm font-medium">Offer amount (optional)</Label>
               <Input
                 id={offerAmountId}
                 type="number"
                 inputMode="decimal"
-                placeholder="Enter offer amount..."
+                placeholder="Enter offer amount…"
                 value={offerAmount}
                 onChange={(e) => setOfferAmount(e.target.value)}
                 data-testid="input-offer-amount"

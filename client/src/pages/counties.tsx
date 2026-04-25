@@ -476,7 +476,7 @@ function CountyForm({
               <FormLabel>Notes</FormLabel>
               <FormControl>
                 <Textarea 
-                  placeholder="Notes about this county..." 
+                  placeholder="Notes about this county…"
                   className="resize-none"
                   rows={3}
                   {...field}

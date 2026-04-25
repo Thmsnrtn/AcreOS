@@ -234,7 +234,7 @@ export default function TasksPage() {
             <FormItem>
               <FormLabel>Title</FormLabel>
               <FormControl>
-                <Input placeholder="Task title..." {...field} data-testid="input-task-title" />
+                <Input placeholder="Task title…" {...field} data-testid="input-task-title" />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -248,7 +248,7 @@ export default function TasksPage() {
             <FormItem>
               <FormLabel>Description</FormLabel>
               <FormControl>
-                <Textarea placeholder="Task description..." {...field} data-testid="input-task-description" />
+                <Textarea placeholder="Task description…" {...field} data-testid="input-task-description" />
               </FormControl>
               <FormMessage />
             </FormItem>

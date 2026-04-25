@@ -585,7 +585,7 @@ export function PropertyAnalysisChat({ property, open, onOpenChange }: PropertyA
               ref={inputRef}
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
-              placeholder="Ask about this property..."
+              placeholder="Ask about this property…"
               disabled={isLoading}
               className="flex-1"
               data-testid="input-chat-message"

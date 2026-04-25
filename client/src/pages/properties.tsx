@@ -1337,7 +1337,7 @@ function PropertyForm({
             <FormItem>
               <FormLabel>Description</FormLabel>
               <FormControl>
-                <Input {...field} value={field.value ?? ""} placeholder="Beautiful desert lot with road access..." data-testid="input-description" />
+                <Input {...field} value={field.value ?? ""} placeholder="Beautiful desert lot with road access…" data-testid="input-description" />
               </FormControl>
               <FormMessage />
             </FormItem>
