@@ -27,22 +27,23 @@ const BAND_COLORS: Record<string, string> = {
 
 const BAND_LABELS: Record<string, string> = {
   green: "Healthy",
-  yellow: "At Risk",
-  red: "High Risk",
+  yellow: "At risk",
+  red: "High risk",
   critical: "Critical",
 };
 
 function MetricCard({ title, value, sub, trend }: { title: string; value: string; sub?: string; trend?: "up" | "down" | "flat" }) {
   const TrendIcon = trend === "up" ? TrendingUp : trend === "down" ? TrendingDown : Minus;
   const trendColor = trend === "up" ? "text-green-500" : trend === "down" ? "text-red-500" : "text-muted-foreground";
+  const trendLabel = trend === "up" ? "trending up" : trend === "down" ? "trending down" : "flat";
 
   return (
-    <Card>
+    <Card aria-label={`${title}: ${value}${trend ? `, ${trendLabel}` : ""}${sub ? ` (${sub})` : ""}`}>
       <CardContent className="pt-4 pb-3 px-4">
         <p className="text-xs text-muted-foreground font-medium">{title}</p>
         <div className="flex items-end gap-2 mt-1">
-          <p className="text-2xl font-bold tracking-tight">{value}</p>
-          {trend && <TrendIcon className={`h-4 w-4 mb-0.5 ${trendColor}`} />}
+          <p className="text-2xl font-bold tracking-tight tabular-nums">{value}</p>
+          {trend && <TrendIcon className={`h-4 w-4 mb-0.5 ${trendColor}`} aria-hidden="true" />}
         </div>
         {sub && <p className="text-xs text-muted-foreground mt-1">{sub}</p>}
       </CardContent>
@@ -58,14 +59,14 @@ export function BusinessIntelligence() {
 
   if (isLoading) {
     return (
-      <div className="space-y-3">
-        <h3 className="text-base font-semibold">Business Intelligence</h3>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 animate-pulse">
+      <section aria-labelledby="bi-heading" className="space-y-3">
+        <h3 id="bi-heading" className="text-base font-semibold">Business intelligence</h3>
+        <div role="status" aria-busy="true" aria-label="Loading business intelligence" className="grid grid-cols-2 sm:grid-cols-3 gap-3 animate-pulse">
           {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="h-24 rounded-lg bg-muted" />
           ))}
         </div>
-      </div>
+      </section>
     );
   }
 
@@ -74,8 +75,8 @@ export function BusinessIntelligence() {
   const totalOrgs = data.customerHealthDistribution.reduce((sum, d) => sum + Number(d.count), 0) || 1;
 
   return (
-    <div className="space-y-3">
-      <h3 className="text-base font-semibold">Business Intelligence</h3>
+    <section aria-labelledby="bi-heading" className="space-y-3">
+      <h3 id="bi-heading" className="text-base font-semibold">Business intelligence</h3>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <MetricCard
           title="ARR"
@@ -88,7 +89,7 @@ export function BusinessIntelligence() {
           sub={data.ltvCac.note}
         />
         <MetricCard
-          title="Monthly Churn"
+          title="Monthly churn"
           value={`${data.churnRate.toFixed(1)}%`}
           trend={data.churnRate < 2 ? "up" : data.churnRate > 5 ? "down" : "flat"}
           sub={data.churnRate < 2 ? "Excellent retention" : data.churnRate > 5 ? "Needs attention" : "Within range"}
@@ -99,10 +100,10 @@ export function BusinessIntelligence() {
           trend={data.nrr >= 100 ? "up" : "down"}
           sub={data.nrr >= 100 ? "Net expansion" : "Net contraction"}
         />
-        {/* Cohort Retention — placeholder until cohort query is added */}
+        {/* Cohort retention — placeholder until cohort query is added */}
         <Card>
           <CardContent className="pt-4 pb-3 px-4">
-            <p className="text-xs text-muted-foreground font-medium">Cohort Retention</p>
+            <p className="text-xs text-muted-foreground font-medium">Cohort retention</p>
             <p className="text-sm text-muted-foreground mt-2">Available after 30d data</p>
           </CardContent>
         </Card>
@@ -110,26 +111,34 @@ export function BusinessIntelligence() {
         {/* Customer Health Distribution */}
         <Card>
           <CardContent className="pt-4 pb-3 px-4">
-            <p className="text-xs text-muted-foreground font-medium mb-2">Customer Health</p>
-            <div className="space-y-1.5">
+            <p className="text-xs text-muted-foreground font-medium mb-2" id="customer-health-heading">Customer health</p>
+            <ul aria-labelledby="customer-health-heading" className="space-y-1.5 list-none p-0 m-0">
               {data.customerHealthDistribution.length > 0 ? (
-                data.customerHealthDistribution.map(({ band, count }) => (
-                  <div key={band} className="flex items-center gap-2">
-                    <span className={`h-2 w-2 rounded-full shrink-0 ${BAND_COLORS[band] ?? "bg-gray-400"}`} />
-                    <span className="text-xs text-muted-foreground flex-1">{BAND_LABELS[band] ?? band}</span>
-                    <span className="text-xs font-medium">{count}</span>
-                    <span className="text-xs text-muted-foreground">
-                      ({Math.round((Number(count) / totalOrgs) * 100)}%)
-                    </span>
-                  </div>
-                ))
+                data.customerHealthDistribution.map(({ band, count }) => {
+                  const label = BAND_LABELS[band] ?? band;
+                  const pct = Math.round((Number(count) / totalOrgs) * 100);
+                  return (
+                    <li
+                      key={band}
+                      className="flex items-center gap-2"
+                      aria-label={`${label}: ${count} (${pct}%)`}
+                    >
+                      <span aria-hidden="true" className={`h-2 w-2 rounded-full shrink-0 ${BAND_COLORS[band] ?? "bg-gray-400"}`} />
+                      <span className="text-xs text-muted-foreground flex-1">{label}</span>
+                      <span className="text-xs font-medium tabular-nums">{count}</span>
+                      <span className="text-xs text-muted-foreground tabular-nums">({pct}%)</span>
+                    </li>
+                  );
+                })
               ) : (
-                <p className="text-xs text-muted-foreground">Run scoring pass to see data</p>
+                <li className="list-none">
+                  <p className="text-xs text-muted-foreground">Run scoring pass to see data</p>
+                </li>
               )}
-            </div>
+            </ul>
           </CardContent>
         </Card>
       </div>
-    </div>
+    </section>
   );
 }
