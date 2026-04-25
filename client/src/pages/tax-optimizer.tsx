@@ -128,7 +128,7 @@ export default function TaxOptimizerPage() {
 
   if (isLoading) {
     return (
-      <PageShell>
+      <PageShell label="Tax optimizer">
         <div className="flex items-center justify-center h-48" role="status" aria-live="polite">
           <span className="sr-only">Loading tax position…</span>
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" aria-hidden="true" />
@@ -140,7 +140,7 @@ export default function TaxOptimizerPage() {
   const p = position;
 
   return (
-    <PageShell>
+    <PageShell label="Tax optimizer">
       <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold">Tax optimizer</h1>

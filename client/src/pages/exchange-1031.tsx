@@ -143,7 +143,7 @@ export default function Exchange1031Page() {
   };
 
   return (
-    <PageShell>
+    <PageShell label="1031 exchange">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-exchange-1031-title">

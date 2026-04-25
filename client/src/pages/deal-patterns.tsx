@@ -262,7 +262,7 @@ export default function DealPatternsPage() {
   const patterns = similarPatterns?.patterns ?? [];
 
   return (
-    <PageShell>
+    <PageShell label="Deal patterns">
       <div>
         <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-deal-patterns-title">
           Deal patterns

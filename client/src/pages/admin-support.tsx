@@ -217,7 +217,7 @@ export default function AdminSupportPage() {
   const messages = caseDetails?.messages || [];
 
   return (
-    <PageShell>
+    <PageShell label="Admin support">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-page-title">Admin support dashboard</h1>
             <p className="text-muted-foreground">Manage escalated support cases and track resolution metrics.</p>

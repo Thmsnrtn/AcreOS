@@ -198,7 +198,7 @@ export default function WorkflowsPage() {
   };
 
   return (
-    <PageShell>
+    <PageShell label="Workflows">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-3xl font-bold" data-testid="text-page-title">Workflows</h1>

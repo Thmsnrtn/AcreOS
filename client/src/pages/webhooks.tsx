@@ -135,7 +135,7 @@ export default function WebhooksPage() {
   }
 
   return (
-    <PageShell>
+    <PageShell label="Webhooks">
       <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold">Webhooks</h1>

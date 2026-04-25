@@ -159,7 +159,7 @@ export default function OpsDashboardPage() {
   const dealsTotal = Math.max(1, (deals ?? []).length);
 
   return (
-    <PageShell>
+    <PageShell label="Ops dashboard">
       <div className="space-y-4">
         <div>
           <h1 className="text-2xl font-semibold">Ops dashboard</h1>

@@ -109,7 +109,7 @@ export default function ModelTrainingPage() {
   const coveragePct = Math.min(100, Math.round((Object.keys(stats?.transactionsByState || {}).length / 50) * 100));
 
   return (
-    <PageShell>
+    <PageShell label="Model training">
       <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold">AcreOS valuation model</h1>

@@ -163,7 +163,7 @@ export default function ExecutiveDashboard() {
 
   if (isError) {
     return (
-      <PageShell>
+      <PageShell label="Executive dashboard">
         <QueryErrorState
           error={error}
           onRetry={() => refetch()}
@@ -173,7 +173,7 @@ export default function ExecutiveDashboard() {
   }
 
   return (
-    <PageShell>
+    <PageShell label="Executive dashboard">
       {isLoading ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4" role="status" aria-live="polite">
           <span className="sr-only">Loading executive dashboard…</span>

@@ -302,7 +302,7 @@ export default function PriceOptimizerPage() {
   const metrics = accuracyData?.metrics;
 
   return (
-    <PageShell>
+    <PageShell label="Price optimizer">
       <div>
         <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-price-optimizer-title">
           Price optimizer

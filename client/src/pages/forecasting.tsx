@@ -98,7 +98,7 @@ export default function ForecastingPage() {
   const riskColor = riskScore > 60 ? "text-red-600" : riskScore > 30 ? "text-amber-600" : "text-green-600";
 
   return (
-    <PageShell>
+    <PageShell label="Forecasting">
       {isLoading ? (
         <div className="flex justify-center py-16" role="status" aria-live="polite">
           <span className="sr-only">Loading forecast data…</span>

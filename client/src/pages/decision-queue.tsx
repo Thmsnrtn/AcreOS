@@ -233,7 +233,7 @@ export default function DecisionQueuePage() {
 
   if (isLoading) {
     return (
-      <PageShell>
+      <PageShell label="Decision queue">
         <div
           className="flex items-center justify-center py-16 text-muted-foreground"
           role="status"
@@ -248,7 +248,7 @@ export default function DecisionQueuePage() {
 
   if (totalItems === 0) {
     return (
-      <PageShell>
+      <PageShell label="Decision queue">
         <div className="space-y-2 mb-6">
           <h1 className="text-2xl font-semibold">Decision queue</h1>
           <p className="text-sm text-muted-foreground">Items requiring your attention.</p>
@@ -267,7 +267,7 @@ export default function DecisionQueuePage() {
   }
 
   return (
-    <PageShell>
+    <PageShell label="Decision queue">
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-semibold">Decision queue</h1>

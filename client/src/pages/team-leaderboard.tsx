@@ -135,7 +135,7 @@ export default function TeamLeaderboardPage() {
   const topAgent = entries[0];
 
   return (
-    <PageShell>
+    <PageShell label="Team leaderboard">
       <div className="space-y-6">
         <div className="flex items-center gap-4 flex-wrap">
           <div>

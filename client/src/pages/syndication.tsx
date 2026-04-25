@@ -106,7 +106,7 @@ export default function SyndicationPage() {
   const selectedProperty = properties.find(p => p.id === selectedPropertyId);
 
   return (
-    <PageShell>
+    <PageShell label="Listing syndication">
       <div className="mb-6">
         <h1 className="text-2xl font-bold">Listing syndication</h1>
         <p className="text-muted-foreground text-sm mt-0.5">Publish land listings to Land.com, LandWatch, LandFlip, and more.</p>
