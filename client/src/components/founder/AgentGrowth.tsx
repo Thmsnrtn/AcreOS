@@ -53,18 +53,21 @@ function GoalProgress({ goal }: { goal: ImprovementPlan["goals"][0] }) {
   const achieved = goal.status === "achieved";
 
   return (
-    <div className="space-y-1">
+    <li
+      className="space-y-1"
+      aria-label={`${goal.description}: ${achieved ? "achieved" : `${Math.round(progress)}% — current ${current}, target ${goal.targetValue}`}`}
+    >
       <div className="flex items-center justify-between text-xs">
         <span className={achieved ? "text-emerald-600 font-medium" : ""}>{goal.description}</span>
-        {achieved && <CheckCircle2 className="h-3 w-3 text-emerald-500" />}
+        {achieved && <CheckCircle2 className="h-3 w-3 text-emerald-500" aria-hidden="true" />}
       </div>
       <Progress value={achieved ? 100 : progress} className="h-1.5" />
-      <div className="flex justify-between text-[10px] text-muted-foreground">
+      <div className="flex justify-between text-[10px] text-muted-foreground tabular-nums">
         <span>Baseline: {goal.baselineValue}</span>
         <span>Current: {current}</span>
         <span>Target: {goal.targetValue}</span>
       </div>
-    </div>
+    </li>
   );
 }
 
@@ -90,73 +93,85 @@ function PlanCard({ plan }: { plan: ImprovementPlan }) {
   });
 
   return (
-    <div className="border rounded-xl p-4 space-y-3">
+    <li className="border rounded-xl p-4 space-y-3 list-none">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-lg">{avatar}</span>
+          <span aria-hidden="true" className="text-lg">{avatar}</span>
           <div>
-            <div className="text-sm font-semibold">{role}</div>
-            <div className="text-[10px] text-muted-foreground">
-              {achievedCount}/{goals.length} goals achieved
-            </div>
+            <p className="text-sm font-semibold m-0">{role}</p>
+            <p className="text-[10px] text-muted-foreground m-0">
+              <span className="tabular-nums">{achievedCount}/{goals.length}</span> goals achieved
+            </p>
           </div>
         </div>
-        <Badge variant="outline" className={
-          plan.status === "completed" ? "bg-emerald-100 text-emerald-800" : "bg-blue-100 text-blue-800"
-        }>
+        <Badge
+          variant="outline"
+          className={`capitalize ${plan.status === "completed" ? "bg-emerald-100 text-emerald-800" : "bg-blue-100 text-blue-800"}`}
+          aria-label={`Status: ${plan.status}`}
+        >
           {plan.status}
         </Badge>
       </div>
 
       {/* Goals */}
       {goals.length > 0 && (
-        <div className="space-y-2">
+        <ul aria-label="Goals" className="space-y-2 list-none p-0 m-0">
           {goals.map((g, i) => <GoalProgress key={i} goal={g} />)}
-        </div>
+        </ul>
       )}
 
       {/* Skill Requests */}
       {skills.filter(s => s.status === "requested").length > 0 && (
         <div className="space-y-1.5">
-          <div className="text-xs font-medium flex items-center gap-1 text-amber-600">
-            <Sparkles className="h-3 w-3" /> Skill Requests
-          </div>
-          {skills.map((s, i) => (
-            s.status === "requested" && (
-              <div key={i} className="flex items-center gap-2 p-2 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-100">
-                <div className="flex-1 text-xs">
-                  <div className="font-medium">{s.skill}</div>
-                  <div className="text-muted-foreground">{s.reason}</div>
-                </div>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 text-[10px] text-emerald-600"
-                  onClick={() => approveSkillMutation.mutate({ planId: plan.id, skillIndex: i })}
-                >
-                  <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" /> Grant
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 text-[10px] text-red-600"
-                  onClick={() => denySkillMutation.mutate({ planId: plan.id, skillIndex: i })}
-                >
-                  <XCircle className="h-2.5 w-2.5 mr-0.5" /> Deny
-                </Button>
-              </div>
-            )
-          ))}
+          <p id={`skill-requests-${plan.id}`} className="text-xs font-medium flex items-center gap-1 text-amber-600">
+            <Sparkles className="h-3 w-3" aria-hidden="true" /> Skill requests
+          </p>
+          <ul aria-labelledby={`skill-requests-${plan.id}`} className="space-y-1.5 list-none p-0 m-0">
+            {skills.map((s, i) => (
+              s.status === "requested" && (
+                <li key={i} className="flex items-center gap-2 p-2 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-100">
+                  <div className="flex-1 text-xs">
+                    <p className="font-medium m-0">{s.skill}</p>
+                    <p className="text-muted-foreground m-0">{s.reason}</p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 text-[10px] text-emerald-600"
+                    onClick={() => approveSkillMutation.mutate({ planId: plan.id, skillIndex: i })}
+                    disabled={approveSkillMutation.isPending}
+                    aria-busy={approveSkillMutation.isPending}
+                    aria-label={`Grant ${s.skill} to ${role}`}
+                  >
+                    <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" aria-hidden="true" /> Grant
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 text-[10px] text-red-600"
+                    onClick={() => denySkillMutation.mutate({ planId: plan.id, skillIndex: i })}
+                    disabled={denySkillMutation.isPending}
+                    aria-busy={denySkillMutation.isPending}
+                    aria-label={`Deny ${s.skill} for ${role}`}
+                  >
+                    <XCircle className="h-2.5 w-2.5 mr-0.5" aria-hidden="true" /> Deny
+                  </Button>
+                </li>
+              )
+            ))}
+          </ul>
         </div>
       )}
 
       {/* Latest Progress */}
       {progress.length > 0 && (
-        <div className="text-xs text-muted-foreground italic border-t pt-2">
+        <p className="text-xs text-muted-foreground italic border-t pt-2 m-0">
           Latest: {progress[progress.length - 1].notes}
-        </div>
+        </p>
       )}
-    </div>
+    </li>
   );
 }
 
@@ -174,7 +189,7 @@ export function AgentGrowth() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/founder/v7/improvement"] }),
   });
 
-  if (isLoading) return <Skeleton className="h-48 w-full rounded-xl" />;
+  if (isLoading) return <Skeleton role="status" aria-busy="true" aria-label="Loading agent growth" className="h-48 w-full rounded-xl" />;
 
   const planList = (plans || []) as ImprovementPlan[];
   const pendingSkills = planList.reduce((n, p) =>
@@ -185,32 +200,36 @@ export function AgentGrowth() {
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-base flex items-center gap-2">
-            <Sprout className="h-4 w-4" /> Agent Growth
+            <Sprout className="h-4 w-4" aria-hidden="true" /> Agent growth
             {pendingSkills > 0 && (
-              <Badge variant="outline" className="bg-amber-100 text-amber-800 ml-1">
+              <Badge variant="outline" className="bg-amber-100 text-amber-800 ml-1 tabular-nums" aria-label={`${pendingSkills} pending skill request${pendingSkills > 1 ? "s" : ""}`}>
                 {pendingSkills} skill request{pendingSkills > 1 ? "s" : ""}
               </Badge>
             )}
           </CardTitle>
           <Button
+            type="button"
             size="sm"
             variant="outline"
             className="h-7 text-xs"
             onClick={() => generateMutation.mutate()}
             disabled={generateMutation.isPending}
+            aria-busy={generateMutation.isPending}
           >
-            <RefreshCw className={`h-3 w-3 mr-1 ${generateMutation.isPending ? "animate-spin" : ""}`} />
-            Generate Plans
+            <RefreshCw className={`h-3 w-3 mr-1 ${generateMutation.isPending ? "animate-spin" : ""}`} aria-hidden="true" />
+            {generateMutation.isPending ? "Generating…" : "Generate plans"}
           </Button>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
         {planList.length === 0 ? (
-          <div className="text-center py-6 text-sm text-muted-foreground">
+          <p className="text-center py-6 text-sm text-muted-foreground">
             No improvement plans yet. Generate plans after running performance reviews.
-          </div>
+          </p>
         ) : (
-          planList.map(plan => <PlanCard key={plan.id} plan={plan} />)
+          <ul aria-label="Improvement plans" className="space-y-4 list-none p-0 m-0">
+            {planList.map(plan => <PlanCard key={plan.id} plan={plan} />)}
+          </ul>
         )}
       </CardContent>
     </Card>
