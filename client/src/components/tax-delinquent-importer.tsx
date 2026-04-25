@@ -213,7 +213,7 @@ export function TaxDelinquentImporter({ open, onOpenChange }: TaxDelinquentImpor
               data-testid="dropzone-tax-delinquent"
             >
               <Upload className="w-10 h-10 mx-auto mb-4 text-muted-foreground" aria-hidden="true" />
-              <label className="cursor-pointer block min-h-11">
+              <label className="cursor-pointer block min-h-11 focus-within:outline-none focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 rounded">
                 <span className="text-sm text-muted-foreground">
                   Drag and drop your CSV file here, or click to browse
                 </span>
@@ -221,7 +221,7 @@ export function TaxDelinquentImporter({ open, onOpenChange }: TaxDelinquentImpor
                   ref={fileInputRef}
                   type="file"
                   accept=".csv"
-                  className="hidden"
+                  className="sr-only"
                   onChange={handleFileSelect}
                   aria-label="Tax-delinquent CSV file"
                   data-testid="input-tax-delinquent-file"
