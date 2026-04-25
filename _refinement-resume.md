@@ -639,6 +639,7 @@ to a dedicated 9b slice.
 **/matching-engine (53):** ✅ complete — form onSubmit, usd() on suggested offer, 2 reassurance toasts (both previously silent-title-only), ul/li (commit `70dede1`)
 **/property-tax (54):** ✅ complete — portal-lookup try/catch with 2 toast branches, full mobile-keyboard on state Input, dl/dt/dd stats, ul/li (commit `e408ef5`)
 **/closing-costs + /listing-syndication (55):** ✅ complete — calculate() error handler added (previously silent), 3+3 reassurance toasts, sync-status icons get aria-label (commit `7e0fe50`)
+**/skip-tracing + /zoning-lookup (56):** ✅ complete — mailto:/tel: anchors on contact fields, status-icon aria-labels, dl/dt/dd throughout (commit `60da8fd`)
 **/onboarding-v2 targeted (18):** ✅ complete (commit `70df779`) — 18b deferred
 **/settings targeted (19):** ✅ complete (commit `809044c`) — 19b remaining components deferred
 **/pipeline (20):** ✅ complete (commit `1b5d0f7`)
