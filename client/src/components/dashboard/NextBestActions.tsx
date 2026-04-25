@@ -26,15 +26,15 @@ interface NextBestActionsProps {
 function getActionIcon(type: string) {
   switch (type) {
     case "follow_up":
-      return <Phone className="w-4 h-4" />;
+      return <Phone className="w-4 h-4" aria-hidden="true" />;
     case "send_mail":
-      return <Mail className="w-4 h-4" />;
+      return <Mail className="w-4 h-4" aria-hidden="true" />;
     case "review_offer":
-      return <FileText className="w-4 h-4" />;
+      return <FileText className="w-4 h-4" aria-hidden="true" />;
     case "schedule_call":
-      return <Calendar className="w-4 h-4" />;
+      return <Calendar className="w-4 h-4" aria-hidden="true" />;
     default:
-      return <Clock className="w-4 h-4" />;
+      return <Clock className="w-4 h-4" aria-hidden="true" />;
   }
 }
 
@@ -58,8 +58,8 @@ export function NextBestActions({ actions, isLoading }: NextBestActionsProps) {
       >
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-lg">
-            <Lightbulb className="w-5 h-5 text-green-500" />
-            Next Best Actions
+            <Lightbulb className="w-5 h-5 text-green-500" aria-hidden="true" />
+            Next best actions
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -79,8 +79,8 @@ export function NextBestActions({ actions, isLoading }: NextBestActionsProps) {
       >
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-lg">
-            <Lightbulb className="w-5 h-5 text-green-500" />
-            Next Best Actions
+            <Lightbulb className="w-5 h-5 text-green-500" aria-hidden="true" />
+            Next best actions
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -97,52 +97,55 @@ export function NextBestActions({ actions, isLoading }: NextBestActionsProps) {
     >
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-lg">
-          <Lightbulb className="w-5 h-5 text-green-500" />
-          Next Best Actions
-          <Badge variant="outline" className="ml-2 text-xs">
+          <Lightbulb className="w-5 h-5 text-green-500" aria-hidden="true" />
+          Next best actions
+          <Badge variant="outline" className="ml-2 text-xs tabular-nums">
             {actions.length}
           </Badge>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        {actions.slice(0, 5).map((action, index) => (
-          <div 
-            key={action.id}
-            className="p-3 rounded-md bg-background/60 border border-border/50"
-            data-testid={`action-card-${index}`}
-          >
-            <div className="flex items-start gap-3">
-              <div className="mt-0.5 p-2 rounded-md bg-muted/50">
-                {getActionIcon(action.type)}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <p className="text-sm font-medium">{action.title}</p>
-                  <Badge 
-                    variant="outline" 
-                    className={`text-xs ${getPriorityStyle(action.priority)}`}
-                  >
-                    {action.priority}
-                  </Badge>
+        <ul aria-label="Recommended actions" className="space-y-3 list-none p-0 m-0">
+          {actions.slice(0, 5).map((action, index) => (
+            <li
+              key={action.id}
+              className="p-3 rounded-md bg-background/60 border border-border/50"
+              data-testid={`action-card-${index}`}
+            >
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 p-2 rounded-md bg-muted/50" aria-hidden="true">
+                  {getActionIcon(action.type)}
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">{action.description}</p>
-                {action.dueInfo && (
-                  <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                    <Clock className="w-3 h-3" />
-                    {action.dueInfo}
-                  </p>
-                )}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="text-sm font-medium">{action.title}</p>
+                    <Badge
+                      variant="outline"
+                      className={`text-xs ${getPriorityStyle(action.priority)}`}
+                      aria-label={`${action.priority} priority`}
+                    >
+                      {action.priority}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">{action.description}</p>
+                  {action.dueInfo && (
+                    <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                      <Clock className="w-3 h-3" aria-hidden="true" />
+                      {action.dueInfo}
+                    </p>
+                  )}
+                </div>
               </div>
-            </div>
-            <div className="mt-3 flex justify-end">
-              <Link href={action.actionUrl}>
-                <Button size="sm" data-testid={`action-button-${index}`}>
-                  {action.actionLabel}
+              <div className="mt-3 flex justify-end">
+                <Button asChild size="sm" data-testid={`action-button-${index}`}>
+                  <Link href={action.actionUrl} aria-label={`${action.actionLabel}: ${action.title}`}>
+                    {action.actionLabel}
+                  </Link>
                 </Button>
-              </Link>
-            </div>
-          </div>
-        ))}
+              </div>
+            </li>
+          ))}
+        </ul>
         {actions.length > 5 && (
           <p className="text-center text-sm text-muted-foreground py-2">
             +{actions.length - 5} more actions
