@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useDocumentTitle } from '@/hooks/use-document-title';
+import { usd } from '@/lib/format';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -54,10 +56,18 @@ const ACTION_STYLES: Record<string, { color: string; icon: JSX.Element }> = {
   subdivide: { color: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300', icon: <Layers className="w-4 h-4" /> },
 };
 
+// P1 money-precision: K/M compact bands kept for hero portfolio numbers (Monte
+// Carlo dashboards prioritize readability of $1.2M/$5K outcomes over cents).
+// Sub-$1K fall-through swapped to canonical usd(noCents); negative values
+// route through usd via abs+sign-prefix so the canonical formatter stays at the
+// boundary.
 function formatDollar(n: number) {
-  if (Math.abs(n) >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
-  if (Math.abs(n) >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
-  return `$${n.toFixed(0)}`;
+  if (!Number.isFinite(n)) return '$0';
+  const sign = n < 0 ? '-' : '';
+  const abs = Math.abs(n);
+  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(2)}M`;
+  if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(0)}K`;
+  return `${sign}${usd(abs, { noCents: true })}`;
 }
 
 function MetricCard({ label, value, sub, icon }: { label: string; value: string; sub?: string; icon: JSX.Element }) {
@@ -66,11 +76,11 @@ function MetricCard({ label, value, sub, icon }: { label: string; value: string;
       <CardContent className="pt-5">
         <div className="flex items-start justify-between">
           <div>
-            <p className="text-sm text-muted-foreground">{label}</p>
-            <p className="text-2xl font-bold mt-0.5">{value}</p>
+            <dt className="text-sm text-muted-foreground">{label}</dt>
+            <dd className="text-2xl font-bold tabular-nums mt-0.5 m-0">{value}</dd>
             {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
           </div>
-          <div className="text-muted-foreground">{icon}</div>
+          <div className="text-muted-foreground" aria-hidden="true">{icon}</div>
         </div>
       </CardContent>
     </Card>
@@ -106,14 +116,14 @@ function RecDrillDownModal({ rec }: { rec: any }) {
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button size="sm" variant="ghost">
-          <Info className="w-3 h-3 mr-1" /> Why?
+        <Button size="sm" variant="ghost" aria-label={`Show reasoning for this ${rec.recommendationType} recommendation`}>
+          <Info className="w-3 h-3 mr-1" aria-hidden="true" /> Why?
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle className="capitalize">{rec.recommendationType} Recommendation</DialogTitle>
-          <DialogDescription>Supporting analysis for this AI recommendation</DialogDescription>
+          <DialogTitle className="capitalize">{rec.recommendationType} recommendation</DialogTitle>
+          <DialogDescription>Supporting analysis for this AI recommendation.</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 pt-2">
           <div>
@@ -122,49 +132,58 @@ function RecDrillDownModal({ rec }: { rec: any }) {
           </div>
           {rec.expectedImpact && (
             <div>
-              <p className="text-sm font-medium mb-2">Expected Impact</p>
-              <div className="grid grid-cols-2 gap-3 text-sm">
+              <p className="text-sm font-medium mb-2">Expected impact</p>
+              <dl className="grid grid-cols-2 gap-3 text-sm m-0">
                 {rec.expectedImpact.valueChange !== 0 && (
                   <div className="p-2 bg-muted/40 rounded">
-                    <p className="text-xs text-muted-foreground">Value Change</p>
-                    <p className={`font-bold ${rec.expectedImpact.valueChange > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                    <dt className="text-xs text-muted-foreground">Value change</dt>
+                    <dd className={`font-bold tabular-nums m-0 ${rec.expectedImpact.valueChange > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
                       {rec.expectedImpact.valueChange > 0 ? '+' : ''}{formatDollar(rec.expectedImpact.valueChange)}
-                    </p>
+                    </dd>
                   </div>
                 )}
                 {rec.expectedImpact.cashFlowChange !== 0 && (
                   <div className="p-2 bg-muted/40 rounded">
-                    <p className="text-xs text-muted-foreground">Cash Flow/yr</p>
-                    <p className={`font-bold ${rec.expectedImpact.cashFlowChange > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                    <dt className="text-xs text-muted-foreground">Cash flow/yr</dt>
+                    <dd className={`font-bold tabular-nums m-0 ${rec.expectedImpact.cashFlowChange > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
                       {rec.expectedImpact.cashFlowChange > 0 ? '+' : ''}{formatDollar(rec.expectedImpact.cashFlowChange)}
-                    </p>
+                    </dd>
                   </div>
                 )}
                 {rec.expectedImpact.riskChange !== undefined && (
                   <div className="p-2 bg-muted/40 rounded">
-                    <p className="text-xs text-muted-foreground">Risk Change</p>
-                    <p className="font-bold">{rec.expectedImpact.riskChange > 0 ? '+' : ''}{rec.expectedImpact.riskChange?.toFixed(1)}%</p>
+                    <dt className="text-xs text-muted-foreground">Risk change</dt>
+                    <dd className="font-bold tabular-nums m-0">{rec.expectedImpact.riskChange > 0 ? '+' : ''}{rec.expectedImpact.riskChange?.toFixed(1)}%</dd>
                   </div>
                 )}
                 {rec.expectedImpact.liquidityChange !== undefined && (
                   <div className="p-2 bg-muted/40 rounded">
-                    <p className="text-xs text-muted-foreground">Liquidity</p>
-                    <p className="font-bold">{rec.expectedImpact.liquidityChange > 0 ? '+' : ''}{rec.expectedImpact.liquidityChange?.toFixed(1)}%</p>
+                    <dt className="text-xs text-muted-foreground">Liquidity</dt>
+                    <dd className="font-bold tabular-nums m-0">{rec.expectedImpact.liquidityChange > 0 ? '+' : ''}{rec.expectedImpact.liquidityChange?.toFixed(1)}%</dd>
                   </div>
                 )}
-              </div>
+              </dl>
             </div>
           )}
           <div>
             <p className="text-sm font-medium mb-1">Confidence</p>
             <div className="flex items-center gap-2">
-              <Progress value={rec.confidence} className="flex-1 h-2" />
-              <span className="text-sm">{rec.confidence}%</span>
+              <div
+                className="flex-1 h-2"
+                role="progressbar"
+                aria-label="Recommendation confidence"
+                aria-valuenow={rec.confidence}
+                aria-valuemin={0}
+                aria-valuemax={100}
+              >
+                <Progress value={rec.confidence} className="flex-1 h-2" aria-hidden="true" />
+              </div>
+              <span className="text-sm tabular-nums">{rec.confidence}%</span>
             </div>
           </div>
           <div>
-            <p className="text-sm font-medium mb-1">Priority Score</p>
-            <Badge variant="outline">{rec.priority}/10</Badge>
+            <p className="text-sm font-medium mb-1">Priority score</p>
+            <Badge variant="outline" className="tabular-nums" aria-label={`Priority ${rec.priority} out of 10`}>{rec.priority}/10</Badge>
           </div>
         </div>
       </DialogContent>
@@ -173,6 +192,7 @@ function RecDrillDownModal({ rec }: { rec: any }) {
 }
 
 export default function PortfolioOptimizerPage() {
+  useDocumentTitle('Portfolio optimizer');
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [yearsForward, setYearsForward] = useState('5');
@@ -235,7 +255,7 @@ export default function PortfolioOptimizerPage() {
       queryClient.invalidateQueries({ queryKey: ['portfolio-optimizer', 'simulations'] });
     },
     onError: (err: Error) => {
-      toast({ title: 'Simulation failed', description: err.message, variant: 'destructive' });
+      toast({ title: "Couldn't run simulation", description: `${err.message} — your prior simulation results are still available.`, variant: 'destructive' });
     },
   });
 
@@ -258,7 +278,7 @@ export default function PortfolioOptimizerPage() {
       queryClient.invalidateQueries({ queryKey: ['portfolio-optimizer'] });
     },
     onError: (err: Error) => {
-      toast({ title: 'Analysis failed', description: err.message, variant: 'destructive' });
+      toast({ title: "Couldn't run analysis", description: `${err.message} — your prior analysis is still available.`, variant: 'destructive' });
     },
   });
 
@@ -273,8 +293,12 @@ export default function PortfolioOptimizerPage() {
       if (!res.ok) throw new Error('Failed to update status');
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (_, vars) => {
       queryClient.invalidateQueries({ queryKey: ['portfolio-optimizer', 'recommendations'] });
+      toast({ title: `Recommendation ${vars.status}` });
+    },
+    onError: () => {
+      toast({ title: "Couldn't update recommendation", description: "Its status is unchanged. Try again.", variant: 'destructive' });
     },
   });
 
@@ -325,8 +349,8 @@ export default function PortfolioOptimizerPage() {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-2">
-            <BarChart2 className="w-8 h-8 text-primary" />
-            Portfolio Optimizer
+            <BarChart2 className="w-8 h-8 text-primary" aria-hidden="true" />
+            Portfolio optimizer
           </h1>
           <p className="text-muted-foreground mt-1">
             Monte Carlo simulation, diversification analysis, and AI-powered optimization recommendations.
@@ -335,80 +359,86 @@ export default function PortfolioOptimizerPage() {
         <div className="flex items-center gap-3">
           <Button
             variant="outline"
+            aria-label="Export portfolio report as PDF"
             onClick={async () => {
               try {
                 const res = await fetch('/api/portfolio-optimizer/report/pdf', { credentials: 'include' });
-                if (!res.ok) { toast({ title: 'PDF not available', description: 'PDF export endpoint not configured.', variant: 'destructive' }); return; }
+                if (!res.ok) {
+                  toast({ title: "Couldn't export PDF", description: 'PDF export endpoint is not configured. Check the system status or try again later.', variant: 'destructive' });
+                  return;
+                }
                 const blob = await res.blob();
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
                 a.download = 'portfolio-report.pdf';
                 a.click();
+                toast({ title: 'PDF exported', description: 'Portfolio report downloaded.' });
               } catch {
-                toast({ title: 'Export failed', description: 'Could not generate PDF report.', variant: 'destructive' });
+                toast({ title: "Couldn't export PDF", description: 'Network error generating the report. Try again in a moment.', variant: 'destructive' });
               }
             }}
           >
-            <FileDown className="w-4 h-4 mr-2" />
+            <FileDown className="w-4 h-4 mr-2" aria-hidden="true" />
             Export PDF
           </Button>
           <Select value={yearsForward} onValueChange={setYearsForward}>
-            <SelectTrigger className="w-28">
+            <SelectTrigger className="w-28" aria-label="Forecast horizon in years">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="3">3 Years</SelectItem>
-              <SelectItem value="5">5 Years</SelectItem>
-              <SelectItem value="10">10 Years</SelectItem>
-              <SelectItem value="20">20 Years</SelectItem>
+              <SelectItem value="3">3 years</SelectItem>
+              <SelectItem value="5">5 years</SelectItem>
+              <SelectItem value="10">10 years</SelectItem>
+              <SelectItem value="20">20 years</SelectItem>
             </SelectContent>
           </Select>
           <Button
             onClick={() => analyzeAllMutation.mutate()}
             disabled={analyzeAllMutation.isPending}
+            aria-label="Run full portfolio analysis"
           >
-            <RefreshCw className={`w-4 h-4 mr-2 ${analyzeAllMutation.isPending ? 'animate-spin' : ''}`} />
-            {analyzeAllMutation.isPending ? 'Analyzing…' : 'Run Full Analysis'}
+            <RefreshCw className={`w-4 h-4 mr-2 ${analyzeAllMutation.isPending ? 'animate-spin' : ''}`} aria-hidden="true" />
+            {analyzeAllMutation.isPending ? 'Analyzing…' : 'Run full analysis'}
           </Button>
         </div>
       </div>
 
       {/* Metrics row */}
       {metrics && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <dl className="grid grid-cols-2 md:grid-cols-4 gap-4 m-0">
           <MetricCard
-            label="Portfolio Value"
+            label="Portfolio value"
             value={formatDollar(metrics.totalValue)}
             sub={`${metrics.totalProperties} properties · ${Math.round(metrics.totalAcres).toLocaleString()} acres`}
-            icon={<DollarSign className="w-5 h-5" />}
+            icon={<DollarSign className="w-5 h-5" aria-hidden="true" />}
           />
           <MetricCard
-            label="Annual Cash Flow"
+            label="Annual cash flow"
             value={formatDollar(metrics.totalCashFlow)}
             sub={`${((metrics.totalCashFlow / metrics.totalValue) * 100).toFixed(1)}% yield`}
-            icon={<Activity className="w-5 h-5" />}
+            icon={<Activity className="w-5 h-5" aria-hidden="true" />}
           />
           <MetricCard
-            label="Avg Appreciation"
+            label="Avg appreciation"
             value={`${metrics.avgAppreciation.toFixed(1)}%`}
             sub="Annual weighted avg"
-            icon={<TrendingUp className="w-5 h-5" />}
+            icon={<TrendingUp className="w-5 h-5" aria-hidden="true" />}
           />
           <MetricCard
-            label="Sharpe Ratio"
+            label="Sharpe ratio"
             value={metrics.sharpeRatio.toFixed(2)}
             sub={`Diversification: ${Math.round(metrics.diversificationScore)}/100`}
-            icon={<Percent className="w-5 h-5" />}
+            icon={<Percent className="w-5 h-5" aria-hidden="true" />}
           />
-        </div>
+        </dl>
       )}
 
       {!metrics && !metricsLoading && (
-        <div className="text-center py-20 text-muted-foreground">
-          <BarChart2 className="w-12 h-12 mx-auto mb-4 opacity-30" />
+        <div className="text-center py-20 text-muted-foreground" role="status">
+          <BarChart2 className="w-12 h-12 mx-auto mb-4 opacity-30" aria-hidden="true" />
           <p className="text-lg font-medium">No portfolio holdings found</p>
-          <p className="text-sm mt-1">Add properties with "owned" status to run portfolio analysis</p>
+          <p className="text-sm mt-1">Add properties with "owned" status to run portfolio analysis.</p>
         </div>
       )}
 
