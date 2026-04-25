@@ -683,7 +683,7 @@ export function HelpPanel() {
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input 
-              placeholder="Search help topics..." 
+              placeholder="Search help topics…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-10"
@@ -1033,7 +1033,7 @@ export function HelpPanel() {
                   <Input
                     value={newMessage}
                     onChange={(e) => setNewMessage(e.target.value)}
-                    placeholder="Type your message..."
+                    placeholder="Type your message…"
                     className="flex-1"
                     disabled={sendMessageMutation.isPending}
                     data-testid="input-support-message"

@@ -601,7 +601,7 @@ export function SupportContent() {
                 <div className="p-4 border-t">
                   <div className="flex gap-2">
                     <Textarea
-                      placeholder="Type your message..."
+                      placeholder="Type your message…"
                       value={replyMessage}
                       onChange={(e) => setReplyMessage(e.target.value)}
                       className="min-h-[60px] resize-none"

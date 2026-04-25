@@ -811,7 +811,7 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
                         </div>
                         <div className="pl-9">
                           <Textarea
-                            placeholder="Add notes..."
+                            placeholder="Add notes…"
                             className="min-h-[60px] text-sm"
                             value={editingNotes[item.id] ?? item.notes ?? ""}
                             onChange={(e) => handleNotesChange(item.id, e.target.value)}

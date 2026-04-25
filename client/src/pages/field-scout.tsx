@@ -948,7 +948,7 @@ export default function FieldScout() {
                     value={currentNote}
                     onChange={(e) => setCurrentNote(e.target.value)}
                     className="bg-gray-800 border-gray-700 text-white text-sm h-20 resize-none"
-                    placeholder="Field notes, observations, access notes..."
+                    placeholder="Field notes, observations, access notes…"
                   />
                 </div>
 
@@ -1236,7 +1236,7 @@ export default function FieldScout() {
             <Input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search leads..."
+              placeholder="Search leads…"
               className="pl-9 bg-gray-900 border-gray-800 text-white"
             />
           </div>

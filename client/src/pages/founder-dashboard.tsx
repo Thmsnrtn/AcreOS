@@ -3794,7 +3794,7 @@ export default function FounderDashboard() {
           <Textarea
             value={notesValue}
             onChange={(e) => setNotesValue(e.target.value)}
-            placeholder="Enter internal notes about this feature request..."
+            placeholder="Enter internal notes about this feature request…"
             className="min-h-[120px]"
             data-testid="textarea-founder-notes"
           />

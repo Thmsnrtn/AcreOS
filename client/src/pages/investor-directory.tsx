@@ -348,7 +348,7 @@ export default function InvestorDirectoryPage() {
                 <Label htmlFor={bioId}>Bio</Label>
                 <Textarea
                   id={bioId}
-                  placeholder="Brief description of your investment strategy..."
+                  placeholder="Brief description of your investment strategy…"
                   value={profileForm.bio}
                   onChange={e => setProfileForm(p => ({ ...p, bio: e.target.value }))}
                   rows={3}
@@ -454,7 +454,7 @@ export default function InvestorDirectoryPage() {
                 <Label htmlFor={attestId}>Self-attestation statement</Label>
                 <Textarea
                   id={attestId}
-                  placeholder="I confirm that I am a legitimate land investor operating legally in my jurisdiction. I agree to AcreOS Marketplace Terms of Service and will conduct all transactions lawfully..."
+                  placeholder="I confirm that I am a legitimate land investor operating legally in my jurisdiction. I agree to AcreOS Marketplace Terms of Service and will conduct all transactions lawfully…"
                   value={selfAttestation}
                   onChange={e => setSelfAttestation(e.target.value)}
                   rows={4}

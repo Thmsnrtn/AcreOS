@@ -145,7 +145,7 @@ function InitiativeCard({ initiative }: { initiative: Initiative }) {
             <Textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Optional CEO notes..."
+              placeholder="Optional CEO notes…"
               className="text-sm h-16"
             />
           )}

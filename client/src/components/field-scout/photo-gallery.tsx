@@ -228,7 +228,7 @@ export function PhotoGallery({
                     <Textarea
                       value={captionDraft}
                       onChange={(e) => setCaptionDraft(e.target.value)}
-                      placeholder="Add a caption or notes..."
+                      placeholder="Add a caption or notes…"
                       className="bg-gray-800 border-gray-700 text-white text-xs h-16 resize-none"
                       autoFocus
                     />

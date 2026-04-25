@@ -332,7 +332,7 @@ export function InspectionChecklist({ onComplete, initialData }: InspectionCheck
                             onChange={(e) =>
                               updateItem(cat.id, item.id, { notes: e.target.value })
                             }
-                            placeholder="Add notes..."
+                            placeholder="Add notes…"
                             className="bg-gray-800 border-gray-700 text-white text-xs h-14 resize-none"
                           />
                         )}

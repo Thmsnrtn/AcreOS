@@ -394,7 +394,7 @@ export function ResearchSummaryPanel({ property }: ResearchSummaryPanelProps) {
             </span>
           </div>
           <Textarea
-            placeholder="Add your research notes, analysis, and offer reasoning here..."
+            placeholder="Add your research notes, analysis, and offer reasoning here…"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             className="min-h-[80px] text-sm resize-none"

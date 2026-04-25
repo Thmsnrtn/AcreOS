@@ -934,10 +934,10 @@ function OfferLetterForm({
           name="additionalTerms"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Additional Terms</FormLabel>
+              <FormLabel>Additional terms</FormLabel>
               <FormControl>
                 <Textarea
-                  placeholder="Any additional terms or conditions..."
+                  placeholder="Any additional terms or conditions…"
                   {...field}
                   data-testid="input-offer-additional-terms"
                 />

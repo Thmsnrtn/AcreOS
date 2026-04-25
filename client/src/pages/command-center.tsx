@@ -594,7 +594,7 @@ function TeamTabContent() {
                       <div>
                         <p className="text-sm font-medium mb-2">Custom Instructions</p>
                         <Textarea
-                          placeholder="Add custom instructions for this agent..."
+                          placeholder="Add custom instructions for this agent…"
                           value={customInstructions || selectedAgent.customInstructions || ""}
                           onChange={(e) => setCustomInstructions(e.target.value)}
                           className="min-h-[100px]"
@@ -635,7 +635,7 @@ function TeamTabContent() {
                           </DialogDescription>
                         </DialogHeader>
                         <Textarea
-                          placeholder="E.g., Send follow-up emails to all leads who haven't responded in 7 days..."
+                          placeholder="E.g., Send follow-up emails to all leads who haven't responded in 7 days…"
                           value={taskInput}
                           onChange={(e) => setTaskInput(e.target.value)}
                           className="min-h-[120px]"
@@ -1302,7 +1302,7 @@ function AIOperationsTabContent() {
                     </DialogHeader>
                     <div className="py-4">
                       <Textarea
-                        placeholder="Enter Property ID..."
+                        placeholder="Enter property ID…"
                         value={propertyIdInput}
                         onChange={(e) => setPropertyIdInput(e.target.value)}
                         data-testid="input-property-id-dd"
@@ -1337,7 +1337,7 @@ function AIOperationsTabContent() {
                     </DialogHeader>
                     <div className="py-4">
                       <Textarea
-                        placeholder="Enter Property ID..."
+                        placeholder="Enter property ID…"
                         value={propertyIdInput}
                         onChange={(e) => setPropertyIdInput(e.target.value)}
                         data-testid="input-property-id-pricing"

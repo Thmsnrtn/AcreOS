@@ -184,7 +184,7 @@ function WarRoomThread({ room }: { room: WarRoomData }) {
             <Input
               value={directive}
               onChange={(e) => setDirective(e.target.value)}
-              placeholder="Send a directive to the team..."
+              placeholder="Send a directive to the team…"
               className="text-sm h-8"
               onKeyDown={(e) => {
                 if (e.key === "Enter" && directive.trim()) {

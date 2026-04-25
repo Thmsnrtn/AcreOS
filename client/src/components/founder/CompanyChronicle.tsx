@@ -121,8 +121,8 @@ export function CompanyChronicle() {
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="relative">
-          <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
-          <Input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search the chronicle..." className="text-sm h-8 pl-8" />
+          <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+          <Input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search the chronicle…" className="text-sm h-8 pl-8" />
         </div>
         {list.map(e => <ChronicleCard key={e.id} entry={e} />)}
         {list.length === 0 && <div className="text-center py-4 text-xs text-muted-foreground">No chronicle entries yet. Generate one above.</div>}

@@ -80,11 +80,11 @@ export function MobileCommandDrawer({ open, onOpenChange }: MobileCommandDrawerP
         data-testid="mobile-command-drawer"
       >
         <DrawerHeader className="pb-2">
-          <DrawerTitle className="sr-only">Quick Actions</DrawerTitle>
+          <DrawerTitle className="sr-only">Quick actions</DrawerTitle>
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
             <Input
-              placeholder="Search actions..."
+              placeholder="Search actions…"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-9 min-h-[44px]"
