@@ -49,6 +49,7 @@ const SCORE_COLOR = (score: number) => {
 };
 
 function ScoreBadge({ score }: { score: number }) {
+  const tier = score >= 80 ? 'hot' : score >= 60 ? 'warm' : score >= 40 ? 'moderate' : 'cold';
   const bg = score >= 80 ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
     : score >= 60 ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300'
     : score >= 40 ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300'
@@ -57,7 +58,7 @@ function ScoreBadge({ score }: { score: number }) {
   return (
     <span
       className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold tabular-nums ${bg}`}
-      aria-label={`Score ${score} of 100${score >= 80 ? ', hot' : ''}`}
+      aria-label={`Score ${score} of 100, ${tier} tier`}
     >
       {score >= 80 && <Flame className="w-3 h-3" aria-hidden="true" />}
       {score}
@@ -119,6 +120,10 @@ function FactorBar({ label, factor }: { label: string; factor: any }) {
       <Progress
         value={Math.abs(factor.score)}
         className="h-2"
+        role="progressbar"
+        aria-valuenow={Math.round(Math.abs(factor.score))}
+        aria-valuemin={0}
+        aria-valuemax={100}
         aria-label={`${label}: ${Math.round(factor.score)} out of 100, ${factor.weight}% weight`}
       />
       {factor.details?.explanation && (
@@ -175,6 +180,12 @@ export default function AcquisitionRadarPage() {
     },
   });
 
+  const STATUS_TOAST: Record<string, string> = {
+    pursuing: "Marked as pursuing — added to your active deal flow.",
+    reviewed: "Marked as reviewed.",
+    dismissed: "Dismissed — removed from your radar.",
+  };
+
   const statusMutation = useMutation({
     mutationFn: async ({ id, status }: { id: number; status: string }) => {
       const res = await fetch(`/api/radar/opportunities/${id}/status`, {
@@ -186,8 +197,8 @@ export default function AcquisitionRadarPage() {
       if (!res.ok) throw new Error('Failed to update status');
       return res.json();
     },
-    onSuccess: () => {
-      toast({ title: 'Status updated.' });
+    onSuccess: (_data, { status }) => {
+      toast({ title: STATUS_TOAST[status] ?? "Status updated." });
       queryClient.invalidateQueries({ queryKey: ['radar'] });
       setSelectedOpp(null);
     },
@@ -231,32 +242,32 @@ export default function AcquisitionRadarPage() {
       {stats && (
         <dl className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card>
-            <CardContent className="pt-4">
-              <dd className="text-2xl font-bold tabular-nums">{stats.totalOpportunities}</dd>
+            <CardContent className="pt-4 flex flex-col-reverse">
               <dt className="text-sm text-muted-foreground">Total opportunities</dt>
+              <dd className="text-2xl font-bold tabular-nums">{stats.totalOpportunities}</dd>
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="pt-4">
+            <CardContent className="pt-4 flex flex-col-reverse">
+              <dt className="text-sm text-muted-foreground">Hot (80+ score)</dt>
               <dd className="text-2xl font-bold text-red-500 flex items-center gap-1 tabular-nums">
                 <Flame className="w-5 h-5" aria-hidden="true" />
                 {stats.hotOpportunities}
               </dd>
-              <dt className="text-sm text-muted-foreground">Hot (80+ score)</dt>
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="pt-4">
+            <CardContent className="pt-4 flex flex-col-reverse">
+              <dt className="text-sm text-muted-foreground">Average score</dt>
               <dd className="text-2xl font-bold tabular-nums">{stats.avgScore ?? '—'}</dd>
-              <dt className="text-sm text-muted-foreground">Avg score</dt>
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="pt-4">
+            <CardContent className="pt-4 flex flex-col-reverse">
+              <dt className="text-sm text-muted-foreground">Last scan</dt>
               <dd className="text-2xl font-bold tabular-nums">
                 {stats.lastScanAt ? new Date(stats.lastScanAt).toLocaleDateString() : 'Never'}
               </dd>
-              <dt className="text-sm text-muted-foreground">Last scan</dt>
             </CardContent>
           </Card>
         </dl>
@@ -347,21 +358,26 @@ export default function AcquisitionRadarPage() {
                 <CardDescription>Counties with highest-quality acquisition opportunities.</CardDescription>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={320}>
-                  <BarChart data={marketChartData} layout="vertical" margin={{ left: 20 }}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis type="number" domain={[0, 100]} />
-                    <YAxis type="category" dataKey="market" width={120} tick={{ fontSize: 11 }} />
-                    <Tooltip
-                      formatter={((v: any, name: string) => [name === 'avgScore' ? `${v}/100` : v, name === 'avgScore' ? 'Avg Score' : 'Count']) as any}
-                    />
-                    <Bar dataKey="avgScore" name="Avg Score" radius={[0, 4, 4, 0]}>
-                      {marketChartData.map((entry, i) => (
-                        <Cell key={i} fill={SCORE_COLOR(entry.avgScore)} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
+                <div
+                  role="img"
+                  aria-label={`Top ${marketChartData.length} markets ranked by average opportunity score: ${marketChartData.map(m => `${m.market} ${m.avgScore} of 100`).join(', ')}`}
+                >
+                  <ResponsiveContainer width="100%" height={320}>
+                    <BarChart data={marketChartData} layout="vertical" margin={{ left: 20 }}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis type="number" domain={[0, 100]} />
+                      <YAxis type="category" dataKey="market" width={120} tick={{ fontSize: 11 }} />
+                      <Tooltip
+                        formatter={((v: any, name: string) => [name === 'avgScore' ? `${v}/100` : v, name === 'avgScore' ? 'Average score' : 'Count']) as any}
+                      />
+                      <Bar dataKey="avgScore" name="Average score" radius={[0, 4, 4, 0]}>
+                        {marketChartData.map((entry, i) => (
+                          <Cell key={i} fill={SCORE_COLOR(entry.avgScore)} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
               </CardContent>
             </Card>
           ) : (
