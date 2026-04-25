@@ -1,6 +1,6 @@
 import { useEffect, useState, lazy, Suspense } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useLocation } from "wouter";
+import { Link, useLocation } from "wouter";
 import { PageShell } from "@/components/page-shell";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -272,9 +272,9 @@ function InsightsTabContent() {
                       <p className="text-sm text-muted-foreground">{obs.description}</p>
                     </div>
                     <Button size="sm" variant="outline" className="shrink-0 h-7 text-xs gap-1" asChild>
-                      <a href="/pipeline" aria-label={`Act on: ${obs.title}`}>
+                      <Link href="/pipeline" aria-label={`Act on: ${obs.title}`}>
                         Act <ArrowRight className="w-3 h-3" aria-hidden="true" />
-                      </a>
+                      </Link>
                     </Button>
                   </div>
                 </li>
@@ -480,10 +480,10 @@ function AiChatGuard({ children }: { children: React.ReactNode }) {
             </p>
           </div>
           <Button variant="outline" asChild>
-            <a href="/settings#integrations">
+            <Link href="/settings#integrations">
               <Settings className="w-4 h-4 mr-2" aria-hidden="true" />
               Go to integrations
-            </a>
+            </Link>
           </Button>
         </CardContent>
       </Card>

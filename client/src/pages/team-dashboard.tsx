@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { fetchJsonArray } from "@/lib/queryClient";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -230,10 +231,10 @@ export default function TeamDashboardPage() {
                         asChild
                         aria-label={`Message ${displayName}`}
                       >
-                        <a href="/team">
+                        <Link href="/team">
                           <MessageSquare className="w-3.5 h-3.5 mr-1" aria-hidden="true" />
                           Message
-                        </a>
+                        </Link>
                       </Button>
                     </li>
                   );

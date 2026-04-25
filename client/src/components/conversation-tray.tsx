@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useTeamMembers } from "@/hooks/use-organization";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -60,10 +61,10 @@ function TierGatingPrompt() {
         Team messaging is available on plans with 2 or more seats. Upgrade to Starter or higher to collaborate with your team in real-time.
       </p>
       <Button asChild>
-        <a href="/settings">
-          Upgrade Plan
-          <ArrowUpRight className="w-4 h-4 ml-1" />
-        </a>
+        <Link href="/settings">
+          Upgrade plan
+          <ArrowUpRight className="w-4 h-4 ml-1" aria-hidden="true" />
+        </Link>
       </Button>
     </div>
   );

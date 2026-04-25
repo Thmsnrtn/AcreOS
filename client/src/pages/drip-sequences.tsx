@@ -1,5 +1,6 @@
 import { useState, useId } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -105,9 +106,9 @@ export default function DripSequencesPage() {
           </p>
         </div>
         <Button asChild className="min-h-11">
-          <a href="/sequences/new">
+          <Link href="/sequences/new">
             <Plus className="w-4 h-4 mr-2" aria-hidden="true" /> New sequence
-          </a>
+          </Link>
         </Button>
       </div>
 

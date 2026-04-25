@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { motion } from "framer-motion";
 import { Calendar, ExternalLink, MapPin, DollarSign, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -86,9 +87,9 @@ export function CalendarWidget() {
         <Calendar className="h-8 w-8 mx-auto mb-2 text-muted-foreground opacity-50" />
         <p className="text-muted-foreground mb-2">No upcoming events</p>
         <Button variant="outline" size="sm" asChild>
-          <a href="/settings?tab=integrations" aria-label="Connect Google Calendar">
+          <Link href="/settings?tab=integrations" aria-label="Connect Google Calendar">
             Connect Google Calendar
-          </a>
+          </Link>
         </Button>
       </div>
     );
