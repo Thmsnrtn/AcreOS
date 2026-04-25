@@ -427,6 +427,7 @@ function PromissoryNoteForm({
               <FormControl>
                 <Input
                   type="number"
+                  inputMode="numeric"
                   placeholder="Enter note ID"
                   {...field}
                   onChange={(e) => field.onChange(Number(e.target.value))}
@@ -597,6 +598,7 @@ function SettlementStatementForm({
                 <FormControl>
                   <Input
                     type="number"
+                    inputMode="decimal"
                     placeholder="0"
                     {...field}
                     onChange={(e) => field.onChange(Number(e.target.value) || undefined)}
@@ -663,6 +665,7 @@ function SettlementStatementForm({
                 <FormControl>
                   <Input
                     type="number"
+                    inputMode="decimal"
                     placeholder="0"
                     {...field}
                     onChange={(e) => field.onChange(Number(e.target.value) || 0)}
@@ -683,6 +686,7 @@ function SettlementStatementForm({
                 <FormControl>
                   <Input
                     type="number"
+                    inputMode="decimal"
                     placeholder="0"
                     {...field}
                     onChange={(e) => field.onChange(Number(e.target.value) || 0)}
@@ -705,6 +709,7 @@ function SettlementStatementForm({
                 <FormControl>
                   <Input
                     type="number"
+                    inputMode="decimal"
                     placeholder="75"
                     {...field}
                     onChange={(e) => field.onChange(Number(e.target.value) || 0)}
@@ -725,6 +730,7 @@ function SettlementStatementForm({
                 <FormControl>
                   <Input
                     type="number"
+                    inputMode="decimal"
                     placeholder="250"
                     {...field}
                     onChange={(e) => field.onChange(Number(e.target.value) || 0)}
@@ -745,6 +751,7 @@ function SettlementStatementForm({
                 <FormControl>
                   <Input
                     type="number"
+                    inputMode="decimal"
                     placeholder="0"
                     {...field}
                     onChange={(e) => field.onChange(Number(e.target.value) || 0)}
@@ -874,6 +881,7 @@ function OfferLetterForm({
                 <FormControl>
                   <Input
                     type="number"
+                    inputMode="decimal"
                     placeholder="0"
                     {...field}
                     onChange={(e) => field.onChange(Number(e.target.value) || undefined)}
@@ -894,6 +902,7 @@ function OfferLetterForm({
                 <FormControl>
                   <Input
                     type="number"
+                    inputMode="decimal"
                     placeholder="0"
                     {...field}
                     onChange={(e) => field.onChange(Number(e.target.value) || 0)}
@@ -1038,6 +1047,7 @@ function PropertyFlyerForm({
                 <FormControl>
                   <Input
                     type="number"
+                    inputMode="decimal"
                     placeholder="0"
                     {...field}
                     onChange={(e) => field.onChange(Number(e.target.value) || undefined)}

@@ -529,6 +529,7 @@ export function AIOfferGenerator({ property }: AIOfferGeneratorProps) {
                     <Input
                       id="offerAmount"
                       type="number"
+                      inputMode="decimal"
                       value={customOfferAmount}
                       onChange={(e) => setCustomOfferAmount(e.target.value)}
                       placeholder="Enter amount"
@@ -551,6 +552,7 @@ export function AIOfferGenerator({ property }: AIOfferGeneratorProps) {
                       <Input
                         id="earnestMoney"
                         type="number"
+                        inputMode="decimal"
                         value={earnestMoney}
                         onChange={(e) => setEarnestMoney(e.target.value)}
                         placeholder="500"
@@ -562,6 +564,7 @@ export function AIOfferGenerator({ property }: AIOfferGeneratorProps) {
                       <Input
                         id="closingDays"
                         type="number"
+                        inputMode="numeric"
                         value={closingDays}
                         onChange={(e) => setClosingDays(e.target.value)}
                         placeholder="30"
@@ -639,6 +642,7 @@ export function AIOfferGenerator({ property }: AIOfferGeneratorProps) {
                 <Input
                   id="predictionOfferAmount"
                   type="number"
+                  inputMode="decimal"
                   value={customOfferAmount}
                   onChange={(e) => setCustomOfferAmount(e.target.value)}
                   placeholder="Enter offer amount"
