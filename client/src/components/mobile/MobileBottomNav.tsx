@@ -25,6 +25,7 @@ export function MobileBottomNav() {
   return (
     <>
       <nav
+        aria-label="Mobile navigation"
         className="fixed bottom-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-lg border-t border-border"
         style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
         data-testid="mobile-bottom-nav"
@@ -39,8 +40,9 @@ export function MobileBottomNav() {
               <Link
                 key={item.href}
                 href={item.href}
+                aria-current={isActive ? "page" : undefined}
                 className={cn(
-                  "flex flex-col items-center justify-center gap-1 min-w-[56px] min-h-[48px] rounded-xl transition-all active:scale-95",
+                  "flex flex-col items-center justify-center gap-1 min-w-[56px] min-h-[48px] rounded-xl transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   isActive
                     ? "text-primary"
                     : "text-muted-foreground active:bg-muted/50"
@@ -51,7 +53,7 @@ export function MobileBottomNav() {
                   "flex items-center justify-center w-full h-8 rounded-full transition-colors",
                   isActive && "bg-primary/15"
                 )}>
-                  <ItemIcon className={cn("w-6 h-6", isActive && "text-primary")} />
+                  <ItemIcon className={cn("w-6 h-6", isActive && "text-primary")} aria-hidden="true" />
                 </div>
                 <span className={cn(
                   "text-[11px] font-medium truncate",
@@ -64,10 +66,13 @@ export function MobileBottomNav() {
           })}
 
           <button
+            type="button"
             aria-label="Open more actions"
+            aria-expanded={isDrawerOpen}
+            aria-haspopup="dialog"
             onClick={() => setIsDrawerOpen(true)}
             className={cn(
-              "flex flex-col items-center justify-center gap-1 min-w-[56px] min-h-[48px] rounded-xl transition-all active:scale-95",
+              "flex flex-col items-center justify-center gap-1 min-w-[56px] min-h-[48px] rounded-xl transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               isDrawerOpen
                 ? "text-primary"
                 : "text-muted-foreground active:bg-muted/50"
@@ -78,7 +83,7 @@ export function MobileBottomNav() {
               "flex items-center justify-center w-full h-8 rounded-full transition-colors",
               isDrawerOpen && "bg-primary/15"
             )}>
-              <MoreHorizontal className={cn("w-6 h-6", isDrawerOpen && "text-primary")} />
+              <MoreHorizontal className={cn("w-6 h-6", isDrawerOpen && "text-primary")} aria-hidden="true" />
             </div>
             <span className={cn(
               "text-[11px] font-medium truncate",
