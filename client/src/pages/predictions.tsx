@@ -12,6 +12,7 @@ import {
 } from "recharts";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { usd } from "@/lib/format";
 import {
   TrendingUp, Search, Target, Calendar, BarChart2,
   ArrowUpRight, ArrowDownRight, Clock, AlertCircle, CheckCircle2,
@@ -63,11 +64,17 @@ interface AccuracyMetrics {
 
 function DirectionBadge({ direction }: { direction: string }) {
   if (direction === "bullish")
-    return <Badge className="bg-green-100 text-green-800">Bullish</Badge>;
+    return <Badge className="bg-green-100 text-green-800" aria-label="Direction: bullish (rising)">Bullish</Badge>;
   if (direction === "bearish")
-    return <Badge className="bg-red-100 text-red-800">Bearish</Badge>;
-  return <Badge variant="secondary">Neutral</Badge>;
+    return <Badge className="bg-red-100 text-red-800" aria-label="Direction: bearish (falling)">Bearish</Badge>;
+  return <Badge variant="secondary" aria-label="Direction: neutral (flat)">Neutral</Badge>;
 }
+
+const WINDOW_LABEL: Record<"buy" | "sell" | "hold", string> = {
+  buy: "Buy window — favorable conditions to acquire",
+  sell: "Sell window — favorable conditions to exit",
+  hold: "Hold window — wait, no clear edge",
+};
 
 function WindowBadge({ type }: { type: "buy" | "sell" | "hold" }) {
   const map: Record<string, string> = {
@@ -76,16 +83,23 @@ function WindowBadge({ type }: { type: "buy" | "sell" | "hold" }) {
     hold: "bg-gray-100 text-gray-700",
   };
   return (
-    <span className={`px-2 py-0.5 rounded text-xs font-semibold uppercase ${map[type]}`}>
+    <span
+      className={`px-2 py-0.5 rounded text-xs font-semibold uppercase ${map[type]}`}
+      role="status"
+      aria-label={WINDOW_LABEL[type]}
+    >
       {type}
     </span>
   );
 }
 
 function formatPrice(val: number) {
+  // Compact display for chart axis ticks + accuracy KPIs. K/M bands round
+  // intentionally for screen real estate; sub-$1K falls through to usd()
+  // so cents are preserved on small RMSE values.
   if (val >= 1_000_000) return `$${(val / 1_000_000).toFixed(1)}M`;
   if (val >= 1_000) return `$${(val / 1_000).toFixed(0)}K`;
-  return `$${val.toLocaleString()}`;
+  return usd(val, { noCents: true });
 }
 
 // ─── Skeleton ────────────────────────────────────────────────────────────
@@ -297,6 +311,10 @@ export default function PredictionsPage() {
                     <Progress
                       value={momentum.score}
                       className="h-2"
+                      role="progressbar"
+                      aria-valuenow={momentum.score}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
                       aria-label={`Momentum score: ${momentum.score} out of 100`}
                     />
                     <ul className="space-y-1" aria-label="Momentum drivers">
@@ -379,54 +397,59 @@ export default function PredictionsPage() {
                   </div>
                 </div>
               ) : (
-                <ResponsiveContainer width="100%" height={300}>
-                  <LineChart data={trajectory} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                    <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-                    <YAxis tickFormatter={formatPrice} tick={{ fontSize: 11 }} width={70} />
-                    <Tooltip
-                      formatter={((val: number, name: string) => [formatPrice(val), name]) as any}
-                      labelClassName="text-xs font-medium"
-                    />
-                    <Legend wrapperStyle={{ fontSize: 12 }} />
-                    <Line
-                      type="monotone"
-                      dataKey="actual"
-                      name="Actual"
-                      stroke="#6366f1"
-                      strokeWidth={2}
-                      dot={{ r: 3 }}
-                      connectNulls={false}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="predicted"
-                      name="Predicted"
-                      stroke="#f59e0b"
-                      strokeWidth={2}
-                      strokeDasharray="5 3"
-                      dot={{ r: 3 }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="upper"
-                      name="Upper CI"
-                      stroke="#d1d5db"
-                      strokeWidth={1}
-                      strokeDasharray="2 2"
-                      dot={false}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="lower"
-                      name="Lower CI"
-                      stroke="#d1d5db"
-                      strokeWidth={1}
-                      strokeDasharray="2 2"
-                      dot={false}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
+                <div
+                  role="img"
+                  aria-label={`Price trajectory line chart with ${trajectory.length} points across ${submitted.horizon}-day forecast; predicted range from ${formatPrice(Math.min(...trajectory.map(p => p.lower)))} to ${formatPrice(Math.max(...trajectory.map(p => p.upper)))}`}
+                >
+                  <ResponsiveContainer width="100%" height={300}>
+                    <LineChart data={trajectory} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                      <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                      <YAxis tickFormatter={formatPrice} tick={{ fontSize: 11 }} width={70} />
+                      <Tooltip
+                        formatter={((val: number, name: string) => [formatPrice(val), name]) as any}
+                        labelClassName="text-xs font-medium"
+                      />
+                      <Legend wrapperStyle={{ fontSize: 12 }} />
+                      <Line
+                        type="monotone"
+                        dataKey="actual"
+                        name="Actual"
+                        stroke="#6366f1"
+                        strokeWidth={2}
+                        dot={{ r: 3 }}
+                        connectNulls={false}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="predicted"
+                        name="Predicted"
+                        stroke="#f59e0b"
+                        strokeWidth={2}
+                        strokeDasharray="5 3"
+                        dot={{ r: 3 }}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="upper"
+                        name="Upper bound (90% CI)"
+                        stroke="#d1d5db"
+                        strokeWidth={1}
+                        strokeDasharray="2 2"
+                        dot={false}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="lower"
+                        name="Lower bound (90% CI)"
+                        stroke="#d1d5db"
+                        strokeWidth={1}
+                        strokeDasharray="2 2"
+                        dot={false}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -461,6 +484,10 @@ export default function PredictionsPage() {
                       <Progress
                         value={w.confidence * 100}
                         className="h-1.5"
+                        role="progressbar"
+                        aria-valuenow={Math.round(w.confidence * 100)}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
                         aria-label={`${w.type} window confidence: ${Math.round(w.confidence * 100)}%`}
                       />
                       <div className="flex items-center gap-1 text-xs text-muted-foreground">
