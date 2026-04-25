@@ -406,44 +406,49 @@ export default function Dashboard() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-3">
+                <ul className="space-y-3 list-none p-0 m-0" aria-label="Top aging leads">
                   {agingLeads.slice(0, 5).map((lead) => (
-                    <Link
-                      key={lead.id}
-                      href={`/leads?stage=${lead.nurturingStage}`}
-                      className="flex items-center justify-between p-3 rounded-md bg-muted/50 hover-elevate cursor-pointer"
-                      data-testid={`aging-lead-${lead.id}`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="flex flex-col">
-                          <span className="font-medium text-sm" data-testid={`text-aging-lead-name-${lead.id}`}>
-                            {lead.firstName} {lead.lastName}
-                          </span>
-                          <span className="text-xs text-muted-foreground flex items-center gap-1 capitalize">
-                            {getStageIcon(lead.nurturingStage)}
-                            {lead.nurturingStage} lead
-                            {lead.score !== null && <span className="normal-case tabular-nums"> — Score: {lead.score}</span>}
-                          </span>
+                    <li key={lead.id}>
+                      <Link
+                        href={`/leads?stage=${lead.nurturingStage}`}
+                        className="flex items-center justify-between p-3 rounded-md bg-muted/50 hover-elevate cursor-pointer"
+                        data-testid={`aging-lead-${lead.id}`}
+                        aria-label={`${lead.firstName} ${lead.lastName}, ${lead.nurturingStage} lead, ${lead.daysSinceContact} days since contact`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="flex flex-col">
+                            <span className="font-medium text-sm" data-testid={`text-aging-lead-name-${lead.id}`}>
+                              {lead.firstName} {lead.lastName}
+                            </span>
+                            <span className="text-xs text-muted-foreground flex items-center gap-1 capitalize">
+                              {getStageIcon(lead.nurturingStage)}
+                              {lead.nurturingStage} lead
+                              {lead.score !== null && <span className="normal-case tabular-nums"> — Score: {lead.score}</span>}
+                            </span>
+                          </div>
                         </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge
-                          variant="outline"
-                          className={`text-xs border-0 tabular-nums ${getUrgencyStyle(lead.urgency)}`}
-                          data-testid={`badge-aging-urgency-${lead.id}`}
-                        >
-                          <Clock className="w-3 h-3 mr-1" aria-hidden="true" />
-                          {lead.daysSinceContact}d
-                        </Badge>
-                      </div>
-                    </Link>
+                        <div className="flex items-center gap-2">
+                          <Badge
+                            variant="outline"
+                            className={`text-xs border-0 tabular-nums ${getUrgencyStyle(lead.urgency)}`}
+                            data-testid={`badge-aging-urgency-${lead.id}`}
+                            aria-label={`Urgency: ${lead.urgency}, ${lead.daysSinceContact} days`}
+                          >
+                            <Clock className="w-3 h-3 mr-1" aria-hidden="true" />
+                            {lead.daysSinceContact}d
+                          </Badge>
+                        </div>
+                      </Link>
+                    </li>
                   ))}
                   {agingLeads.length > 5 && (
-                    <Link href="/leads" className="block text-center text-sm text-muted-foreground hover:text-foreground py-2">
-                      View all <span className="tabular-nums">{agingLeads.length}</span> aging leads
-                    </Link>
+                    <li className="block text-center text-sm py-2">
+                      <Link href="/leads" className="text-muted-foreground hover:text-foreground">
+                        View all <span className="tabular-nums">{agingLeads.length}</span> aging leads
+                      </Link>
+                    </li>
                   )}
-                </div>
+                </ul>
               </CardContent>
             </Card>
           </motion.div>
@@ -463,7 +468,7 @@ export default function Dashboard() {
 
       case "inventoryChart":
         return (
-          <motion.div 
+          <motion.div
             key={widgetId}
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
@@ -472,7 +477,11 @@ export default function Dashboard() {
             <Card className="floating-window">
               <CardContent className="p-6">
                 <h3 className="text-lg font-semibold mb-6">Inventory status</h3>
-                <div className="h-64">
+                <div
+                  className="h-64"
+                  role="img"
+                  aria-label={`Property inventory donut chart: ${statusData.map(d => `${d.name} ${d.value}`).join(", ")}`}
+                >
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
@@ -492,14 +501,16 @@ export default function Dashboard() {
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
-                <div className="flex justify-center gap-6 mt-4 flex-wrap">
+                <ul className="flex justify-center gap-6 mt-4 flex-wrap list-none p-0 m-0" aria-label="Inventory status legend">
                   {statusData.map((entry) => (
-                    <div key={entry.name} className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: entry.color }} />
-                      <span className="text-sm font-medium text-muted-foreground">{entry.name}</span>
-                    </div>
+                    <li key={entry.name} className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: entry.color }} aria-hidden="true" />
+                      <span className="text-sm font-medium text-muted-foreground">
+                        {entry.name}: <span className="tabular-nums">{entry.value}</span>
+                      </span>
+                    </li>
                   ))}
-                </div>
+                </ul>
               </CardContent>
             </Card>
           </motion.div>
@@ -516,7 +527,11 @@ export default function Dashboard() {
             <Card className="floating-window">
               <CardContent className="p-6">
                 <h3 className="text-lg font-semibold mb-6">Lead pipeline</h3>
-                <div className="h-64">
+                <div
+                  className="h-64"
+                  role="img"
+                  aria-label={`Lead pipeline bar chart: ${leadStatusData.map(d => `${d.name} ${d.value}`).join(", ")}`}
+                >
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={leadStatusData}>
                       <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
@@ -567,9 +582,9 @@ export default function Dashboard() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="pt-0">
-                <div className="space-y-2">
+                <ol className="space-y-2 list-none p-0 m-0" aria-label="Deal stages from leads to closed">
                   {funnelStages.map((stage, idx) => (
-                    <div key={stage.name}>
+                    <li key={stage.name}>
                       <div className="flex items-center justify-between text-sm mb-1">
                         <span className="font-medium text-xs">{stage.name}</span>
                         <div className="flex items-center gap-2">
@@ -601,9 +616,9 @@ export default function Dashboard() {
                           )}
                         </div>
                       </div>
-                    </div>
+                    </li>
                   ))}
-                </div>
+                </ol>
                 {funnelStages[0].value === 0 && (
                   <p className="text-xs text-muted-foreground text-center mt-4">Add leads to see your deal funnel.</p>
                 )}
