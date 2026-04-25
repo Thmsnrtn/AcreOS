@@ -3,6 +3,8 @@ import { useState } from "react";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { AcreosLogo } from "@/components/acreos-logo";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -110,15 +112,22 @@ function WaitlistSection() {
             }
           }}
         >
-          <input
+          <Label htmlFor="waitlist-email" className="sr-only">Email address for waitlist</Label>
+          <Input
+            id="waitlist-email"
             name="waitlist-email"
             type="email"
+            inputMode="email"
+            autoComplete="email"
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
             placeholder="you@email.com"
             required
-            className="flex-1 px-3 py-2 text-sm border rounded-md bg-background"
+            className="flex-1"
           />
           <Button type="submit" size="sm" disabled={selected.size === 0}>
-            Join Waitlist{selected.size > 0 ? ` (${selected.size})` : ""}
+            Join waitlist{selected.size > 0 ? ` (${selected.size})` : ""}
           </Button>
         </form>
       )}
