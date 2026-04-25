@@ -57,10 +57,13 @@ export default function BulkActionBar({
   const idArray = Array.from(selectedIds);
 
   return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-bottom-4 duration-200">
+    <aside
+      aria-label={`Bulk actions for ${selectedCount} selected ${entityLabel}${selectedCount !== 1 ? "s" : ""}`}
+      className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-bottom-4 duration-200"
+    >
       <div className="flex items-center gap-2 bg-background border border-border rounded-xl shadow-lg px-4 py-3">
         {/* Count badge */}
-        <Badge variant="secondary" className="font-semibold">
+        <Badge variant="secondary" className="font-semibold" aria-live="polite">
           {selectedCount} {entityLabel}{selectedCount !== 1 ? "s" : ""} selected
         </Badge>
 
@@ -139,11 +142,10 @@ export default function BulkActionBar({
         <div className="w-px h-5 bg-border mx-1" />
 
         {/* Clear */}
-        <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={onClear}>
-          <X className="h-4 w-4" />
-          <span className="sr-only">Clear selection</span>
+        <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={onClear} aria-label="Clear selection">
+          <X className="h-4 w-4" aria-hidden="true" />
         </Button>
       </div>
-    </div>
+    </aside>
   );
 }
