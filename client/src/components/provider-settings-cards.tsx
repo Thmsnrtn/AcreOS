@@ -16,6 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import {
   Sheet,
@@ -64,7 +65,7 @@ const statusConfig = {
   },
   not_configured: {
     color: "bg-muted-foreground/40",
-    label: "Not Configured",
+    label: "Not configured",
     icon: WifiOff,
     badgeVariant: "outline" as const,
   },
@@ -144,7 +145,7 @@ export function ProviderSettingsCards({
         <SheetContent>
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2">
-              <Key className="h-5 w-5" />
+              <Key className="h-5 w-5" aria-hidden="true" />
               Configure {configureSheet.displayName}
             </SheetTitle>
             <SheetDescription>
@@ -154,24 +155,24 @@ export function ProviderSettingsCards({
 
           <div className="mt-6 space-y-4">
             <div className="space-y-2">
-              <label
-                htmlFor="api-key-input"
-                className="text-sm font-medium leading-none"
-              >
-                API Key
-              </label>
+              <Label htmlFor="api-key-input">API key</Label>
               <Input
                 id="api-key-input"
                 type="password"
-                placeholder="Enter API key..."
+                placeholder="Enter API key…"
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
                 autoComplete="off"
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
               />
             </div>
 
             {testResult && (
               <div
+                role={testResult.success ? "status" : "alert"}
+                aria-live="polite"
                 className={cn(
                   "flex items-center gap-2 rounded-lg border p-3 text-sm",
                   testResult.success
@@ -180,9 +181,9 @@ export function ProviderSettingsCards({
                 )}
               >
                 {testResult.success ? (
-                  <Check className="h-4 w-4 shrink-0" />
+                  <Check className="h-4 w-4 shrink-0" aria-hidden="true" />
                 ) : (
-                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
                 )}
                 {testResult.message}
               </div>
@@ -190,29 +191,33 @@ export function ProviderSettingsCards({
 
             <div className="flex gap-2">
               <Button
+                type="button"
                 variant="outline"
                 className="flex-1"
                 onClick={handleTestConnection}
                 disabled={!apiKey.trim() || isTesting || !onTestConnection}
+                aria-busy={isTesting}
               >
                 {isTesting ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
                 ) : (
-                  <Wifi className="mr-2 h-4 w-4" />
+                  <Wifi className="mr-2 h-4 w-4" aria-hidden="true" />
                 )}
-                Test Connection
+                {isTesting ? "Testing…" : "Test connection"}
               </Button>
               <Button
+                type="button"
                 className="flex-1"
                 onClick={handleSave}
                 disabled={!apiKey.trim() || isSaving}
+                aria-busy={isSaving}
               >
                 {isSaving ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
                 ) : (
-                  <Check className="mr-2 h-4 w-4" />
+                  <Check className="mr-2 h-4 w-4" aria-hidden="true" />
                 )}
-                Save
+                {isSaving ? "Saving…" : "Save"}
               </Button>
             </div>
           </div>
@@ -243,7 +248,7 @@ function ProviderCard({
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted" aria-hidden="true">
               <Settings className="h-5 w-5 text-muted-foreground" />
             </div>
             <div>
@@ -263,13 +268,14 @@ function ProviderCard({
           </div>
           <div className="flex items-center gap-1.5">
             <span
+              role="status"
               className={cn(
                 "h-2.5 w-2.5 rounded-full shrink-0",
                 config.color
               )}
               aria-label={`Status: ${config.label}`}
             />
-            <StatusIcon className="h-3.5 w-3.5 text-muted-foreground" />
+            <StatusIcon className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
           </div>
         </div>
       </CardHeader>
@@ -279,7 +285,7 @@ function ProviderCard({
         {usagePercent != null ? (
           <div className="space-y-1.5">
             <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <span>Monthly Usage</span>
+              <span>Monthly usage</span>
               <span>
                 {provider.monthlyUsage.toLocaleString()} /{" "}
                 {provider.monthlyLimit!.toLocaleString()}
@@ -308,8 +314,9 @@ function ProviderCard({
           <CollapsibleTrigger asChild>
             <button
               type="button"
-              className="flex w-full items-center justify-between rounded-md px-1 py-1 text-xs text-muted-foreground hover:bg-muted/50 transition-colors"
-              aria-label={expanded ? "Collapse details" : "Expand details"}
+              className="flex w-full items-center justify-between rounded-md px-1 py-1 text-xs text-muted-foreground hover:bg-muted/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-expanded={expanded}
+              aria-label={`${expanded ? "Collapse" : "Expand"} ${provider.displayName} details`}
             >
               <span>Details</span>
               <ChevronDown
@@ -317,6 +324,7 @@ function ProviderCard({
                   "h-3.5 w-3.5 transition-transform duration-200",
                   expanded && "rotate-180"
                 )}
+                aria-hidden="true"
               />
             </button>
           </CollapsibleTrigger>
@@ -350,12 +358,14 @@ function ProviderCard({
 
         {/* Configure button */}
         <Button
+          type="button"
           variant="outline"
           size="sm"
           className="w-full"
           onClick={onConfigure}
+          aria-label={`Configure ${provider.displayName}`}
         >
-          <Settings className="mr-2 h-3.5 w-3.5" />
+          <Settings className="mr-2 h-3.5 w-3.5" aria-hidden="true" />
           Configure
         </Button>
       </CardContent>
