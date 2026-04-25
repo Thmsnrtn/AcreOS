@@ -147,6 +147,10 @@ export function PipelineVelocity() {
           </p>
         ) : (
           <>
+            <div
+              role="img"
+              aria-label={`Pipeline velocity bar chart: ${chartData.map((d: any) => `${d.name} ${d.avgDays} days${d.stalled > 0 ? ` (${d.stalled} stalled)` : ""}`).join(", ")}`}
+            >
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={chartData} margin={{ top: 0, right: 8, bottom: 0, left: -20 }}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
@@ -165,6 +169,7 @@ export function PipelineVelocity() {
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
+            </div>
 
             <div className="mt-3 grid grid-cols-2 md:grid-cols-3 gap-2">
               {velocityData.map(v => (

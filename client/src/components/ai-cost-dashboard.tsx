@@ -155,7 +155,11 @@ export function AICostDashboard() {
           <>
             <div className="pt-4 border-t">
               <h4 className="text-sm font-medium mb-4">Cost by Provider</h4>
-              <div className="h-48">
+              <div
+                className="h-48"
+                role="img"
+                aria-label={`AI cost by provider bar chart: ${providerChartData.map((d: any) => `${d.name} actual $${d.actualCost?.toFixed(4) ?? 0}, if GPT-4o $${d.potentialCost?.toFixed(4) ?? 0}`).join("; ")}`}
+              >
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={providerChartData} margin={{ top: 10, right: 10, left: 10, bottom: 20 }}>
                     <XAxis 
