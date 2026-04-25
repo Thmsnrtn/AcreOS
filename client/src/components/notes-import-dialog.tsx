@@ -183,8 +183,8 @@ export function NotesImportDialog({ open, onOpenChange }: Props) {
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Upload className="w-5 h-5 text-primary" />
-            Import Notes from CSV
+            <Upload className="w-5 h-5 text-primary" aria-hidden="true" />
+            Import notes from CSV
           </DialogTitle>
           <DialogDescription>
             Import seller-financed notes from any CSV file. We'll auto-detect your
@@ -195,8 +195,9 @@ export function NotesImportDialog({ open, onOpenChange }: Props) {
         {/* Step: Upload */}
         {step === "upload" && (
           <div className="space-y-4 py-4">
-            <div
-              className="border-2 border-dashed border-border rounded-xl p-10 text-center cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors"
+            <button
+              type="button"
+              className="w-full border-2 border-dashed border-border rounded-xl p-10 text-center cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => {
                 e.preventDefault();
@@ -204,20 +205,21 @@ export function NotesImportDialog({ open, onOpenChange }: Props) {
                 if (f) handleFileChange(f);
               }}
               onClick={() => document.getElementById("notes-csv-input")?.click()}
+              aria-label="Upload CSV file: drop a file here or activate to browse"
             >
-              <FileText className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
+              <FileText className="w-10 h-10 text-muted-foreground mx-auto mb-3" aria-hidden="true" />
               <p className="font-medium mb-1">Drop your CSV here or click to browse</p>
               <p className="text-sm text-muted-foreground">
                 Supports any CSV with note data
               </p>
-              <input
-                id="notes-csv-input"
-                type="file"
-                accept=".csv"
-                className="hidden"
-                onChange={(e) => handleFileChange(e.target.files?.[0] || null)}
-              />
-            </div>
+            </button>
+            <input
+              id="notes-csv-input"
+              type="file"
+              accept=".csv"
+              className="hidden"
+              onChange={(e) => handleFileChange(e.target.files?.[0] || null)}
+            />
             <div className="text-xs text-muted-foreground bg-muted/40 rounded-lg p-3 space-y-1">
               <p className="font-medium text-foreground">CSV import tips:</p>
               <p>1. Export notes from your current platform as CSV</p>
@@ -231,7 +233,7 @@ export function NotesImportDialog({ open, onOpenChange }: Props) {
         {step === "map" && (
           <div className="space-y-4 py-2">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <FileText className="w-4 h-4" />
+              <FileText className="w-4 h-4" aria-hidden="true" />
               <span className="font-medium text-foreground">{file?.name}</span>
               <span>· {previewRows.length > 0 ? "Preview ready" : ""}</span>
             </div>
@@ -277,8 +279,13 @@ export function NotesImportDialog({ open, onOpenChange }: Props) {
 
         {/* Step: Importing */}
         {step === "importing" && (
-          <div className="py-12 flex flex-col items-center gap-4">
-            <Loader2 className="w-10 h-10 text-primary animate-spin" />
+          <div
+            role="status"
+            aria-busy="true"
+            aria-live="polite"
+            className="py-12 flex flex-col items-center gap-4"
+          >
+            <Loader2 className="w-10 h-10 text-primary animate-spin" aria-hidden="true" />
             <p className="font-medium">Importing notes…</p>
             <p className="text-sm text-muted-foreground">
               Creating borrower profiles and note records.
