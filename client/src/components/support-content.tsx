@@ -652,33 +652,43 @@ export function SupportContent() {
             </DialogTrigger>
             <DialogContent className="sm:max-w-[500px]">
               <DialogHeader>
-                <DialogTitle>Submit Feature Request</DialogTitle>
+                <DialogTitle>Submit feature request</DialogTitle>
                 <DialogDescription>
                   Share your ideas for new features or improvements.
                 </DialogDescription>
               </DialogHeader>
-              <div className="space-y-4 py-4">
+              <form
+                id="feature-request-form"
+                className="space-y-4 py-4"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!featureTitle.trim() || !featureDescription.trim() || !featureCategory || createFeatureRequestMutation.isPending) return;
+                  handleCreateFeatureRequest();
+                }}
+              >
                 <div className="space-y-2">
                   <Label htmlFor="feature-title">Title</Label>
                   <Input
                     id="feature-title"
-                    placeholder="Brief summary of your request..."
+                    placeholder="Brief summary of your request…"
                     value={featureTitle}
                     onChange={(e) => setFeatureTitle(e.target.value)}
+                    autoCapitalize="sentences"
+                    required
                     data-testid="input-feature-title"
                   />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="feature-category">Category</Label>
                   <Select value={featureCategory} onValueChange={setFeatureCategory}>
-                    <SelectTrigger data-testid="select-feature-category">
+                    <SelectTrigger id="feature-category" data-testid="select-feature-category">
                       <SelectValue placeholder="Select a category" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="enhancement" data-testid="select-category-enhancement">Enhancement</SelectItem>
-                      <SelectItem value="new_feature" data-testid="select-category-new-feature">New Feature</SelectItem>
-                      <SelectItem value="integration" data-testid="select-category-integration">Integration Request</SelectItem>
-                      <SelectItem value="ux" data-testid="select-category-ux">UX Improvement</SelectItem>
+                      <SelectItem value="new_feature" data-testid="select-category-new-feature">New feature</SelectItem>
+                      <SelectItem value="integration" data-testid="select-category-integration">Integration request</SelectItem>
+                      <SelectItem value="ux" data-testid="select-category-ux">UX improvement</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -686,32 +696,35 @@ export function SupportContent() {
                   <Label htmlFor="feature-description">Description</Label>
                   <Textarea
                     id="feature-description"
-                    placeholder="Describe your feature request in detail..."
+                    placeholder="Describe your feature request in detail…"
                     rows={5}
                     value={featureDescription}
                     onChange={(e) => setFeatureDescription(e.target.value)}
+                    autoCapitalize="sentences"
+                    required
                     data-testid="input-feature-description"
                   />
                 </div>
-              </div>
+              </form>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setIsFeatureRequestOpen(false)} data-testid="button-cancel-feature-request">
+                <Button type="button" variant="outline" onClick={() => setIsFeatureRequestOpen(false)} data-testid="button-cancel-feature-request">
                   Cancel
                 </Button>
                 <Button
-                  onClick={handleCreateFeatureRequest}
+                  type="submit"
+                  form="feature-request-form"
                   disabled={!featureTitle.trim() || !featureDescription.trim() || !featureCategory || createFeatureRequestMutation.isPending}
                   data-testid="button-submit-feature-request"
                 >
                   {createFeatureRequestMutation.isPending ? (
                     <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Submitting...
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
+                      Submitting…
                     </>
                   ) : (
                     <>
-                      <Lightbulb className="w-4 h-4 mr-2" />
-                      Submit Request
+                      <Lightbulb className="w-4 h-4 mr-2" aria-hidden="true" />
+                      Submit request
                     </>
                   )}
                 </Button>
