@@ -321,7 +321,7 @@ export function FounderSetupWizard({ open, onClose }: Props) {
       setFieldValues(prev => ({ ...prev, [key]: data.value }));
       toast({ title: "Generated", description: `${key} value ready — save to apply` });
     } catch (e: any) {
-      toast({ title: "Error", description: e.message, variant: "destructive" });
+      toast({ title: "Couldn't generate value", description: `${e.message} — your existing field values are unchanged.`, variant: "destructive" });
     }
   }, [toast]);
 
@@ -351,11 +351,11 @@ export function FounderSetupWizard({ open, onClose }: Props) {
         qc.invalidateQueries({ queryKey: ["/api/founder/readiness"] });
       }
       if (data.errors?.length > 0) {
-        toast({ title: "Some errors", description: data.errors.join("; "), variant: "destructive" });
+        toast({ title: "Some credentials failed", description: data.errors.join("; "), variant: "destructive" });
       }
       return data;
     } catch (e: any) {
-      toast({ title: "Save failed", description: e.message, variant: "destructive" });
+      toast({ title: "Couldn't save credentials", description: `${e.message} — no changes were applied.`, variant: "destructive" });
       return { saved: [], errors: [e.message] };
     } finally {
       setSaving(false);
@@ -391,7 +391,7 @@ export function FounderSetupWizard({ open, onClose }: Props) {
       });
       refetch();
     } catch (e: any) {
-      toast({ title: "Wiring failed", description: e.message, variant: "destructive" });
+      toast({ title: "Couldn't wire integration", description: `${e.message} — no changes were applied.`, variant: "destructive" });
     } finally {
       setWiring(null);
     }

@@ -70,7 +70,7 @@ export function WorkspaceManager() {
       toast({ title: "Workspace saved", description: "Your workspace preset has been created." });
     },
     onError: () => {
-      toast({ title: "Error", description: "Failed to save workspace preset.", variant: "destructive" });
+      toast({ title: "Couldn't save workspace preset", description: "Your draft is preserved. Try again or check the system status.", variant: "destructive" });
     },
   });
 

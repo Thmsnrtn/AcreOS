@@ -113,7 +113,7 @@ export function TasksDueWidget() {
       toast({ title: "Task completed", description: "Great job!" });
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't mark task complete", description: `${error.message} — the task is still on your list.`, variant: "destructive" });
     },
   });
 
