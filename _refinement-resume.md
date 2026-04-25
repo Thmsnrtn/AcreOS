@@ -787,6 +787,7 @@ to a dedicated 9b slice.
 **Skeleton a11y (201):** ✅ complete — ListSkeleton (table/card/compact) and PageShellSkeleton got role="status" + aria-live="polite" + aria-busy="true" + sr-only "Loading…". Decorative shimmer divs aria-hidden. Screen readers now announce loading state. (commit `f62d159`)
 **ErrorBoundary fallback a11y (202):** ✅ complete — role="alert" + aria-live="assertive" on the fallback container, decorative icons aria-hidden, error ID wrapped in `<code>`, sentence-case microcopy. (commit `a5fda7c`)
 **UsageLimitBanner a11y (203):** ✅ complete — role="alert" + aria-live varying by severity (assertive at-limit / polite at 75-99%), decorative icons aria-hidden, dismiss button got specific aria-label "Dismiss usage warning". (commit `99fdd6e`)
+**DisclaimerBanner + NotificationCenter (204):** ✅ complete — DisclaimerBanner: role="note" + aria-label per type, dismiss button aria-label per type. NotificationCenter: Bell trigger aria-label varies with unreadCount + aria-haspopup="dialog" + aria-expanded; mark-all button aria-label includes the count. Decorative icons aria-hidden. (commit `cbe4554`)
 **/onboarding-v2 targeted (18):** ✅ complete (commit `70df779`) — 18b deferred
 **/settings targeted (19):** ✅ complete (commit `809044c`) — 19b remaining components deferred
 **/pipeline (20):** ✅ complete (commit `1b5d0f7`)
