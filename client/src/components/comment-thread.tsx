@@ -1,7 +1,9 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useId, useState, useRef, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
@@ -105,6 +107,7 @@ export function CommentThread({ entityType, entityId, currentUserId }: CommentTh
   const [isExpanded, setIsExpanded] = useState(false);
   const [input, setInput] = useState("");
   const [showMentionSuggestions, setShowMentionSuggestions] = useState(false);
+  const commentTextareaId = useId();
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const queryKey = ["comments", entityType, entityId];
@@ -211,16 +214,21 @@ export function CommentThread({ entityType, entityId, currentUserId }: CommentTh
     <div className="border rounded-lg bg-card overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b">
-        <span className="text-xs font-semibold">Comments</span>
+        <h3 className="text-xs font-semibold">Comments</h3>
         <button type="button" onClick={() => setIsExpanded(false)} aria-label="Close comments" className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
           <X className="w-4 h-4 text-muted-foreground hover:text-foreground" aria-hidden="true" />
         </button>
       </div>
 
       {/* Scrollable comment list */}
-      <div className="max-h-64 overflow-y-auto p-3 space-y-3">
+      <div
+        role="log"
+        aria-live="polite"
+        aria-label="Comments"
+        className="max-h-64 overflow-y-auto p-3 space-y-3"
+      >
         {isLoading ? (
-          <div className="space-y-3">
+          <div className="space-y-3" role="status" aria-busy="true" aria-label="Loading comments">
             {[1, 2, 3].map((i) => (
               <div key={i} className="flex items-start gap-2">
                 <Skeleton className="w-7 h-7 rounded-full" />
@@ -230,6 +238,7 @@ export function CommentThread({ entityType, entityId, currentUserId }: CommentTh
                 </div>
               </div>
             ))}
+            <span className="sr-only">Loading…</span>
           </div>
         ) : allComments.length === 0 ? (
           <p className="text-xs text-muted-foreground text-center py-2">No comments yet. Start the conversation.</p>
@@ -264,13 +273,16 @@ export function CommentThread({ entityType, entityId, currentUserId }: CommentTh
 
       {/* Input */}
       <div className="border-t p-2 flex gap-2">
-        <textarea
+        <Label htmlFor={commentTextareaId} className="sr-only">Add a comment</Label>
+        <Textarea
+          id={commentTextareaId}
           ref={inputRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Add a comment... Use @ to mention"
-          className="flex-1 resize-none text-sm bg-transparent border-0 focus:outline-none focus:ring-0 min-h-[32px] max-h-[80px] p-1"
+          placeholder="Add a comment… Use @ to mention"
+          autoCapitalize="sentences"
+          className="flex-1 resize-none text-sm bg-transparent border-0 focus-visible:ring-0 min-h-[32px] max-h-[80px] p-1"
           rows={1}
         />
         <Button
@@ -281,9 +293,9 @@ export function CommentThread({ entityType, entityId, currentUserId }: CommentTh
           aria-label="Send comment"
         >
           {createMutation.isPending ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
+            <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
           ) : (
-            <Send className="w-4 h-4" />
+            <Send className="w-4 h-4" aria-hidden="true" />
           )}
         </Button>
       </div>
