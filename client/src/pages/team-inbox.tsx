@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useId, useState, useEffect, useRef, type FormEvent } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetchJsonArray } from "@/lib/queryClient";
 import { Sidebar, useSidebarCollapsed } from "@/components/layout-sidebar";
@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useAuth } from "@/hooks/use-auth";
 import { useRealtime } from "@/hooks/use-realtime";
 import {
@@ -75,8 +76,13 @@ function presenceDot(status?: string) {
     away:   "bg-yellow-400",
     offline: "bg-gray-300 dark:bg-gray-600",
   };
+  const s = status ?? "offline";
   return (
-    <span className={`w-2 h-2 rounded-full shrink-0 ${c[status ?? "offline"] ?? c.offline}`} />
+    <span
+      className={`w-2 h-2 rounded-full shrink-0 ${c[s] ?? c.offline}`}
+      role="img"
+      aria-label={`Presence: ${s}`}
+    />
   );
 }
 
@@ -97,9 +103,15 @@ function SidebarItem({
   presenceStatus?: string;
   onClick: () => void;
 }) {
+  const ariaLabel = isChannel
+    ? `Channel: ${label}${unread ? ", unread messages" : ""}`
+    : `Direct message: ${label}${presenceStatus ? `, ${presenceStatus}` : ""}${unread ? ", unread messages" : ""}`;
   return (
     <button
+      type="button"
       onClick={onClick}
+      aria-current={active ? "true" : undefined}
+      aria-label={ariaLabel}
       className={cn(
         "w-full flex items-center gap-2 px-3 py-1.5 rounded text-sm text-left transition-colors",
         active
@@ -108,11 +120,11 @@ function SidebarItem({
       )}
     >
       {isChannel
-        ? <Hash className="w-3.5 h-3.5 shrink-0" />
+        ? <Hash className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
         : presenceDot(presenceStatus)
       }
       <span className="flex-1 truncate">{label}</span>
-      {unread && <span className="w-2 h-2 rounded-full bg-primary shrink-0" />}
+      {unread && <span className="w-2 h-2 rounded-full bg-primary shrink-0" aria-hidden="true" />}
     </button>
   );
 }
@@ -121,6 +133,7 @@ function NewChannelDialog({ onCreated }: { onCreated: () => void }) {
   const [name, setName] = useState("");
   const [open, setOpen] = useState(false);
   const { toast } = useToast();
+  const channelNameId = useId();
 
   const create = useMutation({
     mutationFn: () =>
@@ -138,41 +151,54 @@ function NewChannelDialog({ onCreated }: { onCreated: () => void }) {
       onCreated();
       toast({ title: "Channel created" });
     },
-    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+    onError: (e: any) =>
+      toast({
+        title: "Couldn't create channel",
+        description: `${e.message ?? "Network error"}. Your channel name is still on this device — try again.`,
+        variant: "destructive",
+      }),
   });
+
+  function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!name.trim() || create.isPending) return;
+    create.mutate();
+  }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <button className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground px-3 py-1 mt-1 w-full">
-          <Plus className="w-3 h-3" /> New channel
+        <button type="button" className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground px-3 py-1 mt-1 w-full">
+          <Plus className="w-3 h-3" aria-hidden="true" /> New channel
         </button>
       </DialogTrigger>
       <DialogContent className="max-w-xs">
         <DialogHeader>
           <DialogTitle>Create a channel</DialogTitle>
         </DialogHeader>
-        <div className="space-y-3">
+        <form onSubmit={handleSubmit} className="space-y-3">
           <div>
-            <Label htmlFor="channel-name">Channel name</Label>
+            <Label htmlFor={channelNameId}>Channel name</Label>
             <Input
-              id="channel-name"
+              id={channelNameId}
               placeholder="#team-name"
               value={name}
               onChange={e => setName(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && name.trim() && create.mutate()}
               autoFocus
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
             />
           </div>
           <Button
+            type="submit"
             className="w-full"
-            onClick={() => create.mutate()}
             disabled={!name.trim() || create.isPending}
           >
-            {create.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+            {create.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" aria-hidden="true" /> : null}
             Create
           </Button>
-        </div>
+        </form>
       </DialogContent>
     </Dialog>
   );
@@ -181,17 +207,19 @@ function NewChannelDialog({ onCreated }: { onCreated: () => void }) {
 // ── Main component ──────────────────────────────────────────────────────────
 
 export default function TeamInboxPage() {
+  useDocumentTitle("Team inbox");
   const { isCollapsed } = useSidebarCollapsed();
   const { user: authUser } = useAuth();
   const myUserId = (authUser as any)?.id ?? (authUser as any)?.claims?.sub ?? "";
 
   const { toast } = useToast();
   const qc = useQueryClient();
-  const { on, subscribe } = useRealtime();
+  const { on } = useRealtime();
 
   const [activeConvId, setActiveConvId] = useState<number | null>(null);
   const [draft, setDraft] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
+  const draftId = useId();
 
   // Fetch data
   const { data: channels = [], isLoading: channelsLoading, refetch: refetchChannels } =
@@ -288,7 +316,11 @@ export default function TeamInboxPage() {
       if (e.tier_gating) {
         toast({ title: "Upgrade required", description: e.message, variant: "destructive" });
       } else {
-        toast({ title: "Failed to send", variant: "destructive" });
+        toast({
+          title: "Couldn't send message",
+          description: "Your draft is still in the input — try again.",
+          variant: "destructive",
+        });
       }
     },
   });
@@ -296,6 +328,11 @@ export default function TeamInboxPage() {
   function handleSend() {
     if (!draft.trim() || !activeConvId || sendMessage.isPending) return;
     sendMessage.mutate();
+  }
+
+  function handleSendSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    handleSend();
   }
 
   // Helpers
@@ -349,13 +386,13 @@ export default function TeamInboxPage() {
           {/* Direct Messages */}
           <div className="px-3 mt-4 mb-1">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-1">
-              Direct Messages
+              Direct messages
             </p>
           </div>
           {dms.map(dm => {
             const otherId = dm.participantIds?.find(id => id !== myUserId);
             const other = otherId ? memberByUserId.get(otherId) : undefined;
-            const label = other?.displayName ?? other?.email ?? "Direct Message";
+            const label = other?.displayName ?? other?.email ?? "Direct message";
             return (
               <SidebarItem
                 key={dm.id}
@@ -374,8 +411,8 @@ export default function TeamInboxPage() {
           {/* Header */}
           <div className="border-b px-4 py-3 flex items-center gap-2 shrink-0">
             {activeConv?.isDirect === false
-              ? <Hash className="w-4 h-4 text-muted-foreground" />
-              : <MessageSquare className="w-4 h-4 text-muted-foreground" />
+              ? <Hash className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
+              : <MessageSquare className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
             }
             <h2 className="font-semibold text-sm">{activeConv?.name ?? "Select a channel"}</h2>
           </div>
@@ -388,8 +425,8 @@ export default function TeamInboxPage() {
               </p>
             )}
             {activeConvId && msgsLoading && (
-              <div className="flex items-center justify-center py-8 text-muted-foreground">
-                <Loader2 className="w-4 h-4 animate-spin mr-2" /> Loading…
+              <div className="flex items-center justify-center py-8 text-muted-foreground" role="status" aria-label="Loading messages">
+                <Loader2 className="w-4 h-4 animate-spin mr-2" aria-hidden="true" /> Loading…
               </div>
             )}
             {!msgsLoading && messages.length === 0 && activeConvId && (
@@ -397,12 +434,17 @@ export default function TeamInboxPage() {
                 No messages yet. Start the conversation!
               </p>
             )}
-            <div className="space-y-3">
+            <ol
+              className="space-y-3 list-none p-0 m-0"
+              role="log"
+              aria-live="polite"
+              aria-label={activeConv?.name ? `Messages in ${activeConv.name}` : "Messages"}
+            >
               {messages.map((msg, i) => {
                 const isMe = msg.senderId === myUserId;
                 const prevSame = i > 0 && messages[i - 1].senderId === msg.senderId;
                 return (
-                  <div key={msg.id} className={cn("flex gap-3", isMe && "flex-row-reverse")}>
+                  <li key={msg.id} className={cn("flex gap-3", isMe && "flex-row-reverse")}>
                     {!prevSame && (
                       <Avatar className="w-7 h-7 shrink-0 mt-0.5">
                         <AvatarFallback className="text-xs bg-primary/10 text-primary">
@@ -413,13 +455,13 @@ export default function TeamInboxPage() {
                         </AvatarFallback>
                       </Avatar>
                     )}
-                    {prevSame && <div className="w-7 shrink-0" />}
+                    {prevSame && <div className="w-7 shrink-0" aria-hidden="true" />}
                     <div className={cn("max-w-[70%]", isMe && "items-end flex flex-col")}>
                       {!prevSame && (
                         <p className={cn("text-xs text-muted-foreground mb-0.5", isMe && "text-right")}>
                           {isMe ? "You" : displayName(msg.senderId)}
                           {" · "}
-                          {relative(msg.createdAt)}
+                          <time dateTime={msg.createdAt}>{relative(msg.createdAt)}</time>
                         </p>
                       )}
                       <div
@@ -433,58 +475,57 @@ export default function TeamInboxPage() {
                         {msg.body}
                       </div>
                     </div>
-                  </div>
+                  </li>
                 );
               })}
-            </div>
+            </ol>
             <div ref={bottomRef} />
           </ScrollArea>
 
           {/* Input */}
           {activeConvId && (
-            <div className="border-t px-4 py-3 shrink-0">
+            <form onSubmit={handleSendSubmit} className="border-t px-4 py-3 shrink-0">
+              <Label htmlFor={draftId} className="sr-only">
+                Message {activeConv?.name ?? ""}
+              </Label>
               <div className="flex gap-2 items-end">
                 <Input
+                  id={draftId}
                   className="flex-1 resize-none"
                   placeholder={`Message ${activeConv?.name ?? "…"} — @mention teammates`}
                   value={draft}
                   onChange={e => setDraft(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSend();
-                    }
-                  }}
                   disabled={sendMessage.isPending}
+                  autoComplete="off"
                 />
                 <Button
+                  type="submit"
                   size="icon"
-                  onClick={handleSend}
                   disabled={!draft.trim() || sendMessage.isPending}
-                  aria-label="Send message"
+                  aria-label={`Send message to ${activeConv?.name ?? "channel"}`}
                 >
                   {sendMessage.isPending
-                    ? <Loader2 className="w-4 h-4 animate-spin" />
-                    : <Send className="w-4 h-4" />
+                    ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                    : <Send className="w-4 h-4" aria-hidden="true" />
                   }
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground mt-1">
-                Press Enter to send · Shift+Enter for new line (not supported in input) · @mention to notify teammates
+                Press Enter to send · @mention a teammate to notify them
               </p>
-            </div>
+            </form>
           )}
 
           {/* Tier gating */}
           {!channelsLoading && (channels as any)?.message && (
-            <div className="flex flex-col items-center justify-center flex-1 gap-3 p-8 text-center">
-              <Lock className="w-8 h-8 text-muted-foreground" />
-              <p className="font-medium">Team Messaging</p>
+            <div className="flex flex-col items-center justify-center flex-1 gap-3 p-8 text-center" role="region" aria-label="Team messaging upgrade prompt">
+              <Lock className="w-8 h-8 text-muted-foreground" aria-hidden="true" />
+              <p className="font-medium">Team messaging</p>
               <p className="text-sm text-muted-foreground max-w-xs">
                 Team messaging requires a plan with 2 or more seats.
               </p>
               <Button asChild variant="outline">
-                <a href="/settings/billing">Upgrade Plan</a>
+                <a href="/settings/billing">Upgrade plan</a>
               </Button>
             </div>
           )}
