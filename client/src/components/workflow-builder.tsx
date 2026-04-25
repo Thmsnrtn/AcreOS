@@ -619,8 +619,8 @@ export function WorkflowBuilder({ open, onOpenChange, workflow, onSave, isSaving
                             className="flex-1 min-w-[100px]"
                             data-testid={`input-condition-value-${index}`}
                           />
-                          <Button type="button" variant="ghost" size="icon" onClick={() => removeCondition(index)} aria-label="Remove condition" data-testid={`button-remove-condition-${index}`}>
-                            <Trash2 className="w-4 h-4" />
+                          <Button type="button" variant="ghost" size="icon" onClick={() => removeCondition(index)} aria-label={`Remove condition ${index + 1}`} data-testid={`button-remove-condition-${index}`}>
+                            <Trash2 className="w-4 h-4" aria-hidden="true" />
                           </Button>
                         </div>
                       ))}
@@ -676,10 +676,10 @@ export function WorkflowBuilder({ open, onOpenChange, workflow, onSave, isSaving
                                   size="icon"
                                   onClick={(e) => { e.stopPropagation(); moveAction(index, "up"); }}
                                   disabled={index === 0}
-                                  aria-label="Move action up"
+                                  aria-label={`Move action ${index + 1} up`}
                                   data-testid={`button-move-up-${action.id}`}
                                 >
-                                  <ChevronUp className="w-4 h-4" />
+                                  <ChevronUp className="w-4 h-4" aria-hidden="true" />
                                 </Button>
                                 <Button
                                   type="button"
@@ -687,20 +687,20 @@ export function WorkflowBuilder({ open, onOpenChange, workflow, onSave, isSaving
                                   size="icon"
                                   onClick={(e) => { e.stopPropagation(); moveAction(index, "down"); }}
                                   disabled={index === actions.length - 1}
-                                  aria-label="Move action down"
+                                  aria-label={`Move action ${index + 1} down`}
                                   data-testid={`button-move-down-${action.id}`}
                                 >
-                                  <ChevronDown className="w-4 h-4" />
+                                  <ChevronDown className="w-4 h-4" aria-hidden="true" />
                                 </Button>
                                 <Button
                                   type="button"
                                   variant="ghost"
                                   size="icon"
                                   onClick={(e) => { e.stopPropagation(); removeAction(action.id); }}
-                                  aria-label="Remove action"
+                                  aria-label={`Remove action ${index + 1}`}
                                   data-testid={`button-remove-action-${action.id}`}
                                 >
-                                  <Trash2 className="w-4 h-4" />
+                                  <Trash2 className="w-4 h-4" aria-hidden="true" />
                                 </Button>
                               </div>
                             </div>
