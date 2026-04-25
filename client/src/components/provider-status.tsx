@@ -22,18 +22,23 @@ export function ProviderStatusBadges() {
   if (!data) return null;
 
   const dot = (ok: boolean) => (
-    <span className={`inline-block w-2 h-2 rounded-full mr-1 ${ok ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+    <span
+      className={`inline-block w-2 h-2 rounded-full mr-1 ${ok ? 'bg-emerald-500' : 'bg-amber-500'}`}
+      aria-hidden="true"
+    />
   );
 
+  const status = (ok: boolean) => (ok ? "available" : "unavailable");
+
   return (
-    <div className="flex items-center gap-2">
-      <Badge variant="outline" className="text-xs">
+    <div className="flex items-center gap-2" role="group" aria-label="Provider status">
+      <Badge variant="outline" className="text-xs" aria-label={`AI ${status(!!data.ai?.openai)}`}>
         {dot(!!data.ai?.openai)} AI
       </Badge>
-      <Badge variant="outline" className="text-xs">
+      <Badge variant="outline" className="text-xs" aria-label={`SMS ${status(!!data.sms?.available)}`}>
         {dot(!!data.sms?.available)} SMS
       </Badge>
-      <Badge variant="outline" className="text-xs">
+      <Badge variant="outline" className="text-xs" aria-label={`Mail ${status(!!data.mail?.available)}`}>
         {dot(!!data.mail?.available)} Mail
       </Badge>
     </div>
