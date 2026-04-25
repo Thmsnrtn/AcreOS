@@ -35,10 +35,10 @@ export type DealStatus =
 
 const STAGES: { key: Exclude<DealStatus, "cancelled">; label: string }[] = [
   { key: "negotiating", label: "Negotiating" },
-  { key: "offer_sent", label: "Offer Sent" },
+  { key: "offer_sent", label: "Offer sent" },
   { key: "countered", label: "Countered" },
   { key: "accepted", label: "Accepted" },
-  { key: "in_escrow", label: "In Escrow" },
+  { key: "in_escrow", label: "In escrow" },
   { key: "closed", label: "Closed" },
 ];
 
@@ -67,10 +67,10 @@ export function DealJourney({ status, dense = false, className }: DealJourneyPro
       aria-label={
         cancelled
           ? "Deal cancelled"
-          : `Deal stage: ${STAGES[safeIdx]?.label ?? status}`
+          : `Deal stage: ${STAGES[safeIdx]?.label ?? status} (step ${safeIdx + 1} of ${STAGES.length})`
       }
     >
-      <div className={cn("flex items-center", dense ? "gap-1" : "gap-0")}>
+      <div className={cn("flex items-center", dense ? "gap-1" : "gap-0")} aria-hidden="true">
         {STAGES.map((stage, i) => {
           const done = !cancelled && i < safeIdx;
           const current = !cancelled && i === safeIdx;
@@ -120,7 +120,7 @@ export function DealJourney({ status, dense = false, className }: DealJourneyPro
         })}
       </div>
       {cancelled && !dense && (
-        <p className="text-[11px] text-rose-600 dark:text-rose-400 font-medium text-center mt-1">
+        <p className="text-[11px] text-rose-600 dark:text-rose-400 font-medium text-center mt-1" aria-hidden="true">
           Cancelled
         </p>
       )}
