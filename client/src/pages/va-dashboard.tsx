@@ -1,15 +1,15 @@
-import { useState } from 'react';
+import { useId, useState, type FormEvent } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
+import { useDocumentTitle } from '@/hooks/use-document-title';
 import {
   PieChart,
   Pie,
@@ -25,7 +25,6 @@ import {
   List,
   Calendar,
   GitBranch,
-  AlertTriangle,
   Plus,
   Trash2,
   ArrowUp,
@@ -45,6 +44,8 @@ const TASK_CATEGORIES = [
   'other',
 ];
 
+const reassurance = "Your workflow draft is still in the form — try again.";
+
 function MetricCard({
   label,
   value,
@@ -61,11 +62,11 @@ function MetricCard({
       <CardContent className="pt-5">
         <div className="flex items-start justify-between">
           <div>
-            <p className="text-sm text-muted-foreground">{label}</p>
-            <p className="text-2xl font-bold mt-0.5">{value}</p>
+            <dt className="text-sm text-muted-foreground">{label}</dt>
+            <dd className="text-2xl font-bold mt-0.5 tabular-nums">{value}</dd>
             {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
           </div>
-          <div className="text-muted-foreground">{icon}</div>
+          <div className="text-muted-foreground" aria-hidden="true">{icon}</div>
         </div>
       </CardContent>
     </Card>
@@ -77,10 +78,17 @@ function GaugeRing({ value }: { value: number }) {
   const offset = circumference - (value / 100) * circumference;
   const color =
     value >= 80 ? '#10b981' : value >= 60 ? '#f59e0b' : '#ef4444';
+  const tier = value >= 80 ? 'strong' : value >= 60 ? 'moderate' : 'needs improvement';
 
   return (
     <div className="flex flex-col items-center gap-2">
-      <svg width="120" height="120" viewBox="0 0 120 120">
+      <svg
+        width="120"
+        height="120"
+        viewBox="0 0 120 120"
+        role="img"
+        aria-label={`Success rate: ${value} percent (${tier})`}
+      >
         <circle cx="60" cy="60" r="45" fill="none" stroke="currentColor" strokeWidth="12" className="text-muted/30" />
         <circle
           cx="60"
@@ -98,7 +106,7 @@ function GaugeRing({ value }: { value: number }) {
           {value}%
         </text>
       </svg>
-      <p className="text-xs text-muted-foreground">Success Rate</p>
+      <p className="text-xs text-muted-foreground">Success rate</p>
     </div>
   );
 }
@@ -111,15 +119,17 @@ interface WorkflowStep {
 }
 
 export default function VADashboardPage() {
+  useDocumentTitle("VA dashboard");
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Workflow builder state
   const [wfName, setWfName] = useState('');
   const [wfDescription, setWfDescription] = useState('');
   const [wfSteps, setWfSteps] = useState<WorkflowStep[]>([
     { title: '', category: 'research', description: '', estimatedMinutes: 30 },
   ]);
+  const wfNameId = useId();
+  const wfDescId = useId();
 
   const { data: metricsData } = useQuery({
     queryKey: ['va', 'metrics', 'week'],
@@ -197,7 +207,7 @@ export default function VADashboardPage() {
       queryClient.invalidateQueries({ queryKey: ['va', 'workflows'] });
     },
     onError: (err: Error) => {
-      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+      toast({ title: "Couldn't create workflow", description: `${err.message}. ${reassurance}`, variant: 'destructive' });
     },
   });
 
@@ -209,7 +219,6 @@ export default function VADashboardPage() {
   const typeChartData =
     metrics?.tasksByType?.map((t: any) => ({ name: t.type, value: t.count })) ?? [];
 
-  // Step management
   function addStep() {
     setWfSteps(s => [
       ...s,
@@ -235,53 +244,56 @@ export default function VADashboardPage() {
     setWfSteps(s => s.map((step, idx) => (idx === i ? { ...step, [field]: value } : step)));
   }
 
+  function handleCreateWorkflow(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!wfName || wfSteps.some(s => !s.title) || createWorkflowMutation.isPending) return;
+    createWorkflowMutation.mutate();
+  }
+
   return (
     <div className="container mx-auto p-6 space-y-6">
-      {/* Header */}
       <div>
         <h1 className="text-3xl font-bold flex items-center gap-2">
-          <Users className="w-8 h-8 text-primary" />
-          VA Dashboard
+          <Users className="w-8 h-8 text-primary" aria-hidden="true" />
+          VA dashboard
         </h1>
         <p className="text-muted-foreground mt-1">
           Virtual assistant performance, audit logs, and workflow management.
         </p>
       </div>
 
-      {/* Performance Metrics Row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <dl className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <MetricCard
-          label="Tasks Completed Today"
+          label="Tasks completed today"
           value={metricsToday?.tasksCompleted ?? 0}
           sub={`of ${metricsToday?.tasksAssigned ?? 0} assigned`}
           icon={<CheckCircle className="w-5 h-5" />}
         />
         <MetricCard
-          label="Tasks This Week"
+          label="Tasks this week"
           value={metrics?.tasksCompleted ?? 0}
           sub={`${metrics?.successRate ?? 0}% success rate`}
           icon={<TrendingUp className="w-5 h-5" />}
         />
         <MetricCard
-          label="Tasks This Month"
+          label="Tasks this month"
           value={metricsMonth?.tasksCompleted ?? 0}
           sub={`of ${metricsMonth?.tasksAssigned ?? 0} assigned`}
           icon={<List className="w-5 h-5" />}
         />
         <MetricCard
-          label="Time Saved (Week)"
+          label="Time saved this week"
           value={`${metrics?.timeSavedHours ?? 0}h`}
           sub="Estimated hours saved"
           icon={<Clock className="w-5 h-5" />}
         />
-      </div>
+      </dl>
 
-      {/* Success Rate Gauge + Task Distribution */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
-            <CardTitle>Success Rate</CardTitle>
-            <CardDescription>This week's task completion rate</CardDescription>
+            <CardTitle>Success rate</CardTitle>
+            <CardDescription>This week&apos;s task completion rate</CardDescription>
           </CardHeader>
           <CardContent className="flex items-center justify-center py-4">
             <GaugeRing value={metrics?.successRate ?? 0} />
@@ -290,32 +302,37 @@ export default function VADashboardPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Tasks by Type</CardTitle>
+            <CardTitle>Tasks by type</CardTitle>
             <CardDescription>Distribution of completed task categories</CardDescription>
           </CardHeader>
           <CardContent>
             {typeChartData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={200}>
-                <PieChart>
-                  <Pie
-                    data={typeChartData}
-                    dataKey="value"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={70}
-                    label={({ name, value }: any) => `${name}: ${value}`}
-                  >
-                    {typeChartData.map((_: any, i: number) => (
-                      <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
+              <div
+                role="img"
+                aria-label={`Task category breakdown: ${typeChartData.map((t: any) => `${t.name.replace(/_/g, " ")} ${t.value}`).join(", ")}`}
+              >
+                <ResponsiveContainer width="100%" height={200}>
+                  <PieChart>
+                    <Pie
+                      data={typeChartData}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={70}
+                      label={({ name, value }: any) => `${name}: ${value}`}
+                    >
+                      {typeChartData.map((_: any, i: number) => (
+                        <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
             ) : (
               <div className="flex flex-col items-center justify-center h-[200px] text-muted-foreground">
-                <List className="w-8 h-8 mb-2 opacity-30" />
+                <List className="w-8 h-8 mb-2 opacity-30" aria-hidden="true" />
                 <p className="text-sm">No completed tasks yet.</p>
               </div>
             )}
@@ -325,40 +342,44 @@ export default function VADashboardPage() {
 
       <Tabs defaultValue="audit">
         <TabsList>
-          <TabsTrigger value="audit">Audit Trail</TabsTrigger>
-          <TabsTrigger value="scheduled">Scheduled Tasks</TabsTrigger>
+          <TabsTrigger value="audit">Audit trail</TabsTrigger>
+          <TabsTrigger value="scheduled">Scheduled tasks</TabsTrigger>
           <TabsTrigger value="workflows">Workflows</TabsTrigger>
-          <TabsTrigger value="builder">Workflow Builder</TabsTrigger>
+          <TabsTrigger value="builder">Workflow builder</TabsTrigger>
         </TabsList>
 
         {/* Audit Trail */}
         <TabsContent value="audit" className="space-y-3">
           <Card>
             <CardHeader>
-              <CardTitle>Action Audit Trail</CardTitle>
+              <CardTitle>Action audit trail</CardTitle>
               <CardDescription>Who did what, when, and the result</CardDescription>
             </CardHeader>
             <CardContent>
               {auditEntries.length > 0 ? (
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto" role="region" aria-label="VA action audit trail" tabIndex={0}>
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b">
-                        <th className="text-left py-2 pr-4 font-medium text-muted-foreground">Task</th>
-                        <th className="text-left py-2 pr-4 font-medium text-muted-foreground">Category</th>
-                        <th className="text-left py-2 pr-4 font-medium text-muted-foreground">Status</th>
-                        <th className="text-left py-2 pr-4 font-medium text-muted-foreground">Completed</th>
-                        <th className="text-left py-2 font-medium text-muted-foreground">Notes</th>
+                        <th scope="col" className="text-left py-2 pr-4 font-medium text-muted-foreground">Task</th>
+                        <th scope="col" className="text-left py-2 pr-4 font-medium text-muted-foreground">Category</th>
+                        <th scope="col" className="text-left py-2 pr-4 font-medium text-muted-foreground">Status</th>
+                        <th scope="col" className="text-left py-2 pr-4 font-medium text-muted-foreground">Completed</th>
+                        <th scope="col" className="text-left py-2 font-medium text-muted-foreground">Notes</th>
                       </tr>
                     </thead>
                     <tbody>
                       {auditEntries.map((entry, i) => (
                         <tr key={i} className="border-b last:border-0">
-                          <td className="py-2 pr-4 max-w-[200px] truncate font-medium">
+                          <td scope="row" className="py-2 pr-4 max-w-[200px] truncate font-medium">
                             {entry.title}
                           </td>
                           <td className="py-2 pr-4">
-                            <Badge variant="outline" className="capitalize text-xs">
+                            <Badge
+                              variant="outline"
+                              className="capitalize text-xs"
+                              aria-label={`Category: ${entry.category?.replace(/_/g, ' ')}`}
+                            >
                               {entry.category?.replace(/_/g, ' ')}
                             </Badge>
                           </td>
@@ -371,13 +392,14 @@ export default function VADashboardPage() {
                                   ? 'bg-red-100 text-red-800'
                                   : 'bg-yellow-100 text-yellow-800'
                               }
+                              aria-label={`Status: ${entry.status}`}
                             >
                               {entry.status}
                             </Badge>
                           </td>
                           <td className="py-2 pr-4 text-muted-foreground text-xs">
                             {entry.completedAt
-                              ? new Date(entry.completedAt).toLocaleDateString()
+                              ? <time dateTime={entry.completedAt}>{new Date(entry.completedAt).toLocaleDateString()}</time>
                               : '—'}
                           </td>
                           <td className="py-2 text-muted-foreground text-xs max-w-[200px] truncate">
@@ -390,7 +412,7 @@ export default function VADashboardPage() {
                 </div>
               ) : (
                 <div className="flex flex-col items-center py-12 text-muted-foreground">
-                  <CheckCircle className="w-10 h-10 mb-3 opacity-30" />
+                  <CheckCircle className="w-10 h-10 mb-3 opacity-30" aria-hidden="true" />
                   <p>No audit trail entries yet. Complete VA tasks to see them here.</p>
                 </div>
               )}
@@ -403,36 +425,36 @@ export default function VADashboardPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Calendar className="w-4 h-4" />
-                Scheduled Tasks
+                <Calendar className="w-4 h-4" aria-hidden="true" />
+                Scheduled tasks
               </CardTitle>
               <CardDescription>Recurring tasks with next run times</CardDescription>
             </CardHeader>
             <CardContent>
               {scheduledTasks.length > 0 ? (
-                <div className="space-y-3">
+                <ul className="space-y-3 list-none p-0 m-0" aria-label="Recurring scheduled tasks">
                   {scheduledTasks.map((task: any, i: number) => (
-                    <div key={i} className="flex items-center justify-between p-3 border rounded-lg">
-                      <div>
-                        <p className="font-medium text-sm">{task.title}</p>
+                    <li key={i} className="flex items-center justify-between p-3 border rounded-lg gap-3">
+                      <div className="min-w-0">
+                        <p className="font-medium text-sm truncate">{task.title}</p>
                         <p className="text-xs text-muted-foreground">
-                          {task.cronExpression} · {task.category?.replace(/_/g, ' ')}
+                          <span className="font-mono">{task.cronExpression}</span> · {task.category?.replace(/_/g, ' ')}
                         </p>
                       </div>
-                      <div className="text-right">
+                      <div className="text-right shrink-0">
                         <p className="text-xs text-muted-foreground">Next run</p>
-                        <p className="text-sm font-medium">
+                        <p className="text-sm font-medium tabular-nums">
                           {task.nextRunAt
-                            ? new Date(task.nextRunAt).toLocaleDateString()
+                            ? <time dateTime={task.nextRunAt}>{new Date(task.nextRunAt).toLocaleDateString()}</time>
                             : '—'}
                         </p>
                       </div>
-                    </div>
+                    </li>
                   ))}
-                </div>
+                </ul>
               ) : (
                 <div className="flex flex-col items-center py-12 text-muted-foreground">
-                  <Calendar className="w-10 h-10 mb-3 opacity-30" />
+                  <Calendar className="w-10 h-10 mb-3 opacity-30" aria-hidden="true" />
                   <p>No scheduled tasks configured yet.</p>
                 </div>
               )}
@@ -444,47 +466,56 @@ export default function VADashboardPage() {
         <TabsContent value="workflows" className="space-y-3">
           {workflows.length === 0 ? (
             <div className="flex flex-col items-center py-16 text-muted-foreground">
-              <GitBranch className="w-12 h-12 mb-3 opacity-30" />
-              <p>No workflows created yet. Use the Workflow Builder tab to create one.</p>
+              <GitBranch className="w-12 h-12 mb-3 opacity-30" aria-hidden="true" />
+              <p>No workflows created yet. Use the workflow builder tab to create one.</p>
             </div>
           ) : (
-            <div className="space-y-4">
+            <ul className="space-y-4 list-none p-0 m-0" aria-label="VA workflows">
               {workflows.map((wf: any) => (
-                <Card key={wf.id}>
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-base">{wf.name}</CardTitle>
-                      <Badge variant="outline" className="capitalize">
-                        {wf.status}
-                      </Badge>
-                    </div>
-                    {wf.description && (
-                      <CardDescription>{wf.description}</CardDescription>
-                    )}
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2">
-                      {wf.steps?.map((step: any, i: number) => (
-                        <div key={i} className="flex items-center gap-3 text-sm">
-                          <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary">
-                            {step.stepNumber}
-                          </div>
-                          <div className="flex-1">
-                            <span className="font-medium">{step.title}</span>
-                            <Badge variant="outline" className="ml-2 text-xs capitalize">
-                              {step.category?.replace(/_/g, ' ')}
-                            </Badge>
-                          </div>
-                          <span className="text-xs text-muted-foreground">
-                            ~{step.estimatedMinutes}m
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
+                <li key={wf.id}>
+                  <Card>
+                    <CardHeader>
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-base">{wf.name}</CardTitle>
+                        <Badge variant="outline" className="capitalize" aria-label={`Status: ${wf.status}`}>
+                          {wf.status}
+                        </Badge>
+                      </div>
+                      {wf.description && (
+                        <CardDescription>{wf.description}</CardDescription>
+                      )}
+                    </CardHeader>
+                    <CardContent>
+                      <ol className="space-y-2 list-none p-0 m-0" aria-label={`Steps for ${wf.name}`}>
+                        {wf.steps?.map((step: any, i: number) => (
+                          <li key={i} className="flex items-center gap-3 text-sm">
+                            <div
+                              className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary tabular-nums shrink-0"
+                              aria-hidden="true"
+                            >
+                              {step.stepNumber}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <span className="font-medium">{step.title}</span>
+                              <Badge
+                                variant="outline"
+                                className="ml-2 text-xs capitalize"
+                                aria-label={`Category: ${step.category?.replace(/_/g, ' ')}`}
+                              >
+                                {step.category?.replace(/_/g, ' ')}
+                              </Badge>
+                            </div>
+                            <span className="text-xs text-muted-foreground tabular-nums">
+                              ~{step.estimatedMinutes}m
+                            </span>
+                          </li>
+                        ))}
+                      </ol>
+                    </CardContent>
+                  </Card>
+                </li>
               ))}
-            </div>
+            </ul>
           )}
         </TabsContent>
 
@@ -493,131 +524,156 @@ export default function VADashboardPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <GitBranch className="w-4 h-4" />
-                Workflow Builder
+                <GitBranch className="w-4 h-4" aria-hidden="true" />
+                Workflow builder
               </CardTitle>
               <CardDescription>Create a multi-step VA workflow with ordered tasks</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label>Workflow Name</Label>
-                  <Input
-                    placeholder="e.g. New Lead Onboarding"
-                    value={wfName}
-                    onChange={e => setWfName(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <Label>Description (optional)</Label>
-                  <Input
-                    placeholder="What this workflow accomplishes"
-                    value={wfDescription}
-                    onChange={e => setWfDescription(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              {/* Steps */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <Label className="text-sm font-semibold">Steps (in order)</Label>
-                  <Button size="sm" variant="outline" onClick={addStep}>
-                    <Plus className="w-4 h-4 mr-1" /> Add Step
-                  </Button>
-                </div>
-
-                {wfSteps.map((step, i) => (
-                  <div key={i} className="p-3 border rounded-lg space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-muted-foreground">
-                        Step {i + 1}
-                      </span>
-                      <div className="flex gap-1">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => moveStep(i, 'up')}
-                          disabled={i === 0}
-                        >
-                          <ArrowUp className="w-3 h-3" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => moveStep(i, 'down')}
-                          disabled={i === wfSteps.length - 1}
-                        >
-                          <ArrowDown className="w-3 h-3" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => removeStep(i)}
-                          disabled={wfSteps.length === 1}
-                        >
-                          <Trash2 className="w-3 h-3 text-red-500" />
-                        </Button>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                      <div>
-                        <Label className="text-xs">Title</Label>
-                        <Input
-                          placeholder="Step title"
-                          value={step.title}
-                          onChange={e => updateStep(i, 'title', e.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-xs">Category</Label>
-                        <Select
-                          value={step.category}
-                          onValueChange={v => updateStep(i, 'category', v)}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {TASK_CATEGORIES.map(c => (
-                              <SelectItem key={c} value={c}>
-                                {c.replace(/_/g, ' ')}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div>
-                        <Label className="text-xs">Est. Minutes</Label>
-                        <Input
-                          type="number"
-                          min={5}
-                          value={step.estimatedMinutes}
-                          onChange={e => updateStep(i, 'estimatedMinutes', parseInt(e.target.value) || 30)}
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <Label className="text-xs">Description</Label>
-                      <Textarea
-                        placeholder="What should the VA do in this step?"
-                        value={step.description}
-                        onChange={e => updateStep(i, 'description', e.target.value)}
-                        rows={2}
-                      />
-                    </div>
+            <CardContent>
+              <form onSubmit={handleCreateWorkflow} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor={wfNameId}>Workflow name</Label>
+                    <Input
+                      id={wfNameId}
+                      placeholder="e.g. New lead onboarding"
+                      value={wfName}
+                      onChange={e => setWfName(e.target.value)}
+                      autoCapitalize="words"
+                    />
                   </div>
-                ))}
-              </div>
+                  <div>
+                    <Label htmlFor={wfDescId}>Description (optional)</Label>
+                    <Input
+                      id={wfDescId}
+                      placeholder="What this workflow accomplishes"
+                      value={wfDescription}
+                      onChange={e => setWfDescription(e.target.value)}
+                      autoCapitalize="sentences"
+                    />
+                  </div>
+                </div>
 
-              <Button
-                className="w-full"
-                onClick={() => createWorkflowMutation.mutate()}
-                disabled={!wfName || wfSteps.some(s => !s.title) || createWorkflowMutation.isPending}
-              >
-                <GitBranch className="w-4 h-4 mr-2" />
-                {createWorkflowMutation.isPending ? 'Creating…' : 'Create Workflow'}
-              </Button>
+                <fieldset className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <legend className="text-sm font-semibold">Steps (in order)</legend>
+                    <Button type="button" size="sm" variant="outline" onClick={addStep}>
+                      <Plus className="w-4 h-4 mr-1" aria-hidden="true" /> Add step
+                    </Button>
+                  </div>
+
+                  <ol className="space-y-3 list-none p-0 m-0" aria-label="Workflow steps">
+                    {wfSteps.map((step, i) => {
+                      const stepTitleId = `wf-step-${i}-title`;
+                      const stepCatId = `wf-step-${i}-cat`;
+                      const stepMinsId = `wf-step-${i}-mins`;
+                      const stepDescId = `wf-step-${i}-desc`;
+                      return (
+                        <li key={i} className="p-3 border rounded-lg space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-muted-foreground tabular-nums">
+                              Step {i + 1}
+                            </span>
+                            <div className="flex gap-1">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => moveStep(i, 'up')}
+                                disabled={i === 0}
+                                aria-label={`Move step ${i + 1} up`}
+                              >
+                                <ArrowUp className="w-3 h-3" aria-hidden="true" />
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => moveStep(i, 'down')}
+                                disabled={i === wfSteps.length - 1}
+                                aria-label={`Move step ${i + 1} down`}
+                              >
+                                <ArrowDown className="w-3 h-3" aria-hidden="true" />
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => removeStep(i)}
+                                disabled={wfSteps.length === 1}
+                                aria-label={`Remove step ${i + 1}${step.title ? `: ${step.title}` : ""}`}
+                              >
+                                <Trash2 className="w-3 h-3 text-red-500" aria-hidden="true" />
+                              </Button>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                            <div>
+                              <Label htmlFor={stepTitleId} className="text-xs">Title</Label>
+                              <Input
+                                id={stepTitleId}
+                                placeholder="Step title"
+                                value={step.title}
+                                onChange={e => updateStep(i, 'title', e.target.value)}
+                                autoCapitalize="sentences"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor={stepCatId} className="text-xs">Category</Label>
+                              <Select
+                                value={step.category}
+                                onValueChange={v => updateStep(i, 'category', v)}
+                              >
+                                <SelectTrigger id={stepCatId}>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {TASK_CATEGORIES.map(c => (
+                                    <SelectItem key={c} value={c}>
+                                      {c.replace(/_/g, ' ')}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div>
+                              <Label htmlFor={stepMinsId} className="text-xs">Estimated minutes</Label>
+                              <Input
+                                id={stepMinsId}
+                                type="number"
+                                inputMode="numeric"
+                                min={5}
+                                value={step.estimatedMinutes}
+                                onChange={e => updateStep(i, 'estimatedMinutes', parseInt(e.target.value) || 30)}
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <Label htmlFor={stepDescId} className="text-xs">Description</Label>
+                            <Textarea
+                              id={stepDescId}
+                              placeholder="What should the VA do in this step?"
+                              value={step.description}
+                              onChange={e => updateStep(i, 'description', e.target.value)}
+                              rows={2}
+                              autoCapitalize="sentences"
+                            />
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                </fieldset>
+
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={!wfName || wfSteps.some(s => !s.title) || createWorkflowMutation.isPending}
+                >
+                  <GitBranch className="w-4 h-4 mr-2" aria-hidden="true" />
+                  {createWorkflowMutation.isPending ? 'Creating…' : 'Create workflow'}
+                </Button>
+              </form>
             </CardContent>
           </Card>
         </TabsContent>
