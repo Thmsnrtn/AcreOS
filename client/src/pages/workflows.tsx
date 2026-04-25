@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { PageShell } from "@/components/page-shell";
 import { WorkflowBuilder } from "@/components/workflow-builder";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
@@ -19,10 +19,8 @@ import {
   Edit,
   ChevronRight,
   CheckCircle2,
-  XCircle,
   Loader2,
   Workflow,
-  AlertCircle,
   Sparkles,
   Users,
   Banknote,
@@ -31,6 +29,7 @@ import {
 import { format } from "date-fns";
 import type { Workflow as WorkflowType, WorkflowRun, WorkflowTrigger, WorkflowAction } from "@shared/schema";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 type WorkflowTemplate = {
   id: string;
@@ -42,23 +41,23 @@ type WorkflowTemplate = {
 };
 
 const TEMPLATE_CATEGORY_ICONS: Record<string, React.ReactNode> = {
-  leads: <Users className="w-4 h-4" />,
-  notes: <Banknote className="w-4 h-4" />,
-  deals: <Handshake className="w-4 h-4" />,
+  leads: <Users className="w-4 h-4" aria-hidden="true" />,
+  notes: <Banknote className="w-4 h-4" aria-hidden="true" />,
+  deals: <Handshake className="w-4 h-4" aria-hidden="true" />,
 };
 
 const TRIGGER_LABELS: Record<string, string> = {
-  "lead.created": "Lead Created",
-  "lead.updated": "Lead Updated",
-  "lead.status_changed": "Lead Status Changed",
-  "property.created": "Property Created",
-  "property.updated": "Property Updated",
-  "property.status_changed": "Property Status Changed",
-  "deal.created": "Deal Created",
-  "deal.updated": "Deal Updated",
-  "deal.stage_changed": "Deal Stage Changed",
-  "payment.received": "Payment Received",
-  "payment.missed": "Payment Missed",
+  "lead.created": "Lead created",
+  "lead.updated": "Lead updated",
+  "lead.status_changed": "Lead status changed",
+  "property.created": "Property created",
+  "property.updated": "Property updated",
+  "property.status_changed": "Property status changed",
+  "deal.created": "Deal created",
+  "deal.updated": "Deal updated",
+  "deal.stage_changed": "Deal stage changed",
+  "payment.received": "Payment received",
+  "payment.missed": "Payment missed",
 };
 
 function getTriggerLabel(trigger: WorkflowTrigger | null | undefined): string {
@@ -66,7 +65,10 @@ function getTriggerLabel(trigger: WorkflowTrigger | null | undefined): string {
   return TRIGGER_LABELS[trigger.event] || trigger.event;
 }
 
+const reassurance = "The workflow is unchanged — try again.";
+
 export default function WorkflowsPage() {
+  useDocumentTitle("Workflows");
   const { toast } = useToast();
   const [isBuilderOpen, setIsBuilderOpen] = useState(false);
   const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowType | null>(null);
@@ -76,9 +78,9 @@ export default function WorkflowsPage() {
     queryKey: ["/api/workflows"],
   });
 
-  const { data: workflowRuns } = useQuery<WorkflowRun[]>({
+  useQuery<WorkflowRun[]>({
     queryKey: ["/api/workflow-runs"],
-    enabled: false, // We'll fetch runs per workflow as needed
+    enabled: false,
   });
 
   const { data: templates } = useQuery<WorkflowTemplate[]>({
@@ -97,7 +99,7 @@ export default function WorkflowsPage() {
       toast({ title: "Workflow created", description: "Your workflow is now active." });
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't create workflow", description: `${error.message}. ${reassurance}`, variant: "destructive" });
     },
   });
 
@@ -113,7 +115,7 @@ export default function WorkflowsPage() {
       toast({ title: "Workflow updated", description: "Changes have been saved." });
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't save workflow", description: `${error.message}. ${reassurance}`, variant: "destructive" });
     },
   });
 
@@ -126,7 +128,7 @@ export default function WorkflowsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/workflows"] });
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't toggle workflow", description: `${error.message}. ${reassurance}`, variant: "destructive" });
     },
   });
 
@@ -140,7 +142,7 @@ export default function WorkflowsPage() {
       toast({ title: "Workflow deleted", description: "The workflow has been removed." });
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't delete workflow", description: `${error.message}. ${reassurance}`, variant: "destructive" });
     },
   });
 
@@ -158,7 +160,7 @@ export default function WorkflowsPage() {
     },
     onError: (error: Error) => {
       setInstallingTemplateId(null);
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't install template", description: `${error.message}. ${reassurance}`, variant: "destructive" });
     },
   });
 
@@ -197,167 +199,185 @@ export default function WorkflowsPage() {
 
   return (
     <PageShell>
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div>
-            <h1 className="text-3xl font-bold" data-testid="text-page-title">Workflows</h1>
-            <p className="text-muted-foreground">
-              Automate your business processes with event-driven workflows
-            </p>
-          </div>
-
-          <Button onClick={handleCreate} data-testid="button-create-workflow">
-            <Plus className="w-4 h-4 mr-2" /> Create Workflow
-          </Button>
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-3xl font-bold" data-testid="text-page-title">Workflows</h1>
+          <p className="text-muted-foreground">
+            Automate your business processes with event-driven workflows
+          </p>
         </div>
 
-        {/* Workflow List */}
-        {isLoading ? (
-          <div className="grid gap-4">
-            {[1, 2, 3].map((i) => (
-              <Card key={i}>
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-4">
-                    <Skeleton className="h-10 w-10 rounded-full" />
-                    <div className="flex-1 space-y-2">
-                      <Skeleton className="h-5 w-48" />
-                      <Skeleton className="h-4 w-32" />
-                    </div>
-                    <Skeleton className="h-6 w-16" />
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        ) : workflows && workflows.length > 0 ? (
-          <div className="grid gap-4">
-            {workflows.map((workflow) => (
-              <Card 
-                key={workflow.id} 
-                className="hover-elevate cursor-pointer"
-                onClick={() => handleEdit(workflow)}
-                data-testid={`card-workflow-${workflow.id}`}
-              >
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex items-start gap-4 flex-1">
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                        workflow.isActive ? "bg-green-100 dark:bg-green-900/30" : "bg-muted"
-                      }`}>
-                        <Workflow className={`w-5 h-5 ${
-                          workflow.isActive ? "text-green-600 dark:text-green-400" : "text-muted-foreground"
-                        }`} />
-                      </div>
+        <Button onClick={handleCreate} data-testid="button-create-workflow">
+          <Plus className="w-4 h-4 mr-2" aria-hidden="true" /> Create workflow
+        </Button>
+      </div>
 
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap mb-1">
-                          <h3 className="font-semibold" data-testid={`text-workflow-name-${workflow.id}`}>
-                            {workflow.name}
-                          </h3>
-                          <Badge 
-                            variant={workflow.isActive ? "default" : "secondary"}
-                            data-testid={`badge-status-${workflow.id}`}
-                          >
-                            {workflow.isActive ? (
-                              <>
-                                <Play className="w-3 h-3 mr-1" /> Active
-                              </>
-                            ) : (
-                              <>
-                                <Pause className="w-3 h-3 mr-1" /> Inactive
-                              </>
-                            )}
-                          </Badge>
+      {/* Workflow List */}
+      {isLoading ? (
+        <div className="grid gap-4" role="status" aria-label="Loading workflows">
+          {[1, 2, 3].map((i) => (
+            <Card key={i}>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-4">
+                  <Skeleton className="h-10 w-10 rounded-full" />
+                  <div className="flex-1 space-y-2">
+                    <Skeleton className="h-5 w-48" />
+                    <Skeleton className="h-4 w-32" />
+                  </div>
+                  <Skeleton className="h-6 w-16" />
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : workflows && workflows.length > 0 ? (
+        <ul className="grid gap-4 list-none p-0 m-0" aria-label="Your workflows">
+          {workflows.map((workflow) => {
+            const actionCount = (workflow.actions as WorkflowAction[])?.length || 0;
+            return (
+              <li key={workflow.id}>
+                <Card
+                  className="hover-elevate cursor-pointer"
+                  onClick={() => handleEdit(workflow)}
+                  data-testid={`card-workflow-${workflow.id}`}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex items-start gap-4 flex-1">
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                          workflow.isActive ? "bg-green-100 dark:bg-green-900/30" : "bg-muted"
+                        }`}>
+                          <Workflow
+                            className={`w-5 h-5 ${
+                              workflow.isActive ? "text-green-600 dark:text-green-400" : "text-muted-foreground"
+                            }`}
+                            aria-hidden="true"
+                          />
                         </div>
 
-                        {workflow.description && (
-                          <p className="text-sm text-muted-foreground mb-2">{workflow.description}</p>
-                        )}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap mb-1">
+                            <h3 className="font-semibold" data-testid={`text-workflow-name-${workflow.id}`}>
+                              {workflow.name}
+                            </h3>
+                            <Badge
+                              variant={workflow.isActive ? "default" : "secondary"}
+                              data-testid={`badge-status-${workflow.id}`}
+                              aria-label={workflow.isActive ? "Status: active" : "Status: inactive"}
+                            >
+                              {workflow.isActive ? (
+                                <>
+                                  <Play className="w-3 h-3 mr-1" aria-hidden="true" /> Active
+                                </>
+                              ) : (
+                                <>
+                                  <Pause className="w-3 h-3 mr-1" aria-hidden="true" /> Inactive
+                                </>
+                              )}
+                            </Badge>
+                          </div>
 
-                        <div className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
-                          <span className="flex items-center gap-1">
-                            <Zap className="w-4 h-4" />
-                            {getTriggerLabel(workflow.trigger)}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <ChevronRight className="w-4 h-4" />
-                            {(workflow.actions as WorkflowAction[])?.length || 0} action(s)
-                          </span>
-                          {workflow.updatedAt && (
-                            <span className="flex items-center gap-1">
-                              <Clock className="w-4 h-4" />
-                              Updated {format(new Date(workflow.updatedAt), "MMM d, yyyy")}
-                            </span>
+                          {workflow.description && (
+                            <p className="text-sm text-muted-foreground mb-2">{workflow.description}</p>
                           )}
+
+                          <dl className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
+                            <div className="flex items-center gap-1">
+                              <Zap className="w-4 h-4" aria-hidden="true" />
+                              <dt className="sr-only">Trigger</dt>
+                              <dd>{getTriggerLabel(workflow.trigger)}</dd>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <ChevronRight className="w-4 h-4" aria-hidden="true" />
+                              <dt className="sr-only">Actions</dt>
+                              <dd className="tabular-nums">
+                                {actionCount} action{actionCount === 1 ? "" : "s"}
+                              </dd>
+                            </div>
+                            {workflow.updatedAt && (
+                              <div className="flex items-center gap-1">
+                                <Clock className="w-4 h-4" aria-hidden="true" />
+                                <dt className="sr-only">Last updated</dt>
+                                <dd>Updated {format(new Date(workflow.updatedAt), "MMM d, yyyy")}</dd>
+                              </div>
+                            )}
+                          </dl>
                         </div>
                       </div>
-                    </div>
 
-                    <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                      <Switch
-                        checked={workflow.isActive}
-                        onCheckedChange={(checked) => toggleMutation.mutate({ id: workflow.id, isActive: checked })}
-                        data-testid={`switch-workflow-${workflow.id}`}
-                      />
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={(e) => { e.stopPropagation(); handleEdit(workflow); }}
-                        aria-label="Edit workflow"
-                        data-testid={`button-edit-${workflow.id}`}
-                      >
-                        <Edit className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={(e) => { e.stopPropagation(); handleDelete(workflow); }}
-                        aria-label="Delete workflow"
-                        data-testid={`button-delete-${workflow.id}`}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
+                      <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                        <Switch
+                          checked={workflow.isActive}
+                          onCheckedChange={(checked) => toggleMutation.mutate({ id: workflow.id, isActive: checked })}
+                          data-testid={`switch-workflow-${workflow.id}`}
+                          aria-label={`${workflow.isActive ? "Deactivate" : "Activate"} workflow: ${workflow.name}`}
+                        />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={(e) => { e.stopPropagation(); handleEdit(workflow); }}
+                          aria-label={`Edit workflow: ${workflow.name}`}
+                          data-testid={`button-edit-${workflow.id}`}
+                        >
+                          <Edit className="w-4 h-4" aria-hidden="true" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={(e) => { e.stopPropagation(); handleDelete(workflow); }}
+                          aria-label={`Delete workflow: ${workflow.name}`}
+                          data-testid={`button-delete-${workflow.id}`}
+                        >
+                          <Trash2 className="w-4 h-4" aria-hidden="true" />
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        ) : (
-          <Card data-testid="card-empty-state">
-            <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-              <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
-                <Workflow className="w-8 h-8 text-muted-foreground" />
-              </div>
-              <h3 className="text-lg font-semibold mb-2">No workflows yet</h3>
-              <p className="text-muted-foreground mb-4 max-w-md">
-                Create your first workflow to automate repetitive tasks like sending emails, 
-                creating tasks, or updating records when specific events occur.
-              </p>
-              <Button onClick={handleCreate} data-testid="button-create-first-workflow">
-                <Plus className="w-4 h-4 mr-2" /> Create Your First Workflow
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Pre-built Templates */}
-        {templates && templates.length > 0 && (
-          <div className="mt-4" data-testid="section-workflow-templates">
-            <div className="flex items-center gap-2 mb-3">
-              <Sparkles className="w-4 h-4 text-primary" />
-              <h2 className="font-semibold text-sm uppercase tracking-wide text-muted-foreground">
-                Pre-built Templates for Land Investing
-              </h2>
+                  </CardContent>
+                </Card>
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <Card data-testid="card-empty-state">
+          <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+            <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
+              <Workflow className="w-8 h-8 text-muted-foreground" aria-hidden="true" />
             </div>
-            <div className="grid gap-3 sm:grid-cols-3">
-              {templates.map((template) => {
-                const alreadyInstalled = workflows?.some(
-                  (w) => w.name === template.name
-                );
-                return (
+            <h3 className="text-lg font-semibold mb-2">No workflows yet</h3>
+            <p className="text-muted-foreground mb-4 max-w-md">
+              Create your first workflow to automate repetitive tasks like sending emails,
+              creating tasks, or updating records when specific events occur.
+            </p>
+            <Button onClick={handleCreate} data-testid="button-create-first-workflow">
+              <Plus className="w-4 h-4 mr-2" aria-hidden="true" /> Create your first workflow
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Pre-built Templates */}
+      {templates && templates.length > 0 && (
+        <section
+          className="mt-4"
+          aria-labelledby="templates-heading"
+          data-testid="section-workflow-templates"
+        >
+          <div className="flex items-center gap-2 mb-3">
+            <Sparkles className="w-4 h-4 text-primary" aria-hidden="true" />
+            <h2 id="templates-heading" className="font-semibold text-sm uppercase tracking-wide text-muted-foreground">
+              Pre-built templates for land investing
+            </h2>
+          </div>
+          <ul className="grid gap-3 sm:grid-cols-3 list-none p-0 m-0">
+            {templates.map((template) => {
+              const alreadyInstalled = workflows?.some(
+                (w) => w.name === template.name
+              );
+              return (
+                <li key={template.id}>
                   <Card
-                    key={template.id}
-                    className="hover-elevate"
+                    className="hover-elevate h-full"
                     data-testid={`card-template-${template.id}`}
                   >
                     <CardContent className="p-4 flex flex-col gap-3 h-full">
@@ -369,7 +389,7 @@ export default function WorkflowsPage() {
                           <p className="font-semibold text-sm leading-tight">
                             {template.name}
                           </p>
-                          <Badge variant="secondary" className="text-xs mt-0.5 capitalize">
+                          <Badge variant="secondary" className="text-xs mt-0.5 capitalize" aria-label={`Category: ${template.category}`}>
                             {template.category}
                           </Badge>
                         </div>
@@ -378,12 +398,12 @@ export default function WorkflowsPage() {
                         {template.description}
                       </p>
                       <div className="flex items-center justify-between">
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-xs text-muted-foreground tabular-nums">
                           {template.actions.length} action{template.actions.length !== 1 ? "s" : ""}
                         </span>
                         {alreadyInstalled ? (
-                          <Badge variant="secondary" className="text-xs flex items-center gap-1">
-                            <CheckCircle2 className="w-3 h-3" /> Installed
+                          <Badge variant="secondary" className="text-xs flex items-center gap-1" aria-label={`Template already installed: ${template.name}`}>
+                            <CheckCircle2 className="w-3 h-3" aria-hidden="true" /> Installed
                           </Badge>
                         ) : (
                           <Button
@@ -391,12 +411,13 @@ export default function WorkflowsPage() {
                             variant="outline"
                             onClick={() => handleInstallTemplate(template.id)}
                             disabled={installingTemplateId === template.id}
+                            aria-label={`Install template: ${template.name}`}
                             data-testid={`button-install-template-${template.id}`}
                           >
                             {installingTemplateId === template.id ? (
-                              <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                              <Loader2 className="w-3 h-3 animate-spin mr-1" aria-hidden="true" />
                             ) : (
-                              <Plus className="w-3 h-3 mr-1" />
+                              <Plus className="w-3 h-3 mr-1" aria-hidden="true" />
                             )}
                             Install
                           </Button>
@@ -404,35 +425,36 @@ export default function WorkflowsPage() {
                       </div>
                     </CardContent>
                   </Card>
-                );
-              })}
-            </div>
-          </div>
-        )}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
 
-        {/* Builder Dialog */}
-        <WorkflowBuilder
-          open={isBuilderOpen}
-          onOpenChange={(open) => {
-            setIsBuilderOpen(open);
-            if (!open) setSelectedWorkflow(null);
-          }}
-          workflow={selectedWorkflow}
-          onSave={handleSave}
-          isSaving={createMutation.isPending || updateMutation.isPending}
-        />
+      {/* Builder Dialog */}
+      <WorkflowBuilder
+        open={isBuilderOpen}
+        onOpenChange={(open) => {
+          setIsBuilderOpen(open);
+          if (!open) setSelectedWorkflow(null);
+        }}
+        workflow={selectedWorkflow}
+        onSave={handleSave}
+        isSaving={createMutation.isPending || updateMutation.isPending}
+      />
 
-        {/* Delete Confirmation */}
-        <ConfirmDialog
-          open={!!workflowToDelete}
-          onOpenChange={(open) => !open && setWorkflowToDelete(null)}
-          title="Delete Workflow"
-          description={`Are you sure you want to delete "${workflowToDelete?.name}"? This action cannot be undone.`}
-          confirmLabel="Delete"
-          variant="destructive"
-          onConfirm={confirmDelete}
-          isLoading={deleteMutation.isPending}
-        />
+      {/* Delete Confirmation */}
+      <ConfirmDialog
+        open={!!workflowToDelete}
+        onOpenChange={(open) => !open && setWorkflowToDelete(null)}
+        title="Delete workflow"
+        description={`Are you sure you want to delete "${workflowToDelete?.name}"? This action cannot be undone.`}
+        confirmLabel="Delete"
+        variant="destructive"
+        onConfirm={confirmDelete}
+        isLoading={deleteMutation.isPending}
+      />
     </PageShell>
   );
 }
