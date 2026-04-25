@@ -755,6 +755,7 @@ to a dedicated 9b slice.
 **Number-input mobile hardening cont. (169):** ✅ complete — 7 more inputs across pages: comps-analysis (radius/min/max acreage), custom-fields (generic), leads (offer amount), marketplace (bid amount/create price). (commit `f6c2a85`)
 **Number-input mobile hardening final (170):** ✅ complete — 5 inputs: founder-dashboard pricing (Monthly/Yearly ¢) + discount %, counties (population), tasks (entity ID). (commit `e03fdad`)
 **Chart a11y wrappers batch 1 (171):** ✅ complete — lens shift to chart a11y. 9 Recharts charts wrapped with role="img" + computed aria-label across tax-optimization (2), finance (cash flow), portfolio-optimizer (6: timeline distribution, efficient frontier, state pie, acreage bars, current-vs-optimized, all-scenarios). (commit `7d4da71`)
+**Chart a11y wrappers batch 2 (172):** ✅ complete — 8 more charts: maps (PPA sparkline + environmental radar), avm (comp-sales + market-adjustments), usage-dashboard, team-dashboard-content (revenue/conversion/trends). (commit `ce33231`)
 **/onboarding-v2 targeted (18):** ✅ complete (commit `70df779`) — 18b deferred
 **/settings targeted (19):** ✅ complete (commit `809044c`) — 19b remaining components deferred
 **/pipeline (20):** ✅ complete (commit `1b5d0f7`)
