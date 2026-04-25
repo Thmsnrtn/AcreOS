@@ -45,13 +45,15 @@ export function DisclaimerBanner({ type, className }: DisclaimerBannerProps) {
 
   return (
     <div
+      role="note"
+      aria-label={`${type} disclaimer`}
       data-testid={`disclaimer-${type}`}
       className={cn(
         "flex items-start gap-3 rounded-md bg-muted/50 border border-border/50 px-4 py-3",
         className
       )}
     >
-      <Info className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+      <Info className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" aria-hidden="true" />
       <p className="text-xs text-muted-foreground flex-1">
         {messageFor(type, brandName)}
       </p>
@@ -60,10 +62,10 @@ export function DisclaimerBanner({ type, className }: DisclaimerBannerProps) {
         size="icon"
         className="h-6 w-6 flex-shrink-0 -mr-1 -mt-1"
         onClick={handleDismiss}
-        aria-label="Dismiss"
+        aria-label={`Dismiss ${type} disclaimer`}
         data-testid={`button-dismiss-disclaimer-${type}`}
       >
-        <X className="w-3 h-3" />
+        <X className="w-3 h-3" aria-hidden="true" />
       </Button>
     </div>
   );

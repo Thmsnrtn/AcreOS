@@ -131,19 +131,22 @@ export function NotificationCenter() {
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
       <PopoverTrigger asChild>
-        <Button 
-          variant="ghost" 
-          size="icon" 
+        <Button
+          variant="ghost"
+          size="icon"
           className="relative"
-          aria-label="Notifications"
+          aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : "Notifications"}
+          aria-haspopup="dialog"
+          aria-expanded={isOpen}
           data-testid="button-notifications"
         >
-          <Bell className="w-5 h-5" />
+          <Bell className="w-5 h-5" aria-hidden="true" />
           {unreadCount > 0 && (
-            <Badge 
-              variant="destructive" 
+            <Badge
+              variant="destructive"
               className="absolute -top-1 -right-1 h-5 min-w-5 flex items-center justify-center p-0 text-xs"
               data-testid="badge-notification-count"
+              aria-hidden="true"
             >
               {unreadCount > 99 ? "99+" : unreadCount}
             </Badge>
@@ -172,8 +175,9 @@ export function NotificationCenter() {
                 disabled={markAllReadMutation.isPending}
                 className="h-7 text-xs"
                 data-testid="button-mark-all-read"
+                aria-label={`Mark all ${unreadCount} notifications as read`}
               >
-                <CheckCheck className="w-4 h-4 mr-1" />
+                <CheckCheck className="w-4 h-4 mr-1" aria-hidden="true" />
                 Mark all
               </Button>
             )}
