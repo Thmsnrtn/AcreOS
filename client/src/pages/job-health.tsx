@@ -1,13 +1,16 @@
-import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState, useId } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useToast } from "@/hooks/use-toast";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import {
   HeartPulse, CheckCircle, AlertTriangle, Clock,
-  Search, Play, XCircle, SkipForward, RefreshCw,
+  Search, Play, SkipForward, RefreshCw,
 } from "lucide-react";
 import {
   AlertDialog,
@@ -23,22 +26,34 @@ import { format } from "date-fns";
 import { relative } from "@/lib/format";
 import { useJobHealthLogs } from "@/hooks/use-sovereign-dashboard";
 
+const STATUS_LABEL: Record<string, string> = {
+  success: "Success",
+  failed: "Failed",
+  skipped_lock: "Skipped (locked)",
+  running: "Running",
+  unknown: "Unknown",
+};
+
 function StatusIcon({ status }: { status: string }) {
+  const label = STATUS_LABEL[status] ?? STATUS_LABEL.unknown;
   switch (status) {
     case "success":
-      return <CheckCircle className="w-3.5 h-3.5 text-green-500" />;
+      return <CheckCircle className="w-3.5 h-3.5 text-green-500" aria-label={label} />;
     case "failed":
-      return <AlertTriangle className="w-3.5 h-3.5 text-red-500" />;
+      return <AlertTriangle className="w-3.5 h-3.5 text-red-500" aria-label={label} />;
     case "skipped_lock":
-      return <SkipForward className="w-3.5 h-3.5 text-muted-foreground" />;
+      return <SkipForward className="w-3.5 h-3.5 text-muted-foreground" aria-label={label} />;
     case "running":
-      return <RefreshCw className="w-3.5 h-3.5 text-blue-500 animate-spin" />;
+      return <RefreshCw className="w-3.5 h-3.5 text-blue-500 animate-spin" aria-label={label} />;
     default:
-      return <Clock className="w-3.5 h-3.5 text-muted-foreground" />;
+      return <Clock className="w-3.5 h-3.5 text-muted-foreground" aria-label={label} />;
   }
 }
 
 export default function JobHealth() {
+  useDocumentTitle("Job health");
+  const filterId = useId();
+  const { toast } = useToast();
   const [searchFilter, setSearchFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [pendingJobTrigger, setPendingJobTrigger] = useState<string | null>(null);
@@ -56,9 +71,16 @@ export default function JobHealth() {
       if (!res.ok) throw new Error("Failed to trigger job");
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (_, jobName) => {
+      toast({ title: "Job triggered", description: `${jobName} will run on the next worker tick.` });
       queryClient.invalidateQueries({ queryKey: ["/api/founder/job-health"] });
     },
+    onError: (_, jobName) =>
+      toast({
+        title: "Couldn't trigger job",
+        description: `${jobName} did not run — its regular schedule continues unaffected. Try again in a moment.`,
+        variant: "destructive",
+      }),
   });
 
   const filteredJobs = Array.isArray(jobs) ? jobs.filter((j: any) => {
@@ -67,13 +89,11 @@ export default function JobHealth() {
     return true;
   }) : [];
 
-  // Aggregate stats
   const allJobs = Array.isArray(jobs) ? jobs : [];
   const successCount = allJobs.filter((j: any) => j.status === "success").length;
   const failedCount = allJobs.filter((j: any) => j.status === "failed").length;
   const skippedCount = allJobs.filter((j: any) => j.status === "skipped_lock").length;
 
-  // Group by job name for "latest run" view
   const latestByJob = new Map<string, any>();
   for (const job of allJobs) {
     if (!latestByJob.has(job.jobName) || new Date(job.runCompletedAt) > new Date(latestByJob.get(job.jobName).runCompletedAt)) {
@@ -85,60 +105,57 @@ export default function JobHealth() {
   return (
     <PageShell isLoading={isLoading}>
       <div className="space-y-6 md:space-y-8">
-        {/* Header */}
         <div className="space-y-2">
           <h1 className="text-2xl font-semibold flex items-center gap-2">
-            <HeartPulse className="w-6 h-6 text-primary" />
-            Job Health
+            <HeartPulse className="w-6 h-6 text-primary" aria-hidden="true" />
+            Job health
           </h1>
           <p className="text-sm text-muted-foreground">
-            Monitor background job execution — status, duration, failures, and manual triggers
+            Monitor background job execution — status, duration, failures, and manual triggers.
           </p>
         </div>
 
-        {/* Summary Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <dl className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card>
             <CardContent className="pt-4">
-              <p className="text-xs text-muted-foreground">Unique Jobs</p>
-              <p className="text-xl font-bold">{uniqueJobs.length}</p>
+              <dt className="text-xs text-muted-foreground">Unique jobs</dt>
+              <dd className="text-xl font-bold tabular-nums">{uniqueJobs.length}</dd>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-4">
-              <p className="text-xs text-muted-foreground">Successful Runs</p>
-              <p className="text-xl font-bold text-green-600">{successCount}</p>
+              <dt className="text-xs text-muted-foreground">Successful runs</dt>
+              <dd className="text-xl font-bold text-green-600 tabular-nums">{successCount}</dd>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-4">
-              <p className="text-xs text-muted-foreground">Failed Runs</p>
-              <p className="text-xl font-bold text-red-600">{failedCount}</p>
+              <dt className="text-xs text-muted-foreground">Failed runs</dt>
+              <dd className="text-xl font-bold text-red-600 tabular-nums">{failedCount}</dd>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-4">
-              <p className="text-xs text-muted-foreground">Lock Skips</p>
-              <p className="text-xl font-bold text-muted-foreground">{skippedCount}</p>
+              <dt className="text-xs text-muted-foreground">Lock skips</dt>
+              <dd className="text-xl font-bold text-muted-foreground tabular-nums">{skippedCount}</dd>
             </CardContent>
           </Card>
-        </div>
+        </dl>
 
-        {/* Job Status Grid */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm">Job Status (Latest Run)</CardTitle>
+            <CardTitle className="text-sm">Job status (latest run)</CardTitle>
           </CardHeader>
           <CardContent>
             {uniqueJobs.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              <ul className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3" aria-label="Latest run per job">
                 {uniqueJobs.map((job: any) => (
-                  <div key={job.jobName} className="flex items-center justify-between p-3 border rounded-lg">
+                  <li key={job.jobName} className="flex items-center justify-between p-3 border rounded-lg gap-3">
                     <div className="flex items-center gap-2 min-w-0">
                       <StatusIcon status={job.status} />
                       <div className="min-w-0">
                         <p className="font-mono text-xs font-medium truncate">{job.jobName}</p>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="text-xs text-muted-foreground tabular-nums">
                           {job.durationMs != null ? `${job.durationMs}ms` : "N/A"} ·{" "}
                           {job.runCompletedAt && relative(job.runCompletedAt)}
                         </p>
@@ -147,16 +164,16 @@ export default function JobHealth() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="shrink-0"
+                      className="shrink-0 min-h-9 min-w-9"
                       onClick={() => setPendingJobTrigger(job.jobName)}
                       disabled={triggerJobMutation.isPending}
                       aria-label={`Manually run ${job.jobName}`}
                     >
-                      <Play className="w-3 h-3" />
+                      <Play className="w-3 h-3" aria-hidden="true" />
                     </Button>
-                  </div>
+                  </li>
                 ))}
-              </div>
+              </ul>
             ) : (
               <p className="text-sm text-muted-foreground text-center py-4">
                 No job health logs available yet.
@@ -165,62 +182,71 @@ export default function JobHealth() {
           </CardContent>
         </Card>
 
-        {/* Filters */}
-        <div className="flex gap-3 items-center">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        <div className="flex gap-3 items-center flex-wrap">
+          <div className="relative flex-1 min-w-[200px]">
+            <Label htmlFor={filterId} className="sr-only">Filter by job name</Label>
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
             <Input
-              placeholder="Filter by job name..."
+              id={filterId}
+              type="search"
+              placeholder="Filter by job name…"
               value={searchFilter}
               onChange={(e) => setSearchFilter(e.target.value)}
               className="pl-10"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
             />
           </div>
-          <div className="flex gap-1">
-            {["all", "success", "failed", "skipped_lock"].map((s) => (
-              <Button
-                key={s}
-                variant={statusFilter === s ? "default" : "outline"}
-                size="sm"
-                onClick={() => setStatusFilter(s)}
-              >
-                {s === "all" ? "All" : s === "skipped_lock" ? "Skipped" : s.charAt(0).toUpperCase() + s.slice(1)}
-              </Button>
-            ))}
+          <div className="flex gap-1" role="group" aria-label="Status filter">
+            {["all", "success", "failed", "skipped_lock"].map((s) => {
+              const label = s === "all" ? "All" : s === "skipped_lock" ? "Skipped" : s.charAt(0).toUpperCase() + s.slice(1);
+              const isActive = statusFilter === s;
+              return (
+                <Button
+                  key={s}
+                  variant={isActive ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setStatusFilter(s)}
+                  aria-pressed={isActive}
+                >
+                  {label}
+                </Button>
+              );
+            })}
           </div>
         </div>
 
-        {/* Full Log */}
         <Card>
           <CardHeader>
             <CardTitle className="text-sm flex items-center justify-between">
-              Run History
-              <Badge variant="secondary">{filteredJobs.length} runs</Badge>
+              Run history
+              <Badge variant="secondary"><span className="tabular-nums">{filteredJobs.length}</span> runs</Badge>
             </CardTitle>
           </CardHeader>
           <CardContent>
             {filteredJobs.length > 0 ? (
-              <div className="max-h-[500px] overflow-y-auto space-y-1">
+              <ol className="max-h-[500px] overflow-y-auto space-y-1" aria-label="Recent job runs, newest first">
                 {filteredJobs.slice(0, 100).map((job: any, i: number) => (
-                  <div key={job.id ?? i} className="flex items-center justify-between text-sm py-1.5 border-b last:border-0">
+                  <li key={job.id ?? i} className="flex items-center justify-between text-sm py-1.5 border-b last:border-0 gap-3">
                     <div className="flex items-center gap-2 min-w-0">
                       <StatusIcon status={job.status} />
                       <span className="font-mono text-xs truncate">{job.jobName}</span>
                     </div>
-                    <div className="flex items-center gap-3 text-xs text-muted-foreground shrink-0">
-                      {job.durationMs != null && <span>{job.durationMs}ms</span>}
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground shrink-0 flex-wrap justify-end">
+                      {job.durationMs != null && <span className="tabular-nums">{job.durationMs}ms</span>}
                       {job.runCompletedAt && (
-                        <span>{format(new Date(job.runCompletedAt), "MMM d HH:mm:ss")}</span>
+                        <span className="tabular-nums">{format(new Date(job.runCompletedAt), "MMM d HH:mm:ss")}</span>
                       )}
                       {job.errorMessage && (
-                        <span className="text-red-500 truncate max-w-48" title={job.errorMessage}>
+                        <span className="text-red-500 truncate max-w-48" title={job.errorMessage} role="alert">
                           {job.errorMessage}
                         </span>
                       )}
                     </div>
-                  </div>
+                  </li>
                 ))}
-              </div>
+              </ol>
             ) : (
               <p className="text-sm text-muted-foreground text-center py-8">
                 No runs match your filters.
@@ -235,9 +261,10 @@ export default function JobHealth() {
           <AlertDialogHeader>
             <AlertDialogTitle>Manually run this job?</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to manually run <span className="font-medium">{pendingJobTrigger}</span>?
-              This job is normally scheduled to run automatically. Running it manually will execute it immediately
-              in addition to its regular schedule.
+              Run <span className="font-medium font-mono">{pendingJobTrigger}</span> immediately?
+              This job is normally on a schedule. Running it manually executes it once now,
+              in addition to its regular schedule — be careful with jobs that have side effects
+              like sending emails or calling paid APIs.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
