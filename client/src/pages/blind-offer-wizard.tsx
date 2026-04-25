@@ -1,6 +1,8 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { PageShell } from "@/components/page-shell";
+import { useDocumentTitle } from "@/hooks/use-document-title";
+import { usd } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,11 +20,15 @@ import {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+// P1 money-precision: K/M compact bands intentionally kept for the wizard's hero
+// numbers (offers, ROI, monthly payments — readability over cents). Sub-$1K
+// fall-through swapped to canonical usd(noCents) so the precision policy at
+// boundary remains usd().
 function fmt(n: number) {
   if (!n || isNaN(n)) return "$0";
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
   if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}K`;
-  return `$${Math.round(n).toLocaleString()}`;
+  return usd(n, { noCents: true });
 }
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -94,11 +100,11 @@ interface OfferReport {
 // ─── Step definitions ─────────────────────────────────────────────────────────
 
 const STEPS = [
-  { id: "county", label: "County Selection", icon: MapPin },
-  { id: "comps", label: "Comp Research", icon: BarChart2 },
-  { id: "calculate", label: "Offer Calculation", icon: Calculator },
-  { id: "exit", label: "Exit Strategy", icon: TrendingUp },
-  { id: "letter", label: "Offer Letter", icon: FileText },
+  { id: "county", label: "County selection", icon: MapPin },
+  { id: "comps", label: "Comp research", icon: BarChart2 },
+  { id: "calculate", label: "Offer calculation", icon: Calculator },
+  { id: "exit", label: "Exit strategy", icon: TrendingUp },
+  { id: "letter", label: "Offer letter", icon: FileText },
 ] as const;
 
 type Step = typeof STEPS[number]["id"];
@@ -130,19 +136,26 @@ const US_STATES = [
 
 function StepCounty({ state, setState, county, setCounty, acres, setAcres, sellerProfile, setSellerProfile, onNext }: any) {
   const canProceed = state && county && acres > 0;
+  const stateId = useId();
+  const countyId = useId();
+  const acresId = useId();
+  const yearsId = useId();
   return (
-    <div className="space-y-6">
+    <form
+      className="space-y-6"
+      onSubmit={(e) => { e.preventDefault(); if (canProceed) onNext(); }}
+    >
       <div>
-        <h2 className="text-xl font-bold mb-1">Step 1: County & Property Details</h2>
-        <p className="text-sm text-muted-foreground">Select the county you're targeting. The system will pull USDA land value benchmarks and demographic data.</p>
+        <h2 className="text-xl font-bold mb-1">Step 1: County & property details</h2>
+        <p className="text-sm text-muted-foreground">Select the county you're targeting. The system will pull USDA land-value benchmarks and demographic data.</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <Label>State</Label>
+          <Label htmlFor={stateId}>State</Label>
           <Select value={state} onValueChange={setState}>
-            <SelectTrigger>
-              <SelectValue placeholder="Select state..." />
+            <SelectTrigger id={stateId}>
+              <SelectValue placeholder="Select state…" />
             </SelectTrigger>
             <SelectContent>
               {US_STATES.map(s => (
@@ -152,68 +165,78 @@ function StepCounty({ state, setState, county, setCounty, acres, setAcres, selle
           </Select>
         </div>
         <div>
-          <Label>County</Label>
-          <Input value={county} onChange={e => setCounty(e.target.value)} placeholder="e.g. Mohave, Pinal, San Juan..." />
+          <Label htmlFor={countyId}>County</Label>
+          <Input id={countyId} value={county} onChange={e => setCounty(e.target.value)} placeholder="e.g. Mohave, Pinal, San Juan…" autoCapitalize="words" />
         </div>
         <div>
-          <Label>Parcel Size (acres)</Label>
-          <Input type="number" value={acres || ""} onChange={e => setAcres(parseFloat(e.target.value) || 0)} placeholder="e.g. 5" min="0.01" step="0.1" />
+          <Label htmlFor={acresId}>Parcel size (acres)</Label>
+          <Input id={acresId} type="number" inputMode="decimal" className="tabular-nums" value={acres || ""} onChange={e => setAcres(parseFloat(e.target.value) || 0)} placeholder="e.g. 5" min="0.01" step="0.1" />
         </div>
       </div>
 
-      <div>
-        <h3 className="font-semibold text-sm mb-3">Seller Profile (optional — improves offer tier recommendation)</h3>
+      <fieldset className="border-0 p-0 m-0">
+        <legend className="font-semibold text-sm mb-3">Seller profile (optional — improves offer tier recommendation)</legend>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
-            { key: "isTaxDelinquent", label: "Tax Delinquent" },
-            { key: "isOutOfState", label: "Out-of-State Owner" },
-            { key: "isInherited", label: "Inherited Property" },
-          ].map(({ key, label }) => (
-            <label key={key} className={`flex items-center gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${sellerProfile[key] ? "border-primary bg-primary/5" : "border-border hover:bg-muted/40"}`}>
-              <input
-                type="checkbox"
-                checked={!!sellerProfile[key]}
-                onChange={e => setSellerProfile((p: any) => ({ ...p, [key]: e.target.checked }))}
-                className="hidden"
-              />
-              <div className={`w-4 h-4 rounded border flex items-center justify-center ${sellerProfile[key] ? "bg-primary border-primary" : "border-input"}`}>
-                {sellerProfile[key] && <CheckCircle className="w-3 h-3 text-primary-foreground" />}
-              </div>
-              <span className="text-xs font-medium">{label}</span>
-            </label>
-          ))}
+            { key: "isTaxDelinquent", label: "Tax-delinquent owner" },
+            { key: "isOutOfState", label: "Out-of-state owner" },
+            { key: "isInherited", label: "Inherited property" },
+          ].map(({ key, label }) => {
+            const cbId = `seller-${key}`;
+            const checked = !!sellerProfile[key];
+            return (
+              <label key={key} htmlFor={cbId} className={`flex items-center gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${checked ? "border-primary bg-primary/5" : "border-border hover:bg-muted/40"}`}>
+                <input
+                  id={cbId}
+                  type="checkbox"
+                  checked={checked}
+                  onChange={e => setSellerProfile((p: any) => ({ ...p, [key]: e.target.checked }))}
+                  className="sr-only"
+                />
+                <span aria-hidden="true" className={`w-4 h-4 rounded border flex items-center justify-center ${checked ? "bg-primary border-primary" : "border-input"}`}>
+                  {checked && <CheckCircle className="w-3 h-3 text-primary-foreground" aria-hidden="true" />}
+                </span>
+                <span className="text-xs font-medium">{label}</span>
+              </label>
+            );
+          })}
           <div>
-            <Label className="text-xs">Years Owned</Label>
+            <Label htmlFor={yearsId} className="text-xs">Years owned</Label>
             <Input
+              id={yearsId}
               type="number"
+              inputMode="numeric"
+              className="mt-1 tabular-nums"
               value={sellerProfile.yearsOwned || ""}
               onChange={e => setSellerProfile((p: any) => ({ ...p, yearsOwned: parseInt(e.target.value) || 0 }))}
               placeholder="Years"
-              className="mt-1"
             />
           </div>
         </div>
-      </div>
+      </fieldset>
 
       <div className="rounded-xl border border-blue-200 bg-blue-50 dark:border-blue-900/50 dark:bg-blue-900/10 p-4">
         <div className="flex gap-3">
-          <Star className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" />
+          <Star className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" aria-hidden="true" />
           <div className="text-sm text-blue-800 dark:text-blue-300">
-            <p className="font-semibold mb-1">County Selection Wisdom</p>
-            <p>Validate your county before mailing: search eBay's sold land listings for this county. If you find 10+ listings with multiple bidders, the model works here. No bidders = no buyer market. Counties within 2-3 hours of a major metro consistently outperform remote rural counties.</p>
+            <p className="font-semibold mb-1">County selection wisdom</p>
+            <p>Validate your county before mailing: search eBay's sold land listings for this county. If you find 10+ listings with multiple bidders, the model works here. No bidders means no buyer market. Counties within 2-3 hours of a major metro consistently outperform remote rural counties.</p>
           </div>
         </div>
       </div>
 
-      <Button onClick={onNext} disabled={!canProceed} className="w-full">
-        Continue to Comp Research <ChevronRight className="w-4 h-4 ml-1" />
+      <Button type="submit" disabled={!canProceed} className="w-full">
+        Continue to comp research <ChevronRight className="w-4 h-4 ml-1" aria-hidden="true" />
       </Button>
-    </div>
+    </form>
   );
 }
 
 function StepComps({ state, county, comps, setComps, onNext, onBack }: any) {
   const [newComp, setNewComp] = useState({ pricePerAcre: "", acres: "", source: "county_records", notes: "" });
+  const ppaId = useId();
+  const acreageId = useId();
+  const sourceId = useId();
 
   function addComp() {
     const ppa = parseFloat(newComp.pricePerAcre);
@@ -239,13 +262,13 @@ function StepComps({ state, county, comps, setComps, onNext, onBack }: any) {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-bold mb-1">Step 2: Comparable Sales Research</h2>
-        <p className="text-sm text-muted-foreground">Enter recent sold comps for {county} County, {state}. The system also pulls USDA land value benchmarks automatically.</p>
+        <h2 className="text-xl font-bold mb-1">Step 2: Comparable sales research</h2>
+        <p className="text-sm text-muted-foreground">Enter recent sold comps for {county} County, {state}. The system also pulls USDA land-value benchmarks automatically.</p>
       </div>
 
       <div className="rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-900/50 dark:bg-amber-900/10 p-4">
         <p className="text-sm font-semibold text-amber-800 dark:text-amber-300 mb-2">Where to find comps:</p>
-        <ul className="text-sm text-amber-700 dark:text-amber-400 space-y-1">
+        <ul className="text-sm text-amber-700 dark:text-amber-400 space-y-1 list-none p-0 m-0">
           <li>• <strong>County assessor records</strong> — real transaction data (best source)</li>
           <li>• <strong>LandWatch.com</strong> → Sold listings filter</li>
           <li>• <strong>Land and Farm / Lands of America</strong> → Sold section</li>
@@ -257,36 +280,39 @@ function StepComps({ state, county, comps, setComps, onNext, onBack }: any) {
       {/* Add comp form */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm">Add a Comparable Sale</CardTitle>
+          <CardTitle className="text-sm">Add a comparable sale</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <CardContent>
+          <form
+            className="grid grid-cols-2 md:grid-cols-4 gap-3"
+            onSubmit={(e) => { e.preventDefault(); addComp(); }}
+          >
             <div>
-              <Label className="text-xs">Price/Acre ($)</Label>
-              <Input value={newComp.pricePerAcre} onChange={e => setNewComp(p => ({ ...p, pricePerAcre: e.target.value }))} placeholder="e.g. 1200" />
+              <Label htmlFor={ppaId} className="text-xs">Price per acre ($)</Label>
+              <Input id={ppaId} type="number" inputMode="decimal" className="tabular-nums" value={newComp.pricePerAcre} onChange={e => setNewComp(p => ({ ...p, pricePerAcre: e.target.value }))} placeholder="e.g. 1200" />
             </div>
             <div>
-              <Label className="text-xs">Acreage</Label>
-              <Input value={newComp.acres} onChange={e => setNewComp(p => ({ ...p, acres: e.target.value }))} placeholder="e.g. 5" />
+              <Label htmlFor={acreageId} className="text-xs">Acreage</Label>
+              <Input id={acreageId} type="number" inputMode="decimal" className="tabular-nums" value={newComp.acres} onChange={e => setNewComp(p => ({ ...p, acres: e.target.value }))} placeholder="e.g. 5" />
             </div>
             <div>
-              <Label className="text-xs">Source</Label>
+              <Label htmlFor={sourceId} className="text-xs">Source</Label>
               <Select value={newComp.source} onValueChange={v => setNewComp(p => ({ ...p, source: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger id={sourceId}><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="county_records">County Records</SelectItem>
+                  <SelectItem value="county_records">County records</SelectItem>
                   <SelectItem value="landwatch">LandWatch</SelectItem>
                   <SelectItem value="land_and_farm">Land and Farm</SelectItem>
-                  <SelectItem value="ebay">eBay Sold</SelectItem>
+                  <SelectItem value="ebay">eBay (sold)</SelectItem>
                   <SelectItem value="mls">MLS</SelectItem>
                   <SelectItem value="user_entered">Other</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="flex items-end">
-              <Button onClick={addComp} className="w-full">Add Comp</Button>
+              <Button type="submit" className="w-full">Add comp</Button>
             </div>
-          </div>
+          </form>
         </CardContent>
       </Card>
 
@@ -294,35 +320,47 @@ function StepComps({ state, county, comps, setComps, onNext, onBack }: any) {
       {comps.length > 0 && (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <h3 className="font-semibold text-sm">{comps.length} comp(s) entered</h3>
+            <h3 className="font-semibold text-sm">{comps.length} comp{comps.length === 1 ? "" : "s"} entered</h3>
             {lowestComp > 0 && (
-              <p className="text-sm text-muted-foreground">Lowest: <span className="font-bold">{fmt(lowestComp)}/acre</span> → Target offer: <span className="font-bold text-green-600">{fmt(lowestComp * 0.25)}/acre</span></p>
+              <p className="text-sm text-muted-foreground">Lowest: <span className="font-bold tabular-nums">{fmt(lowestComp)}/acre</span> → Target offer: <span className="font-bold tabular-nums text-green-600">{fmt(lowestComp * 0.25)}/acre</span></p>
             )}
           </div>
-          {sortedComps.map((comp, i) => (
-            <div key={i} className={`flex items-center gap-3 p-3 rounded-lg border ${i === 0 ? "border-green-300 bg-green-50 dark:border-green-900 dark:bg-green-900/10" : "border-border"}`}>
-              {i === 0 && <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 text-xs">Lowest</Badge>}
-              <div className="flex-1 grid grid-cols-3 gap-2 text-sm">
-                <span className="font-semibold">{fmt(comp.pricePerAcre)}/acre</span>
-                <span className="text-muted-foreground">{comp.acres} acres</span>
-                <span className="text-muted-foreground capitalize">{comp.source.replace(/_/g, " ")}</span>
-              </div>
-              <button onClick={() => removeComp(comps.indexOf(comp))} className="text-muted-foreground hover:text-destructive text-xs">Remove</button>
-            </div>
-          ))}
+          <ul className="space-y-2 list-none p-0 m-0" aria-label="Comparable sales">
+            {sortedComps.map((comp, i) => {
+              const sourceLabel = comp.source.replace(/_/g, " ");
+              return (
+                <li key={i} className={`flex items-center gap-3 p-3 rounded-lg border ${i === 0 ? "border-green-300 bg-green-50 dark:border-green-900 dark:bg-green-900/10" : "border-border"}`}>
+                  {i === 0 && <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 text-xs" aria-label="Lowest comp">Lowest</Badge>}
+                  <div className="flex-1 grid grid-cols-3 gap-2 text-sm">
+                    <span className="font-semibold tabular-nums">{fmt(comp.pricePerAcre)}/acre</span>
+                    <span className="text-muted-foreground tabular-nums">{comp.acres} acres</span>
+                    <span className="text-muted-foreground capitalize">{sourceLabel}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeComp(comps.indexOf(comp))}
+                    className="text-muted-foreground hover:text-destructive text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive rounded px-1"
+                    aria-label={`Remove ${fmt(comp.pricePerAcre)} per acre comp from ${sourceLabel}`}
+                  >
+                    Remove
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
         </div>
       )}
 
       {comps.length === 0 && (
         <div className="p-4 rounded-lg border border-dashed border-muted-foreground/30 text-center text-sm text-muted-foreground">
-          No comps entered yet. You can proceed without comps — the system will use USDA land value benchmarks.
+          No comps entered yet. You can proceed without comps — the system will use USDA land-value benchmarks.
         </div>
       )}
 
       <div className="flex gap-3">
-        <Button variant="outline" onClick={onBack}><ChevronLeft className="w-4 h-4 mr-1" /> Back</Button>
+        <Button variant="outline" onClick={onBack}><ChevronLeft className="w-4 h-4 mr-1" aria-hidden="true" /> Back</Button>
         <Button onClick={onNext} className="flex-1">
-          Calculate Offer <ChevronRight className="w-4 h-4 ml-1" />
+          Calculate offer <ChevronRight className="w-4 h-4 ml-1" aria-hidden="true" />
         </Button>
       </div>
     </div>
@@ -332,90 +370,96 @@ function StepComps({ state, county, comps, setComps, onNext, onBack }: any) {
 function StepCalculate({ report, isLoading, onNext, onBack }: any) {
   if (isLoading) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 gap-4">
-        <Loader2 className="w-12 h-12 animate-spin text-primary" />
-        <p className="font-semibold">Calculating your offer...</p>
-        <p className="text-sm text-muted-foreground">Pulling USDA land values, analyzing comps, running offer formula</p>
+      <div className="flex flex-col items-center justify-center py-20 gap-4" role="status" aria-live="polite">
+        <Loader2 className="w-12 h-12 animate-spin text-primary" aria-hidden="true" />
+        <p className="font-semibold">Calculating your offer…</p>
+        <p className="text-sm text-muted-foreground">Pulling USDA land values, analyzing comps, running offer formula.</p>
       </div>
     );
   }
 
   if (!report) {
     return (
-      <div className="text-center py-20">
-        <AlertTriangle className="w-12 h-12 text-destructive mx-auto mb-3" />
-        <p className="font-semibold">Error generating offer report</p>
-        <Button variant="outline" onClick={onBack} className="mt-4">Go Back</Button>
+      <div className="text-center py-20" role="alert">
+        <AlertTriangle className="w-12 h-12 text-destructive mx-auto mb-3" aria-hidden="true" />
+        <p className="font-semibold">Couldn't generate offer report</p>
+        <p className="text-sm text-muted-foreground mt-1">Your inputs are preserved. Try again or adjust comps and re-run.</p>
+        <Button variant="outline" onClick={onBack} className="mt-4">Go back</Button>
       </div>
     );
   }
 
   const tiers = [
-    { key: "aggressive", label: "Ultra-Motivated (20%)", color: "border-orange-300 bg-orange-50 dark:border-orange-900 dark:bg-orange-900/10" },
+    { key: "aggressive", label: "Ultra-motivated (20%)", color: "border-orange-300 bg-orange-50 dark:border-orange-900 dark:bg-orange-900/10" },
     { key: "standard", label: "Standard (25%)", color: "border-blue-300 bg-blue-50 dark:border-blue-900 dark:bg-blue-900/10" },
-    { key: "competitive", label: "Hot Market (33%)", color: "border-purple-300 bg-purple-50 dark:border-purple-900 dark:bg-purple-900/10" },
+    { key: "competitive", label: "Hot market (33%)", color: "border-purple-300 bg-purple-50 dark:border-purple-900 dark:bg-purple-900/10" },
   ] as const;
 
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-bold mb-1">Step 3: Offer Calculation</h2>
-        <p className="text-sm text-muted-foreground">Based on {report.compAnalysis.compCount} comp(s) and USDA data for {report.county} County, {report.state}</p>
+        <h2 className="text-xl font-bold mb-1">Step 3: Offer calculation</h2>
+        <p className="text-sm text-muted-foreground">Based on {report.compAnalysis.compCount} comp{report.compAnalysis.compCount === 1 ? "" : "s"} and USDA data for {report.county} County, {report.state}.</p>
       </div>
 
       {/* Warnings */}
       {report.warnings.length > 0 && (
-        <div className="space-y-2">
+        <ul className="space-y-2 list-none p-0 m-0" aria-label="Calculation warnings">
           {report.warnings.map((w: string, i: number) => (
-            <div key={i} className="flex gap-2 p-3 rounded-lg border border-yellow-200 bg-yellow-50 dark:border-yellow-900/50 dark:bg-yellow-900/10 text-sm text-yellow-800 dark:text-yellow-300">
-              <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+            <li key={i} className="flex gap-2 p-3 rounded-lg border border-yellow-200 bg-yellow-50 dark:border-yellow-900/50 dark:bg-yellow-900/10 text-sm text-yellow-800 dark:text-yellow-300" role="alert">
+              <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" aria-hidden="true" />
               <span>{w}</span>
-            </div>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
 
       {/* USDA Context */}
       <Card>
         <CardContent className="p-4">
-          <div className="grid grid-cols-3 gap-4 text-center">
+          <dl className="grid grid-cols-3 gap-4 text-center m-0">
             <div>
-              <p className="text-xs text-muted-foreground">USDA Land Value</p>
-              <p className="text-xl font-bold">{fmt(report.marketContext.usdaLandValuePerAcre)}/ac</p>
+              <dt className="text-xs text-muted-foreground">USDA land value</dt>
+              <dd className="text-xl font-bold tabular-nums m-0">{fmt(report.marketContext.usdaLandValuePerAcre)}/ac</dd>
               <p className="text-xs text-muted-foreground">Pastureland benchmark</p>
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Lowest Comp</p>
-              <p className="text-xl font-bold">{fmt(report.compAnalysis.lowestSalePerAcre)}/ac</p>
+              <dt className="text-xs text-muted-foreground">Lowest comp</dt>
+              <dd className="text-xl font-bold tabular-nums m-0">{fmt(report.compAnalysis.lowestSalePerAcre)}/ac</dd>
               <p className="text-xs text-muted-foreground">Comp anchor</p>
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">5-Yr Appreciation</p>
-              <p className="text-xl font-bold">{report.marketContext.usdaCagr5Year.toFixed(1)}%/yr</p>
+              <dt className="text-xs text-muted-foreground">5-yr appreciation</dt>
+              <dd className="text-xl font-bold tabular-nums m-0">{report.marketContext.usdaCagr5Year.toFixed(1)}%/yr</dd>
               <p className="text-xs text-muted-foreground">USDA CAGR</p>
             </div>
-          </div>
+          </dl>
         </CardContent>
       </Card>
 
       {/* Three tiers */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <ul className="grid grid-cols-1 md:grid-cols-3 gap-4 list-none p-0 m-0" aria-label="Offer tiers">
         {tiers.map(({ key, label, color }) => {
           const tier = report.offerTiers[key];
           const isRecommended = report.recommendedTier === key;
           return (
-            <div key={key} className={`rounded-xl border p-4 relative ${color} ${isRecommended ? "ring-2 ring-primary" : ""}`}>
+            <li
+              key={key}
+              className={`rounded-xl border p-4 relative ${color} ${isRecommended ? "ring-2 ring-primary" : ""}`}
+              aria-current={isRecommended ? "true" : undefined}
+              aria-label={`${label} offer ${fmt(tier.offerTotal)}${isRecommended ? " (recommended)" : ""}`}
+            >
               {isRecommended && (
                 <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground">Recommended</Badge>
               )}
               <p className="font-semibold text-sm mb-3">{label}</p>
-              <p className="text-2xl font-black mb-1">{fmt(tier.offerTotal)}</p>
-              <p className="text-xs text-muted-foreground mb-2">{fmt(report.compAnalysis.lowestSalePerAcre * tier.pctOfLowestComp / 100)}/ac × {report.targetAcres} acres</p>
+              <p className="text-2xl font-black tabular-nums mb-1">{fmt(tier.offerTotal)}</p>
+              <p className="text-xs text-muted-foreground mb-2 tabular-nums">{fmt(report.compAnalysis.lowestSalePerAcre * tier.pctOfLowestComp / 100)}/ac × {report.targetAcres} acres</p>
               <p className="text-xs text-muted-foreground">{tier.acceptanceRateForecast}</p>
-            </div>
+            </li>
           );
         })}
-      </div>
+      </ul>
 
       {/* Recommendation reason */}
       <div className="p-4 rounded-xl border border-primary/20 bg-primary/5">
@@ -425,14 +469,14 @@ function StepCalculate({ report, isLoading, onNext, onBack }: any) {
 
       {/* eBay note */}
       <div className="p-3 rounded-lg border border-border text-sm text-muted-foreground">
-        <span className="font-semibold text-foreground">eBay Validation: </span>
+        <span className="font-semibold text-foreground">eBay validation: </span>
         {report.marketContext.ebayValidationNote}
       </div>
 
       <div className="flex gap-3">
-        <Button variant="outline" onClick={onBack}><ChevronLeft className="w-4 h-4 mr-1" /> Back</Button>
+        <Button variant="outline" onClick={onBack}><ChevronLeft className="w-4 h-4 mr-1" aria-hidden="true" /> Back</Button>
         <Button onClick={onNext} className="flex-1">
-          View Exit Strategies <ChevronRight className="w-4 h-4 ml-1" />
+          View exit strategies <ChevronRight className="w-4 h-4 ml-1" aria-hidden="true" />
         </Button>
       </div>
     </div>
@@ -446,38 +490,40 @@ function StepExit({ report, onNext, onBack }: any) {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-bold mb-1">Step 4: Exit Strategy</h2>
-        <p className="text-sm text-muted-foreground">Compare cash flip vs. owner financing. Most real estate investors start with cash flips, then build to a note portfolio.</p>
+        <h2 className="text-xl font-bold mb-1">Step 4: Exit strategy</h2>
+        <p className="text-sm text-muted-foreground">Compare cash flip vs. owner financing. Most land investors start with cash flips, then build to a note portfolio.</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Cash flip */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Cash Flip</CardTitle>
-            <CardDescription>Buy, list, and sell within 30-45 days</CardDescription>
+            <CardTitle className="text-base">Cash flip</CardTitle>
+            <CardDescription>Buy, list, and sell within 30-45 days.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">List Price</span>
-              <span className="font-semibold">{fmt(cf.salePrice)}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Net Profit</span>
-              <span className="font-bold text-green-600">{fmt(cf.netProfit)}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">ROI</span>
-              <span className="font-bold">{cf.roi}%</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Hold Period</span>
-              <span className="font-semibold">{cf.holdingPeriodDays} days</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Annualized ROI</span>
-              <span className="font-bold text-blue-600">{cf.annualizedROI}%</span>
-            </div>
+          <CardContent>
+            <dl className="space-y-3 m-0">
+              <div className="flex justify-between text-sm">
+                <dt className="text-muted-foreground">List price</dt>
+                <dd className="font-semibold tabular-nums m-0">{fmt(cf.salePrice)}</dd>
+              </div>
+              <div className="flex justify-between text-sm">
+                <dt className="text-muted-foreground">Net profit</dt>
+                <dd className="font-bold tabular-nums text-green-600 m-0">{fmt(cf.netProfit)}</dd>
+              </div>
+              <div className="flex justify-between text-sm">
+                <dt className="text-muted-foreground">ROI</dt>
+                <dd className="font-bold tabular-nums m-0">{cf.roi}%</dd>
+              </div>
+              <div className="flex justify-between text-sm">
+                <dt className="text-muted-foreground">Hold period</dt>
+                <dd className="font-semibold tabular-nums m-0">{cf.holdingPeriodDays} days</dd>
+              </div>
+              <div className="flex justify-between text-sm">
+                <dt className="text-muted-foreground">Annualized ROI</dt>
+                <dd className="font-bold tabular-nums text-blue-600 m-0">{cf.annualizedROI}%</dd>
+              </div>
+            </dl>
           </CardContent>
         </Card>
 
@@ -485,32 +531,34 @@ function StepExit({ report, onNext, onBack }: any) {
         <Card className="border-green-200 dark:border-green-900">
           <CardHeader>
             <div className="flex items-center justify-between">
-              <CardTitle className="text-base">Owner Financing</CardTitle>
-              <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">Wealth Building</Badge>
+              <CardTitle className="text-base">Owner financing</CardTitle>
+              <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">Wealth-building</Badge>
             </div>
-            <CardDescription>9% interest, 84-month note — pure passive income</CardDescription>
+            <CardDescription>9% interest, 84-month note — pure passive income.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Sale Price</span>
-              <span className="font-semibold">{fmt(of_.salePrice)}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Down Payment</span>
-              <span className="font-semibold text-blue-600">{fmt(of_.downPayment)} (capital recovered!)</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Monthly Payment</span>
-              <span className="font-bold text-green-600">{fmt(of_.monthlyPayment)}/mo × 84 months</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Total Collected</span>
-              <span className="font-bold">{fmt(of_.totalCollected)}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Total ROI</span>
-              <span className="font-bold text-green-600">{of_.roi}%</span>
-            </div>
+          <CardContent>
+            <dl className="space-y-3 m-0">
+              <div className="flex justify-between text-sm">
+                <dt className="text-muted-foreground">Sale price</dt>
+                <dd className="font-semibold tabular-nums m-0">{fmt(of_.salePrice)}</dd>
+              </div>
+              <div className="flex justify-between text-sm">
+                <dt className="text-muted-foreground">Down payment</dt>
+                <dd className="font-semibold tabular-nums text-blue-600 m-0">{fmt(of_.downPayment)} (capital recovered)</dd>
+              </div>
+              <div className="flex justify-between text-sm">
+                <dt className="text-muted-foreground">Monthly payment</dt>
+                <dd className="font-bold tabular-nums text-green-600 m-0">{fmt(of_.monthlyPayment)}/mo × 84 months</dd>
+              </div>
+              <div className="flex justify-between text-sm">
+                <dt className="text-muted-foreground">Total collected</dt>
+                <dd className="font-bold tabular-nums m-0">{fmt(of_.totalCollected)}</dd>
+              </div>
+              <div className="flex justify-between text-sm">
+                <dt className="text-muted-foreground">Total ROI</dt>
+                <dd className="font-bold tabular-nums text-green-600 m-0">{of_.roi}%</dd>
+              </div>
+            </dl>
           </CardContent>
         </Card>
       </div>
@@ -518,18 +566,18 @@ function StepExit({ report, onNext, onBack }: any) {
       {/* Hybrid recommendation */}
       <div className="p-4 rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-900/50 dark:bg-amber-900/10">
         <div className="flex gap-3">
-          <Star className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
+          <Star className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" aria-hidden="true" />
           <div className="text-sm">
-            <p className="font-semibold text-amber-800 dark:text-amber-300 mb-1">Strategic Recommendation</p>
+            <p className="font-semibold text-amber-800 dark:text-amber-300 mb-1">Strategic recommendation</p>
             <p className="text-amber-700 dark:text-amber-400">{report.hybridRecommendation}</p>
           </div>
         </div>
       </div>
 
       <div className="flex gap-3">
-        <Button variant="outline" onClick={onBack}><ChevronLeft className="w-4 h-4 mr-1" /> Back</Button>
+        <Button variant="outline" onClick={onBack}><ChevronLeft className="w-4 h-4 mr-1" aria-hidden="true" /> Back</Button>
         <Button onClick={onNext} className="flex-1">
-          Generate Offer Letter <ChevronRight className="w-4 h-4 ml-1" />
+          Generate offer letter <ChevronRight className="w-4 h-4 ml-1" aria-hidden="true" />
         </Button>
       </div>
     </div>
@@ -576,60 +624,64 @@ Sincerely,
 [Your Name]
 Private Real Estate Investor`;
 
-  function copyLetter() {
-    navigator.clipboard.writeText(letterText);
-    toast({ title: "Letter copied to clipboard" });
+  async function copyLetter() {
+    try {
+      await navigator.clipboard.writeText(letterText);
+      toast({ title: "Letter copied to clipboard" });
+    } catch {
+      toast({ variant: "destructive", title: "Couldn't copy letter", description: "Your browser blocked clipboard access. Select the text and copy manually." });
+    }
   }
 
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-bold mb-1">Step 5: Blind Offer Letter</h2>
+        <h2 className="text-xl font-bold mb-1">Step 5: Blind offer letter</h2>
         <p className="text-sm text-muted-foreground">Your personalized blind offer letter. Customize and mail to the property owner. Keep it simple — one page, specific price, clear call-to-action.</p>
       </div>
 
       {/* Offer summary */}
-      <div className="grid grid-cols-3 gap-4">
+      <dl className="grid grid-cols-3 gap-4 m-0">
         <Card>
           <CardContent className="p-4 text-center">
-            <p className="text-xs text-muted-foreground">Recommended Offer</p>
-            <p className="text-2xl font-black text-green-600">{fmt(report.recommendedOfferTotal)}</p>
+            <dt className="text-xs text-muted-foreground">Recommended offer</dt>
+            <dd className="text-2xl font-black tabular-nums text-green-600 m-0">{fmt(report.recommendedOfferTotal)}</dd>
             <p className="text-xs text-muted-foreground capitalize">{report.recommendedTier} strategy</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
-            <p className="text-xs text-muted-foreground">Cash Flip Target</p>
-            <p className="text-2xl font-black">{fmt(report.cashFlipScenario.salePrice)}</p>
-            <p className="text-xs text-green-600">{report.cashFlipScenario.roi}% ROI</p>
+            <dt className="text-xs text-muted-foreground">Cash flip target</dt>
+            <dd className="text-2xl font-black tabular-nums m-0">{fmt(report.cashFlipScenario.salePrice)}</dd>
+            <p className="text-xs text-green-600 tabular-nums">{report.cashFlipScenario.roi}% ROI</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
-            <p className="text-xs text-muted-foreground">Owner Finance Monthly</p>
-            <p className="text-2xl font-black text-blue-600">{fmt(report.ownerFinanceScenario.monthlyPayment)}</p>
+            <dt className="text-xs text-muted-foreground">Owner-finance monthly</dt>
+            <dd className="text-2xl font-black tabular-nums text-blue-600 m-0">{fmt(report.ownerFinanceScenario.monthlyPayment)}</dd>
             <p className="text-xs text-muted-foreground">for 84 months</p>
           </CardContent>
         </Card>
-      </div>
+      </dl>
 
       {/* Letter */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle className="text-sm">Offer Letter Template</CardTitle>
+            <CardTitle className="text-sm">Offer letter template</CardTitle>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={copyLetter}>
-                <Copy className="w-3 h-3 mr-1" /> Copy
+              <Button variant="outline" size="sm" onClick={copyLetter} aria-label="Copy offer letter to clipboard">
+                <Copy className="w-3 h-3 mr-1" aria-hidden="true" /> Copy
               </Button>
-              <Button variant="outline" size="sm">
-                <Download className="w-3 h-3 mr-1" /> Download
+              <Button variant="outline" size="sm" aria-label="Download offer letter">
+                <Download className="w-3 h-3 mr-1" aria-hidden="true" /> Download
               </Button>
             </div>
           </div>
         </CardHeader>
         <CardContent>
-          <pre className="text-xs whitespace-pre-wrap font-mono text-muted-foreground bg-muted/30 rounded-lg p-4 leading-relaxed">
+          <pre className="text-xs whitespace-pre-wrap font-mono text-muted-foreground bg-muted/30 rounded-lg p-4 leading-relaxed" aria-label="Offer letter draft">
             {letterText}
           </pre>
         </CardContent>
@@ -638,35 +690,35 @@ Private Real Estate Investor`;
       {/* Campaign sizing */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm">Campaign Sizing</CardTitle>
+          <CardTitle className="text-sm">Campaign sizing</CardTitle>
           <CardDescription>How many letters to send for consistent deal flow?</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-3 gap-4 text-center">
+          <dl className="grid grid-cols-3 gap-4 text-center m-0">
             <div className="p-3 rounded-lg bg-muted/40">
-              <p className="text-xs text-muted-foreground">Response Rate</p>
-              <p className="text-xl font-bold">~4%</p>
+              <dt className="text-xs text-muted-foreground">Response rate</dt>
+              <dd className="text-xl font-bold tabular-nums m-0">~4%</dd>
               <p className="text-xs text-muted-foreground">Industry average</p>
             </div>
             <div className="p-3 rounded-lg bg-muted/40">
-              <p className="text-xs text-muted-foreground">Close Rate</p>
-              <p className="text-xl font-bold">~60%</p>
+              <dt className="text-xs text-muted-foreground">Close rate</dt>
+              <dd className="text-xl font-bold tabular-nums m-0">~60%</dd>
               <p className="text-xs text-muted-foreground">3 of 5 responses</p>
             </div>
             <div className="p-3 rounded-lg bg-muted/40">
-              <p className="text-xs text-muted-foreground">Letters for 1 deal</p>
-              <p className="text-xl font-bold">~42</p>
+              <dt className="text-xs text-muted-foreground">Letters for 1 deal</dt>
+              <dd className="text-xl font-bold tabular-nums m-0">~42</dd>
               <p className="text-xs text-muted-foreground">At 4% × 60%</p>
             </div>
-          </div>
+          </dl>
           <p className="text-xs text-muted-foreground mt-3 text-center">Mail consistently every month — sellers often respond to your 2nd or 3rd letter, months after the first campaign.</p>
         </CardContent>
       </Card>
 
       <div className="flex gap-3">
-        <Button variant="outline" onClick={onBack}><ChevronLeft className="w-4 h-4 mr-1" /> Back</Button>
+        <Button variant="outline" onClick={onBack}><ChevronLeft className="w-4 h-4 mr-1" aria-hidden="true" /> Back</Button>
         <Button className="flex-1" onClick={() => window.location.href = "/direct-mail-campaigns"}>
-          <Send className="w-4 h-4 mr-2" /> Launch Campaign
+          <Send className="w-4 h-4 mr-2" aria-hidden="true" /> Launch campaign
         </Button>
       </div>
     </div>
@@ -676,6 +728,8 @@ Private Real Estate Investor`;
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function BlindOfferWizardPage() {
+  useDocumentTitle("Blind offer wizard");
+  const { toast } = useToast();
   const [currentStep, setCurrentStep] = useState<Step>("county");
   const [state, setState] = useState("");
   const [county, setCounty] = useState("");
@@ -711,8 +765,12 @@ export default function BlindOfferWizardPage() {
       const data = await resp.json();
       setReport(data);
     } catch {
-      // Use mock report for UI development
       setReport(null);
+      toast({
+        variant: "destructive",
+        title: "Couldn't calculate the offer",
+        description: "Your inputs are preserved. Try again, or go back and refine the comp set.",
+      });
     } finally {
       setIsCalculating(false);
     }
@@ -728,32 +786,44 @@ export default function BlindOfferWizardPage() {
   return (
     <PageShell>
       <div className="mb-6">
-        <h1 className="text-2xl md:text-3xl font-bold">Blind Offer Wizard</h1>
-        <p className="text-muted-foreground text-sm md:text-base">Calculate your offer using a proven methodology — the trusted system behind thousands of profitable land deals</p>
+        <h1 className="text-2xl md:text-3xl font-bold">Blind offer wizard</h1>
+        <p className="text-muted-foreground text-sm md:text-base">Calculate your offer using a proven methodology — the trusted system behind thousands of profitable land deals.</p>
       </div>
 
       {/* Step progress */}
       <div className="mb-8">
-        <div className="flex items-center gap-2 overflow-x-auto pb-2">
+        <ol className="flex items-center gap-2 overflow-x-auto pb-2 list-none p-0 m-0" aria-label="Wizard progress">
           {STEPS.map((step, i) => {
             const isActive = step.id === currentStep;
             const isPast = i < stepIndex;
             const Icon = step.icon;
             return (
-              <div key={step.id} className="flex items-center gap-2 flex-shrink-0">
+              <li key={step.id} className="flex items-center gap-2 flex-shrink-0">
                 <button
+                  type="button"
                   onClick={() => isPast && setCurrentStep(step.id)}
+                  disabled={!isPast && !isActive}
+                  aria-current={isActive ? "step" : undefined}
+                  aria-label={`Step ${i + 1} of ${STEPS.length}: ${step.label}${isActive ? " (current)" : isPast ? " (completed)" : " (locked)"}`}
                   className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive ? "bg-primary text-primary-foreground" : isPast ? "bg-muted text-foreground cursor-pointer hover:bg-muted/70" : "bg-muted/40 text-muted-foreground cursor-default"}`}
                 >
-                  <Icon className="w-4 h-4" />
+                  <Icon className="w-4 h-4" aria-hidden="true" />
                   <span className="hidden md:block">{step.label}</span>
                 </button>
-                {i < STEPS.length - 1 && <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />}
-              </div>
+                {i < STEPS.length - 1 && <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" aria-hidden="true" />}
+              </li>
             );
           })}
+        </ol>
+        <div
+          role="progressbar"
+          aria-label={`Wizard progress: step ${stepIndex + 1} of ${STEPS.length}`}
+          aria-valuenow={stepIndex + 1}
+          aria-valuemin={1}
+          aria-valuemax={STEPS.length}
+        >
+          <Progress value={((stepIndex + 1) / STEPS.length) * 100} className="h-1 mt-3" aria-hidden="true" />
         </div>
-        <Progress value={((stepIndex + 1) / STEPS.length) * 100} className="h-1 mt-3" />
       </div>
 
       {/* Step content */}
