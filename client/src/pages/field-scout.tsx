@@ -930,6 +930,8 @@ export default function FieldScout() {
                     }
                     className="bg-gray-800 border-gray-700 text-white text-sm"
                     placeholder="Property address"
+                    autoComplete="street-address"
+                    autoCapitalize="words"
                   />
                 </div>
 

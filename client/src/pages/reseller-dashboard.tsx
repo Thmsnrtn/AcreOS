@@ -161,6 +161,7 @@ function CreateTenantDialog({ onSuccess }: { onSuccess: () => void }) {
                 value={form.name}
                 onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
                 autoCapitalize="words"
+                autoComplete="organization"
               />
             </div>
             <div>

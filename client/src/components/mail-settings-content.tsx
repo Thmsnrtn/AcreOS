@@ -527,6 +527,8 @@ export function MailSettingsContent() {
                     <FormControl>
                       <Input
                         placeholder="Your Company LLC"
+                        autoComplete="organization"
+                        autoCapitalize="words"
                         {...field}
                         data-testid="input-company-name"
                       />
@@ -544,6 +546,8 @@ export function MailSettingsContent() {
                     <FormControl>
                       <Input
                         placeholder="123 Main Street"
+                        autoComplete="address-line1"
+                        autoCapitalize="words"
                         {...field}
                         data-testid="input-address-line1"
                       />
@@ -561,6 +565,8 @@ export function MailSettingsContent() {
                     <FormControl>
                       <Input
                         placeholder="Suite 100"
+                        autoComplete="address-line2"
+                        autoCapitalize="words"
                         {...field}
                         data-testid="input-address-line2"
                       />
@@ -577,7 +583,7 @@ export function MailSettingsContent() {
                     <FormItem>
                       <FormLabel>City</FormLabel>
                       <FormControl>
-                        <Input placeholder="Los Angeles" {...field} data-testid="input-city" />
+                        <Input placeholder="Los Angeles" autoComplete="address-level2" autoCapitalize="words" {...field} data-testid="input-city" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -616,7 +622,7 @@ export function MailSettingsContent() {
                     <FormItem>
                       <FormLabel>ZIP Code</FormLabel>
                       <FormControl>
-                        <Input placeholder="90001" {...field} data-testid="input-zip-code" />
+                        <Input placeholder="90001" autoComplete="postal-code" inputMode="numeric" {...field} data-testid="input-zip-code" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
