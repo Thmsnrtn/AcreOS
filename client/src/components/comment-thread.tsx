@@ -68,11 +68,12 @@ function CommentBubble({
           <span className="text-[10px] text-muted-foreground">{time}</span>
           {isOwn && onDelete && (
             <button
+              type="button"
               onClick={onDelete}
-              className="opacity-0 group-hover:opacity-100 transition-opacity"
+              className="opacity-0 group-hover:opacity-100 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm focus-visible:opacity-100"
               aria-label="Delete comment"
             >
-              <Trash2 className="w-3 h-3 text-muted-foreground hover:text-red-500" />
+              <Trash2 className="w-3 h-3 text-muted-foreground hover:text-red-500" aria-hidden="true" />
             </button>
           )}
         </div>
@@ -193,11 +194,13 @@ export function CommentThread({ entityType, entityId, currentUserId }: CommentTh
   if (!isExpanded) {
     return (
       <button
+        type="button"
         onClick={() => setIsExpanded(true)}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border bg-card hover:bg-accent transition-colors text-xs"
-        aria-label={`${commentCount} comments`}
+        aria-expanded={false}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border bg-card hover:bg-accent transition-colors text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        aria-label={commentCount === 1 ? "1 comment, open" : `${commentCount} comments, open`}
       >
-        <MessageCircle className="w-3.5 h-3.5 text-muted-foreground" />
+        <MessageCircle className="w-3.5 h-3.5 text-muted-foreground" aria-hidden="true" />
         <span className="font-medium">{commentCount > 0 ? commentCount : ""}</span>
       </button>
     );
@@ -209,8 +212,8 @@ export function CommentThread({ entityType, entityId, currentUserId }: CommentTh
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b">
         <span className="text-xs font-semibold">Comments</span>
-        <button onClick={() => setIsExpanded(false)} aria-label="Close comments">
-          <X className="w-4 h-4 text-muted-foreground hover:text-foreground" />
+        <button type="button" onClick={() => setIsExpanded(false)} aria-label="Close comments" className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
+          <X className="w-4 h-4 text-muted-foreground hover:text-foreground" aria-hidden="true" />
         </button>
       </div>
 
@@ -234,8 +237,9 @@ export function CommentThread({ entityType, entityId, currentUserId }: CommentTh
           <>
             {hasNextPage && (
               <button
+                type="button"
                 onClick={() => fetchNextPage()}
-                className="text-xs text-primary hover:underline w-full text-center"
+                className="text-xs text-primary hover:underline w-full text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
               >
                 Load older comments
               </button>

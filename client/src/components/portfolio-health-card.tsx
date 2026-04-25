@@ -132,8 +132,8 @@ export function PortfolioHealthCard() {
           ))}
 
           <Link href="/portfolio">
-            <button className="text-xs text-primary flex items-center gap-1 hover:underline mt-1">
-              View Full Health <ArrowRight className="w-3 h-3" />
+            <button type="button" className="text-xs text-primary flex items-center gap-1 hover:underline mt-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm">
+              View Full Health <ArrowRight className="w-3 h-3" aria-hidden="true" />
             </button>
           </Link>
         </div>
@@ -160,8 +160,8 @@ export function TaxOptimizationBanner({ estimatedSavings }: { estimatedSavings?:
           </div>
         </div>
         <Link href="/portfolio/tax">
-          <button className="text-xs text-primary flex items-center gap-1 hover:underline">
-            Review <ArrowRight className="w-3 h-3" />
+          <button type="button" className="text-xs text-primary flex items-center gap-1 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm">
+            Review <ArrowRight className="w-3 h-3" aria-hidden="true" />
           </button>
         </Link>
       </CardContent>
