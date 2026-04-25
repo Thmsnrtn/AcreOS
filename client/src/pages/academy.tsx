@@ -1,10 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useId, useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { BookOpen, CheckCircle, Clock, PlayCircle, Zap, Trophy, Flame, Target, Download, Brain, ChevronRight } from 'lucide-react';
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { BookOpen, CheckCircle, Clock, PlayCircle, Zap, Flame, Target, Download, Brain, ChevronRight } from 'lucide-react';
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 // ─── Course Data ──────────────────────────────────────────────────────────────
 
@@ -147,17 +150,17 @@ const COURSES: Course[] = [
 const SECTIONS: { key: Course['section']; label: string; description: string }[] = [
   {
     key: 'getting-started',
-    label: 'Getting Started',
+    label: 'Getting started',
     description: 'Core concepts every land investor needs before making their first offer.',
   },
   {
     key: 'intermediate',
-    label: 'Intermediate Strategies',
+    label: 'Intermediate strategies',
     description: 'Level up your deal flow, financing, and market research skills.',
   },
   {
     key: 'advanced',
-    label: 'Advanced Tactics',
+    label: 'Advanced tactics',
     description: 'High-leverage tactics used by full-time land investors.',
   },
 ];
@@ -200,65 +203,72 @@ function toggleCompleted(courseId: string): Set<string> {
 // ─── Gamification Panel ───────────────────────────────────────────────────────
 
 const ACHIEVEMENT_BADGES = [
-  { id: 'first_complete', label: 'First Step', icon: '🎯', description: 'Complete your first course', threshold: 1 },
-  { id: 'halfway', label: 'Halfway There', icon: '⚡', description: 'Complete 50% of courses', threshold: COURSES.length / 2 },
-  { id: 'all_beginner', label: 'Land Basics', icon: '🌱', description: 'Complete all beginner courses', threshold: COURSES.filter(c => c.section === 'getting-started').length },
-  { id: 'all_courses', label: 'Land Master', icon: '🏆', description: 'Complete all courses', threshold: COURSES.length },
+  { id: 'first_complete', label: 'First step', icon: '🎯', description: 'Complete your first course', threshold: 1 },
+  { id: 'halfway', label: 'Halfway there', icon: '⚡', description: 'Complete 50% of courses', threshold: COURSES.length / 2 },
+  { id: 'all_beginner', label: 'Land basics', icon: '🌱', description: 'Complete all beginner courses', threshold: COURSES.filter(c => c.section === 'getting-started').length },
+  { id: 'all_courses', label: 'Land master', icon: '🏆', description: 'Complete all courses', threshold: COURSES.length },
 ];
 
 function GamificationPanel({ completed }: { completed: Set<string> }) {
   const completedCount = COURSES.filter(c => completed.has(c.id)).length;
   const xpPoints = completedCount * 150 + (COURSES.filter(c => completed.has(c.id) && c.difficulty === 'Advanced').length * 100);
-  const streakDays = Math.min(completedCount * 2, 14); // synthetic streak
-
-  const earnedBadges = ACHIEVEMENT_BADGES.filter(b => completedCount >= b.threshold);
+  const streakDays = Math.min(completedCount * 2, 14);
+  const overallPct = Math.round((completedCount / COURSES.length) * 100);
 
   return (
     <Card className="border-primary/20">
       <CardHeader className="pb-2">
         <CardTitle className="text-sm flex items-center gap-2">
-          <Zap className="w-4 h-4 text-yellow-500" /> Progress & Achievements
+          <Zap className="w-4 h-4 text-yellow-500" aria-hidden="true" /> Progress &amp; achievements
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className="grid grid-cols-3 gap-3 text-center">
+        <dl className="grid grid-cols-3 gap-3 text-center">
           <div className="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-2">
-            <p className="text-xl font-bold text-yellow-600">{xpPoints.toLocaleString()}</p>
-            <p className="text-xs text-muted-foreground">XP Points</p>
+            <dd className="text-xl font-bold text-yellow-600 tabular-nums">{xpPoints.toLocaleString()}</dd>
+            <dt className="text-xs text-muted-foreground">XP points</dt>
           </div>
           <div className="bg-orange-50 dark:bg-orange-900/20 rounded-lg p-2">
-            <div className="flex items-center justify-center gap-1">
-              <Flame className="w-4 h-4 text-orange-500" />
-              <p className="text-xl font-bold text-orange-600">{streakDays}</p>
-            </div>
-            <p className="text-xs text-muted-foreground">Day Streak</p>
+            <dd className="flex items-center justify-center gap-1">
+              <Flame className="w-4 h-4 text-orange-500" aria-hidden="true" />
+              <span className="text-xl font-bold text-orange-600 tabular-nums">{streakDays}</span>
+            </dd>
+            <dt className="text-xs text-muted-foreground">Day streak</dt>
           </div>
           <div className="bg-primary/10 rounded-lg p-2">
-            <p className="text-xl font-bold text-primary">{completedCount}/{COURSES.length}</p>
-            <p className="text-xs text-muted-foreground">Courses Done</p>
+            <dd className="text-xl font-bold text-primary tabular-nums">{completedCount}/{COURSES.length}</dd>
+            <dt className="text-xs text-muted-foreground">Courses done</dt>
           </div>
-        </div>
+        </dl>
 
-        <Progress value={(completedCount / COURSES.length) * 100} className="h-2" />
+        <Progress
+          value={overallPct}
+          className="h-2"
+          role="progressbar"
+          aria-valuenow={overallPct}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label={`Overall academy progress: ${overallPct} percent (${completedCount} of ${COURSES.length} courses)`}
+        />
 
-        {/* Badges */}
         <div>
-          <p className="text-xs font-medium text-muted-foreground mb-2">Achievement Badges</p>
-          <div className="flex flex-wrap gap-2">
+          <p id="achievement-badges-label" className="text-xs font-medium text-muted-foreground mb-2">Achievement badges</p>
+          <ul className="flex flex-wrap gap-2 list-none p-0 m-0" aria-labelledby="achievement-badges-label">
             {ACHIEVEMENT_BADGES.map(badge => {
               const earned = completedCount >= badge.threshold;
               return (
-                <div
+                <li
                   key={badge.id}
                   title={badge.description}
                   className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-xs border ${earned ? 'border-primary bg-primary/5 text-primary font-medium' : 'border-muted text-muted-foreground opacity-50'}`}
+                  aria-label={`${earned ? "Earned" : "Locked"}: ${badge.label} — ${badge.description}`}
                 >
-                  <span>{badge.icon}</span>
+                  <span aria-hidden="true">{badge.icon}</span>
                   <span>{badge.label}</span>
-                </div>
+                </li>
               );
             })}
-          </div>
+          </ul>
         </div>
       </CardContent>
     </Card>
@@ -281,29 +291,36 @@ function KnowledgeGapPanel({ completed }: { completed: Set<string> }) {
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm flex items-center gap-2">
-          <Target className="w-4 h-4 text-primary" /> Knowledge Gap Analysis
+          <Target className="w-4 h-4 text-primary" aria-hidden="true" /> Knowledge gap analysis
         </CardTitle>
         <CardDescription className="text-xs">Based on your completion progress per track</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        {gaps.map(gap => (
-          <div key={gap.label} className="space-y-1">
-            <div className="flex justify-between text-xs">
-              <span className={gap.pct < 50 ? 'text-red-600 font-medium' : 'text-muted-foreground'}>{gap.label}</span>
-              <span>{gap.done}/{gap.total} · {gap.pct}%</span>
-            </div>
-            <Progress
-              value={gap.pct}
-              className={`h-1.5 ${gap.pct < 50 ? '[&>div]:bg-red-500' : gap.pct < 80 ? '[&>div]:bg-yellow-500' : ''}`}
-            />
-          </div>
-        ))}
+        <ul className="space-y-3 list-none p-0 m-0" aria-label="Completion progress by track">
+          {gaps.map(gap => (
+            <li key={gap.label} className="space-y-1">
+              <div className="flex justify-between text-xs">
+                <span className={gap.pct < 50 ? 'text-red-600 font-medium' : 'text-muted-foreground'}>{gap.label}</span>
+                <span className="tabular-nums">{gap.done}/{gap.total} · {gap.pct}%</span>
+              </div>
+              <Progress
+                value={gap.pct}
+                className={`h-1.5 ${gap.pct < 50 ? '[&>div]:bg-red-500' : gap.pct < 80 ? '[&>div]:bg-yellow-500' : ''}`}
+                role="progressbar"
+                aria-valuenow={gap.pct}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label={`${gap.label} track: ${gap.done} of ${gap.total} courses complete${gap.pct < 50 ? ' — focus area' : ''}`}
+              />
+            </li>
+          ))}
+        </ul>
         {weakAreas.length > 0 ? (
-          <div className="text-xs text-muted-foreground bg-red-50 dark:bg-red-900/20 rounded p-2">
+          <div className="text-xs text-muted-foreground bg-red-50 dark:bg-red-900/20 rounded p-2" role="status">
             Focus areas: <strong>{weakAreas.map(w => w.label).join(', ')}</strong>
           </div>
         ) : (
-          <div className="text-xs text-green-700 bg-green-50 dark:bg-green-900/20 rounded p-2">
+          <div className="text-xs text-green-700 bg-green-50 dark:bg-green-900/20 rounded p-2" role="status">
             Great progress! No critical knowledge gaps detected.
           </div>
         )}
@@ -322,7 +339,7 @@ function LearningPathPanel({ completed, onStart }: { completed: Set<string>; onS
     <Card className="border-primary/30 bg-primary/5">
       <CardHeader className="pb-2">
         <CardTitle className="text-sm flex items-center gap-2">
-          <Brain className="w-4 h-4 text-primary" /> Your Next Recommended Module
+          <Brain className="w-4 h-4 text-primary" aria-hidden="true" /> Your next recommended module
         </CardTitle>
         <CardDescription className="text-xs">AI-curated based on your learning progress and goals</CardDescription>
       </CardHeader>
@@ -331,16 +348,20 @@ function LearningPathPanel({ completed, onStart }: { completed: Set<string>; onS
           <p className="font-semibold text-sm">{nextCourse.title}</p>
           <p className="text-xs text-muted-foreground mt-0.5">{nextCourse.description}</p>
           <div className="flex items-center gap-2 mt-1">
-            <Badge variant="secondary" className={`text-xs ${DIFFICULTY_COLORS[nextCourse.difficulty]}`}>
+            <Badge
+              variant="secondary"
+              className={`text-xs ${DIFFICULTY_COLORS[nextCourse.difficulty]}`}
+              aria-label={`Difficulty: ${nextCourse.difficulty}`}
+            >
               {nextCourse.difficulty}
             </Badge>
             <span className="flex items-center gap-1 text-xs text-muted-foreground">
-              <Clock className="w-3 h-3" />{nextCourse.estimatedTime}
+              <Clock className="w-3 h-3" aria-hidden="true" />{nextCourse.estimatedTime}
             </span>
           </div>
         </div>
-        <Button size="sm" onClick={() => onStart(nextCourse)}>
-          Start <ChevronRight className="w-3.5 h-3.5 ml-1" />
+        <Button size="sm" onClick={() => onStart(nextCourse)} aria-label={`Start course: ${nextCourse.title}`}>
+          Start <ChevronRight className="w-3.5 h-3.5 ml-1" aria-hidden="true" />
         </Button>
       </CardContent>
     </Card>
@@ -353,52 +374,69 @@ function AiTutorProfile() {
   const [goal, setGoal] = useState('Build passive income through owner financing');
   const [style, setStyle] = useState('visual');
   const [editing, setEditing] = useState(false);
+  const goalId = useId();
+  const styleLegendId = useId();
 
   return (
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm flex items-center gap-2">
-          <Brain className="w-4 h-4 text-primary" /> AI Tutor Profile
+          <Brain className="w-4 h-4 text-primary" aria-hidden="true" /> AI tutor profile
         </CardTitle>
         <CardDescription className="text-xs">Personalization settings for your learning experience</CardDescription>
       </CardHeader>
       <CardContent className="space-y-2 text-sm">
         <div className="flex items-start justify-between">
-          <div className="space-y-1 flex-1">
+          <dl className="space-y-1 flex-1">
             <div>
-              <span className="text-xs text-muted-foreground">Learning Goal</span>
-              <p className="font-medium">{goal}</p>
+              <dt className="text-xs text-muted-foreground">Learning goal</dt>
+              <dd className="font-medium">{goal}</dd>
             </div>
             <div>
-              <span className="text-xs text-muted-foreground">Learning Style</span>
-              <p className="capitalize font-medium">{style}</p>
+              <dt className="text-xs text-muted-foreground">Learning style</dt>
+              <dd className="capitalize font-medium">{style}</dd>
             </div>
-          </div>
-          <Button variant="ghost" size="sm" className="text-xs" onClick={() => setEditing(!editing)}>
+          </dl>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-xs"
+            onClick={() => setEditing(!editing)}
+            aria-expanded={editing}
+            aria-label={editing ? "Done editing tutor profile" : "Edit tutor profile"}
+          >
             {editing ? 'Done' : 'Edit'}
           </Button>
         </div>
         {editing && (
           <div className="space-y-2 pt-1 border-t">
             <div>
-              <label className="text-xs text-muted-foreground">Goal</label>
-              <input
-                className="w-full text-sm border rounded px-2 py-1 mt-0.5 bg-background"
+              <Label htmlFor={goalId} className="text-xs text-muted-foreground">Goal</Label>
+              <Input
+                id={goalId}
+                className="text-sm mt-0.5"
                 value={goal}
                 onChange={e => setGoal(e.target.value)}
+                autoCapitalize="sentences"
               />
             </div>
-            <div className="flex gap-2 flex-wrap">
-              {['visual', 'reading', 'hands-on', 'mixed'].map(s => (
-                <button
-                  key={s}
-                  onClick={() => setStyle(s)}
-                  className={`text-xs px-2 py-0.5 rounded border capitalize ${style === s ? 'bg-primary text-white border-primary' : 'border-muted'}`}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
+            <fieldset className="space-y-1">
+              <legend id={styleLegendId} className="text-xs text-muted-foreground">Learning style</legend>
+              <div className="flex gap-2 flex-wrap" role="group" aria-labelledby={styleLegendId}>
+                {['visual', 'reading', 'hands-on', 'mixed'].map(s => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setStyle(s)}
+                    aria-pressed={style === s}
+                    aria-label={`Learning style: ${s}`}
+                    className={`text-xs px-2 py-0.5 rounded border capitalize ${style === s ? 'bg-primary text-white border-primary' : 'border-muted'}`}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
           </div>
         )}
       </CardContent>
@@ -409,10 +447,10 @@ function AiTutorProfile() {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function AcademyPage() {
+  useDocumentTitle("Academy");
   const [completed, setCompleted] = useState<Set<string>>(new Set());
   const [activeCourse, setActiveCourse] = useState<Course | null>(null);
 
-  // Hydrate from localStorage on mount
   useEffect(() => {
     setCompleted(getCompleted());
   }, []);
@@ -432,13 +470,13 @@ export default function AcademyPage() {
       {/* Page Header */}
       <div className="space-y-1">
         <div className="flex items-center gap-3">
-          <BookOpen className="w-7 h-7 text-primary" />
+          <BookOpen className="w-7 h-7 text-primary" aria-hidden="true" />
           <h1 className="text-3xl font-bold">AcreOS Academy</h1>
         </div>
         <p className="text-muted-foreground text-sm">
           Master land investing with AI-powered learning
         </p>
-        <p className="text-xs text-muted-foreground">
+        <p className="text-xs text-muted-foreground tabular-nums" aria-live="polite">
           {completedCount} of {COURSES.length} courses completed
         </p>
       </div>
@@ -458,68 +496,73 @@ export default function AcademyPage() {
       {/* Sections */}
       {SECTIONS.map((section) => {
         const sectionCourses = COURSES.filter((c) => c.section === section.key);
+        const sectionHeadingId = `section-${section.key}-heading`;
         return (
-          <section key={section.key} className="space-y-4">
+          <section key={section.key} className="space-y-4" aria-labelledby={sectionHeadingId}>
             <div>
-              <h2 className="text-xl font-semibold">{section.label}</h2>
+              <h2 id={sectionHeadingId} className="text-xl font-semibold">{section.label}</h2>
               <p className="text-sm text-muted-foreground mt-0.5">{section.description}</p>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 list-none p-0 m-0">
               {sectionCourses.map((course) => {
                 const isDone = completed.has(course.id);
                 return (
-                  <Card
-                    key={course.id}
-                    className={`relative flex flex-col transition-shadow hover:shadow-md ${isDone ? 'border-emerald-300 dark:border-emerald-700' : ''}`}
-                  >
-                    {isDone && (
-                      <div className="absolute top-3 right-3">
-                        <CheckCircle className="w-5 h-5 text-emerald-500" />
-                      </div>
-                    )}
-                    <CardHeader className="pb-2 pr-10">
-                      <div className="flex items-start gap-2">
-                        <Badge
-                          variant="secondary"
-                          className={`text-xs shrink-0 ${DIFFICULTY_COLORS[course.difficulty]}`}
-                        >
-                          {course.difficulty}
-                        </Badge>
-                      </div>
-                      <CardTitle className="text-base mt-2 leading-snug">{course.title}</CardTitle>
-                      <CardDescription className="text-xs mt-1">{course.description}</CardDescription>
-                    </CardHeader>
-                    <CardContent className="flex flex-col gap-3 pt-0 mt-auto">
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <Clock className="w-3 h-3" />
-                        {course.estimatedTime}
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          className="flex-1 text-xs"
-                          variant={isDone ? 'outline' : 'default'}
-                          onClick={() => handleStart(course)}
-                        >
-                          <PlayCircle className="w-3.5 h-3.5 mr-1.5" />
-                          {isDone ? 'Review' : 'Start'}
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className={`text-xs px-2 ${isDone ? 'text-emerald-600' : 'text-muted-foreground'}`}
-                          onClick={() => handleMarkComplete(course.id)}
-                          title={isDone ? 'Mark incomplete' : 'Mark complete'}
-                        >
-                          <CheckCircle className="w-3.5 h-3.5" />
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
+                  <li key={course.id}>
+                    <Card
+                      className={`relative flex flex-col transition-shadow hover:shadow-md h-full ${isDone ? 'border-emerald-300 dark:border-emerald-700' : ''}`}
+                    >
+                      {isDone && (
+                        <div className="absolute top-3 right-3" role="img" aria-label="Course completed">
+                          <CheckCircle className="w-5 h-5 text-emerald-500" aria-hidden="true" />
+                        </div>
+                      )}
+                      <CardHeader className="pb-2 pr-10">
+                        <div className="flex items-start gap-2">
+                          <Badge
+                            variant="secondary"
+                            className={`text-xs shrink-0 ${DIFFICULTY_COLORS[course.difficulty]}`}
+                            aria-label={`Difficulty: ${course.difficulty}`}
+                          >
+                            {course.difficulty}
+                          </Badge>
+                        </div>
+                        <CardTitle className="text-base mt-2 leading-snug">{course.title}</CardTitle>
+                        <CardDescription className="text-xs mt-1">{course.description}</CardDescription>
+                      </CardHeader>
+                      <CardContent className="flex flex-col gap-3 pt-0 mt-auto">
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <Clock className="w-3 h-3" aria-hidden="true" />
+                          <span aria-label={`Estimated time: ${course.estimatedTime}`}>{course.estimatedTime}</span>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            className="flex-1 text-xs"
+                            variant={isDone ? 'outline' : 'default'}
+                            onClick={() => handleStart(course)}
+                            aria-label={`${isDone ? "Review" : "Start"} course: ${course.title}`}
+                          >
+                            <PlayCircle className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" />
+                            {isDone ? 'Review' : 'Start'}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className={`text-xs px-2 ${isDone ? 'text-emerald-600' : 'text-muted-foreground'}`}
+                            onClick={() => handleMarkComplete(course.id)}
+                            aria-pressed={isDone}
+                            aria-label={`${isDone ? 'Mark incomplete' : 'Mark complete'}: ${course.title}`}
+                          >
+                            <CheckCircle className="w-3.5 h-3.5" aria-hidden="true" />
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </li>
                 );
               })}
-            </div>
+            </ul>
           </section>
         );
       })}
@@ -551,17 +594,20 @@ export default function AcademyPage() {
           </DialogHeader>
 
           <div className="space-y-3 mt-2">
-            <p className="text-sm font-medium">What you'll learn:</p>
-            <ul className="space-y-2">
+            <p id="course-outline-label" className="text-sm font-medium">What you&apos;ll learn:</p>
+            <ol className="space-y-2 list-none p-0 m-0" aria-labelledby="course-outline-label">
               {activeCourse?.outline.map((point, i) => (
                 <li key={i} className="flex items-start gap-2 text-sm">
-                  <span className="mt-0.5 w-5 h-5 rounded-full bg-primary/10 text-primary text-xs flex items-center justify-center shrink-0 font-medium">
+                  <span
+                    className="mt-0.5 w-5 h-5 rounded-full bg-primary/10 text-primary text-xs flex items-center justify-center shrink-0 font-medium tabular-nums"
+                    aria-hidden="true"
+                  >
                     {i + 1}
                   </span>
                   <span className="text-muted-foreground">{point}</span>
                 </li>
               ))}
-            </ul>
+            </ol>
           </div>
 
           <div className="flex gap-2 mt-4 flex-wrap">
@@ -571,10 +617,17 @@ export default function AcademyPage() {
                 if (activeCourse) handleMarkComplete(activeCourse.id);
                 setActiveCourse(null);
               }}
+              aria-label={
+                activeCourse && completed.has(activeCourse.id)
+                  ? `Mark incomplete: ${activeCourse.title}`
+                  : activeCourse
+                  ? `Mark as complete: ${activeCourse.title}`
+                  : undefined
+              }
             >
               {activeCourse && completed.has(activeCourse.id)
-                ? 'Mark Incomplete'
-                : 'Mark as Complete'}
+                ? 'Mark incomplete'
+                : 'Mark as complete'}
             </Button>
             {activeCourse && completed.has(activeCourse.id) && (
               <Button
@@ -589,8 +642,9 @@ export default function AcademyPage() {
                   a.click();
                   URL.revokeObjectURL(url);
                 }}
+                aria-label={`Download certificate of completion for ${activeCourse.title}`}
               >
-                <Download className="w-3.5 h-3.5 mr-1.5" /> Certificate
+                <Download className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" /> Certificate
               </Button>
             )}
             <Button variant="outline" onClick={() => setActiveCourse(null)}>
