@@ -59,12 +59,12 @@ export function ChurnIntelligence() {
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base flex items-center gap-2">
-            <TrendingDown className="h-4 w-4 text-red-500" />
-            Churn Intelligence
+            <TrendingDown className="h-4 w-4 text-red-500" aria-hidden="true" />
+            Churn intelligence
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-2 animate-pulse">
+          <div role="status" aria-busy="true" aria-label="Loading churn intelligence" className="space-y-2 animate-pulse">
             {[0, 1, 2, 3].map(i => (
               <div key={i} className="h-10 bg-muted rounded" />
             ))}
@@ -88,38 +88,38 @@ export function ChurnIntelligence() {
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <CardTitle className="text-base flex items-center gap-2">
-            <TrendingDown className="h-4 w-4 text-red-500" />
-            Churn Intelligence
+            <TrendingDown className="h-4 w-4 text-red-500" aria-hidden="true" />
+            Churn intelligence
           </CardTitle>
-          <Badge variant="outline" className={`text-xs ${style.badge}`}>
-            <span className={`mr-1.5 h-1.5 w-1.5 rounded-full inline-block ${style.dot}`} />
+          <Badge variant="outline" className={`text-xs capitalize ${style.badge}`} aria-label={`Status: ${churnMetrics.status}`}>
+            <span aria-hidden="true" className={`mr-1.5 h-1.5 w-1.5 rounded-full inline-block ${style.dot}`} />
             {churnMetrics.status}
           </Badge>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Rate vs benchmark */}
-        <div className="grid grid-cols-3 gap-1 text-center">
+        <dl className="grid grid-cols-3 gap-1 text-center m-0">
           <div>
-            <p className={`text-2xl font-bold ${churnMetrics.status === "healthy" ? "text-green-600" : churnMetrics.status === "watch" ? "text-amber-600" : "text-red-600"}`}>
+            <dd className={`text-2xl font-bold tabular-nums m-0 ${churnMetrics.status === "healthy" ? "text-green-600" : churnMetrics.status === "watch" ? "text-amber-600" : "text-red-600"}`}>
               {churnRate.toFixed(1)}%
-            </p>
-            <p className="text-[11px] text-muted-foreground">Your churn</p>
+            </dd>
+            <dt className="text-[11px] text-muted-foreground">Your churn</dt>
           </div>
           <div>
-            <p className="text-2xl font-bold text-muted-foreground">{churnMetrics.industryBenchmark}%</p>
-            <p className="text-[11px] text-muted-foreground">Industry avg</p>
+            <dd className="text-2xl font-bold text-muted-foreground tabular-nums m-0">{churnMetrics.industryBenchmark}%</dd>
+            <dt className="text-[11px] text-muted-foreground">Industry avg</dt>
           </div>
           <div>
-            <p className={`text-2xl font-bold ${vsIndustry <= 0 ? "text-green-600" : "text-red-600"}`}>
+            <dd className={`text-2xl font-bold tabular-nums m-0 ${vsIndustry <= 0 ? "text-green-600" : "text-red-600"}`}>
               {vsIndustry > 0 ? "+" : ""}{vsIndustry.toFixed(1)}%
-            </p>
-            <p className="text-[11px] text-muted-foreground">vs benchmark</p>
+            </dd>
+            <dt className="text-[11px] text-muted-foreground">vs benchmark</dt>
           </div>
-        </div>
+        </dl>
 
         {/* Visual benchmark comparison bar */}
-        <div className="space-y-1.5">
+        <div className="space-y-1.5" aria-hidden="true">
           <div className="flex justify-between text-[10px] text-muted-foreground">
             <span>0%</span>
             <span>5%</span>
@@ -154,42 +154,51 @@ export function ChurnIntelligence() {
         {/* At-risk orgs */}
         {atRiskOrgs.length > 0 ? (
           <div className="space-y-1.5">
-            <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-              <AlertTriangle className="h-3 w-3 text-amber-500" />
-              {atRiskOrgs.length} paying {atRiskOrgs.length === 1 ? "org" : "orgs"} at risk
+            <p id="at-risk-heading" className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+              <AlertTriangle className="h-3 w-3 text-amber-500" aria-hidden="true" />
+              <span className="tabular-nums">{atRiskOrgs.length}</span> paying {atRiskOrgs.length === 1 ? "org" : "orgs"} at risk
             </p>
-            {atRiskOrgs.slice(0, 5).map(org => (
-              <div key={org.id} className="flex items-center justify-between py-1 border-b last:border-0">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className={`h-2 w-2 rounded-full shrink-0 ${
-                    org.churnSignal === "high" ? "bg-red-500" : "bg-amber-500"
-                  }`} />
-                  <span className="text-sm truncate">{org.name}</span>
-                  {org.tier && (
-                    <Badge variant="outline" className="text-[10px] py-0 px-1.5 h-4 shrink-0 capitalize">
-                      {org.tier}
-                    </Badge>
-                  )}
-                </div>
-                <div className="flex items-center gap-1 shrink-0 ml-2">
-                  <Clock className="h-3 w-3 text-muted-foreground" />
-                  <span className="text-[11px] text-muted-foreground">
-                    {org.daysSinceLastActive != null
-                      ? `${org.daysSinceLastActive}d idle`
-                      : org.lastActiveAt
-                      ? relative(org.lastActiveAt)
-                      : "—"}
-                  </span>
-                </div>
-              </div>
-            ))}
+            <ul aria-labelledby="at-risk-heading" className="list-none p-0 m-0">
+              {atRiskOrgs.slice(0, 5).map(org => {
+                const idleText = org.daysSinceLastActive != null
+                  ? `${org.daysSinceLastActive}d idle`
+                  : org.lastActiveAt
+                  ? relative(org.lastActiveAt)
+                  : "—";
+                return (
+                  <li
+                    key={org.id}
+                    className="flex items-center justify-between py-1 border-b last:border-0"
+                    aria-label={`${org.name}${org.tier ? `, ${org.tier} tier` : ""}, ${idleText}, ${org.churnSignal} risk`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span aria-hidden="true" className={`h-2 w-2 rounded-full shrink-0 ${
+                        org.churnSignal === "high" ? "bg-red-500" : "bg-amber-500"
+                      }`} />
+                      <span className="text-sm truncate">{org.name}</span>
+                      {org.tier && (
+                        <Badge variant="outline" className="text-[10px] py-0 px-1.5 h-4 shrink-0 capitalize">
+                          {org.tier}
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0 ml-2">
+                      <Clock className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
+                      <span className="text-[11px] text-muted-foreground tabular-nums">
+                        {idleText}
+                      </span>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
             {atRiskOrgs.length > 5 && (
-              <p className="text-xs text-muted-foreground">+{atRiskOrgs.length - 5} more at risk</p>
+              <p className="text-xs text-muted-foreground">+<span className="tabular-nums">{atRiskOrgs.length - 5}</span> more at risk</p>
             )}
           </div>
         ) : (
-          <div className="flex items-center gap-2 py-2 text-sm text-green-600">
-            <CheckCircle2 className="h-4 w-4" />
+          <div role="status" className="flex items-center gap-2 py-2 text-sm text-green-600">
+            <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
             <span>No paying orgs at churn risk</span>
           </div>
         )}
@@ -198,20 +207,20 @@ export function ChurnIntelligence() {
         {recentCancellations.length > 0 && (
           <div className="flex items-center justify-between text-xs pt-1 border-t">
             <span className="text-muted-foreground">Cancelled last 30d</span>
-            <span className="font-medium text-red-500">{recentCancellations.length}</span>
+            <span className="font-medium text-red-500 tabular-nums">{recentCancellations.length}</span>
           </div>
         )}
 
         {/* AI recommendations */}
         {recommendations.length > 0 && (
-          <div className="space-y-1 pt-1 border-t">
+          <ul aria-label="Recommendations" className="space-y-1 pt-1 border-t list-none p-0 m-0">
             {recommendations.slice(0, 2).map((rec, i) => (
-              <p key={i} className="text-xs text-muted-foreground flex items-start gap-1.5">
-                <span className="text-blue-500 shrink-0 mt-0.5">→</span>
+              <li key={i} className="text-xs text-muted-foreground flex items-start gap-1.5">
+                <span aria-hidden="true" className="text-blue-500 shrink-0 mt-0.5">→</span>
                 <span>{rec}</span>
-              </p>
+              </li>
             ))}
-          </div>
+          </ul>
         )}
       </CardContent>
     </Card>
