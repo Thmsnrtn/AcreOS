@@ -247,6 +247,7 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
                 <Input
                   id="radius"
                   type="number"
+                  inputMode="numeric"
                   value={radius}
                   onChange={(e) => setRadius(Number(e.target.value) || 5)}
                   min={1}
@@ -259,6 +260,7 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
                 <Input
                   id="minAcreage"
                   type="number"
+                  inputMode="decimal"
                   value={minAcreage}
                   onChange={(e) => setMinAcreage(e.target.value)}
                   placeholder={`e.g., ${Math.max(0, Number(property.sizeAcres) * 0.5).toFixed(1)}`}
@@ -270,6 +272,7 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
                 <Input
                   id="maxAcreage"
                   type="number"
+                  inputMode="decimal"
                   value={maxAcreage}
                   onChange={(e) => setMaxAcreage(e.target.value)}
                   placeholder={`e.g., ${(Number(property.sizeAcres) * 1.5).toFixed(1)}`}

@@ -563,6 +563,7 @@ export function CustomFieldValuesEditor({ entityType, entityId, compact = false 
                 <Input
                   id={`custom-field-${def.id}`}
                   type="number"
+                  inputMode="decimal"
                   value={currentValue}
                   onChange={(e) => handleValueChange(def.id, e.target.value)}
                   placeholder={def.placeholder || undefined}

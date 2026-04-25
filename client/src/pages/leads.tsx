@@ -1849,6 +1849,7 @@ export default function LeadsPage() {
               <label className="text-sm font-medium">Offer Amount (Optional)</label>
               <Input
                 type="number"
+                inputMode="decimal"
                 placeholder="Enter offer amount..."
                 value={offerAmount}
                 onChange={(e) => setOfferAmount(e.target.value)}

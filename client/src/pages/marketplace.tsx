@@ -287,6 +287,7 @@ function ListingDetailDialog({
                   <Input
                     id="bid-amount"
                     type="number"
+                    inputMode="decimal"
                     placeholder={String(listing.askingPrice ?? '')}
                     className="pl-8"
                     value={bidAmount}
@@ -1182,6 +1183,7 @@ export default function MarketplacePage() {
                 <Input
                   id="create-price"
                   type="number"
+                  inputMode="decimal"
                   placeholder="50000"
                   className="pl-9"
                   value={createAskingPrice}
