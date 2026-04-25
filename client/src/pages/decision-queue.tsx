@@ -40,6 +40,7 @@ interface PaxPanelState {
   contextLabel: string;
   prefillMessage: string;
   response: string | null;
+  responseIsError: boolean;
   isLoading: boolean;
 }
 
@@ -88,6 +89,7 @@ export default function DecisionQueuePage() {
     contextLabel: '',
     prefillMessage: '',
     response: null,
+    responseIsError: false,
     isLoading: false,
   });
   const [paxInput, setPaxInput] = useState('');
@@ -195,7 +197,7 @@ export default function DecisionQueuePage() {
   const isLoading = leadsLoading || dealsLoading;
 
   function openPax(prefillMessage: string, contextLabel: string) {
-    setPax({ isOpen: true, contextLabel, prefillMessage, response: null, isLoading: false });
+    setPax({ isOpen: true, contextLabel, prefillMessage, response: null, responseIsError: false, isLoading: false });
     setPaxInput(prefillMessage);
   }
 
@@ -203,7 +205,7 @@ export default function DecisionQueuePage() {
     const message = paxInput.trim();
     if (!message) return;
 
-    setPax(prev => ({ ...prev, isLoading: true, response: null }));
+    setPax(prev => ({ ...prev, isLoading: true, response: null, responseIsError: false }));
 
     try {
       const res = await fetch('/api/ai/chat', {
@@ -218,9 +220,14 @@ export default function DecisionQueuePage() {
       const replyText: string =
         data.response ?? data.message ?? data.content ?? data.reply ?? 'No response received.';
 
-      setPax(prev => ({ ...prev, response: replyText, isLoading: false }));
+      setPax(prev => ({ ...prev, response: replyText, responseIsError: false, isLoading: false }));
     } catch (err: any) {
-      setPax(prev => ({ ...prev, response: `Error: ${err.message}`, isLoading: false }));
+      setPax(prev => ({
+        ...prev,
+        response: `${err.message ?? 'Network error'} — your question is still in the input above. Try again or open the full AI hub.`,
+        responseIsError: true,
+        isLoading: false,
+      }));
     }
   }
 
@@ -516,18 +523,24 @@ export default function DecisionQueuePage() {
 
             {pax.response && (
               <div
-                className="rounded-lg bg-muted p-4 text-sm whitespace-pre-wrap"
-                role="status"
-                aria-live="polite"
+                className={`rounded-lg p-4 text-sm whitespace-pre-wrap ${pax.responseIsError ? "bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/40" : "bg-muted"}`}
+                role={pax.responseIsError ? "alert" : "status"}
+                aria-live={pax.responseIsError ? "assertive" : "polite"}
               >
-                <p className="font-semibold text-xs text-purple-600 mb-1">Pax</p>
+                <p className={`font-semibold text-xs mb-1 ${pax.responseIsError ? "text-red-600" : "text-purple-600"}`}>
+                  {pax.responseIsError ? "Pax couldn't reach the assistant" : "Pax replied"}
+                </p>
                 {pax.response}
               </div>
             )}
 
             <div className="text-xs text-center text-muted-foreground">
               For a full conversation,{' '}
-              <a href="/ai" className="text-purple-600 underline hover:no-underline">
+              <a
+                href="/ai"
+                className="text-purple-600 underline hover:no-underline"
+                aria-label="Open AI hub for a full Pax conversation"
+              >
                 open AI hub
               </a>.
             </div>
