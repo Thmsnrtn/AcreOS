@@ -167,7 +167,7 @@ export function EmailDomainsSettings() {
           <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
             <DialogTrigger asChild>
               <Button size="sm" data-testid="button-add-domain">
-                <Plus className="w-4 h-4 mr-1" /> Add Domain
+                <Plus className="w-4 h-4 mr-1" aria-hidden="true" /> Add domain
               </Button>
             </DialogTrigger>
             <DialogContent>
@@ -253,7 +253,7 @@ export function EmailDomainsSettings() {
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <div className="text-sm text-muted-foreground">Loading domains...</div>
+          <div role="status" aria-busy="true" aria-live="polite" className="text-sm text-muted-foreground">Loading domains…</div>
         ) : domains.length === 0 ? (
           <div className="text-sm text-muted-foreground py-4 text-center">
             No domains added yet. Add a domain to send emails from your own address.
@@ -297,8 +297,8 @@ export function EmailDomainsSettings() {
                           onClick={() => setDefaultMutation.mutate(domain.id)}
                           data-testid={`button-set-default-${domain.id}`}
                         >
-                          <Star className="w-4 h-4 mr-1" />
-                          Set Default
+                          <Star className="w-4 h-4 mr-1" aria-hidden="true" />
+                          Set default
                         </Button>
                       )}
                       <CollapsibleTrigger asChild>
@@ -310,10 +310,10 @@ export function EmailDomainsSettings() {
                         size="icon"
                         variant="ghost"
                         onClick={() => deleteDomainMutation.mutate(domain.id)}
-                        aria-label="Delete domain"
+                        aria-label={`Delete domain ${domain.domain}`}
                         data-testid={`button-delete-domain-${domain.id}`}
                       >
-                        <Trash2 className="w-4 h-4 text-destructive" />
+                        <Trash2 className="w-4 h-4 text-destructive" aria-hidden="true" />
                       </Button>
                     </div>
                   </div>
