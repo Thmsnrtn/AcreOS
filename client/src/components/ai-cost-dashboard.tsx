@@ -42,7 +42,7 @@ export function AICostDashboard() {
 
   if (isLoading) {
     return (
-      <Card>
+      <Card role="status" aria-busy="true" aria-label="Loading AI cost savings">
         <CardHeader>
           <Skeleton className="h-6 w-48" />
           <Skeleton className="h-4 w-72 mt-2" />
@@ -53,6 +53,7 @@ export function AICostDashboard() {
               <Skeleton key={i} className="h-24 w-full" />
             ))}
           </div>
+          <span className="sr-only">Loading…</span>
         </CardContent>
       </Card>
     );

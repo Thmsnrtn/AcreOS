@@ -70,13 +70,19 @@ export function CalendarWidget() {
 
   if (isLoading) {
     return (
-      <div className="border rounded-lg p-4 space-y-3">
+      <div
+        role="status"
+        aria-busy="true"
+        aria-label="Loading calendar"
+        className="border rounded-lg p-4 space-y-3"
+      >
         <Skeleton className="h-5 w-32" />
         <div className="grid grid-cols-7 gap-1">
           {Array.from({ length: 7 }).map((_, i) => (
             <Skeleton key={i} className="h-16" />
           ))}
         </div>
+        <span className="sr-only">Loading…</span>
       </div>
     );
   }

@@ -97,7 +97,7 @@ export function PortfolioHealthCard() {
 
   if (isLoading) {
     return (
-      <Card className="floating-window">
+      <Card className="floating-window" role="status" aria-busy="true" aria-label="Loading portfolio health">
         <CardContent className="p-6 flex items-center gap-6">
           <Skeleton className="w-[100px] h-[70px]" />
           <div className="space-y-2 flex-1">
@@ -108,6 +108,7 @@ export function PortfolioHealthCard() {
             <Skeleton className="h-2 w-full" />
           </div>
         </CardContent>
+        <span className="sr-only">Loading…</span>
       </Card>
     );
   }

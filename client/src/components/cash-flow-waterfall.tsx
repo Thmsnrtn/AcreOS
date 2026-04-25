@@ -41,15 +41,16 @@ export function CashFlowWaterfall() {
 
   if (isLoading) {
     return (
-      <Card>
+      <Card role="status" aria-busy="true" aria-label="Loading cash flow waterfall">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
-            <DollarSign className="h-4 w-4" />
-            Cash Flow Waterfall
+            <DollarSign className="h-4 w-4" aria-hidden="true" />
+            Cash flow waterfall
           </CardTitle>
         </CardHeader>
         <CardContent>
           <Skeleton className="h-[250px] w-full" />
+          <span className="sr-only">Loading…</span>
         </CardContent>
       </Card>
     );

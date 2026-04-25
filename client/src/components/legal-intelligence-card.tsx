@@ -50,13 +50,14 @@ export function LegalIntelligenceCard({
 
   if (isLoading) {
     return (
-      <Card>
+      <Card role="status" aria-busy="true" aria-label="Loading legal intelligence">
         <CardHeader>
           <Skeleton className="h-5 w-40" />
         </CardHeader>
         <CardContent className="space-y-3">
           <Skeleton className="h-12 w-full" />
           <Skeleton className="h-12 w-full" />
+          <span className="sr-only">Loading…</span>
         </CardContent>
       </Card>
     );
