@@ -185,8 +185,8 @@ function ScoreDetailsDialog({
     },
     onError: () => {
       toast({
-        title: "Error",
-        description: "Failed to rescore lead.",
+        title: "Couldn't rescore lead",
+        description: "The existing score is unchanged. Try again.",
         variant: "destructive",
       });
     },
@@ -371,15 +371,15 @@ function RescoreMenuItem({ leadId }: { leadId: number }) {
     },
     onError: () => {
       toast({
-        title: "Error",
-        description: "Failed to rescore lead.",
+        title: "Couldn't rescore lead",
+        description: "The existing score is unchanged. Try again.",
         variant: "destructive",
       });
     },
   });
 
   return (
-    <DropdownMenuItem 
+    <DropdownMenuItem
       onClick={() => rescoreMutation.mutate()} 
       disabled={rescoreMutation.isPending}
       data-testid={`button-rescore-menu-${leadId}`}
@@ -512,8 +512,8 @@ function TcpaConsentToggle({ lead }: { lead: Lead }) {
     },
     onError: () => {
       toast({
-        title: "Error",
-        description: "Failed to update consent status.",
+        title: "Couldn't update consent status",
+        description: "TCPA consent is unchanged. Try again.",
         variant: "destructive",
       });
     },

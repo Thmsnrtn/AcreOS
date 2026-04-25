@@ -1664,8 +1664,8 @@ export default function CommandCenterPage() {
           setCurrentConversationId(conversationId);
         } catch (err) {
           toast({
-            title: "Error",
-            description: "Failed to create conversation. Please try again.",
+            title: "Couldn't start conversation",
+            description: "Your message draft is preserved. Try sending again.",
             variant: "destructive",
           });
           setInput(message);

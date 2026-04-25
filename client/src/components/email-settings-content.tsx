@@ -246,8 +246,8 @@ export function EmailSettingsContent() {
     },
     onError: (err: Error) => {
       toast({
-        title: "Failed to Add Domain",
-        description: err.message,
+        title: "Couldn't add domain",
+        description: `${err.message} — your existing domains are unchanged.`,
         variant: "destructive",
       });
     },
@@ -268,8 +268,8 @@ export function EmailSettingsContent() {
     },
     onError: (err: Error) => {
       toast({
-        title: "Failed to Update",
-        description: err.message,
+        title: "Couldn't update default identity",
+        description: `${err.message} — the previous default is still active.`,
         variant: "destructive",
       });
     },
@@ -290,8 +290,8 @@ export function EmailSettingsContent() {
     },
     onError: (err: Error) => {
       toast({
-        title: "Failed to Remove",
-        description: err.message,
+        title: "Couldn't remove identity",
+        description: `${err.message} — the identity is still active.`,
         variant: "destructive",
       });
     },
@@ -320,8 +320,8 @@ export function EmailSettingsContent() {
     },
     onError: (err: Error) => {
       toast({
-        title: "Failed to Update",
-        description: err.message,
+        title: "Couldn't update routing",
+        description: `${err.message} — the previous routing settings are unchanged.`,
         variant: "destructive",
       });
     },

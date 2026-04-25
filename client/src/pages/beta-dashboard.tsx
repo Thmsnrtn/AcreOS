@@ -141,7 +141,7 @@ export default function BetaDashboardPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/beta/admin/waitlist"] });
       queryClient.invalidateQueries({ queryKey: ["/api/beta/admin/stats"] });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: any) => toast({ title: "Couldn't send invite", description: `${err.message} — your draft email is preserved.`, variant: "destructive" }),
   });
 
   const activateMutation = useMutation({
@@ -152,7 +152,7 @@ export default function BetaDashboardPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/beta/admin/waitlist"] });
       queryClient.invalidateQueries({ queryKey: ["/api/beta/admin/stats"] });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: any) => toast({ title: "Couldn't activate user", description: `${err.message} — their access is unchanged.`, variant: "destructive" }),
   });
 
   return (

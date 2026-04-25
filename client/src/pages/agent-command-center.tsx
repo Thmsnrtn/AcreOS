@@ -608,7 +608,7 @@ export default function AgentCommandCenter() {
       toast({ title: "Task approved and queued for execution" });
     },
     onError: (err: any) => {
-      toast({ title: "Failed to approve", description: err.message, variant: "destructive" });
+      toast({ title: "Couldn't approve task", description: `${err.message} — the task is still pending.`, variant: "destructive" });
     },
   });
 
@@ -620,7 +620,7 @@ export default function AgentCommandCenter() {
       toast({ title: "Task rejected" });
     },
     onError: (err: any) => {
-      toast({ title: "Failed to reject", description: err.message, variant: "destructive" });
+      toast({ title: "Couldn't reject task", description: `${err.message} — the task is still pending.`, variant: "destructive" });
     },
   });
 
@@ -632,7 +632,7 @@ export default function AgentCommandCenter() {
       toast({ title: "Task executed" });
     },
     onError: (err: any) => {
-      toast({ title: "Execution failed", description: err.message, variant: "destructive" });
+      toast({ title: "Couldn't execute task", description: `${err.message} — the task is unchanged.`, variant: "destructive" });
     },
   });
 

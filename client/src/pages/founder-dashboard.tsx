@@ -1622,7 +1622,7 @@ export default function FounderDashboard() {
       toast({ title: "Endpoints added", description: data.message });
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to add endpoints", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't add endpoints", description: `${error.message} — your existing endpoints are unchanged.`, variant: "destructive" });
     },
   });
 
@@ -4928,7 +4928,7 @@ function FeatureFlagsSection() {
       refetch();
       queryClient.invalidateQueries({ queryKey: ["/api/config/features"] });
     },
-    onError: () => toast({ title: "Failed to update flag", variant: "destructive" }),
+    onError: () => toast({ title: "Couldn't update flag", description: "The flag's existing value is unchanged.", variant: "destructive" }),
   });
 
   return (
@@ -5004,7 +5004,7 @@ function PricingSection() {
         displayPriceYearly: yearly,
       }),
     onSuccess: () => { refetch(); setEditingTier(null); toast({ title: "Prices updated" }); },
-    onError: () => toast({ title: "Failed to update prices", variant: "destructive" }),
+    onError: () => toast({ title: "Couldn't update prices", description: "Tier pricing is unchanged. Try again.", variant: "destructive" }),
   });
 
   const createPromoMutation = useMutation({
@@ -5015,20 +5015,20 @@ function PricingSection() {
         promoEndsAt: endsAt,
       }),
     onSuccess: () => { refetch(); setPromoForm(null); toast({ title: "Promotion activated" }); },
-    onError: () => toast({ title: "Failed to create promotion", variant: "destructive" }),
+    onError: () => toast({ title: "Couldn't create promotion", description: "No promotion was activated. Try again.", variant: "destructive" }),
   });
 
   const clearPromoMutation = useMutation({
     mutationFn: async (tier: string) => apiRequest("DELETE", `/api/founder/pricing/${tier}/promo`),
     onSuccess: () => { refetch(); toast({ title: "Promotion cleared" }); },
-    onError: () => toast({ title: "Failed to clear promotion", variant: "destructive" }),
+    onError: () => toast({ title: "Couldn't clear promotion", description: "The promotion is still active. Try again.", variant: "destructive" }),
   });
 
   const togglePromoCodesMutation = useMutation({
     mutationFn: async ({ tier, allow }: { tier: string; allow: boolean }) =>
       apiRequest("PUT", `/api/founder/pricing/${tier}`, { allowPromoCodes: allow }),
     onSuccess: () => refetch(),
-    onError: () => toast({ title: "Failed to update", variant: "destructive" }),
+    onError: () => toast({ title: "Couldn't update promo code setting", description: "The existing setting is unchanged.", variant: "destructive" }),
   });
 
   const tierLabels: Record<string, string> = {
@@ -5315,7 +5315,7 @@ function GrowthSection() {
   const saveAdAccountMutation = useMutation({
     mutationFn: async (data: typeof adForm) => apiRequest("PUT", "/api/founder/growth/ad-account", data),
     onSuccess: () => { refetchAccount(); setShowAdAccountForm(false); toast({ title: "Ad account saved" }); },
-    onError: () => toast({ title: "Failed to save ad account", variant: "destructive" }),
+    onError: () => toast({ title: "Couldn't save ad account", description: "Your existing ad account credentials are unchanged.", variant: "destructive" }),
   });
 
   const generateCreativeMutation = useMutation({
@@ -5325,7 +5325,7 @@ function GrowthSection() {
       setBundleId(data.bundleId);
       setWizardStep("generating");
     },
-    onError: (err: any) => toast({ title: err?.message || "Failed to start generation", variant: "destructive" }),
+    onError: (err: any) => toast({ title: "Couldn't start generation", description: `${err?.message || "Try again"} — no creative bundle was generated.`, variant: "destructive" }),
   });
 
   const regenerateCopyMutation = useMutation({
@@ -5336,7 +5336,7 @@ function GrowthSection() {
       setRegeneratingAngle(null);
       toast({ title: "Copy variant refreshed" });
     },
-    onError: () => { setRegeneratingAngle(null); toast({ title: "Regeneration failed", variant: "destructive" }); },
+    onError: () => { setRegeneratingAngle(null); toast({ title: "Couldn't regenerate copy", description: "The existing variant is unchanged.", variant: "destructive" }); },
   });
 
   const deployMutation = useMutation({
@@ -5355,20 +5355,20 @@ function GrowthSection() {
       resetWizard();
       toast({ title: "Campaign deployed!", description: "Check Meta Ads Manager to activate it." });
     },
-    onError: (err: any) => toast({ title: err?.message || "Deploy failed", variant: "destructive" }),
+    onError: (err: any) => toast({ title: "Couldn't deploy campaign", description: `${err?.message || "Try again"} — no campaign was created in Meta.`, variant: "destructive" }),
   });
 
   const toggleCampaignMutation = useMutation({
     mutationFn: async ({ id, status }: { id: number; status: string }) =>
       apiRequest("PUT", `/api/founder/growth/campaigns/${id}/status`, { status }),
     onSuccess: () => { refetchCampaigns(); toast({ title: "Campaign updated" }); },
-    onError: () => toast({ title: "Failed to update campaign", variant: "destructive" }),
+    onError: () => toast({ title: "Couldn't update campaign", description: "The campaign's existing status is unchanged.", variant: "destructive" }),
   });
 
   const syncStatsMutation = useMutation({
     mutationFn: async (id: number) => apiRequest("POST", `/api/founder/growth/campaigns/${id}/sync`),
     onSuccess: () => { refetchCampaigns(); toast({ title: "Stats synced" }); },
-    onError: () => toast({ title: "Failed to sync stats", variant: "destructive" }),
+    onError: () => toast({ title: "Couldn't sync stats", description: "Last-known stats are still displayed.", variant: "destructive" }),
   });
 
   function resetWizard() {
@@ -6044,7 +6044,7 @@ function ActionQueuePanel() {
     onSuccess: (data: { draft: string; ticketId: number }) => {
       setDrafts((d) => ({ ...d, [data.ticketId]: data.draft }));
     },
-    onError: () => toast({ title: "Failed to generate draft", variant: "destructive" }),
+    onError: () => toast({ title: "Couldn't generate draft", description: "Compose a reply manually below.", variant: "destructive" }),
   });
 
   const replyMutation = useMutation({
@@ -6054,7 +6054,7 @@ function ActionQueuePanel() {
       refetch();
       toast({ title: "Reply sent and ticket resolved" });
     },
-    onError: () => toast({ title: "Failed to send reply", variant: "destructive" }),
+    onError: () => toast({ title: "Couldn't send reply", description: "Your draft is preserved. Try sending again.", variant: "destructive" }),
   });
 
   const items = data?.items || [];
@@ -7105,7 +7105,7 @@ function AgentTeamPanel() {
       setGoalOpen(false);
       setGoalText("");
     } catch {
-      toast({ title: "Failed to assign goal", variant: "destructive" });
+      toast({ title: "Couldn't assign goal", description: "The agent has not received a new goal. Try again.", variant: "destructive" });
     }
   };
 

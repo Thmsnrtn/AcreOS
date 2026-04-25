@@ -193,7 +193,7 @@ export function handleApiError(error: unknown, fallbackMessage?: string): void {
   console.error("[API Error]", err);
   
   toast({
-    title: "Error",
+    title: "Something went wrong",
     description: fallbackMessage || message,
     variant: "destructive",
   });

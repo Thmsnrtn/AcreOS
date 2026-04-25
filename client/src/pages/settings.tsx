@@ -1159,8 +1159,8 @@ export default function Settings() {
                           }
                         } catch (error) {
                           toast({
-                            title: "Error",
-                            description: "Failed to reset onboarding",
+                            title: "Couldn't reset onboarding",
+                            description: "Your onboarding state is unchanged. Try again.",
                             variant: "destructive",
                           });
                         }
@@ -1360,8 +1360,8 @@ export default function Settings() {
                                           },
                                           onError: (error) => {
                                             toast({
-                                              title: "Error",
-                                              description: error.message || "Failed to update role",
+                                              title: "Couldn't update role",
+                                              description: `${error.message || "Try again"} — the member's existing role is unchanged.`,
                                               variant: "destructive",
                                             });
                                           },

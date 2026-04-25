@@ -88,8 +88,8 @@ export default function FeatureFlagsPage() {
     },
     onError: (error: any) => {
       toast({
-        title: "Failed to update flag",
-        description: error.message || "Something went wrong.",
+        title: "Couldn't update flag",
+        description: `${error.message || "No change was applied"} — the flag's existing value is unchanged.`,
         variant: "destructive",
       });
     },

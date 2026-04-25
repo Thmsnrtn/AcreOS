@@ -77,8 +77,8 @@ export function useFetchPropertyParcel() {
     },
     onError: (error: Error) => {
       toast({
-        title: "Failed to fetch parcel data",
-        description: error.message,
+        title: "Couldn't fetch parcel data",
+        description: `${error.message} — your existing property records are unchanged.`,
         variant: "destructive",
       });
     },
@@ -114,8 +114,8 @@ export function useFetchAllParcels() {
     },
     onError: (error: Error) => {
       toast({
-        title: "Failed to fetch parcel data",
-        description: error.message,
+        title: "Couldn't fetch parcel data",
+        description: `${error.message} — your existing property records are unchanged.`,
         variant: "destructive",
       });
     },

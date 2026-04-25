@@ -109,7 +109,7 @@ export default function ListingsPage() {
       toast({ title: "Listing created successfully" });
     },
     onError: (error: any) => {
-      toast({ title: "Failed to create listing", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't create listing", description: `${error.message} — your draft is preserved.`, variant: "destructive" });
     },
   });
 
@@ -122,7 +122,7 @@ export default function ListingsPage() {
       toast({ title: "Listing deleted" });
     },
     onError: (error: any) => {
-      toast({ title: "Failed to delete listing", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't delete listing", description: `${error.message} — the listing is still live.`, variant: "destructive" });
     },
   });
 
@@ -138,7 +138,7 @@ export default function ListingsPage() {
       toast({ title: "Listing published to selected platforms" });
     },
     onError: (error: any) => {
-      toast({ title: "Failed to publish listing", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't publish listing", description: `${error.message} — no platforms received the listing.`, variant: "destructive" });
     },
   });
 
@@ -151,7 +151,7 @@ export default function ListingsPage() {
       toast({ title: "Listing unpublished" });
     },
     onError: (error: any) => {
-      toast({ title: "Failed to unpublish listing", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't unpublish listing", description: `${error.message} — the listing is still live on its current platforms.`, variant: "destructive" });
     },
   });
 

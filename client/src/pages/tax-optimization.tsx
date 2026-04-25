@@ -255,7 +255,7 @@ function CreateScenarioDialog({ onSuccess }: { onSuccess: () => void }) {
       setForm({ name: "", scenarioType: "hold", propertyId: "", notes: "" });
       onSuccess();
     },
-    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+    onError: (e: any) => toast({ title: "Couldn't create scenario", description: `${e.message} — your existing scenarios are unchanged.`, variant: "destructive" }),
   });
 
   return (
@@ -331,7 +331,7 @@ function ScenariosTab() {
       toast({ title: "Scenario deleted" });
       queryClient.invalidateQueries({ queryKey: ["/api/tax-optimization/scenarios"] });
     },
-    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+    onError: (e: any) => toast({ title: "Couldn't delete scenario", description: `${e.message} — the scenario is still in your list.`, variant: "destructive" }),
   });
 
   const scenarioTypeColors: Record<string, string> = {

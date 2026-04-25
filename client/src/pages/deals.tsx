@@ -1211,7 +1211,7 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
       setIsNegotiationOpen(true);
     },
     onError: (error: any) => {
-      toast({ title: "Failed to generate script", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't generate negotiation script", description: `${error.message} — your deal data is unchanged.`, variant: "destructive" });
     },
   });
   
@@ -1235,8 +1235,8 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
     },
     onError: (error: any) => {
       toast({
-        title: "Failed to get pricing recommendation",
-        description: error.message || "Please try again later",
+        title: "Couldn't get pricing recommendation",
+        description: `${error.message || "Try again later"} — your deal pricing is unchanged.`,
         variant: "destructive",
       });
     },
@@ -1309,7 +1309,7 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
       toast({ title: "Documents generated successfully" });
     },
     onError: (error: any) => {
-      toast({ title: "Failed to generate documents", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't generate documents", description: `${error.message} — the document package is unchanged.`, variant: "destructive" });
     },
   });
 
@@ -1337,8 +1337,8 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
         },
         onError: () => {
           toast({
-            title: "Error",
-            description: "Failed to save analysis. Please try again.",
+            title: "Couldn't save analysis",
+            description: "Your previous analysis is unchanged. Try again.",
             variant: "destructive",
           });
         },
