@@ -4,11 +4,11 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
-  TrendingUp, Bot, DollarSign, Brain,
-  Target, Award, BarChart2, Clock,
+  TrendingUp, Bot, DollarSign, Target,
 } from "lucide-react";
-import { relative } from "@/lib/format";
+import { relative, usd } from "@/lib/format";
 import { PageHeader } from "@/components/ui/page-header";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import {
   useAgentRuntimeStates,
   useRevenueAttribution,
@@ -17,13 +17,21 @@ import {
 
 function TrustScoreBar({ score, label }: { score: number; label: string }) {
   const color = score >= 80 ? "bg-green-500" : score >= 50 ? "bg-yellow-500" : "bg-red-500";
+  const rounded = Math.round(score);
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between text-xs">
         <span className="text-muted-foreground">{label}</span>
-        <span className="font-medium">{Math.round(score)}%</span>
+        <span className="font-medium tabular-nums">{rounded}%</span>
       </div>
-      <div className="h-2 bg-muted rounded-full overflow-hidden">
+      <div
+        className="h-2 bg-muted rounded-full overflow-hidden"
+        role="progressbar"
+        aria-valuenow={rounded}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={`${label}: ${rounded}%`}
+      >
         <div className={`h-full rounded-full ${color}`} style={{ width: `${Math.min(100, score)}%` }} />
       </div>
     </div>
@@ -31,9 +39,10 @@ function TrustScoreBar({ score, label }: { score: number; label: string }) {
 }
 
 export default function AgentPerformance() {
+  useDocumentTitle("Agent performance");
   const { data: agents = [], isLoading: agentsLoading } = useAgentRuntimeStates();
-  const { data: revenue, isLoading: revenueLoading } = useRevenueAttribution();
-  const { data: strategies = [], isLoading: strategiesLoading } = useAdaptiveStrategies();
+  const { data: revenue } = useRevenueAttribution();
+  const { data: strategies = [] } = useAdaptiveStrategies();
 
   const isLoading = agentsLoading;
 
@@ -42,129 +51,140 @@ export default function AgentPerformance() {
       <div className="space-y-6 md:space-y-8">
         <PageHeader
           title="Agent performance"
-          icon={<TrendingUp className="w-5 h-5 text-muted-foreground" />}
+          icon={<TrendingUp className="w-5 h-5 text-muted-foreground" aria-hidden="true" />}
           description="Trust scores, revenue attribution, decision accuracy, and adaptive strategies."
         />
 
         <Tabs defaultValue="trust">
           <TabsList>
-            <TabsTrigger value="trust">Trust Scores</TabsTrigger>
-            <TabsTrigger value="revenue">Revenue Attribution</TabsTrigger>
+            <TabsTrigger value="trust">Trust scores</TabsTrigger>
+            <TabsTrigger value="revenue">Revenue attribution</TabsTrigger>
             <TabsTrigger value="strategies">Strategies</TabsTrigger>
           </TabsList>
 
-          {/* Trust Scores */}
           <TabsContent value="trust" className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {Array.isArray(agents) && agents.length > 0 ? agents.map((agent: any) => (
-                <Card key={agent.id ?? agent.codename}>
-                  <CardContent className="pt-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Bot className="w-4 h-4 text-primary" />
-                        <span className="font-medium text-sm">{agent.name ?? agent.codename}</span>
-                      </div>
-                      <Badge variant={
-                        (agent.trustScore ?? 0) >= 80 ? "default" :
-                        (agent.trustScore ?? 0) >= 50 ? "secondary" :
-                        "destructive"
-                      }>
-                        {agent.trustScore != null ? `${Math.round(agent.trustScore)}%` : "N/A"}
-                      </Badge>
-                    </div>
+            {Array.isArray(agents) && agents.length > 0 ? (
+              <ul className="grid grid-cols-1 md:grid-cols-2 gap-4" aria-label="Agent trust scores">
+                {agents.map((agent: any) => (
+                  <li key={agent.id ?? agent.codename}>
+                    <Card>
+                      <CardContent className="pt-4 space-y-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Bot className="w-4 h-4 text-primary shrink-0" aria-hidden="true" />
+                            <span className="font-medium text-sm truncate">{agent.name ?? agent.codename}</span>
+                          </div>
+                          <Badge
+                            variant={
+                              (agent.trustScore ?? 0) >= 80 ? "default" :
+                              (agent.trustScore ?? 0) >= 50 ? "secondary" :
+                              "destructive"
+                            }
+                            className="tabular-nums"
+                            aria-label={agent.trustScore != null ? `Overall trust ${Math.round(agent.trustScore)}%` : "Trust score not available"}
+                          >
+                            {agent.trustScore != null ? `${Math.round(agent.trustScore)}%` : "N/A"}
+                          </Badge>
+                        </div>
 
-                    <TrustScoreBar
-                      score={agent.trustScore ?? agent.trust ?? 0}
-                      label="Overall Trust"
-                    />
+                        <TrustScoreBar
+                          score={agent.trustScore ?? agent.trust ?? 0}
+                          label="Overall trust"
+                        />
 
-                    {agent.decisionAccuracy != null && (
-                      <TrustScoreBar
-                        score={agent.decisionAccuracy}
-                        label="Decision Accuracy"
-                      />
-                    )}
+                        {agent.decisionAccuracy != null && (
+                          <TrustScoreBar
+                            score={agent.decisionAccuracy}
+                            label="Decision accuracy"
+                          />
+                        )}
 
-                    {agent.taskCompletionRate != null && (
-                      <TrustScoreBar
-                        score={agent.taskCompletionRate}
-                        label="Task Completion"
-                      />
-                    )}
+                        {agent.taskCompletionRate != null && (
+                          <TrustScoreBar
+                            score={agent.taskCompletionRate}
+                            label="Task completion"
+                          />
+                        )}
 
-                    <div className="flex items-center justify-between text-xs text-muted-foreground pt-1">
-                      <span>
-                        {agent.decisionsCount ?? agent.totalDecisions ?? 0} decisions made
-                      </span>
-                      {agent.lastDecisionAt && (
-                        <span>Last: {relative(agent.lastDecisionAt)}</span>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              )) : (
-                <Card className="col-span-full">
-                  <CardContent className="pt-6 text-center text-sm text-muted-foreground">
-                    No agent data available yet. Agents will appear once the system initializes.
-                  </CardContent>
-                </Card>
-              )}
-            </div>
+                        <div className="flex items-center justify-between text-xs text-muted-foreground pt-1 flex-wrap gap-2">
+                          <span>
+                            <span className="tabular-nums">{agent.decisionsCount ?? agent.totalDecisions ?? 0}</span> decisions made
+                          </span>
+                          {agent.lastDecisionAt && (
+                            <span className="tabular-nums">Last: {relative(agent.lastDecisionAt)}</span>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <Card>
+                <CardContent className="pt-6 text-center text-sm text-muted-foreground">
+                  No agent data available yet. Agents will appear once the system initializes.
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
 
-          {/* Revenue Attribution */}
           <TabsContent value="revenue" className="space-y-4">
             {revenue ? (
               <div className="space-y-4">
-                {/* Summary */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <dl className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <Card>
                     <CardContent className="pt-4">
-                      <p className="text-xs text-muted-foreground">Total Attributed Revenue</p>
-                      <p className="text-2xl font-bold">
-                        ${((revenue.totalRevenue ?? revenue.total ?? 0) / 100).toLocaleString()}
-                      </p>
+                      <dt className="text-xs text-muted-foreground">Total attributed revenue</dt>
+                      <dd className="text-2xl font-bold tabular-nums">
+                        {usd((revenue.totalRevenue ?? revenue.total ?? 0) / 100)}
+                      </dd>
                     </CardContent>
                   </Card>
                   <Card>
                     <CardContent className="pt-4">
-                      <p className="text-xs text-muted-foreground">Attribution Nodes</p>
-                      <p className="text-2xl font-bold">{revenue.nodeCount ?? revenue.nodes?.length ?? 0}</p>
+                      <dt className="text-xs text-muted-foreground">Attribution nodes</dt>
+                      <dd className="text-2xl font-bold tabular-nums">{revenue.nodeCount ?? revenue.nodes?.length ?? 0}</dd>
                     </CardContent>
                   </Card>
                   <Card>
                     <CardContent className="pt-4">
-                      <p className="text-xs text-muted-foreground">Top Contributor</p>
-                      <p className="text-lg font-bold">{revenue.topContributor ?? "N/A"}</p>
+                      <dt className="text-xs text-muted-foreground">Top contributor</dt>
+                      <dd className="text-lg font-bold">{revenue.topContributor ?? "N/A"}</dd>
                     </CardContent>
                   </Card>
-                </div>
+                </dl>
 
-                {/* Per-Agent Revenue */}
                 {revenue.agents && Array.isArray(revenue.agents) && (
                   <Card>
                     <CardHeader>
-                      <CardTitle className="text-sm">Revenue by Agent</CardTitle>
+                      <CardTitle className="text-sm">Revenue by agent</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="space-y-3">
-                        {revenue.agents.map((a: any, i: number) => (
-                          <div key={i} className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <DollarSign className="w-3.5 h-3.5 text-green-500" />
-                              <span className="text-sm font-medium">{a.agent ?? a.name}</span>
-                            </div>
-                            <div className="flex items-center gap-3">
-                              <div className="w-32">
-                                <Progress value={(a.share ?? a.percentage ?? 0)} className="h-2" />
+                      <ul className="space-y-3" aria-label="Revenue contribution per agent">
+                        {revenue.agents.map((a: any, i: number) => {
+                          const sharePct = Math.round(a.share ?? a.percentage ?? 0);
+                          return (
+                            <li key={i} className="flex items-center justify-between gap-3 flex-wrap">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <DollarSign className="w-3.5 h-3.5 text-green-500 shrink-0" aria-hidden="true" />
+                                <span className="text-sm font-medium truncate">{a.agent ?? a.name}</span>
                               </div>
-                              <span className="text-sm font-medium w-20 text-right">
-                                ${((a.revenue ?? a.amount ?? 0) / 100).toLocaleString()}
-                              </span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
+                              <div className="flex items-center gap-3">
+                                <div className="w-32">
+                                  <Progress
+                                    value={sharePct}
+                                    className="h-2"
+                                    aria-label={`${a.agent ?? a.name} contributes ${sharePct}% of attributed revenue`}
+                                  />
+                                </div>
+                                <span className="text-sm font-medium w-20 text-right tabular-nums">
+                                  {usd((a.revenue ?? a.amount ?? 0) / 100)}
+                                </span>
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
                     </CardContent>
                   </Card>
                 )}
@@ -178,38 +198,41 @@ export default function AgentPerformance() {
             )}
           </TabsContent>
 
-          {/* Adaptive Strategies */}
           <TabsContent value="strategies" className="space-y-4">
             {Array.isArray(strategies) && strategies.length > 0 ? (
-              strategies.map((strategy: any, i: number) => (
-                <Card key={strategy.id ?? i}>
-                  <CardContent className="pt-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Target className="w-4 h-4 text-primary" />
-                        <span className="font-medium text-sm">{strategy.name ?? strategy.title ?? "Strategy"}</span>
-                      </div>
-                      <Badge variant={strategy.status === "active" ? "default" : "secondary"}>
-                        {strategy.status ?? "draft"}
-                      </Badge>
-                    </div>
-                    {strategy.description && (
-                      <p className="text-sm text-muted-foreground mt-2">{strategy.description}</p>
-                    )}
-                    <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
-                      {strategy.confidence != null && (
-                        <span>Confidence: {Math.round(strategy.confidence * 100)}%</span>
-                      )}
-                      {strategy.adoptedBy && (
-                        <span>Adopted by: {Array.isArray(strategy.adoptedBy) ? strategy.adoptedBy.join(", ") : strategy.adoptedBy}</span>
-                      )}
-                      {strategy.updatedAt && (
-                        <span>Updated {relative(strategy.updatedAt)}</span>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              ))
+              <ul className="space-y-4" aria-label="Adaptive strategies">
+                {strategies.map((strategy: any, i: number) => (
+                  <li key={strategy.id ?? i}>
+                    <Card>
+                      <CardContent className="pt-4">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Target className="w-4 h-4 text-primary shrink-0" aria-hidden="true" />
+                            <span className="font-medium text-sm truncate">{strategy.name ?? strategy.title ?? "Strategy"}</span>
+                          </div>
+                          <Badge variant={strategy.status === "active" ? "default" : "secondary"} className="capitalize">
+                            {strategy.status ?? "draft"}
+                          </Badge>
+                        </div>
+                        {strategy.description && (
+                          <p className="text-sm text-muted-foreground mt-2">{strategy.description}</p>
+                        )}
+                        <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground flex-wrap">
+                          {strategy.confidence != null && (
+                            <span>Confidence: <span className="tabular-nums">{Math.round(strategy.confidence * 100)}%</span></span>
+                          )}
+                          {strategy.adoptedBy && (
+                            <span>Adopted by: {Array.isArray(strategy.adoptedBy) ? strategy.adoptedBy.join(", ") : strategy.adoptedBy}</span>
+                          )}
+                          {strategy.updatedAt && (
+                            <span className="tabular-nums">Updated {relative(strategy.updatedAt)}</span>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </li>
+                ))}
+              </ul>
             ) : (
               <Card>
                 <CardContent className="pt-6 text-center text-sm text-muted-foreground">
