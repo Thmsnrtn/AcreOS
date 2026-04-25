@@ -46,10 +46,10 @@ export function LcsBenchmarkPopover({ propertyId, children }: LcsBenchmarkPopove
 
   const trendIcon = data?.comparison
     ? data.comparison.vsMedian > 0
-      ? <TrendingUp className="w-3.5 h-3.5 text-emerald-500" />
+      ? <TrendingUp className="w-3.5 h-3.5 text-emerald-500" aria-hidden="true" />
       : data.comparison.vsMedian < 0
-        ? <TrendingDown className="w-3.5 h-3.5 text-red-500" />
-        : <Minus className="w-3.5 h-3.5 text-muted-foreground" />
+        ? <TrendingDown className="w-3.5 h-3.5 text-red-500" aria-hidden="true" />
+        : <Minus className="w-3.5 h-3.5 text-muted-foreground" aria-hidden="true" />
     : null;
 
   const positionColor: Record<string, string> = {
@@ -72,27 +72,33 @@ export function LcsBenchmarkPopover({ propertyId, children }: LcsBenchmarkPopove
         ) : data?.comparison ? (
           <>
             <div className="flex items-center justify-between">
-              <p className="text-xs font-medium">Industry Benchmark</p>
+              <p id="lcs-benchmark-heading" className="text-xs font-medium">Industry benchmark</p>
               {trendIcon}
             </div>
 
-            <div className="space-y-1">
+            <dl className="space-y-1 m-0">
               <div className="flex justify-between text-xs">
-                <span className="text-muted-foreground">Your LCS</span>
-                <span className="font-semibold">{data.score} ({data.grade})</span>
+                <dt className="text-muted-foreground">Your LCS</dt>
+                <dd className="font-semibold tabular-nums m-0">{data.score} ({data.grade})</dd>
               </div>
               <div className="flex justify-between text-xs">
-                <span className="text-muted-foreground">State median</span>
-                <span>{data.benchmarks.median}</span>
+                <dt className="text-muted-foreground">State median</dt>
+                <dd className="tabular-nums m-0">{data.benchmarks.median}</dd>
               </div>
               <div className="flex justify-between text-xs">
-                <span className="text-muted-foreground">75th percentile</span>
-                <span>{data.benchmarks.p75}</span>
+                <dt className="text-muted-foreground">75th percentile</dt>
+                <dd className="tabular-nums m-0">{data.benchmarks.p75}</dd>
               </div>
-            </div>
+            </dl>
 
-            {/* Visual bar showing position */}
-            <div className="relative h-2 bg-muted rounded-full">
+            <div
+              role="progressbar"
+              aria-labelledby="lcs-benchmark-heading"
+              aria-valuenow={data.comparison.percentile}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              className="relative h-2 bg-muted rounded-full"
+            >
               <div
                 className="absolute top-0 h-2 bg-primary rounded-full"
                 style={{ width: `${Math.min(100, data.comparison.percentile)}%` }}
@@ -100,7 +106,7 @@ export function LcsBenchmarkPopover({ propertyId, children }: LcsBenchmarkPopove
             </div>
 
             <p className={`text-xs font-medium ${positionColor[data.comparison.relativePosition] || ""}`}>
-              {data.comparison.percentile}th percentile
+              <span className="tabular-nums">{data.comparison.percentile}th</span> percentile
               {data.comparison.vsMedian > 0
                 ? ` — ${data.comparison.vsMedian} points above median`
                 : data.comparison.vsMedian < 0
