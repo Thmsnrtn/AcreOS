@@ -215,7 +215,11 @@ export default function DataExportPage() {
 
       <p className="text-xs text-muted-foreground">
         Exports are processed in real-time and limited to your organization's data. Large exports may take a few seconds.
-        For GDPR data deletion requests, <a href="mailto:support@acreos.com" className="underline-offset-2 hover:underline">contact support</a>.
+        For GDPR data deletion requests, <a
+          href="mailto:support@acreos.com"
+          aria-label="Email support@acreos.com to request GDPR data deletion"
+          className="underline-offset-2 hover:underline"
+        >contact support</a>.
       </p>
     </PageShell>
   );

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Check, AlertCircle, Loader2, Key } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,6 +29,8 @@ export function ApiKeySetup({
   const [isValidating, setIsValidating] = useState(false);
   const [isValid, setIsValid] = useState<boolean | null>(null);
   const { toast } = useToast();
+  const formId = useId();
+  const errorId = useId();
 
   const handleSave = async () => {
     if (!key.trim()) return;
@@ -55,7 +57,7 @@ export function ApiKeySetup({
     <Card>
       <CardHeader>
         <div className="flex items-center gap-2">
-          <Key className="w-5 h-5" />
+          <Key className="w-5 h-5" aria-hidden="true" />
           <CardTitle className="text-lg">{serviceName}</CardTitle>
         </div>
         <CardDescription>{description}</CardDescription>
@@ -63,12 +65,19 @@ export function ApiKeySetup({
       <CardContent className="space-y-4">
         {currentKeyMasked && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Check className="w-4 h-4 text-green-500" />
+            <Check className="w-4 h-4 text-green-500" aria-hidden="true" />
             Current key: {currentKeyMasked}
           </div>
         )}
-        <div className="space-y-2">
-          <Label htmlFor={`${service}-key`}>API Key</Label>
+        <form
+          id={formId}
+          className="space-y-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!isValidating && key.trim()) handleSave();
+          }}
+        >
+          <Label htmlFor={`${service}-key`}>API key</Label>
           <div className="flex gap-2">
             <Input
               id={`${service}-key`}
@@ -76,20 +85,31 @@ export function ApiKeySetup({
               placeholder={placeholder}
               value={key}
               onChange={(e) => setKey(e.target.value)}
+              autoComplete="off"
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
+              aria-invalid={isValid === false ? true : undefined}
+              aria-describedby={isValid === false ? errorId : undefined}
               data-testid={`input-${service}-key`}
             />
-            <Button 
-              onClick={handleSave} 
+            <Button
+              type="submit"
               disabled={!key.trim() || isValidating}
               data-testid={`button-save-${service}-key`}
             >
-              {isValidating ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save"}
+              {isValidating ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                  <span className="sr-only">Validating…</span>
+                </>
+              ) : "Save"}
             </Button>
           </div>
-        </div>
+        </form>
         {isValid === false && (
-          <div className="flex items-center gap-2 text-sm text-red-500">
-            <AlertCircle className="w-4 h-4" />
+          <div id={errorId} role="alert" className="flex items-center gap-2 text-sm text-red-500">
+            <AlertCircle className="w-4 h-4" aria-hidden="true" />
             Invalid API key
           </div>
         )}
