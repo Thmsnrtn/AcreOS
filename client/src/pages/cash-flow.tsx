@@ -8,6 +8,7 @@ import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { useDocumentTitle } from '@/hooks/use-document-title';
+import { usd } from '@/lib/format';
 import {
   AreaChart,
   Area,
@@ -34,9 +35,13 @@ import {
 } from 'lucide-react';
 
 function formatDollar(n: number) {
+  // Compact display for chart axes + KPI cards. M/K bands round
+  // intentionally for screen real estate; sub-$1K falls through to usd()
+  // so cents are preserved (cash-flow projections can show partial-dollar
+  // monthly nets that previously rounded silently).
   if (Math.abs(n) >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
   if (Math.abs(n) >= 1_000) return `$${(n / 1_000).toFixed(1)}K`;
-  return `$${Math.round(n).toLocaleString()}`;
+  return usd(n, { noCents: true });
 }
 
 const URGENCY_STYLES: Record<string, string> = {
@@ -157,12 +162,11 @@ export default function CashFlowPage() {
   const insights = insightsData?.insights ?? [];
   const accuracy = accuracyData?.comparison;
 
-  // Build monthly chart from summary
   const monthlyChartData = summary?.monthlyBreakdown?.map((m: any) => ({
     month: m.month,
     Income: Math.round(m.income),
     Expenses: Math.round(m.expenses),
-    'Net Cash Flow': Math.round(m.net),
+    'Net cash flow': Math.round(m.net),
   })) ?? [];
 
   // Income breakdown pie data
@@ -345,6 +349,10 @@ export default function CashFlowPage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
+                  <div
+                    role="img"
+                    aria-label={`24-month income projection across ${portfolioTimelineData.timeline.length} months. Balloon-payment months are highlighted; band represents ±25% uncertainty.`}
+                  >
                   <ResponsiveContainer width="100%" height={300}>
                     <AreaChart data={portfolioTimelineData.timeline}>
                       <defs>
@@ -403,6 +411,7 @@ export default function CashFlowPage() {
                       />
                     </AreaChart>
                   </ResponsiveContainer>
+                  </div>
                   <p className="text-xs text-muted-foreground mt-2">
                     Yellow dots indicate balloon payment months. Band represents ±25% uncertainty.
                   </p>
@@ -416,36 +425,47 @@ export default function CashFlowPage() {
                 <CardDescription>Projected income, expenses, and net cash flow over the next 12 months.</CardDescription>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={320}>
-                  <BarChart data={monthlyChartData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                    <YAxis tickFormatter={(v) => formatDollar(v)} width={80} />
-                    <Tooltip formatter={((v: any, name: string) => [formatDollar(v), name]) as any} />
-                    <Legend />
-                    <ReferenceLine y={0} stroke="#888" />
-                    <Bar dataKey="Income" fill="#10b981" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="Expenses" fill="#ef4444" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
+                <div
+                  role="img"
+                  aria-label={`Monthly income vs. expenses bar chart over ${monthlyChartData.length} months. Total income ${formatDollar(monthlyChartData.reduce((s: number, m: any) => s + (m.Income || 0), 0))}, total expenses ${formatDollar(monthlyChartData.reduce((s: number, m: any) => s + (m.Expenses || 0), 0))}.`}
+                >
+                  <ResponsiveContainer width="100%" height={320}>
+                    <BarChart data={monthlyChartData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                      <YAxis tickFormatter={(v) => formatDollar(v)} width={80} />
+                      <Tooltip formatter={((v: any, name: string) => [formatDollar(v), name]) as any} />
+                      <Legend />
+                      <ReferenceLine y={0} stroke="#888" />
+                      <Bar dataKey="Income" fill="#10b981" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="Expenses" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
 
-                {/* Net Cash Flow area */}
-                <ResponsiveContainer width="100%" height={160} className="mt-4">
-                  <AreaChart data={monthlyChartData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                    <YAxis tickFormatter={(v) => formatDollar(v)} width={80} />
-                    <Tooltip formatter={(v: any) => [formatDollar(v), 'Net Cash Flow']} />
-                    <ReferenceLine y={0} stroke="#888" />
-                    <Area
-                      type="monotone"
-                      dataKey="Net Cash Flow"
-                      stroke="#d97541"
-                      fill="#d9754130"
-                      strokeWidth={2}
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
+                {/* Net cash flow area */}
+                <div
+                  role="img"
+                  aria-label={`Net cash flow area chart over ${monthlyChartData.length} months. Total net ${formatDollar(monthlyChartData.reduce((s: number, m: any) => s + (m['Net cash flow'] || 0), 0))}.`}
+                  className="mt-4"
+                >
+                  <ResponsiveContainer width="100%" height={160}>
+                    <AreaChart data={monthlyChartData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                      <YAxis tickFormatter={(v) => formatDollar(v)} width={80} />
+                      <Tooltip formatter={(v: any) => [formatDollar(v), 'Net cash flow']} />
+                      <ReferenceLine y={0} stroke="#888" />
+                      <Area
+                        type="monotone"
+                        dataKey="Net cash flow"
+                        stroke="#d97541"
+                        fill="#d9754130"
+                        strokeWidth={2}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
@@ -471,6 +491,10 @@ export default function CashFlowPage() {
                           <Progress
                             value={pct}
                             className="h-2"
+                            role="progressbar"
+                            aria-valuenow={Math.round(pct)}
+                            aria-valuemin={0}
+                            aria-valuemax={100}
                             aria-label={`${label}: ${formatDollar(item.value)}, ${pct.toFixed(1)}% of projected income`}
                           />
                         </li>
@@ -498,6 +522,10 @@ export default function CashFlowPage() {
                           <Progress
                             value={pct}
                             className="h-2"
+                            role="progressbar"
+                            aria-valuenow={Math.round(pct)}
+                            aria-valuemin={0}
+                            aria-valuemax={100}
                             aria-label={`${label}: ${formatDollar(amt)}, ${pct.toFixed(1)}% of projected expenses`}
                           />
                         </li>
@@ -512,7 +540,7 @@ export default function CashFlowPage() {
           {/* ── HIGH-RISK NOTES ── */}
           <TabsContent value="risk" className="space-y-4">
             {highRisk.length === 0 ? (
-              <div className="text-center py-16 text-muted-foreground">
+              <div className="text-center py-16 text-muted-foreground" role="status">
                 <Shield className="w-10 h-10 mx-auto mb-3 opacity-30" aria-hidden="true" />
                 <p>No high-risk notes detected. Portfolio looks healthy.</p>
               </div>
