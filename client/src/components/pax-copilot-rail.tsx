@@ -1411,20 +1411,21 @@ export function PaxCopilotRail() {
 
             {/* Chat messages */}
             <ScrollArea className="flex-1 min-h-0">
-              <div className="px-3 py-3 space-y-3">
+              <div role="log" aria-live="polite" aria-label="Pax conversation" className="px-3 py-3 space-y-3">
                 {/* Loading skeleton */}
                 {isLoadingHistory && (
-                  <div className="space-y-3">
+                  <div role="status" aria-busy="true" aria-label="Loading conversation history" className="space-y-3">
                     <div className="flex justify-end"><Skeleton className="h-8 w-48 rounded-xl" /></div>
                     <div className="space-y-1"><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-4/5" /></div>
                     <div className="flex justify-end"><Skeleton className="h-8 w-36 rounded-xl" /></div>
                     <div className="space-y-1"><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-3/4" /></div>
+                    <span className="sr-only">Loading…</span>
                   </div>
                 )}
 
                 {!isLoadingHistory && messages.length === 0 && observations.length === 0 && (
                   <div className="text-center py-8">
-                    <Sparkles className="w-8 h-8 text-primary/30 mx-auto mb-2" />
+                    <Sparkles className="w-8 h-8 text-primary/30 mx-auto mb-2" aria-hidden="true" />
                     <p className="text-xs text-muted-foreground">
                       Pax is your AI co-pilot. Ask anything about your business or use the quick actions above.
                     </p>
