@@ -40,8 +40,15 @@ function ScoreRing({ score }: { score: number }) {
   const color = score >= 80 ? "#22c55e" : score >= 60 ? "#f59e0b" : "#ef4444";
 
   return (
-    <div className="relative inline-flex items-center justify-center">
-      <svg width="72" height="72" viewBox="0 0 72 72" className="-rotate-90">
+    <div
+      role="progressbar"
+      aria-label={`Passive score: ${score} out of 100`}
+      aria-valuenow={score}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      className="relative inline-flex items-center justify-center"
+    >
+      <svg width="72" height="72" viewBox="0 0 72 72" className="-rotate-90" aria-hidden="true">
         {/* Track */}
         <circle cx="36" cy="36" r={radius} fill="none" strokeWidth="6" stroke="hsl(var(--muted))" />
         {/* Progress */}
@@ -58,8 +65,8 @@ function ScoreRing({ score }: { score: number }) {
           style={{ transition: "stroke-dashoffset 0.6s ease" }}
         />
       </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-xl font-black leading-none" style={{ color }}>{score}</span>
+      <div className="absolute inset-0 flex flex-col items-center justify-center" aria-hidden="true">
+        <span className="text-xl font-black leading-none tabular-nums" style={{ color }}>{score}</span>
         <span className="text-[9px] text-muted-foreground leading-none mt-0.5">/100</span>
       </div>
     </div>
@@ -77,12 +84,12 @@ export function PlatformPassiveScore() {
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base flex items-center gap-2">
-            <Bot className="h-4 w-4 text-purple-500" />
-            Platform Passive Score
+            <Bot className="h-4 w-4 text-purple-500" aria-hidden="true" />
+            Platform passive score
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="h-32 bg-muted rounded animate-pulse" />
+          <div role="status" aria-busy="true" aria-label="Loading platform passive score" className="h-32 bg-muted rounded animate-pulse" />
         </CardContent>
       </Card>
     );
@@ -117,11 +124,11 @@ export function PlatformPassiveScore() {
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <CardTitle className="text-base flex items-center gap-2">
-            <Bot className="h-4 w-4 text-purple-500" />
-            Platform Passive Score
+            <Bot className="h-4 w-4 text-purple-500" aria-hidden="true" />
+            Platform passive score
           </CardTitle>
-          <Badge variant="outline" className="text-xs bg-purple-500/10 text-purple-600 border-purple-500/20">
-            <Zap className="h-3 w-3 mr-1" />
+          <Badge variant="outline" className="text-xs bg-purple-500/10 text-purple-600 border-purple-500/20 tabular-nums" aria-label={`${totalAutomatedActionsLast7d.toLocaleString()} automated actions per week`}>
+            <Zap className="h-3 w-3 mr-1" aria-hidden="true" />
             {totalAutomatedActionsLast7d.toLocaleString()} acts/week
           </Badge>
         </div>
@@ -141,93 +148,105 @@ export function PlatformPassiveScore() {
         {/* Credential health pills */}
         {data.credentialHealth && data.credentialHealth.missingCreds.length > 0 && (
           <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2">
-            <p className="text-xs font-medium text-amber-600 flex items-center gap-1 mb-1.5">
-              <Key className="h-3 w-3" />
+            <p id="missing-creds-heading" className="text-xs font-medium text-amber-600 flex items-center gap-1 mb-1.5">
+              <Key className="h-3 w-3" aria-hidden="true" />
               Unconfigured services reducing score:
             </p>
-            <div className="flex flex-wrap gap-1">
+            <ul aria-labelledby="missing-creds-heading" className="flex flex-wrap gap-1 list-none p-0 m-0">
               {data.credentialHealth.missingCreds.map((c: string) => (
-                <span key={c} className="text-xs px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-700 border border-amber-500/20">
+                <li key={c} className="text-xs px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-700 border border-amber-500/20">
                   {c}
-                </span>
+                </li>
               ))}
-            </div>
+            </ul>
           </div>
         )}
 
         {/* Score breakdown bars */}
         {data.credentialHealth && (
           <div className="space-y-1.5">
-            <p className="text-xs font-medium text-muted-foreground">Score breakdown</p>
-            {[
-              { label: "Credentials", score: data.credentialHealth.score, weight: "40%" },
-              { label: "Automations", score: Math.round(data.automations.reduce((s, a) => s + a.passiveScore, 0) / (data.automations.length || 1)), weight: "40%" },
-              { label: "Operations", score: data.operationalHealth?.score ?? 100, weight: "20%" },
-            ].map(row => (
-              <div key={row.label} className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground w-24 shrink-0">{row.label}</span>
-                <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all ${row.score >= 80 ? "bg-green-500" : row.score >= 60 ? "bg-amber-500" : "bg-red-500"}`}
-                    style={{ width: `${row.score}%` }}
-                  />
-                </div>
-                <span className="text-xs text-muted-foreground w-8 text-right shrink-0">{row.score}</span>
-              </div>
-            ))}
+            <p id="score-breakdown-heading" className="text-xs font-medium text-muted-foreground">Score breakdown</p>
+            <ul aria-labelledby="score-breakdown-heading" className="space-y-1.5 list-none p-0 m-0">
+              {[
+                { label: "Credentials", score: data.credentialHealth.score, weight: "40%" },
+                { label: "Automations", score: Math.round(data.automations.reduce((s, a) => s + a.passiveScore, 0) / (data.automations.length || 1)), weight: "40%" },
+                { label: "Operations", score: data.operationalHealth?.score ?? 100, weight: "20%" },
+              ].map(row => (
+                <li
+                  key={row.label}
+                  className="flex items-center gap-2"
+                  aria-label={`${row.label}: ${row.score} out of 100`}
+                >
+                  <span className="text-xs text-muted-foreground w-24 shrink-0">{row.label}</span>
+                  <div aria-hidden="true" className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${row.score >= 80 ? "bg-green-500" : row.score >= 60 ? "bg-amber-500" : "bg-red-500"}`}
+                      style={{ width: `${row.score}%` }}
+                    />
+                  </div>
+                  <span className="text-xs text-muted-foreground w-8 text-right shrink-0 tabular-nums">{row.score}</span>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
 
         {/* Automation activity bars */}
         <div className="space-y-2">
-          <p className="text-xs font-medium text-muted-foreground">Automation activity (last 7 days)</p>
-          {sorted.map(auto => (
-            <div key={auto.name} className="space-y-0.5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1 min-w-0">
-                  <span className="text-xs text-foreground truncate max-w-[160px]">{auto.name}</span>
-                  {auto.note && auto.status === "degraded" && (
-                    <AlertCircle className="h-3 w-3 text-amber-500 shrink-0" />
-                  )}
+          <p id="automation-activity-heading" className="text-xs font-medium text-muted-foreground">Automation activity (last 7 days)</p>
+          <ul aria-labelledby="automation-activity-heading" className="space-y-2 list-none p-0 m-0">
+            {sorted.map(auto => (
+              <li
+                key={auto.name}
+                className="space-y-0.5"
+                aria-label={`${auto.name}: ${auto.actionsLast7d > 0 ? `${auto.actionsLast7d.toLocaleString()} actions` : "idle"}, status ${auto.status}`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1 min-w-0">
+                    <span className="text-xs text-foreground truncate max-w-[160px]">{auto.name}</span>
+                    {auto.note && auto.status === "degraded" && (
+                      <AlertCircle className="h-3 w-3 text-amber-500 shrink-0" aria-hidden="true" />
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {auto.actionsLast7d > 0 ? (
+                      <span className="text-xs text-muted-foreground tabular-nums">{auto.actionsLast7d.toLocaleString()}</span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground/50">idle</span>
+                    )}
+                    {auto.status === "active" ? (
+                      <CheckCircle2 className="h-3 w-3 text-green-500" aria-hidden="true" />
+                    ) : auto.status === "degraded" ? (
+                      <XCircle className="h-3 w-3 text-red-400" aria-hidden="true" />
+                    ) : (
+                      <AlertCircle className="h-3 w-3 text-amber-500" aria-hidden="true" />
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  {auto.actionsLast7d > 0 ? (
-                    <span className="text-xs text-muted-foreground">{auto.actionsLast7d.toLocaleString()}</span>
-                  ) : (
-                    <span className="text-xs text-muted-foreground/50">idle</span>
-                  )}
-                  {auto.status === "active" ? (
-                    <CheckCircle2 className="h-3 w-3 text-green-500" />
-                  ) : auto.status === "degraded" ? (
-                    <XCircle className="h-3 w-3 text-red-400" />
-                  ) : (
-                    <AlertCircle className="h-3 w-3 text-amber-500" />
-                  )}
+                <div aria-hidden="true" className="h-1.5 bg-muted rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${auto.status === "active" ? "bg-purple-500" : auto.status === "degraded" ? "bg-red-400" : "bg-amber-500"}`}
+                    style={{ width: `${auto.actionsLast7d > 0 ? Math.max(3, (auto.actionsLast7d / maxActions) * 100) : (auto.status === "active" ? 8 : 0)}%` }}
+                  />
                 </div>
-              </div>
-              <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all ${auto.status === "active" ? "bg-purple-500" : auto.status === "degraded" ? "bg-red-400" : "bg-amber-500"}`}
-                  style={{ width: `${auto.actionsLast7d > 0 ? Math.max(3, (auto.actionsLast7d / maxActions) * 100) : (auto.status === "active" ? 8 : 0)}%` }}
-                />
-              </div>
-            </div>
-          ))}
+              </li>
+            ))}
+          </ul>
         </div>
 
         {/* Operational health note */}
         {data.operationalHealth && (data.operationalHealth.pendingDecisions > 0 || data.operationalHealth.jobFailures24h > 0) && (
-          <div className="rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 space-y-0.5">
+          <div role="alert" className="rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 space-y-0.5">
             {data.operationalHealth.pendingDecisions > 0 && (
               <p className="text-xs text-red-500 flex items-center gap-1">
-                <AlertCircle className="h-3 w-3" />
-                {data.operationalHealth.pendingDecisions} decision{data.operationalHealth.pendingDecisions !== 1 ? "s" : ""} awaiting founder review
+                <AlertCircle className="h-3 w-3" aria-hidden="true" />
+                <span className="tabular-nums">{data.operationalHealth.pendingDecisions}</span> decision{data.operationalHealth.pendingDecisions !== 1 ? "s" : ""} awaiting founder review
               </p>
             )}
             {data.operationalHealth.jobFailures24h > 0 && (
               <p className="text-xs text-red-500 flex items-center gap-1">
-                <XCircle className="h-3 w-3" />
-                {data.operationalHealth.jobFailures24h} job failure{data.operationalHealth.jobFailures24h !== 1 ? "s" : ""} in last 24h
+                <XCircle className="h-3 w-3" aria-hidden="true" />
+                <span className="tabular-nums">{data.operationalHealth.jobFailures24h}</span> job failure{data.operationalHealth.jobFailures24h !== 1 ? "s" : ""} in last 24h
               </p>
             )}
           </div>
