@@ -294,15 +294,16 @@ export function FocusList() {
 
   if (isLoading) {
     return (
-      <Card data-testid="focus-list-loading">
+      <Card data-testid="focus-list-loading" role="status" aria-busy="true" aria-label="Loading daily focus">
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
-            <Target className="w-4 h-4" />
-            Daily Focus
+            <Target className="w-4 h-4" aria-hidden="true" />
+            Daily focus
           </CardTitle>
         </CardHeader>
         <CardContent className="flex items-center justify-center py-8">
-          <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+          <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" aria-hidden="true" />
+          <span className="sr-only">Loading…</span>
         </CardContent>
       </Card>
     );

@@ -200,8 +200,14 @@ export function SequencesContent() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-96">
-        <Loader2 className="w-8 h-8 animate-spin" />
+      <div
+        role="status"
+        aria-busy="true"
+        aria-label="Loading sequences"
+        className="flex items-center justify-center h-96"
+      >
+        <Loader2 className="w-8 h-8 animate-spin" aria-hidden="true" />
+        <span className="sr-only">Loading…</span>
       </div>
     );
   }

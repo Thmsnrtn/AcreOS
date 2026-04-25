@@ -99,10 +99,16 @@ export function DealInbox({ leadId, leadEmail, leadName }: DealInboxProps) {
 
   if (isLoading) {
     return (
-      <div className="space-y-3">
+      <div
+        role="status"
+        aria-busy="true"
+        aria-label="Loading email inbox"
+        className="space-y-3"
+      >
         <Skeleton className="h-6 w-32" />
         <Skeleton className="h-24 w-full" />
         <Skeleton className="h-24 w-full" />
+        <span className="sr-only">Loading…</span>
       </div>
     );
   }
