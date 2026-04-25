@@ -31,39 +31,41 @@ const priorityStyles: Record<string, string> = {
   low: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
 };
 
-function TaskItem({ task, onComplete, isCompleting }: { 
-  task: Task; 
+function TaskItem({ task, onComplete, isCompleting }: {
+  task: Task;
   onComplete: (id: number) => void;
   isCompleting: boolean;
 }) {
   const isOverdue = task.dueDate && new Date(task.dueDate) < new Date(new Date().setHours(0, 0, 0, 0));
-  
+
   return (
-    <div 
+    <li
       className="flex items-center justify-between p-3 rounded-md bg-muted/50 hover:bg-muted/80 transition-colors"
       data-testid={`task-item-${task.id}`}
     >
       <div className="flex items-center gap-3 min-w-0 flex-1">
         <Button
+          type="button"
           size="icon"
           variant="ghost"
           className="h-7 w-7 shrink-0"
           onClick={() => onComplete(task.id)}
           disabled={isCompleting}
-          aria-label="Complete task"
+          aria-busy={isCompleting}
+          aria-label={`Complete task: ${task.title}`}
           data-testid={`complete-task-${task.id}`}
         >
           {isCompleting ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
+            <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
           ) : (
-            <CheckCircle2 className="w-4 h-4 text-muted-foreground hover:text-green-600" />
+            <CheckCircle2 className="w-4 h-4 text-muted-foreground hover:text-green-600" aria-hidden="true" />
           )}
         </Button>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium truncate">{task.title}</p>
           {task.dueDate && (
             <p className="text-xs text-muted-foreground flex items-center gap-1">
-              <Clock className="w-3 h-3" />
+              <Clock className="w-3 h-3" aria-hidden="true" />
               {isOverdue ? (
                 <span className="text-red-600 dark:text-red-400">
                   {relative(task.dueDate)}
@@ -76,21 +78,21 @@ function TaskItem({ task, onComplete, isCompleting }: {
         </div>
       </div>
       <div className="flex items-center gap-2 shrink-0">
-        <Badge 
-          variant="outline" 
+        <Badge
+          variant="outline"
           className={`text-xs border-0 ${priorityStyles[task.priority] || priorityStyles.medium}`}
         >
           {task.priority}
         </Badge>
         {task.entityType && task.entityType !== "none" && task.entityId && (
-          <Link href={`/${task.entityType}s/${task.entityId}`}>
-            <Button size="icon" variant="ghost" className="h-7 w-7" aria-label="View linked item">
-              <ArrowRight className="w-4 h-4" />
-            </Button>
-          </Link>
+          <Button asChild size="icon" variant="ghost" className="h-7 w-7">
+            <Link href={`/${task.entityType}s/${task.entityId}`} aria-label={`View linked ${task.entityType}`}>
+              <ArrowRight className="w-4 h-4" aria-hidden="true" />
+            </Link>
+          </Button>
         )}
       </div>
-    </div>
+    </li>
   );
 }
 
@@ -123,8 +125,8 @@ export function TasksDueWidget() {
       <Card className="floating-window" data-testid="tasks-due-widget">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-lg">
-            <ListTodo className="w-5 h-5 text-primary" />
-            Tasks Due
+            <ListTodo className="w-5 h-5 text-primary" aria-hidden="true" />
+            Tasks due
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -142,12 +144,12 @@ export function TasksDueWidget() {
       <Card className="floating-window border-red-200 dark:border-red-800" data-testid="tasks-due-widget">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-lg">
-            <ListTodo className="w-5 h-5 text-primary" />
-            Tasks Due
+            <ListTodo className="w-5 h-5 text-primary" aria-hidden="true" />
+            Tasks due
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-red-600 dark:text-red-400">
+          <p role="alert" className="text-sm text-red-600 dark:text-red-400">
             Failed to load tasks. Please try again.
           </p>
         </CardContent>
@@ -165,20 +167,18 @@ export function TasksDueWidget() {
       <Card className="floating-window" data-testid="tasks-due-widget">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-lg">
-            <ListTodo className="w-5 h-5 text-primary" />
-            Tasks Due
+            <ListTodo className="w-5 h-5 text-primary" aria-hidden="true" />
+            Tasks due
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex flex-col items-center justify-center py-6 text-center">
-            <CheckCircle2 className="w-10 h-10 text-green-500 mb-3" />
+            <CheckCircle2 className="w-10 h-10 text-green-500 mb-3" aria-hidden="true" />
             <p className="text-sm font-medium">All caught up!</p>
             <p className="text-xs text-muted-foreground mt-1">No tasks due today or overdue.</p>
-            <Link href="/tasks">
-              <Button variant="outline" size="sm" className="mt-4">
-                View All Tasks
-              </Button>
-            </Link>
+            <Button asChild variant="outline" size="sm" className="mt-4">
+              <Link href="/tasks">View all tasks</Link>
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -196,7 +196,7 @@ export function TasksDueWidget() {
         <CardTitle className="flex items-center gap-2 text-lg">
           <ListTodo className="w-5 h-5 text-primary" />
           Tasks Due
-          <Badge variant="outline" className="ml-2 text-xs" data-testid="tasks-due-count">
+          <Badge variant="outline" className="ml-2 text-xs tabular-nums" data-testid="tasks-due-count">
             {totalCount}
           </Badge>
         </CardTitle>
@@ -204,14 +204,14 @@ export function TasksDueWidget() {
       <CardContent className="space-y-4">
         {/* Overdue Section */}
         {hasOverdue && (
-          <div data-testid="overdue-section">
+          <section aria-labelledby="overdue-heading" data-testid="overdue-section">
             <div className="flex items-center gap-2 mb-2">
-              <AlertTriangle className="w-4 h-4 text-red-500" />
-              <span className="text-sm font-medium text-red-600 dark:text-red-400">
-                Overdue ({data.overdueCount})
+              <AlertTriangle className="w-4 h-4 text-red-500" aria-hidden="true" />
+              <span id="overdue-heading" className="text-sm font-medium text-red-600 dark:text-red-400">
+                Overdue (<span className="tabular-nums">{data.overdueCount}</span>)
               </span>
             </div>
-            <div className="space-y-2">
+            <ul className="space-y-2 list-none p-0 m-0">
               {data.overdue.map((task) => (
                 <TaskItem
                   key={task.id}
@@ -221,24 +221,26 @@ export function TasksDueWidget() {
                 />
               ))}
               {data.overdueCount > 10 && (
-                <Link href="/tasks?overdue=true" className="block text-center text-sm text-muted-foreground hover:text-foreground py-1">
-                  +{data.overdueCount - 10} more overdue
-                </Link>
+                <li className="list-none">
+                  <Link href="/tasks?overdue=true" className="block text-center text-sm text-muted-foreground hover:text-foreground py-1">
+                    +{data.overdueCount - 10} more overdue
+                  </Link>
+                </li>
               )}
-            </div>
-          </div>
+            </ul>
+          </section>
         )}
 
         {/* Due Today Section */}
         {hasDueToday && (
-          <div data-testid="due-today-section">
+          <section aria-labelledby="due-today-heading" data-testid="due-today-section">
             <div className="flex items-center gap-2 mb-2">
-              <Clock className="w-4 h-4 text-amber-500" />
-              <span className="text-sm font-medium">
-                Due Today ({data.dueTodayCount})
+              <Clock className="w-4 h-4 text-amber-500" aria-hidden="true" />
+              <span id="due-today-heading" className="text-sm font-medium">
+                Due today (<span className="tabular-nums">{data.dueTodayCount}</span>)
               </span>
             </div>
-            <div className="space-y-2">
+            <ul className="space-y-2 list-none p-0 m-0">
               {data.dueToday.map((task) => (
                 <TaskItem
                   key={task.id}
@@ -248,20 +250,20 @@ export function TasksDueWidget() {
                 />
               ))}
               {data.dueTodayCount > 10 && (
-                <Link href="/tasks?due_date=today" className="block text-center text-sm text-muted-foreground hover:text-foreground py-1">
-                  +{data.dueTodayCount - 10} more today
-                </Link>
+                <li className="list-none">
+                  <Link href="/tasks?due_date=today" className="block text-center text-sm text-muted-foreground hover:text-foreground py-1">
+                    +{data.dueTodayCount - 10} more today
+                  </Link>
+                </li>
               )}
-            </div>
-          </div>
+            </ul>
+          </section>
         )}
 
         {/* View All Link */}
-        <Link href="/tasks" className="block">
-          <Button variant="outline" size="sm" className="w-full">
-            View All Tasks
-          </Button>
-        </Link>
+        <Button asChild variant="outline" size="sm" className="w-full">
+          <Link href="/tasks">View all tasks</Link>
+        </Button>
       </CardContent>
     </Card>
   );
