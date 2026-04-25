@@ -44,17 +44,20 @@ export function PWAInstallPrompt() {
 
   if (isIOS) {
     return (
-      <div className="fixed bottom-4 left-4 right-4 z-50 md:left-auto md:right-4 md:w-96">
+      <aside
+        aria-label="Install AcreOS"
+        className="fixed bottom-4 left-4 right-4 z-50 md:left-auto md:right-4 md:w-96"
+      >
         <Card className="border-primary/20 shadow-lg">
           <CardContent className="p-4">
             <div className="flex items-start gap-3">
               <div className="p-2 rounded-lg bg-primary/10">
-                <Download className="h-5 w-5 text-primary" />
+                <Download className="h-5 w-5 text-primary" aria-hidden="true" />
               </div>
               <div className="flex-1 min-w-0">
                 <h3 className="font-semibold text-sm">Install AcreOS</h3>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Tap <Share className="inline h-3 w-3" /> then "Add to Home Screen" <Plus className="inline h-3 w-3" />
+                  Tap the <Share className="inline h-3 w-3" aria-label="Share" role="img" /> Share button then "Add to Home Screen" <Plus className="inline h-3 w-3" aria-hidden="true" />
                 </p>
               </div>
               <Button
@@ -62,30 +65,33 @@ export function PWAInstallPrompt() {
                 variant="ghost"
                 className="shrink-0"
                 onClick={handleDismiss}
-                aria-label="Dismiss"
+                aria-label="Dismiss install prompt"
                 data-testid="button-dismiss-pwa"
               >
-                <X className="h-4 w-4" />
+                <X className="h-4 w-4" aria-hidden="true" />
               </Button>
             </div>
           </CardContent>
         </Card>
-      </div>
+      </aside>
     );
   }
 
   return (
-    <div className="fixed bottom-4 left-4 right-4 z-50 md:left-auto md:right-4 md:w-96">
+    <aside
+      aria-label="Install AcreOS"
+      className="fixed bottom-4 left-4 right-4 z-50 md:left-auto md:right-4 md:w-96"
+    >
       <Card className="border-primary/20 shadow-lg">
         <CardContent className="p-4">
           <div className="flex items-start gap-3">
             <div className="p-2 rounded-lg bg-primary/10">
-              <Download className="h-5 w-5 text-primary" />
+              <Download className="h-5 w-5 text-primary" aria-hidden="true" />
             </div>
             <div className="flex-1 min-w-0">
               <h3 className="font-semibold text-sm">Install AcreOS</h3>
               <p className="text-xs text-muted-foreground mt-1">
-                Get the full app experience with offline access
+                Get the full app experience with offline access.
               </p>
             </div>
             <Button
@@ -93,10 +99,10 @@ export function PWAInstallPrompt() {
               variant="ghost"
               className="shrink-0"
               onClick={handleDismiss}
-              aria-label="Dismiss"
+              aria-label="Dismiss install prompt"
               data-testid="button-dismiss-pwa"
             >
-              <X className="h-4 w-4" />
+              <X className="h-4 w-4" aria-hidden="true" />
             </Button>
           </div>
           <div className="flex gap-2 mt-3">
@@ -120,6 +126,6 @@ export function PWAInstallPrompt() {
           </div>
         </CardContent>
       </Card>
-    </div>
+    </aside>
   );
 }
