@@ -752,6 +752,7 @@ to a dedicated 9b slice.
 **Component toasts sweep #10 (166):** ✅ complete — final title canonicalization, 10 titles upgraded from "X failed" to "Couldn't X" form: real-runtime (health/verify/approve/deny), investor-directory (save/verify), vision-ai (analyze/describe), market-intelligence (compare), finance (QuickBooks sync), use-parcels (lookup). All reassurance suffixes were already in place. Toast pattern now fully canonical across the codebase. (commit `ac4cb02`)
 **Email-input mobile hardening (167):** ✅ complete — lens shift to forms. 6 type="email" inputs got inputMode="email" + autoCapitalize="off" + autoCorrect="off" + spellCheck={false} + autoComplete="email": deal-inbox (reply-to), TeamInviteCard, request-signatures-dialog, email-compose-sheet (To/CC/BCC). (commit `f8947d4`)
 **Number-input mobile hardening (168):** ✅ complete — 13 inputs across document-generator (9) and ai-offer-generator (4) got inputMode="decimal" (money) or "numeric" (whole numbers). Mobile users now see the right keypad on first focus. (commit `a7b1183`)
+**Number-input mobile hardening cont. (169):** ✅ complete — 7 more inputs across pages: comps-analysis (radius/min/max acreage), custom-fields (generic), leads (offer amount), marketplace (bid amount/create price). (commit `f6c2a85`)
 **/onboarding-v2 targeted (18):** ✅ complete (commit `70df779`) — 18b deferred
 **/settings targeted (19):** ✅ complete (commit `809044c`) — 19b remaining components deferred
 **/pipeline (20):** ✅ complete (commit `1b5d0f7`)
