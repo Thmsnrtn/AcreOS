@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Mail, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -126,8 +127,8 @@ export function EmailComposeSheet({
       <SheetTrigger asChild>
         {children || (
           <Button variant={triggerVariant} size={triggerSize} aria-label="Send email">
-            <Mail className="h-4 w-4 mr-1" />
-            Send Email
+            <Mail className="h-4 w-4 mr-1" aria-hidden="true" />
+            Send email
           </Button>
         )}
       </SheetTrigger>
@@ -138,7 +139,14 @@ export function EmailComposeSheet({
           </SheetTitle>
         </SheetHeader>
 
-        <div className="space-y-4 mt-4">
+        <form
+          id="email-compose-form"
+          className="space-y-4 mt-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!sendMutation.isPending && to && subject && body) sendMutation.mutate();
+          }}
+        >
           {/* Template suggestions */}
           {templates.length > 0 && (
             <div className="flex flex-wrap gap-2">
@@ -156,8 +164,8 @@ export function EmailComposeSheet({
             </div>
           )}
 
-          <div>
-            <label htmlFor="compose-to" className="text-sm font-medium">To</label>
+          <div className="space-y-2">
+            <Label htmlFor="compose-to">To</Label>
             <Input
               id="compose-to"
               value={to}
@@ -174,54 +182,57 @@ export function EmailComposeSheet({
 
           <Collapsible open={showCcBcc} onOpenChange={setShowCcBcc}>
             <CollapsibleTrigger asChild>
-              <Button variant="ghost" size="sm" className="text-xs text-muted-foreground">
+              <Button type="button" variant="ghost" size="sm" className="text-xs text-muted-foreground">
                 {showCcBcc ? "Hide" : "Show"} CC/BCC
               </Button>
             </CollapsibleTrigger>
             <CollapsibleContent className="space-y-3 mt-2">
-              <div>
-                <label htmlFor="compose-cc" className="text-sm font-medium">CC</label>
+              <div className="space-y-2">
+                <Label htmlFor="compose-cc">CC</Label>
                 <Input id="compose-cc" value={cc} onChange={(e) => setCc(e.target.value)} type="email" inputMode="email" autoCapitalize="off" autoCorrect="off" spellCheck={false} autoComplete="email" />
               </div>
-              <div>
-                <label htmlFor="compose-bcc" className="text-sm font-medium">BCC</label>
+              <div className="space-y-2">
+                <Label htmlFor="compose-bcc">BCC</Label>
                 <Input id="compose-bcc" value={bcc} onChange={(e) => setBcc(e.target.value)} type="email" inputMode="email" autoCapitalize="off" autoCorrect="off" spellCheck={false} autoComplete="email" />
               </div>
             </CollapsibleContent>
           </Collapsible>
 
-          <div>
-            <label htmlFor="compose-subject" className="text-sm font-medium">Subject</label>
+          <div className="space-y-2">
+            <Label htmlFor="compose-subject">Subject</Label>
             <Input
               id="compose-subject"
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
-              placeholder="Email subject"
+              autoCapitalize="sentences"
+              placeholder="Email subject…"
             />
           </div>
 
-          <div>
-            <label htmlFor="compose-body" className="text-sm font-medium">Message</label>
+          <div className="space-y-2">
+            <Label htmlFor="compose-body">Message</Label>
             <Textarea
               id="compose-body"
               value={body}
               onChange={(e) => setBody(e.target.value)}
               rows={10}
-              placeholder="Write your message..."
+              autoCapitalize="sentences"
+              placeholder="Write your message…"
             />
           </div>
 
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
             <Button
-              onClick={() => sendMutation.mutate()}
+              type="submit"
+              form="email-compose-form"
               disabled={sendMutation.isPending || !to || !subject || !body}
             >
-              <Send className="h-4 w-4 mr-1" />
-              {sendMutation.isPending ? "Sending..." : "Send Email"}
+              <Send className="h-4 w-4 mr-1" aria-hidden="true" />
+              {sendMutation.isPending ? "Sending…" : "Send email"}
             </Button>
           </div>
-        </div>
+        </form>
       </SheetContent>
     </Sheet>
   );
