@@ -84,25 +84,30 @@ export class ErrorBoundary extends Component<Props, State> {
       }
 
       return (
-        <div className="min-h-screen flex items-center justify-center p-4 bg-background" data-testid="error-boundary">
+        <div
+          className="min-h-screen flex items-center justify-center p-4 bg-background"
+          data-testid="error-boundary"
+          role="alert"
+          aria-live="assertive"
+        >
           <Card className="w-full max-w-md">
             <CardHeader className="text-center">
-              <div className="mx-auto mb-4 p-3 rounded-full bg-destructive/10 w-fit">
+              <div className="mx-auto mb-4 p-3 rounded-full bg-destructive/10 w-fit" aria-hidden="true">
                 <AlertTriangle className="w-8 h-8 text-destructive" />
               </div>
               <CardTitle data-testid="text-error-title">Something went wrong</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="text-sm text-muted-foreground text-center" data-testid="text-error-message">
-                We encountered an unexpected error. Please try refreshing the page or go back to the home page.
+                We encountered an unexpected error. Try refreshing the page or go back to the home page.
               </p>
-              
+
               {this.state.errorId && (
                 <p className="text-xs text-muted-foreground text-center" data-testid="text-error-id">
-                  Error ID: {this.state.errorId}
+                  Error ID: <code className="font-mono">{this.state.errorId}</code>
                 </p>
               )}
-              
+
               {this.state.error && (
                 <div className="p-3 rounded-lg bg-muted text-xs font-mono overflow-auto max-h-32" data-testid="text-error-details">
                   {this.state.error.message}
@@ -116,7 +121,7 @@ export class ErrorBoundary extends Component<Props, State> {
                   onClick={this.handleGoHome}
                   data-testid="button-error-home"
                 >
-                  <Home className="w-4 h-4 mr-2" />
+                  <Home className="w-4 h-4 mr-2" aria-hidden="true" />
                   Home
                 </Button>
                 <Button
@@ -125,7 +130,7 @@ export class ErrorBoundary extends Component<Props, State> {
                   onClick={this.handleRetry}
                   data-testid="button-error-retry"
                 >
-                  <RefreshCcw className="w-4 h-4 mr-2" />
+                  <RefreshCcw className="w-4 h-4 mr-2" aria-hidden="true" />
                   Retry
                 </Button>
                 <Button
@@ -133,7 +138,7 @@ export class ErrorBoundary extends Component<Props, State> {
                   onClick={this.handleRefresh}
                   data-testid="button-error-refresh"
                 >
-                  <RefreshCcw className="w-4 h-4 mr-2" />
+                  <RefreshCcw className="w-4 h-4 mr-2" aria-hidden="true" />
                   Refresh
                 </Button>
               </div>
