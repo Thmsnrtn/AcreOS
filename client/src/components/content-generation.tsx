@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { usd } from "@/lib/format";
 
 // ─── Share This Property ────────────────────────────────────────────
 interface PropertyShareData {
@@ -26,14 +27,14 @@ interface SharePropertyProps {
 }
 
 function generateFacebookListing(p: PropertyShareData): string {
-  const price = p.price ? `$${p.price.toLocaleString()}` : "Contact for price";
+  const price = p.price ? usd(p.price, { noCents: Number.isInteger(p.price) }) : "Contact for price";
   const size = p.sizeAcres ? `${p.sizeAcres} acres` : "";
   const location = [p.county, p.state].filter(Boolean).join(", ");
   return `${size} ${p.zoning || "Land"} for Sale — ${location}\n${price}\n\n${p.description || `Beautiful ${size} parcel in ${location}. ${p.roadAccess ? `Road access: ${p.roadAccess}.` : ""}`}\n\nDM for details.`;
 }
 
 function generateCraigslistListing(p: PropertyShareData): string {
-  const price = p.price ? `$${p.price.toLocaleString()}` : "Contact for price";
+  const price = p.price ? usd(p.price, { noCents: Number.isInteger(p.price) }) : "Contact for price";
   const size = p.sizeAcres ? `${p.sizeAcres} acres` : "";
   const location = [p.county, p.state].filter(Boolean).join(", ");
   return `${size} ${p.zoning || "Land"} for Sale in ${location} — ${price}\n\n${p.description || ""}${p.description ? "\n\n" : ""}Property Details:\n- Size: ${size || "N/A"}\n- Location: ${location || "N/A"}\n- Zoning: ${p.zoning || "N/A"}\n- Road Access: ${p.roadAccess || "N/A"}\n- Price: ${price}\n\n${p.address ? `Address: ${p.address}\n\n` : ""}Contact me for more information or to schedule a visit. Serious inquiries only.`;
@@ -42,7 +43,7 @@ function generateCraigslistListing(p: PropertyShareData): string {
 function generateSocialPost(p: PropertyShareData): string {
   const size = p.sizeAcres ? `${p.sizeAcres} acres` : "Land";
   const location = [p.county, p.state].filter(Boolean).join(", ");
-  const price = p.price ? ` for $${p.price.toLocaleString()}` : "";
+  const price = p.price ? ` for ${usd(p.price, { noCents: Number.isInteger(p.price) })}` : "";
   return `${size} available in ${location}${price}. ${p.roadAccess ? `Has ${p.roadAccess} road access.` : ""} DM me for details.\n\n#LandForSale #RealEstate #${p.state || "Land"}Land #Investment`;
 }
 
@@ -151,7 +152,7 @@ export function ShareDealSheet({ deal }: ShareDealProps) {
 
   const socialPost = `Just closed on ${size} in ${location}${deal.daysToClose ? `, closed in ${deal.daysToClose} days` : ""}. ${roi ? `${roi}% ROI.` : ""} #LandInvesting\nFound via @AcreOS`;
 
-  const caseStudy = `Acquired a ${size} parcel in ${location}${deal.purchasePrice ? ` for $${deal.purchasePrice.toLocaleString()}` : ""}. Used the AcreOS DD report to verify no environmental risks.${deal.salePrice ? ` Sold for $${deal.salePrice.toLocaleString()}` : ""}${deal.daysToClose ? ` in ${deal.daysToClose} days` : ""}${roi ? ` — ${roi}% ROI` : ""}${profit ? ` ($${profit.toLocaleString()} profit)` : ""}.`;
+  const caseStudy = `Acquired a ${size} parcel in ${location}${deal.purchasePrice ? ` for ${usd(deal.purchasePrice, { noCents: Number.isInteger(deal.purchasePrice) })}` : ""}. Used the AcreOS DD report to verify no environmental risks.${deal.salePrice ? ` Sold for ${usd(deal.salePrice, { noCents: Number.isInteger(deal.salePrice) })}` : ""}${deal.daysToClose ? ` in ${deal.daysToClose} days` : ""}${roi ? ` — ${roi}% ROI` : ""}${profit ? ` (${usd(profit, { noCents: Number.isInteger(profit) })} profit)` : ""}.`;
 
   const handleCopy = async (text: string, tab: string) => {
     await navigator.clipboard.writeText(text);

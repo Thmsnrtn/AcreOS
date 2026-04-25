@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { telemetry } from "@/lib/telemetry";
+import { usd } from "@/lib/format";
 import {
   Send,
   Loader2,
@@ -214,8 +215,8 @@ function buildQuickAnalysisPrompt(property: Property): string {
     property.address ? `- Address: ${property.address}` : null,
     `- County: ${property.county}, State: ${property.state}`,
     property.sizeAcres ? `- Size: ${property.sizeAcres} acres` : null,
-    property.marketValue ? `- Market Value: $${Number(property.marketValue).toLocaleString()}` : null,
-    property.listPrice ? `- List Price: $${Number(property.listPrice).toLocaleString()}` : null,
+    property.marketValue ? `- Market Value: ${usd(property.marketValue, { noCents: Number.isInteger(Number(property.marketValue)) })}` : null,
+    property.listPrice ? `- List Price: ${usd(property.listPrice, { noCents: Number.isInteger(Number(property.listPrice)) })}` : null,
     property.status ? `- Status: ${property.status.replace(/_/g, " ")}` : null,
     property.zoning ? `- Zoning: ${property.zoning}` : null,
     ``,
@@ -355,7 +356,7 @@ export function PropertyAnalysisChat({ property, open, onOpenChange }: PropertyA
     if (value === null || value === undefined || value === "") return null;
     const num = Number(value);
     if (isNaN(num) || num === 0) return null;
-    return `$${num.toLocaleString()}`;
+    return usd(num, { noCents: Number.isInteger(num) });
   };
 
   return (
