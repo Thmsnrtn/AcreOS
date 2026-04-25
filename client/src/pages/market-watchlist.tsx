@@ -9,16 +9,18 @@
  *
  * Alerts surface here and can push to email/SMS.
  */
-import { useState } from "react";
+import { useState, useId } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PageShell } from "@/components/page-shell";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import {
   Dialog,
   DialogContent,
@@ -47,6 +49,7 @@ import {
   Loader2,
   CheckCircle2,
   Eye,
+  Send,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
@@ -104,9 +107,13 @@ const US_STATES = [
 ];
 
 export default function MarketWatchlistPage() {
+  useDocumentTitle("Market watchlist");
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const stateSelectId = useId();
+  const countyInputId = useId();
   const [addOpen, setAddOpen] = useState(false);
+  const [pendingRemove, setPendingRemove] = useState<WatchlistEntry | null>(null);
   const [newEntry, setNewEntry] = useState({
     state: "TX",
     county: "",
@@ -140,7 +147,12 @@ export default function MarketWatchlistPage() {
       setNewEntry(prev => ({ ...prev, county: "" }));
       queryClient.invalidateQueries({ queryKey: ["/api/market/watchlist"] });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: any) =>
+      toast({
+        title: "Couldn't add to watchlist",
+        description: `${err.message}. Your county and alert preferences are unchanged — try again.`,
+        variant: "destructive",
+      }),
   });
 
   const removeMutation = useMutation({
@@ -148,7 +160,14 @@ export default function MarketWatchlistPage() {
     onSuccess: () => {
       toast({ title: "Removed from watchlist" });
       queryClient.invalidateQueries({ queryKey: ["/api/market/watchlist"] });
+      setPendingRemove(null);
     },
+    onError: () =>
+      toast({
+        title: "Couldn't remove from watchlist",
+        description: "The county is still on your watchlist. Try again, or pause alerts manually.",
+        variant: "destructive",
+      }),
   });
 
   const testMutation = useMutation({
@@ -158,6 +177,12 @@ export default function MarketWatchlistPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/market/watchlist/alerts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/market/watchlist/unread"] });
     },
+    onError: () =>
+      toast({
+        title: "Couldn't send test alert",
+        description: "Your alert config is unchanged. Check that email/push channels are enabled, then try again.",
+        variant: "destructive",
+      }),
   });
 
   const markReadMutation = useMutation({
@@ -174,10 +199,10 @@ export default function MarketWatchlistPage() {
 
   return (
     <PageShell>
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-2">
-            <Eye className="w-6 h-6 text-primary" /> Market Watchlist
+            <Eye className="w-6 h-6 text-primary" aria-hidden="true" /> Market watchlist
           </h1>
           <p className="text-muted-foreground text-sm md:text-base">
             Monitor counties for deal opportunities, price drops, and tax delinquency events.
@@ -185,77 +210,96 @@ export default function MarketWatchlistPage() {
         </div>
         <Dialog open={addOpen} onOpenChange={setAddOpen}>
           <DialogTrigger asChild>
-            <Button><Plus className="w-4 h-4 mr-1" /> Watch County</Button>
+            <Button aria-label="Add a county to watchlist"><Plus className="w-4 h-4 mr-1" aria-hidden="true" /> Watch county</Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Add County to Watchlist</DialogTitle>
+              <DialogTitle>Add county to watchlist</DialogTitle>
             </DialogHeader>
-            <div className="space-y-4">
+            <form
+              onSubmit={(e) => { e.preventDefault(); if (newEntry.county) addMutation.mutate(); }}
+              className="space-y-4"
+            >
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label>State</Label>
+                  <Label htmlFor={stateSelectId}>State</Label>
                   <Select value={newEntry.state} onValueChange={v => setNewEntry(e => ({ ...e, state: v }))}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger id={stateSelectId} aria-label="State"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {US_STATES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label>County</Label>
+                  <Label htmlFor={countyInputId}>County</Label>
                   <Input
+                    id={countyInputId}
                     placeholder="e.g. Travis"
                     value={newEntry.county}
                     onChange={e => setNewEntry(prev => ({ ...prev, county: e.target.value }))}
+                    autoCapitalize="words"
+                    required
                   />
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">Alert Triggers</Label>
-                {[
-                  { key: "alertOnTaxDelinquent", label: "New tax delinquent parcels" },
-                  { key: "alertOnPriceDrop", label: `Price drop ≥ ${newEntry.priceDropThresholdPct}%` },
-                  { key: "alertOnDemandIncrease", label: `Demand score ≥ ${newEntry.demandScoreThreshold}` },
-                  { key: "alertOnForeclosure", label: "Foreclosure filings" },
-                ].map(({ key, label }) => (
-                  <div key={key} className="flex items-center gap-2">
-                    <Switch
-                      checked={(newEntry as any)[key]}
-                      onCheckedChange={v => setNewEntry(e => ({ ...e, [key]: v }))}
-                    />
-                    <span className="text-sm">{label}</span>
-                  </div>
-                ))}
-              </div>
+              <fieldset className="space-y-2">
+                <legend className="text-sm font-medium">Alert triggers</legend>
+                <ul className="space-y-2" aria-label="Alert triggers">
+                  {[
+                    { key: "alertOnTaxDelinquent", label: "New tax delinquent parcels" },
+                    { key: "alertOnPriceDrop", label: `Price drop ≥ ${newEntry.priceDropThresholdPct}%` },
+                    { key: "alertOnDemandIncrease", label: `Demand score ≥ ${newEntry.demandScoreThreshold}` },
+                    { key: "alertOnForeclosure", label: "Foreclosure filings" },
+                  ].map(({ key, label }) => {
+                    const switchId = `${key}-switch`;
+                    return (
+                      <li key={key} className="flex items-center gap-2">
+                        <Switch
+                          id={switchId}
+                          checked={(newEntry as any)[key]}
+                          onCheckedChange={v => setNewEntry(e => ({ ...e, [key]: v }))}
+                        />
+                        <Label htmlFor={switchId} className="text-sm cursor-pointer">{label}</Label>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </fieldset>
 
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">Notification Channels</Label>
-                {[
-                  { key: "emailAlert", label: "Email alerts" },
-                  { key: "pushAlert", label: "Push notifications" },
-                ].map(({ key, label }) => (
-                  <div key={key} className="flex items-center gap-2">
-                    <Switch
-                      checked={(newEntry as any)[key]}
-                      onCheckedChange={v => setNewEntry(e => ({ ...e, [key]: v }))}
-                    />
-                    <span className="text-sm">{label}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
-              <Button
-                onClick={() => addMutation.mutate()}
-                disabled={!newEntry.county || addMutation.isPending}
-              >
-                {addMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-                Add to Watchlist
-              </Button>
-            </DialogFooter>
+              <fieldset className="space-y-2">
+                <legend className="text-sm font-medium">Notification channels</legend>
+                <ul className="space-y-2" aria-label="Notification channels">
+                  {[
+                    { key: "emailAlert", label: "Email alerts" },
+                    { key: "pushAlert", label: "Push notifications" },
+                  ].map(({ key, label }) => {
+                    const switchId = `${key}-switch`;
+                    return (
+                      <li key={key} className="flex items-center gap-2">
+                        <Switch
+                          id={switchId}
+                          checked={(newEntry as any)[key]}
+                          onCheckedChange={v => setNewEntry(e => ({ ...e, [key]: v }))}
+                        />
+                        <Label htmlFor={switchId} className="text-sm cursor-pointer">{label}</Label>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </fieldset>
+
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
+                <Button
+                  type="submit"
+                  disabled={!newEntry.county || addMutation.isPending}
+                >
+                  {addMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" aria-hidden="true" /> : null}
+                  Add to watchlist
+                </Button>
+              </DialogFooter>
+            </form>
           </DialogContent>
         </Dialog>
       </div>
@@ -263,79 +307,88 @@ export default function MarketWatchlistPage() {
       <Tabs defaultValue="watchlist">
         <TabsList>
           <TabsTrigger value="watchlist" className="gap-2">
-            <MapPin className="w-3.5 h-3.5" /> Watched Counties
-            {watchlist && <Badge variant="secondary" className="ml-1 text-xs">{watchlist.length}</Badge>}
+            <MapPin className="w-3.5 h-3.5" aria-hidden="true" /> Watched counties
+            {watchlist && <Badge variant="secondary" className="ml-1 text-xs tabular-nums">{watchlist.length}</Badge>}
           </TabsTrigger>
           <TabsTrigger value="alerts" className="gap-2">
-            <Bell className="w-3.5 h-3.5" /> Alerts
-            {unreadCount > 0 && <Badge variant="destructive" className="ml-1 text-xs">{unreadCount}</Badge>}
+            <Bell className="w-3.5 h-3.5" aria-hidden="true" /> Alerts
+            {unreadCount > 0 && <Badge variant="destructive" className="ml-1 text-xs tabular-nums">{unreadCount}</Badge>}
           </TabsTrigger>
         </TabsList>
 
-        {/* Watchlist Tab */}
         <TabsContent value="watchlist" className="space-y-3">
           {isLoading ? (
-            <div className="flex justify-center py-12"><Loader2 className="animate-spin text-muted-foreground" /></div>
+            <div className="flex justify-center py-12" role="status" aria-live="polite">
+              <span className="sr-only">Loading watchlist…</span>
+              <Loader2 className="animate-spin text-muted-foreground" aria-hidden="true" />
+            </div>
           ) : !watchlist?.length ? (
             <Card>
               <CardContent className="py-12 text-center">
-                <MapPin className="w-8 h-8 text-muted-foreground mx-auto mb-3" />
+                <MapPin className="w-8 h-8 text-muted-foreground mx-auto mb-3" aria-hidden="true" />
                 <p className="text-sm text-muted-foreground">No counties on your watchlist yet.</p>
                 <Button variant="outline" className="mt-3" onClick={() => setAddOpen(true)}>
-                  <Plus className="w-4 h-4 mr-1" /> Watch a County
+                  <Plus className="w-4 h-4 mr-1" aria-hidden="true" /> Watch a county
                 </Button>
               </CardContent>
             </Card>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {watchlist.map(entry => (
-                <Card key={entry.id}>
-                  <CardContent className="pt-4 pb-4">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <div className="font-semibold flex items-center gap-2">
-                          <MapPin className="w-4 h-4 text-primary" />
-                          {entry.county} County, {entry.state}
-                        </div>
-                        {entry.lastAlertAt && (
-                          <div className="text-xs text-muted-foreground mt-0.5">
-                            Last alert {relative(entry.lastAlertAt)}
+            <ul className="grid grid-cols-1 md:grid-cols-2 gap-3" aria-label="Watched counties">
+              {watchlist.map(entry => {
+                const label = `${entry.county} County, ${entry.state}`;
+                return (
+                  <li key={entry.id}>
+                    <Card>
+                      <CardContent className="pt-4 pb-4">
+                        <div className="flex items-start justify-between gap-2 flex-wrap">
+                          <div className="min-w-0">
+                            <div className="font-semibold flex items-center gap-2">
+                              <MapPin className="w-4 h-4 text-primary" aria-hidden="true" />
+                              {label}
+                            </div>
+                            {entry.lastAlertAt && (
+                              <div className="text-xs text-muted-foreground mt-0.5 tabular-nums">
+                                Last alert {relative(entry.lastAlertAt)}
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </div>
-                      <div className="flex gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 text-xs"
-                          onClick={() => testMutation.mutate(entry.id)}
-                          disabled={testMutation.isPending}
-                        >
-                          Test
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 w-7 p-0 text-muted-foreground"
-                          onClick={() => removeMutation.mutate(entry.id)}
-                          disabled={removeMutation.isPending}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap gap-1 mt-2">
-                      {entry.alertOnTaxDelinquent && <Badge variant="outline" className="text-xs">Tax Delinq.</Badge>}
-                      {entry.alertOnPriceDrop && <Badge variant="outline" className="text-xs">Price ↓{entry.priceDropThresholdPct}%</Badge>}
-                      {entry.alertOnDemandIncrease && <Badge variant="outline" className="text-xs">Demand ≥{entry.demandScoreThreshold}</Badge>}
-                      {entry.alertOnForeclosure && <Badge variant="outline" className="text-xs">Foreclosure</Badge>}
-                      {entry.emailAlert && <Badge variant="secondary" className="text-xs">Email</Badge>}
-                      {entry.pushAlert && <Badge variant="secondary" className="text-xs">Push</Badge>}
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
+                          <div className="flex gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 text-xs"
+                              onClick={() => testMutation.mutate(entry.id)}
+                              disabled={testMutation.isPending}
+                              aria-label={`Send test alert for ${label}`}
+                            >
+                              <Send className="w-3 h-3 mr-1" aria-hidden="true" /> Test
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0 text-muted-foreground"
+                              onClick={() => setPendingRemove(entry)}
+                              disabled={removeMutation.isPending}
+                              aria-label={`Remove ${label} from watchlist`}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+                            </Button>
+                          </div>
+                        </div>
+                        <ul className="flex flex-wrap gap-1 mt-2" aria-label={`Active alerts for ${label}`}>
+                          {entry.alertOnTaxDelinquent && <li><Badge variant="outline" className="text-xs">Tax delinq.</Badge></li>}
+                          {entry.alertOnPriceDrop && <li><Badge variant="outline" className="text-xs tabular-nums">Price ↓{entry.priceDropThresholdPct}%</Badge></li>}
+                          {entry.alertOnDemandIncrease && <li><Badge variant="outline" className="text-xs tabular-nums">Demand ≥{entry.demandScoreThreshold}</Badge></li>}
+                          {entry.alertOnForeclosure && <li><Badge variant="outline" className="text-xs">Foreclosure</Badge></li>}
+                          {entry.emailAlert && <li><Badge variant="secondary" className="text-xs">Email</Badge></li>}
+                          {entry.pushAlert && <li><Badge variant="secondary" className="text-xs">Push</Badge></li>}
+                        </ul>
+                      </CardContent>
+                    </Card>
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </TabsContent>
 
@@ -358,36 +411,59 @@ export default function MarketWatchlistPage() {
           {!alerts?.length ? (
             <Card>
               <CardContent className="py-12 text-center">
-                <Bell className="w-8 h-8 text-muted-foreground mx-auto mb-3" />
+                <Bell className="w-8 h-8 text-muted-foreground mx-auto mb-3" aria-hidden="true" />
                 <p className="text-sm text-muted-foreground">No alerts yet. Watch counties to receive market alerts.</p>
               </CardContent>
             </Card>
           ) : (
-            alerts.map(alert => {
-              const Icon = ALERT_TYPE_ICONS[alert.type] ?? BellRing;
-              return (
-                <Card key={alert.id} className={`border ${SEVERITY_COLORS[alert.severity]} ${alert.read ? "opacity-60" : ""}`}>
-                  <CardContent className="pt-4 flex gap-3">
-                    <Icon className="w-4 h-4 shrink-0 mt-0.5 text-muted-foreground" />
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-medium text-sm">{alert.title}</span>
-                        <Badge variant="outline" className="text-xs">{alert.county}, {alert.state}</Badge>
-                        <Badge variant="outline" className="text-xs">{alert.type.replace(/_/g, " ")}</Badge>
-                        {!alert.read && <div className="w-2 h-2 rounded-full bg-primary" />}
-                        <span className="text-xs text-muted-foreground ml-auto">
-                          {relative(alert.createdAt)}
-                        </span>
-                      </div>
-                      <p className="text-sm text-muted-foreground mt-1">{alert.summary}</p>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })
+            <ol className="space-y-3" aria-label="Market alerts, newest first">
+              {alerts.map(alert => {
+                const Icon = ALERT_TYPE_ICONS[alert.type] ?? BellRing;
+                const isHighOrUnread = alert.severity === "high" || !alert.read;
+                return (
+                  <li key={alert.id}>
+                    <Card
+                      className={`border ${SEVERITY_COLORS[alert.severity]} ${alert.read ? "opacity-60" : ""}`}
+                      role={alert.severity === "high" && !alert.read ? "alert" : undefined}
+                    >
+                      <CardContent className="pt-4 flex gap-3">
+                        <Icon className="w-4 h-4 shrink-0 mt-0.5 text-muted-foreground" aria-label={`Alert type: ${alert.type.replace(/_/g, " ")}`} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-medium text-sm">{alert.title}</span>
+                            <Badge variant="outline" className="text-xs">{alert.county}, {alert.state}</Badge>
+                            <Badge variant="outline" className="text-xs capitalize">{alert.type.replace(/_/g, " ")}</Badge>
+                            {!alert.read && <span className="w-2 h-2 rounded-full bg-primary" aria-label="Unread" />}
+                            <span className="text-xs text-muted-foreground ml-auto tabular-nums">
+                              {relative(alert.createdAt)}
+                            </span>
+                          </div>
+                          <p className="text-sm text-muted-foreground mt-1">{alert.summary}</p>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </li>
+                );
+              })}
+            </ol>
           )}
         </TabsContent>
       </Tabs>
+
+      <ConfirmDialog
+        open={!!pendingRemove}
+        onOpenChange={(open) => { if (!open) setPendingRemove(null); }}
+        title={`Remove ${pendingRemove ? `${pendingRemove.county} County, ${pendingRemove.state}` : ""} from watchlist?`}
+        description={
+          pendingRemove
+            ? `Stops monitoring ${pendingRemove.county} County, ${pendingRemove.state}. You'll no longer receive alerts about new tax delinquencies, price drops, or foreclosures in this county. Past alerts stay in your alert history. Re-adding restarts monitoring.`
+            : ""
+        }
+        confirmLabel="Yes, remove"
+        variant="destructive"
+        isLoading={removeMutation.isPending}
+        onConfirm={() => pendingRemove && removeMutation.mutate(pendingRemove.id)}
+      />
     </PageShell>
   );
 }
