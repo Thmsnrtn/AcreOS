@@ -181,7 +181,7 @@ export default function VisionAIPage() {
       toast({ title: "Analysis complete", description: "All property photos have been analyzed" });
       queryClient.invalidateQueries({ queryKey: ["/api/vision-ai/properties", selectedPropertyId] });
     },
-    onError: (e: any) => toast({ title: "Analysis failed", description: `${e.message}. ${reassurance}`, variant: "destructive" }),
+    onError: (e: any) => toast({ title: "Couldn't analyze photos", description: `${e.message}. ${reassurance}`, variant: "destructive" }),
   });
 
   const descriptionMutation = useMutation({
@@ -196,7 +196,7 @@ export default function VisionAIPage() {
     onSuccess: (data) => {
       toast({ title: "Description generated", description: data.description?.slice(0, 80) + "…" });
     },
-    onError: (e: any) => toast({ title: "Description failed", description: `${e.message}. ${reassurance}`, variant: "destructive" }),
+    onError: (e: any) => toast({ title: "Couldn't generate description", description: `${e.message}. ${reassurance}`, variant: "destructive" }),
   });
 
   const summary = summaryData?.summary;

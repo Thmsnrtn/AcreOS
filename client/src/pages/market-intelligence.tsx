@@ -76,7 +76,7 @@ export default function MarketIntelligencePage() {
       return res.json();
     },
     onError: (err: any) =>
-      toast({ title: "Comparison failed", description: `${err.message}. ${reassurance}`, variant: "destructive" }),
+      toast({ title: "Couldn't compare markets", description: `${err.message}. ${reassurance}`, variant: "destructive" }),
   });
 
   const analysis = analysisData?.analysis;

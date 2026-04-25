@@ -99,7 +99,7 @@ export default function FinancePage() {
       toast({ title: "QuickBooks sync complete", description: `Synced ${data.synced} payment(s)${data.errors > 0 ? `, ${data.errors} error(s)` : ''}.` });
     } catch (err: any) {
       toast({
-        title: "QuickBooks sync failed",
+        title: "Couldn't sync to QuickBooks",
         description: `${err?.message || "Sync couldn't complete"} — no records were changed.`,
         variant: "destructive",
       });

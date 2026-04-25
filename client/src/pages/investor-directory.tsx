@@ -103,7 +103,7 @@ export default function InvestorDirectoryPage() {
       toast({ title: "Profile saved" });
     },
     onError: (err: any) =>
-      toast({ title: "Failed to save", description: `${err.message}. ${reassurance}`, variant: "destructive" }),
+      toast({ title: "Couldn't save profile", description: `${err.message}. ${reassurance}`, variant: "destructive" }),
   });
 
   const verifyMutation = useMutation({
@@ -115,7 +115,7 @@ export default function InvestorDirectoryPage() {
       toast({ title: "Identity verified", description: "Your investor badge is now active." });
     },
     onError: (err: any) =>
-      toast({ title: "Verification failed", description: `${err.message}. ${reassurance}`, variant: "destructive" }),
+      toast({ title: "Couldn't verify identity", description: `${err.message}. ${reassurance}`, variant: "destructive" }),
   });
 
   const myProfile = myData?.profile;

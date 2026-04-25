@@ -41,7 +41,7 @@ function AgentRuntime() {
       queryClient.invalidateQueries({ queryKey: ["/api/founder/v12/runtime"] });
       toast({ title: `Health check: ${data.unhealthy} unhealthy, ${data.restarted} restarted` });
     },
-    onError: (e: any) => toast({ title: "Health check failed", description: `${e.message}. ${reassurance}`, variant: "destructive" }),
+    onError: (e: any) => toast({ title: "Couldn't run health check", description: `${e.message}. ${reassurance}`, variant: "destructive" }),
   });
 
   const stateColors: Record<string, string> = {
@@ -199,7 +199,7 @@ function OutcomeVerification() {
       queryClient.invalidateQueries({ queryKey: ["/api/founder/v12/verification"] });
       toast({ title: `Verified ${data.verified} contracts` });
     },
-    onError: (e: any) => toast({ title: "Verification failed", description: `${e.message}. ${reassurance}`, variant: "destructive" }),
+    onError: (e: any) => toast({ title: "Couldn't verify outcomes", description: `${e.message}. ${reassurance}`, variant: "destructive" }),
   });
 
   return (
@@ -364,13 +364,13 @@ function TrustEnforcement() {
   const approveMutation = useMutation({
     mutationFn: (id: number) => apiRequest("POST", `/api/founder/v12/trust/${id}/approve`, { approvedBy: "ceo" }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/founder/v12/trust"] }),
-    onError: (e: any) => toast({ title: "Approval failed", description: `${e.message}. ${reassurance}`, variant: "destructive" }),
+    onError: (e: any) => toast({ title: "Couldn't approve", description: `${e.message}. ${reassurance}`, variant: "destructive" }),
   });
 
   const denyMutation = useMutation({
     mutationFn: (id: number) => apiRequest("POST", `/api/founder/v12/trust/${id}/deny`, { reason: "CEO denied" }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/founder/v12/trust"] }),
-    onError: (e: any) => toast({ title: "Denial failed", description: `${e.message}. ${reassurance}`, variant: "destructive" }),
+    onError: (e: any) => toast({ title: "Couldn't deny", description: `${e.message}. ${reassurance}`, variant: "destructive" }),
   });
 
   return (

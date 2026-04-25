@@ -46,8 +46,8 @@ export function useParcelLookup() {
     },
     onError: (error: Error) => {
       toast({
-        title: "Parcel lookup failed",
-        description: error.message,
+        title: "Couldn't look up parcel",
+        description: `${error.message} — your existing property records are unchanged.`,
         variant: "destructive",
       });
     },
