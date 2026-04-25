@@ -231,6 +231,11 @@ export function DealInbox({ leadId, leadEmail, leadName }: DealInboxProps) {
                     value={replyTo}
                     onChange={(e) => setReplyTo(e.target.value)}
                     type="email"
+                    inputMode="email"
+                    autoCapitalize="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    autoComplete="email"
                   />
                 </div>
                 <div>

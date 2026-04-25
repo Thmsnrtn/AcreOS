@@ -191,6 +191,11 @@ export function RequestSignaturesDialog({
                   <Label className="text-xs">Email</Label>
                   <Input
                     type="email"
+                    inputMode="email"
+                    autoCapitalize="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    autoComplete="email"
                     value={s.email}
                     onChange={(e) => updateSigner(i, { email: e.target.value })}
                     placeholder="jane@example.com"

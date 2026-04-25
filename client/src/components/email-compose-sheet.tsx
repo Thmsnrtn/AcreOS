@@ -163,6 +163,11 @@ export function EmailComposeSheet({
               value={to}
               onChange={(e) => setTo(e.target.value)}
               type="email"
+              inputMode="email"
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
+              autoComplete="email"
               placeholder="recipient@example.com"
             />
           </div>
@@ -176,11 +181,11 @@ export function EmailComposeSheet({
             <CollapsibleContent className="space-y-3 mt-2">
               <div>
                 <label htmlFor="compose-cc" className="text-sm font-medium">CC</label>
-                <Input id="compose-cc" value={cc} onChange={(e) => setCc(e.target.value)} type="email" />
+                <Input id="compose-cc" value={cc} onChange={(e) => setCc(e.target.value)} type="email" inputMode="email" autoCapitalize="off" autoCorrect="off" spellCheck={false} autoComplete="email" />
               </div>
               <div>
                 <label htmlFor="compose-bcc" className="text-sm font-medium">BCC</label>
-                <Input id="compose-bcc" value={bcc} onChange={(e) => setBcc(e.target.value)} type="email" />
+                <Input id="compose-bcc" value={bcc} onChange={(e) => setBcc(e.target.value)} type="email" inputMode="email" autoCapitalize="off" autoCorrect="off" spellCheck={false} autoComplete="email" />
               </div>
             </CollapsibleContent>
           </Collapsible>

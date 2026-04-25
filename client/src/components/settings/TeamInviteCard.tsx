@@ -146,6 +146,11 @@ export function TeamInviteCard() {
             <Input
               id="invite-email"
               type="email"
+              inputMode="email"
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
+              autoComplete="email"
               placeholder="teammate@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
