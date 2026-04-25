@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useId, useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { usd } from "@/lib/format";
@@ -237,6 +237,10 @@ function CreateScenarioDialog({ onSuccess }: { onSuccess: () => void }) {
     propertyId: "",
     notes: "",
   });
+  const nameId = useId();
+  const typeId = useId();
+  const propertyIdInputId = useId();
+  const notesId = useId();
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -265,17 +269,29 @@ function CreateScenarioDialog({ onSuccess }: { onSuccess: () => void }) {
       </DialogTrigger>
       <DialogContent>
         <DialogHeader><DialogTitle>Create Tax Scenario</DialogTitle></DialogHeader>
-        <div className="space-y-4 pt-2">
+        <form
+          className="space-y-4 pt-2"
+          onSubmit={e => {
+            e.preventDefault();
+            if (form.name && !createMutation.isPending) createMutation.mutate();
+          }}
+        >
           <div>
-            <Label>Scenario Name</Label>
-            <Input placeholder="e.g. Hold 5 years vs 1031" value={form.name}
-              onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+            <Label htmlFor={nameId}>Scenario Name</Label>
+            <Input
+              id={nameId}
+              placeholder="e.g. Hold 5 years vs 1031"
+              value={form.name}
+              onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+              autoCapitalize="sentences"
+              required
+            />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label>Type</Label>
+              <Label htmlFor={typeId}>Type</Label>
               <Select value={form.scenarioType} onValueChange={v => setForm(f => ({ ...f, scenarioType: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger id={typeId}><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="hold">Hold</SelectItem>
                   <SelectItem value="sell">Sell</SelectItem>
@@ -284,21 +300,32 @@ function CreateScenarioDialog({ onSuccess }: { onSuccess: () => void }) {
               </Select>
             </div>
             <div>
-              <Label>Property ID (optional)</Label>
-              <Input placeholder="prop_123" value={form.propertyId}
-                onChange={e => setForm(f => ({ ...f, propertyId: e.target.value }))} />
+              <Label htmlFor={propertyIdInputId}>Property ID (optional)</Label>
+              <Input
+                id={propertyIdInputId}
+                placeholder="prop_123"
+                value={form.propertyId}
+                onChange={e => setForm(f => ({ ...f, propertyId: e.target.value }))}
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
+              />
             </div>
           </div>
           <div>
-            <Label>Notes</Label>
-            <Textarea placeholder="Assumptions and notes…" value={form.notes}
-              onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={3} />
+            <Label htmlFor={notesId}>Notes</Label>
+            <Textarea
+              id={notesId}
+              placeholder="Assumptions and notes…"
+              value={form.notes}
+              onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+              rows={3}
+            />
           </div>
-          <Button className="w-full" onClick={() => createMutation.mutate()}
-            disabled={createMutation.isPending || !form.name}>
+          <Button type="submit" className="w-full" disabled={createMutation.isPending || !form.name}>
             {createMutation.isPending ? "Creating…" : "Create Scenario"}
           </Button>
-        </div>
+        </form>
       </DialogContent>
     </Dialog>
   );
