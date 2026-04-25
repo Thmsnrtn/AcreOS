@@ -763,6 +763,7 @@ to a dedicated 9b slice.
 **Dialog form onSubmit (177):** ✅ complete — tax-optimization NewScenarioDialog converted from div+button-onClick to `<form onSubmit>` with type="submit". Enter key now submits. Added useId + htmlFor on all 4 fields (name/type/propertyId/notes). Name field `required` + `autoCapitalize="sentences"`; propertyId off-keyboard hardening. (commit `a2f2b8b`)
 **Dialog form onSubmit 2 (178):** ✅ complete — RequestSignaturesDialog: signer-rows wrapped in `<form id>` so Enter submits; submit button moved to DialogFooter via `form` attribute. Name field got autoComplete="name" + autoCapitalize="words" + required. (commit `76eebe8`)
 **Dialog form onSubmit 3 (179):** ✅ complete — leads Generate Offer Letter dialog wrapped in `<form id>` with type="submit" button via form attribute. Replaced raw <label> with <Label htmlFor>, useId for property/amount/form IDs. Label component imported. (commit `c51f3ff`)
+**Dialog form onSubmit 4 (180):** ✅ complete — founder MRR-goal dialog: removed onKeyDown="Enter" hack, wrapped in proper `<form id>`. Input gained type="number" inputMode="numeric" min={0} autoComplete="off" + aria-label. (commit `37440b5`)
 **/onboarding-v2 targeted (18):** ✅ complete (commit `70df779`) — 18b deferred
 **/settings targeted (19):** ✅ complete (commit `809044c`) — 19b remaining components deferred
 **/pipeline (20):** ✅ complete (commit `1b5d0f7`)
