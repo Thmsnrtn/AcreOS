@@ -4873,28 +4873,35 @@ function SystemApiKeysSection() {
                 </div>
               </div>
               {editProvider === key.provider ? (
-                <div className="flex items-center gap-2">
+                <form
+                  className="flex items-center gap-2"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (newKey && !updateMutation.isPending) updateMutation.mutate({ provider: key.provider, apiKey: newKey });
+                  }}
+                >
                   <Input
                     type="password"
                     placeholder="Paste API key…"
                     value={newKey}
                     onChange={(e) => setNewKey(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter" && newKey) updateMutation.mutate({ provider: key.provider, apiKey: newKey }); }}
                     className="h-8 w-56 text-xs font-mono"
+                    autoComplete="off"
+                    aria-label={`API key for ${key.provider}`}
                     autoFocus
                   />
                   <Button
+                    type="submit"
                     size="sm"
                     className="h-8"
-                    onClick={() => updateMutation.mutate({ provider: key.provider, apiKey: newKey })}
                     disabled={updateMutation.isPending || !newKey}
                   >
                     {updateMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Save"}
                   </Button>
-                  <Button size="sm" variant="ghost" className="h-8" onClick={() => { setEditProvider(null); setNewKey(""); }}>
+                  <Button type="button" size="sm" variant="ghost" className="h-8" onClick={() => { setEditProvider(null); setNewKey(""); }}>
                     <X className="w-3 h-3" />
                   </Button>
-                </div>
+                </form>
               ) : (
                 <Button
                   size="sm"

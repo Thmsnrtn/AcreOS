@@ -158,13 +158,25 @@ export function AgentDebatePanel() {
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="flex gap-2">
-          <Input value={proposition} onChange={e => setProposition(e.target.value)} placeholder="Should we build a mobile app? Should we raise prices?" className="text-sm h-8"
-            onKeyDown={e => { if (e.key === "Enter" && proposition.trim()) initiateMutation.mutate(proposition.trim()); }} />
-          <Button size="sm" className="h-8 text-xs" onClick={() => proposition.trim() && initiateMutation.mutate(proposition.trim())} disabled={!proposition.trim() || initiateMutation.isPending}>
+        <form
+          className="flex gap-2"
+          onSubmit={e => {
+            e.preventDefault();
+            if (proposition.trim() && !initiateMutation.isPending) initiateMutation.mutate(proposition.trim());
+          }}
+        >
+          <Input
+            value={proposition}
+            onChange={e => setProposition(e.target.value)}
+            placeholder="Should we build a mobile app? Should we raise prices?"
+            className="text-sm h-8"
+            aria-label="Debate proposition"
+            autoCapitalize="sentences"
+          />
+          <Button type="submit" size="sm" className="h-8 text-xs" disabled={!proposition.trim() || initiateMutation.isPending}>
             <Swords className="h-3 w-3 mr-1" /> Debate
           </Button>
-        </div>
+        </form>
         {debateList.map(d => <DebateCard key={d.id} debate={d} />)}
         {debateList.length === 0 && <div className="text-center py-4 text-xs text-muted-foreground">No debates yet. Ask a strategic question above.</div>}
       </CardContent>
