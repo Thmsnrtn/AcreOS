@@ -947,11 +947,11 @@ export default function PortfolioOptimizerPage() {
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b">
-                          <th className="text-left py-2 pr-4 font-medium text-muted-foreground">Property</th>
-                          <th className="text-right py-2 pr-4 font-medium text-muted-foreground">Value</th>
-                          <th className="text-right py-2 pr-4 font-medium text-muted-foreground">Cash Flow/yr</th>
-                          <th className="text-right py-2 pr-4 font-medium text-muted-foreground">Appreciation</th>
-                          <th className="text-right py-2 font-medium text-muted-foreground">Weight</th>
+                          <th scope="col" className="text-left py-2 pr-4 font-medium text-muted-foreground">Property</th>
+                          <th scope="col" className="text-right py-2 pr-4 font-medium text-muted-foreground">Value</th>
+                          <th scope="col" className="text-right py-2 pr-4 font-medium text-muted-foreground">Cash Flow/yr</th>
+                          <th scope="col" className="text-right py-2 pr-4 font-medium text-muted-foreground">Appreciation</th>
+                          <th scope="col" className="text-right py-2 font-medium text-muted-foreground">Weight</th>
                         </tr>
                       </thead>
                       <tbody>

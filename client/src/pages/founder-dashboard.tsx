@@ -4179,9 +4179,9 @@ export default function FounderDashboard() {
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b">
-                          <th className="text-left py-2">Tier</th>
-                          <th className="text-right py-2">Count</th>
-                          <th className="text-right py-2">MRR</th>
+                          <th scope="col" className="text-left py-2">Tier</th>
+                          <th scope="col" className="text-right py-2">Count</th>
+                          <th scope="col" className="text-right py-2">MRR</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -4207,9 +4207,9 @@ export default function FounderDashboard() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b">
-                        <th className="text-left py-2">Month</th>
-                        <th className="text-right py-2">Projected MRR</th>
-                        <th className="text-right py-2">Growth</th>
+                        <th scope="col" className="text-left py-2">Month</th>
+                        <th scope="col" className="text-right py-2">Projected MRR</th>
+                        <th scope="col" className="text-right py-2">Growth</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -4239,8 +4239,8 @@ export default function FounderDashboard() {
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b">
-                          <th className="text-left py-2">Tier</th>
-                          <th className="text-right py-2">Organizations</th>
+                          <th scope="col" className="text-left py-2">Tier</th>
+                          <th scope="col" className="text-right py-2">Organizations</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -4256,9 +4256,9 @@ export default function FounderDashboard() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b">
-                        <th className="text-left py-2">Date</th>
-                        <th className="text-right py-2">Uptime</th>
-                        <th className="text-left py-2">Status</th>
+                        <th scope="col" className="text-left py-2">Date</th>
+                        <th scope="col" className="text-right py-2">Uptime</th>
+                        <th scope="col" className="text-left py-2">Status</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -4303,10 +4303,10 @@ export default function FounderDashboard() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b">
-                        <th className="text-left py-2">Agent</th>
-                        <th className="text-left py-2">Task</th>
-                        <th className="text-right py-2">Duration</th>
-                        <th className="text-left py-2">Result</th>
+                        <th scope="col" className="text-left py-2">Agent</th>
+                        <th scope="col" className="text-left py-2">Task</th>
+                        <th scope="col" className="text-right py-2">Duration</th>
+                        <th scope="col" className="text-left py-2">Result</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -4419,8 +4419,8 @@ export default function FounderDashboard() {
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b">
-                          <th className="text-left py-2">Stage</th>
-                          <th className="text-right py-2">Count</th>
+                          <th scope="col" className="text-left py-2">Stage</th>
+                          <th scope="col" className="text-right py-2">Count</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -4439,10 +4439,10 @@ export default function FounderDashboard() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b">
-                        <th className="text-left py-2">Organization</th>
-                        <th className="text-left py-2">Tier</th>
-                        <th className="text-left py-2">Status</th>
-                        <th className="text-right py-2">MRR</th>
+                        <th scope="col" className="text-left py-2">Organization</th>
+                        <th scope="col" className="text-left py-2">Tier</th>
+                        <th scope="col" className="text-left py-2">Status</th>
+                        <th scope="col" className="text-right py-2">MRR</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -4469,8 +4469,8 @@ export default function FounderDashboard() {
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b">
-                          <th className="text-left py-2">Tier</th>
-                          <th className="text-right py-2">Count</th>
+                          <th scope="col" className="text-left py-2">Tier</th>
+                          <th scope="col" className="text-right py-2">Count</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -4486,9 +4486,9 @@ export default function FounderDashboard() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b">
-                        <th className="text-left py-2">Period</th>
-                        <th className="text-right py-2">Signups</th>
-                        <th className="text-right py-2">Conversions</th>
+                        <th scope="col" className="text-left py-2">Period</th>
+                        <th scope="col" className="text-right py-2">Signups</th>
+                        <th scope="col" className="text-right py-2">Conversions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -4719,12 +4719,12 @@ function AIModelsSection() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b text-muted-foreground text-xs">
-                <th className="text-left py-2 pr-4 font-medium">Model</th>
-                <th className="text-right py-2 pr-4 font-medium">Input $/M</th>
-                <th className="text-right py-2 pr-4 font-medium">Output $/M</th>
-                <th className="text-right py-2 pr-4 font-medium">Weight</th>
-                <th className="text-center py-2 pr-4 font-medium">Enabled</th>
-                <th className="text-left py-2 font-medium">Task Types</th>
+                <th scope="col" className="text-left py-2 pr-4 font-medium">Model</th>
+                <th scope="col" className="text-right py-2 pr-4 font-medium">Input $/M</th>
+                <th scope="col" className="text-right py-2 pr-4 font-medium">Output $/M</th>
+                <th scope="col" className="text-right py-2 pr-4 font-medium">Weight</th>
+                <th scope="col" className="text-center py-2 pr-4 font-medium">Enabled</th>
+                <th scope="col" className="text-left py-2 font-medium">Task Types</th>
               </tr>
             </thead>
             <tbody>
