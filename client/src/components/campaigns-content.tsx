@@ -1298,9 +1298,9 @@ function CampaignForm({ onSuccess }: { onSuccess: () => void }) {
   return (
     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4">
       <div className="space-y-2">
-        <label htmlFor="campaign-name" className="text-sm font-medium">
+        <Label htmlFor="campaign-name">
           Campaign name <span className="text-destructive" aria-hidden="true">*</span>
-        </label>
+        </Label>
         <Input
           id="campaign-name"
           {...form.register("name")}
@@ -1361,7 +1361,7 @@ function CampaignForm({ onSuccess }: { onSuccess: () => void }) {
         </div>
 
         <div className="space-y-2">
-          <label htmlFor="schedule-date" className="text-sm font-medium">Schedule</label>
+          <Label htmlFor="schedule-date">Schedule</Label>
           <Input
             id="schedule-date"
             type="date"
@@ -1376,7 +1376,7 @@ function CampaignForm({ onSuccess }: { onSuccess: () => void }) {
       </div>
 
       <div className="space-y-2">
-        <label id="template-group-label" className="text-sm font-medium">Template</label>
+        <Label id="template-group-label">Template</Label>
         <div
           role="radiogroup"
           aria-labelledby="template-group-label"
@@ -1452,9 +1452,9 @@ function CampaignForm({ onSuccess }: { onSuccess: () => void }) {
       </div>
 
       <div className="space-y-2">
-        <label htmlFor="offer-percent" className="text-sm font-medium">
+        <Label htmlFor="offer-percent">
           Blind-offer formula <span className="text-muted-foreground font-normal">(optional)</span>
-        </label>
+        </Label>
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-sm text-muted-foreground">{"{{offerAmount}}"} =</span>
           <Input
@@ -1489,9 +1489,9 @@ function CampaignForm({ onSuccess }: { onSuccess: () => void }) {
       </div>
 
       <div className="space-y-2">
-        <label htmlFor="recipient-filter" className="text-sm font-medium">
+        <Label htmlFor="recipient-filter">
           Recipients <span className="text-destructive" aria-hidden="true">*</span>
-        </label>
+        </Label>
         <select
           id="recipient-filter"
           {...form.register("recipientFilter" as any)}
@@ -1511,12 +1511,13 @@ function CampaignForm({ onSuccess }: { onSuccess: () => void }) {
 
       {campaignType !== "sms" && (
         <div className="space-y-2">
-          <label htmlFor="campaign-subject" className="text-sm font-medium">
+          <Label htmlFor="campaign-subject">
             Subject <span className="text-muted-foreground font-normal">(email and direct mail)</span>
-          </label>
+          </Label>
           <Input
             id="campaign-subject"
             {...form.register("subject")}
+            autoCapitalize="sentences"
             placeholder="We'd like to buy your land"
             data-testid="input-subject"
           />
@@ -1524,12 +1525,13 @@ function CampaignForm({ onSuccess }: { onSuccess: () => void }) {
       )}
 
       <div className="space-y-2">
-        <label htmlFor="campaign-content" className="text-sm font-medium">
+        <Label htmlFor="campaign-content">
           Content <span className="text-destructive" aria-hidden="true">*</span>
-        </label>
+        </Label>
         <Textarea
           id="campaign-content"
           {...form.register("content")}
+          autoCapitalize="sentences"
           placeholder="Dear {{firstName}}, I'm interested in purchasing your property in {{county}} County…"
           rows={6}
           required
@@ -1538,7 +1540,7 @@ function CampaignForm({ onSuccess }: { onSuccess: () => void }) {
       </div>
 
       <div className="space-y-2">
-        <label htmlFor="campaign-budget" className="text-sm font-medium">Budget</label>
+        <Label htmlFor="campaign-budget">Budget</Label>
         <div className="relative">
           <span
             className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none text-sm"
