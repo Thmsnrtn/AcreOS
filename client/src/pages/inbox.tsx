@@ -4,6 +4,8 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useMemo, useEffect } from "react";
+import { useDocumentTitle } from "@/hooks/use-document-title";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import type { InboxMessage, Lead, Conversation, Message } from "@shared/schema";
 import { format } from "date-fns";
 import { ProviderReadinessBanner, ProviderStatusIndicator } from "@/components/provider-readiness-banner";
@@ -272,6 +274,7 @@ function EmailMessageDetail({
   const { toast } = useToast();
   const [replyText, setReplyText] = useState("");
   const [showReply, setShowReply] = useState(false);
+  const [pendingArchive, setPendingArchive] = useState(false);
 
   const markReadMutation = useMutation({
     mutationFn: async () => {
@@ -370,8 +373,8 @@ function EmailMessageDetail({
     },
     onError: () => {
       toast({
-        title: "Failed to send",
-        description: "Could not send your reply. Please try again.",
+        title: "Couldn't send reply",
+        description: "Your draft is preserved. Try again or check the email provider status.",
         variant: "destructive",
       });
     },
@@ -427,9 +430,10 @@ function EmailMessageDetail({
           <Button
             size="sm"
             variant="outline"
-            onClick={() => archiveMutation.mutate()}
+            onClick={() => setPendingArchive(true)}
             disabled={archiveMutation.isPending}
             data-testid="button-archive-message"
+            aria-label={`Archive email: ${message.subject || "(No subject)"}`}
           >
             {archiveMutation.isPending ? (
               <Loader2 className="h-4 w-4 mr-1 animate-spin" aria-hidden="true" />
@@ -477,7 +481,11 @@ function EmailMessageDetail({
                   )}
                 </div>
                 <div className="text-sm text-muted-foreground tabular-nums">
-                  {message.receivedAt && format(new Date(message.receivedAt), "PPpp")}
+                  {message.receivedAt && (
+                    <time dateTime={new Date(message.receivedAt).toISOString()}>
+                      {format(new Date(message.receivedAt), "PPpp")}
+                    </time>
+                  )}
                 </div>
               </div>
 
@@ -524,11 +532,12 @@ function EmailMessageDetail({
               <CardContent className="space-y-3">
                 <ProviderReadinessBanner channel="email" compact />
                 <Textarea
-                  placeholder="Type your reply..."
+                  placeholder="Type your reply…"
                   aria-label="Reply message"
                   value={replyText}
                   onChange={(e) => setReplyText(e.target.value)}
                   rows={5}
+                  autoCapitalize="sentences"
                   data-testid="input-reply-text"
                 />
                 <div className="flex justify-end gap-2">
@@ -557,6 +566,19 @@ function EmailMessageDetail({
           )}
         </div>
       </ScrollArea>
+
+      <ConfirmDialog
+        open={pendingArchive}
+        onOpenChange={(open) => { if (!open) setPendingArchive(false); }}
+        title={`Archive email: "${message.subject || "(No subject)"}"?`}
+        description="The email moves to your Archived tab. You can restore it later by switching to that tab and unstarring/replying — nothing is permanently deleted."
+        confirmLabel="Archive email"
+        onConfirm={() => {
+          archiveMutation.mutate();
+          setPendingArchive(false);
+        }}
+        isLoading={archiveMutation.isPending}
+      />
     </div>
   );
 }
@@ -606,8 +628,8 @@ function SMSConversationDetail({
     },
     onError: (error: any) => {
       toast({
-        title: "Failed to send SMS",
-        description: error.message || "Could not send your message. Please try again.",
+        title: "Couldn't send SMS",
+        description: `${error.message || "Network error"} — your message draft is preserved. Try again or check the SMS provider status.`,
         variant: "destructive",
       });
     },
@@ -717,12 +739,13 @@ function SMSConversationDetail({
         <ProviderReadinessBanner channel="sms" compact />
         <div className="flex gap-2">
           <Textarea
-            placeholder="Type your message..."
+            placeholder="Type your message…"
             aria-label="SMS message"
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
             rows={2}
             className="resize-none"
+            autoCapitalize="sentences"
             data-testid="input-sms-message"
           />
           <Button
@@ -749,6 +772,7 @@ function SMSConversationDetail({
 }
 
 export default function InboxPage() {
+  useDocumentTitle("Inbox");
   const { isCollapsed } = useSidebarCollapsed();
   const [channelFilter, setChannelFilter] = useState<ChannelFilter>("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -924,7 +948,12 @@ export default function InboxPage() {
           <div className="relative w-full md:w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
             <Input
-              placeholder="Search messages..."
+              type="search"
+              inputMode="search"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              placeholder="Search messages…"
               aria-label="Search messages"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -1015,31 +1044,33 @@ export default function InboxPage() {
                 />
               </div>
             ) : (
-              <ScrollArea className="flex-1" aria-label="Messages">
-                {filteredItems.map((item) => (
-                  item.type === "email" ? (
-                    <EmailMessageRow
-                      key={`email-${item.data.id}`}
-                      message={item.data}
-                      isSelected={selectedItem?.type === "email" && selectedItem.data.id === item.data.id}
-                      onSelect={() => handleSelectItem(item)}
-                      leadName={item.data.leadId
-                        ? (() => {
-                            const lead = leadsMap.get(item.data.leadId!);
-                            return lead ? `${lead.firstName} ${lead.lastName}` : undefined;
-                          })()
-                        : undefined}
-                    />
-                  ) : (
-                    <SMSConversationRow
-                      key={`sms-${item.data.id}`}
-                      conversation={item.data}
-                      isSelected={selectedItem?.type === "sms" && selectedItem.data.id === item.data.id}
-                      onSelect={() => handleSelectItem(item)}
-                      lead={leadsMap.get(item.data.leadId)}
-                    />
-                  )
-                ))}
+              <ScrollArea className="flex-1">
+                <ul className="list-none p-0 m-0" role="list" aria-label={`${filteredItems.length} message${filteredItems.length === 1 ? "" : "s"}`}>
+                  {filteredItems.map((item) => (
+                    <li key={item.type === "email" ? `email-${item.data.id}` : `sms-${item.data.id}`}>
+                      {item.type === "email" ? (
+                        <EmailMessageRow
+                          message={item.data}
+                          isSelected={selectedItem?.type === "email" && selectedItem.data.id === item.data.id}
+                          onSelect={() => handleSelectItem(item)}
+                          leadName={item.data.leadId
+                            ? (() => {
+                                const lead = leadsMap.get(item.data.leadId!);
+                                return lead ? `${lead.firstName} ${lead.lastName}` : undefined;
+                              })()
+                            : undefined}
+                        />
+                      ) : (
+                        <SMSConversationRow
+                          conversation={item.data}
+                          isSelected={selectedItem?.type === "sms" && selectedItem.data.id === item.data.id}
+                          onSelect={() => handleSelectItem(item)}
+                          lead={leadsMap.get(item.data.leadId)}
+                        />
+                      )}
+                    </li>
+                  ))}
+                </ul>
               </ScrollArea>
             )}
           </div>
