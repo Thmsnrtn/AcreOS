@@ -69,10 +69,19 @@ export function ExportButton({
     }
   }
 
+  const fallbackLabel = `Export ${format.toUpperCase()}`;
   return (
-    <Button variant={variant} size={size} onClick={handleClick} disabled={loading || rest.disabled} {...rest}>
-      {loading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Download className="h-4 w-4 mr-1" />}
-      {label ?? `Export ${format.toUpperCase()}`}
+    <Button
+      type="button"
+      variant={variant}
+      size={size}
+      onClick={handleClick}
+      disabled={loading || rest.disabled}
+      aria-busy={loading}
+      {...rest}
+    >
+      {loading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" aria-hidden="true" /> : <Download className="h-4 w-4 mr-1" aria-hidden="true" />}
+      {loading ? "Exporting…" : (label ?? fallbackLabel)}
     </Button>
   );
 }

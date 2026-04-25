@@ -43,8 +43,9 @@ export function CopyButton({
       disabled={!value || rest.disabled}
       {...rest}
     >
-      <Icon className={copied ? "text-emerald-500" : undefined} />
+      <Icon className={copied ? "text-emerald-500" : undefined} aria-hidden="true" />
       {label}
+      {copied && <span className="sr-only" role="status">{successMessage}</span>}
     </Button>
   );
 }

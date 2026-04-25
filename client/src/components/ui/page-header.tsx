@@ -41,12 +41,12 @@ export function PageHeader({
   ...rest
 }: PageHeaderProps) {
   return (
-    <div className={cn("mb-6", className)} {...rest}>
+    <header className={cn("mb-6", className)} {...rest}>
       {breadcrumbs && <div className="mb-2">{breadcrumbs}</div>}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div className="min-w-0 flex-1">
           <h1 className="text-2xl font-semibold text-foreground flex items-center gap-2">
-            {icon}
+            {icon && <span aria-hidden="true" className="flex items-center">{icon}</span>}
             <span className="truncate">{title}</span>
           </h1>
           {description && (
@@ -60,6 +60,6 @@ export function PageHeader({
           <div className="flex items-center gap-2 flex-shrink-0">{actions}</div>
         )}
       </div>
-    </div>
+    </header>
   );
 }
