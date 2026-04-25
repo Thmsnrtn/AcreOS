@@ -7,9 +7,11 @@
  *   - Due diligence checklist generator per state
  *   - Quick deal risk assessment
  */
-import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useId, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { PageShell } from "@/components/page-shell";
+import { useDocumentTitle } from "@/hooks/use-document-title";
+import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -111,14 +113,18 @@ interface RiskAssessment {
 
 function ComplianceScoreGauge({ score }: { score: number }) {
   const color = score >= 80 ? 'text-green-600' : score >= 60 ? 'text-yellow-600' : 'text-red-600';
-  const bgColor = score >= 80 ? 'bg-green-500' : score >= 60 ? 'bg-yellow-500' : 'bg-red-500';
+  const tier = score >= 80 ? 'strong' : score >= 60 ? 'moderate' : 'weak';
   const circumference = 2 * Math.PI * 36;
   const dashoffset = circumference - (score / 100) * circumference;
 
   return (
-    <div className="flex flex-col items-center gap-1">
+    <div
+      className="flex flex-col items-center gap-1"
+      role="img"
+      aria-label={`Compliance score ${score} of 100 (${tier})`}
+    >
       <div className="relative w-24 h-24">
-        <svg viewBox="0 0 80 80" className="w-full h-full -rotate-90">
+        <svg viewBox="0 0 80 80" className="w-full h-full -rotate-90" aria-hidden="true">
           <circle cx="40" cy="40" r="36" fill="none" stroke="currentColor" strokeWidth="8" className="text-muted/30" />
           <circle
             cx="40" cy="40" r="36" fill="none" strokeWidth="8"
@@ -130,10 +136,10 @@ function ComplianceScoreGauge({ score }: { score: number }) {
           />
         </svg>
         <div className="absolute inset-0 flex items-center justify-center">
-          <span className={`text-xl font-bold ${color}`}>{score}</span>
+          <span className={`text-xl font-bold tabular-nums ${color}`} aria-hidden="true">{score}</span>
         </div>
       </div>
-      <p className="text-xs text-muted-foreground">Compliance Score</p>
+      <p className="text-xs text-muted-foreground">Compliance score</p>
     </div>
   );
 }
@@ -147,34 +153,40 @@ function RegulatoryChangeTimeline({ alerts }: { alerts: RegulatoryAlert[] }) {
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm flex items-center gap-2">
-          <History className="w-4 h-4 text-primary" /> Regulatory Change History
+          <History className="w-4 h-4 text-primary" aria-hidden="true" /> Regulatory change history
         </CardTitle>
       </CardHeader>
       <CardContent>
         {sorted.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-4">No regulatory changes recorded.</p>
         ) : (
-          <div className="relative pl-4 border-l-2 border-muted space-y-4">
-            {sorted.map((alert, i) => {
+          <ol className="relative pl-4 border-l-2 border-muted space-y-4 list-none p-0 pl-4 m-0" aria-label="Regulatory changes in reverse chronological order">
+            {sorted.map((alert) => {
               const Icon = SEVERITY_ICONS[alert.severity];
               return (
-                <div key={alert.id} className="relative">
-                  <div className="absolute -left-[1.1rem] top-0.5 w-3 h-3 rounded-full border-2 border-background" style={{
-                    background: alert.severity === 'critical' ? '#ef4444' : alert.severity === 'warning' ? '#f59e0b' : '#3b82f6'
-                  }} />
-                  <div className="text-xs text-muted-foreground mb-0.5">{alert.effectiveDate}</div>
+                <li key={alert.id} className="relative">
+                  <div
+                    className="absolute -left-[1.1rem] top-0.5 w-3 h-3 rounded-full border-2 border-background"
+                    style={{
+                      background: alert.severity === 'critical' ? '#ef4444' : alert.severity === 'warning' ? '#f59e0b' : '#3b82f6',
+                    }}
+                    aria-hidden="true"
+                  />
+                  <div className="text-xs text-muted-foreground mb-0.5">
+                    <time dateTime={alert.effectiveDate}>{alert.effectiveDate}</time>
+                  </div>
                   <div className="flex items-start gap-1.5">
-                    <Icon className={`w-3.5 h-3.5 shrink-0 mt-0.5 ${SEVERITY_COLORS[alert.severity].split(" ")[0]}`} />
+                    <Icon className={`w-3.5 h-3.5 shrink-0 mt-0.5 ${SEVERITY_COLORS[alert.severity].split(" ")[0]}`} aria-label={`Severity: ${alert.severity}`} />
                     <div>
                       <span className="text-sm font-medium">{alert.title}</span>
-                      {alert.state && <Badge variant="outline" className="ml-1.5 text-xs">{alert.state}</Badge>}
+                      {alert.state && <Badge variant="outline" className="ml-1.5 text-xs" aria-label={`State: ${alert.state}`}>{alert.state}</Badge>}
                       <p className="text-xs text-muted-foreground mt-0.5">{alert.summary}</p>
                     </div>
                   </div>
-                </div>
+                </li>
               );
             })}
-          </div>
+          </ol>
         )}
       </CardContent>
     </Card>
@@ -202,50 +214,63 @@ function PortfolioImpactSection({ alerts, states }: { alerts: RegulatoryAlert[];
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm flex items-center gap-2">
-          <BarChart3 className="w-4 h-4 text-primary" /> Portfolio Impact Analysis
+          <BarChart3 className="w-4 h-4 text-primary" aria-hidden="true" /> Portfolio impact analysis
         </CardTitle>
-        <CardDescription>How regulatory changes may affect your portfolio's operating states</CardDescription>
+        <CardDescription>How regulatory changes may affect your portfolio&apos;s operating states</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid grid-cols-3 gap-3 text-center">
+        <dl className="grid grid-cols-3 gap-3 text-center">
           <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-2">
-            <p className="text-xl font-bold text-red-600">{criticalCount}</p>
-            <p className="text-xs text-muted-foreground">Critical Alerts</p>
+            <dd className="text-xl font-bold text-red-600 tabular-nums">{criticalCount}</dd>
+            <dt className="text-xs text-muted-foreground">Critical alerts</dt>
           </div>
           <div className="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-2">
-            <p className="text-xl font-bold text-yellow-600">{warningCount}</p>
-            <p className="text-xs text-muted-foreground">Warnings</p>
+            <dd className="text-xl font-bold text-yellow-600 tabular-nums">{warningCount}</dd>
+            <dt className="text-xs text-muted-foreground">Warnings</dt>
           </div>
           <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-2">
-            <p className="text-xl font-bold text-blue-600">{impactedStates.length}</p>
-            <p className="text-xs text-muted-foreground">States Impacted</p>
+            <dd className="text-xl font-bold text-blue-600 tabular-nums">{impactedStates.length}</dd>
+            <dt className="text-xs text-muted-foreground">States impacted</dt>
           </div>
-        </div>
+        </dl>
 
         {impactedStates.length > 0 ? (
           <div className="space-y-2">
-            <p className="text-xs font-medium text-muted-foreground">Impact by State</p>
-            {impactedStates.map(s => (
-              <div key={s.code} className="flex items-center gap-3 text-sm">
-                <Badge variant="outline" className="w-8 text-center text-xs">{s.code}</Badge>
-                <span className="flex-1 text-muted-foreground">{s.name}</span>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-20 bg-muted rounded-full h-1.5">
-                    <div className="bg-red-500 h-1.5 rounded-full" style={{ width: `${Math.min(100, s.alertCount * 25)}%` }} />
-                  </div>
-                  <span className="text-xs text-muted-foreground">{s.alertCount} alert{s.alertCount !== 1 ? 's' : ''}</span>
-                </div>
-              </div>
-            ))}
+            <p id="impact-by-state-label" className="text-xs font-medium text-muted-foreground">Impact by state</p>
+            <ul className="space-y-2 list-none p-0 m-0" aria-labelledby="impact-by-state-label">
+              {impactedStates.map(s => {
+                const pct = Math.min(100, s.alertCount * 25);
+                return (
+                  <li key={s.code} className="flex items-center gap-3 text-sm">
+                    <Badge variant="outline" className="w-8 text-center text-xs" aria-label={`State: ${s.code}`}>{s.code}</Badge>
+                    <span className="flex-1 text-muted-foreground">{s.name}</span>
+                    <div className="flex items-center gap-1.5">
+                      <div
+                        className="w-20 bg-muted rounded-full h-1.5"
+                        role="progressbar"
+                        aria-valuenow={s.alertCount}
+                        aria-valuemin={0}
+                        aria-valuemax={4}
+                        aria-label={`${s.name} alert intensity`}
+                      >
+                        <div className="bg-red-500 h-1.5 rounded-full" style={{ width: `${pct}%` }} />
+                      </div>
+                      <span className="text-xs text-muted-foreground tabular-nums">
+                        {s.alertCount} alert{s.alertCount !== 1 ? 's' : ''}
+                      </span>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
           </div>
         ) : (
           <p className="text-sm text-muted-foreground text-center py-2">No state-specific alerts impacting your portfolio.</p>
         )}
 
-        {/* Compliance score for a hypothetical deal */}
         <div className="border-t pt-3 flex items-center justify-between gap-4">
           <div className="flex-1">
-            <p className="text-xs font-medium mb-1">Portfolio Compliance Score</p>
+            <p className="text-xs font-medium mb-1">Portfolio compliance score</p>
             <p className="text-xs text-muted-foreground">Aggregate compliance health based on alert severity and state profiles.</p>
           </div>
           <ComplianceScoreGauge score={Math.max(0, 100 - (criticalCount * 15) - (warningCount * 5))} />
@@ -275,7 +300,10 @@ const SEVERITY_COLORS = {
 
 function RiskBadge({ risk }: { risk: "low" | "medium" | "high" }) {
   return (
-    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${RISK_COLORS[risk]}`}>
+    <span
+      className={`text-xs font-medium px-2 py-0.5 rounded-full ${RISK_COLORS[risk]}`}
+      aria-label={`Risk: ${risk}`}
+    >
       {risk}
     </span>
   );
@@ -283,17 +311,27 @@ function RiskBadge({ risk }: { risk: "low" | "medium" | "high" }) {
 
 function ScoreBar({ score }: { score: number }) {
   const color = score <= 3 ? "bg-green-500" : score <= 6 ? "bg-yellow-500" : "bg-red-500";
+  const tier = score <= 3 ? "low" : score <= 6 ? "moderate" : "high";
   return (
     <div className="flex items-center gap-2">
-      <div className="w-16 bg-muted rounded-full h-1.5">
+      <div
+        className="w-16 bg-muted rounded-full h-1.5"
+        role="progressbar"
+        aria-valuenow={score}
+        aria-valuemin={0}
+        aria-valuemax={10}
+        aria-label={`Risk score ${score} of 10 (${tier})`}
+      >
         <div className={`${color} h-1.5 rounded-full`} style={{ width: `${score * 10}%` }} />
       </div>
-      <span className="text-xs text-muted-foreground">{score}/10</span>
+      <span className="text-xs text-muted-foreground tabular-nums" aria-hidden="true">{score}/10</span>
     </div>
   );
 }
 
 export default function RegulatoryIntelPage() {
+  useDocumentTitle("Regulatory intelligence");
+  const { toast } = useToast();
   const [selectedState, setSelectedState] = useState<string | null>(null);
   const [checklistState, setChecklistState] = useState("");
   const [assessState, setAssessState] = useState("");
@@ -305,6 +343,12 @@ export default function RegulatoryIntelPage() {
   });
   const [assessment, setAssessment] = useState<RiskAssessment | null>(null);
   const [assessing, setAssessing] = useState(false);
+  const checklistStateId = useId();
+  const assessStateId = useId();
+  const assessAcreageId = useId();
+  const sellerFinancedId = useId();
+  const nearWaterId = useId();
+  const coastalId = useId();
 
   const { data: states, isLoading: statesLoading } = useQuery<StateProfile[]>({
     queryKey: ["/api/regulatory/states"],
@@ -339,6 +383,12 @@ export default function RegulatoryIntelPage() {
       });
       const result: RiskAssessment = await res.json();
       setAssessment(result);
+    } catch (err: any) {
+      toast({
+        title: "Couldn't assess risk",
+        description: `${err?.message ?? "Network error"}. Your inputs are unchanged — try again.`,
+        variant: "destructive",
+      });
     } finally {
       setAssessing(false);
     }
@@ -350,50 +400,59 @@ export default function RegulatoryIntelPage() {
     <PageShell>
       <div>
         <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-2">
-          <Shield className="w-6 h-6 text-primary" /> Regulatory Intelligence
+          <Shield className="w-6 h-6 text-primary" aria-hidden="true" /> Regulatory intelligence
         </h1>
         <p className="text-muted-foreground text-sm md:text-base">
-          State-by-state regulatory profiles, alerts, and due diligence checklists for land investing.
+          State-by-state regulatory profiles, alerts, and due-diligence checklists for land investing.
         </p>
       </div>
 
       {/* Critical Alerts Banner */}
       {criticalAlerts.length > 0 && (
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 space-y-1">
-          <div className="flex items-center gap-2 text-red-700 dark:text-red-300 font-medium text-sm">
-            <XCircle className="w-4 h-4" /> {criticalAlerts.length} Critical Alert{criticalAlerts.length > 1 ? "s" : ""}
-          </div>
-          {criticalAlerts.map(a => (
-            <div key={a.id} className="text-sm text-red-600 dark:text-red-400">
-              {a.state && <strong>[{a.state}]</strong>} {a.title}
-            </div>
-          ))}
+        <div
+          className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 space-y-1"
+          role="alert"
+        >
+          <p className="flex items-center gap-2 text-red-700 dark:text-red-300 font-medium text-sm">
+            <XCircle className="w-4 h-4" aria-hidden="true" />
+            <span className="tabular-nums">{criticalAlerts.length}</span> critical alert{criticalAlerts.length > 1 ? "s" : ""}
+          </p>
+          <ul className="space-y-0.5 list-none p-0 m-0" aria-label="Critical regulatory alerts">
+            {criticalAlerts.map(a => (
+              <li key={a.id} className="text-sm text-red-600 dark:text-red-400">
+                {a.state && <strong>[{a.state}]</strong>} {a.title}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
       <Tabs defaultValue="states">
         <TabsList className="flex-wrap">
-          <TabsTrigger value="states"><MapPin className="w-3.5 h-3.5 mr-1.5" /> State Profiles</TabsTrigger>
+          <TabsTrigger value="states"><MapPin className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" /> State profiles</TabsTrigger>
           <TabsTrigger value="alerts">
-            <AlertTriangle className="w-3.5 h-3.5 mr-1.5" /> Alerts
+            <AlertTriangle className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" /> Alerts
             {alerts && alerts.length > 0 && (
-              <Badge variant="destructive" className="ml-1.5 text-xs">{alerts.length}</Badge>
+              <Badge variant="destructive" className="ml-1.5 text-xs tabular-nums" aria-label={`${alerts.length} active alerts`}>{alerts.length}</Badge>
             )}
           </TabsTrigger>
-          <TabsTrigger value="checklist"><FileText className="w-3.5 h-3.5 mr-1.5" /> DD Checklist</TabsTrigger>
-          <TabsTrigger value="assess"><Shield className="w-3.5 h-3.5 mr-1.5" /> Risk Assessment</TabsTrigger>
-          <TabsTrigger value="history"><History className="w-3.5 h-3.5 mr-1.5" /> Change History</TabsTrigger>
-          <TabsTrigger value="impact"><BarChart3 className="w-3.5 h-3.5 mr-1.5" /> Portfolio Impact</TabsTrigger>
+          <TabsTrigger value="checklist"><FileText className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" /> DD checklist</TabsTrigger>
+          <TabsTrigger value="assess"><Shield className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" /> Risk assessment</TabsTrigger>
+          <TabsTrigger value="history"><History className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" /> Change history</TabsTrigger>
+          <TabsTrigger value="impact"><BarChart3 className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" /> Portfolio impact</TabsTrigger>
         </TabsList>
 
         {/* State Profiles */}
         <TabsContent value="states" className="space-y-4">
           {statesLoading ? (
-            <div className="flex justify-center py-12"><Loader2 className="animate-spin text-muted-foreground" /></div>
+            <div className="flex justify-center py-12" role="status" aria-label="Loading state regulatory profiles">
+              <Loader2 className="animate-spin text-muted-foreground" aria-hidden="true" />
+            </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+            <ul className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 list-none p-0 m-0" aria-label="State regulatory profiles">
               {states?.map((state) => (
-                <Dialog key={state.code} onOpenChange={(open) => { if (open) setSelectedState(state.code); }}>
+                <li key={state.code}>
+                <Dialog onOpenChange={(open) => { if (open) setSelectedState(state.code); }}>
                   <DialogTrigger asChild>
                     <Card className="cursor-pointer hover:shadow-md transition-shadow">
                       <CardContent className="pt-4 pb-3">
@@ -428,10 +487,12 @@ export default function RegulatoryIntelPage() {
                   </DialogTrigger>
                   <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
                     <DialogHeader>
-                      <DialogTitle>{state.name} ({state.code}) — Regulatory Profile</DialogTitle>
+                      <DialogTitle>{state.name} ({state.code}) — regulatory profile</DialogTitle>
                     </DialogHeader>
                     {!stateDetail ? (
-                      <div className="flex justify-center py-8"><Loader2 className="animate-spin" /></div>
+                      <div className="flex justify-center py-8" role="status" aria-label="Loading state details">
+                        <Loader2 className="animate-spin" aria-hidden="true" />
+                      </div>
                     ) : (
                       <div className="space-y-4 text-sm">
                         <div className="grid grid-cols-2 gap-3">
@@ -468,8 +529,9 @@ export default function RegulatoryIntelPage() {
                     )}
                   </DialogContent>
                 </Dialog>
+                </li>
               ))}
-            </div>
+            </ul>
           )}
         </TabsContent>
 
@@ -477,31 +539,40 @@ export default function RegulatoryIntelPage() {
         <TabsContent value="alerts" className="space-y-3">
           {!alerts?.length ? (
             <Card>
-              <CardContent className="py-8 text-center text-muted-foreground text-sm">
+              <CardContent className="py-8 text-center text-muted-foreground text-sm" role="status">
                 No active regulatory alerts.
               </CardContent>
             </Card>
           ) : (
-            alerts.map((alert) => {
-              const Icon = SEVERITY_ICONS[alert.severity];
-              return (
-                <Card key={alert.id} className={`border ${SEVERITY_COLORS[alert.severity]}`}>
-                  <CardContent className="pt-4 flex gap-3">
-                    <Icon className={`w-5 h-5 shrink-0 mt-0.5 ${SEVERITY_COLORS[alert.severity].split(" ")[0]}`} />
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-medium text-sm">{alert.title}</span>
-                        {alert.state && <Badge variant="outline" className="text-xs">{alert.state}</Badge>}
-                        <Badge variant="outline" className="text-xs">{alert.category.replace(/_/g, " ")}</Badge>
-                        <span className="text-xs text-muted-foreground ml-auto">Effective {alert.effectiveDate}</span>
-                      </div>
-                      <p className="text-sm text-muted-foreground">{alert.summary}</p>
-                      {alert.source && <p className="text-xs text-muted-foreground">Source: {alert.source}</p>}
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })
+            <ul className="space-y-3 list-none p-0 m-0" aria-label="Active regulatory alerts">
+              {alerts.map((alert) => {
+                const Icon = SEVERITY_ICONS[alert.severity];
+                return (
+                  <li key={alert.id}>
+                    <Card className={`border ${SEVERITY_COLORS[alert.severity]}`}>
+                      <CardContent className="pt-4 flex gap-3">
+                        <Icon
+                          className={`w-5 h-5 shrink-0 mt-0.5 ${SEVERITY_COLORS[alert.severity].split(" ")[0]}`}
+                          aria-label={`Severity: ${alert.severity}`}
+                        />
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-medium text-sm">{alert.title}</span>
+                            {alert.state && <Badge variant="outline" className="text-xs" aria-label={`State: ${alert.state}`}>{alert.state}</Badge>}
+                            <Badge variant="outline" className="text-xs" aria-label={`Category: ${alert.category.replace(/_/g, " ")}`}>{alert.category.replace(/_/g, " ")}</Badge>
+                            <span className="text-xs text-muted-foreground ml-auto">
+                              Effective <time dateTime={alert.effectiveDate}>{alert.effectiveDate}</time>
+                            </span>
+                          </div>
+                          <p className="text-sm text-muted-foreground">{alert.summary}</p>
+                          {alert.source && <p className="text-xs text-muted-foreground">Source: {alert.source}</p>}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </TabsContent>
 
@@ -509,10 +580,10 @@ export default function RegulatoryIntelPage() {
         <TabsContent value="checklist" className="space-y-4">
           <div className="flex gap-2 items-end">
             <div className="space-y-1.5">
-              <Label>Select State</Label>
+              <Label htmlFor={checklistStateId}>Select state</Label>
               <Select value={checklistState} onValueChange={setChecklistState}>
-                <SelectTrigger className="w-48">
-                  <SelectValue placeholder="Choose a state..." />
+                <SelectTrigger id={checklistStateId} className="w-48">
+                  <SelectValue placeholder="Choose a state…" />
                 </SelectTrigger>
                 <SelectContent>
                   {states?.map(s => (
@@ -526,8 +597,10 @@ export default function RegulatoryIntelPage() {
           {checklist && (
             <div className="space-y-4">
               <div className="flex items-center gap-2">
-                <h2 className="font-semibold">{checklist.stateName} Due Diligence Checklist</h2>
-                <Badge variant="secondary">{checklist.items.length} items</Badge>
+                <h2 className="font-semibold">{checklist.stateName} due-diligence checklist</h2>
+                <Badge variant="secondary" className="tabular-nums" aria-label={`${checklist.items.length} checklist items`}>
+                  {checklist.items.length} items
+                </Badge>
               </div>
               {Object.entries(
                 checklist.items.reduce<Record<string, ChecklistItem[]>>((acc, item) => {
@@ -539,23 +612,25 @@ export default function RegulatoryIntelPage() {
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm">{category}</CardTitle>
                   </CardHeader>
-                  <CardContent className="space-y-2">
-                    {items.map((item, i) => (
-                      <div key={i} className="flex items-start gap-2.5 text-sm">
-                        {item.required ? (
-                          <CheckCircle2 className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
-                        ) : (
-                          <div className="w-4 h-4 rounded-full border-2 border-muted-foreground/40 shrink-0 mt-0.5" />
-                        )}
-                        <div>
-                          <div className="font-medium flex items-center gap-1.5">
-                            {item.item}
-                            {item.required && <Badge variant="destructive" className="text-xs">Required</Badge>}
+                  <CardContent>
+                    <ul className="space-y-2 list-none p-0 m-0" aria-label={`${category} checklist items`}>
+                      {items.map((item, i) => (
+                        <li key={i} className="flex items-start gap-2.5 text-sm">
+                          {item.required ? (
+                            <CheckCircle2 className="w-4 h-4 text-red-500 shrink-0 mt-0.5" aria-label="Required" />
+                          ) : (
+                            <div className="w-4 h-4 rounded-full border-2 border-muted-foreground/40 shrink-0 mt-0.5" role="img" aria-label="Optional" />
+                          )}
+                          <div>
+                            <div className="font-medium flex items-center gap-1.5">
+                              {item.item}
+                              {item.required && <Badge variant="destructive" className="text-xs" aria-label="Required item">Required</Badge>}
+                            </div>
+                            <div className="text-xs text-muted-foreground mt-0.5">{item.description}</div>
                           </div>
-                          <div className="text-xs text-muted-foreground mt-0.5">{item.description}</div>
-                        </div>
-                      </div>
-                    ))}
+                        </li>
+                      ))}
+                    </ul>
                   </CardContent>
                 </Card>
               ))}
@@ -567,54 +642,64 @@ export default function RegulatoryIntelPage() {
         <TabsContent value="assess" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Quick Deal Risk Assessment</CardTitle>
+              <CardTitle className="text-base">Quick deal risk assessment</CardTitle>
               <CardDescription>Enter deal details to get a regulatory risk assessment.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <Label>State</Label>
-                  <Select value={assessState} onValueChange={setAssessState}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select state..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {states?.map(s => (
-                        <SelectItem key={s.code} value={s.code}>{s.code} — {s.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Acreage</Label>
-                  <Input
-                    type="number"
-                    placeholder="e.g. 40"
-                    value={assessOpts.acreage}
-                    onChange={(e) => setAssessOpts(o => ({ ...o, acreage: e.target.value }))}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                {[
-                  { key: "sellerFinanced", label: "Seller Financed" },
-                  { key: "nearWater", label: "Near Water/Creek" },
-                  { key: "coastal", label: "Coastal Property" },
-                ].map(({ key, label }) => (
-                  <div key={key} className="flex items-center gap-2">
-                    <Switch
-                      checked={(assessOpts as any)[key]}
-                      onCheckedChange={(v) => setAssessOpts(o => ({ ...o, [key]: v }))}
-                    />
-                    <Label className="cursor-pointer">{label}</Label>
+            <CardContent>
+              <form
+                onSubmit={(e) => { e.preventDefault(); if (assessState && !assessing) handleAssess(); }}
+                className="space-y-4"
+              >
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor={assessStateId}>State</Label>
+                    <Select value={assessState} onValueChange={setAssessState}>
+                      <SelectTrigger id={assessStateId}>
+                        <SelectValue placeholder="Select state…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {states?.map(s => (
+                          <SelectItem key={s.code} value={s.code}>{s.code} — {s.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
-                ))}
-              </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor={assessAcreageId}>Acreage</Label>
+                    <Input
+                      id={assessAcreageId}
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      placeholder="e.g. 40"
+                      value={assessOpts.acreage}
+                      onChange={(e) => setAssessOpts(o => ({ ...o, acreage: e.target.value }))}
+                    />
+                  </div>
+                </div>
 
-              <Button onClick={handleAssess} disabled={!assessState || assessing}>
-                {assessing ? <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Analyzing...</> : "Assess Risk"}
-              </Button>
+                <fieldset className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <legend className="sr-only">Deal characteristics</legend>
+                  {[
+                    { key: "sellerFinanced", label: "Seller financed", id: sellerFinancedId },
+                    { key: "nearWater", label: "Near water or creek", id: nearWaterId },
+                    { key: "coastal", label: "Coastal property", id: coastalId },
+                  ].map(({ key, label, id }) => (
+                    <div key={key} className="flex items-center gap-2">
+                      <Switch
+                        id={id}
+                        checked={(assessOpts as any)[key]}
+                        onCheckedChange={(v) => setAssessOpts(o => ({ ...o, [key]: v }))}
+                      />
+                      <Label htmlFor={id} className="cursor-pointer">{label}</Label>
+                    </div>
+                  ))}
+                </fieldset>
+
+                <Button type="submit" disabled={!assessState || assessing}>
+                  {assessing ? <><Loader2 className="w-4 h-4 animate-spin mr-2" aria-hidden="true" /> Analyzing…</> : "Assess risk"}
+                </Button>
+              </form>
             </CardContent>
           </Card>
 
@@ -622,39 +707,39 @@ export default function RegulatoryIntelPage() {
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-base flex items-center gap-2">
-                  Risk Assessment Result
+                  Risk assessment result
                   <RiskBadge risk={assessment.riskLevel} />
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 {assessment.flags.length > 0 && (
                   <div>
-                    <div className="text-xs font-medium text-muted-foreground mb-2">Risk Flags</div>
-                    <div className="space-y-1.5">
+                    <p id="risk-flags-label" className="text-xs font-medium text-muted-foreground mb-2">Risk flags</p>
+                    <ul className="space-y-1.5 list-none p-0 m-0" aria-labelledby="risk-flags-label">
                       {assessment.flags.map((flag, i) => (
-                        <div key={i} className="flex items-start gap-2 text-sm">
-                          <AlertTriangle className="w-4 h-4 text-yellow-600 shrink-0 mt-0.5" />
+                        <li key={i} className="flex items-start gap-2 text-sm">
+                          <AlertTriangle className="w-4 h-4 text-yellow-600 shrink-0 mt-0.5" aria-hidden="true" />
                           <span>{flag}</span>
-                        </div>
+                        </li>
                       ))}
-                    </div>
+                    </ul>
                   </div>
                 )}
                 {assessment.recommendations.length > 0 && (
                   <div>
-                    <div className="text-xs font-medium text-muted-foreground mb-2">Recommendations</div>
-                    <div className="space-y-1.5">
+                    <p id="recommendations-label" className="text-xs font-medium text-muted-foreground mb-2">Recommendations</p>
+                    <ul className="space-y-1.5 list-none p-0 m-0" aria-labelledby="recommendations-label">
                       {assessment.recommendations.map((rec, i) => (
-                        <div key={i} className="flex items-start gap-2 text-sm">
-                          <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0 mt-0.5" />
+                        <li key={i} className="flex items-start gap-2 text-sm">
+                          <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0 mt-0.5" aria-hidden="true" />
                           <span>{rec}</span>
-                        </div>
+                        </li>
                       ))}
-                    </div>
+                    </ul>
                   </div>
                 )}
                 {assessment.flags.length === 0 && assessment.recommendations.length === 0 && (
-                  <p className="text-sm text-muted-foreground">No significant regulatory flags identified for this deal.</p>
+                  <p className="text-sm text-muted-foreground" role="status">No significant regulatory flags identified for this deal.</p>
                 )}
               </CardContent>
             </Card>
