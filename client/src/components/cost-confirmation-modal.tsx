@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { AlertTriangle, Loader2, CreditCard, Plus } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { CreditPurchaseModal } from "@/components/credit-purchase-modal";
+import { usd } from "@/lib/format";
 
 interface CostConfirmationProps {
   open: boolean;
@@ -57,8 +58,8 @@ export function CostConfirmationModal({
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <CreditCard className="w-5 h-5" />
-              Confirm Action Cost
+              <CreditCard className="w-5 h-5" aria-hidden="true" />
+              Confirm action cost
             </DialogTitle>
             <DialogDescription>
               {actionDescription}
@@ -67,38 +68,39 @@ export function CostConfirmationModal({
 
           <div className="space-y-4 py-4">
             {isEstimating ? (
-              <div className="flex items-center justify-center py-4">
-                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+              <div role="status" aria-live="polite" aria-busy="true" className="flex items-center justify-center py-4">
+                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" aria-hidden="true" />
+                <span className="sr-only">Estimating cost…</span>
               </div>
             ) : (
               <>
                 <div className="flex justify-between items-center py-2 border-b">
-                  <span className="text-sm text-muted-foreground">Estimated Cost</span>
-                  <span className="font-medium" data-testid="text-estimated-cost">
-                    ${(estimatedCost / 100).toFixed(2)}
+                  <span className="text-sm text-muted-foreground">Estimated cost</span>
+                  <span className="font-medium tabular-nums" data-testid="text-estimated-cost">
+                    {usd(estimatedCost / 100)}
                   </span>
                 </div>
 
                 <div className="flex justify-between items-center py-2 border-b">
-                  <span className="text-sm text-muted-foreground">Current Balance</span>
-                  <span className="font-medium" data-testid="text-current-balance">
-                    ${(balance / 100).toFixed(2)}
+                  <span className="text-sm text-muted-foreground">Current balance</span>
+                  <span className="font-medium tabular-nums" data-testid="text-current-balance">
+                    {usd(balance / 100)}
                   </span>
                 </div>
 
                 <div className="flex justify-between items-center py-2">
-                  <span className="text-sm text-muted-foreground">Balance After</span>
-                  <span 
-                    className={`font-medium ${hasInsufficientCredits ? "text-destructive" : ""}`}
+                  <span className="text-sm text-muted-foreground">Balance after</span>
+                  <span
+                    className={`font-medium tabular-nums ${hasInsufficientCredits ? "text-destructive" : ""}`}
                     data-testid="text-balance-after"
                   >
-                    ${((balance - estimatedCost) / 100).toFixed(2)}
+                    {usd((balance - estimatedCost) / 100)}
                   </span>
                 </div>
 
                 {hasInsufficientCredits && (
-                  <div className="flex items-start gap-3 p-3 rounded-md bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800">
-                    <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-500 flex-shrink-0 mt-0.5" />
+                  <div role="alert" className="flex items-start gap-3 p-3 rounded-md bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800">
+                    <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-500 flex-shrink-0 mt-0.5" aria-hidden="true" />
                     <div className="space-y-2">
                       <p className="text-sm text-amber-800 dark:text-amber-200">
                         You don't have enough credits for this action.
@@ -109,8 +111,8 @@ export function CostConfirmationModal({
                         onClick={() => setPurchaseModalOpen(true)}
                         data-testid="button-add-credits-inline"
                       >
-                        <Plus className="w-4 h-4 mr-1" />
-                        Add Credits
+                        <Plus className="w-4 h-4 mr-1" aria-hidden="true" />
+                        Add credits
                       </Button>
                     </div>
                   </div>
