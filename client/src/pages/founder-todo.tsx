@@ -15,10 +15,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { PageShell } from "@/components/page-shell";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import {
   ListChecks,
   Brain,
@@ -85,7 +86,8 @@ function pluralize(label: string): string {
 }
 
 export default function FounderTodoPage() {
-  const { data, isLoading, isError } = useQuery<TodoResponse>({
+  useDocumentTitle("What needs you");
+  const { data, isLoading, isError, refetch } = useQuery<TodoResponse>({
     queryKey: ["/api/founder/intelligence/todo"],
     staleTime: 60_000,
   });
@@ -98,7 +100,7 @@ export default function FounderTodoPage() {
         <Card>
           <CardContent className="p-6">
             <h1 className="text-2xl font-semibold text-foreground mb-2 flex items-center gap-2">
-              <CheckCircle2 className="h-5 w-5 text-muted-foreground" />
+              <CheckCircle2 className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
               What needs you right now
             </h1>
             <p className="text-sm text-muted-foreground">
@@ -108,7 +110,9 @@ export default function FounderTodoPage() {
             </p>
             {data && (
               <div className="mt-4 flex items-center gap-3 flex-wrap">
-                <Badge variant="secondary" className="text-xs">{data.total} items</Badge>
+                <Badge variant="secondary" className="text-xs">
+                  <span className="tabular-nums mr-1">{data.total}</span> item{data.total === 1 ? "" : "s"}
+                </Badge>
                 {(Object.keys(data.byType) as TodoType[])
                   .filter((k) => data.byType[k] > 0)
                   .map((k) => {
@@ -119,8 +123,8 @@ export default function FounderTodoPage() {
                     const label = count === 1 ? base : pluralize(base);
                     return (
                       <span key={k} className="text-[11px] text-muted-foreground flex items-center gap-1">
-                        <meta.icon className={`h-3 w-3 ${meta.color}`} />
-                        {count} {label}
+                        <meta.icon className={`h-3 w-3 ${meta.color}`} aria-hidden="true" />
+                        <span className="tabular-nums">{count}</span> {label}
                       </span>
                     );
                   })}
@@ -139,7 +143,16 @@ export default function FounderTodoPage() {
           </Card>
         ) : isError ? (
           <Card>
-            <CardContent className="p-6 text-sm text-red-600">Could not load the todo feed.</CardContent>
+            <CardContent className="p-6 text-sm text-red-600" role="alert">
+              Couldn't load the todo feed. Outstanding items are unchanged —{" "}
+              <button
+                type="button"
+                className="underline hover:no-underline"
+                onClick={() => refetch()}
+              >
+                try again
+              </button>.
+            </CardContent>
           </Card>
         ) : items.length === 0 ? (
           <EmptyState
@@ -150,17 +163,23 @@ export default function FounderTodoPage() {
         ) : (
           <Card>
             <CardContent className="p-0">
-              <ul>
-                {items.map((item, i) => {
+              <ul aria-label="Items waiting on your decision">
+                {items.map((item) => {
                   const meta = TYPE_META[item.type];
                   return (
                     <li key={`${item.type}-${item.id}`} className={`border-b border-border last:border-b-0`}>
                       <Link href={item.actionUrl}>
-                        <a className="flex items-start gap-3 p-4 hover:bg-muted/40 transition">
-                          <meta.icon className={`h-5 w-5 ${meta.color} shrink-0 mt-0.5`} />
+                        <a
+                          className="flex items-start gap-3 p-4 hover:bg-muted/40 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          aria-label={`${meta.label}: ${item.title} — urgency ${item.urgency}`}
+                        >
+                          <meta.icon className={`h-5 w-5 ${meta.color} shrink-0 mt-0.5`} aria-hidden="true" />
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2 flex-wrap mb-1">
-                              <span className={`text-[10px] px-1.5 py-0.5 rounded ${urgencyClass(item.urgency)}`}>
+                              <span
+                                className={`text-[10px] px-1.5 py-0.5 rounded tabular-nums ${urgencyClass(item.urgency)}`}
+                                aria-label={`Urgency ${item.urgency}${item.urgency >= 70 ? ', high' : item.urgency >= 50 ? ', medium' : ''}`}
+                              >
                                 urgency {item.urgency}
                               </span>
                               <Badge variant="outline" className="text-[10px]">{meta.label}</Badge>
@@ -170,18 +189,18 @@ export default function FounderTodoPage() {
                                 </Badge>
                               )}
                               {item.estimatedImpactCents != null && item.estimatedImpactCents !== 0 && (
-                                <Badge variant="outline" className="text-[10px]">
+                                <Badge variant="outline" className="text-[10px] tabular-nums">
                                   {dollars(item.estimatedImpactCents, { showSign: true })}
                                 </Badge>
                               )}
-                              <span className="text-[10px] text-muted-foreground ml-auto">
+                              <span className="text-[10px] text-muted-foreground ml-auto tabular-nums">
                                 {relative(item.createdAt)}
                               </span>
                             </div>
                             <p className="text-sm font-medium text-foreground truncate">{item.title}</p>
                             <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{item.subtitle}</p>
                           </div>
-                          <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 mt-1" />
+                          <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 mt-1" aria-hidden="true" />
                         </a>
                       </Link>
                     </li>
