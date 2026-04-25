@@ -6,7 +6,15 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { Shield, AlertTriangle, CheckCircle, XCircle, Clock, FileText } from "lucide-react";
+import { useDocumentTitle } from "@/hooks/use-document-title";
+import { Shield, AlertTriangle, CheckCircle, Clock, FileText } from "lucide-react";
+
+const SEVERITY_LABEL: Record<string, string> = {
+  critical: "Critical",
+  high: "High",
+  medium: "Medium",
+  low: "Low",
+};
 
 function SeverityBadge({ severity }: { severity: string }) {
   const map: Record<string, string> = {
@@ -15,16 +23,22 @@ function SeverityBadge({ severity }: { severity: string }) {
     medium: "bg-yellow-100 text-yellow-800",
     low: "bg-blue-100 text-blue-800",
   };
-  return <Badge className={map[severity] ?? "bg-gray-100 text-gray-600"}>{severity}</Badge>;
+  const label = SEVERITY_LABEL[severity] ?? severity;
+  return (
+    <Badge className={map[severity] ?? "bg-gray-100 text-gray-600"} aria-label={`Severity: ${label}`}>
+      {label}
+    </Badge>
+  );
 }
 
 function StatusIcon({ status }: { status: string }) {
-  if (status === "resolved") return <CheckCircle className="w-4 h-4 text-green-500" />;
-  if (status === "acknowledged") return <Clock className="w-4 h-4 text-yellow-500" />;
-  return <AlertTriangle className="w-4 h-4 text-red-500" />;
+  if (status === "resolved") return <CheckCircle className="w-4 h-4 text-green-500" aria-label="Resolved" />;
+  if (status === "acknowledged") return <Clock className="w-4 h-4 text-yellow-500" aria-label="Acknowledged" />;
+  return <AlertTriangle className="w-4 h-4 text-red-500" aria-label="Open" />;
 }
 
 export default function CompliancePage() {
+  useDocumentTitle("Compliance");
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -56,7 +70,12 @@ export default function CompliancePage() {
       toast({ title: "Alert acknowledged" });
       queryClient.invalidateQueries({ queryKey: ["/api/compliance"] });
     },
-    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+    onError: (e: any) =>
+      toast({
+        title: "Couldn't acknowledge alert",
+        description: `${e.message}. The alert is still open — try again.`,
+        variant: "destructive",
+      }),
   });
 
   const resolveMutation = useMutation({
@@ -73,14 +92,24 @@ export default function CompliancePage() {
       toast({ title: "Alert resolved" });
       queryClient.invalidateQueries({ queryKey: ["/api/compliance"] });
     },
-    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+    onError: (e: any) =>
+      toast({
+        title: "Couldn't resolve alert",
+        description: `${e.message}. The alert is unchanged — try again, or acknowledge it for now and revisit later.`,
+        variant: "destructive",
+      }),
   });
 
   const dashboard = dashboardData?.dashboard;
   const alerts = alertsData?.alerts ?? [];
 
   if (isLoading) {
-    return <div className="p-6"><div className="space-y-3">{[1, 2, 3].map(i => <div key={i} className="h-24 bg-muted/50 rounded-lg animate-pulse" />)}</div></div>;
+    return (
+      <div className="p-6" role="status" aria-live="polite">
+        <span className="sr-only">Loading compliance dashboard…</span>
+        <div className="space-y-3">{[1, 2, 3].map(i => <div key={i} className="h-24 bg-muted/50 rounded-lg animate-pulse" />)}</div>
+      </div>
+    );
   }
 
   return (
@@ -88,146 +117,165 @@ export default function CompliancePage() {
       <RequiredDisclaimer type="legal" />
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Shield className="w-7 h-7 text-primary" /> Compliance AI
+          <Shield className="w-7 h-7 text-primary" aria-hidden="true" /> Compliance AI
         </h1>
         <p className="text-muted-foreground mt-1">
-          Automated regulatory monitoring, disclosure generation, and RESPA/TCPA compliance tracking
+          Automated regulatory monitoring, disclosure generation, and RESPA/TCPA compliance tracking.
         </p>
       </div>
 
-      {/* Status Cards */}
       {dashboard && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <dl className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center justify-between mb-1">
-                <p className="text-sm text-muted-foreground">Compliance Score</p>
-                <Shield className={`w-4 h-4 ${(dashboard.complianceScore ?? 0) >= 80 ? "text-green-500" : "text-yellow-500"}`} />
+                <dt className="text-sm text-muted-foreground">Compliance score</dt>
+                <Shield className={`w-4 h-4 ${(dashboard.complianceScore ?? 0) >= 80 ? "text-green-500" : "text-yellow-500"}`} aria-hidden="true" />
               </div>
-              <p className="text-2xl font-bold">{dashboard.complianceScore ?? "—"}/100</p>
-              <Progress value={dashboard.complianceScore ?? 0} className="h-1 mt-1" />
+              <dd className="text-2xl font-bold tabular-nums">{dashboard.complianceScore ?? "—"}/100</dd>
+              <Progress
+                value={dashboard.complianceScore ?? 0}
+                className="h-1 mt-1"
+                aria-label={`Compliance score ${dashboard.complianceScore ?? 0} of 100`}
+              />
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center justify-between mb-1">
-                <p className="text-sm text-muted-foreground">Open Alerts</p>
-                <AlertTriangle className={`w-4 h-4 ${(dashboard.openAlerts ?? 0) > 0 ? "text-red-500" : "text-green-500"}`} />
+                <dt className="text-sm text-muted-foreground">Open alerts</dt>
+                <AlertTriangle className={`w-4 h-4 ${(dashboard.openAlerts ?? 0) > 0 ? "text-red-500" : "text-green-500"}`} aria-hidden="true" />
               </div>
-              <p className={`text-2xl font-bold ${(dashboard.openAlerts ?? 0) > 0 ? "text-red-600" : "text-green-600"}`}>
+              <dd className={`text-2xl font-bold tabular-nums ${(dashboard.openAlerts ?? 0) > 0 ? "text-red-600" : "text-green-600"}`}>
                 {dashboard.openAlerts ?? 0}
-              </p>
+              </dd>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4">
-              <p className="text-sm text-muted-foreground mb-1">Properties Monitored</p>
-              <p className="text-2xl font-bold">{dashboard.propertiesMonitored ?? 0}</p>
+              <dt className="text-sm text-muted-foreground mb-1">Properties monitored</dt>
+              <dd className="text-2xl font-bold tabular-nums">{dashboard.propertiesMonitored ?? 0}</dd>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4">
-              <p className="text-sm text-muted-foreground mb-1">Resolved (30d)</p>
-              <p className="text-2xl font-bold text-green-600">{dashboard.resolvedLast30Days ?? 0}</p>
+              <dt className="text-sm text-muted-foreground mb-1">Resolved (30d)</dt>
+              <dd className="text-2xl font-bold text-green-600 tabular-nums">{dashboard.resolvedLast30Days ?? 0}</dd>
             </CardContent>
           </Card>
-        </div>
+        </dl>
       )}
 
       <Tabs defaultValue="alerts">
         <TabsList>
           <TabsTrigger value="alerts">Alerts</TabsTrigger>
-          <TabsTrigger value="rules">Active Rules</TabsTrigger>
-          <TabsTrigger value="calendar">Compliance Calendar</TabsTrigger>
+          <TabsTrigger value="rules">Active rules</TabsTrigger>
+          <TabsTrigger value="calendar">Compliance calendar</TabsTrigger>
         </TabsList>
 
         <TabsContent value="alerts" className="mt-4">
           {alerts.length === 0 ? (
             <Card>
-              <CardContent className="py-12 text-center">
-                <CheckCircle className="w-12 h-12 mx-auto mb-3 text-green-500" />
-                <p className="font-medium">All clear — no compliance alerts</p>
+              <CardContent className="py-12 text-center" role="status">
+                <CheckCircle className="w-12 h-12 mx-auto mb-3 text-green-500" aria-hidden="true" />
+                <p className="font-medium">All clear — no compliance alerts.</p>
                 <p className="text-sm text-muted-foreground mt-1">AcreOS is actively monitoring your portfolio for regulatory changes.</p>
               </CardContent>
             </Card>
           ) : (
-            <div className="space-y-3">
+            <ul className="space-y-3" aria-label="Compliance alerts">
               {alerts.map((alert: any) => (
-                <Card key={alert.id} className={alert.severity === "critical" ? "border-red-200" : ""}>
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <StatusIcon status={alert.status} />
-                        <span className="font-medium">{alert.title}</span>
-                        <SeverityBadge severity={alert.severity} />
+                <li key={alert.id}>
+                  <Card
+                    className={alert.severity === "critical" ? "border-red-200" : ""}
+                    role={alert.severity === "critical" && alert.status === "open" ? "alert" : undefined}
+                  >
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between mb-2 gap-2 flex-wrap">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <StatusIcon status={alert.status} />
+                          <span className="font-medium">{alert.title}</span>
+                          <SeverityBadge severity={alert.severity} />
+                        </div>
+                        <span className="text-xs text-muted-foreground tabular-nums">
+                          {alert.createdAt ? new Date(alert.createdAt).toLocaleDateString() : ""}
+                        </span>
                       </div>
-                      <span className="text-xs text-muted-foreground">
-                        {alert.createdAt ? new Date(alert.createdAt).toLocaleDateString() : ""}
-                      </span>
-                    </div>
-                    <p className="text-sm text-muted-foreground mb-3">{alert.description}</p>
-                    {alert.requiredAction && (
-                      <div className="bg-orange-50 dark:bg-orange-950/20 border border-orange-200 rounded p-2 mb-3">
-                        <p className="text-xs font-medium text-orange-700">Required action: {alert.requiredAction}</p>
-                      </div>
-                    )}
-                    {alert.status === "open" && (
-                      <div className="flex gap-2">
-                        <Button size="sm" variant="outline"
-                          onClick={() => acknowledgeMutation.mutate(alert.id)}
-                          disabled={acknowledgeMutation.isPending}>
-                          <Clock className="w-3 h-3 mr-1" /> Acknowledge
+                      <p className="text-sm text-muted-foreground mb-3">{alert.description}</p>
+                      {alert.requiredAction && (
+                        <div className="bg-orange-50 dark:bg-orange-950/20 border border-orange-200 rounded p-2 mb-3">
+                          <p className="text-xs font-medium text-orange-700">Required action: {alert.requiredAction}</p>
+                        </div>
+                      )}
+                      {alert.status === "open" && (
+                        <div className="flex gap-2 flex-wrap">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => acknowledgeMutation.mutate(alert.id)}
+                            disabled={acknowledgeMutation.isPending}
+                            aria-label={`Acknowledge alert: ${alert.title}`}
+                          >
+                            <Clock className="w-3 h-3 mr-1" aria-hidden="true" /> Acknowledge
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => resolveMutation.mutate({ alertId: alert.id, resolution: "Manually resolved" })}
+                            disabled={resolveMutation.isPending}
+                            aria-label={`Mark alert resolved: ${alert.title}`}
+                          >
+                            <CheckCircle className="w-3 h-3 mr-1" aria-hidden="true" /> Mark resolved
+                          </Button>
+                        </div>
+                      )}
+                      {alert.status === "acknowledged" && (
+                        <Button
+                          size="sm"
+                          onClick={() => resolveMutation.mutate({ alertId: alert.id, resolution: "Resolved after acknowledgement" })}
+                          disabled={resolveMutation.isPending}
+                          aria-label={`Mark alert resolved: ${alert.title}`}
+                        >
+                          <CheckCircle className="w-3 h-3 mr-1" aria-hidden="true" /> Mark resolved
                         </Button>
-                        <Button size="sm"
-                          onClick={() => resolveMutation.mutate({ alertId: alert.id, resolution: "Manually resolved" })}
-                          disabled={resolveMutation.isPending}>
-                          <CheckCircle className="w-3 h-3 mr-1" /> Mark Resolved
-                        </Button>
-                      </div>
-                    )}
-                    {alert.status === "acknowledged" && (
-                      <Button size="sm"
-                        onClick={() => resolveMutation.mutate({ alertId: alert.id, resolution: "Resolved after acknowledgement" })}
-                        disabled={resolveMutation.isPending}>
-                        <CheckCircle className="w-3 h-3 mr-1" /> Mark Resolved
-                      </Button>
-                    )}
-                  </CardContent>
-                </Card>
+                      )}
+                    </CardContent>
+                  </Card>
+                </li>
               ))}
-            </div>
+            </ul>
           )}
         </TabsContent>
 
         <TabsContent value="rules" className="mt-4">
           {dashboard?.activeRules?.length > 0 ? (
-            <div className="space-y-3">
+            <ul className="space-y-3" aria-label="Active compliance rules">
               {dashboard.activeRules.map((rule: any, i: number) => (
-                <Card key={i}>
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-medium">{rule.name}</span>
-                      <Badge variant="secondary">{rule.jurisdiction ?? "Federal"}</Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground">{rule.description}</p>
-                    {rule.effectiveDate && (
-                      <p className="text-xs text-muted-foreground mt-1">Effective: {new Date(rule.effectiveDate).toLocaleDateString()}</p>
-                    )}
-                  </CardContent>
-                </Card>
+                <li key={i}>
+                  <Card>
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between mb-1 gap-2 flex-wrap">
+                        <span className="font-medium">{rule.name}</span>
+                        <Badge variant="secondary">{rule.jurisdiction ?? "Federal"}</Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground">{rule.description}</p>
+                      {rule.effectiveDate && (
+                        <p className="text-xs text-muted-foreground mt-1 tabular-nums">Effective: {new Date(rule.effectiveDate).toLocaleDateString()}</p>
+                      )}
+                    </CardContent>
+                  </Card>
+                </li>
               ))}
-            </div>
+            </ul>
           ) : (
             <Card>
               <CardContent className="py-10 text-center">
-                <FileText className="w-10 h-10 mx-auto mb-3 text-muted-foreground" />
+                <FileText className="w-10 h-10 mx-auto mb-3 text-muted-foreground" aria-hidden="true" />
                 <p className="text-muted-foreground">No active compliance rules loaded.</p>
               </CardContent>
             </Card>
           )}
         </TabsContent>
 
-        {/* ── COMPLIANCE CALENDAR ── */}
         <TabsContent value="calendar" className="mt-4">
           <ComplianceCalendar />
         </TabsContent>
@@ -236,27 +284,22 @@ export default function CompliancePage() {
   );
 }
 
-// ─── Compliance Calendar Component ───────────────────────────────────────────
-
 const COMPLIANCE_DEADLINES = [
-  { month: 1, day: 31, title: "1099-MISC Filing", description: "Report payments to contractors and sellers (paper filing)", category: "Federal Tax", severity: "high" },
-  { month: 3, day: 15, title: "S-Corp Tax Return", description: "Form 1120-S due (or extension)", category: "Federal Tax", severity: "high" },
-  { month: 4, day: 15, title: "Individual Tax Return", description: "Form 1040 due (or extension)", category: "Federal Tax", severity: "critical" },
-  { month: 4, day: 15, title: "Q1 Estimated Tax", description: "First quarter estimated tax payment", category: "Federal Tax", severity: "high" },
-  { month: 6, day: 15, title: "Q2 Estimated Tax", description: "Second quarter estimated tax payment", category: "Federal Tax", severity: "high" },
-  { month: 7, day: 31, title: "FBAR Filing", description: "Foreign Bank Account Report (if applicable)", category: "Compliance", severity: "medium" },
-  { month: 9, day: 15, title: "Q3 Estimated Tax", description: "Third quarter estimated tax payment", category: "Federal Tax", severity: "high" },
-  { month: 9, day: 15, title: "Extended Tax Returns", description: "Extended S-Corp and Partnership returns due", category: "Federal Tax", severity: "high" },
-  { month: 10, day: 15, title: "Extended Individual Returns", description: "Extended Form 1040 due", category: "Federal Tax", severity: "high" },
-  { month: 12, day: 31, title: "QOZ Investment Deadline", description: "Invest gains in Qualified Opportunity Zone by year-end", category: "Tax Strategy", severity: "critical" },
-  { month: 12, day: 31, title: "Year-End Harvesting", description: "Last day for tax loss harvesting and timing strategies", category: "Tax Strategy", severity: "high" },
-  // RESPA / Real Estate Compliance
-  { month: 1, day: 1, title: "Annual RESPA Review", description: "Review settlement procedures and disclosure compliance", category: "RESPA", severity: "medium" },
-  // TCPA
-  { month: 6, day: 1, title: "TCPA List Hygiene", description: "Scrub marketing lists against DNC registry (renew annually)", category: "TCPA", severity: "high" },
-  { month: 12, day: 1, title: "TCPA List Hygiene", description: "Second annual DNC registry scrub", category: "TCPA", severity: "high" },
-  // Dodd-Frank
-  { month: 3, day: 31, title: "Dodd-Frank Property Count Review", description: "Verify seller-financing count vs. 3-property exemption limit", category: "Dodd-Frank", severity: "medium" },
+  { month: 1, day: 31, title: "1099-MISC filing", description: "Report payments to contractors and sellers (paper filing).", category: "Federal Tax", severity: "high" },
+  { month: 3, day: 15, title: "S-Corp tax return", description: "Form 1120-S due (or extension).", category: "Federal Tax", severity: "high" },
+  { month: 4, day: 15, title: "Individual tax return", description: "Form 1040 due (or extension).", category: "Federal Tax", severity: "critical" },
+  { month: 4, day: 15, title: "Q1 estimated tax", description: "First quarter estimated tax payment.", category: "Federal Tax", severity: "high" },
+  { month: 6, day: 15, title: "Q2 estimated tax", description: "Second quarter estimated tax payment.", category: "Federal Tax", severity: "high" },
+  { month: 7, day: 31, title: "FBAR filing", description: "Foreign Bank Account Report (if applicable).", category: "Compliance", severity: "medium" },
+  { month: 9, day: 15, title: "Q3 estimated tax", description: "Third quarter estimated tax payment.", category: "Federal Tax", severity: "high" },
+  { month: 9, day: 15, title: "Extended tax returns", description: "Extended S-Corp and Partnership returns due.", category: "Federal Tax", severity: "high" },
+  { month: 10, day: 15, title: "Extended individual returns", description: "Extended Form 1040 due.", category: "Federal Tax", severity: "high" },
+  { month: 12, day: 31, title: "QOZ investment deadline", description: "Invest gains in Qualified Opportunity Zone by year-end.", category: "Tax Strategy", severity: "critical" },
+  { month: 12, day: 31, title: "Year-end harvesting", description: "Last day for tax loss harvesting and timing strategies.", category: "Tax Strategy", severity: "high" },
+  { month: 1, day: 1, title: "Annual RESPA review", description: "Review settlement procedures and disclosure compliance.", category: "RESPA", severity: "medium" },
+  { month: 6, day: 1, title: "TCPA list hygiene", description: "Scrub marketing lists against DNC registry (renew annually).", category: "TCPA", severity: "high" },
+  { month: 12, day: 1, title: "TCPA list hygiene", description: "Second annual DNC registry scrub.", category: "TCPA", severity: "high" },
+  { month: 3, day: 31, title: "Dodd-Frank property count review", description: "Verify seller-financing count vs. 3-property exemption limit.", category: "Dodd-Frank", severity: "medium" },
 ];
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -299,20 +342,24 @@ function ComplianceCalendar() {
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center gap-2">
-            <Clock className="h-4 w-4 text-amber-500" />
-            Upcoming Compliance Deadlines
+            <Clock className="h-4 w-4 text-amber-500" aria-hidden="true" />
+            Upcoming compliance deadlines
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-3">
+          <ol className="space-y-3" aria-label="Upcoming compliance deadlines, soonest first">
             {upcomingDeadlines.map((d, i) => {
               const days = daysUntil(d.month, d.day);
               const isUrgent = days <= 14;
               return (
-                <div key={i} className={`flex items-start gap-3 p-3 rounded-lg border ${isUrgent ? "border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/10" : "border-border"}`}>
+                <li
+                  key={i}
+                  className={`flex items-start gap-3 p-3 rounded-lg border ${isUrgent ? "border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/10" : "border-border"}`}
+                  role={isUrgent ? "alert" : undefined}
+                >
                   <div className="text-center min-w-[48px]">
                     <p className="text-xs text-muted-foreground">{MONTH_NAMES[d.month - 1]}</p>
-                    <p className="text-lg font-bold">{d.day}</p>
+                    <p className="text-lg font-bold tabular-nums">{d.day}</p>
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -323,31 +370,32 @@ function ComplianceCalendar() {
                     <p className="text-xs text-muted-foreground mt-0.5">{d.description}</p>
                   </div>
                   <div className="text-right flex-shrink-0">
-                    <p className={`text-xs font-medium ${isUrgent ? "text-amber-600" : "text-muted-foreground"}`}>
+                    <p className={`text-xs font-medium tabular-nums ${isUrgent ? "text-amber-600" : "text-muted-foreground"}`}>
                       {days === 0 ? "Today!" : `${days}d`}
                     </p>
                   </div>
-                </div>
+                </li>
               );
             })}
-          </div>
+          </ol>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm text-muted-foreground">Past Deadlines (This Year)</CardTitle>
+          <CardTitle className="text-sm text-muted-foreground">Past deadlines (this year)</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-2">
+          <ul className="space-y-2" aria-label="Past deadlines this year">
             {pastDeadlines.map((d, i) => (
-              <div key={i} className="flex items-center gap-3 opacity-60">
-                <CheckCircle className="h-4 w-4 text-emerald-500 flex-shrink-0" />
-                <span className="text-sm">{MONTH_NAMES[d.month - 1]} {d.day} — {d.title}</span>
+              <li key={i} className="flex items-center gap-3 opacity-60">
+                <CheckCircle className="h-4 w-4 text-emerald-500 flex-shrink-0" aria-label="Past" />
+                <span className="text-sm tabular-nums">{MONTH_NAMES[d.month - 1]} {d.day}</span>
+                <span className="text-sm">— {d.title}</span>
                 <Badge className={`text-xs py-0 ml-auto ${CATEGORY_COLORS[d.category] || ""}`}>{d.category}</Badge>
-              </div>
+              </li>
             ))}
-          </div>
+          </ul>
         </CardContent>
       </Card>
     </div>
