@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { PageShell } from "@/components/page-shell";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { usd } from "@/lib/format";
 import { useToast } from "@/hooks/use-toast";
 import { PropertyMap } from "@/components/property-map";
 import { Button } from "@/components/ui/button";
@@ -335,8 +336,8 @@ function PropertyIntelligencePanel({
           ) : intel.estimatedValue ? (
             <div>
               <div className="flex items-end gap-2">
-                <span className="text-2xl font-bold text-primary">
-                  ${intel.estimatedValue.toLocaleString()}
+                <span className="text-2xl font-bold text-primary tabular-nums">
+                  {usd(intel.estimatedValue, { noCents: true })}
                 </span>
                 <div className={cn("flex items-center gap-0.5 text-xs font-medium mb-0.5", trendColor)}>
                   <TrendIcon className="w-3.5 h-3.5" />
@@ -345,8 +346,8 @@ function PropertyIntelligencePanel({
               </div>
               <div className="flex items-center gap-2 mt-0.5">
                 {intel.pricePerAcre && (
-                  <span className="text-xs text-muted-foreground">
-                    ${intel.pricePerAcre.toLocaleString()}/ac
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    {usd(intel.pricePerAcre, { noCents: true })}/ac
                   </span>
                 )}
                 {intel.valueConfidence && (
@@ -449,7 +450,7 @@ function PropertyIntelligencePanel({
                         active && payload?.length ? (
                           <div className="bg-background border rounded px-2 py-1 text-[10px] shadow">
                             <div className="font-semibold">{label}</div>
-                            <div>${payload[0].value?.toLocaleString()}</div>
+                            <div className="tabular-nums">{usd(Number(payload[0].value), { noCents: true })}</div>
                           </div>
                         ) : null
                       }
@@ -651,18 +652,18 @@ function PropertyIntelligencePanel({
               )}
               {intel.lastAssessedValue && (
                 <IntelligenceRow
-                  label="Assessed Value"
+                  label="Assessed value"
                   icon={BarChart3}
                   iconClass="text-blue-500"
-                  value={`$${intel.lastAssessedValue.toLocaleString()}`}
+                  value={usd(intel.lastAssessedValue, { noCents: true })}
                 />
               )}
               {intel.annualTaxes && (
                 <IntelligenceRow
-                  label="Annual Taxes"
+                  label="Annual taxes"
                   icon={DollarSign}
                   iconClass="text-amber-500"
-                  value={`$${intel.annualTaxes.toLocaleString()}/yr`}
+                  value={`${usd(intel.annualTaxes, { noCents: true })}/yr`}
                 />
               )}
             </div>
