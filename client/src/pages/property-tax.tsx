@@ -1,12 +1,15 @@
-import { useState } from "react";
+import { useState, useId } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
+import { useDocumentTitle } from "@/hooks/use-document-title";
+import { usd } from "@/lib/format";
 import { DollarSign, AlertTriangle, ExternalLink, Loader2 } from "lucide-react";
 
 interface EscrowStatus {
@@ -36,10 +39,13 @@ interface PortfolioTaxSummary {
 }
 
 export default function PropertyTaxPage() {
+  useDocumentTitle("Property tax manager");
   const { toast } = useToast();
   const [portalState, setPortalState] = useState("TX");
   const [portalCounty, setPortalCounty] = useState("");
   const [portalUrl, setPortalUrl] = useState<string | null>(null);
+  const portalStateId = useId();
+  const portalCountyId = useId();
 
   const { data: summary, isLoading } = useQuery<PortfolioTaxSummary>({
     queryKey: ["/api/property-tax/portfolio"],
@@ -47,11 +53,29 @@ export default function PropertyTaxPage() {
   });
 
   async function lookupPortal() {
-    const params = new URLSearchParams({ state: portalState });
-    if (portalCounty) params.set("county", portalCounty);
-    const res = await fetch(`/api/property-tax/portal?${params}`);
-    const data = await res.json();
-    setPortalUrl(data.url);
+    try {
+      const params = new URLSearchParams({ state: portalState });
+      if (portalCounty) params.set("county", portalCounty);
+      const res = await fetch(`/api/property-tax/portal?${params}`);
+      if (!res.ok) throw new Error("Portal lookup failed");
+      const data = await res.json();
+      if (data.url) {
+        setPortalUrl(data.url);
+      } else {
+        setPortalUrl(null);
+        toast({
+          title: "No portal found",
+          description: `We don't have a tax-portal URL on file for ${portalState}${portalCounty ? `, ${portalCounty}` : ""}.`,
+        });
+      }
+    } catch {
+      setPortalUrl(null);
+      toast({
+        title: "Couldn't look up portal",
+        description: "Check your connection and try again — your inputs are preserved.",
+        variant: "destructive",
+      });
+    }
   }
 
   const totalBalance = summary?.totalEscrowBalance ?? 0;
@@ -62,7 +86,7 @@ export default function PropertyTaxPage() {
     <PageShell>
       <div>
         <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-property-tax-title">
-          Property Tax Manager
+          Property tax manager
         </h1>
         <p className="text-muted-foreground text-sm md:text-base">
           Track tax escrow balances and upcoming payments across your portfolio.
@@ -70,57 +94,61 @@ export default function PropertyTaxPage() {
       </div>
 
       {isLoading ? (
-        <div className="flex items-center gap-2 text-muted-foreground">
-          <Loader2 className="w-4 h-4 animate-spin" /> Loading tax data...
+        <div className="flex items-center gap-2 text-muted-foreground" role="status" aria-live="polite">
+          <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> Loading tax data…
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <dl className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Card>
               <CardContent className="p-4">
-                <div className="flex items-center gap-2 text-muted-foreground mb-1">
-                  <DollarSign className="w-4 h-4" />
-                  <span className="text-xs">Escrow Balance</span>
-                </div>
-                <p className="text-xl font-bold">
-                  ${((totalBalance) / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })}
-                </p>
+                <dt className="flex items-center gap-2 text-muted-foreground mb-1">
+                  <DollarSign className="w-4 h-4" aria-hidden="true" />
+                  <span className="text-xs">Escrow balance</span>
+                </dt>
+                <dd className="text-xl font-bold tabular-nums">
+                  {usd(totalBalance / 100)}
+                </dd>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
-                <p className="text-xs text-muted-foreground mb-1">Annual Tax Due</p>
-                <p className="text-xl font-bold">
-                  ${((totalAnnualTax) / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })}
-                </p>
+                <dt className="text-xs text-muted-foreground mb-1">Annual tax due</dt>
+                <dd className="text-xl font-bold tabular-nums">
+                  {usd(totalAnnualTax / 100)}
+                </dd>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
-                <p className="text-xs text-muted-foreground mb-1">Notes w/ Escrow</p>
-                <p className="text-xl font-bold">{summary?.notesWithEscrow ?? 0}</p>
+                <dt className="text-xs text-muted-foreground mb-1">Notes w/ escrow</dt>
+                <dd className="text-xl font-bold tabular-nums">{summary?.notesWithEscrow ?? 0}</dd>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
-                <div className="flex items-center gap-2 text-muted-foreground mb-1">
-                  <AlertTriangle className="w-4 h-4" />
+                <dt className="flex items-center gap-2 text-muted-foreground mb-1">
+                  <AlertTriangle className="w-4 h-4" aria-hidden="true" />
                   <span className="text-xs">Shortfall</span>
-                </div>
-                <p className="text-xl font-bold text-destructive">{summary?.notesWithShortfall ?? 0}</p>
+                </dt>
+                <dd className="text-xl font-bold text-destructive tabular-nums">{summary?.notesWithShortfall ?? 0}</dd>
               </CardContent>
             </Card>
-          </div>
+          </dl>
 
           <Card>
             <CardContent className="p-4">
               <div className="flex justify-between text-xs text-muted-foreground mb-2">
-                <span>Escrow Coverage</span>
-                <span>{coverage.toFixed(0)}%</span>
+                <span>Escrow coverage</span>
+                <span className="tabular-nums">{coverage.toFixed(0)}%</span>
               </div>
-              <Progress value={Math.min(coverage, 100)} className="h-2" />
+              <Progress
+                value={Math.min(coverage, 100)}
+                className="h-2"
+                aria-label={`Escrow coverage: ${coverage.toFixed(0)}% of annual tax`}
+              />
               <p className="text-xs text-muted-foreground mt-1">
-                {coverage >= 100 ? "Fully funded" : `${(100 - coverage).toFixed(0)}% underfunded`}
+                {coverage >= 100 ? "Fully funded." : <><span className="tabular-nums">{(100 - coverage).toFixed(0)}%</span> underfunded.</>}
               </p>
             </CardContent>
           </Card>
@@ -128,18 +156,20 @@ export default function PropertyTaxPage() {
           {(summary?.upcomingPayments?.length ?? 0) > 0 && (
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Upcoming Tax Payments</CardTitle>
+                <CardTitle className="text-sm">Upcoming tax payments</CardTitle>
               </CardHeader>
-              <CardContent className="p-4 pt-0 space-y-2">
-                {summary!.upcomingPayments.map(p => (
-                  <div key={p.noteId} className="flex items-center justify-between text-sm">
-                    <div>
-                      <p className="font-medium text-xs">{p.propertyAddress}</p>
-                      <p className="text-xs text-muted-foreground">Due {new Date(p.dueDate).toLocaleDateString()}</p>
-                    </div>
-                    <Badge variant="secondary">${(p.amount / 100).toLocaleString()}</Badge>
-                  </div>
-                ))}
+              <CardContent className="p-4 pt-0">
+                <ul className="space-y-2" aria-label="Upcoming tax payments">
+                  {summary!.upcomingPayments.map(p => (
+                    <li key={p.noteId} className="flex items-center justify-between text-sm">
+                      <div>
+                        <p className="font-medium text-xs">{p.propertyAddress}</p>
+                        <p className="text-xs text-muted-foreground tabular-nums">Due {new Date(p.dueDate).toLocaleDateString()}</p>
+                      </div>
+                      <Badge variant="secondary" className="tabular-nums">{usd(p.amount / 100)}</Badge>
+                    </li>
+                  ))}
+                </ul>
               </CardContent>
             </Card>
           )}
@@ -148,36 +178,55 @@ export default function PropertyTaxPage() {
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">County Tax Portal Lookup</CardTitle>
+          <CardTitle className="text-sm">County tax portal lookup</CardTitle>
         </CardHeader>
-        <CardContent className="p-4 pt-0 space-y-3">
-          <div className="flex gap-2">
-            <Input
-              placeholder="State (e.g. TX)"
-              value={portalState}
-              onChange={e => setPortalState(e.target.value.toUpperCase().slice(0, 2))}
-              className="w-24"
-              maxLength={2}
-            />
-            <Input
-              placeholder="County (optional)"
-              value={portalCounty}
-              onChange={e => setPortalCounty(e.target.value)}
-              className="flex-1"
-            />
-            <Button onClick={lookupPortal} size="sm">Lookup</Button>
-          </div>
-          {portalUrl && (
-            <a
-              href={portalUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1 text-xs text-primary hover:underline"
-            >
-              <ExternalLink className="w-3 h-3" />
-              {portalUrl}
-            </a>
-          )}
+        <CardContent className="p-4 pt-0">
+          <form
+            className="space-y-3"
+            onSubmit={(e) => { e.preventDefault(); lookupPortal(); }}
+          >
+            <div className="flex flex-wrap gap-2">
+              <div className="w-24">
+                <Label htmlFor={portalStateId} className="sr-only">State</Label>
+                <Input
+                  id={portalStateId}
+                  placeholder="State (e.g. TX)"
+                  value={portalState}
+                  onChange={e => setPortalState(e.target.value.toUpperCase().slice(0, 2))}
+                  className="uppercase"
+                  maxLength={2}
+                  autoCapitalize="characters"
+                  autoComplete="address-level1"
+                  autoCorrect="off"
+                  spellCheck={false}
+                />
+              </div>
+              <div className="flex-1 min-w-[150px]">
+                <Label htmlFor={portalCountyId} className="sr-only">County (optional)</Label>
+                <Input
+                  id={portalCountyId}
+                  placeholder="County (optional)"
+                  value={portalCounty}
+                  onChange={e => setPortalCounty(e.target.value)}
+                  autoCapitalize="words"
+                  autoComplete="address-level2"
+                />
+              </div>
+              <Button type="submit" size="sm" className="min-h-9">Look up</Button>
+            </div>
+            {portalUrl && (
+              <a
+                href={portalUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 text-xs text-primary hover:underline"
+                aria-label={`Open ${portalState} tax portal (opens in new tab)`}
+              >
+                <ExternalLink className="w-3 h-3" aria-hidden="true" />
+                {portalUrl}
+              </a>
+            )}
+          </form>
         </CardContent>
       </Card>
     </PageShell>
