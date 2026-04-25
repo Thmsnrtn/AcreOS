@@ -56,38 +56,47 @@ export function ComplianceSettings() {
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-semibold flex items-center gap-2">
-          <Shield className="w-5 h-5" />
-          Compliance & Data Governance
+          <Shield className="w-5 h-5" aria-hidden="true" />
+          Compliance & data governance
         </h2>
         <p className="text-muted-foreground text-sm">
           Manage audit logs, TCPA compliance, and data retention policies.
         </p>
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div role="tablist" aria-label="Compliance sections" className="flex flex-wrap gap-2">
         <Button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "audit"}
           variant={activeTab === "audit" ? "default" : "outline"}
           onClick={() => setActiveTab("audit")}
           data-testid="button-tab-audit"
         >
-          <FileText className="w-4 h-4 mr-2" />
-          Audit Log
+          <FileText className="w-4 h-4 mr-2" aria-hidden="true" />
+          Audit log
         </Button>
         <Button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "tcpa"}
           variant={activeTab === "tcpa" ? "default" : "outline"}
           onClick={() => setActiveTab("tcpa")}
           data-testid="button-tab-tcpa"
         >
-          <PhoneOff className="w-4 h-4 mr-2" />
-          TCPA Compliance
+          <PhoneOff className="w-4 h-4 mr-2" aria-hidden="true" />
+          TCPA compliance
         </Button>
         <Button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "retention"}
           variant={activeTab === "retention" ? "default" : "outline"}
           onClick={() => setActiveTab("retention")}
           data-testid="button-tab-retention"
         >
-          <Clock className="w-4 h-4 mr-2" />
-          Data Retention
+          <Clock className="w-4 h-4 mr-2" aria-hidden="true" />
+          Data retention
         </Button>
       </div>
 
@@ -145,8 +154,8 @@ function AuditLogViewer() {
     <Card>
       <CardHeader>
         <CardTitle className="text-base flex items-center gap-2">
-          <FileText className="w-4 h-4" />
-          Audit Trail
+          <FileText className="w-4 h-4" aria-hidden="true" />
+          Audit trail
         </CardTitle>
         <CardDescription>
           Complete record of all system activities for compliance and security.
@@ -155,9 +164,9 @@ function AuditLogViewer() {
       <CardContent className="space-y-4">
         <div className="flex flex-wrap gap-3 items-end">
           <div className="space-y-1">
-            <Label>Action</Label>
+            <Label htmlFor="audit-filter-action">Action</Label>
             <Select value={filters.action || "all"} onValueChange={(v) => setFilters(f => ({ ...f, action: v === "all" ? "" : v, offset: 0 }))}>
-              <SelectTrigger className="w-[180px]" data-testid="select-audit-action">
+              <SelectTrigger id="audit-filter-action" className="w-[180px]" data-testid="select-audit-action">
                 <SelectValue placeholder="All actions" />
               </SelectTrigger>
               <SelectContent>
@@ -165,17 +174,17 @@ function AuditLogViewer() {
                 <SelectItem value="create">Create</SelectItem>
                 <SelectItem value="update">Update</SelectItem>
                 <SelectItem value="delete">Delete</SelectItem>
-                <SelectItem value="consent_granted">Consent Granted</SelectItem>
-                <SelectItem value="consent_revoked">Consent Revoked</SelectItem>
-                <SelectItem value="data_purge">Data Purge</SelectItem>
+                <SelectItem value="consent_granted">Consent granted</SelectItem>
+                <SelectItem value="consent_revoked">Consent revoked</SelectItem>
+                <SelectItem value="data_purge">Data purge</SelectItem>
               </SelectContent>
             </Select>
           </div>
-          
+
           <div className="space-y-1">
-            <Label>Entity Type</Label>
+            <Label htmlFor="audit-filter-entity">Entity type</Label>
             <Select value={filters.entityType || "all"} onValueChange={(v) => setFilters(f => ({ ...f, entityType: v === "all" ? "" : v, offset: 0 }))}>
-              <SelectTrigger className="w-[180px]" data-testid="select-audit-entity">
+              <SelectTrigger id="audit-filter-entity" className="w-[180px]" data-testid="select-audit-entity">
                 <SelectValue placeholder="All entities" />
               </SelectTrigger>
               <SelectContent>
@@ -188,16 +197,18 @@ function AuditLogViewer() {
               </SelectContent>
             </Select>
           </div>
-          
+
           <Button
+            type="button"
             variant="outline"
             size="icon"
             onClick={() => refetch()}
             disabled={isFetching}
-            aria-label="Refresh audit"
+            aria-busy={isFetching}
+            aria-label="Refresh audit log"
             data-testid="button-refresh-audit"
           >
-            <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} aria-hidden="true" />
           </Button>
         </div>
 
@@ -271,7 +282,7 @@ function AuditLogViewer() {
           </>
         ) : (
           <div className="text-center py-8 text-muted-foreground">
-            <FileText className="w-12 h-12 mx-auto mb-2 opacity-50" />
+            <FileText className="w-12 h-12 mx-auto mb-2 opacity-50" aria-hidden="true" />
             <p>No audit log entries found</p>
           </div>
         )}
@@ -298,8 +309,8 @@ function TcpaCompliancePanel() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
-            <PhoneOff className="w-4 h-4" />
-            TCPA Compliance Overview
+            <PhoneOff className="w-4 h-4" aria-hidden="true" />
+            TCPA compliance overview
           </CardTitle>
           <CardDescription>
             Track consent status for SMS and call communications.
@@ -315,30 +326,37 @@ function TcpaCompliancePanel() {
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="p-4 rounded-lg bg-muted/50" data-testid="stat-total-leads">
-                <p className="text-2xl font-bold">{stats?.total || 0}</p>
-                <p className="text-sm text-muted-foreground">Total Leads</p>
+                <p className="text-2xl font-bold tabular-nums">{stats?.total || 0}</p>
+                <p className="text-sm text-muted-foreground">Total leads</p>
               </div>
               <div className="p-4 rounded-lg bg-green-100 dark:bg-green-900/30" data-testid="stat-with-consent">
-                <p className="text-2xl font-bold text-green-700 dark:text-green-400">{stats?.withConsent || 0}</p>
-                <p className="text-sm text-green-600 dark:text-green-500">With Consent</p>
+                <p className="text-2xl font-bold text-green-700 dark:text-green-400 tabular-nums">{stats?.withConsent || 0}</p>
+                <p className="text-sm text-green-600 dark:text-green-500">With consent</p>
               </div>
               <div className="p-4 rounded-lg bg-orange-100 dark:bg-orange-900/30" data-testid="stat-without-consent">
-                <p className="text-2xl font-bold text-orange-700 dark:text-orange-400">{stats?.withoutConsent || 0}</p>
-                <p className="text-sm text-orange-600 dark:text-orange-500">Without Consent</p>
+                <p className="text-2xl font-bold text-orange-700 dark:text-orange-400 tabular-nums">{stats?.withoutConsent || 0}</p>
+                <p className="text-sm text-orange-600 dark:text-orange-500">Without consent</p>
               </div>
               <div className="p-4 rounded-lg bg-red-100 dark:bg-red-900/30" data-testid="stat-opted-out">
-                <p className="text-2xl font-bold text-red-700 dark:text-red-400">{stats?.optedOut || 0}</p>
-                <p className="text-sm text-red-600 dark:text-red-500">Opted Out</p>
+                <p className="text-2xl font-bold text-red-700 dark:text-red-400 tabular-nums">{stats?.optedOut || 0}</p>
+                <p className="text-sm text-red-600 dark:text-red-500">Opted out</p>
               </div>
             </div>
           )}
           
           <div className="mt-4 p-4 bg-muted/50 rounded-lg">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium">Consent Rate</span>
-              <span className="text-sm font-bold">{consentRate}%</span>
+              <span className="text-sm font-medium" id="consent-rate-label">Consent rate</span>
+              <span className="text-sm font-bold tabular-nums">{consentRate}%</span>
             </div>
-            <div className="w-full bg-muted rounded-full h-2">
+            <div
+              role="progressbar"
+              aria-labelledby="consent-rate-label"
+              aria-valuenow={Number(consentRate)}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              className="w-full bg-muted rounded-full h-2"
+            >
               <div
                 className="bg-green-500 h-2 rounded-full transition-all"
                 style={{ width: `${consentRate}%` }}
@@ -350,7 +368,7 @@ function TcpaCompliancePanel() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Leads Requiring Consent</CardTitle>
+          <CardTitle className="text-base">Leads requiring consent</CardTitle>
           <CardDescription>
             These leads cannot receive SMS or calls until consent is obtained.
           </CardDescription>
@@ -380,8 +398,8 @@ function TcpaCompliancePanel() {
                       <TableCell className="text-muted-foreground">{lead.phone || "-"}</TableCell>
                       <TableCell>
                         <Badge variant="secondary" className="bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200">
-                          <XCircle className="w-3 h-3 mr-1" />
-                          No Consent
+                          <XCircle className="w-3 h-3 mr-1" aria-hidden="true" />
+                          No consent
                         </Badge>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
@@ -394,7 +412,7 @@ function TcpaCompliancePanel() {
             </div>
           ) : (
             <div className="text-center py-8 text-muted-foreground">
-              <CheckCircle2 className="w-12 h-12 mx-auto mb-2 text-green-500" />
+              <CheckCircle2 className="w-12 h-12 mx-auto mb-2 text-green-500" aria-hidden="true" />
               <p>All leads have TCPA consent</p>
             </div>
           )}
@@ -492,9 +510,9 @@ function RetentionPoliciesPanel() {
   };
 
   const policyItems = [
-    { key: "leads" as const, label: "Dead Leads", description: "Leads marked as dead/unresponsive" },
-    { key: "closedDeals" as const, label: "Closed Deals", description: "Deals that have been closed" },
-    { key: "auditLogs" as const, label: "Audit Logs", description: "Historical audit log entries" },
+    { key: "leads" as const, label: "Dead leads", description: "Leads marked as dead/unresponsive" },
+    { key: "closedDeals" as const, label: "Closed deals", description: "Deals that have been closed" },
+    { key: "auditLogs" as const, label: "Audit logs", description: "Historical audit log entries" },
     { key: "communications" as const, label: "Communications", description: "Email and SMS records" },
   ];
 
@@ -503,8 +521,8 @@ function RetentionPoliciesPanel() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
-            <Clock className="w-4 h-4" />
-            Retention Policies
+            <Clock className="w-4 h-4" aria-hidden="true" />
+            Retention policies
           </CardTitle>
           <CardDescription>
             Configure automatic data retention periods for compliance.
@@ -532,13 +550,16 @@ function RetentionPoliciesPanel() {
                   <div className="flex items-center gap-4">
                     <div className="flex items-center gap-2">
                       <Input
+                        id={`retention-days-${item.key}`}
                         type="number"
+                        inputMode="numeric"
                         min={30}
                         max={3650}
                         value={policies?.[item.key]?.retentionDays || 365}
                         onChange={(e) => handleUpdateDays(item.key, parseInt(e.target.value) || 365)}
-                        className="w-20"
+                        className="w-20 tabular-nums"
                         disabled={!policies?.[item.key]?.enabled}
+                        aria-label={`${item.label} retention days`}
                         data-testid={`input-retention-${item.key}`}
                       />
                       <span className="text-sm text-muted-foreground">days</span>
@@ -546,6 +567,7 @@ function RetentionPoliciesPanel() {
                     <Switch
                       checked={policies?.[item.key]?.enabled || false}
                       onCheckedChange={(checked) => handleTogglePolicy(item.key, checked)}
+                      aria-label={`Enable ${item.label} retention policy`}
                       data-testid={`switch-${item.key}`}
                     />
                   </div>
@@ -559,8 +581,8 @@ function RetentionPoliciesPanel() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
-            <Trash2 className="w-4 h-4" />
-            Manual Data Purge
+            <Trash2 className="w-4 h-4" aria-hidden="true" />
+            Manual data purge
           </CardTitle>
           <CardDescription>
             Immediately delete old data. This action cannot be undone.
@@ -569,47 +591,51 @@ function RetentionPoliciesPanel() {
         <CardContent>
           <div className="flex flex-wrap items-end gap-4">
             <div className="space-y-1">
-              <Label>Data Type</Label>
+              <Label htmlFor="purge-type">Data type</Label>
               <Select value={purgeType} onValueChange={setPurgeType}>
-                <SelectTrigger className="w-[200px]" data-testid="select-purge-type">
-                  <SelectValue placeholder="Select type..." />
+                <SelectTrigger id="purge-type" className="w-[200px]" data-testid="select-purge-type">
+                  <SelectValue placeholder="Select type…" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="leads">Dead Leads</SelectItem>
-                  <SelectItem value="closedDeals">Closed Deals</SelectItem>
-                  <SelectItem value="auditLogs">Audit Logs</SelectItem>
+                  <SelectItem value="leads">Dead leads</SelectItem>
+                  <SelectItem value="closedDeals">Closed deals</SelectItem>
+                  <SelectItem value="auditLogs">Audit logs</SelectItem>
                   <SelectItem value="communications">Communications</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1">
-              <Label>Older than (days)</Label>
+              <Label htmlFor="purge-days">Older than (days)</Label>
               <Input
+                id="purge-days"
                 type="number"
+                inputMode="numeric"
                 min={30}
                 value={purgeDays}
                 onChange={(e) => setPurgeDays(parseInt(e.target.value) || 365)}
-                className="w-24"
+                className="w-24 tabular-nums"
                 data-testid="input-purge-days"
               />
             </div>
             <Button
+              type="button"
               variant="destructive"
               onClick={handlePurge}
               disabled={!purgeType || purgeDataMutation.isPending}
+              aria-busy={purgeDataMutation.isPending}
               data-testid="button-purge-data"
             >
               {purgeDataMutation.isPending ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
               ) : (
-                <Trash2 className="w-4 h-4 mr-2" />
+                <Trash2 className="w-4 h-4 mr-2" aria-hidden="true" />
               )}
-              Purge Data
+              {purgeDataMutation.isPending ? "Purging…" : "Purge data"}
             </Button>
           </div>
-          
-          <div className="mt-4 p-3 bg-orange-100 dark:bg-orange-900/30 rounded-lg flex items-start gap-2">
-            <AlertTriangle className="w-4 h-4 text-orange-600 mt-0.5 flex-shrink-0" />
+
+          <div role="note" className="mt-4 p-3 bg-orange-100 dark:bg-orange-900/30 rounded-lg flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 text-orange-600 mt-0.5 flex-shrink-0" aria-hidden="true" />
             <p className="text-sm text-orange-700 dark:text-orange-300">
               Data purging is permanent and cannot be reversed. Consider exporting data before purging.
             </p>
