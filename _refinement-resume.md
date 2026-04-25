@@ -641,6 +641,7 @@ to a dedicated 9b slice.
 **/closing-costs + /listing-syndication (55):** ✅ complete — calculate() error handler added (previously silent), 3+3 reassurance toasts, sync-status icons get aria-label (commit `7e0fe50`)
 **/skip-tracing + /zoning-lookup (56):** ✅ complete — mailto:/tel: anchors on contact fields, status-icon aria-labels, dl/dt/dd throughout (commit `60da8fd`)
 **/title-search + /offer-batches (57):** ✅ complete — humanize-type on legal issue.type, usd() on clearance cost + issue amount, chain-of-title → ol (commit `66a9634`)
+**/property-enrichment + /territory-manager (58):** ✅ complete — P1 ConfirmDialog on territory delete (previously zero confirmation), usd() on valuation fields, 2+2 reassurance toasts (commit `170574c`)
 **/onboarding-v2 targeted (18):** ✅ complete (commit `70df779`) — 18b deferred
 **/settings targeted (19):** ✅ complete (commit `809044c`) — 19b remaining components deferred
 **/pipeline (20):** ✅ complete (commit `1b5d0f7`)
