@@ -51,8 +51,13 @@ export function UsageLimitBanner() {
   };
 
   return (
-    <Alert variant={isCritical ? "destructive" : "default"} className={`mx-4 mt-2 ${isCritical ? "border-red-500/50 bg-red-500/5" : "border-amber-500/50 bg-amber-500/5"}`}>
-      <AlertTriangle className={`h-4 w-4 ${isCritical ? "text-red-500" : "text-amber-500"}`} />
+    <Alert
+      variant={isCritical ? "destructive" : "default"}
+      className={`mx-4 mt-2 ${isCritical ? "border-red-500/50 bg-red-500/5" : "border-amber-500/50 bg-amber-500/5"}`}
+      role="alert"
+      aria-live={isCritical ? "assertive" : "polite"}
+    >
+      <AlertTriangle className={`h-4 w-4 ${isCritical ? "text-red-500" : "text-amber-500"}`} aria-hidden="true" />
       <AlertDescription className="flex items-center justify-between gap-4">
         <span className="text-sm">
           {isCritical
@@ -63,12 +68,12 @@ export function UsageLimitBanner() {
         <div className="flex items-center gap-2 flex-shrink-0">
           <Button size="sm" variant={isCritical ? "destructive" : "default"} asChild>
             <Link href="/settings?tab=billing">
-              Upgrade <ArrowUpRight className="ml-1 h-3 w-3" />
+              Upgrade <ArrowUpRight className="ml-1 h-3 w-3" aria-hidden="true" />
             </Link>
           </Button>
           {!isCritical && (
-            <Button size="sm" variant="ghost" onClick={handleDismiss} aria-label="Dismiss">
-              <X className="h-3 w-3" />
+            <Button size="sm" variant="ghost" onClick={handleDismiss} aria-label="Dismiss usage warning">
+              <X className="h-3 w-3" aria-hidden="true" />
             </Button>
           )}
         </div>
