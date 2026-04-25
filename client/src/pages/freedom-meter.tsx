@@ -342,7 +342,7 @@ export default function FreedomMeterPage() {
   const freedomMonth = projectionData.find(d => d.noteIncome >= d.expenses);
 
   return (
-    <PageShell>
+    <PageShell label="Freedom meter">
       <div className="mb-6">
         <h1 className="text-2xl md:text-3xl font-bold">Freedom meter</h1>
         <p className="text-muted-foreground text-sm md:text-base">Track your journey from trading time for money to true passive income freedom through your land note portfolio.</p>

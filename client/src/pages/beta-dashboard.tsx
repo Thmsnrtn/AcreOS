@@ -156,7 +156,7 @@ export default function BetaDashboardPage() {
   });
 
   return (
-    <PageShell>
+    <PageShell label="Beta program">
       <div>
         <h1 className="text-2xl md:text-3xl font-bold">Beta Program</h1>
         <p className="text-muted-foreground text-sm md:text-base">

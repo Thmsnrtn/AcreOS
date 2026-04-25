@@ -784,7 +784,7 @@ export default function BlindOfferWizardPage() {
   }
 
   return (
-    <PageShell>
+    <PageShell label="Blind offer wizard">
       <div className="mb-6">
         <h1 className="text-2xl md:text-3xl font-bold">Blind offer wizard</h1>
         <p className="text-muted-foreground text-sm md:text-base">Calculate your offer using a proven methodology — the trusted system behind thousands of profitable land deals.</p>

@@ -579,7 +579,7 @@ export default function PaxPage() {
   };
 
   return (
-    <PageShell>
+    <PageShell label="Pax AI hub">
       <div>
         <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-ai-hub-title">
           AI hub

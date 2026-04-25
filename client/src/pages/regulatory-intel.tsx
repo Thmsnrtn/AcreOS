@@ -397,7 +397,7 @@ export default function RegulatoryIntelPage() {
   const criticalAlerts = alerts?.filter(a => a.severity === "critical") ?? [];
 
   return (
-    <PageShell>
+    <PageShell label="Regulatory intelligence">
       <div>
         <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-2">
           <Shield className="w-6 h-6 text-primary" aria-hidden="true" /> Regulatory intelligence
