@@ -741,10 +741,10 @@ export default function PropertiesPage() {
           {!importPreview && !importResult && (
             <div className="space-y-4 py-4">
               <div className="border-2 border-dashed rounded-lg p-8 text-center">
-                <Upload className="w-10 h-10 mx-auto mb-4 text-muted-foreground" />
+                <Upload className="w-10 h-10 mx-auto mb-4 text-muted-foreground" aria-hidden="true" />
                 <label className="cursor-pointer">
                   <span className="text-sm text-muted-foreground">
-                    {isLoadingPreview ? "Processing..." : "Click to select or drag a CSV file here"}
+                    {isLoadingPreview ? "Processing…" : "Click to select or drag a CSV file here"}
                   </span>
                   <Input
                     type="file"

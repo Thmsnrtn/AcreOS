@@ -4,6 +4,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import { Search, BookOpen, MessageCircle, Send, ChevronLeft, Sparkles, Loader2, CheckCircle, AlertTriangle, Bell, Lightbulb, ChevronRight, RefreshCw, Wrench, Mail, Lock, Database, Zap, MapPin, Download, Users } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -861,51 +862,57 @@ export function HelpPanel() {
               </div>
 
               <div>
-                <label className="text-sm font-medium mb-1 block">What do you need help with?</label>
+                <Label htmlFor="ticket-subject" className="text-sm font-medium mb-1 block">What do you need help with?</Label>
                 <Input
+                  id="ticket-subject"
                   placeholder="Brief summary of your issue"
                   value={newTicket.subject}
                   onChange={(e) => setNewTicket({ ...newTicket, subject: e.target.value })}
+                  autoCapitalize="sentences"
+                  required
                   data-testid="input-ticket-subject"
                 />
               </div>
-              
+
               <div>
-                <label className="text-sm font-medium mb-1 block">Describe the issue</label>
+                <Label htmlFor="ticket-description" className="text-sm font-medium mb-1 block">Describe the issue</Label>
                 <Textarea
-                  placeholder="Please provide as much detail as possible..."
+                  id="ticket-description"
+                  placeholder="Please provide as much detail as possible…"
                   value={newTicket.description}
                   onChange={(e) => setNewTicket({ ...newTicket, description: e.target.value })}
                   rows={3}
+                  autoCapitalize="sentences"
+                  required
                   data-testid="input-ticket-description"
                 />
               </div>
 
               <div className="flex gap-2">
                 <div className="flex-1">
-                  <label className="text-xs text-muted-foreground mb-1 block">Category</label>
+                  <Label htmlFor="ticket-category" className="text-xs text-muted-foreground mb-1 block">Category</Label>
                   <Select
                     value={newTicket.category}
                     onValueChange={(v) => setNewTicket({ ...newTicket, category: v })}
                   >
-                    <SelectTrigger data-testid="select-ticket-category" className="h-8 text-xs">
+                    <SelectTrigger id="ticket-category" data-testid="select-ticket-category" className="h-8 text-xs">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="general">General</SelectItem>
                       <SelectItem value="technical">Technical</SelectItem>
                       <SelectItem value="billing">Billing</SelectItem>
-                      <SelectItem value="feature_request">Feature Request</SelectItem>
+                      <SelectItem value="feature_request">Feature request</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="flex-1">
-                  <label className="text-xs text-muted-foreground mb-1 block">Priority</label>
+                  <Label htmlFor="ticket-priority" className="text-xs text-muted-foreground mb-1 block">Priority</Label>
                   <Select
                     value={newTicket.priority}
                     onValueChange={(v) => setNewTicket({ ...newTicket, priority: v })}
                   >
-                    <SelectTrigger data-testid="select-ticket-priority" className="h-8 text-xs">
+                    <SelectTrigger id="ticket-priority" data-testid="select-ticket-priority" className="h-8 text-xs">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -925,13 +932,13 @@ export function HelpPanel() {
               >
                 {createTicketMutation.isPending ? (
                   <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Starting conversation...
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" aria-hidden="true" />
+                    Starting conversation…
                   </>
                 ) : (
                   <>
-                    <MessageCircle className="h-4 w-4 mr-2" />
-                    Start Conversation
+                    <MessageCircle className="h-4 w-4 mr-2" aria-hidden="true" />
+                    Start conversation
                   </>
                 )}
               </Button>
