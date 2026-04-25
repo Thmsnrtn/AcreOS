@@ -9,6 +9,9 @@ import { PageShell } from "@/components/page-shell";
 import { ListSkeleton } from "@/components/list-skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { PaymentCalculator } from "@/components/payment-calculator";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { useDocumentTitle } from "@/hooks/use-document-title";
+import { usd } from "@/lib/format";
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -64,12 +67,15 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function ListingsPage() {
+  useDocumentTitle("Listings");
   const { toast } = useToast();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedListing, setSelectedListing] = useState<PropertyListing | null>(null);
   const [publishTargets, setPublishTargets] = useState<string[]>([]);
   const [isPublishOpen, setIsPublishOpen] = useState(false);
   const [publishingId, setPublishingId] = useState<number | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<PropertyListing | null>(null);
+  const [pendingUnpublish, setPendingUnpublish] = useState<PropertyListing | null>(null);
 
   const { data: listings, isLoading } = useQuery<PropertyListing[]>({
     queryKey: ["/api/listings"],
@@ -182,15 +188,13 @@ export default function ListingsPage() {
     }
   };
 
+  // P1 money-precision: canonical usd() preserves cents at boundaries; pages that
+  // intentionally hide cents on listing prices opt in via { noCents: true }.
   const formatCurrency = (value: string | number | null | undefined) => {
-    if (!value) return "$0";
+    if (value === null || value === undefined || value === "") return "$0";
     const num = typeof value === "string" ? parseFloat(value) : value;
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(num);
+    if (!Number.isFinite(num)) return "$0";
+    return usd(num, { noCents: true });
   };
 
   const getProperty = (propertyId: number) => {
@@ -213,15 +217,15 @@ export default function ListingsPage() {
           <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
             <DialogTrigger asChild>
               <Button data-testid="button-create-listing">
-                <Plus className="h-4 w-4 mr-2" />
-                Create Listing
+                <Plus className="h-4 w-4 mr-2" aria-hidden="true" />
+                Create listing
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>Create New Listing</DialogTitle>
+                <DialogTitle>Create new listing</DialogTitle>
                 <DialogDescription>
-                  Create a property listing to market for sale
+                  Create a property listing to market for sale.
                 </DialogDescription>
               </DialogHeader>
               <Form {...form}>
@@ -262,11 +266,12 @@ export default function ListingsPage() {
                     name="title"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Listing Title</FormLabel>
+                        <FormLabel>Listing title</FormLabel>
                         <FormControl>
                           <Input
                             data-testid="input-title"
-                            placeholder="e.g., Beautiful 5-Acre Wooded Lot"
+                            placeholder="e.g., Beautiful 5-acre wooded lot"
+                            autoCapitalize="words"
                             {...field}
                           />
                         </FormControl>
@@ -284,8 +289,9 @@ export default function ListingsPage() {
                         <FormControl>
                           <Textarea
                             data-testid="input-description"
-                            placeholder="Describe the property..."
+                            placeholder="Describe the property…"
                             rows={4}
+                            autoCapitalize="sentences"
                             {...field}
                           />
                         </FormControl>
@@ -300,14 +306,15 @@ export default function ListingsPage() {
                       name="askingPrice"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Asking Price</FormLabel>
+                          <FormLabel>Asking price</FormLabel>
                           <FormControl>
                             <div className="relative">
-                              <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                              <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
                               <Input
                                 data-testid="input-asking-price"
                                 type="number"
-                                className="pl-9"
+                                inputMode="decimal"
+                                className="pl-9 tabular-nums"
                                 placeholder="25000"
                                 {...field}
                               />
@@ -323,14 +330,15 @@ export default function ListingsPage() {
                       name="minimumPrice"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Minimum Price (optional)</FormLabel>
+                          <FormLabel>Minimum price (optional)</FormLabel>
                           <FormControl>
                             <div className="relative">
-                              <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                              <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
                               <Input
                                 data-testid="input-minimum-price"
                                 type="number"
-                                className="pl-9"
+                                inputMode="decimal"
+                                className="pl-9 tabular-nums"
                                 placeholder="20000"
                                 {...field}
                               />
@@ -349,9 +357,9 @@ export default function ListingsPage() {
                       render={({ field }) => (
                         <FormItem className="flex items-center justify-between gap-4">
                           <div>
-                            <FormLabel>Seller Financing Available</FormLabel>
+                            <FormLabel>Seller financing available</FormLabel>
                             <p className="text-sm text-muted-foreground">
-                              Allow buyers to pay over time
+                              Allow buyers to pay over time.
                             </p>
                           </div>
                           <FormControl>
@@ -372,11 +380,13 @@ export default function ListingsPage() {
                           name="downPaymentMin"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Min Down Payment %</FormLabel>
+                              <FormLabel>Min down payment %</FormLabel>
                               <FormControl>
                                 <Input
                                   data-testid="input-down-payment"
                                   type="number"
+                                  inputMode="decimal"
+                                  className="tabular-nums"
                                   placeholder="10"
                                   {...field}
                                 />
@@ -391,12 +401,14 @@ export default function ListingsPage() {
                           name="interestRate"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Interest Rate %</FormLabel>
+                              <FormLabel>Interest rate %</FormLabel>
                               <FormControl>
                                 <Input
                                   data-testid="input-interest-rate"
                                   type="number"
+                                  inputMode="decimal"
                                   step="0.1"
+                                  className="tabular-nums"
                                   placeholder="9.9"
                                   {...field}
                                 />
@@ -441,14 +453,15 @@ export default function ListingsPage() {
                           name="monthlyPaymentMin"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Min Monthly Payment</FormLabel>
+                              <FormLabel>Min monthly payment</FormLabel>
                               <FormControl>
                                 <div className="relative">
-                                  <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                  <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
                                   <Input
                                     data-testid="input-monthly-payment"
                                     type="number"
-                                    className="pl-9"
+                                    inputMode="decimal"
+                                    className="pl-9 tabular-nums"
                                     placeholder="250"
                                     {...field}
                                   />
@@ -470,10 +483,14 @@ export default function ListingsPage() {
                         <FormLabel>Photo URL (optional)</FormLabel>
                         <FormControl>
                           <div className="relative">
-                            <ImageIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <ImageIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
                             <Input
                               data-testid="input-photo-url"
                               type="url"
+                              inputMode="url"
+                              autoCapitalize="none"
+                              autoCorrect="off"
+                              spellCheck={false}
                               className="pl-9"
                               placeholder="https://example.com/photo.jpg"
                               {...field}
@@ -500,9 +517,9 @@ export default function ListingsPage() {
                       data-testid="button-submit-listing"
                     >
                       {createMutation.isPending && (
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" aria-hidden="true" />
                       )}
-                      Create Listing
+                      Create listing
                     </Button>
                   </div>
                 </form>
@@ -517,46 +534,50 @@ export default function ListingsPage() {
           <EmptyState
             icon={Building}
             title="No listings yet"
-            description="Create your first property listing to start marketing"
-            actionLabel="Create Listing"
+            description="Create your first property listing to start marketing."
+            actionLabel="Create listing"
             onAction={() => setIsCreateOpen(true)}
           />
         ) : (
           <Tabs defaultValue="grid" className="space-y-4">
             <TabsList>
-              <TabsTrigger value="grid" data-testid="tab-grid-view">Grid View</TabsTrigger>
-              <TabsTrigger value="detail" data-testid="tab-detail-view">Detail View</TabsTrigger>
+              <TabsTrigger value="grid" data-testid="tab-grid-view">Grid view</TabsTrigger>
+              <TabsTrigger value="detail" data-testid="tab-detail-view">Detail view</TabsTrigger>
             </TabsList>
-            
+
             <TabsContent value="grid">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <ul className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 list-none p-0 m-0" aria-label={`${listings.length} listing${listings.length === 1 ? "" : "s"}`}>
                 {listings.map((listing) => {
                   const property = getProperty(listing.propertyId);
                   const photoUrl = getPrimaryPhoto(listing);
-                  
+                  const views = listing.viewCount || 0;
+                  const inquiries = listing.inquiryCount || 0;
+                  const statusLabel = listing.status.replace(/_/g, " ");
+
                   return (
+                    <li key={listing.id}>
                     <Card
-                      key={listing.id}
                       data-testid={`card-listing-${listing.id}`}
-                      className="overflow-hidden"
+                      className="overflow-hidden h-full"
                     >
                       <div className="relative h-40 bg-muted">
                         {photoUrl ? (
                           <img
                             src={photoUrl}
-                            alt={listing.title}
+                            alt={`Photo of ${listing.title}`}
                             className="w-full h-full object-cover"
                           />
                         ) : (
-                          <div className="flex items-center justify-center h-full">
-                            <ImageIcon className="h-12 w-12 text-muted-foreground" />
+                          <div className="flex items-center justify-center h-full" role="img" aria-label="No photo available">
+                            <ImageIcon className="h-12 w-12 text-muted-foreground" aria-hidden="true" />
                           </div>
                         )}
                         <Badge
                           className={`absolute top-2 right-2 ${STATUS_COLORS[listing.status] || ""}`}
                           data-testid={`badge-status-${listing.id}`}
+                          aria-label={`Status: ${statusLabel}`}
                         >
-                          {listing.status.replace(/_/g, " ")}
+                          {statusLabel}
                         </Badge>
                       </div>
                       <CardHeader className="pb-2">
@@ -565,32 +586,34 @@ export default function ListingsPage() {
                         </CardTitle>
                         {property && (
                           <p className="text-sm text-muted-foreground flex items-center gap-1">
-                            <MapPin className="h-3 w-3" />
+                            <MapPin className="h-3 w-3" aria-hidden="true" />
                             {property.county}, {property.state}
                           </p>
                         )}
                       </CardHeader>
                       <CardContent className="space-y-3">
                         <div className="flex items-center justify-between gap-2 flex-wrap">
-                          <span className="text-xl font-bold" data-testid={`text-price-${listing.id}`}>
+                          <span className="text-xl font-bold tabular-nums" data-testid={`text-price-${listing.id}`} aria-label={`Asking price ${formatCurrency(listing.askingPrice)}`}>
                             {formatCurrency(listing.askingPrice)}
                           </span>
                           {listing.sellerFinancingAvailable && (
                             <Badge variant="outline">
-                              Owner Finance
+                              Owner finance
                             </Badge>
                           )}
                         </div>
-                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                          <span className="flex items-center gap-1" data-testid={`text-views-${listing.id}`}>
-                            <Eye className="h-4 w-4" />
-                            {listing.viewCount || 0} views
-                          </span>
-                          <span className="flex items-center gap-1" data-testid={`text-inquiries-${listing.id}`}>
-                            <MessageSquare className="h-4 w-4" />
-                            {listing.inquiryCount || 0} inquiries
-                          </span>
-                        </div>
+                        <dl className="flex items-center gap-4 text-sm text-muted-foreground m-0">
+                          <div className="flex items-center gap-1" data-testid={`text-views-${listing.id}`}>
+                            <Eye className="h-4 w-4" aria-hidden="true" />
+                            <dt className="sr-only">Views</dt>
+                            <dd className="m-0 tabular-nums">{views} view{views === 1 ? "" : "s"}</dd>
+                          </div>
+                          <div className="flex items-center gap-1" data-testid={`text-inquiries-${listing.id}`}>
+                            <MessageSquare className="h-4 w-4" aria-hidden="true" />
+                            <dt className="sr-only">Inquiries</dt>
+                            <dd className="m-0 tabular-nums">{inquiries} {inquiries === 1 ? "inquiry" : "inquiries"}</dd>
+                          </div>
+                        </dl>
                       </CardContent>
                       <CardFooter className="pt-0 flex gap-2 flex-wrap">
                         {listing.status === "draft" && (
@@ -599,8 +622,9 @@ export default function ListingsPage() {
                             size="sm"
                             onClick={() => handleOpenPublish(listing.id)}
                             data-testid={`button-publish-${listing.id}`}
+                            aria-label={`Publish ${listing.title}`}
                           >
-                            <Share2 className="h-4 w-4 mr-1" />
+                            <Share2 className="h-4 w-4 mr-1" aria-hidden="true" />
                             Publish
                           </Button>
                         )}
@@ -608,9 +632,10 @@ export default function ListingsPage() {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => unpublishMutation.mutate(listing.id)}
+                            onClick={() => setPendingUnpublish(listing)}
                             disabled={unpublishMutation.isPending}
                             data-testid={`button-unpublish-${listing.id}`}
+                            aria-label={`Unpublish ${listing.title}`}
                           >
                             Unpublish
                           </Button>
@@ -620,34 +645,40 @@ export default function ListingsPage() {
                           size="sm"
                           onClick={() => setSelectedListing(listing)}
                           data-testid={`button-view-${listing.id}`}
+                          aria-label={`Open payment calculator for ${listing.title}`}
                         >
-                          <Calculator className="h-4 w-4 mr-1" />
+                          <Calculator className="h-4 w-4 mr-1" aria-hidden="true" />
                           Calculator
                         </Button>
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => deleteMutation.mutate(listing.id)}
+                          onClick={() => setPendingDelete(listing)}
                           disabled={deleteMutation.isPending}
-                          aria-label="Delete listing"
+                          aria-label={`Delete listing ${listing.title}`}
                           data-testid={`button-delete-${listing.id}`}
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Trash2 className="h-4 w-4" aria-hidden="true" />
                         </Button>
                       </CardFooter>
                     </Card>
+                    </li>
                   );
                 })}
-              </div>
+              </ul>
             </TabsContent>
             
             <TabsContent value="detail">
-              <div className="space-y-4">
+              <ul className="space-y-4 list-none p-0 m-0">
                 {listings.map((listing) => {
                   const property = getProperty(listing.propertyId);
-                  
+                  const views = listing.viewCount || 0;
+                  const inquiries = listing.inquiryCount || 0;
+                  const statusLabel = listing.status.replace(/_/g, " ");
+
                   return (
-                    <Card key={listing.id} data-testid={`card-detail-listing-${listing.id}`}>
+                    <li key={listing.id}>
+                    <Card data-testid={`card-detail-listing-${listing.id}`}>
                       <CardContent className="p-6">
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                           <div>
@@ -660,49 +691,53 @@ export default function ListingsPage() {
                                   </p>
                                 )}
                               </div>
-                              <Badge className={STATUS_COLORS[listing.status] || ""}>
-                                {listing.status.replace(/_/g, " ")}
+                              <Badge className={STATUS_COLORS[listing.status] || ""} aria-label={`Status: ${statusLabel}`}>
+                                {statusLabel}
                               </Badge>
                             </div>
-                            
-                            <p className="text-2xl font-bold mb-4">
+
+                            <p className="text-2xl font-bold tabular-nums mb-4" aria-label={`Asking price ${formatCurrency(listing.askingPrice)}`}>
                               {formatCurrency(listing.askingPrice)}
                             </p>
-                            
+
                             {listing.description && (
                               <p className="text-muted-foreground mb-4">
                                 {listing.description}
                               </p>
                             )}
-                            
-                            <div className="flex items-center gap-4 text-sm mb-4">
-                              <span className="flex items-center gap-1">
-                                <Eye className="h-4 w-4" />
-                                {listing.viewCount || 0} views
-                              </span>
-                              <span className="flex items-center gap-1">
-                                <MessageSquare className="h-4 w-4" />
-                                {listing.inquiryCount || 0} inquiries
-                              </span>
-                            </div>
-                            
+
+                            <dl className="flex items-center gap-4 text-sm mb-4 m-0">
+                              <div className="flex items-center gap-1">
+                                <Eye className="h-4 w-4" aria-hidden="true" />
+                                <dt className="sr-only">Views</dt>
+                                <dd className="m-0 tabular-nums">{views} view{views === 1 ? "" : "s"}</dd>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <MessageSquare className="h-4 w-4" aria-hidden="true" />
+                                <dt className="sr-only">Inquiries</dt>
+                                <dd className="m-0 tabular-nums">{inquiries} {inquiries === 1 ? "inquiry" : "inquiries"}</dd>
+                              </div>
+                            </dl>
+
                             {listing.syndicationTargets && (listing.syndicationTargets as any[]).length > 0 && (
                               <div className="space-y-2">
                                 <p className="text-sm font-medium">Syndication:</p>
-                                <div className="flex flex-wrap gap-2">
+                                <ul className="flex flex-wrap gap-2 list-none p-0 m-0">
                                   {(listing.syndicationTargets as any[]).map((target, index) => (
-                                    <Badge
-                                      key={index}
-                                      variant={target.status === "active" ? "default" : "secondary"}
-                                    >
-                                      {target.platform.replace(/_/g, " ")}
-                                    </Badge>
+                                    <li key={index}>
+                                      <Badge
+                                        variant={target.status === "active" ? "default" : "secondary"}
+                                        aria-label={`${target.platform.replace(/_/g, " ")}: ${target.status}`}
+                                      >
+                                        {target.platform.replace(/_/g, " ")}
+                                      </Badge>
+                                    </li>
                                   ))}
-                                </div>
+                                </ul>
                               </div>
                             )}
                           </div>
-                          
+
                           <PaymentCalculator
                             listingPrice={parseFloat(listing.askingPrice?.toString() || "0")}
                             sellerFinancingAvailable={listing.sellerFinancingAvailable ?? true}
@@ -714,9 +749,10 @@ export default function ListingsPage() {
                         </div>
                       </CardContent>
                     </Card>
+                    </li>
                   );
                 })}
-              </div>
+              </ul>
             </TabsContent>
           </Tabs>
         )}
@@ -724,36 +760,50 @@ export default function ListingsPage() {
         <Dialog open={isPublishOpen} onOpenChange={setIsPublishOpen}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Publish Listing</DialogTitle>
+              <DialogTitle>Publish listing</DialogTitle>
               <DialogDescription>
-                Select platforms to syndicate your listing to
+                Select platforms to syndicate your listing to.
               </DialogDescription>
             </DialogHeader>
-            <div className="space-y-4">
-              {SYNDICATION_TARGETS.map((target) => (
-                <div
-                  key={target.id}
-                  className="flex items-center justify-between gap-4 p-3 border rounded-md"
-                >
-                  <div className="flex items-center gap-3">
-                    <target.icon className="h-5 w-5" />
-                    <span>{target.name}</span>
-                  </div>
-                  <Checkbox
-                    data-testid={`checkbox-target-${target.id}`}
-                    checked={publishTargets.includes(target.id)}
-                    onCheckedChange={(checked) => {
-                      if (checked) {
-                        setPublishTargets([...publishTargets, target.id]);
-                      } else {
-                        setPublishTargets(publishTargets.filter((t) => t !== target.id));
-                      }
-                    }}
-                  />
-                </div>
-              ))}
+            <form
+              className="space-y-4"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (publishTargets.length > 0 && !publishMutation.isPending) handlePublish();
+              }}
+            >
+              <fieldset className="space-y-2 border-0 p-0 m-0">
+                <legend className="sr-only">Syndication platforms</legend>
+                <ul className="space-y-2 list-none p-0 m-0">
+                  {SYNDICATION_TARGETS.map((target) => {
+                    const checked = publishTargets.includes(target.id);
+                    const cbId = `publish-target-${target.id}`;
+                    return (
+                      <li
+                        key={target.id}
+                        className="flex items-center justify-between gap-4 p-3 border rounded-md"
+                      >
+                        <Label htmlFor={cbId} className="flex items-center gap-3 cursor-pointer flex-1">
+                          <target.icon className="h-5 w-5" aria-hidden="true" />
+                          <span>{target.name}</span>
+                        </Label>
+                        <Checkbox
+                          id={cbId}
+                          data-testid={`checkbox-target-${target.id}`}
+                          checked={checked}
+                          onCheckedChange={(c) => {
+                            if (c) setPublishTargets([...publishTargets, target.id]);
+                            else setPublishTargets(publishTargets.filter((t) => t !== target.id));
+                          }}
+                        />
+                      </li>
+                    );
+                  })}
+                </ul>
+              </fieldset>
               <div className="flex justify-end gap-2 pt-4">
                 <Button
+                  type="button"
                   variant="outline"
                   onClick={() => setIsPublishOpen(false)}
                   data-testid="button-cancel-publish"
@@ -761,24 +811,24 @@ export default function ListingsPage() {
                   Cancel
                 </Button>
                 <Button
-                  onClick={handlePublish}
+                  type="submit"
                   disabled={publishTargets.length === 0 || publishMutation.isPending}
                   data-testid="button-confirm-publish"
                 >
                   {publishMutation.isPending && (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" aria-hidden="true" />
                   )}
-                  Publish to {publishTargets.length} Platform{publishTargets.length !== 1 ? "s" : ""}
+                  Publish to {publishTargets.length} platform{publishTargets.length === 1 ? "" : "s"}
                 </Button>
               </div>
-            </div>
+            </form>
           </DialogContent>
         </Dialog>
 
         <Dialog open={!!selectedListing} onOpenChange={(open) => !open && setSelectedListing(null)}>
           <DialogContent className="max-w-lg">
             <DialogHeader>
-              <DialogTitle>Payment Calculator</DialogTitle>
+              <DialogTitle>Payment calculator</DialogTitle>
               <DialogDescription>
                 {selectedListing?.title}
               </DialogDescription>
@@ -795,6 +845,31 @@ export default function ListingsPage() {
             )}
           </DialogContent>
         </Dialog>
+
+        <ConfirmDialog
+          open={!!pendingDelete}
+          onOpenChange={(open) => { if (!open) setPendingDelete(null); }}
+          title={`Delete listing "${pendingDelete?.title}"?`}
+          description="This permanently removes the listing and any pending syndications. Inquiry history is preserved on the underlying property."
+          confirmLabel="Delete listing"
+          variant="destructive"
+          onConfirm={() => {
+            if (pendingDelete) deleteMutation.mutate(pendingDelete.id);
+            setPendingDelete(null);
+          }}
+        />
+
+        <ConfirmDialog
+          open={!!pendingUnpublish}
+          onOpenChange={(open) => { if (!open) setPendingUnpublish(null); }}
+          title={`Unpublish "${pendingUnpublish?.title}"?`}
+          description="This pulls the listing from every active syndication target. View counts and inquiries to date are preserved; you can re-publish later."
+          confirmLabel="Unpublish"
+          onConfirm={() => {
+            if (pendingUnpublish) unpublishMutation.mutate(pendingUnpublish.id);
+            setPendingUnpublish(null);
+          }}
+        />
     </PageShell>
   );
 }
