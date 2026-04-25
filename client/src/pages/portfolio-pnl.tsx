@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useState, useId } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -14,6 +14,8 @@ import {
 import {
   TrendingUp, TrendingDown, DollarSign, Percent, BarChart3, Loader2,
 } from "lucide-react";
+import { usd } from "@/lib/format";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 interface PnLReport {
   year: number;
@@ -27,14 +29,6 @@ interface PnLReport {
   avgHoldingPeriodDays: number;
   topPerformers?: Array<{ propertyId: number; netProfit: number; roi: number }>;
   byQuarter?: Array<{ quarter: number; revenue: number; profit: number }>;
-}
-
-interface AvailablePeriods {
-  years: number[];
-}
-
-function formatCurrency(val: number) {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(val);
 }
 
 function StatCard({
@@ -56,18 +50,20 @@ function StatCard({
   return (
     <Card>
       <CardContent className="p-4">
-        <div className={`flex items-center gap-2 mb-1 text-xs ${trendColor}`}>
-          <Icon className="w-3.5 h-3.5" />
+        <dt className={`flex items-center gap-2 mb-1 text-xs ${trendColor}`}>
+          <Icon className="w-3.5 h-3.5" aria-hidden="true" />
           {label}
-        </div>
-        <p className="text-2xl font-bold">{value}</p>
-        {subtext && <p className="text-xs text-muted-foreground mt-0.5">{subtext}</p>}
+        </dt>
+        <dd className="text-2xl font-bold tabular-nums">{value}</dd>
+        {subtext && <p className="text-xs text-muted-foreground mt-0.5 tabular-nums">{subtext}</p>}
       </CardContent>
     </Card>
   );
 }
 
 export default function PortfolioPnLPage() {
+  useDocumentTitle("Portfolio P&L");
+  const yearId = useId();
   const currentYear = new Date().getFullYear();
   const [selectedYear, setSelectedYear] = useState(String(currentYear));
 
@@ -97,40 +93,43 @@ export default function PortfolioPnLPage() {
             Annual profit and loss summary for your land portfolio.
           </p>
         </div>
-        <Select value={selectedYear} onValueChange={setSelectedYear}>
-          <SelectTrigger className="w-28">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {years.map(y => (
-              <SelectItem key={y} value={String(y)}>{y}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div>
+          <Label htmlFor={yearId} className="sr-only">Select year</Label>
+          <Select value={selectedYear} onValueChange={setSelectedYear}>
+            <SelectTrigger id={yearId} className="w-28 tabular-nums" aria-label="Select year">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {years.map(y => (
+                <SelectItem key={y} value={String(y)} className="tabular-nums">{y}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {isLoading ? (
-        <div className="flex items-center gap-2 text-muted-foreground py-12 justify-center">
-          <Loader2 className="w-4 h-4 animate-spin" /> Loading P&amp;L data...
+        <div className="flex items-center gap-2 text-muted-foreground py-12 justify-center" role="status" aria-live="polite">
+          <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> Loading P&amp;L data…
         </div>
       ) : !report ? (
         <div className="text-center py-16 text-muted-foreground">
-          <BarChart3 className="w-12 h-12 mx-auto mb-3 opacity-30" />
-          <p>No P&amp;L data available for {selectedYear}.</p>
+          <BarChart3 className="w-12 h-12 mx-auto mb-3 opacity-30" aria-hidden="true" />
+          <p>No P&amp;L data available for <span className="tabular-nums">{selectedYear}</span>.</p>
           <p className="text-sm mt-1">Data appears here after properties are sold and deals are closed.</p>
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <dl className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <StatCard
-              label="Total Revenue"
-              value={formatCurrency(report.totalRevenue)}
+              label="Total revenue"
+              value={usd(report.totalRevenue)}
               icon={DollarSign}
               trend="up"
             />
             <StatCard
-              label="Net Profit"
-              value={formatCurrency(report.netProfit)}
+              label="Net profit"
+              value={usd(report.netProfit)}
               icon={roiIsPositive ? TrendingUp : TrendingDown}
               trend={roiIsPositive ? "up" : "down"}
             />
@@ -141,55 +140,55 @@ export default function PortfolioPnLPage() {
               trend={roiIsPositive ? "up" : "down"}
             />
             <StatCard
-              label="Properties Sold"
+              label="Properties sold"
               value={String(report.propertiesSold)}
               icon={BarChart3}
-              subtext={`Avg ${formatCurrency(report.avgSalePrice)} each`}
+              subtext={`Avg ${usd(report.avgSalePrice)} each`}
             />
-          </div>
+          </dl>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm">Income Statement</CardTitle>
+                <CardTitle className="text-sm">Income statement</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-2">
+                <dl className="space-y-2">
                   {[
-                    { label: "Total Revenue", value: report.totalRevenue, type: "income" },
-                    { label: "Total Cost (Acquisition + Holding)", value: -report.totalCost, type: "expense" },
-                    { label: "Gross Profit", value: report.grossProfit, type: "result", bold: true },
-                    { label: "Net Profit", value: report.netProfit, type: "result", bold: true },
+                    { label: "Total revenue", value: report.totalRevenue, type: "income" },
+                    { label: "Total cost (acquisition + holding)", value: -report.totalCost, type: "expense" },
+                    { label: "Gross profit", value: report.grossProfit, type: "result", bold: true },
+                    { label: "Net profit", value: report.netProfit, type: "result", bold: true },
                   ].map(({ label, value, type, bold }) => (
                     <div key={label} className={`flex justify-between items-center text-sm ${bold ? "font-semibold pt-2 border-t" : ""}`}>
-                      <span className={type === "expense" ? "text-muted-foreground" : ""}>{label}</span>
-                      <span className={value >= 0 ? "text-green-600" : "text-red-600"}>
-                        {value >= 0 ? "+" : ""}{formatCurrency(value)}
-                      </span>
+                      <dt className={type === "expense" ? "text-muted-foreground" : ""}>{label}</dt>
+                      <dd className={`tabular-nums ${value >= 0 ? "text-green-600" : "text-red-600"}`}>
+                        {value >= 0 ? "+" : ""}{usd(value)}
+                      </dd>
                     </div>
                   ))}
-                </div>
+                </dl>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm">Key Metrics</CardTitle>
+                <CardTitle className="text-sm">Key metrics</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-3">
+                <dl className="space-y-3">
                   {[
-                    { label: "Return on Investment", value: `${report.roi.toFixed(1)}%` },
-                    { label: "Avg Sale Price", value: formatCurrency(report.avgSalePrice) },
-                    { label: "Avg Holding Period", value: `${report.avgHoldingPeriodDays} days` },
-                    { label: "Properties Transacted", value: String(report.propertiesSold) },
+                    { label: "Return on investment", value: `${report.roi.toFixed(1)}%` },
+                    { label: "Avg sale price", value: usd(report.avgSalePrice) },
+                    { label: "Avg holding period", value: `${report.avgHoldingPeriodDays} days` },
+                    { label: "Properties transacted", value: String(report.propertiesSold) },
                   ].map(({ label, value }) => (
                     <div key={label} className="flex justify-between items-center">
-                      <span className="text-sm text-muted-foreground">{label}</span>
-                      <span className="text-sm font-medium">{value}</span>
+                      <dt className="text-sm text-muted-foreground">{label}</dt>
+                      <dd className="text-sm font-medium tabular-nums">{value}</dd>
                     </div>
                   ))}
-                </div>
+                </dl>
               </CardContent>
             </Card>
           </div>
@@ -197,20 +196,20 @@ export default function PortfolioPnLPage() {
           {report.byQuarter && report.byQuarter.length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm">Quarterly Breakdown</CardTitle>
+                <CardTitle className="text-sm">Quarterly breakdown</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-4 gap-2">
+                <ul className="grid grid-cols-4 gap-2" aria-label="Quarterly revenue and profit">
                   {report.byQuarter.map(q => (
-                    <div key={q.quarter} className="text-center p-3 rounded-lg border bg-muted/30">
-                      <p className="text-xs text-muted-foreground mb-1">Q{q.quarter}</p>
-                      <p className="text-sm font-medium">{formatCurrency(q.revenue)}</p>
-                      <p className={`text-xs ${q.profit >= 0 ? "text-green-600" : "text-red-600"}`}>
-                        {q.profit >= 0 ? "+" : ""}{formatCurrency(q.profit)}
+                    <li key={q.quarter} className="text-center p-3 rounded-lg border bg-muted/30">
+                      <p className="text-xs text-muted-foreground mb-1">Q<span className="tabular-nums">{q.quarter}</span></p>
+                      <p className="text-sm font-medium tabular-nums">{usd(q.revenue)}</p>
+                      <p className={`text-xs tabular-nums ${q.profit >= 0 ? "text-green-600" : "text-red-600"}`}>
+                        {q.profit >= 0 ? "+" : ""}{usd(q.profit)}
                       </p>
-                    </div>
+                    </li>
                   ))}
-                </div>
+                </ul>
               </CardContent>
             </Card>
           )}
@@ -218,22 +217,22 @@ export default function PortfolioPnLPage() {
           {report.topPerformers && report.topPerformers.length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm">Top Performing Properties</CardTitle>
+                <CardTitle className="text-sm">Top performing properties</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-2">
+                <ol className="space-y-2" aria-label="Top performing properties by ROI">
                   {report.topPerformers.map((p, i) => (
-                    <div key={p.propertyId} className="flex items-center justify-between text-sm">
+                    <li key={p.propertyId} className="flex items-center justify-between text-sm gap-3 flex-wrap">
                       <span className="text-muted-foreground">
-                        #{i + 1} · Property {p.propertyId}
+                        #<span className="tabular-nums">{i + 1}</span> · Property <span className="tabular-nums">{p.propertyId}</span>
                       </span>
                       <div className="flex items-center gap-3">
-                        <Badge variant="secondary" className="text-xs">{p.roi.toFixed(1)}% ROI</Badge>
-                        <span className="text-green-600 font-medium">{formatCurrency(p.netProfit)}</span>
+                        <Badge variant="secondary" className="text-xs tabular-nums">{p.roi.toFixed(1)}% ROI</Badge>
+                        <span className="text-green-600 font-medium tabular-nums">{usd(p.netProfit)}</span>
                       </div>
-                    </div>
+                    </li>
                   ))}
-                </div>
+                </ol>
               </CardContent>
             </Card>
           )}
