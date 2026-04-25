@@ -5,6 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { QueryErrorState } from "@/components/query-error-state";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { usd } from "@/lib/format";
 import { motion } from "framer-motion";
 import { staggerContainer, staggerItem } from "@/lib/animations";
 import {
@@ -144,17 +145,15 @@ function MetricSkeleton() {
   );
 }
 
-function formatCurrency(value: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(value);
-}
-
 function formatNumber(value: number): string {
   return new Intl.NumberFormat("en-US").format(value);
+}
+
+function npsTier(score: number): "excellent" | "good" | "needs improvement" | "critical" {
+  if (score >= 50) return "excellent";
+  if (score >= 30) return "good";
+  if (score >= 0) return "needs improvement";
+  return "critical";
 }
 
 export default function ExecutiveDashboard() {
@@ -211,7 +210,7 @@ export default function ExecutiveDashboard() {
                   </CardHeader>
                   <CardContent>
                     <dd className="text-2xl font-bold tabular-nums">
-                      {formatCurrency(metrics.mrr)}
+                      {usd(metrics.mrr, { noCents: true })}
                     </dd>
                     <p className="text-xs text-muted-foreground">
                       Monthly recurring revenue
@@ -230,10 +229,10 @@ export default function ExecutiveDashboard() {
                   </CardHeader>
                   <CardContent>
                     <dd className="text-2xl font-bold tabular-nums">
-                      {formatCurrency(metrics.arpu)}
+                      {usd(metrics.arpu, { noCents: true })}
                     </dd>
                     <p className="text-xs text-muted-foreground">
-                      Avg revenue per user
+                      Average revenue per user, monthly
                     </p>
                   </CardContent>
                 </Card>
@@ -252,7 +251,7 @@ export default function ExecutiveDashboard() {
                       {metrics.churnRate}%
                     </dd>
                     <p className="text-xs text-muted-foreground">
-                      <span className="tabular-nums">{metrics.churnedOrgsLast30Days}</span> org{metrics.churnedOrgsLast30Days === 1 ? "" : "s"} churned (30d)
+                      <span className="tabular-nums">{metrics.churnedOrgsLast30Days}</span> org{metrics.churnedOrgsLast30Days === 1 ? "" : "s"} churned in the last 30 days
                     </p>
                   </CardContent>
                 </Card>
@@ -319,16 +318,16 @@ export default function ExecutiveDashboard() {
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">
-                      <dt>New (30d)</dt>
+                      <dt>New (last 30 days)</dt>
                     </CardTitle>
                     <TrendingUp className="h-4 w-4 text-emerald-500" aria-hidden="true" />
                   </CardHeader>
                   <CardContent>
-                    <dd className="text-2xl font-bold tabular-nums">
+                    <dd className="text-2xl font-bold tabular-nums" aria-label={`Plus ${formatNumber(metrics.newOrgsLast30Days)} new organizations`}>
                       +{formatNumber(metrics.newOrgsLast30Days)}
                     </dd>
                     <p className="text-xs text-muted-foreground">
-                      New organizations this month
+                      Organizations signed up in the last 30 days
                     </p>
                   </CardContent>
                 </Card>
@@ -450,11 +449,12 @@ export default function ExecutiveDashboard() {
                           ? "text-amber-600"
                           : "text-red-600"
                       }`}
+                      aria-label={`NPS score ${metrics.nps.score}, ${npsTier(metrics.nps.score)}`}
                     >
                       {metrics.nps.score}
                     </dd>
                     <p className="text-xs text-muted-foreground">
-                      <span className="tabular-nums">{metrics.nps.responseCount}</span> response{metrics.nps.responseCount === 1 ? "" : "s"} (avg <span className="tabular-nums">{metrics.nps.average}</span>)
+                      <span className="tabular-nums">{metrics.nps.responseCount}</span> response{metrics.nps.responseCount === 1 ? "" : "s"} · <span className="tabular-nums">{metrics.nps.average}</span> raw average
                     </p>
                   </CardContent>
                 </Card>
