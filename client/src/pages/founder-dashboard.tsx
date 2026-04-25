@@ -106,7 +106,7 @@ import {
   Plug,
 } from "lucide-react";
 import { format } from "date-fns";
-import { relative } from "@/lib/format";
+import { relative, usd } from "@/lib/format";
 import {
   ThePulse, DecisionsInbox, JobQueueHealth, BusinessIntelligence,
   MRRTrajectory, ChurnIntelligence, GrowthEngine, PlatformPassiveScore,
@@ -1140,7 +1140,7 @@ export default function FounderDashboard() {
       try { localStorage.setItem("founder_mrr_goal_cents", String(cents)); } catch {}
       setGoalDialogOpen(false);
       setGoalInputValue("");
-      toast({ title: "MRR goal saved", description: `Target: $${dollars.toLocaleString()}/mo` });
+      toast({ title: "MRR goal saved", description: `Target: ${usd(dollars, { noCents: Number.isInteger(dollars) })}/mo` });
     }
   }, [goalInputValue, toast]);
 
@@ -6021,7 +6021,7 @@ function TodaysBriefing() {
       {data?.highlights && (
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 mt-4">
           {[
-            { label: "MRR", value: `$${data.highlights.totalMrr.toLocaleString()}`, color: "text-green-600", icon: DollarSign },
+            { label: "MRR", value: usd(data.highlights.totalMrr, { noCents: Number.isInteger(data.highlights.totalMrr) }), color: "text-green-600", icon: DollarSign },
             { label: "Paying Orgs", value: data.highlights.totalOrgs, color: "text-primary", icon: Building2 },
             { label: "New (24h)", value: data.highlights.newSignups24h, color: data.highlights.newSignups24h > 0 ? "text-green-600" : "text-muted-foreground", icon: UserPlus },
             { label: "At Risk", value: data.highlights.atRiskOrgs, color: data.highlights.atRiskOrgs > 0 ? "text-red-600" : "text-muted-foreground", icon: AlertTriangle },
@@ -6367,8 +6367,8 @@ function OrgHealthMonitor() {
             Customer Health
           </h2>
           <p className="text-muted-foreground text-sm mt-0.5">
-            {allOrgs.length} organizations · ${totalMrr.toLocaleString()} MRR
-            {atRiskMrr > 0 && <span className="text-red-600 ml-2">· ${atRiskMrr.toLocaleString()} at risk</span>}
+            {allOrgs.length} organizations · {usd(totalMrr, { noCents: Number.isInteger(totalMrr) })} MRR
+            {atRiskMrr > 0 && <span className="text-red-600 ml-2">· {usd(atRiskMrr, { noCents: Number.isInteger(atRiskMrr) })} at risk</span>}
           </p>
         </div>
         <div className="flex gap-2 flex-wrap">
@@ -6398,7 +6398,7 @@ function OrgHealthMonitor() {
           {waterfallData.tiers.filter(t => t.tier !== 'free').map((t) => (
             <div key={t.tier} className="p-3 border rounded-lg text-center">
               <div className="text-sm font-semibold">{t.label}</div>
-              <div className="text-lg font-bold text-primary mt-0.5">${t.mrr.toLocaleString()}</div>
+              <div className="text-lg font-bold text-primary mt-0.5 tabular-nums">{usd(t.mrr, { noCents: Number.isInteger(t.mrr) })}</div>
               <div className="text-xs text-muted-foreground">{t.activeCount} active</div>
               {t.atRiskCount > 0 && (
                 <div className="text-xs text-red-600 font-medium">{t.atRiskCount} at risk</div>

@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery } from "@tanstack/react-query";
 import { DollarSign } from "lucide-react";
+import { usd } from "@/lib/format";
 import {
   BarChart,
   Bar,
@@ -24,7 +25,7 @@ interface WaterfallMonth {
 
 function fmt$(n: number): string {
   if (!isFinite(n) || n == null) return "$0";
-  return `$${Math.round(n).toLocaleString()}`;
+  return usd(Math.round(n), { noCents: true });
 }
 
 export function CashFlowWaterfall() {
