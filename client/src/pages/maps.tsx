@@ -881,7 +881,7 @@ export default function MapsPage() {
   }, [properties]);
 
   return (
-    <PageShell>
+    <PageShell label="Maps">
       <div className="-mx-4 -my-8 md:-mx-8 md:-my-8">
         {/* Header bar */}
         <div className="flex items-center gap-2 px-4 md:px-6 py-2.5 border-b bg-background/90 backdrop-blur-sm sticky top-0 z-10">

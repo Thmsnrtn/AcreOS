@@ -428,7 +428,7 @@ export default function TasksPage() {
   );
 
   return (
-    <PageShell>
+    <PageShell label="Tasks">
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-3">
               <div className="p-3 bg-primary rounded-xl text-primary-foreground" aria-hidden="true">

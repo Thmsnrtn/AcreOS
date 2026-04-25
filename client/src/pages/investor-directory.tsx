@@ -166,7 +166,7 @@ export default function InvestorDirectoryPage() {
   }
 
   return (
-    <PageShell>
+    <PageShell label="Investor directory">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold">Investor network</h1>

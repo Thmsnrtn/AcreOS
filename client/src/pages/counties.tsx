@@ -557,7 +557,7 @@ export default function CountiesPage() {
   };
 
   return (
-    <PageShell>
+    <PageShell label="Counties">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-2xl font-bold" data-testid="text-page-title">Target counties</h1>

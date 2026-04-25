@@ -149,7 +149,7 @@ export default function DataExportPage() {
   };
 
   return (
-    <PageShell>
+    <PageShell label="Data export">
       <div>
         <h1 className="text-2xl md:text-3xl font-bold">Data export</h1>
         <p className="text-muted-foreground text-sm md:text-base">

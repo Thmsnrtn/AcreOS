@@ -436,7 +436,7 @@ export default function PropertiesPage() {
   };
 
   return (
-    <PageShell>
+    <PageShell label="Properties">
 
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>

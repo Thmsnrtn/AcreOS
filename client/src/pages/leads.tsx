@@ -1013,7 +1013,7 @@ export default function LeadsPage() {
 
   if (error) {
     return (
-      <PageShell>
+      <PageShell label="Leads">
         <QueryErrorState
           error={error as Error}
           onRetry={() => refetch()}
@@ -1025,7 +1025,7 @@ export default function LeadsPage() {
   }
 
   return (
-    <PageShell>
+    <PageShell label="Leads">
 
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             {error && (

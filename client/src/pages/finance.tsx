@@ -149,7 +149,7 @@ export default function FinancePage() {
   };
 
   return (
-    <PageShell>
+    <PageShell label="Finance">
           
           {/* Portfolio Cash Flow Chart */}
           {portfolioSummary?.monthlyCashFlow && portfolioSummary.monthlyCashFlow.some(m => m.amount > 0) && (
