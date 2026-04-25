@@ -1,7 +1,7 @@
 import { PageShell } from "@/components/page-shell";
 import { ListSkeleton } from "@/components/list-skeleton";
 import { TasksEmptyState } from "@/components/empty-states";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,10 +10,12 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -70,13 +72,19 @@ const statusIcons = {
 
 type FilterTab = "all" | "my" | "overdue" | "today" | "week";
 
+const reassurance = "Your task data is unchanged — try again.";
+
 export default function TasksPage() {
+  useDocumentTitle("Tasks");
   const { toast } = useToast();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [taskToDelete, setTaskToDelete] = useState<Task | null>(null);
   const [activeTab, setActiveTab] = useState<FilterTab>("all");
   const [filters, setFilters] = useState<{ status?: string; priority?: string }>({});
+  const filterStatusId = useId();
+  const filterPriorityId = useId();
 
   const queryParams = new URLSearchParams();
   if (filters.status) queryParams.set("status", filters.status);
@@ -130,7 +138,7 @@ export default function TasksPage() {
       toast({ title: "Task created", description: "Your task has been created successfully." });
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't save task", description: `${error.message}. ${reassurance}`, variant: "destructive" });
     },
   });
 
@@ -146,7 +154,7 @@ export default function TasksPage() {
       toast({ title: "Task updated", description: "Your task has been updated successfully." });
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't save task", description: `${error.message}. ${reassurance}`, variant: "destructive" });
     },
   });
 
@@ -158,16 +166,16 @@ export default function TasksPage() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
       if (data.nextTask) {
-        toast({ 
-          title: "Task completed", 
-          description: "A new recurring task has been created." 
+        toast({
+          title: "Task completed",
+          description: "A new recurring task has been created.",
         });
       } else {
         toast({ title: "Task completed", description: "Great job!" });
       }
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't complete task", description: `${error.message}. The task is still pending — try again.`, variant: "destructive" });
     },
   });
 
@@ -177,10 +185,11 @@ export default function TasksPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      setTaskToDelete(null);
       toast({ title: "Task deleted", description: "The task has been removed." });
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't delete task", description: `${error.message}. The task is still in your list — try again.`, variant: "destructive" });
     },
   });
 
@@ -252,7 +261,7 @@ export default function TasksPage() {
             name="dueDate"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Due Date</FormLabel>
+                <FormLabel>Due date</FormLabel>
                 <FormControl>
                   <Input type="date" {...field} data-testid="input-task-due-date" />
                 </FormControl>
@@ -375,7 +384,7 @@ export default function TasksPage() {
                     data-testid="switch-task-recurring"
                   />
                 </FormControl>
-                <FormLabel className="!mt-0">Recurring Task</FormLabel>
+                <FormLabel className="!mt-0">Recurring task</FormLabel>
               </FormItem>
             )}
           />
@@ -409,8 +418,8 @@ export default function TasksPage() {
 
         <DialogFooter>
           <Button type="submit" disabled={isPending} data-testid="button-submit-task">
-            {isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-            Save Task
+            {isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />}
+            Save task
           </Button>
         </DialogFooter>
       </form>
@@ -421,7 +430,7 @@ export default function TasksPage() {
     <PageShell>
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-3">
-              <div className="p-3 bg-primary rounded-xl text-primary-foreground">
+              <div className="p-3 bg-primary rounded-xl text-primary-foreground" aria-hidden="true">
                 <ListTodo className="w-6 h-6" />
               </div>
               <div>
@@ -433,21 +442,21 @@ export default function TasksPage() {
             <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
               <DialogTrigger asChild>
                 <Button data-testid="button-create-task">
-                  <Plus className="w-4 h-4 mr-2" />
-                  New Task
+                  <Plus className="w-4 h-4 mr-2" aria-hidden="true" />
+                  New task
                 </Button>
               </DialogTrigger>
               <DialogContent className="max-w-lg">
                 <DialogHeader>
-                  <DialogTitle>Create Task</DialogTitle>
+                  <DialogTitle>Create task</DialogTitle>
                   <DialogDescription>
                     Add a new task with title, priority, and optional due date.
                   </DialogDescription>
                 </DialogHeader>
-                <TaskFormContent 
-                  form={createForm} 
-                  onSubmit={onCreateSubmit} 
-                  isPending={createMutation.isPending} 
+                <TaskFormContent
+                  form={createForm}
+                  onSubmit={onCreateSubmit}
+                  isPending={createMutation.isPending}
                 />
               </DialogContent>
             </Dialog>
@@ -457,24 +466,24 @@ export default function TasksPage() {
             <div className="flex items-center justify-between gap-4 flex-wrap mb-4">
               <TabsList>
                 <TabsTrigger value="all" data-testid="tab-all-tasks">
-                  <ListTodo className="w-4 h-4 mr-2" />
-                  All Tasks
+                  <ListTodo className="w-4 h-4 mr-2" aria-hidden="true" />
+                  All tasks
                 </TabsTrigger>
                 <TabsTrigger value="my" data-testid="tab-my-tasks">
-                  <UserCircle2 className="w-4 h-4 mr-2" />
-                  My Tasks
+                  <UserCircle2 className="w-4 h-4 mr-2" aria-hidden="true" />
+                  My tasks
                 </TabsTrigger>
                 <TabsTrigger value="overdue" data-testid="tab-overdue-tasks">
-                  <AlertCircle className="w-4 h-4 mr-2" />
+                  <AlertCircle className="w-4 h-4 mr-2" aria-hidden="true" />
                   Overdue
                 </TabsTrigger>
                 <TabsTrigger value="today" data-testid="tab-today-tasks">
-                  <Calendar className="w-4 h-4 mr-2" />
+                  <Calendar className="w-4 h-4 mr-2" aria-hidden="true" />
                   Today
                 </TabsTrigger>
                 <TabsTrigger value="week" data-testid="tab-week-tasks">
-                  <CalendarDays className="w-4 h-4 mr-2" />
-                  This Week
+                  <CalendarDays className="w-4 h-4 mr-2" aria-hidden="true" />
+                  This week
                 </TabsTrigger>
               </TabsList>
             </div>
@@ -483,41 +492,47 @@ export default function TasksPage() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-4 flex-wrap border-b">
               <CardTitle className="flex items-center gap-2">
-                <Filter className="w-4 h-4" />
+                <Filter className="w-4 h-4" aria-hidden="true" />
                 Filters
               </CardTitle>
               <div className="flex items-center gap-4 flex-wrap">
-                <Select
-                  value={filters.status || "all"}
-                  onValueChange={(v) => setFilters((f) => ({ ...f, status: v === "all" ? undefined : v }))}
-                >
-                  <SelectTrigger className="w-[150px]" data-testid="select-filter-status">
-                    <SelectValue placeholder="Status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Statuses</SelectItem>
-                    <SelectItem value="pending">Pending</SelectItem>
-                    <SelectItem value="in_progress">In Progress</SelectItem>
-                    <SelectItem value="completed">Completed</SelectItem>
-                    <SelectItem value="cancelled">Cancelled</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div>
+                  <Label htmlFor={filterStatusId} className="sr-only">Filter by status</Label>
+                  <Select
+                    value={filters.status || "all"}
+                    onValueChange={(v) => setFilters((f) => ({ ...f, status: v === "all" ? undefined : v }))}
+                  >
+                    <SelectTrigger id={filterStatusId} className="w-[150px]" data-testid="select-filter-status">
+                      <SelectValue placeholder="Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All statuses</SelectItem>
+                      <SelectItem value="pending">Pending</SelectItem>
+                      <SelectItem value="in_progress">In progress</SelectItem>
+                      <SelectItem value="completed">Completed</SelectItem>
+                      <SelectItem value="cancelled">Cancelled</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
 
-                <Select
-                  value={filters.priority || "all"}
-                  onValueChange={(v) => setFilters((f) => ({ ...f, priority: v === "all" ? undefined : v }))}
-                >
-                  <SelectTrigger className="w-[150px]" data-testid="select-filter-priority">
-                    <SelectValue placeholder="Priority" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Priorities</SelectItem>
-                    <SelectItem value="low">Low</SelectItem>
-                    <SelectItem value="medium">Medium</SelectItem>
-                    <SelectItem value="high">High</SelectItem>
-                    <SelectItem value="urgent">Urgent</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div>
+                  <Label htmlFor={filterPriorityId} className="sr-only">Filter by priority</Label>
+                  <Select
+                    value={filters.priority || "all"}
+                    onValueChange={(v) => setFilters((f) => ({ ...f, priority: v === "all" ? undefined : v }))}
+                  >
+                    <SelectTrigger id={filterPriorityId} className="w-[150px]" data-testid="select-filter-priority">
+                      <SelectValue placeholder="Priority" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All priorities</SelectItem>
+                      <SelectItem value="low">Low</SelectItem>
+                      <SelectItem value="medium">Medium</SelectItem>
+                      <SelectItem value="high">High</SelectItem>
+                      <SelectItem value="urgent">Urgent</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
 
                 <Button
                   variant="outline"
@@ -525,7 +540,7 @@ export default function TasksPage() {
                   onClick={() => { setFilters({}); setActiveTab("all"); }}
                   data-testid="button-clear-filters"
                 >
-                  Clear Filters
+                  Clear filters
                 </Button>
               </div>
             </CardHeader>
@@ -534,18 +549,21 @@ export default function TasksPage() {
           <Card>
             <CardContent className="p-0">
               {isLoading ? (
-                <ListSkeleton count={4} />
+                <div role="status" aria-label="Loading tasks">
+                  <ListSkeleton count={4} />
+                </div>
               ) : !tasks?.length ? (
                 <TasksEmptyState onAddTask={() => setIsCreateOpen(true)} />
               ) : (
-                <div className="divide-y">
+                <ul className="divide-y list-none p-0 m-0" aria-label="Tasks">
                   {tasks.map((task) => {
                     const StatusIcon = statusIcons[task.status as keyof typeof statusIcons] || Clock;
                     const isCompleted = task.status === "completed";
-                    
+                    const statusLabel = task.status.replace(/_/g, " ");
+
                     return (
-                      <div 
-                        key={task.id} 
+                      <li
+                        key={task.id}
                         className="p-4 flex items-start gap-4 hover-elevate"
                         data-testid={`task-row-${task.id}`}
                       >
@@ -555,30 +573,32 @@ export default function TasksPage() {
                           className={isCompleted ? "text-green-600" : "text-muted-foreground"}
                           onClick={() => !isCompleted && completeMutation.mutate(task.id)}
                           disabled={isCompleted || completeMutation.isPending}
-                          aria-label={isCompleted ? "Task completed" : "Complete task"}
+                          aria-pressed={isCompleted}
+                          aria-label={isCompleted ? `Completed: ${task.title}` : `Mark complete: ${task.title}`}
                           data-testid={`button-complete-task-${task.id}`}
                         >
-                          <CheckCircle2 className="w-5 h-5" />
+                          <CheckCircle2 className="w-5 h-5" aria-hidden="true" />
                         </Button>
 
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <h3 
+                            <h3
                               className={`font-medium ${isCompleted ? "line-through text-muted-foreground" : ""}`}
                               data-testid={`text-task-title-${task.id}`}
                             >
                               {task.title}
                             </h3>
-                            <Badge 
-                              variant="secondary" 
+                            <Badge
+                              variant="secondary"
                               className={priorityColors[task.priority as keyof typeof priorityColors]}
                               data-testid={`badge-task-priority-${task.id}`}
+                              aria-label={`Priority: ${task.priority}`}
                             >
                               {task.priority}
                             </Badge>
                             {task.isRecurring && (
-                              <Badge variant="outline" className="gap-1">
-                                <RefreshCw className="w-3 h-3" />
+                              <Badge variant="outline" className="gap-1" aria-label={`Recurs ${task.recurrenceRule}`}>
+                                <RefreshCw className="w-3 h-3" aria-hidden="true" />
                                 {task.recurrenceRule}
                               </Badge>
                             )}
@@ -590,24 +610,33 @@ export default function TasksPage() {
                             </p>
                           )}
 
-                          <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground flex-wrap">
+                          <dl className="flex items-center gap-4 mt-2 text-xs text-muted-foreground flex-wrap">
                             {task.dueDate && (
-                              <span className="flex items-center gap-1">
-                                <Calendar className="w-3 h-3" />
-                                {format(new Date(task.dueDate), "MMM d, yyyy")}
-                              </span>
+                              <div className="flex items-center gap-1">
+                                <Calendar className="w-3 h-3" aria-hidden="true" />
+                                <dt className="sr-only">Due date</dt>
+                                <dd>
+                                  <time dateTime={String(task.dueDate)}>
+                                    {format(new Date(task.dueDate), "MMM d, yyyy")}
+                                  </time>
+                                </dd>
+                              </div>
                             )}
                             {task.entityType && task.entityType !== "none" && (
-                              <span className="flex items-center gap-1">
-                                <LinkIcon className="w-3 h-3" />
-                                {task.entityType} #{task.entityId}
-                              </span>
+                              <div className="flex items-center gap-1">
+                                <LinkIcon className="w-3 h-3" aria-hidden="true" />
+                                <dt className="sr-only">Linked to</dt>
+                                <dd>
+                                  {task.entityType} <span className="tabular-nums">#{task.entityId}</span>
+                                </dd>
+                              </div>
                             )}
-                            <span className="flex items-center gap-1">
-                              <StatusIcon className="w-3 h-3" />
-                              {task.status.replace(/_/g, " ")}
-                            </span>
-                          </div>
+                            <div className="flex items-center gap-1">
+                              <StatusIcon className="w-3 h-3" aria-hidden="true" />
+                              <dt className="sr-only">Status</dt>
+                              <dd>{statusLabel}</dd>
+                            </div>
+                          </dl>
                         </div>
 
                         <div className="flex items-center gap-2">
@@ -615,26 +644,25 @@ export default function TasksPage() {
                             variant="ghost"
                             size="icon"
                             onClick={() => openEditDialog(task)}
-                            aria-label="Edit task"
+                            aria-label={`Edit task: ${task.title}`}
                             data-testid={`button-edit-task-${task.id}`}
                           >
-                            <Edit className="w-4 h-4" />
+                            <Edit className="w-4 h-4" aria-hidden="true" />
                           </Button>
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => deleteMutation.mutate(task.id)}
-                            disabled={deleteMutation.isPending}
-                            aria-label="Delete task"
+                            onClick={() => setTaskToDelete(task)}
+                            aria-label={`Delete task: ${task.title}`}
                             data-testid={`button-delete-task-${task.id}`}
                           >
-                            <Trash2 className="w-4 h-4 text-destructive" />
+                            <Trash2 className="w-4 h-4 text-destructive" aria-hidden="true" />
                           </Button>
                         </div>
-                      </div>
+                      </li>
                     );
                   })}
-                </div>
+                </ul>
               )}
             </CardContent>
           </Card>
@@ -642,18 +670,29 @@ export default function TasksPage() {
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Edit Task</DialogTitle>
+            <DialogTitle>Edit task</DialogTitle>
             <DialogDescription>
               Update the task details, status, or priority.
             </DialogDescription>
           </DialogHeader>
-          <TaskFormContent 
-            form={editForm} 
-            onSubmit={onEditSubmit} 
-            isPending={updateMutation.isPending} 
+          <TaskFormContent
+            form={editForm}
+            onSubmit={onEditSubmit}
+            isPending={updateMutation.isPending}
           />
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={!!taskToDelete}
+        onOpenChange={(open) => !open && setTaskToDelete(null)}
+        title="Delete task"
+        description={taskToDelete ? `Are you sure you want to delete "${taskToDelete.title}"? This cannot be undone.` : ""}
+        confirmLabel="Delete"
+        variant="destructive"
+        onConfirm={() => taskToDelete && deleteMutation.mutate(taskToDelete.id)}
+        isLoading={deleteMutation.isPending}
+      />
     </PageShell>
   );
 }
