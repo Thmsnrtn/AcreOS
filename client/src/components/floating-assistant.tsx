@@ -1233,7 +1233,7 @@ export function FloatingAssistant() {
           </div>
 
           <ScrollArea className="flex-1 px-4 py-3">
-            <div className="space-y-4">
+            <div role="log" aria-live="polite" aria-label="Assistant conversation" className="space-y-4">
               {messages.length === 0 && (() => {
                 const currentAgent = AGENTS.find(a => a.id === selectedAgent) || AGENTS[0];
                 const AgentIcon = currentAgent.icon;
@@ -1285,8 +1285,8 @@ export function FloatingAssistant() {
                     </p>
                     {isTemporaryChat && (
                       <Badge variant="secondary" className="mt-3 gap-1">
-                        <Ghost className="w-3 h-3" />
-                        Temporary Mode
+                        <Ghost className="w-3 h-3" aria-hidden="true" />
+                        Temporary mode
                       </Badge>
                     )}
                     {currentContext.actions.length > 0 && (
