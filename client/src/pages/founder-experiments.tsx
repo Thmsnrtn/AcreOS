@@ -10,7 +10,7 @@
  * which wins, rather than tweaking based on past outcomes.
  */
 
-import { useState } from "react";
+import { useState, useId } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,8 +18,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
   Dialog,
   DialogContent,
@@ -31,6 +33,7 @@ import {
 } from "@/components/ui/dialog";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import { FlaskConical, Play, Pause, CheckCircle2, XCircle, Plus } from "lucide-react";
 import { relative } from "@/lib/format";
 import { PageHeader } from "@/components/ui/page-header";
@@ -77,47 +80,58 @@ const STATUS_COLOR: Record<Experiment["status"], string> = {
   aborted: "bg-muted text-muted-foreground",
 };
 
+const ACTION_REASSURANCE: Record<string, string> = {
+  start: "The experiment is still in draft — try again.",
+  pause: "The experiment is still running — try again.",
+  abort: "The experiment is still running — try again.",
+  complete: "The experiment is unchanged — try again.",
+};
+
 export default function FounderExperimentsPage() {
-  const { data, isLoading, isError } = useQuery<{ experiments: Experiment[] }>({
+  useDocumentTitle("Decision experiments");
+  const { data, isLoading, isError, refetch } = useQuery<{ experiments: Experiment[] }>({
     queryKey: ["/api/founder/intelligence/experiments"],
     staleTime: 30_000,
   });
   const qc = useQueryClient();
   const { toast } = useToast();
   const [createOpen, setCreateOpen] = useState(false);
+  const [pendingAbort, setPendingAbort] = useState<Experiment | null>(null);
 
-  const op = (path: string, invalidate = true) =>
-    useMutation({
-      mutationFn: async (args: { id: number; body?: any }) => {
-        const res = await apiRequest("POST", `/api/founder/intelligence/experiments/${args.id}/${path}`, args.body ?? {});
-        return res.json();
-      },
-      onSuccess: () => {
-        if (invalidate) qc.invalidateQueries({ queryKey: ["/api/founder/intelligence/experiments"] });
-        toast({ title: "Updated" });
-      },
-      onError: (e: Error) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
-    });
-
-  const startExp = op("start");
-  const pauseExp = op("pause");
-  const abortExp = op("abort");
-  const completeExp = op("complete");
+  // Single useMutation handler that knows which path was used. Lifts the
+  // mutation out of a per-render call site to obey Rules of Hooks.
+  const opMutation = useMutation({
+    mutationFn: async (args: { id: number; path: string; body?: any }) => {
+      const res = await apiRequest("POST", `/api/founder/intelligence/experiments/${args.id}/${args.path}`, args.body ?? {});
+      return res.json();
+    },
+    onSuccess: (_, args) => {
+      qc.invalidateQueries({ queryKey: ["/api/founder/intelligence/experiments"] });
+      toast({ title: `Experiment ${args.path}d` });
+    },
+    onError: (e: Error, args) =>
+      toast({
+        title: `Couldn't ${args.path} experiment`,
+        description: `${e.message}. ${ACTION_REASSURANCE[args.path] ?? "Try again."}`,
+        variant: "destructive",
+      }),
+  });
 
   const experiments = data?.experiments ?? [];
+  const isBusy = opMutation.isPending;
 
   return (
     <PageShell label="Experiments">
       <div className="space-y-6 max-w-5xl mx-auto">
         <PageHeader
           title="Decision experiments"
-          icon={<FlaskConical className="h-5 w-5 text-muted-foreground" />}
+          icon={<FlaskConical className="h-5 w-5 text-muted-foreground" aria-hidden="true" />}
           description="A/B test how agents decide. Each experiment hooks into a specific item type and deterministically assigns variants per org. When outcomes get graded, they roll up per variant so you can see which playbook works."
           actions={
             <Dialog open={createOpen} onOpenChange={setCreateOpen}>
               <DialogTrigger asChild>
-                <Button size="sm">
-                  <Plus className="h-4 w-4 mr-1" />
+                <Button size="sm" aria-label="Create new experiment">
+                  <Plus className="h-4 w-4 mr-1" aria-hidden="true" />
                   New experiment
                 </Button>
               </DialogTrigger>
@@ -128,13 +142,23 @@ export default function FounderExperimentsPage() {
 
         {isLoading ? (
           <Card>
-            <CardContent className="p-8">
+            <CardContent className="p-8" role="status" aria-live="polite">
+              <span className="sr-only">Loading experiments…</span>
               <Skeleton className="h-16 w-full" />
             </CardContent>
           </Card>
         ) : isError ? (
           <Card>
-            <CardContent className="p-6 text-sm text-red-600">Could not load experiments.</CardContent>
+            <CardContent className="p-6 text-sm text-red-600" role="alert">
+              Couldn't load experiments. The experiment list is unchanged —{" "}
+              <button
+                type="button"
+                className="underline hover:no-underline"
+                onClick={() => refetch()}
+              >
+                try again
+              </button>.
+            </CardContent>
           </Card>
         ) : experiments.length === 0 ? (
           <EmptyState
@@ -143,21 +167,44 @@ export default function FounderExperimentsPage() {
             description="Create your first experiment to split a decision playbook across variants. Example: half of past-due customers get 7-day dunning, half get 10-day — which recovers more?"
           />
         ) : (
-          experiments.map((e) => (
-            <ExperimentCard
-              key={e.id}
-              experiment={e}
-              onStart={() => startExp.mutate({ id: e.id })}
-              onPause={() => pauseExp.mutate({ id: e.id })}
-              onAbort={() => abortExp.mutate({ id: e.id })}
-              onComplete={(winningVariant, notes) =>
-                completeExp.mutate({ id: e.id, body: { winningVariant, notes } })
-              }
-              busy={startExp.isPending || pauseExp.isPending || abortExp.isPending || completeExp.isPending}
-            />
-          ))
+          <ul className="space-y-4" aria-label="Decision experiments">
+            {experiments.map((e) => (
+              <li key={e.id}>
+                <ExperimentCard
+                  experiment={e}
+                  onStart={() => opMutation.mutate({ id: e.id, path: "start" })}
+                  onPause={() => opMutation.mutate({ id: e.id, path: "pause" })}
+                  onAbort={() => setPendingAbort(e)}
+                  onComplete={(winningVariant, notes) =>
+                    opMutation.mutate({ id: e.id, path: "complete", body: { winningVariant, notes } })
+                  }
+                  busy={isBusy}
+                />
+              </li>
+            ))}
+          </ul>
         )}
       </div>
+
+      <ConfirmDialog
+        open={!!pendingAbort}
+        onOpenChange={(open) => { if (!open) setPendingAbort(null); }}
+        title={`Abort experiment "${pendingAbort?.name ?? ""}"?`}
+        description={
+          pendingAbort
+            ? `Stops collecting outcomes for "${pendingAbort.name}" immediately. The data already collected is kept in the audit log, but no winner is promoted. You can't resume an aborted experiment — you'd need to clone it as a new draft.`
+            : ""
+        }
+        confirmLabel="Yes, abort"
+        variant="destructive"
+        isLoading={opMutation.isPending}
+        onConfirm={() => {
+          if (pendingAbort) {
+            opMutation.mutate({ id: pendingAbort.id, path: "abort" });
+            setPendingAbort(null);
+          }
+        }}
+      />
     </PageShell>
   );
 }
@@ -177,6 +224,7 @@ function ExperimentCard({
   onComplete: (winner: string, notes?: string) => void;
   busy: boolean;
 }) {
+  const notesId = useId();
   const { data: analysis } = useQuery<ExperimentAnalysis>({
     queryKey: [`/api/founder/intelligence/experiments/${experiment.id}`],
     enabled: experiment.status === "running" || experiment.status === "paused" || experiment.status === "completed",
@@ -190,7 +238,7 @@ function ExperimentCard({
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 mb-1 flex-wrap">
-              <Badge className={`text-[10px] ${STATUS_COLOR[experiment.status]}`}>{experiment.status}</Badge>
+              <Badge className={`text-[10px] capitalize ${STATUS_COLOR[experiment.status]}`}>{experiment.status}</Badge>
               <Badge variant="outline" className="text-[10px]">{experiment.category}</Badge>
               {experiment.itemType && (
                 <Badge variant="outline" className="text-[10px]">
@@ -202,37 +250,35 @@ function ExperimentCard({
                   Winner: {experiment.winningVariant}
                 </Badge>
               )}
-              <span className="text-[10px] text-muted-foreground">
+              <span className="text-[10px] text-muted-foreground tabular-nums">
                 {relative(experiment.createdAt)}
               </span>
             </div>
             <CardTitle className="text-base">{experiment.name}</CardTitle>
             <p className="text-xs text-muted-foreground mt-1">{experiment.description}</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             {experiment.status === "draft" && (
-              <Button size="sm" onClick={onStart} disabled={busy}>
-                <Play className="h-4 w-4 mr-1" />
+              <Button size="sm" onClick={onStart} disabled={busy} aria-label={`Start experiment "${experiment.name}"`}>
+                <Play className="h-4 w-4 mr-1" aria-hidden="true" />
                 Start
               </Button>
             )}
             {experiment.status === "running" && (
-              <>
-                <Button size="sm" variant="outline" onClick={onPause} disabled={busy}>
-                  <Pause className="h-4 w-4 mr-1" />
-                  Pause
-                </Button>
-              </>
+              <Button size="sm" variant="outline" onClick={onPause} disabled={busy} aria-label={`Pause experiment "${experiment.name}"`}>
+                <Pause className="h-4 w-4 mr-1" aria-hidden="true" />
+                Pause
+              </Button>
             )}
             {experiment.status === "paused" && (
-              <Button size="sm" onClick={onStart} disabled={busy}>
-                <Play className="h-4 w-4 mr-1" />
+              <Button size="sm" onClick={onStart} disabled={busy} aria-label={`Resume experiment "${experiment.name}"`}>
+                <Play className="h-4 w-4 mr-1" aria-hidden="true" />
                 Resume
               </Button>
             )}
             {(experiment.status === "running" || experiment.status === "paused") && (
-              <Button size="sm" variant="ghost" onClick={onAbort} disabled={busy}>
-                <XCircle className="h-4 w-4 mr-1" />
+              <Button size="sm" variant="ghost" onClick={onAbort} disabled={busy} aria-label={`Abort experiment "${experiment.name}"`}>
+                <XCircle className="h-4 w-4 mr-1" aria-hidden="true" />
                 Abort
               </Button>
             )}
@@ -240,12 +286,12 @@ function ExperimentCard({
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className="grid gap-2">
+        <ul className="grid gap-2" aria-label="Experiment variants">
           {experiment.variants.map((v) => {
             const stat = analysis?.variants.find((x) => x.key === v.key);
             const isLeader = analysis?.leader === v.key;
             return (
-              <div
+              <li
                 key={v.key}
                 className={`border rounded p-3 ${isLeader ? "border-emerald-400 dark:border-emerald-700 bg-emerald-50/40 dark:bg-emerald-950/20" : "border-border"}`}
               >
@@ -254,37 +300,46 @@ function ExperimentCard({
                     <p className="text-sm font-medium">
                       {v.label}{" "}
                       <span className="text-[11px] text-muted-foreground font-mono">({v.key})</span>
-                      {isLeader && <span className="text-[10px] text-emerald-600 ml-2">leader</span>}
+                      {isLeader && <span className="text-[10px] text-emerald-600 ml-2" aria-label="Leading variant">leader</span>}
                     </p>
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="text-[11px] text-muted-foreground tabular-nums">
                       Weight: {v.weight}%
                     </p>
                   </div>
                   {stat && (
-                    <div className="text-right text-[11px] text-muted-foreground">
-                      <div>n = {stat.n}, graded = {stat.outcomesRecorded}</div>
-                      {stat.meanOutcome != null && <div>mean {stat.meanOutcome}</div>}
-                      {stat.positiveRate != null && <div>+ rate {stat.positiveRate}%</div>}
-                    </div>
+                    <dl className="text-right text-[11px] text-muted-foreground">
+                      <div className="tabular-nums">n = {stat.n}, graded = {stat.outcomesRecorded}</div>
+                      {stat.meanOutcome != null && <div className="tabular-nums">mean {stat.meanOutcome}</div>}
+                      {stat.positiveRate != null && <div className="tabular-nums">+ rate {stat.positiveRate}%</div>}
+                    </dl>
                   )}
                 </div>
-              </div>
+              </li>
             );
           })}
-        </div>
+        </ul>
         {analysis && (
           <p className="text-xs text-muted-foreground italic">{analysis.commentary}</p>
         )}
         {experiment.status === "running" && analysis?.leader && (
-          <div className="flex items-end gap-2">
-            <Textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Founder notes on the winner (optional)"
-              className="text-xs h-14 flex-1"
-            />
-            <Button size="sm" onClick={() => onComplete(analysis.leader!, notes || undefined)} disabled={busy}>
-              <CheckCircle2 className="h-4 w-4 mr-1" />
+          <div className="flex items-end gap-2 flex-wrap">
+            <div className="flex-1 min-w-[200px]">
+              <Label htmlFor={notesId} className="sr-only">Founder notes on the winner</Label>
+              <Textarea
+                id={notesId}
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Founder notes on the winner (optional)"
+                className="text-xs h-14"
+              />
+            </div>
+            <Button
+              size="sm"
+              onClick={() => onComplete(analysis.leader!, notes || undefined)}
+              disabled={busy}
+              aria-label={`Complete experiment "${experiment.name}" and promote ${analysis.leader} as winner`}
+            >
+              <CheckCircle2 className="h-4 w-4 mr-1" aria-hidden="true" />
               Complete, promote leader
             </Button>
           </div>
@@ -297,6 +352,11 @@ function ExperimentCard({
 function CreateExperimentDialog({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const nameId = useId();
+  const descId = useId();
+  const categoryId = useId();
+  const itemTypeId = useId();
+  const variantsId = useId();
   const [form, setForm] = useState({
     name: "",
     description: "",
@@ -332,7 +392,12 @@ function CreateExperimentDialog({ onClose }: { onClose: () => void }) {
       toast({ title: "Experiment created", description: "It's in draft — press Start to begin." });
       onClose();
     },
-    onError: (e: Error) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+    onError: (e: Error) =>
+      toast({
+        title: "Couldn't create experiment",
+        description: `${e.message}. Your inputs are unchanged — try again.`,
+        variant: "destructive",
+      }),
   });
 
   return (
@@ -344,14 +409,18 @@ function CreateExperimentDialog({ onClose }: { onClose: () => void }) {
           variants; fine-tune after.
         </DialogDescription>
       </DialogHeader>
-      <div className="space-y-3">
+      <form
+        onSubmit={(e) => { e.preventDefault(); if (form.name) create.mutate(); }}
+        className="space-y-3"
+      >
         <div>
-          <label className="text-xs text-muted-foreground">Name</label>
-          <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+          <Label htmlFor={nameId}>Name</Label>
+          <Input id={nameId} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required autoCapitalize="sentences" />
         </div>
         <div>
-          <label className="text-xs text-muted-foreground">Description</label>
+          <Label htmlFor={descId}>Description</Label>
           <Textarea
+            id={descId}
             value={form.description}
             onChange={(e) => setForm({ ...form, description: e.target.value })}
             className="h-20"
@@ -359,28 +428,30 @@ function CreateExperimentDialog({ onClose }: { onClose: () => void }) {
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-xs text-muted-foreground">Category</label>
-            <Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} />
+            <Label htmlFor={categoryId}>Category</Label>
+            <Input id={categoryId} value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} />
           </div>
           <div>
-            <label className="text-xs text-muted-foreground">Item type hook</label>
-            <Input value={form.itemType} onChange={(e) => setForm({ ...form, itemType: e.target.value })} />
+            <Label htmlFor={itemTypeId}>Item type hook</Label>
+            <Input id={itemTypeId} value={form.itemType} onChange={(e) => setForm({ ...form, itemType: e.target.value })} />
           </div>
         </div>
         <div>
-          <label className="text-xs text-muted-foreground">Variants (pipe-separated labels)</label>
+          <Label htmlFor={variantsId}>Variants <span className="text-muted-foreground font-normal">(pipe-separated labels)</span></Label>
           <Input
+            id={variantsId}
             value={form.variantLabels}
             onChange={(e) => setForm({ ...form, variantLabels: e.target.value })}
+            placeholder="Variant A|Variant B"
           />
         </div>
-      </div>
-      <DialogFooter>
-        <Button variant="outline" onClick={onClose}>Cancel</Button>
-        <Button onClick={() => create.mutate()} disabled={create.isPending || !form.name}>
-          {create.isPending ? "Creating…" : "Create"}
-        </Button>
-      </DialogFooter>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+          <Button type="submit" disabled={create.isPending || !form.name}>
+            {create.isPending ? "Creating…" : "Create"}
+          </Button>
+        </DialogFooter>
+      </form>
     </DialogContent>
   );
 }
