@@ -107,19 +107,31 @@ export function TeamGeneralChannel({ open, onClose }: TeamGeneralChannelProps) {
         {!generalChannel ? (
           <div className="flex-1 flex items-center justify-center text-center p-6 text-muted-foreground text-sm">
             <div>
-              <Hash className="h-8 w-8 mx-auto mb-2 opacity-50" />
+              <Hash className="h-8 w-8 mx-auto mb-2 opacity-50" aria-hidden="true" />
               <p>Team chat is available for organizations with 2+ members.</p>
             </div>
           </div>
         ) : isLoading ? (
-          <div className="flex-1 p-4 space-y-3">
+          <div
+            role="status"
+            aria-busy="true"
+            aria-label="Loading team chat"
+            className="flex-1 p-4 space-y-3"
+          >
             <Skeleton className="h-10 w-3/4" />
             <Skeleton className="h-10 w-1/2 ml-auto" />
             <Skeleton className="h-10 w-2/3" />
+            <span className="sr-only">Loading…</span>
           </div>
         ) : (
           <>
-            <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3">
+            <div
+              ref={scrollRef}
+              role="log"
+              aria-live="polite"
+              aria-label="Team chat"
+              className="flex-1 overflow-y-auto p-4 space-y-3"
+            >
               {(!messages || messages.length === 0) ? (
                 <div className="text-center text-muted-foreground text-sm py-8">
                   No messages yet. Start the conversation.
@@ -146,8 +158,9 @@ export function TeamGeneralChannel({ open, onClose }: TeamGeneralChannelProps) {
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder="Message #General..."
+                  placeholder="Message #General…"
                   disabled={sendMutation.isPending}
+                  autoCapitalize="sentences"
                   aria-label="Team message input"
                 />
                 <Button
@@ -156,7 +169,7 @@ export function TeamGeneralChannel({ open, onClose }: TeamGeneralChannelProps) {
                   disabled={!message.trim() || sendMutation.isPending}
                   aria-label="Send team message"
                 >
-                  <Send className="h-4 w-4" />
+                  <Send className="h-4 w-4" aria-hidden="true" />
                 </Button>
               </div>
             </div>
