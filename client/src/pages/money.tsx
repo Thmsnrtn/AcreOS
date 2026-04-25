@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import FinancePage from "@/pages/finance";
 import { NotesImportDialog } from "@/components/notes-import-dialog";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 const PortfolioOptimizerPage = lazy(() => import("@/pages/portfolio-optimizer"));
 const CashFlowPage = lazy(() => import("@/pages/cash-flow"));
@@ -30,13 +31,14 @@ function getTabFromHash(): TabValue {
 
 function TabFallback() {
   return (
-    <div className="flex items-center justify-center py-20">
+    <div className="flex items-center justify-center py-20" role="status" aria-live="polite">
       <div className="animate-pulse text-muted-foreground text-sm">Loading money view…</div>
     </div>
   );
 }
 
 export default function MoneyPage() {
+  useDocumentTitle("Money");
   const [activeTab, setActiveTab] = useState<TabValue>(getTabFromHash);
   const [importOpen, setImportOpen] = useState(false);
 
@@ -69,8 +71,8 @@ export default function MoneyPage() {
         </div>
         {activeTab === "notes" && (
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)} className="shrink-0">
-            <Upload className="w-4 h-4 mr-2" />
-            Import Notes
+            <Upload className="w-4 h-4 mr-2" aria-hidden="true" />
+            Import notes
           </Button>
         )}
       </div>
@@ -79,23 +81,23 @@ export default function MoneyPage() {
       <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6" data-testid="tabs-money">
         <TabsList className="w-full sm:w-auto overflow-x-auto flex-nowrap" data-testid="tabs-list-money">
           <TabsTrigger value="notes" className="flex items-center gap-2 min-w-max" data-testid="tab-notes">
-            <Banknote className="h-4 w-4" />
+            <Banknote className="h-4 w-4" aria-hidden="true" />
             <span>Notes</span>
           </TabsTrigger>
           <TabsTrigger value="finance" className="flex items-center gap-2 min-w-max" data-testid="tab-finance">
-            <BarChart3 className="h-4 w-4" />
+            <BarChart3 className="h-4 w-4" aria-hidden="true" />
             <span>Finance</span>
           </TabsTrigger>
           <TabsTrigger value="portfolio" className="flex items-center gap-2 min-w-max" data-testid="tab-portfolio">
-            <PieChart className="h-4 w-4" />
+            <PieChart className="h-4 w-4" aria-hidden="true" />
             <span>Portfolio</span>
           </TabsTrigger>
           <TabsTrigger value="forecast" className="flex items-center gap-2 min-w-max" data-testid="tab-forecast">
-            <TrendingUp className="h-4 w-4" />
+            <TrendingUp className="h-4 w-4" aria-hidden="true" />
             <span>Forecast</span>
           </TabsTrigger>
           <TabsTrigger value="capital" className="flex items-center gap-2 min-w-max" data-testid="tab-capital">
-            <Landmark className="h-4 w-4" />
+            <Landmark className="h-4 w-4" aria-hidden="true" />
             <span>Capital</span>
           </TabsTrigger>
         </TabsList>

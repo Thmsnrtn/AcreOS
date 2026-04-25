@@ -85,52 +85,57 @@ export default function ChangelogPage() {
         <div className="mb-8">
           <Button variant="ghost" size="sm" asChild>
             <Link href="/">
-              <ArrowLeft className="w-4 h-4 mr-2" /> Back to AcreOS
+              <ArrowLeft className="w-4 h-4 mr-2" aria-hidden="true" /> Back to AcreOS
             </Link>
           </Button>
         </div>
 
         <div className="mb-12">
-          <h1 className="text-3xl font-bold mb-2">What's New</h1>
+          <h1 className="text-3xl font-bold mb-2">What's new</h1>
           <p className="text-muted-foreground">Latest updates and improvements to AcreOS.</p>
         </div>
 
         {isLoading ? (
-          <div className="text-center text-muted-foreground py-12">Loading changelog...</div>
+          <div className="text-center text-muted-foreground py-12" role="status" aria-live="polite">
+            <span className="sr-only">Loading changelog…</span>
+            Loading changelog…
+          </div>
         ) : (
-          <div className="space-y-8">
+          <ol className="space-y-8" aria-label="Changelog entries">
             {data?.entries.map((entry) => (
-              <Card key={entry.version}>
-                <CardContent className="pt-6">
-                  <div className="flex items-center gap-3 mb-4">
-                    <Badge variant="outline" className="text-sm font-mono">v{entry.version}</Badge>
-                    {entry.date && <span className="text-sm text-muted-foreground">{entry.date}</span>}
-                  </div>
-                  {entry.sections.map((section) => (
-                    <div key={section.title} className="mb-4 last:mb-0">
-                      <Badge className={`mb-2 ${SECTION_COLORS[section.title] || "bg-gray-100 text-gray-800"}`}>
-                        {section.title}
-                      </Badge>
-                      <ul className="space-y-1.5 ml-1">
-                        {section.items
-                          .map(cleanChangelogItem)
-                          .filter(isCustomerVisible)
-                          .map((item, i) => (
-                            <li key={i} className="text-sm text-muted-foreground flex gap-2">
-                              <span className="text-muted-foreground/50 shrink-0">-</span>
-                              <span>{item}</span>
-                            </li>
-                          ))}
-                      </ul>
+              <li key={entry.version}>
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-3 mb-4 flex-wrap">
+                      <Badge variant="outline" className="text-sm font-mono tabular-nums">v{entry.version}</Badge>
+                      {entry.date && <span className="text-sm text-muted-foreground tabular-nums">{entry.date}</span>}
                     </div>
-                  ))}
-                </CardContent>
-              </Card>
+                    {entry.sections.map((section) => (
+                      <div key={section.title} className="mb-4 last:mb-0">
+                        <Badge className={`mb-2 ${SECTION_COLORS[section.title] || "bg-gray-100 text-gray-800"}`}>
+                          {section.title}
+                        </Badge>
+                        <ul className="space-y-1.5 ml-1" aria-label={`${section.title} in v${entry.version}`}>
+                          {section.items
+                            .map(cleanChangelogItem)
+                            .filter(isCustomerVisible)
+                            .map((item, i) => (
+                              <li key={i} className="text-sm text-muted-foreground flex gap-2">
+                                <span className="text-muted-foreground/50 shrink-0" aria-hidden="true">-</span>
+                                <span>{item}</span>
+                              </li>
+                            ))}
+                        </ul>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              </li>
             ))}
             {(!data?.entries || data.entries.length === 0) && (
-              <div className="text-center text-muted-foreground py-12">No changelog entries found.</div>
+              <li className="text-center text-muted-foreground py-12 list-none">No changelog entries found.</li>
             )}
-          </div>
+          </ol>
         )}
       </div>
     </div>
