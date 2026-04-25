@@ -203,21 +203,30 @@ export function AbTestsContent() {
           </DialogTrigger>
           <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Create New A/B Test</DialogTitle>
+              <DialogTitle>Create new A/B test</DialogTitle>
               <DialogDescription>
                 Set up a test to compare different versions of your campaign
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-6 py-4">
+            <form
+              id="ab-test-form"
+              className="space-y-6 py-4"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!createMutation.isPending) handleCreateSubmit();
+              }}
+            >
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="name">Test Name</Label>
+                  <Label htmlFor="name">Test name</Label>
                   <Input
                     id="name"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="e.g., Q1 Subject Line Test"
+                    placeholder="e.g., Q1 subject line test"
+                    autoCapitalize="sentences"
+                    required
                     data-testid="input-test-name"
                   />
                 </div>
@@ -364,19 +373,20 @@ export function AbTestsContent() {
                   ))}
                 </div>
               </div>
-            </div>
+            </form>
 
             <DialogFooter>
-              <Button variant="outline" onClick={() => { setIsCreateDialogOpen(false); resetForm(); }}>
+              <Button type="button" variant="outline" onClick={() => { setIsCreateDialogOpen(false); resetForm(); }}>
                 Cancel
               </Button>
               <Button
-                onClick={handleCreateSubmit}
+                type="submit"
+                form="ab-test-form"
                 disabled={createMutation.isPending}
                 data-testid="button-save-test"
               >
-                {createMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                Create Test
+                {createMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />}
+                Create test
               </Button>
             </DialogFooter>
           </DialogContent>
