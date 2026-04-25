@@ -65,11 +65,17 @@ export function AnimatedCounter({
     };
   }, [value, duration, instant, reduced]);
 
-  const text = (format ?? ((n: number) => Math.round(n).toLocaleString("en-US")))(display);
+  const formatter = format ?? ((n: number) => Math.round(n).toLocaleString("en-US"));
+  const text = formatter(display);
+  const targetText = formatter(value);
 
   return (
-    <span className={cn("tabular-nums", className)} {...rest}>
-      {text}
+    <span
+      className={cn("tabular-nums", className)}
+      aria-label={targetText}
+      {...rest}
+    >
+      <span aria-hidden="true">{text}</span>
     </span>
   );
 }
