@@ -814,6 +814,7 @@ to a dedicated 9b slice.
 **workflow-builder hardening (228):** ✅ complete — send-email + create-task action forms got Label htmlFor + per-action unique ids on every Input/Textarea/SelectTrigger. To-input off-keyboard hardened, Subject/Body/Title/Description autoCapitalize=sentences, Due-in-days inputMode=numeric. Sentence-case throughout. (commit `55888ab`)
 **workflow-builder pt 2 (229):** ✅ complete — 3 more action types: update_record (Record type Select + 2 off-keyboard Inputs), run_agent_skill (Select + font-mono off-keyboard JSON Textarea), send_notification (Title/Message autoCapitalize=sentences + Type Select). All Label htmlFor + per-action ids; sentence-case throughout. (commit `5f39c7e`)
 **workflow-builder pt 3 (230):** ✅ complete — slice 230 milestone. delay action: Amount Input (inputMode=numeric) + Unit Select Label htmlFor + ids. workflow-builder now has full coverage across all 6 action types. (commit `2053957`)
+**sequence-builder Label htmlFor (231):** ✅ complete — all 5 per-step fields (Channel Select, Delay Input, Condition Select, Check-after Input, Subject Input, Content Textarea) got Label htmlFor + per-step unique ids; Delay + Check-after inputMode=numeric; Subject + Content autoCapitalize=sentences; "Direct Mail" → "Direct mail" sentence-case; placeholder ellipsis. (commit `6afc14b`)
 **/onboarding-v2 targeted (18):** ✅ complete (commit `70df779`) — 18b deferred
 **/settings targeted (19):** ✅ complete (commit `809044c`) — 19b remaining components deferred
 **/pipeline (20):** ✅ complete (commit `1b5d0f7`)
