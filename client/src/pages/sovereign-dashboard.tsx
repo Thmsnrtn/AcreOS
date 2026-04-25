@@ -233,16 +233,16 @@ export default function SovereignDashboard() {
             )}
 
             <div className="flex gap-2">
-              <Link href="/board-of-directors">
-                <Button variant="outline" size="sm">
+              <Button asChild variant="outline" size="sm">
+                <Link href="/board-of-directors">
                   Board of directors <ChevronRight className="w-3 h-3 ml-1" aria-hidden="true" />
-                </Button>
-              </Link>
-              <Link href="/agent-performance">
-                <Button variant="outline" size="sm">
+                </Link>
+              </Button>
+              <Button asChild variant="outline" size="sm">
+                <Link href="/agent-performance">
                   Performance review <ChevronRight className="w-3 h-3 ml-1" aria-hidden="true" />
-                </Button>
-              </Link>
+                </Link>
+              </Button>
             </div>
           </TabsContent>
 
@@ -304,20 +304,20 @@ export default function SovereignDashboard() {
               </Card>
             )}
 
-            <Link href="/event-log">
-              <Button variant="outline" size="sm">
+            <Button asChild variant="outline" size="sm">
+              <Link href="/event-log">
                 Full event log <ChevronRight className="w-3 h-3 ml-1" aria-hidden="true" />
-              </Button>
-            </Link>
+              </Link>
+            </Button>
           </TabsContent>
 
           {/* Job Health */}
           <TabsContent value="jobs" className="space-y-4">
-            <Link href="/job-health">
-              <Button variant="outline" size="sm">
+            <Button asChild variant="outline" size="sm">
+              <Link href="/job-health">
                 Full job dashboard <ChevronRight className="w-3 h-3 ml-1" aria-hidden="true" />
-              </Button>
-            </Link>
+              </Link>
+            </Button>
 
             <Card>
               <CardHeader>
@@ -430,46 +430,46 @@ export default function SovereignDashboard() {
           <CardContent>
             <ul className="grid grid-cols-2 md:grid-cols-4 gap-2 list-none p-0 m-0" aria-label="Sovereign protocol modules">
               <li>
-                <Link href="/board-of-directors">
-                  <Button variant="outline" size="sm" className="w-full justify-start">
+                <Button asChild variant="outline" size="sm" className="w-full justify-start">
+                  <Link href="/board-of-directors">
                     <Shield className="w-3.5 h-3.5 mr-2" aria-hidden="true" /> Board of directors
-                  </Button>
-                </Link>
+                  </Link>
+                </Button>
               </li>
               <li>
-                <Link href="/agent-performance">
-                  <Button variant="outline" size="sm" className="w-full justify-start">
+                <Button asChild variant="outline" size="sm" className="w-full justify-start">
+                  <Link href="/agent-performance">
                     <TrendingUp className="w-3.5 h-3.5 mr-2" aria-hidden="true" /> Agent performance
-                  </Button>
-                </Link>
+                  </Link>
+                </Button>
               </li>
               <li>
-                <Link href="/memory-browser">
-                  <Button variant="outline" size="sm" className="w-full justify-start">
+                <Button asChild variant="outline" size="sm" className="w-full justify-start">
+                  <Link href="/memory-browser">
                     <Brain className="w-3.5 h-3.5 mr-2" aria-hidden="true" /> Memory browser
-                  </Button>
-                </Link>
+                  </Link>
+                </Button>
               </li>
               <li>
-                <Link href="/event-log">
-                  <Button variant="outline" size="sm" className="w-full justify-start">
+                <Button asChild variant="outline" size="sm" className="w-full justify-start">
+                  <Link href="/event-log">
                     <Network className="w-3.5 h-3.5 mr-2" aria-hidden="true" /> Event log
-                  </Button>
-                </Link>
+                  </Link>
+                </Button>
               </li>
               <li>
-                <Link href="/job-health">
-                  <Button variant="outline" size="sm" className="w-full justify-start">
+                <Button asChild variant="outline" size="sm" className="w-full justify-start">
+                  <Link href="/job-health">
                     <HeartPulse className="w-3.5 h-3.5 mr-2" aria-hidden="true" /> Job health
-                  </Button>
-                </Link>
+                  </Link>
+                </Button>
               </li>
               <li>
-                <Link href="/founder">
-                  <Button variant="outline" size="sm" className="w-full justify-start">
+                <Button asChild variant="outline" size="sm" className="w-full justify-start">
+                  <Link href="/founder">
                     <Crown className="w-3.5 h-3.5 mr-2" aria-hidden="true" /> Founder HQ
-                  </Button>
-                </Link>
+                  </Link>
+                </Button>
               </li>
             </ul>
           </CardContent>
