@@ -1,11 +1,14 @@
-import { useState } from "react";
+import { useState, useId } from "react";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { DollarSign, MapPin, AlertCircle } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { useDocumentTitle } from "@/hooks/use-document-title";
+import { usd } from "@/lib/format";
+import { DollarSign, MapPin, AlertCircle, Loader2 } from "lucide-react";
 
 interface ClosingCostsResult {
   state: string;
@@ -36,35 +39,50 @@ const CONFIDENCE_COLORS = {
 };
 
 export default function ClosingCostsPage() {
+  useDocumentTitle("Closing cost calculator");
+  const { toast } = useToast();
   const [state, setState] = useState("TX");
   const [county, setCounty] = useState("");
   const [price, setPrice] = useState("");
   const [result, setResult] = useState<ClosingCostsResult | null>(null);
   const [feeInfo, setFeeInfo] = useState<RecordingFeeInfo | null>(null);
   const [loading, setLoading] = useState(false);
+  const stateId = useId();
+  const countyId = useId();
+  const priceId = useId();
 
   async function calculate() {
     if (!state || !county || !price) return;
     setLoading(true);
     try {
       const [closingRes, feeRes] = await Promise.all([
-        fetch(`/api/recording-fees/closing?state=${state}&county=${encodeURIComponent(county)}&price=${price}`).then(r => r.json()),
-        fetch(`/api/recording-fees?state=${state}&county=${encodeURIComponent(county)}`).then(r => r.json()),
+        fetch(`/api/recording-fees/closing?state=${state}&county=${encodeURIComponent(county)}&price=${price}`).then(r => {
+          if (!r.ok) throw new Error("Closing calc failed");
+          return r.json();
+        }),
+        fetch(`/api/recording-fees?state=${state}&county=${encodeURIComponent(county)}`).then(r => {
+          if (!r.ok) throw new Error("Fee lookup failed");
+          return r.json();
+        }),
       ]);
       setResult(closingRes);
       setFeeInfo(feeRes);
+    } catch {
+      toast({
+        title: "Couldn't calculate closing costs",
+        description: "No figures were computed — your inputs are preserved. Try again in a moment.",
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }
   }
 
-  const fmt = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
-
   return (
     <PageShell>
       <div>
         <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-closing-costs-title">
-          Closing Cost Calculator
+          Closing cost calculator
         </h1>
         <p className="text-muted-foreground text-sm md:text-base">
           Estimate recording fees and transfer taxes by state and county.
@@ -72,113 +90,151 @@ export default function ClosingCostsPage() {
       </div>
 
       <Card>
-        <CardContent className="p-4 space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label className="text-xs">State</Label>
-              <Input
-                placeholder="TX"
-                value={state}
-                onChange={e => setState(e.target.value.toUpperCase().slice(0, 2))}
-                maxLength={2}
-                className="mt-1"
-              />
+        <CardContent className="p-4">
+          <form
+            className="space-y-4"
+            onSubmit={(e) => { e.preventDefault(); calculate(); }}
+          >
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor={stateId} className="text-xs">
+                  State <span className="text-destructive" aria-label="required">*</span>
+                </Label>
+                <Input
+                  id={stateId}
+                  placeholder="TX"
+                  value={state}
+                  onChange={e => setState(e.target.value.toUpperCase().slice(0, 2))}
+                  maxLength={2}
+                  className="mt-1 uppercase"
+                  autoCapitalize="characters"
+                  autoComplete="address-level1"
+                  autoCorrect="off"
+                  spellCheck={false}
+                />
+              </div>
+              <div>
+                <Label htmlFor={countyId} className="text-xs">
+                  County <span className="text-destructive" aria-label="required">*</span>
+                </Label>
+                <Input
+                  id={countyId}
+                  placeholder="Travis"
+                  value={county}
+                  onChange={e => setCounty(e.target.value)}
+                  className="mt-1"
+                  autoCapitalize="words"
+                  autoComplete="address-level2"
+                />
+              </div>
             </div>
             <div>
-              <Label className="text-xs">County</Label>
+              <Label htmlFor={priceId} className="text-xs">
+                Purchase price ($) <span className="text-destructive" aria-label="required">*</span>
+              </Label>
               <Input
-                placeholder="Travis"
-                value={county}
-                onChange={e => setCounty(e.target.value)}
-                className="mt-1"
+                id={priceId}
+                type="number"
+                inputMode="decimal"
+                min={0}
+                step="0.01"
+                placeholder="50000"
+                value={price}
+                onChange={e => setPrice(e.target.value)}
+                className="mt-1 tabular-nums"
               />
             </div>
-          </div>
-          <div>
-            <Label className="text-xs">Purchase Price ($)</Label>
-            <Input
-              type="number"
-              placeholder="50000"
-              value={price}
-              onChange={e => setPrice(e.target.value)}
-              className="mt-1"
-            />
-          </div>
-          <Button onClick={calculate} disabled={loading || !state || !county || !price} className="w-full">
-            Calculate Closing Costs
-          </Button>
+            <Button
+              type="submit"
+              disabled={loading || !state || !county || !price}
+              className="w-full min-h-11"
+            >
+              {loading ? (
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" /> Calculating…</>
+              ) : (
+                "Calculate closing costs"
+              )}
+            </Button>
+          </form>
         </CardContent>
       </Card>
 
       {result && feeInfo && (
         <>
-          <div className="grid grid-cols-3 gap-3">
+          <dl className="grid grid-cols-3 gap-3">
             <Card>
               <CardContent className="p-4">
-                <div className="flex items-center gap-2 text-muted-foreground mb-1">
-                  <DollarSign className="w-3.5 h-3.5" />
-                  <span className="text-xs">Recording Fee</span>
-                </div>
-                <p className="text-lg font-bold">{fmt(result.recordingFee)}</p>
+                <dt className="flex items-center gap-2 text-muted-foreground mb-1">
+                  <DollarSign className="w-3.5 h-3.5" aria-hidden="true" />
+                  <span className="text-xs">Recording fee</span>
+                </dt>
+                <dd className="text-lg font-bold tabular-nums">{usd(result.recordingFee)}</dd>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
-                <div className="flex items-center gap-2 text-muted-foreground mb-1">
-                  <DollarSign className="w-3.5 h-3.5" />
-                  <span className="text-xs">Transfer Tax</span>
-                </div>
-                <p className="text-lg font-bold">{fmt(result.transferTax)}</p>
+                <dt className="flex items-center gap-2 text-muted-foreground mb-1">
+                  <DollarSign className="w-3.5 h-3.5" aria-hidden="true" />
+                  <span className="text-xs">Transfer tax</span>
+                </dt>
+                <dd className="text-lg font-bold tabular-nums">{usd(result.transferTax)}</dd>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
-                <p className="text-xs text-muted-foreground mb-1">Total Est.</p>
-                <p className="text-lg font-bold text-primary">{fmt(result.total)}</p>
+                <dt className="text-xs text-muted-foreground mb-1">Total est.</dt>
+                <dd className="text-lg font-bold text-primary tabular-nums">{usd(result.total)}</dd>
               </CardContent>
             </Card>
-          </div>
+          </dl>
 
           <Card>
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-sm flex items-center gap-2">
-                  <MapPin className="w-4 h-4" />
+                  <MapPin className="w-4 h-4" aria-hidden="true" />
                   {feeInfo.state} — {feeInfo.county}
                 </CardTitle>
-                <Badge variant={CONFIDENCE_COLORS[feeInfo.confidence]}>
+                <Badge
+                  variant={CONFIDENCE_COLORS[feeInfo.confidence]}
+                  aria-label={`${feeInfo.confidence} confidence`}
+                >
                   {feeInfo.confidence} confidence
                 </Badge>
               </div>
             </CardHeader>
             <CardContent className="p-4 pt-0 space-y-2 text-sm">
-              <div className="grid grid-cols-2 gap-2 text-xs">
+              <dl className="grid grid-cols-2 gap-2 text-xs">
                 <div>
-                  <p className="text-muted-foreground">Recording fee/page</p>
-                  <p className="font-medium">{fmt(feeInfo.recordingFeePerPage)}</p>
+                  <dt className="text-muted-foreground">Recording fee/page</dt>
+                  <dd className="font-medium tabular-nums">{usd(feeInfo.recordingFeePerPage)}</dd>
                 </div>
                 <div>
-                  <p className="text-muted-foreground">Transfer tax</p>
-                  <p className="font-medium">${feeInfo.transferTaxPer1000.toFixed(2)}/$1,000</p>
+                  <dt className="text-muted-foreground">Transfer tax</dt>
+                  <dd className="font-medium tabular-nums">${feeInfo.transferTaxPer1000.toFixed(2)}/$1,000</dd>
                 </div>
                 <div>
-                  <p className="text-muted-foreground">Paid by</p>
-                  <p className="font-medium capitalize">{feeInfo.transferTaxPaidBy}</p>
+                  <dt className="text-muted-foreground">Paid by</dt>
+                  <dd className="font-medium capitalize">{feeInfo.transferTaxPaidBy}</dd>
                 </div>
                 <div>
-                  <p className="text-muted-foreground">Source</p>
-                  <p className="font-medium">{feeInfo.source.replace(/_/g, " ")}</p>
+                  <dt className="text-muted-foreground">Source</dt>
+                  <dd className="font-medium">{feeInfo.source.replace(/_/g, " ")}</dd>
                 </div>
-              </div>
+              </dl>
               {feeInfo.specialNotes.length > 0 && (
-                <div className="space-y-1">
+                <ul className="space-y-1" aria-label="Special notes for this county">
                   {feeInfo.specialNotes.map((note, i) => (
-                    <div key={i} className="flex items-start gap-2 text-xs text-amber-600 bg-amber-50 rounded p-2">
-                      <AlertCircle className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                    <li
+                      key={i}
+                      className="flex items-start gap-2 text-xs text-amber-600 bg-amber-50 rounded p-2"
+                      role="note"
+                    >
+                      <AlertCircle className="w-3 h-3 mt-0.5 flex-shrink-0" aria-hidden="true" />
                       <span>{note}</span>
-                    </div>
+                    </li>
                   ))}
-                </div>
+                </ul>
               )}
             </CardContent>
           </Card>
