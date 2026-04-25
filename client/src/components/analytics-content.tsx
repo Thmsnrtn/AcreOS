@@ -171,17 +171,22 @@ function ProjectedMRRCard({ revenueOverTime, loading }: ProjectedMRRCardProps) {
                 <p className="text-xs text-muted-foreground">current MRR: {formatCurrency(forecast.currentMRR)}</p>
               </div>
             </div>
-            <ResponsiveContainer width="100%" height={120}>
-              <LineChart data={forecast.chartData}>
-                <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                <XAxis dataKey="label" fontSize={10} tick={false} />
-                <YAxis tickFormatter={(v) => formatCurrency(v)} fontSize={10} width={55} />
-                <Tooltip formatter={((value: number) => formatCurrency(value)) as any} />
-                <ReferenceLine x={forecast.chartData[forecast.chartData.length - 4]?.label} stroke="#888" strokeDasharray="4 2" label={{ value: "now", fontSize: 10, fill: "#888" }} />
-                <Line type="monotone" dataKey="revenue" stroke="#0088FE" strokeWidth={2} dot={false} name="Actual" />
-                <Line type="monotone" dataKey="projected" stroke="#00C49F" strokeWidth={2} strokeDasharray="5 3" dot={false} name="Projected" />
-              </LineChart>
-            </ResponsiveContainer>
+            <div
+              role="img"
+              aria-label={`MRR forecast: current ${formatCurrency(forecast.currentMRR)}, projected ${formatCurrency(forecast.projectedMRR)} in 3 months at ${formatPercent(forecast.growthRate * 100)} growth rate`}
+            >
+              <ResponsiveContainer width="100%" height={120}>
+                <LineChart data={forecast.chartData}>
+                  <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                  <XAxis dataKey="label" fontSize={10} tick={false} />
+                  <YAxis tickFormatter={(v) => formatCurrency(v)} fontSize={10} width={55} />
+                  <Tooltip formatter={((value: number) => formatCurrency(value)) as any} />
+                  <ReferenceLine x={forecast.chartData[forecast.chartData.length - 4]?.label} stroke="#888" strokeDasharray="4 2" label={{ value: "now", fontSize: 10, fill: "#888" }} />
+                  <Line type="monotone" dataKey="revenue" stroke="#0088FE" strokeWidth={2} dot={false} name="Actual" />
+                  <Line type="monotone" dataKey="projected" stroke="#00C49F" strokeWidth={2} strokeDasharray="5 3" dot={false} name="Projected" />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
             <p className="text-xs text-muted-foreground text-center">
               Extrapolated from last 30-day growth rate — solid line = actual, dashed = projected
             </p>
@@ -363,21 +368,26 @@ export function AnalyticsContent() {
             {loadingRevenue ? (
               <Skeleton className="h-64 w-full" />
             ) : (
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={revenue?.revenueOverTime || []}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="date" fontSize={12} />
-                  <YAxis tickFormatter={(v) => formatCurrency(v)} fontSize={12} />
-                  <Tooltip formatter={((value: number) => formatCurrency(value)) as any} />
-                  <Line
-                    type="monotone"
-                    dataKey="revenue" 
-                    stroke="#0088FE" 
-                    strokeWidth={2}
-                    dot={false}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
+              <div
+                role="img"
+                aria-label={`Revenue over time line chart, ${revenue?.revenueOverTime?.length ?? 0} data points`}
+              >
+                <ResponsiveContainer width="100%" height={300}>
+                  <LineChart data={revenue?.revenueOverTime || []}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="date" fontSize={12} />
+                    <YAxis tickFormatter={(v) => formatCurrency(v)} fontSize={12} />
+                    <Tooltip formatter={((value: number) => formatCurrency(value)) as any} />
+                    <Line
+                      type="monotone"
+                      dataKey="revenue"
+                      stroke="#0088FE"
+                      strokeWidth={2}
+                      dot={false}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
             )}
           </CardContent>
         </Card>
@@ -393,25 +403,30 @@ export function AnalyticsContent() {
             {loadingLeads ? (
               <Skeleton className="h-64 w-full" />
             ) : leadSourceData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={300}>
-                <RechartsPie>
-                  <Pie
-                    data={leadSourceData}
-                    dataKey="count"
-                    nameKey="source"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={80}
-                    label={(props: any) => `${props.source}: ${props.count}`}
-                  >
-                    {leadSourceData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.fill} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                  <Legend />
-                </RechartsPie>
-              </ResponsiveContainer>
+              <div
+                role="img"
+                aria-label={`Lead sources pie chart: ${leadSourceData.map(d => `${d.source} ${d.count}`).join(", ")}`}
+              >
+                <ResponsiveContainer width="100%" height={300}>
+                  <RechartsPie>
+                    <Pie
+                      data={leadSourceData}
+                      dataKey="count"
+                      nameKey="source"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={80}
+                      label={(props: any) => `${props.source}: ${props.count}`}
+                    >
+                      {leadSourceData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.fill} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                    <Legend />
+                  </RechartsPie>
+                </ResponsiveContainer>
+              </div>
             ) : (
               <div className="h-64 flex items-center justify-center text-muted-foreground">
                 No lead data available
@@ -431,18 +446,23 @@ export function AnalyticsContent() {
             {loadingDeals ? (
               <Skeleton className="h-64 w-full" />
             ) : (
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={deals?.dealsByStage?.map(d => ({
-                  ...d,
-                  stageName: stageLabels[d.stage] || d.stage,
-                })) || []}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="stageName" fontSize={12} />
-                  <YAxis tickFormatter={(v) => formatCurrency(v)} fontSize={12} />
-                  <Tooltip formatter={((value: number) => formatCurrency(value)) as any} />
-                  <Bar dataKey="value" fill="#00C49F" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+              <div
+                role="img"
+                aria-label={`Deal pipeline value by stage bar chart: ${(deals?.dealsByStage ?? []).map(d => `${stageLabels[d.stage] || d.stage} ${formatCurrency(d.value)}`).join(", ")}`}
+              >
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={deals?.dealsByStage?.map(d => ({
+                    ...d,
+                    stageName: stageLabels[d.stage] || d.stage,
+                  })) || []}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="stageName" fontSize={12} />
+                    <YAxis tickFormatter={(v) => formatCurrency(v)} fontSize={12} />
+                    <Tooltip formatter={((value: number) => formatCurrency(value)) as any} />
+                    <Bar dataKey="value" fill="#00C49F" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
             )}
           </CardContent>
         </Card>
@@ -459,26 +479,31 @@ export function AnalyticsContent() {
               <Skeleton className="h-64 w-full" />
             ) : (
               <div className="space-y-4">
-                <ResponsiveContainer width="100%" height={200}>
-                  <BarChart 
-                    layout="vertical" 
-                    data={velocity?.avgDaysPerStage?.map(d => ({
-                      ...d,
-                      stageName: stageLabels[d.stage] || d.stage,
-                      isBottleneck: d.stage === velocity?.bottleneckStage,
-                    })) || []}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis type="number" fontSize={12} />
-                    <YAxis dataKey="stageName" type="category" fontSize={12} width={100} />
-                    <Tooltip />
-                    <Bar 
-                      dataKey="avgDays" 
-                      fill="#8884d8"
-                      radius={[0, 4, 4, 0]}
-                    />
-                  </BarChart>
-                </ResponsiveContainer>
+                <div
+                  role="img"
+                  aria-label={`Average days per pipeline stage horizontal bar chart: ${(velocity?.avgDaysPerStage ?? []).map(d => `${stageLabels[d.stage] || d.stage} ${d.avgDays} days`).join(", ")}${velocity?.bottleneckStage ? `; bottleneck at ${stageLabels[velocity.bottleneckStage] || velocity.bottleneckStage}` : ""}`}
+                >
+                  <ResponsiveContainer width="100%" height={200}>
+                    <BarChart
+                      layout="vertical"
+                      data={velocity?.avgDaysPerStage?.map(d => ({
+                        ...d,
+                        stageName: stageLabels[d.stage] || d.stage,
+                        isBottleneck: d.stage === velocity?.bottleneckStage,
+                      })) || []}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis type="number" fontSize={12} />
+                      <YAxis dataKey="stageName" type="category" fontSize={12} width={100} />
+                      <Tooltip />
+                      <Bar
+                        dataKey="avgDays"
+                        fill="#8884d8"
+                        radius={[0, 4, 4, 0]}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
                 {velocity?.bottleneckStage && (
                   <div className="flex items-center gap-2 text-sm">
                     <Badge variant="destructive">Bottleneck</Badge>
