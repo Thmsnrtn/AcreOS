@@ -1,6 +1,6 @@
 import { useId, useState, useMemo, useCallback, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { PageShell } from "@/components/page-shell";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
@@ -766,6 +766,7 @@ function PortfolioStatPill({
 export default function MapsPage() {
   useDocumentTitle("Map");
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedPropertyId, setSelectedPropertyId] = useState<number | undefined>();
@@ -980,14 +981,14 @@ export default function MapsPage() {
                         addCounty: county,
                         addState: state,
                       }).toString();
-                      window.location.href = `/properties?${qs}`;
+                      setLocation(`/properties?${qs}`);
                     } else {
                       const qs = new URLSearchParams({ addAtLat: String(latitude), addAtLng: String(longitude) }).toString();
-                      window.location.href = `/properties?${qs}`;
+                      setLocation(`/properties?${qs}`);
                     }
                   } catch {
                     const qs = new URLSearchParams({ addAtLat: String(latitude), addAtLng: String(longitude) }).toString();
-                    window.location.href = `/properties?${qs}`;
+                    setLocation(`/properties?${qs}`);
                   }
                 },
                 (err) => {

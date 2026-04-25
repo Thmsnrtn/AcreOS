@@ -1,5 +1,6 @@
 import { useId, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { PageShell } from "@/components/page-shell";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { usd } from "@/lib/format";
@@ -586,6 +587,7 @@ function StepExit({ report, onNext, onBack }: any) {
 
 function StepLetter({ report, onBack }: any) {
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   if (!report) return null;
   const lv = report.letterVariables;
 
@@ -717,7 +719,7 @@ Private Real Estate Investor`;
 
       <div className="flex gap-3">
         <Button variant="outline" onClick={onBack}><ChevronLeft className="w-4 h-4 mr-1" aria-hidden="true" /> Back</Button>
-        <Button className="flex-1" onClick={() => window.location.href = "/direct-mail-campaigns"}>
+        <Button className="flex-1" onClick={() => setLocation("/direct-mail-campaigns")}>
           <Send className="w-4 h-4 mr-2" aria-hidden="true" /> Launch campaign
         </Button>
       </div>
