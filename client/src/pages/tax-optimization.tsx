@@ -360,17 +360,19 @@ function ScenariosTab() {
             <CardTitle className="text-sm">Hold / Sell / Exchange Comparison</CardTitle>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={chartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                <YAxis tickFormatter={v => `$${(v / 1000).toFixed(0)}K`} tick={{ fontSize: 11 }} width={60} />
-                <Tooltip formatter={((val: number) => fmtCurrency(val)) as any} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Bar dataKey="Est. Tax" fill="#ef4444" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="Net Proceeds" fill="#22c55e" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            <div role="img" aria-label={`Hold/sell/exchange comparison for ${chartData.length} scenarios: ${chartData.map(d => `${d.name} ${fmtCurrency(d["Net Proceeds"] || 0)} net`).join(", ")}`}>
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={chartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                  <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                  <YAxis tickFormatter={v => `$${(v / 1000).toFixed(0)}K`} tick={{ fontSize: 11 }} width={60} />
+                  <Tooltip formatter={((val: number) => fmtCurrency(val)) as any} />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Bar dataKey="Est. Tax" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="Net Proceeds" fill="#22c55e" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -521,18 +523,20 @@ function ProjectionsTab() {
             <CardTitle className="text-sm">Multi-Year Tax Projection</CardTitle>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={projections} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                <XAxis dataKey="year" tick={{ fontSize: 12 }} />
-                <YAxis tickFormatter={v => `$${(v / 1000).toFixed(0)}K`} tick={{ fontSize: 11 }} width={65} />
-                <Tooltip formatter={((val: number) => fmtCurrency(val)) as any} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Line type="monotone" dataKey="taxLiability" name="Tax Liability" stroke="#ef4444" strokeWidth={2} dot={{ r: 3 }} />
-                <Line type="monotone" dataKey="afterTaxReturn" name="After-Tax Return" stroke="#22c55e" strokeWidth={2} dot={{ r: 3 }} />
-                <Line type="monotone" dataKey="strategySavings" name="Strategy Savings" stroke="#6366f1" strokeWidth={2} strokeDasharray="5 3" dot={{ r: 3 }} />
-              </LineChart>
-            </ResponsiveContainer>
+            <div role="img" aria-label={`Multi-year tax projection over ${projections.length} years: tax liability, after-tax return, and strategy savings`}>
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={projections} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                  <XAxis dataKey="year" tick={{ fontSize: 12 }} />
+                  <YAxis tickFormatter={v => `$${(v / 1000).toFixed(0)}K`} tick={{ fontSize: 11 }} width={65} />
+                  <Tooltip formatter={((val: number) => fmtCurrency(val)) as any} />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Line type="monotone" dataKey="taxLiability" name="Tax Liability" stroke="#ef4444" strokeWidth={2} dot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="afterTaxReturn" name="After-Tax Return" stroke="#22c55e" strokeWidth={2} dot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="strategySavings" name="Strategy Savings" stroke="#6366f1" strokeWidth={2} strokeDasharray="5 3" dot={{ r: 3 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
           </CardContent>
         </Card>
       )}

@@ -161,7 +161,11 @@ export default function FinancePage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="h-48">
+                <div
+                  className="h-48"
+                  role="img"
+                  aria-label={`Monthly cash flow over ${portfolioSummary.monthlyCashFlow.length} months: ${portfolioSummary.monthlyCashFlow.map(m => `${m.month} ${usd(m.amount, { noCents: true })}`).join(", ")}`}
+                >
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={portfolioSummary.monthlyCashFlow}>
                       <defs>

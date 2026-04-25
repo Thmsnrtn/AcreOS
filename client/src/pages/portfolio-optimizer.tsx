@@ -566,6 +566,7 @@ export default function PortfolioOptimizerPage() {
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
+                      <div role="img" aria-label={`Portfolio value distribution over ${timelineData.length} years with 10th–90th percentile bands from Monte Carlo simulation`}>
                       <ResponsiveContainer width="100%" height={300}>
                         <AreaChart data={timelineData} margin={{ top: 10, right: 10 }}>
                           <CartesianGrid strokeDasharray="3 3" />
@@ -582,6 +583,7 @@ export default function PortfolioOptimizerPage() {
                           <Area type="monotone" dataKey="p10" stackId="e" stroke="#ef4444" fill="#ef444420" name="p10" />
                         </AreaChart>
                       </ResponsiveContainer>
+                      </div>
                     </CardContent>
                   </Card>
                 )}
@@ -644,7 +646,11 @@ export default function PortfolioOptimizerPage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="h-72">
+                  <div
+                    className="h-72"
+                    role="img"
+                    aria-label={`Efficient frontier risk vs return for ${efficientFrontierData.length} portfolio strategies`}
+                  >
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={efficientFrontierData} layout="vertical">
                         <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
@@ -712,6 +718,7 @@ export default function PortfolioOptimizerPage() {
                       <CardTitle>By State</CardTitle>
                     </CardHeader>
                     <CardContent>
+                      <div role="img" aria-label={`Portfolio distribution by state across ${diversification.byState.length} states: ${diversification.byState.map((s: any) => `${s.state} ${s.percentage.toFixed(0)}%`).join(", ")}`}>
                       <ResponsiveContainer width="100%" height={200}>
                         <PieChart>
                           <Pie
@@ -730,6 +737,7 @@ export default function PortfolioOptimizerPage() {
                           <Tooltip formatter={(v: any) => [`${v.toFixed(1)}%`, 'Share']} />
                         </PieChart>
                       </ResponsiveContainer>
+                      </div>
                     </CardContent>
                   </Card>
 
@@ -759,6 +767,7 @@ export default function PortfolioOptimizerPage() {
                       <CardTitle>By Acreage Range</CardTitle>
                     </CardHeader>
                     <CardContent>
+                      <div role="img" aria-label={`Portfolio distribution by acreage range across ${diversification.byAcreSize.length} buckets`}>
                       <ResponsiveContainer width="100%" height={200}>
                         <BarChart data={diversification.byAcreSize}>
                           <CartesianGrid strokeDasharray="3 3" />
@@ -768,6 +777,7 @@ export default function PortfolioOptimizerPage() {
                           <Bar dataKey="percentage" fill="#d97541" radius={[4, 4, 0, 0]} />
                         </BarChart>
                       </ResponsiveContainer>
+                      </div>
                     </CardContent>
                   </Card>
 
@@ -985,6 +995,7 @@ export default function PortfolioOptimizerPage() {
               </CardHeader>
               <CardContent>
                 {diversification ? (
+                  <div role="img" aria-label={`Current vs AI-optimized allocation by state across ${(diversification.byState || []).length} states`}>
                   <ResponsiveContainer width="100%" height={300}>
                     <BarChart
                       data={[
@@ -1005,6 +1016,7 @@ export default function PortfolioOptimizerPage() {
                       <Bar dataKey="optimized" name="AI-Optimized %" fill="#4f8ef7" radius={[3, 3, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
+                  </div>
                 ) : (
                   <div className="text-center py-12 text-muted-foreground">
                     <BarChart2 className="w-10 h-10 mx-auto mb-3 opacity-30" />
@@ -1196,6 +1208,7 @@ function StressTestTab() {
           <CardTitle className="text-sm">All Scenarios Comparison</CardTitle>
         </CardHeader>
         <CardContent>
+          <div role="img" aria-label={`All scenarios price impact comparison across ${barData.length} scenarios: ${barData.map(b => `${b.name} ${b.impact}%`).join(", ")}`}>
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={barData}>
               <CartesianGrid strokeDasharray="3 3" />
@@ -1209,6 +1222,7 @@ function StressTestTab() {
               </Bar>
             </BarChart>
           </ResponsiveContainer>
+          </div>
         </CardContent>
       </Card>
     </div>
