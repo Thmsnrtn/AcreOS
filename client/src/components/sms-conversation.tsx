@@ -89,7 +89,7 @@ export function SmsConversation({ leadId, leadPhone, leadName, tcpaConsent, doNo
   if (!leadPhone) {
     return (
       <div className="p-6 text-center text-muted-foreground text-sm border rounded-lg">
-        <Phone className="h-8 w-8 mx-auto mb-2 opacity-50" />
+        <Phone className="h-8 w-8 mx-auto mb-2 opacity-50" aria-hidden="true" />
         <p>Add a phone number to this lead to start texting.</p>
       </div>
     );
@@ -97,10 +97,16 @@ export function SmsConversation({ leadId, leadPhone, leadName, tcpaConsent, doNo
 
   if (isLoading) {
     return (
-      <div className="space-y-3 p-4">
+      <div
+        role="status"
+        aria-busy="true"
+        aria-label="Loading SMS conversation"
+        className="space-y-3 p-4"
+      >
         <Skeleton className="h-10 w-3/4 ml-auto" />
         <Skeleton className="h-10 w-2/3" />
         <Skeleton className="h-10 w-3/4 ml-auto" />
+        <span className="sr-only">Loading…</span>
       </div>
     );
   }
@@ -112,26 +118,32 @@ export function SmsConversation({ leadId, leadPhone, leadName, tcpaConsent, doNo
       {/* Header */}
       <div className="flex items-center justify-between p-3 border-b">
         <div className="flex items-center gap-2">
-          <MessageSquare className="h-4 w-4 text-muted-foreground" />
+          <MessageSquare className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
           <span className="text-sm font-medium">
             SMS with {leadName || leadPhone}
           </span>
         </div>
         {isDncBlocked ? (
           <Badge variant="destructive" className="text-xs">
-            <AlertTriangle className="h-3 w-3 mr-1" />
+            <AlertTriangle className="h-3 w-3 mr-1" aria-hidden="true" />
             DNC listed
           </Badge>
         ) : (
           <Badge variant="outline" className="text-xs text-green-600 border-green-300">
-            <CheckCircle className="h-3 w-3 mr-1" />
+            <CheckCircle className="h-3 w-3 mr-1" aria-hidden="true" />
             TCPA clear
           </Badge>
         )}
       </div>
 
       {/* Messages */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-1">
+      <div
+        ref={scrollRef}
+        role="log"
+        aria-live="polite"
+        aria-label="SMS conversation"
+        className="flex-1 overflow-y-auto p-4 space-y-1"
+      >
         {(!messages || messages.length === 0) ? (
           <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
             No messages yet. Send the first text.
@@ -176,8 +188,8 @@ export function SmsConversation({ leadId, leadPhone, leadName, tcpaConsent, doNo
       {/* Input */}
       <div className="p-3 border-t space-y-2">
         {isDncBlocked ? (
-          <div className="text-center text-sm text-destructive py-2">
-            <AlertTriangle className="h-4 w-4 inline mr-1" />
+          <div role="alert" className="text-center text-sm text-destructive py-2">
+            <AlertTriangle className="h-4 w-4 inline mr-1" aria-hidden="true" />
             This lead is on the Do Not Contact list. SMS sending is disabled.
           </div>
         ) : (
@@ -188,8 +200,9 @@ export function SmsConversation({ leadId, leadPhone, leadName, tcpaConsent, doNo
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Type a message..."
+              placeholder="Type a message…"
               disabled={sendMutation.isPending}
+              autoCapitalize="sentences"
               aria-label="SMS message input"
             />
             <Button
@@ -198,7 +211,7 @@ export function SmsConversation({ leadId, leadPhone, leadName, tcpaConsent, doNo
               disabled={!message.trim() || sendMutation.isPending}
               aria-label="Send SMS"
             >
-              <Send className="h-4 w-4" />
+              <Send className="h-4 w-4" aria-hidden="true" />
             </Button>
           </div>
           </>
