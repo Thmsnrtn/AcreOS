@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import {
@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/hooks/use-toast";
 import { AlertTriangle, TrendingDown } from "lucide-react";
 
 const CANCEL_REASONS = [
@@ -33,6 +34,9 @@ export function CancellationDialog({ open, onOpenChange, currentTier }: Cancella
   const [step, setStep] = useState<"reason" | "confirm">("reason");
   const [reason, setReason] = useState<string>("");
   const [feedback, setFeedback] = useState("");
+  const reasonGroupId = useId();
+  const feedbackId = useId();
+  const { toast } = useToast();
 
   const contextQuery = useQuery({
     queryKey: ["/api/subscription/cancellation-context"],
@@ -56,6 +60,13 @@ export function CancellationDialog({ open, onOpenChange, currentTier }: Cancella
         window.location.href = data.portalUrl;
       }
     },
+    onError: (err: any) => {
+      toast({
+        title: "Couldn't cancel subscription",
+        description: `${err?.message ?? "Network error"} — your reason and feedback are preserved. Try again or contact support.`,
+        variant: "destructive",
+      });
+    },
   });
 
   const handleClose = () => {
@@ -72,7 +83,7 @@ export function CancellationDialog({ open, onOpenChange, currentTier }: Cancella
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5 text-amber-500" />
+                <AlertTriangle className="h-5 w-5 text-amber-500" aria-hidden="true" />
                 Cancel your subscription?
               </DialogTitle>
               <DialogDescription>
@@ -97,8 +108,8 @@ export function CancellationDialog({ open, onOpenChange, currentTier }: Cancella
             )}
 
             <div className="space-y-3">
-              <Label className="text-sm font-medium">Why are you cancelling?</Label>
-              <RadioGroup value={reason} onValueChange={setReason}>
+              <Label id={reasonGroupId} className="text-sm font-medium">Why are you cancelling?</Label>
+              <RadioGroup value={reason} onValueChange={setReason} aria-labelledby={reasonGroupId}>
                 {CANCEL_REASONS.map((r) => (
                   <div key={r.value} className="flex items-center space-x-2">
                     <RadioGroupItem value={r.value} id={r.value} />
@@ -107,18 +118,21 @@ export function CancellationDialog({ open, onOpenChange, currentTier }: Cancella
                 ))}
               </RadioGroup>
 
+              <Label htmlFor={feedbackId} className="sr-only">Additional feedback</Label>
               <Textarea
+                id={feedbackId}
                 placeholder="Any additional feedback? (optional)"
                 value={feedback}
                 onChange={(e) => setFeedback(e.target.value)}
                 rows={3}
+                autoCapitalize="sentences"
               />
             </div>
 
             <DialogFooter className="flex-col sm:flex-row gap-2">
               {currentTier !== "free" && currentTier !== "sprout" && (
                 <Button variant="outline" onClick={handleClose} className="flex items-center gap-1">
-                  <TrendingDown className="h-4 w-4" />
+                  <TrendingDown className="h-4 w-4" aria-hidden="true" />
                   Downgrade instead
                 </Button>
               )}
@@ -150,7 +164,7 @@ export function CancellationDialog({ open, onOpenChange, currentTier }: Cancella
                 disabled={cancelMutation.isPending}
                 onClick={() => cancelMutation.mutate()}
               >
-                {cancelMutation.isPending ? "Processing..." : "Confirm cancellation"}
+                {cancelMutation.isPending ? "Processing…" : "Confirm cancellation"}
               </Button>
             </DialogFooter>
           </>
