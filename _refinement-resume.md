@@ -631,6 +631,7 @@ to a dedicated 9b slice.
 **/goals (45):** ✅ complete — P1 delete confirmation, form onSubmit, 5 Label htmlFor, state-change reassurance on both mutations (commit `c7f67bf`)
 **/market-data + /tax-delinquent (46):** ✅ complete — two small pages, money-precision fix on tax-delinquent, role=group+aria-pressed on risk filters (commit `62e83e3`)
 **/direct-mail-campaigns (47):** ✅ complete — P1 money-precision on total spend, slice-25 teach-via-option-label on mail-type, form onSubmit, 2 reassurance toasts (commit `615c5d3`)
+**/tools + /acquisition-radar (48):** ✅ complete — P1 clickable-div fix on OpportunityCard, slice-25 teach on opportunity-type, ScoreBadge aria-label (commit `67ba4c6`)
 **/onboarding-v2 targeted (18):** ✅ complete (commit `70df779`) — 18b deferred
 **/settings targeted (19):** ✅ complete (commit `809044c`) — 19b remaining components deferred
 **/pipeline (20):** ✅ complete (commit `1b5d0f7`)
