@@ -164,7 +164,7 @@ export function FieldScanner({ propertyId, onComplete }: FieldScannerProps) {
       toast({ title: "Scan complete", description: "Field observations extracted and saved" });
     },
     onError: () => {
-      toast({ title: "Analysis failed", description: "Try again or add observations manually", variant: "destructive" });
+      toast({ title: "Couldn't analyze photo", description: "Your photo is preserved. Try again or add observations manually.", variant: "destructive" });
       setStep("capture");
     },
   });

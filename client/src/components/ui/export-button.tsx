@@ -60,8 +60,8 @@ export function ExportButton({
       toast({ title: "Export downloaded" });
     } catch (err: any) {
       toast({
-        title: "Export failed",
-        description: err.message || "Please try again.",
+        title: "Couldn't export",
+        description: `${err.message || "Try again"} — your data is unchanged.`,
         variant: "destructive",
       });
     } finally {

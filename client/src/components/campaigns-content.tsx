@@ -279,7 +279,7 @@ function OptimizerSuggestionsPanel({ campaign }: { campaign: Campaign }) {
         description: `Generated ${result.suggestionsGenerated} suggestions. Campaign score: ${result.score}/100.`,
       });
     } catch (err: any) {
-      toast({ title: "AI analysis failed", description: err.message, variant: "destructive" });
+      toast({ title: "Couldn't run AI analysis", description: `${err.message} — your existing suggestions are unchanged.`, variant: "destructive" });
     }
   };
 
@@ -288,7 +288,7 @@ function OptimizerSuggestionsPanel({ campaign }: { campaign: Campaign }) {
       await implementMutation.mutateAsync({ optimizationId: suggestion.id, campaignId: campaign.id });
       toast({ title: "Marked as implemented", description: suggestion.suggestion.slice(0, 80) });
     } catch (err: any) {
-      toast({ title: "Update failed", description: err.message, variant: "destructive" });
+      toast({ title: "Couldn't mark as implemented", description: `${err.message} — the suggestion's status is unchanged.`, variant: "destructive" });
     }
   };
 
@@ -990,7 +990,7 @@ function CampaignDetailDrawer({ campaign, onClose }: { campaign: Campaign; onClo
         toast({ title: "Test email sent", description: `Sent to ${data.to}` });
       },
       onError: (err: any) => {
-        toast({ title: "Test send failed", description: err.message, variant: "destructive" });
+        toast({ title: "Couldn't send test email", description: `${err.message} — no email was sent.`, variant: "destructive" });
       },
     });
   };

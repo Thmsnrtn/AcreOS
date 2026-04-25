@@ -328,8 +328,8 @@ export default function PropertiesPage() {
       toast({ title: "Export ready", description: `Downloaded ${filename}.` });
     } catch (error: any) {
       toast({
-        title: "Export failed",
-        description: error?.message || "We couldn't build your CSV. Try again in a moment.",
+        title: "Couldn't export properties",
+        description: `${error?.message || "We couldn't build your CSV"} — your property records are unchanged.`,
         variant: "destructive",
       });
     } finally {
@@ -400,8 +400,8 @@ export default function PropertiesPage() {
       queryClient.invalidateQueries({ queryKey: ['/api/properties'] });
     } catch (error: any) {
       toast({
-        title: "Import failed",
-        description: error?.message || "We couldn't import this file. Your existing properties weren't changed.",
+        title: "Couldn't import properties",
+        description: `${error?.message || "We couldn't import this file"} — your existing properties are unchanged.`,
         variant: "destructive",
       });
     } finally {
@@ -1526,7 +1526,7 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                   const json = JSON.stringify(currentProperty, null, 2);
                   navigator.clipboard?.writeText(json).then(
                     () => toast({ title: "Property JSON copied to clipboard" }),
-                    () => toast({ title: "Copy failed", description: "Clipboard permission denied", variant: "destructive" })
+                    () => toast({ title: "Couldn't copy", description: "Your browser blocked clipboard access. Select the JSON text and copy manually.", variant: "destructive" })
                   );
                 }}
                 data-testid="button-copy-property-json"

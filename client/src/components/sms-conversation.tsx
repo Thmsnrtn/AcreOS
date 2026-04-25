@@ -54,7 +54,7 @@ export function SmsConversation({ leadId, leadPhone, leadName, tcpaConsent, doNo
       queryClient.invalidateQueries({ queryKey: [`/api/leads/${leadId}/sms`] });
     },
     onError: () => {
-      toast({ title: "SMS failed", description: "Could not send message. Try again.", variant: "destructive" });
+      toast({ title: "Couldn't send SMS", description: "Your message is preserved in the input. Try sending again.", variant: "destructive" });
     },
   });
 

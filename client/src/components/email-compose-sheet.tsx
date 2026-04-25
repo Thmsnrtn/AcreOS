@@ -103,7 +103,7 @@ export function EmailComposeSheet({
       }
     },
     onError: () => {
-      toast({ title: "Send failed", description: "Could not send the email. Try again.", variant: "destructive" });
+      toast({ title: "Couldn't send email", description: "Your draft is preserved. Try sending again.", variant: "destructive" });
     },
   });
 

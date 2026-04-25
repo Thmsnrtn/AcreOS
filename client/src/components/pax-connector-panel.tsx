@@ -193,7 +193,7 @@ export function PaxConnectorPanel({ open, onOpenChange }: PaxConnectorPanelProps
       toast({ title: "Connector connected", description: "Pax can now use this integration." });
     },
     onError: (err: any) => {
-      toast({ title: "Connection failed", description: err.message, variant: "destructive" });
+      toast({ title: "Couldn't connect", description: `${err.message} — the connector remains disconnected.`, variant: "destructive" });
     },
   });
 

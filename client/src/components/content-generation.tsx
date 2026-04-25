@@ -222,7 +222,7 @@ export function GenerateCampaignCopy({ onGenerated, audienceDescription }: Gener
       toast({ title: "Campaign copy generated", description: "Review and edit before sending." });
     },
     onError: () => {
-      toast({ title: "Generation failed", description: "Could not generate copy. Try again.", variant: "destructive" });
+      toast({ title: "Couldn't generate copy", description: "Your existing draft is unchanged. Try again.", variant: "destructive" });
     },
   });
 

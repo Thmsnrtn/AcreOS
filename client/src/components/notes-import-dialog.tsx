@@ -168,7 +168,7 @@ export function NotesImportDialog({ open, onOpenChange }: Props) {
       queryClient.invalidateQueries({ queryKey: ["/api/money/notes"] });
     },
     onError: (err: any) => {
-      toast({ title: "Import failed", description: err.message, variant: "destructive" });
+      toast({ title: "Couldn't import notes", description: `${err.message} — your existing notes are unchanged.`, variant: "destructive" });
       setStep("map");
     },
   });

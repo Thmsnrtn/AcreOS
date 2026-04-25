@@ -323,8 +323,8 @@ export function PropertyAnalysisChat({ property, open, onOpenChange }: PropertyA
         },
       ]);
       toast({
-        title: "Analysis failed",
-        description: errMsg,
+        title: "Couldn't run analysis",
+        description: `${errMsg} — your conversation is preserved. Retry or rephrase.`,
         variant: "destructive",
       });
     } finally {

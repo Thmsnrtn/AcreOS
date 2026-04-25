@@ -135,7 +135,7 @@ export default function DataExportPage() {
       toast({ title: `${option.label} exported as ${fmt.toUpperCase()}` });
     } catch (err: any) {
       toast({
-        title: "Export failed",
+        title: "Couldn't export data",
         description: `${err.message}. Your data is unchanged — try again, or contact support if the issue persists.`,
         variant: "destructive",
       });

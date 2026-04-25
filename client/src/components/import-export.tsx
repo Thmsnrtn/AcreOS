@@ -104,8 +104,8 @@ export function ImportExportManager() {
     },
     onError: (error: Error) => {
       toast({
-        title: "Preview failed",
-        description: error.message,
+        title: "Couldn't preview file",
+        description: `${error.message} — your existing records are unchanged.`,
         variant: "destructive",
       });
     },
@@ -138,8 +138,8 @@ export function ImportExportManager() {
     },
     onError: (error: Error) => {
       toast({
-        title: "Import failed",
-        description: error.message,
+        title: "Couldn't import file",
+        description: `${error.message} — your existing records are unchanged.`,
         variant: "destructive",
       });
     },
@@ -173,8 +173,8 @@ export function ImportExportManager() {
     },
     onError: (error: Error) => {
       toast({
-        title: "Export failed",
-        description: error.message,
+        title: "Couldn't export data",
+        description: `${error.message} — try again or narrow the filters.`,
         variant: "destructive",
       });
     },
@@ -200,8 +200,8 @@ export function ImportExportManager() {
     },
     onError: (error: Error) => {
       toast({
-        title: "Backup failed",
-        description: error.message,
+        title: "Couldn't create backup",
+        description: `${error.message} — your data is unchanged.`,
         variant: "destructive",
       });
     },

@@ -75,7 +75,7 @@ export function DealInbox({ leadId, leadEmail, leadName }: DealInboxProps) {
       queryClient.invalidateQueries({ queryKey: [`/api/leads/${leadId}/emails`] });
     },
     onError: () => {
-      toast({ title: "Send failed", description: "Could not send the reply. Try again.", variant: "destructive" });
+      toast({ title: "Couldn't send reply", description: "Your draft reply is preserved. Try sending again.", variant: "destructive" });
     },
   });
 
