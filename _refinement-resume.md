@@ -788,6 +788,7 @@ to a dedicated 9b slice.
 **ErrorBoundary fallback a11y (202):** ✅ complete — role="alert" + aria-live="assertive" on the fallback container, decorative icons aria-hidden, error ID wrapped in `<code>`, sentence-case microcopy. (commit `a5fda7c`)
 **UsageLimitBanner a11y (203):** ✅ complete — role="alert" + aria-live varying by severity (assertive at-limit / polite at 75-99%), decorative icons aria-hidden, dismiss button got specific aria-label "Dismiss usage warning". (commit `99fdd6e`)
 **DisclaimerBanner + NotificationCenter (204):** ✅ complete — DisclaimerBanner: role="note" + aria-label per type, dismiss button aria-label per type. NotificationCenter: Bell trigger aria-label varies with unreadCount + aria-haspopup="dialog" + aria-expanded; mark-all button aria-label includes the count. Decorative icons aria-hidden. (commit `cbe4554`)
+**ProviderStatusBadges a11y (205):** ✅ complete — fixed color-only status. Each badge now has aria-label "{AI|SMS|Mail} {available|unavailable}", wrapper got role="group", colored dots aria-hidden. (commit `4beeb4e`)
 **/onboarding-v2 targeted (18):** ✅ complete (commit `70df779`) — 18b deferred
 **/settings targeted (19):** ✅ complete (commit `809044c`) — 19b remaining components deferred
 **/pipeline (20):** ✅ complete (commit `1b5d0f7`)
