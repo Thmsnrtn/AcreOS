@@ -6,7 +6,7 @@
  * validates with live API calls, and auto-wires services like Stripe webhooks.
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useId, useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -177,19 +177,21 @@ function CredentialField({
   const hint = HINTS[credKey] || "";
   const isRequired = credential?.isRequired ?? false;
   const hasExistingValue = credential?.hasValue && !value;
+  const inputId = useId();
 
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between">
-        <Label className="text-sm font-medium flex items-center gap-1.5">
+        <Label htmlFor={inputId} className="text-sm font-medium flex items-center gap-1.5">
           {credential?.label || credKey}
-          {isRequired && <span className="text-red-400 text-xs">*</span>}
+          {isRequired && <span className="text-red-400 text-xs" aria-hidden="true">*</span>}
         </Label>
         <div className="flex items-center gap-2">
           {docLink && (
             <a href={docLink} target="_blank" rel="noopener noreferrer"
-              className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-0.5">
-              Docs <ExternalLink className="w-3 h-3" />
+              aria-label={`Documentation for ${credential?.label || credKey} (opens in new tab)`}
+              className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm">
+              Docs <ExternalLink className="w-3 h-3" aria-hidden="true" />
             </a>
           )}
           {generateType && onGenerate && (
@@ -202,10 +204,16 @@ function CredentialField({
       </div>
       <div className="relative">
         <Input
+          id={inputId}
           type={isSecret && !show ? "password" : "text"}
           value={value}
           onChange={e => onChange(e.target.value)}
           placeholder={hasExistingValue ? (credential?.maskedValue || "••••••••") : hint}
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          aria-required={isRequired}
           className={cn(
             "pr-10 font-mono text-sm",
             validationResult?.status === "ok" && "border-green-500/50",
