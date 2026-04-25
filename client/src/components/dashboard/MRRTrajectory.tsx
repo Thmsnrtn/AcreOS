@@ -66,12 +66,12 @@ export function MRRTrajectory({ goalCents }: MRRTrajectoryProps) {
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base flex items-center gap-2">
-            <BarChart3 className="h-4 w-4 text-blue-500" />
-            Revenue Trajectory
+            <BarChart3 className="h-4 w-4 text-blue-500" aria-hidden="true" />
+            Revenue trajectory
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="h-44 bg-muted rounded-lg animate-pulse" />
+          <div role="status" aria-busy="true" aria-label="Loading revenue trajectory" className="h-44 bg-muted rounded-lg animate-pulse" />
         </CardContent>
       </Card>
     );
@@ -126,42 +126,43 @@ export function MRRTrajectory({ goalCents }: MRRTrajectoryProps) {
         <div className="flex items-start justify-between gap-2">
           <div>
             <CardTitle className="text-base flex items-center gap-2">
-              <BarChart3 className="h-4 w-4 text-blue-500" />
-              Revenue Trajectory
+              <BarChart3 className="h-4 w-4 text-blue-500" aria-hidden="true" />
+              Revenue trajectory
             </CardTitle>
             {forecastStatement && (
               <p className="text-xs text-muted-foreground mt-0.5">{forecastStatement}</p>
             )}
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <Badge variant="outline" className={`text-xs ${momBg}`}>
-              <MomIcon className="h-3 w-3 mr-1" />
+            <Badge variant="outline" className={`text-xs tabular-nums ${momBg}`} aria-label={`Month-over-month: ${mom > 0 ? "+" : ""}${mom.toFixed(1)}%`}>
+              <MomIcon className="h-3 w-3 mr-1" aria-hidden="true" />
               {mom > 0 ? "+" : ""}{mom.toFixed(1)}% MoM
             </Badge>
-            <Badge variant="outline" className="text-xs">
+            <Badge variant="outline" className="text-xs tabular-nums" aria-label={`Annual recurring revenue: ${formatCents(summary.arrCents)}`}>
               ARR {formatCents(summary.arrCents)}
             </Badge>
           </div>
         </div>
         {/* Sparkline stats row */}
-        <div className="flex items-center gap-4 pt-1 pb-0">
+        <dl className="flex items-center gap-4 pt-1 pb-0 m-0">
           <div>
-            <p className="text-xs text-muted-foreground">All-time revenue</p>
-            <p className="text-sm font-semibold">{formatCents(summary.totalRevenueAllTimeCents)}</p>
+            <dt className="text-xs text-muted-foreground">All-time revenue</dt>
+            <dd className="text-sm font-semibold tabular-nums m-0">{formatCents(summary.totalRevenueAllTimeCents)}</dd>
           </div>
-          <div className="h-8 border-l" />
+          <div aria-hidden="true" className="h-8 border-l" />
           <div>
-            <p className="text-xs text-muted-foreground">Previous MRR</p>
-            <p className="text-sm font-semibold">{formatCents(summary.prevMrrCents)}</p>
+            <dt className="text-xs text-muted-foreground">Previous MRR</dt>
+            <dd className="text-sm font-semibold tabular-nums m-0">{formatCents(summary.prevMrrCents)}</dd>
           </div>
-          <div className="h-8 border-l" />
+          <div aria-hidden="true" className="h-8 border-l" />
           <div>
-            <p className="text-xs text-muted-foreground">Current MRR</p>
-            <p className={`text-sm font-bold ${momColor}`}>{formatCents(summary.currentMrrCents)}</p>
+            <dt className="text-xs text-muted-foreground">Current MRR</dt>
+            <dd className={`text-sm font-bold tabular-nums m-0 ${momColor}`}>{formatCents(summary.currentMrrCents)}</dd>
           </div>
-        </div>
+        </dl>
       </CardHeader>
       <CardContent className="pt-2">
+        <div role="img" aria-label={`Revenue trajectory chart: current MRR ${formatCents(summary.currentMrrCents)}, ${mom > 0 ? "up" : mom < 0 ? "down" : "flat"} ${Math.abs(mom).toFixed(1)}% month over month${forecastStatement ? `. ${forecastStatement}` : ""}`}>
         <ResponsiveContainer width="100%" height={180}>
           <AreaChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
             <defs>
@@ -221,22 +222,23 @@ export function MRRTrajectory({ goalCents }: MRRTrajectoryProps) {
             />
           </AreaChart>
         </ResponsiveContainer>
-        <div className="flex items-center gap-4 justify-end mt-1">
-          <div className="flex items-center gap-1.5">
-            <div className="h-2 w-4 rounded-sm bg-blue-500" />
-            <span className="text-[10px] text-muted-foreground">Actual</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <div className="h-2 w-4 rounded-sm bg-purple-500 opacity-60" style={{ backgroundImage: "repeating-linear-gradient(90deg, #a855f7 0, #a855f7 4px, transparent 4px, transparent 8px)" }} />
-            <span className="text-[10px] text-muted-foreground">Forecast</span>
-          </div>
-          {goalCents && goalCents > 0 && (
-            <div className="flex items-center gap-1.5">
-              <div className="h-0.5 w-4 bg-amber-500" style={{ borderTop: "2px dashed #f59e0b" }} />
-              <span className="text-[10px] text-muted-foreground">Goal</span>
-            </div>
-          )}
         </div>
+        <ul aria-label="Chart legend" className="flex items-center gap-4 justify-end mt-1 list-none p-0 m-0">
+          <li className="flex items-center gap-1.5">
+            <span aria-hidden="true" className="h-2 w-4 rounded-sm bg-blue-500" />
+            <span className="text-[10px] text-muted-foreground">Actual</span>
+          </li>
+          <li className="flex items-center gap-1.5">
+            <span aria-hidden="true" className="h-2 w-4 rounded-sm bg-purple-500 opacity-60" style={{ backgroundImage: "repeating-linear-gradient(90deg, #a855f7 0, #a855f7 4px, transparent 4px, transparent 8px)" }} />
+            <span className="text-[10px] text-muted-foreground">Forecast</span>
+          </li>
+          {goalCents && goalCents > 0 && (
+            <li className="flex items-center gap-1.5">
+              <span aria-hidden="true" className="h-0.5 w-4 bg-amber-500" style={{ borderTop: "2px dashed #f59e0b" }} />
+              <span className="text-[10px] text-muted-foreground">Goal</span>
+            </li>
+          )}
+        </ul>
       </CardContent>
     </Card>
   );
