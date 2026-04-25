@@ -5558,23 +5558,26 @@ function GrowthSection() {
           {wizardStep === "setup" && (
             <div className="space-y-5 pt-2">
               <div>
-                <label className="text-sm font-medium mb-2 block">Campaign Template</label>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <p id="campaign-template-label" className="text-sm font-medium mb-2">Campaign template</p>
+                <div role="radiogroup" aria-labelledby="campaign-template-label" className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   {(templates || []).map((t) => {
                     const meta = TEMPLATE_META[t.key] || { icon: Radio, color: "text-primary", tagline: t.description };
                     const Icon = meta.icon;
+                    const isSelected = wizardTemplate === t.key;
                     return (
                       <button
                         key={t.key}
                         type="button"
+                        role="radio"
+                        aria-checked={isSelected}
                         onClick={() => setWizardTemplate(t.key)}
-                        className={`p-4 border-2 rounded-xl text-left transition-all ${
-                          wizardTemplate === t.key
+                        className={`p-4 border-2 rounded-xl text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                          isSelected
                             ? "border-primary bg-primary/5 shadow-sm"
                             : "border-border hover:border-primary/40"
                         }`}
                       >
-                        <Icon className={`w-5 h-5 mb-2 ${meta.color}`} />
+                        <Icon className={`w-5 h-5 mb-2 ${meta.color}`} aria-hidden="true" />
                         <div className="font-medium text-sm">{t.name}</div>
                         <div className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{meta.tagline}</div>
                         <div className="text-xs text-muted-foreground mt-1 italic">"{t.headline}"</div>
@@ -5586,25 +5589,29 @@ function GrowthSection() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="text-sm font-medium mb-1.5 block">Campaign Name</label>
+                  <Label htmlFor="campaign-name" className="text-sm font-medium mb-1.5 block">Campaign name</Label>
                   <Input
+                    id="campaign-name"
                     placeholder="e.g. AcreOS – Real Estate Pros – March 2026"
                     value={wizardName}
                     onChange={(e) => setWizardName(e.target.value)}
+                    autoCapitalize="words"
                   />
                 </div>
                 <div>
-                  <label className="text-sm font-medium mb-1.5 block flex justify-between">
-                    Daily Budget
+                  <Label htmlFor="campaign-budget" className="text-sm font-medium mb-1.5 block flex justify-between">
+                    Daily budget
                     <span className="font-semibold text-primary">${dailyBudgetDollars}/day</span>
-                  </label>
+                  </Label>
                   <input
+                    id="campaign-budget"
                     type="range"
                     min="1000"
                     max="50000"
                     step="500"
                     value={wizardBudget}
                     onChange={(e) => setWizardBudget(e.target.value)}
+                    aria-valuetext={`$${dailyBudgetDollars} per day`}
                     className="w-full accent-primary"
                   />
                   <div className="flex justify-between text-xs text-muted-foreground mt-0.5">
