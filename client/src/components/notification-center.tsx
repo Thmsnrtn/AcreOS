@@ -186,14 +186,14 @@ export function NotificationCenter() {
         
         <ScrollArea className="h-80">
           {notifications && notifications.length > 0 ? (
-            <div className="divide-y">
+            <ul className="divide-y list-none p-0 m-0" aria-label="Notifications list">
               {notifications.map((notification) => {
                 const Icon = notificationIcons[notification.type] || Bell;
                 const colorClass = notificationColors[notification.type] || "text-muted-foreground";
                 const link = getEntityLink(notification);
-                
+
                 const content = (
-                  <div 
+                  <div
                     className={`p-3 cursor-pointer transition-colors ${
                       notification.isRead ? "bg-background" : "bg-muted/30"
                     } hover:bg-muted/50`}
@@ -202,7 +202,7 @@ export function NotificationCenter() {
                   >
                     <div className="flex gap-3">
                       <div className={`flex-shrink-0 ${colorClass}`}>
-                        <Icon className="w-5 h-5" />
+                        <Icon className="w-5 h-5" aria-hidden="true" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className={`text-sm ${notification.isRead ? "" : "font-medium"}`}>
@@ -219,27 +219,28 @@ export function NotificationCenter() {
                       </div>
                       {!notification.isRead && (
                         <div className="flex-shrink-0">
-                          <div className="w-2 h-2 rounded-full bg-primary" />
+                          <div className="w-2 h-2 rounded-full bg-primary" aria-hidden="true" />
+                          <span className="sr-only">Unread</span>
                         </div>
                       )}
                     </div>
                   </div>
                 );
-                
+
                 if (link) {
                   return (
-                    <Link key={notification.id} href={link}>
-                      {content}
-                    </Link>
+                    <li key={notification.id}>
+                      <Link href={link}>{content}</Link>
+                    </li>
                   );
                 }
-                
-                return <div key={notification.id}>{content}</div>;
+
+                return <li key={notification.id}>{content}</li>;
               })}
-            </div>
+            </ul>
           ) : (
             <div className="flex flex-col items-center justify-center py-12 text-center px-4">
-              <Bell className="w-10 h-10 text-muted-foreground mb-3" />
+              <Bell className="w-10 h-10 text-muted-foreground mb-3" aria-hidden="true" />
               <p className="text-sm font-medium">No notifications</p>
               <p className="text-xs text-muted-foreground">You're all caught up!</p>
             </div>
