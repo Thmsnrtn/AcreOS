@@ -5,6 +5,7 @@ import { Mail, Reply, Eye, Clock, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -210,7 +211,7 @@ export function DealInbox({ leadId, leadEmail, leadName }: DealInboxProps) {
                       onClick={() => handleReply(email)}
                       aria-label={`Reply to email from ${email.fromEmail}`}
                     >
-                      <Reply className="h-3 w-3 mr-1" />
+                      <Reply className="h-3 w-3 mr-1" aria-hidden="true" />
                       Reply
                     </Button>
                   )}
@@ -225,9 +226,16 @@ export function DealInbox({ leadId, leadEmail, leadName }: DealInboxProps) {
               <SheetHeader>
                 <SheetTitle>Reply to {leadName || replyTo}</SheetTitle>
               </SheetHeader>
-              <div className="space-y-3 mt-4">
-                <div>
-                  <label htmlFor="reply-to" className="text-sm font-medium">To</label>
+              <form
+                id="deal-inbox-reply-form"
+                className="space-y-3 mt-4"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!replyMutation.isPending && replyTo && replyBody) replyMutation.mutate();
+                }}
+              >
+                <div className="space-y-2">
+                  <Label htmlFor="reply-to">To</Label>
                   <Input
                     id="reply-to"
                     value={replyTo}
@@ -240,34 +248,37 @@ export function DealInbox({ leadId, leadEmail, leadName }: DealInboxProps) {
                     autoComplete="email"
                   />
                 </div>
-                <div>
-                  <label htmlFor="reply-subject" className="text-sm font-medium">Subject</label>
+                <div className="space-y-2">
+                  <Label htmlFor="reply-subject">Subject</Label>
                   <Input
                     id="reply-subject"
                     value={replySubject}
                     onChange={(e) => setReplySubject(e.target.value)}
+                    autoCapitalize="sentences"
                   />
                 </div>
-                <div>
-                  <label htmlFor="reply-body" className="text-sm font-medium">Message</label>
+                <div className="space-y-2">
+                  <Label htmlFor="reply-body">Message</Label>
                   <Textarea
                     id="reply-body"
                     value={replyBody}
                     onChange={(e) => setReplyBody(e.target.value)}
                     rows={8}
-                    placeholder="Write your reply..."
+                    autoCapitalize="sentences"
+                    placeholder="Write your reply…"
                   />
                 </div>
                 <div className="flex justify-end gap-2">
-                  <Button variant="outline" onClick={() => setReplyOpen(false)}>Cancel</Button>
+                  <Button type="button" variant="outline" onClick={() => setReplyOpen(false)}>Cancel</Button>
                   <Button
-                    onClick={() => replyMutation.mutate()}
+                    type="submit"
+                    form="deal-inbox-reply-form"
                     disabled={replyMutation.isPending || !replyTo || !replyBody}
                   >
-                    {replyMutation.isPending ? "Sending..." : "Send Reply"}
+                    {replyMutation.isPending ? "Sending…" : "Send reply"}
                   </Button>
                 </div>
-              </div>
+              </form>
             </SheetContent>
           </Sheet>
         </div>
