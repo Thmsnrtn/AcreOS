@@ -483,6 +483,8 @@ export function AIOfferGenerator({ property }: AIOfferGeneratorProps) {
                       value={buyerName}
                       onChange={(e) => setBuyerName(e.target.value)}
                       placeholder="John Smith"
+                      autoComplete="name"
+                      autoCapitalize="words"
                       data-testid="input-buyer-name"
                     />
                   </div>
@@ -493,6 +495,8 @@ export function AIOfferGenerator({ property }: AIOfferGeneratorProps) {
                       value={buyerCompany}
                       onChange={(e) => setBuyerCompany(e.target.value)}
                       placeholder="ABC Land Investments"
+                      autoComplete="organization"
+                      autoCapitalize="words"
                       data-testid="input-buyer-company"
                     />
                   </div>
@@ -504,6 +508,9 @@ export function AIOfferGenerator({ property }: AIOfferGeneratorProps) {
                         value={buyerPhone}
                         onChange={(e) => setBuyerPhone(e.target.value)}
                         placeholder="(555) 123-4567"
+                        type="tel"
+                        inputMode="tel"
+                        autoComplete="tel"
                         data-testid="input-buyer-phone"
                       />
                     </div>
@@ -514,6 +521,12 @@ export function AIOfferGenerator({ property }: AIOfferGeneratorProps) {
                         value={buyerEmail}
                         onChange={(e) => setBuyerEmail(e.target.value)}
                         placeholder="john@example.com"
+                        type="email"
+                        inputMode="email"
+                        autoCapitalize="off"
+                        autoCorrect="off"
+                        spellCheck={false}
+                        autoComplete="email"
                         data-testid="input-buyer-email"
                       />
                     </div>
@@ -543,6 +556,7 @@ export function AIOfferGenerator({ property }: AIOfferGeneratorProps) {
                       value={sellerName}
                       onChange={(e) => setSellerName(e.target.value)}
                       placeholder="Property Owner"
+                      autoCapitalize="words"
                       data-testid="input-seller-name"
                     />
                   </div>

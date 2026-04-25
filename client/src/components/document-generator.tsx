@@ -633,7 +633,7 @@ function SettlementStatementForm({
               <FormItem>
                 <FormLabel>Buyer Name</FormLabel>
                 <FormControl>
-                  <Input placeholder="Buyer name" {...field} data-testid="input-settlement-buyer-name" />
+                  <Input placeholder="Buyer name" autoCapitalize="words" {...field} data-testid="input-settlement-buyer-name" />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -647,7 +647,7 @@ function SettlementStatementForm({
               <FormItem>
                 <FormLabel>Seller Name</FormLabel>
                 <FormControl>
-                  <Input placeholder="Seller name" {...field} data-testid="input-settlement-seller-name" />
+                  <Input placeholder="Seller name" autoCapitalize="words" {...field} data-testid="input-settlement-seller-name" />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -1081,7 +1081,7 @@ function PropertyFlyerForm({
             <FormItem>
               <FormLabel>Contact Name</FormLabel>
               <FormControl>
-                <Input placeholder="Your name or company" {...field} data-testid="input-flyer-contact-name" />
+                <Input placeholder="Your name or company" autoComplete="name" autoCapitalize="words" {...field} data-testid="input-flyer-contact-name" />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -1096,7 +1096,7 @@ function PropertyFlyerForm({
               <FormItem>
                 <FormLabel>Contact Phone</FormLabel>
                 <FormControl>
-                  <Input placeholder="(555) 123-4567" {...field} data-testid="input-flyer-contact-phone" />
+                  <Input placeholder="(555) 123-4567" type="tel" inputMode="tel" autoComplete="tel" {...field} data-testid="input-flyer-contact-phone" />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -1110,7 +1110,7 @@ function PropertyFlyerForm({
               <FormItem>
                 <FormLabel>Contact Email</FormLabel>
                 <FormControl>
-                  <Input placeholder="email@example.com" {...field} data-testid="input-flyer-contact-email" />
+                  <Input placeholder="email@example.com" type="email" inputMode="email" autoCapitalize="off" autoCorrect="off" spellCheck={false} autoComplete="email" {...field} data-testid="input-flyer-contact-email" />
                 </FormControl>
                 <FormMessage />
               </FormItem>
