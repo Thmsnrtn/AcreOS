@@ -2,7 +2,7 @@
  * TeamInviteCard — invite a seat, see pending invites, revoke pending invites.
  * Added in cycle 12 to unblock Maya T01/T02/T04 and Dolores E01 (bulk seat).
  */
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Card,
@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import {
   Select,
@@ -46,6 +47,8 @@ export function TeamInviteCard() {
   const [role, setRole] = useState<string>("member");
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkText, setBulkText] = useState("");
+  const inviteFormId = useId();
+  const bulkTextareaId = useId();
 
   const { data: invitationsData } = useQuery<{ invitations: Invitation[] }>({
     queryKey: ["/api/organization/invitations"],
@@ -74,8 +77,8 @@ export function TeamInviteCard() {
     },
     onError: (err: Error) =>
       toast({
-        title: "Could not send invitation",
-        description: err.message,
+        title: "Couldn't send invitation",
+        description: `${err.message} — your draft is preserved. Try again.`,
         variant: "destructive",
       }),
   });
@@ -90,8 +93,8 @@ export function TeamInviteCard() {
     },
     onError: (err: Error) =>
       toast({
-        title: "Could not revoke",
-        description: err.message,
+        title: "Couldn't revoke invitation",
+        description: `${err.message} — try again in a moment.`,
         variant: "destructive",
       }),
   });
@@ -130,15 +133,22 @@ export function TeamInviteCard() {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <UserPlus className="w-5 h-5" />
-          Invite Team Members
+          <UserPlus className="w-5 h-5" aria-hidden="true" />
+          Invite team members
         </CardTitle>
         <CardDescription>
           Send an invitation by email. Admins can paste a CSV for bulk invites.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
-        <div className="grid gap-3 md:grid-cols-[1fr_180px_auto]">
+        <form
+          id={inviteFormId}
+          className="grid gap-3 md:grid-cols-[1fr_180px_auto]"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (email && !createMutation.isPending) onInvite();
+          }}
+        >
           <div className="space-y-1.5">
             <Label htmlFor="invite-email" className="text-xs">
               Email
@@ -176,37 +186,42 @@ export function TeamInviteCard() {
           </div>
           <div className="flex items-end">
             <Button
-              onClick={onInvite}
+              type="submit"
               disabled={!email || createMutation.isPending}
               data-testid="button-send-invite"
             >
               Send invite
             </Button>
           </div>
-        </div>
+        </form>
 
         <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => setBulkOpen((v) => !v)}
-            className="text-xs text-primary underline-offset-4 hover:underline"
+            aria-expanded={bulkOpen}
+            className="text-xs text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
           >
-            <Upload className="w-3 h-3 inline mr-1" />
+            <Upload className="w-3 h-3 inline mr-1" aria-hidden="true" />
             {bulkOpen ? "Hide bulk invite" : "Bulk invite (CSV)"}
           </button>
         </div>
 
         {bulkOpen && (
           <div className="space-y-2 rounded-md border p-3">
-            <Label className="text-xs">
+            <Label htmlFor={bulkTextareaId} className="text-xs">
               One email per line, or <code>email:role</code> to override the
               default role.
             </Label>
-            <textarea
-              className="w-full min-h-[120px] rounded-md border bg-background p-2 text-sm font-mono"
+            <Textarea
+              id={bulkTextareaId}
+              className="min-h-[120px] text-sm font-mono"
               placeholder={"alice@example.com\nbob@example.com:admin\ncharlie@example.com:viewer"}
               value={bulkText}
               onChange={(e) => setBulkText(e.target.value)}
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
               data-testid="textarea-bulk-invites"
             />
             <div className="flex items-center gap-2">
@@ -227,7 +242,7 @@ export function TeamInviteCard() {
 
         {pending.length > 0 && (
           <div className="space-y-2">
-            <Label className="text-xs">Pending invitations</Label>
+            <h3 className="text-xs font-medium">Pending invitations</h3>
             <div className="rounded-md border divide-y">
               {pending.map((inv) => (
                 <div
@@ -258,9 +273,10 @@ export function TeamInviteCard() {
                     className="h-8 text-destructive hover:text-destructive"
                     onClick={() => revokeMutation.mutate(inv.id)}
                     disabled={revokeMutation.isPending}
+                    aria-label={`Revoke invitation to ${inv.email}`}
                     data-testid={`button-revoke-${inv.id}`}
                   >
-                    <X className="w-3 h-3" />
+                    <X className="w-3 h-3" aria-hidden="true" />
                   </Button>
                 </div>
               ))}
