@@ -82,7 +82,7 @@ function TimelineEvent({ event }: TimelineEventProps) {
 
   return (
     <div className="flex gap-3 pb-4" data-testid={`timeline-event-${event.id}`}>
-      <div className="flex flex-col items-center">
+      <div className="flex flex-col items-center" aria-hidden="true">
         <div className={`flex items-center justify-center w-8 h-8 rounded-full ${colorClass}`}>
           <Icon className="w-4 h-4" />
         </div>
@@ -106,9 +106,9 @@ function TimelineEvent({ event }: TimelineEventProps) {
                 {event.description}
               </p>
               <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-muted-foreground">
-                <span title={format(eventDate, "PPpp")}>
+                <time dateTime={eventDate.toISOString()} title={format(eventDate, "PPpp")}>
                   {relative(eventDate)}
-                </span>
+                </time>
                 {event.userId && (
                   <>
                     <span>by</span>
@@ -119,16 +119,17 @@ function TimelineEvent({ event }: TimelineEventProps) {
             </div>
             {hasMetadata && (
               <CollapsibleTrigger asChild>
-                <Button 
-                  variant="ghost" 
+                <Button
+                  variant="ghost"
                   size="icon"
-                  aria-label="Toggle event details"
+                  aria-label={isExpanded ? "Hide event details" : "Show event details"}
+                  aria-expanded={isExpanded}
                   data-testid={`timeline-event-expand-${event.id}`}
                 >
                   {isExpanded ? (
-                    <ChevronUp className="w-4 h-4" />
+                    <ChevronUp className="w-4 h-4" aria-hidden="true" />
                   ) : (
-                    <ChevronDown className="w-4 h-4" />
+                    <ChevronDown className="w-4 h-4" aria-hidden="true" />
                   )}
                 </Button>
               </CollapsibleTrigger>
