@@ -227,16 +227,19 @@ export function SellerIntentPanel({ leads }: Props) {
                         )}
                       </Button>
                     )}
-                    <Link href={`/leads?highlight=${lead.id}`}>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-9 w-9 p-0 min-h-9 min-w-9"
+                    <Button
+                      asChild
+                      variant="ghost"
+                      size="sm"
+                      className="h-9 w-9 p-0 min-h-9 min-w-9"
+                    >
+                      <Link
+                        href={`/leads?highlight=${lead.id}`}
                         aria-label={`Open ${leadName} in leads`}
                       >
                         <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
-                      </Button>
-                    </Link>
+                      </Link>
+                    </Button>
                   </div>
                 </li>
               );

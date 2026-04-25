@@ -248,11 +248,9 @@ export function NotificationCenter() {
         </ScrollArea>
         
         <div className="p-2 border-t">
-          <Link href="/activity">
-            <Button variant="ghost" className="w-full justify-center" size="sm">
-              View all activity
-            </Button>
-          </Link>
+          <Button asChild variant="ghost" className="w-full justify-center" size="sm">
+            <Link href="/activity">View all activity</Link>
+          </Button>
         </div>
       </PopoverContent>
     </Popover>

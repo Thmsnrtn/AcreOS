@@ -96,14 +96,14 @@ export function UserMorningBriefing() {
 
           {data.priority && (
             <motion.div variants={staggerItem} className="pt-2 border-t">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Today's Priority</p>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Today's priority</p>
               <p className="text-sm mb-2">{data.priority.headline}</p>
-              <Link href={data.priority.ctaRoute}>
-                <Button size="sm" className="gap-1">
+              <Button asChild size="sm" className="gap-1">
+                <Link href={data.priority.ctaRoute}>
                   {data.priority.ctaLabel}
-                  <ArrowRight className="h-3 w-3" />
-                </Button>
-              </Link>
+                  <ArrowRight className="h-3 w-3" aria-hidden="true" />
+                </Link>
+              </Button>
             </motion.div>
           )}
         </CardContent>

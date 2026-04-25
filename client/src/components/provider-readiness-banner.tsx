@@ -131,17 +131,18 @@ export function ProviderReadinessBanner({
         <span className="text-sm text-yellow-600">
           {missingChannelsList.join(" & ")} not configured
         </span>
-        <Link href="/settings?tab=integrations" className="ml-auto">
-          <Button 
-            size="sm" 
-            variant="outline" 
-            className="h-7 text-xs border-yellow-500/30 hover:bg-yellow-500/10"
-            data-testid="button-setup-providers-compact"
-          >
-            <Settings className="h-3 w-3 mr-1" />
+        <Button
+          asChild
+          size="sm"
+          variant="outline"
+          className="ml-auto h-7 text-xs border-yellow-500/30 hover:bg-yellow-500/10"
+          data-testid="button-setup-providers-compact"
+        >
+          <Link href="/settings?tab=integrations">
+            <Settings className="h-3 w-3 mr-1" aria-hidden="true" />
             Setup
-          </Button>
-        </Link>
+          </Link>
+        </Button>
       </div>
     );
   }
@@ -185,17 +186,18 @@ export function ProviderReadinessBanner({
         </div>
 
         <div className="flex items-center gap-3 pt-1">
-          <Link href="/settings?tab=integrations">
-            <Button 
-              size="sm" 
-              className="gap-1"
-              data-testid="button-configure-providers"
-            >
-              <Settings className="h-4 w-4" />
-              Configure Integrations
-              <ArrowRight className="h-3 w-3" />
-            </Button>
-          </Link>
+          <Button
+            asChild
+            size="sm"
+            className="gap-1"
+            data-testid="button-configure-providers"
+          >
+            <Link href="/settings?tab=integrations">
+              <Settings className="h-4 w-4" aria-hidden="true" />
+              Configure integrations
+              <ArrowRight className="h-3 w-3" aria-hidden="true" />
+            </Link>
+          </Button>
           <span className="text-xs text-muted-foreground">
             Add your SendGrid or Twilio API keys for branded communications
           </span>
