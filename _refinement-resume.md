@@ -797,6 +797,7 @@ to a dedicated 9b slice.
 **QuickCaptureFab a11y (211):** ✅ complete — role/aria-live per dialog state (idle/loading/failed/success), FAB aria-label more specific, sentence-case CTAs ("Try again", "Create lead manually", "Open camera", "View lead"), all decorative icons aria-hidden. (commit `48c0ac0`)
 **gis-filters a11y (212):** ✅ complete — toggle aria-expanded + aria-label varying by active-count, share button aria-label varying by copied state, clear button aria-label includes count, all decorative icons aria-hidden. (commit `f60f0b1`)
 **SavedViewsSelector (213):** ✅ complete — save-view dialog converted to `<form id>` so Enter submits; input gained autoCapitalize="sentences" + required; title-case → sentence-case ("Save view", "View name", placeholder "Hot leads"); default-view Star icons aria-hidden. (commit `864f25e`)
+**EmailDomainsSettings add-domain (214):** ✅ complete — dialog converted to `<form id>`; domain off-keyboard hardening + required; From email full email-keyboard stack; From name autoCapitalize=words + autoComplete=organization; sentence-case throughout. (commit `f161924`)
 **/onboarding-v2 targeted (18):** ✅ complete (commit `70df779`) — 18b deferred
 **/settings targeted (19):** ✅ complete (commit `809044c`) — 19b remaining components deferred
 **/pipeline (20):** ✅ complete (commit `1b5d0f7`)
