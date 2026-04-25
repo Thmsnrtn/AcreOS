@@ -99,6 +99,7 @@ import { Plus, MapPin, Ruler, DollarSign, Trash2, Loader2, Map as MapIcon, Refre
 import { LandCreditBadge } from "@/components/land-credit-badge";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import { DealCalculator } from "@/components/deal-calculator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EmptyState } from "@/components/empty-state";
@@ -125,6 +126,7 @@ import { usePersistedGisFilters } from "@/hooks/use-persisted-gis-filters";
 import { Bot } from "lucide-react";
 
 export default function PropertiesPage() {
+  useDocumentTitle("Inventory");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const propertiesQuery = usePropertiesPaginated({ page: currentPage, pageSize });
@@ -261,11 +263,11 @@ export default function PropertiesPage() {
       const res = await apiRequest("POST", "/api/properties/bulk-delete", { ids: Array.from(selectedPropertyIds) });
       if (!res.ok) throw new Error("Failed to delete properties");
       const result = await res.json();
-      toast({ title: "Success", description: `Deleted ${result.deletedCount} properties.` });
+      toast({ title: "Properties deleted", description: `Removed ${result.deletedCount} propert${result.deletedCount === 1 ? "y" : "ies"} from your inventory.` });
       setSelectedPropertyIds(new Set());
       queryClient.invalidateQueries({ queryKey: ["/api/properties"] });
     } catch (error: any) {
-      toast({ title: "Error", description: error.message || "Failed to delete properties", variant: "destructive" });
+      toast({ title: "Couldn't delete properties", description: `${error.message || "No properties were deleted"} — your inventory is unchanged.`, variant: "destructive" });
     } finally {
       setIsBulkDeleting(false);
       setShowBulkDeleteConfirm(false);
@@ -279,11 +281,11 @@ export default function PropertiesPage() {
       const res = await apiRequest("POST", "/api/properties/bulk-update", { ids: Array.from(selectedPropertyIds), updates: { status } });
       if (!res.ok) throw new Error("Failed to update properties");
       const result = await res.json();
-      toast({ title: "Success", description: `Updated ${result.updatedCount} properties to "${status}".` });
+      toast({ title: "Status updated", description: `Updated ${result.updatedCount} propert${result.updatedCount === 1 ? "y" : "ies"} to "${status}".` });
       setSelectedPropertyIds(new Set());
       queryClient.invalidateQueries({ queryKey: ["/api/properties"] });
     } catch (error: any) {
-      toast({ title: "Error", description: error.message || "Failed to update properties", variant: "destructive" });
+      toast({ title: "Couldn't update properties", description: `${error.message || "No properties were updated"} — their statuses are unchanged.`, variant: "destructive" });
     } finally {
       setIsBulkUpdating(false);
     }
@@ -418,14 +420,14 @@ export default function PropertiesPage() {
     if (deletingProperty) {
       deleteProperty(deletingProperty.id, {
         onSuccess: () => {
-          toast({ title: "Success", description: "Property deleted successfully." });
+          toast({ title: "Property deleted", description: "It has been removed from your inventory." });
           setDeletingProperty(null);
         },
         onError: (error: Error) => {
-          toast({ 
-            title: "Error", 
-            description: error.message || "Failed to delete property", 
-            variant: "destructive" 
+          toast({
+            title: "Couldn't delete property",
+            description: `${error.message || "No changes were made"} — the property is still in your inventory.`,
+            variant: "destructive",
           });
           setDeletingProperty(null);
         },
