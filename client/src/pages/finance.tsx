@@ -200,7 +200,7 @@ export default function FinancePage() {
                 data-testid="button-open-borrower-portal"
                 title="Preview the borrower-facing portal where buyers view balances and make payments"
               >
-                <a href="/portal" target="_blank" rel="noopener noreferrer">
+                <a href="/portal" target="_blank" rel="noopener noreferrer" aria-label="Open borrower portal (opens in new tab)">
                   Borrower Portal
                 </a>
               </Button>

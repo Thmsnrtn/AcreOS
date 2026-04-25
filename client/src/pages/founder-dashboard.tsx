@@ -3458,7 +3458,13 @@ export default function FounderDashboard() {
                       >
                         <span className="col-span-3 font-medium truncate" title={source.title}>
                           {source.portalUrl ? (
-                            <a href={source.portalUrl} target="_blank" rel="noopener noreferrer" className="hover:underline text-primary">
+                            <a
+                              href={source.portalUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              aria-label={`${source.title} portal (opens in new tab)`}
+                              className="hover:underline text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                            >
                               {source.title}
                             </a>
                           ) : source.title}

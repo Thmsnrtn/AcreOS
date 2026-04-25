@@ -94,11 +94,12 @@ export function ApiKeySetup({
           </div>
         )}
         {learnMoreUrl && (
-          <a 
-            href={learnMoreUrl} 
-            target="_blank" 
+          <a
+            href={learnMoreUrl}
+            target="_blank"
             rel="noopener noreferrer"
-            className="text-sm text-primary hover:underline block"
+            aria-label={`How to get your ${serviceName} API key (opens in new tab)`}
+            className="text-sm text-primary hover:underline block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
             data-testid={`link-learn-more-${service}`}
           >
             How to get your {serviceName} API key →
