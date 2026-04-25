@@ -36,6 +36,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import { format } from "date-fns";
 import { relative } from "@/lib/format";
 import { InspectionChecklist, type ChecklistResults } from "@/components/field-scout/inspection-checklist";
@@ -226,6 +227,7 @@ function clearOfflineQueue(): void {
 // ---------------------------------------------------------------------------
 
 export default function FieldScout() {
+  useDocumentTitle("Field scout");
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { coords, error: gpsError, loading: gpsLoading, getCurrentPosition } = useGPS();
@@ -382,7 +384,7 @@ export default function FieldScout() {
         });
         setShowQuickAdd(true);
         toast({
-          title: "Parcel identified!",
+          title: "Parcel identified",
           description: `${data.address} — Owner: ${data.ownerName || "Unknown"}`,
         });
       } else {
@@ -425,10 +427,17 @@ export default function FieldScout() {
       setNewLeadForm({});
       queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
       toast({
-        title: "Lead added!",
+        title: "Lead added",
         description: (data as any).isOffline
           ? "Saved locally — will sync when back online."
           : "Lead added to your pipeline.",
+      });
+    },
+    onError: () => {
+      toast({
+        variant: "destructive",
+        title: "Couldn't add lead",
+        description: "Your draft is preserved. Try again, or you can keep working — the lead will sync when you're back online.",
       });
     },
   });
@@ -480,7 +489,7 @@ export default function FieldScout() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/field-scout/visits"] });
       toast({
-        title: "Visit saved!",
+        title: "Visit saved",
         description: (data as any).synced === false
           ? "Saved locally — will sync when back online."
           : "Complete visit record saved to AcreOS.",
@@ -492,6 +501,13 @@ export default function FieldScout() {
       setCurrentNote("");
       setShowQuickAdd(false);
       setNewLeadForm({});
+    },
+    onError: () => {
+      toast({
+        variant: "destructive",
+        title: "Couldn't save visit",
+        description: "Your photos, notes, and checklist are still here on this device. Try again, or save will queue for sync when you reconnect.",
+      });
     },
   });
 
@@ -505,6 +521,13 @@ export default function FieldScout() {
         body: formData,
       });
       return resp.json();
+    },
+    onError: () => {
+      toast({
+        variant: "destructive",
+        title: "Couldn't upload photo",
+        description: "The photo is still on this device. Try again, or finish the visit and it'll queue for sync.",
+      });
     },
   });
 
