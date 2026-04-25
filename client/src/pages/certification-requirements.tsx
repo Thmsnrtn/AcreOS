@@ -4,8 +4,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
-import { CheckCircle, Circle, Award, BookOpen, Users, Star, Zap } from "lucide-react";
+import { CheckCircle, Circle, Award, BookOpen, Star, Zap } from "lucide-react";
 import { Link } from "wouter";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 const TIERS = [
   {
@@ -91,6 +92,7 @@ const TIERS = [
 ];
 
 export default function CertificationRequirements() {
+  useDocumentTitle("Certification requirements");
   const { data: progressData } = useQuery({
     queryKey: ["/api/certification/progress"],
     queryFn: () => fetch("/api/certification/progress", { credentials: "include" })
@@ -113,32 +115,31 @@ export default function CertificationRequirements() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold">Certification Requirements</h1>
-          <p className="text-muted-foreground">Requirements and benefits for each certification tier</p>
+          <h1 className="text-2xl font-bold">Certification requirements</h1>
+          <p className="text-muted-foreground">Requirements and benefits for each certification tier.</p>
         </div>
         <Link href="/certification-leaderboard">
           <Button variant="outline">
-            <Award className="h-4 w-4 mr-2" /> View Leaderboard
+            <Award className="h-4 w-4 mr-2" aria-hidden="true" /> View leaderboard
           </Button>
         </Link>
       </div>
 
-      {/* Current Progress */}
       {userTier !== "none" && (
         <Card className="border-primary">
           <CardContent className="pt-6">
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
               <div className="flex items-center gap-3">
-                <Award className="h-6 w-6 text-primary" />
+                <Award className="h-6 w-6 text-primary" aria-hidden="true" />
                 <div>
-                  <div className="font-semibold">Your Current Tier: {userTier}</div>
-                  <div className="text-sm text-muted-foreground">{userXP.toLocaleString()} XP earned</div>
+                  <div className="font-semibold">Your current tier: {userTier}</div>
+                  <div className="text-sm text-muted-foreground tabular-nums">{userXP.toLocaleString()} XP earned</div>
                 </div>
               </div>
               <Badge className="text-base px-3 py-1">
-                {TIERS.find(t => t.name === userTier)?.icon} {userTier}
+                <span aria-hidden="true">{TIERS.find(t => t.name === userTier)?.icon}</span> {userTier}
               </Badge>
             </div>
             {(() => {
@@ -151,88 +152,91 @@ export default function CertificationRequirements() {
                   <div>
                     <div className="flex justify-between text-sm mb-1">
                       <span>Progress to {nextTier.name}</span>
-                      <span>{userXP.toLocaleString()} / {nextTier.xpNeeded.toLocaleString()} XP</span>
+                      <span className="tabular-nums">{userXP.toLocaleString()} / {nextTier.xpNeeded.toLocaleString()} XP</span>
                     </div>
-                    <Progress value={pct} />
+                    <Progress
+                      value={pct}
+                      aria-label={`Progress to ${nextTier.name}: ${userXP.toLocaleString()} of ${nextTier.xpNeeded.toLocaleString()} XP, ${Math.round(pct)}%`}
+                    />
                   </div>
                 );
               }
-              return <p className="text-sm text-green-600 font-medium">🎉 You've reached the highest tier!</p>;
+              return <p className="text-sm text-green-600 font-medium" role="status"><span aria-hidden="true">🎉 </span>You've reached the highest tier!</p>;
             })()}
           </CardContent>
         </Card>
       )}
 
-      {/* Tier Cards */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+      <ul className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6" aria-label="Certification tiers">
         {TIERS.map(tier => {
           const status = getTierStatus(tier.name);
           return (
-            <Card
-              key={tier.name}
-              className={`relative ${status === "achieved" ? "opacity-80" : ""} border-2 ${status === "next" ? tier.borderColor : "border-border"}`}
-            >
-              {status === "achieved" && (
-                <div className="absolute top-3 right-3">
-                  <CheckCircle className="h-6 w-6 text-green-500" />
-                </div>
-              )}
-              {status === "next" && (
-                <div className="absolute top-3 right-3">
-                  <Badge className={tier.badgeColor}>Next Goal</Badge>
-                </div>
-              )}
-              <CardHeader>
-                <CardTitle className="flex items-center gap-3">
-                  <span className="text-3xl">{tier.icon}</span>
-                  <div>
-                    <div className="text-xl">{tier.name}</div>
-                    <div className="text-sm font-normal text-muted-foreground">{tier.xpNeeded.toLocaleString()} XP required</div>
+            <li key={tier.name}>
+              <Card
+                className={`relative h-full ${status === "achieved" ? "opacity-80" : ""} border-2 ${status === "next" ? tier.borderColor : "border-border"}`}
+              >
+                {status === "achieved" && (
+                  <div className="absolute top-3 right-3">
+                    <CheckCircle className="h-6 w-6 text-green-500" aria-label="Tier achieved" />
                   </div>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <div className="flex items-center gap-2 mb-2 text-sm font-semibold">
-                    <BookOpen className="h-4 w-4" /> Requirements
-                  </div>
-                  <ul className="space-y-1">
-                    {tier.requirements.map((req, i) => (
-                      <li key={i} className="flex items-start gap-2 text-sm">
-                        {status === "achieved" ? (
-                          <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" />
-                        ) : (
-                          <Circle className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
-                        )}
-                        {req}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-                <div>
-                  <div className="flex items-center gap-2 mb-2 text-sm font-semibold">
-                    <Star className="h-4 w-4" /> Benefits
-                  </div>
-                  <ul className="space-y-1">
-                    {tier.benefits.map((b, i) => (
-                      <li key={i} className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Zap className="h-3 w-3 text-yellow-500 flex-shrink-0" /> {b}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-                {status === "next" && (
-                  <Link href="/academy">
-                    <Button className="w-full" size="sm">
-                      Start Working Toward {tier.name}
-                    </Button>
-                  </Link>
                 )}
-              </CardContent>
-            </Card>
+                {status === "next" && (
+                  <div className="absolute top-3 right-3">
+                    <Badge className={tier.badgeColor}>Next goal</Badge>
+                  </div>
+                )}
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-3">
+                    <span className="text-3xl" aria-hidden="true">{tier.icon}</span>
+                    <div>
+                      <div className="text-xl">{tier.name}</div>
+                      <div className="text-sm font-normal text-muted-foreground tabular-nums">{tier.xpNeeded.toLocaleString()} XP required</div>
+                    </div>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <div className="flex items-center gap-2 mb-2 text-sm font-semibold">
+                      <BookOpen className="h-4 w-4" aria-hidden="true" /> Requirements
+                    </div>
+                    <ul className="space-y-1" aria-label={`${tier.name} requirements`}>
+                      {tier.requirements.map((req, i) => (
+                        <li key={i} className="flex items-start gap-2 text-sm">
+                          {status === "achieved" ? (
+                            <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" aria-label="Done" />
+                          ) : (
+                            <Circle className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" aria-label="Open" />
+                          )}
+                          {req}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 mb-2 text-sm font-semibold">
+                      <Star className="h-4 w-4" aria-hidden="true" /> Benefits
+                    </div>
+                    <ul className="space-y-1" aria-label={`${tier.name} benefits`}>
+                      {tier.benefits.map((b, i) => (
+                        <li key={i} className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Zap className="h-3 w-3 text-yellow-500 flex-shrink-0" aria-hidden="true" /> {b}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  {status === "next" && (
+                    <Link href="/academy">
+                      <Button className="w-full" size="sm" aria-label={`Start working toward ${tier.name} tier`}>
+                        Start working toward {tier.name}
+                      </Button>
+                    </Link>
+                  )}
+                </CardContent>
+              </Card>
+            </li>
           );
         })}
-      </div>
+      </ul>
     </div>
   );
 }

@@ -23,8 +23,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import { Eye, X, CheckCircle2, AlertCircle, Clock } from "lucide-react";
-import { relative } from "@/lib/format";
+import { relative, usd } from "@/lib/format";
 
 interface PreviewRow {
   id: number;
@@ -46,9 +47,10 @@ interface PreviewRow {
 }
 
 export default function FounderPreviewPage() {
+  useDocumentTitle("Action preview");
   const { data, isLoading, isError, refetch } = useQuery<{ pending: PreviewRow[]; recent: PreviewRow[] }>({
     queryKey: ["/api/founder/intelligence/action-previews"],
-    refetchInterval: 2_000, // fast refresh so countdowns stay in sync
+    refetchInterval: 2_000,
   });
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -64,7 +66,12 @@ export default function FounderPreviewPage() {
       qc.invalidateQueries({ queryKey: ["/api/founder/intelligence/action-previews"] });
       toast({ title: "Cancelled", description: "The action was cancelled before it committed." });
     },
-    onError: (e: Error) => toast({ title: "Cancel failed", description: e.message, variant: "destructive" }),
+    onError: (e: Error) =>
+      toast({
+        title: "Couldn't cancel action",
+        description: `${e.message}. The action may have already committed by the time you clicked — check the Recent list.`,
+        variant: "destructive",
+      }),
   });
 
   const pending = data?.pending ?? [];
@@ -76,58 +83,72 @@ export default function FounderPreviewPage() {
         <Card>
           <CardContent className="p-6">
             <h1 className="text-2xl font-semibold text-foreground mb-2 flex items-center gap-2">
-              <Eye className="h-5 w-5 text-muted-foreground" />
+              <Eye className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
               Supervise in real time
             </h1>
             <p className="text-sm text-muted-foreground">
               Every auto-approved action flows through here before it commits. Set{" "}
               <code className="text-xs bg-muted px-1.5 py-0.5 rounded">ACTION_PREVIEW_WINDOW_SECONDS</code>{" "}
-              in settings to control how long you have to cancel each action. The default (0) is
+              in settings to control how long you have to cancel each action. The default (<span className="tabular-nums">0</span>) is
               audit-only — actions commit immediately and appear in the Recent list.
             </p>
           </CardContent>
         </Card>
 
-        {/* Pending */}
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
-              <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-              Pending ({pending.length})
+              <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400" aria-hidden="true" />
+              Pending (<span className="tabular-nums">{pending.length}</span>)
             </CardTitle>
           </CardHeader>
           <CardContent>
             {isLoading ? (
-              <Skeleton className="h-16 w-full" />
+              <div role="status" aria-live="polite">
+                <span className="sr-only">Loading pending actions…</span>
+                <Skeleton className="h-16 w-full" />
+              </div>
             ) : isError ? (
-              <p className="text-sm text-red-600">Could not load previews.</p>
+              <p className="text-sm text-red-600" role="alert">
+                Couldn't load previews. Pending actions are still queued —{" "}
+                <button
+                  type="button"
+                  className="underline hover:no-underline"
+                  onClick={() => refetch()}
+                >
+                  try again
+                </button>.
+              </p>
             ) : pending.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 No actions in flight. Raise the preview window setting to see actions as they're about to commit.
               </p>
             ) : (
-              <div className="space-y-3">
+              <ul className="space-y-3" aria-label="Pending actions awaiting commit">
                 {pending.map((p) => (
-                  <PendingPreviewRow
-                    key={p.id}
-                    row={p}
-                    onCancel={() => cancelMutation.mutate(p.id)}
-                    cancelling={cancelMutation.isPending}
-                  />
+                  <li key={p.id}>
+                    <PendingPreviewRow
+                      row={p}
+                      onCancel={() => cancelMutation.mutate(p.id)}
+                      cancelling={cancelMutation.isPending}
+                    />
+                  </li>
                 ))}
-              </div>
+              </ul>
             )}
           </CardContent>
         </Card>
 
-        {/* Recent */}
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base">Recent (last 48h)</CardTitle>
           </CardHeader>
           <CardContent>
             {isLoading ? (
-              <Skeleton className="h-16 w-full" />
+              <div role="status" aria-live="polite">
+                <span className="sr-only">Loading recent actions…</span>
+                <Skeleton className="h-16 w-full" />
+              </div>
             ) : recent.length === 0 ? (
               <EmptyState
                 icon={Eye}
@@ -135,11 +156,13 @@ export default function FounderPreviewPage() {
                 description="Actions will appear here once the executor processes its first decisions."
               />
             ) : (
-              <div className="space-y-2">
+              <ul className="space-y-2" aria-label="Recent autonomous actions">
                 {recent.map((r) => (
-                  <RecentPreviewRow key={r.id} row={r} />
+                  <li key={r.id}>
+                    <RecentPreviewRow row={r} />
+                  </li>
                 ))}
-              </div>
+              </ul>
             )}
           </CardContent>
         </Card>
@@ -169,7 +192,7 @@ function PendingPreviewRow({
     <div className="border border-amber-200 dark:border-amber-800/40 bg-amber-50/50 dark:bg-amber-950/20 rounded-lg p-4">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
             <Badge variant="secondary" className="text-[10px]">
               {row.agentCodename}
             </Badge>
@@ -177,13 +200,13 @@ function PendingPreviewRow({
               {row.itemType}
             </Badge>
             {row.confidence != null && (
-              <span className="text-[10px] text-muted-foreground">
+              <span className="text-[10px] text-muted-foreground tabular-nums">
                 {row.confidence}% confidence
               </span>
             )}
             {row.estimatedImpactCents != null && (
-              <span className="text-[10px] text-muted-foreground">
-                ${(row.estimatedImpactCents / 100).toLocaleString()} impact
+              <span className="text-[10px] text-muted-foreground tabular-nums">
+                {usd(row.estimatedImpactCents / 100)} impact
               </span>
             )}
           </div>
@@ -195,7 +218,11 @@ function PendingPreviewRow({
           )}
         </div>
         <div className="flex flex-col items-end gap-2">
-          <span className="text-xs font-mono text-amber-700 dark:text-amber-400">
+          <span
+            className="text-xs font-mono text-amber-700 dark:text-amber-400 tabular-nums"
+            aria-live="polite"
+            aria-label={secondsLeft > 0 ? `${secondsLeft.toFixed(1)} seconds until commit` : "Committing now"}
+          >
             {secondsLeft > 0 ? `${secondsLeft.toFixed(1)}s` : "committing…"}
           </span>
           <Button
@@ -204,8 +231,9 @@ function PendingPreviewRow({
             size="sm"
             variant="destructive"
             data-testid={`cancel-preview-${row.id}`}
+            aria-label={`Cancel ${row.agentCodename} action: ${row.actionSummary}`}
           >
-            <X className="h-4 w-4 mr-1" />
+            <X className="h-4 w-4 mr-1" aria-hidden="true" />
             Cancel
           </Button>
         </div>
@@ -225,14 +253,17 @@ function RecentPreviewRow({ row }: { row: PreviewRow }) {
           : { icon: Clock, color: "text-amber-600 dark:text-amber-400", label: "pending" };
   return (
     <div className="flex items-center gap-3 py-2 px-3 rounded hover:bg-muted/40">
-      <statusMeta.icon className={`h-4 w-4 ${statusMeta.color} shrink-0`} />
+      <statusMeta.icon
+        className={`h-4 w-4 ${statusMeta.color} shrink-0`}
+        aria-label={`Status: ${statusMeta.label}`}
+      />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 flex-wrap mb-0.5">
           <code className="text-[10px] font-mono text-muted-foreground">{row.agentCodename}</code>
-          <span className="text-[10px] text-muted-foreground">·</span>
+          <span className="text-[10px] text-muted-foreground" aria-hidden="true">·</span>
           <span className="text-[10px] text-muted-foreground">{statusMeta.label}</span>
-          <span className="text-[10px] text-muted-foreground">·</span>
-          <span className="text-[10px] text-muted-foreground">
+          <span className="text-[10px] text-muted-foreground" aria-hidden="true">·</span>
+          <span className="text-[10px] text-muted-foreground tabular-nums">
             {relative(row.plannedAt)}
           </span>
         </div>
