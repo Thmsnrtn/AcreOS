@@ -16,6 +16,7 @@ import { SystemHealth } from "@/components/system-health";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import { 
   DollarSign, 
   TrendingUp, 
@@ -851,7 +852,7 @@ function ChurnRiskPanel() {
       toast({ title: "Rescue triggered", description: `Pax will reach out to ${orgName}` });
       refetch();
     } catch {
-      toast({ title: "Error", description: "Failed to trigger rescue", variant: "destructive" });
+      toast({ title: "Couldn't trigger rescue", description: "No outreach was queued. Try again or check the system status.", variant: "destructive" });
     }
   };
 
@@ -943,7 +944,7 @@ function PaxEyesPanel() {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/pax-observations"] });
       toast({ title: "Action executed", description: data.actionTaken?.replace(/_/g, " ") });
     },
-    onError: () => toast({ title: "Failed to execute action", variant: "destructive" }),
+    onError: () => toast({ title: "Couldn't execute action", description: "No changes were made. Try again or check the system status.", variant: "destructive" }),
   });
 
   const observations: any[] = data?.observations ?? [];
@@ -1053,7 +1054,7 @@ function FounderBriefingTrigger() {
       await apiRequest("POST", "/api/admin/founder-briefing/send");
       toast({ title: "Briefing sent", description: "Check your inbox for the founder briefing email." });
     } catch {
-      toast({ title: "Error", description: "Failed to send briefing", variant: "destructive" });
+      toast({ title: "Couldn't send briefing", description: "No email was sent. Try again or check the system status.", variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -1078,6 +1079,7 @@ const DASHBOARD_TABS: { id: DashboardTab; label: string; icon: React.ReactNode }
 ];
 
 export default function FounderDashboard() {
+  useDocumentTitle("Founder dashboard");
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<DashboardTab>(() => {
     try { return (localStorage.getItem("founder_dashboard_tab") as DashboardTab) || "overview"; } catch { return "overview"; }
@@ -1272,7 +1274,7 @@ export default function FounderDashboard() {
       setGeneratingPromptFor(null);
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't complete that action", description: `${error.message} — no changes were made.`, variant: "destructive" });
       setGeneratingPromptFor(null);
     },
   });
@@ -1288,7 +1290,7 @@ export default function FounderDashboard() {
       setPromptDialogOpen(true);
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't complete that action", description: `${error.message} — no changes were made.`, variant: "destructive" });
     },
   });
 
@@ -1306,7 +1308,7 @@ export default function FounderDashboard() {
       toast({ title: "Escalation marked as resolved" });
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't complete that action", description: `${error.message} — no changes were made.`, variant: "destructive" });
     },
   });
 
@@ -1327,7 +1329,7 @@ export default function FounderDashboard() {
       await navigator.clipboard.writeText(generatedPrompt);
       toast({ title: "Copied to clipboard" });
     } catch {
-      toast({ title: "Failed to copy", variant: "destructive" });
+      toast({ title: "Couldn't copy", description: "Your browser blocked clipboard access. Select the text and copy manually.", variant: "destructive" });
     }
   };
 
@@ -1342,7 +1344,7 @@ export default function FounderDashboard() {
       toast({ title: "Feature request updated" });
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't complete that action", description: `${error.message} — no changes were made.`, variant: "destructive" });
     },
   });
 
@@ -1406,10 +1408,10 @@ export default function FounderDashboard() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['/api/admin/dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['/api/admin/alerts'] });
-      toast({ title: "Success", description: data.message || "All alerts acknowledged" });
+      toast({ title: "Alerts acknowledged", description: data.message || "All alerts acknowledged." });
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't complete that action", description: `${error.message} — no changes were made.`, variant: "destructive" });
     },
   });
 
@@ -1422,10 +1424,10 @@ export default function FounderDashboard() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['/api/admin/dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['/api/admin/alerts'] });
-      toast({ title: "Success", description: data.message || "All alerts resolved" });
+      toast({ title: "Alerts resolved", description: data.message || "All alerts resolved." });
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't complete that action", description: `${error.message} — no changes were made.`, variant: "destructive" });
     },
   });
 
@@ -1481,7 +1483,7 @@ export default function FounderDashboard() {
       toast({ title: "Data source updated" });
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't complete that action", description: `${error.message} — no changes were made.`, variant: "destructive" });
     },
   });
 
@@ -1496,7 +1498,7 @@ export default function FounderDashboard() {
       toast({ title: "Success", description: data.message });
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't complete that action", description: `${error.message} — no changes were made.`, variant: "destructive" });
     },
   });
 
@@ -1511,7 +1513,7 @@ export default function FounderDashboard() {
       toast({ title: "Endpoint deleted" });
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Couldn't complete that action", description: `${error.message} — no changes were made.`, variant: "destructive" });
     },
   });
 
