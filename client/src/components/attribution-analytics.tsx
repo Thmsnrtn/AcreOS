@@ -220,13 +220,13 @@ export function AttributionAnalytics() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b bg-muted/40">
-                        <th className="text-left px-4 py-2 font-medium text-xs text-muted-foreground">Campaign</th>
-                        <th className="text-right px-4 py-2 font-medium text-xs text-muted-foreground">Channel</th>
-                        <th className="text-right px-4 py-2 font-medium text-xs text-muted-foreground">Conversions</th>
-                        <th className="text-right px-4 py-2 font-medium text-xs text-muted-foreground">Revenue</th>
-                        <th className="text-right px-4 py-2 font-medium text-xs text-muted-foreground">Cost</th>
-                        <th className="text-right px-4 py-2 font-medium text-xs text-muted-foreground">ROI</th>
-                        <th className="text-right px-4 py-2 font-medium text-xs text-muted-foreground">Avg Days</th>
+                        <th scope="col" className="text-left px-4 py-2 font-medium text-xs text-muted-foreground">Campaign</th>
+                        <th scope="col" className="text-right px-4 py-2 font-medium text-xs text-muted-foreground">Channel</th>
+                        <th scope="col" className="text-right px-4 py-2 font-medium text-xs text-muted-foreground">Conversions</th>
+                        <th scope="col" className="text-right px-4 py-2 font-medium text-xs text-muted-foreground">Revenue</th>
+                        <th scope="col" className="text-right px-4 py-2 font-medium text-xs text-muted-foreground">Cost</th>
+                        <th scope="col" className="text-right px-4 py-2 font-medium text-xs text-muted-foreground">ROI</th>
+                        <th scope="col" className="text-right px-4 py-2 font-medium text-xs text-muted-foreground">Avg Days</th>
                       </tr>
                     </thead>
                     <tbody>

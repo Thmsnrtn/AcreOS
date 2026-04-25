@@ -148,9 +148,9 @@ export function TierUpgradePanel({ onSelectTier, currentTier }: TierUpgradePanel
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b bg-muted/50">
-              <th className="text-left p-3 font-medium">Feature</th>
+              <th scope="col" className="text-left p-3 font-medium">Feature</th>
               {LAUNCH_TIERS.map((t) => (
-                <th key={t.id} className="text-center p-3 font-medium">{t.name}</th>
+                <th scope="col" key={t.id} className="text-center p-3 font-medium">{t.name}</th>
               ))}
             </tr>
           </thead>

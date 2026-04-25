@@ -588,10 +588,10 @@ export function AnalyticsContent() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b">
-                    <th className="text-left py-2 px-3">Campaign</th>
-                    <th className="text-right py-2 px-3">Sent</th>
-                    <th className="text-right py-2 px-3">Responses</th>
-                    <th className="text-right py-2 px-3">Response Rate</th>
+                    <th scope="col" className="text-left py-2 px-3">Campaign</th>
+                    <th scope="col" className="text-right py-2 px-3">Sent</th>
+                    <th scope="col" className="text-right py-2 px-3">Responses</th>
+                    <th scope="col" className="text-right py-2 px-3">Response Rate</th>
                   </tr>
                 </thead>
                 <tbody>

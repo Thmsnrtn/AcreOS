@@ -196,12 +196,12 @@ export function CohortAnalytics() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b bg-muted/40">
-                      <th className="text-left px-4 py-2 font-medium text-xs text-muted-foreground">Segment</th>
-                      <th className="text-right px-4 py-2 font-medium text-xs text-muted-foreground">Leads</th>
-                      <th className="text-right px-4 py-2 font-medium text-xs text-muted-foreground">Contacted</th>
-                      <th className="text-right px-4 py-2 font-medium text-xs text-muted-foreground">Offer %</th>
-                      <th className="text-right px-4 py-2 font-medium text-xs text-muted-foreground">Close %</th>
-                      <th className="text-right px-4 py-2 font-medium text-xs text-muted-foreground">Avg Days</th>
+                      <th scope="col" className="text-left px-4 py-2 font-medium text-xs text-muted-foreground">Segment</th>
+                      <th scope="col" className="text-right px-4 py-2 font-medium text-xs text-muted-foreground">Leads</th>
+                      <th scope="col" className="text-right px-4 py-2 font-medium text-xs text-muted-foreground">Contacted</th>
+                      <th scope="col" className="text-right px-4 py-2 font-medium text-xs text-muted-foreground">Offer %</th>
+                      <th scope="col" className="text-right px-4 py-2 font-medium text-xs text-muted-foreground">Close %</th>
+                      <th scope="col" className="text-right px-4 py-2 font-medium text-xs text-muted-foreground">Avg Days</th>
                     </tr>
                   </thead>
                   <tbody>

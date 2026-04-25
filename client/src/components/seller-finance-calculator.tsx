@@ -272,11 +272,11 @@ export default function SellerFinanceCalculator({
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="text-muted-foreground border-b">
-                      <th className="text-left pb-1 pr-2">Mo.</th>
-                      <th className="text-right pb-1 pr-2">Payment</th>
-                      <th className="text-right pb-1 pr-2">Principal</th>
-                      <th className="text-right pb-1 pr-2">Interest</th>
-                      <th className="text-right pb-1">Balance</th>
+                      <th scope="col" className="text-left pb-1 pr-2">Mo.</th>
+                      <th scope="col" className="text-right pb-1 pr-2">Payment</th>
+                      <th scope="col" className="text-right pb-1 pr-2">Principal</th>
+                      <th scope="col" className="text-right pb-1 pr-2">Interest</th>
+                      <th scope="col" className="text-right pb-1">Balance</th>
                     </tr>
                   </thead>
                   <tbody>
