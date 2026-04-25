@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { Users, Mail, Loader2, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,6 +26,7 @@ interface NeighborOutreachProps {
 export function NeighborOutreach({ propertyId, isOwned }: NeighborOutreachProps) {
   const { toast } = useToast();
   const [showList, setShowList] = useState(false);
+  const [, setLocation] = useLocation();
 
   const { data, isLoading, error } = useQuery<{ neighbors: Neighbor[] }>({
     queryKey: [`/api/properties/${propertyId}/neighbors`],
@@ -86,9 +88,9 @@ export function NeighborOutreach({ propertyId, isOwned }: NeighborOutreachProps)
               variant="ghost"
               size="sm"
               className="px-0 mt-1 underline"
-              onClick={() => window.location.href = `/properties/${propertyId}?action=enrich`}
+              onClick={() => setLocation(`/properties/${propertyId}?action=enrich`)}
             >
-              Enrich This Property
+              Enrich this property
             </Button>
             <span className="text-xs"> to identify adjacent parcels.</span>
           </div>
