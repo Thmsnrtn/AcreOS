@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState, type FormEvent } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -7,7 +7,6 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
@@ -16,27 +15,18 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Users,
   Shield,
-  CheckCircle2,
-  Star,
   MapPin,
   DollarSign,
   Edit2,
   Loader2,
   BadgeCheck,
-  AlertCircle,
-  FileText,
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useDocumentTitle } from "@/hooks/use-document-title";
+import { usd } from "@/lib/format";
 
 interface InvestorProfile {
   id: number;
@@ -56,8 +46,8 @@ interface InvestorProfile {
 }
 
 const FOCUS_OPTIONS = [
-  "Raw Land", "Timber", "Agricultural", "Recreational", "Residential Subdivision",
-  "Commercial", "Industrial", "Conservation Easements", "Mineral Rights",
+  "Raw land", "Timber", "Agricultural", "Recreational", "Residential subdivision",
+  "Commercial", "Industrial", "Conservation easements", "Mineral rights",
 ];
 
 const US_STATES = [
@@ -68,7 +58,10 @@ const US_STATES = [
   "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY",
 ];
 
+const reassurance = "Your changes are still on this device — try again.";
+
 export default function InvestorDirectoryPage() {
+  useDocumentTitle("Investor network");
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [editOpen, setEditOpen] = useState(false);
@@ -82,6 +75,14 @@ export default function InvestorDirectoryPage() {
     investmentFocus: [] as string[],
     targetStates: [] as string[],
   });
+
+  const displayNameId = useId();
+  const bioId = useId();
+  const minId = useId();
+  const maxId = useId();
+  const focusLegendId = useId();
+  const statesLegendId = useId();
+  const attestId = useId();
 
   const { data: myData, isLoading: myLoading } = useQuery<{ profile: InvestorProfile | null }>({
     queryKey: ["/api/investor-profiles/my"],
@@ -101,7 +102,8 @@ export default function InvestorDirectoryPage() {
       setEditOpen(false);
       toast({ title: "Profile saved" });
     },
-    onError: (err: any) => toast({ title: "Failed to save", description: err.message, variant: "destructive" }),
+    onError: (err: any) =>
+      toast({ title: "Failed to save", description: `${err.message}. ${reassurance}`, variant: "destructive" }),
   });
 
   const verifyMutation = useMutation({
@@ -112,7 +114,8 @@ export default function InvestorDirectoryPage() {
       setVerifyOpen(false);
       toast({ title: "Identity verified", description: "Your investor badge is now active." });
     },
-    onError: (err: any) => toast({ title: "Verification failed", description: err.message, variant: "destructive" }),
+    onError: (err: any) =>
+      toast({ title: "Verification failed", description: `${err.message}. ${reassurance}`, variant: "destructive" }),
   });
 
   const myProfile = myData?.profile;
@@ -150,23 +153,35 @@ export default function InvestorDirectoryPage() {
     }));
   }
 
+  function handleSaveSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!profileForm.displayName || saveMutation.isPending) return;
+    saveMutation.mutate(profileForm);
+  }
+
+  function handleVerifySubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (selfAttestation.length < 50 || verifyMutation.isPending) return;
+    verifyMutation.mutate();
+  }
+
   return (
     <PageShell>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold">Investor Network</h1>
-          <p className="text-muted-foreground text-sm mt-0.5">Your investor profile and verified buyer/seller directory</p>
+          <h1 className="text-2xl font-bold">Investor network</h1>
+          <p className="text-muted-foreground text-sm mt-0.5">Your investor profile and verified land investor directory</p>
         </div>
         <div className="flex gap-2">
           {myProfile?.verificationStatus !== "verified" && (
             <Button variant="outline" onClick={() => setVerifyOpen(true)}>
-              <BadgeCheck className="h-4 w-4 mr-2" />
-              Get Verified
+              <BadgeCheck className="h-4 w-4 mr-2" aria-hidden="true" />
+              Get verified
             </Button>
           )}
           <Button onClick={openEditWithCurrentData}>
-            <Edit2 className="h-4 w-4 mr-2" />
-            {myProfile ? "Edit Profile" : "Create Profile"}
+            <Edit2 className="h-4 w-4 mr-2" aria-hidden="true" />
+            {myProfile ? "Edit profile" : "Create profile"}
           </Button>
         </div>
       </div>
@@ -175,18 +190,18 @@ export default function InvestorDirectoryPage() {
         <div className="lg:col-span-1">
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-base">My Investor Profile</CardTitle>
+              <CardTitle className="text-base">My investor profile</CardTitle>
             </CardHeader>
             <CardContent>
               {myLoading ? (
-                <div className="flex justify-center py-6">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                <div className="flex justify-center py-6" role="status" aria-label="Loading your profile">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" aria-hidden="true" />
                 </div>
               ) : !myProfile ? (
                 <div className="text-center py-6">
-                  <Users className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+                  <Users className="h-10 w-10 text-muted-foreground mx-auto mb-3" aria-hidden="true" />
                   <p className="text-sm text-muted-foreground mb-3">Create your investor profile to appear in the network directory.</p>
-                  <Button onClick={() => setEditOpen(true)} size="sm">Create Profile</Button>
+                  <Button onClick={() => setEditOpen(true)} size="sm">Create profile</Button>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -196,40 +211,52 @@ export default function InvestorDirectoryPage() {
                       {myProfile.bio && <p className="text-xs text-muted-foreground mt-0.5">{myProfile.bio}</p>}
                     </div>
                     {myProfile.verificationStatus === "verified" ? (
-                      <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300">
-                        <BadgeCheck className="h-3 w-3 mr-1" />
+                      <Badge
+                        className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300"
+                        aria-label="Identity verified"
+                      >
+                        <BadgeCheck className="h-3 w-3 mr-1" aria-hidden="true" />
                         Verified
                       </Badge>
                     ) : (
-                      <Badge variant="secondary">Unverified</Badge>
+                      <Badge variant="secondary" aria-label="Identity not yet verified">Unverified</Badge>
                     )}
                   </div>
-                  {myProfile.investmentFocus && myProfile.investmentFocus.length > 0 && (
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-1">Investment Focus</p>
-                      <div className="flex flex-wrap gap-1">
-                        {myProfile.investmentFocus.map(f => (
-                          <Badge key={f} variant="outline" className="text-xs">{f}</Badge>
-                        ))}
+                  <dl className="space-y-3">
+                    {myProfile.investmentFocus && myProfile.investmentFocus.length > 0 && (
+                      <div>
+                        <dt className="text-xs text-muted-foreground mb-1">Investment focus</dt>
+                        <dd>
+                          <ul className="flex flex-wrap gap-1 list-none p-0 m-0" aria-label="Investment focus areas">
+                            {myProfile.investmentFocus.map(f => (
+                              <li key={f}>
+                                <Badge variant="outline" className="text-xs">{f}</Badge>
+                              </li>
+                            ))}
+                          </ul>
+                        </dd>
                       </div>
-                    </div>
-                  )}
-                  {myProfile.targetStates && myProfile.targetStates.length > 0 && (
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
-                        <MapPin className="h-3 w-3" /> Target States
-                      </p>
-                      <p className="text-sm">{myProfile.targetStates.join(", ")}</p>
-                    </div>
-                  )}
-                  {(myProfile.minDealSize || myProfile.maxDealSize) && (
-                    <div className="flex items-center gap-1 text-sm">
-                      <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
-                      {myProfile.minDealSize && `$${parseInt(myProfile.minDealSize).toLocaleString()}`}
-                      {myProfile.minDealSize && myProfile.maxDealSize && " – "}
-                      {myProfile.maxDealSize && `$${parseInt(myProfile.maxDealSize).toLocaleString()}`}
-                    </div>
-                  )}
+                    )}
+                    {myProfile.targetStates && myProfile.targetStates.length > 0 && (
+                      <div>
+                        <dt className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+                          <MapPin className="h-3 w-3" aria-hidden="true" /> Target states
+                        </dt>
+                        <dd className="text-sm">{myProfile.targetStates.join(", ")}</dd>
+                      </div>
+                    )}
+                    {(myProfile.minDealSize || myProfile.maxDealSize) && (
+                      <div>
+                        <dt className="text-xs text-muted-foreground mb-1">Deal size range</dt>
+                        <dd className="flex items-center gap-1 text-sm tabular-nums">
+                          <DollarSign className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+                          {myProfile.minDealSize && usd(myProfile.minDealSize, { noCents: true })}
+                          {myProfile.minDealSize && myProfile.maxDealSize && " – "}
+                          {myProfile.maxDealSize && usd(myProfile.maxDealSize, { noCents: true })}
+                        </dd>
+                      </div>
+                    )}
+                  </dl>
                 </div>
               )}
             </CardContent>
@@ -241,35 +268,35 @@ export default function InvestorDirectoryPage() {
           <Card>
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-base">Verified Investors ({directory.length})</CardTitle>
-                <Badge variant="secondary" className="flex items-center gap-1">
-                  <Shield className="h-3 w-3" />
-                  Verified Only
+                <CardTitle className="text-base">Verified investors ({directory.length})</CardTitle>
+                <Badge variant="secondary" className="flex items-center gap-1" aria-label="Directory shows verified investors only">
+                  <Shield className="h-3 w-3" aria-hidden="true" />
+                  Verified only
                 </Badge>
               </div>
-              <CardDescription className="text-xs">Real estate professionals with verified identities in the AcreOS network</CardDescription>
+              <CardDescription className="text-xs">Land investors with verified identities in the AcreOS network</CardDescription>
             </CardHeader>
             <CardContent>
               {dirLoading ? (
-                <div className="flex justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                <div className="flex justify-center py-8" role="status" aria-label="Loading directory">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" aria-hidden="true" />
                 </div>
               ) : directory.length === 0 ? (
                 <div className="text-center py-10">
-                  <Users className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+                  <Users className="h-10 w-10 text-muted-foreground mx-auto mb-3" aria-hidden="true" />
                   <p className="text-muted-foreground">No verified investors yet. Be the first to get verified!</p>
                 </div>
               ) : (
-                <div className="space-y-3">
+                <ul className="space-y-3 list-none p-0 m-0" aria-label="Verified investor directory">
                   {directory.map(profile => (
-                    <div key={profile.id} className="flex items-start gap-3 p-3 border rounded-lg">
+                    <li key={profile.id} className="flex items-start gap-3 p-3 border rounded-lg">
                       <div className="p-2 bg-muted rounded-full flex-shrink-0">
-                        <Users className="h-4 w-4 text-muted-foreground" />
+                        <Users className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="font-medium text-sm">{profile.displayName}</span>
-                          <BadgeCheck className="h-4 w-4 text-emerald-500" />
+                          <BadgeCheck className="h-4 w-4 text-emerald-500" aria-label="Verified investor" />
                           {profile.badgeLevel && <Badge variant="secondary" className="text-xs">{profile.badgeLevel}</Badge>}
                         </div>
                         {profile.bio && <p className="text-xs text-muted-foreground mt-0.5 truncate">{profile.bio}</p>}
@@ -284,13 +311,13 @@ export default function InvestorDirectoryPage() {
                       </div>
                       {profile.totalDeals && (
                         <div className="text-right flex-shrink-0">
-                          <p className="text-sm font-semibold">{profile.totalDeals}</p>
+                          <p className="text-sm font-semibold tabular-nums" aria-label={`${profile.totalDeals} completed deals`}>{profile.totalDeals}</p>
                           <p className="text-xs text-muted-foreground">deals</p>
                         </div>
                       )}
-                    </div>
+                    </li>
                   ))}
-                </div>
+                </ul>
               )}
             </CardContent>
           </Card>
@@ -301,72 +328,105 @@ export default function InvestorDirectoryPage() {
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{myProfile ? "Edit" : "Create"} Investor Profile</DialogTitle>
+            <DialogTitle>{myProfile ? "Edit" : "Create"} investor profile</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label>Display Name</Label>
-              <Input
-                placeholder="How you'll appear in the directory"
-                value={profileForm.displayName}
-                onChange={e => setProfileForm(p => ({ ...p, displayName: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Bio</Label>
-              <Textarea
-                placeholder="Brief description of your investment strategy..."
-                value={profileForm.bio}
-                onChange={e => setProfileForm(p => ({ ...p, bio: e.target.value }))}
-                rows={3}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
+          <form onSubmit={handleSaveSubmit}>
+            <div className="space-y-4 py-2">
               <div className="space-y-1.5">
-                <Label>Min Deal Size ($)</Label>
-                <Input type="number" placeholder="5000" value={profileForm.minDealSize} onChange={e => setProfileForm(p => ({ ...p, minDealSize: e.target.value }))} />
+                <Label htmlFor={displayNameId}>Display name</Label>
+                <Input
+                  id={displayNameId}
+                  placeholder="How you'll appear in the directory"
+                  value={profileForm.displayName}
+                  onChange={e => setProfileForm(p => ({ ...p, displayName: e.target.value }))}
+                  autoCapitalize="words"
+                  autoCorrect="off"
+                  spellCheck={false}
+                />
               </div>
               <div className="space-y-1.5">
-                <Label>Max Deal Size ($)</Label>
-                <Input type="number" placeholder="500000" value={profileForm.maxDealSize} onChange={e => setProfileForm(p => ({ ...p, maxDealSize: e.target.value }))} />
+                <Label htmlFor={bioId}>Bio</Label>
+                <Textarea
+                  id={bioId}
+                  placeholder="Brief description of your investment strategy..."
+                  value={profileForm.bio}
+                  onChange={e => setProfileForm(p => ({ ...p, bio: e.target.value }))}
+                  rows={3}
+                />
               </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Investment Focus</Label>
-              <div className="flex flex-wrap gap-1.5">
-                {FOCUS_OPTIONS.map(f => (
-                  <button
-                    key={f}
-                    onClick={() => toggleFocus(f)}
-                    className={`px-2.5 py-1 rounded-full text-xs border transition-colors ${profileForm.investmentFocus.includes(f) ? "bg-primary text-primary-foreground border-primary" : "border-border hover:bg-muted"}`}
-                  >
-                    {f}
-                  </button>
-                ))}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor={minId}>Min deal size ($)</Label>
+                  <Input
+                    id={minId}
+                    type="number"
+                    inputMode="numeric"
+                    placeholder="5000"
+                    value={profileForm.minDealSize}
+                    onChange={e => setProfileForm(p => ({ ...p, minDealSize: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor={maxId}>Max deal size ($)</Label>
+                  <Input
+                    id={maxId}
+                    type="number"
+                    inputMode="numeric"
+                    placeholder="500000"
+                    value={profileForm.maxDealSize}
+                    onChange={e => setProfileForm(p => ({ ...p, maxDealSize: e.target.value }))}
+                  />
+                </div>
               </div>
+              <fieldset className="space-y-1.5">
+                <legend id={focusLegendId} className="text-sm font-medium leading-none">Investment focus</legend>
+                <div className="flex flex-wrap gap-1.5" role="group" aria-labelledby={focusLegendId}>
+                  {FOCUS_OPTIONS.map(f => {
+                    const selected = profileForm.investmentFocus.includes(f);
+                    return (
+                      <button
+                        key={f}
+                        type="button"
+                        onClick={() => toggleFocus(f)}
+                        aria-pressed={selected}
+                        aria-label={`${selected ? "Remove" : "Add"} focus area: ${f}`}
+                        className={`px-2.5 py-1 rounded-full text-xs border transition-colors ${selected ? "bg-primary text-primary-foreground border-primary" : "border-border hover:bg-muted"}`}
+                      >
+                        {f}
+                      </button>
+                    );
+                  })}
+                </div>
+              </fieldset>
+              <fieldset className="space-y-1.5">
+                <legend id={statesLegendId} className="text-sm font-medium leading-none">Target states</legend>
+                <div className="flex flex-wrap gap-1" role="group" aria-labelledby={statesLegendId}>
+                  {US_STATES.map(s => {
+                    const selected = profileForm.targetStates.includes(s);
+                    return (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => toggleState(s)}
+                        aria-pressed={selected}
+                        aria-label={`${selected ? "Remove" : "Add"} target state: ${s}`}
+                        className={`px-2 py-0.5 rounded text-xs border transition-colors ${selected ? "bg-primary text-primary-foreground border-primary" : "border-border hover:bg-muted"}`}
+                      >
+                        {s}
+                      </button>
+                    );
+                  })}
+                </div>
+              </fieldset>
             </div>
-            <div className="space-y-1.5">
-              <Label>Target States</Label>
-              <div className="flex flex-wrap gap-1">
-                {US_STATES.map(s => (
-                  <button
-                    key={s}
-                    onClick={() => toggleState(s)}
-                    className={`px-2 py-0.5 rounded text-xs border transition-colors ${profileForm.targetStates.includes(s) ? "bg-primary text-primary-foreground border-primary" : "border-border hover:bg-muted"}`}
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
-            <Button onClick={() => saveMutation.mutate(profileForm)} disabled={!profileForm.displayName || saveMutation.isPending}>
-              {saveMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-              Save Profile
-            </Button>
-          </DialogFooter>
+            <DialogFooter className="mt-4">
+              <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
+              <Button type="submit" disabled={!profileForm.displayName || saveMutation.isPending}>
+                {saveMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" aria-hidden="true" /> : null}
+                Save profile
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 
@@ -374,38 +434,45 @@ export default function InvestorDirectoryPage() {
       <Dialog open={verifyOpen} onOpenChange={setVerifyOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Verify Your Identity</DialogTitle>
+            <DialogTitle>Verify your identity</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-sm text-blue-700 dark:text-blue-300">
-              <p className="font-medium mb-1">Verification enables:</p>
-              <ul className="space-y-0.5 text-xs">
-                <li>• BadgeCheck mark on your profile</li>
-                <li>• Access to premium deal rooms</li>
-                <li>• Higher visibility in buyer/seller matching</li>
-              </ul>
+          <form onSubmit={handleVerifySubmit}>
+            <div className="space-y-4 py-2">
+              <div
+                role="region"
+                aria-label="Verification benefits"
+                className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-sm text-blue-700 dark:text-blue-300"
+              >
+                <p className="font-medium mb-1">Verification enables:</p>
+                <ul className="space-y-0.5 text-xs list-disc pl-4">
+                  <li>Verified badge on your profile</li>
+                  <li>Access to premium deal rooms</li>
+                  <li>Higher visibility in buyer/seller matching</li>
+                </ul>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor={attestId}>Self-attestation statement</Label>
+                <Textarea
+                  id={attestId}
+                  placeholder="I confirm that I am a legitimate land investor operating legally in my jurisdiction. I agree to AcreOS Marketplace Terms of Service and will conduct all transactions lawfully..."
+                  value={selfAttestation}
+                  onChange={e => setSelfAttestation(e.target.value)}
+                  rows={4}
+                />
+                <p className="text-xs text-muted-foreground">By submitting, you attest to your identity and legal status as an investor.</p>
+              </div>
             </div>
-            <div className="space-y-1.5">
-              <Label>Self-Attestation Statement</Label>
-              <Textarea
-                placeholder="I confirm that I am a legitimate real estate investor operating legally in my jurisdiction. I agree to AcreOS Marketplace Terms of Service and will conduct all transactions lawfully..."
-                value={selfAttestation}
-                onChange={e => setSelfAttestation(e.target.value)}
-                rows={4}
-              />
-              <p className="text-xs text-muted-foreground">By submitting, you attest to your identity and legal status as an investor.</p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setVerifyOpen(false)}>Cancel</Button>
-            <Button
-              onClick={() => verifyMutation.mutate()}
-              disabled={selfAttestation.length < 50 || verifyMutation.isPending}
-            >
-              {verifyMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <BadgeCheck className="h-4 w-4 mr-2" />}
-              Submit Verification
-            </Button>
-          </DialogFooter>
+            <DialogFooter className="mt-4">
+              <Button type="button" variant="outline" onClick={() => setVerifyOpen(false)}>Cancel</Button>
+              <Button
+                type="submit"
+                disabled={selfAttestation.length < 50 || verifyMutation.isPending}
+              >
+                {verifyMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" aria-hidden="true" /> : <BadgeCheck className="h-4 w-4 mr-2" aria-hidden="true" />}
+                Submit verification
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </PageShell>
