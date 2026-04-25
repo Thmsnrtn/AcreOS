@@ -790,6 +790,7 @@ to a dedicated 9b slice.
 **DisclaimerBanner + NotificationCenter (204):** ✅ complete — DisclaimerBanner: role="note" + aria-label per type, dismiss button aria-label per type. NotificationCenter: Bell trigger aria-label varies with unreadCount + aria-haspopup="dialog" + aria-expanded; mark-all button aria-label includes the count. Decorative icons aria-hidden. (commit `cbe4554`)
 **ProviderStatusBadges a11y (205):** ✅ complete — fixed color-only status. Each badge now has aria-label "{AI|SMS|Mail} {available|unavailable}", wrapper got role="group", colored dots aria-hidden. (commit `4beeb4e`)
 **FocusList + LeadsEmptyState (206):** ✅ complete — FocusList next-action button got type/focus-visible/aria-label combining label+reason. LeadsEmptyState decorative icon cluster + button icons aria-hidden, sentence-case "Add your first lead". (commit `196aafb`)
+**Empty-states polish (207):** ✅ complete — parallel polish on Deals/Properties/Tasks/Campaigns empty states: decorative icon clusters aria-hidden, button icons aria-hidden, sentence-case CTAs ("Create your first deal/task/campaign", "Add a property"). (commit `8a08dd2`)
 **/onboarding-v2 targeted (18):** ✅ complete (commit `70df779`) — 18b deferred
 **/settings targeted (19):** ✅ complete (commit `809044c`) — 19b remaining components deferred
 **/pipeline (20):** ✅ complete (commit `1b5d0f7`)
