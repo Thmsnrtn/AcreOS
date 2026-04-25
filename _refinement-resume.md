@@ -638,6 +638,7 @@ to a dedicated 9b slice.
 **/offers (52):** ✅ complete — P1 money-precision on 5 sites, 6 mutation error toasts with reassurance (previously 1 was silent), preview stats → dl/dt/dd (commit `69ca5ec`)
 **/matching-engine (53):** ✅ complete — form onSubmit, usd() on suggested offer, 2 reassurance toasts (both previously silent-title-only), ul/li (commit `70dede1`)
 **/property-tax (54):** ✅ complete — portal-lookup try/catch with 2 toast branches, full mobile-keyboard on state Input, dl/dt/dd stats, ul/li (commit `e408ef5`)
+**/closing-costs + /listing-syndication (55):** ✅ complete — calculate() error handler added (previously silent), 3+3 reassurance toasts, sync-status icons get aria-label (commit `7e0fe50`)
 **/onboarding-v2 targeted (18):** ✅ complete (commit `70df779`) — 18b deferred
 **/settings targeted (19):** ✅ complete (commit `809044c`) — 19b remaining components deferred
 **/pipeline (20):** ✅ complete (commit `1b5d0f7`)
