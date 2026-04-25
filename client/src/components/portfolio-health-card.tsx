@@ -3,6 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Link } from "wouter";
 import { ArrowRight, AlertTriangle, TrendingUp } from "lucide-react";
+import { usd } from "@/lib/format";
 
 interface HealthDimension {
   label: string;
@@ -33,7 +34,7 @@ function HealthGauge({ score }: { score: number }) {
     score >= 80 ? "Excellent" :
     score >= 60 ? "Good" :
     score >= 40 ? "Fair" :
-    "Needs Attention";
+    "Needs attention";
 
   return (
     <div className="relative" style={{ width: size, height: size / 2 + 20 }}>
@@ -126,15 +127,16 @@ export function PortfolioHealthCard() {
           {/* Top 2 action items */}
           {data.topActions.slice(0, 2).map((action, i) => (
             <div key={i} className="flex items-start gap-1.5 text-[10px] text-muted-foreground">
-              <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0 mt-0.5" />
+              <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0 mt-0.5" aria-hidden="true" />
               <span className="truncate">{action}</span>
             </div>
           ))}
 
-          <Link href="/portfolio">
-            <button type="button" className="text-xs text-primary flex items-center gap-1 hover:underline mt-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm">
-              View Full Health <ArrowRight className="w-3 h-3" aria-hidden="true" />
-            </button>
+          <Link
+            href="/portfolio"
+            className="text-xs text-primary inline-flex items-center gap-1 hover:underline mt-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+          >
+            View full health <ArrowRight className="w-3 h-3" aria-hidden="true" />
           </Link>
         </div>
       </CardContent>
@@ -148,23 +150,26 @@ export function TaxOptimizationBanner({ estimatedSavings }: { estimatedSavings?:
   if (month < 9) return null; // Only Oct-Dec (months 9-11)
 
   return (
-    <Card className="border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20">
-      <CardContent className="p-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <TrendingUp className="w-5 h-5 text-amber-600" />
-          <div>
-            <p className="text-sm font-semibold">Year-End Tax Optimization</p>
-            <p className="text-xs text-muted-foreground">
-              Estimated savings: {estimatedSavings ? `$${estimatedSavings.toLocaleString()}` : "calculating..."}
-            </p>
+    <aside aria-label="Year-end tax optimization">
+      <Card className="border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20">
+        <CardContent className="p-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <TrendingUp className="w-5 h-5 text-amber-600" aria-hidden="true" />
+            <div>
+              <p className="text-sm font-semibold">Year-end tax optimization</p>
+              <p className="text-xs text-muted-foreground">
+                Estimated savings: {estimatedSavings != null ? usd(estimatedSavings, { noCents: true }) : "calculating…"}
+              </p>
+            </div>
           </div>
-        </div>
-        <Link href="/portfolio/tax">
-          <button type="button" className="text-xs text-primary flex items-center gap-1 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm">
+          <Link
+            href="/portfolio/tax"
+            className="text-xs text-primary inline-flex items-center gap-1 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+          >
             Review <ArrowRight className="w-3 h-3" aria-hidden="true" />
-          </button>
-        </Link>
-      </CardContent>
-    </Card>
+          </Link>
+        </CardContent>
+      </Card>
+    </aside>
   );
 }
