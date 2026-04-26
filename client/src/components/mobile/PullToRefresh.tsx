@@ -167,6 +167,9 @@ export function PullToRefresh({
     >
       {/* Pull indicator */}
       <div
+        role={pullState === "refreshing" ? "status" : undefined}
+        aria-live={pullState === "refreshing" ? "polite" : undefined}
+        aria-label={pullState === "refreshing" ? "Refreshing…" : pullState === "ready" ? "Release to refresh" : pullState === "pulling" ? "Pull to refresh" : undefined}
         className={cn(
           "absolute left-0 right-0 flex items-center justify-center transition-opacity duration-200 pointer-events-none z-10",
           showIndicator ? "opacity-100" : "opacity-0"
@@ -186,12 +189,13 @@ export function PullToRefresh({
           )}
         >
           {pullState === "refreshing" ? (
-            <RefreshCw className="w-5 h-5 animate-spin" data-testid="refresh-spinner" />
+            <RefreshCw className="w-5 h-5 animate-spin" data-testid="refresh-spinner" aria-hidden="true" />
           ) : (
             <ArrowDown
               className="w-5 h-5 transition-transform duration-200"
               style={{ transform: `rotate(${rotation}deg)` }}
               data-testid="pull-arrow"
+              aria-hidden="true"
             />
           )}
         </div>

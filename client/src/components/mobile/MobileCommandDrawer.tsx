@@ -98,78 +98,82 @@ export function MobileCommandDrawer({ open, onOpenChange }: MobileCommandDrawerP
           style={{ paddingBottom: "calc(1rem + env(safe-area-inset-bottom, 0px))" }}
         >
           {filteredQuickActions.length > 0 && (
-            <div className="mb-4">
-              <h3 className="text-xs font-medium text-muted-foreground mb-2 px-1">Quick Actions</h3>
-              <div className="grid grid-cols-5 gap-2">
+            <section aria-labelledby="quick-actions-heading" className="mb-4">
+              <h3 id="quick-actions-heading" className="text-xs font-medium text-muted-foreground mb-2 px-1">Quick actions</h3>
+              <ul aria-labelledby="quick-actions-heading" className="grid grid-cols-5 gap-2 list-none p-0 m-0">
                 {filteredQuickActions.map((item) => {
                   const isActive = location === item.href;
                   return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      onClick={handleNavigate}
-                      className={cn(
-                        "flex flex-col items-center justify-center gap-1.5 p-3 rounded-xl transition-all active:scale-95",
-                        isActive 
-                          ? "bg-primary/10 text-primary" 
-                          : "active:bg-muted/50"
-                      )}
-                      data-testid={`mobile-drawer-${item.label.toLowerCase().replace(/\s/g, '-')}`}
-                    >
-                      <div className={cn(
-                        "flex items-center justify-center w-12 h-12 rounded-full bg-muted/50",
-                        isActive && "bg-primary/15"
-                      )}>
-                        <item.icon className={cn(
-                          "w-6 h-6",
-                          isActive ? "text-primary" : item.color
-                        )} />
-                      </div>
-                      <span className="text-[10px] font-medium text-center leading-tight">
-                        {item.label}
-                      </span>
-                    </Link>
+                    <li key={item.href}>
+                      <Link
+                        href={item.href}
+                        onClick={handleNavigate}
+                        aria-current={isActive ? "page" : undefined}
+                        className={cn(
+                          "flex flex-col items-center justify-center gap-1.5 p-3 rounded-xl transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                          isActive
+                            ? "bg-primary/10 text-primary"
+                            : "active:bg-muted/50"
+                        )}
+                        data-testid={`mobile-drawer-${item.label.toLowerCase().replace(/\s/g, '-')}`}
+                      >
+                        <div aria-hidden="true" className={cn(
+                          "flex items-center justify-center w-12 h-12 rounded-full bg-muted/50",
+                          isActive && "bg-primary/15"
+                        )}>
+                          <item.icon className={cn(
+                            "w-6 h-6",
+                            isActive ? "text-primary" : item.color
+                          )} />
+                        </div>
+                        <span className="text-[10px] font-medium text-center leading-tight">
+                          {item.label}
+                        </span>
+                      </Link>
+                    </li>
                   );
                 })}
-              </div>
-            </div>
+              </ul>
+            </section>
           )}
 
           {filteredMoreItems.length > 0 && (
-            <div>
-              <h3 className="text-xs font-medium text-muted-foreground mb-2 px-1">More</h3>
-              <div className="space-y-1">
+            <section aria-labelledby="more-heading">
+              <h3 id="more-heading" className="text-xs font-medium text-muted-foreground mb-2 px-1">More</h3>
+              <ul aria-labelledby="more-heading" className="space-y-1 list-none p-0 m-0">
                 {filteredMoreItems.map((item) => {
                   const isActive = location === item.href;
                   return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      onClick={handleNavigate}
-                      className={cn(
-                        "flex items-center gap-3 px-4 py-3 rounded-xl transition-all active:scale-[0.98] min-h-[48px]",
-                        isActive 
-                          ? "bg-primary/10 text-primary" 
-                          : "active:bg-muted/50"
-                      )}
-                      data-testid={`mobile-drawer-${item.label.toLowerCase()}`}
-                    >
-                      <item.icon className={cn(
-                        "w-5 h-5",
-                        isActive ? "text-primary" : "text-muted-foreground"
-                      )} />
-                      <span className="font-medium text-sm">{item.label}</span>
-                    </Link>
+                    <li key={item.href}>
+                      <Link
+                        href={item.href}
+                        onClick={handleNavigate}
+                        aria-current={isActive ? "page" : undefined}
+                        className={cn(
+                          "flex items-center gap-3 px-4 py-3 rounded-xl transition-all active:scale-[0.98] min-h-[48px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                          isActive
+                            ? "bg-primary/10 text-primary"
+                            : "active:bg-muted/50"
+                        )}
+                        data-testid={`mobile-drawer-${item.label.toLowerCase()}`}
+                      >
+                        <item.icon className={cn(
+                          "w-5 h-5",
+                          isActive ? "text-primary" : "text-muted-foreground"
+                        )} aria-hidden="true" />
+                        <span className="font-medium text-sm">{item.label}</span>
+                      </Link>
+                    </li>
                   );
                 })}
-              </div>
-            </div>
+              </ul>
+            </section>
           )}
 
           {filteredQuickActions.length === 0 && filteredMoreItems.length === 0 && (
-            <div className="text-center py-8 text-muted-foreground">
+            <p role="status" aria-live="polite" className="text-center py-8 text-muted-foreground">
               No actions found for "{searchQuery}"
-            </div>
+            </p>
           )}
         </div>
       </DrawerContent>
