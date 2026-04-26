@@ -839,3 +839,72 @@
   color: var(--acr-ink-3);
   margin-top: 2px;
 }
+
+/* ─── Founder Note (sections.css 548-598) ────────────────────────────── */
+
+.lp-founder {
+  background: var(--acr-bg-sunken);
+}
+.lp-founder-inner {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 60px;
+  align-items: start;
+  max-width: 980px;
+  margin: 0 auto;
+}
+@media (max-width: 880px) {
+  .lp-founder-inner {
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+}
+
+.lp-founder-portrait {
+  position: sticky;
+  top: 100px;
+}
+@media (max-width: 880px) {
+  .lp-founder-portrait { position: static; }
+}
+.lp-founder-portrait svg {
+  border-radius: 12px;
+  box-shadow: var(--acr-shadow-2);
+}
+
+.lp-founder-title {
+  font-family: var(--font-serif);
+  font-size: clamp(32px, 4.5vw, 44px);
+  font-weight: 300;
+  font-style: italic;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--acr-ink);
+  margin: 0 0 32px;
+}
+
+.lp-founder-p {
+  font: 400 17px/1.65 var(--font-sans);
+  color: var(--acr-ink);
+  margin: 0 0 20px;
+  text-wrap: pretty;
+}
+
+.lp-founder-sig {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid var(--acr-line);
+}
+.lp-founder-sig-name {
+  font-family: var(--font-serif);
+  font-size: 28px;
+  font-style: italic;
+  font-weight: 400;
+  line-height: 1;
+  color: var(--acr-ink);
+  margin-bottom: 6px;
+}
+.lp-founder-sig-sub {
+  font: 500 13px/1.4 var(--font-sans);
+  color: var(--acr-ink-3);
+}
