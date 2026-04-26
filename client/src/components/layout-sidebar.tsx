@@ -732,6 +732,7 @@ export function Sidebar() {
                 }}
                 onMouseEnter={() => handlePrefetch(module.href)}
                 data-testid={`module-${module.id}`}
+                data-tour-nav={module.id}
               >
                 {/* If no children, make the whole row a link */}
                 {!hasChildren ? (
@@ -952,6 +953,7 @@ export function Sidebar() {
                 : "bg-amber-500/10 text-amber-600 hover:bg-amber-500/20"
             )}
             data-testid="link-founder-dashboard"
+            data-tour-nav="founder-business"
           >
             <Crown
               className={cn(
@@ -983,6 +985,7 @@ export function Sidebar() {
                 onClick={() => {
                   if (hasChildren) toggleModule(module.id);
                 }}
+                data-tour-nav={module.id}
               >
                 {!hasChildren ? (
                   <Link
@@ -1165,6 +1168,7 @@ function CollapsedModuleItem({
             )}
             onMouseEnter={() => onPrefetch(module.href)}
             data-testid={`link-nav-${module.href.replace("/", "") || "dashboard"}`}
+            data-tour-nav={module.id}
           >
             <module.icon
               className={cn(
@@ -1201,6 +1205,7 @@ function CollapsedModuleItem({
               )}
               onMouseEnter={() => onPrefetch(module.href)}
               data-testid={`module-${module.id}`}
+              data-tour-nav={module.id}
             >
               <module.icon
                 className={cn(
