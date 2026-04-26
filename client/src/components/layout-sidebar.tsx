@@ -663,6 +663,49 @@ export function Sidebar() {
         )}
       </div>
 
+      {/* Search / command palette trigger.
+          Dispatches acreos:open-command-palette which the global
+          CommandPalette listens for. Mirrors the prototype's
+          acr-search-trigger placement (sidebar header, above nav). */}
+      <div className={cn("border-b border-sidebar-border", isCollapsed ? "px-2 py-2" : "px-3 py-2")}>
+        {isCollapsed ? (
+          <Tooltip delayDuration={0}>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={() => window.dispatchEvent(new CustomEvent("acreos:open-command-palette"))}
+                className="flex items-center justify-center w-full p-2.5 rounded-lg text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors min-h-[44px]"
+                aria-label="Search (⌘K)"
+                data-tour="cmd-palette-trigger"
+                data-testid="button-search-trigger"
+              >
+                <Search className="w-4 h-4" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              <p className="font-medium">Search</p>
+              <p className="text-xs text-muted-foreground">⌘K</p>
+            </TooltipContent>
+          </Tooltip>
+        ) : (
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new CustomEvent("acreos:open-command-palette"))}
+            className="flex items-center gap-2 w-full px-3 py-2 rounded-lg border border-sidebar-border bg-sidebar-accent/40 text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors min-h-[44px] text-sm"
+            aria-label="Search or jump to anywhere (Cmd K)"
+            data-tour="cmd-palette-trigger"
+            data-testid="button-search-trigger"
+          >
+            <Search className="w-3.5 h-3.5 shrink-0" />
+            <span className="flex-1 text-left truncate">Search or jump to…</span>
+            <span className="hidden md:inline-flex items-center gap-0.5 text-[10px] text-muted-foreground/70">
+              <kbd className="px-1 rounded bg-background/60 border border-sidebar-border font-sans">⌘</kbd>
+              <kbd className="px-1 rounded bg-background/60 border border-sidebar-border font-sans">K</kbd>
+            </span>
+          </button>
+        )}
+      </div>
+
       {/* Nav */}
       <nav aria-label="Main navigation" className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto overflow-x-hidden">
         {/* Founder home link — clean autonomy-health + todo hub.
@@ -939,6 +982,25 @@ export function Sidebar() {
         </div>
         <p className="text-xs text-muted-foreground mt-1">Land Investor OS</p>
         </div>
+      </div>
+
+      {/* Mobile search / command palette trigger — full-tap-target row.
+          Dispatches the same custom event the desktop trigger uses. */}
+      <div className="px-3 py-2 border-b border-sidebar-border">
+        <button
+          type="button"
+          onClick={() => {
+            onNavClick?.();
+            window.dispatchEvent(new CustomEvent("acreos:open-command-palette"));
+          }}
+          className="flex items-center gap-2 w-full px-3 py-2 rounded-lg border border-sidebar-border bg-sidebar-accent/40 text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors min-h-[44px] text-sm"
+          aria-label="Search or jump to anywhere"
+          data-tour="cmd-palette-trigger"
+          data-testid="button-search-trigger-mobile"
+        >
+          <Search className="w-4 h-4 shrink-0" />
+          <span className="flex-1 text-left truncate">Search or jump to…</span>
+        </button>
       </div>
 
       <nav aria-label="Mobile navigation" className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">

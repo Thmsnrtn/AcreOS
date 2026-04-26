@@ -268,6 +268,20 @@ export function CommandPalette() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleKeyDown]);
 
+  // Programmatic opener for surfaces without keyboard access (mobile,
+  // visible search button). Listens for the acreos:open-command-palette
+  // CustomEvent dispatched from layout-sidebar.tsx and elsewhere.
+  useEffect(() => {
+    const onOpenEvent = () => {
+      setOpen(true);
+      setAiMode(false);
+      setAiResponse(null);
+      setInputValue("");
+    };
+    window.addEventListener("acreos:open-command-palette", onOpenEvent);
+    return () => window.removeEventListener("acreos:open-command-palette", onOpenEvent);
+  }, []);
+
   useEffect(() => {
     if (open) {
       telemetry.featureUsed('command_palette');
