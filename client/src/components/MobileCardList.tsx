@@ -17,11 +17,11 @@ export function MobileCardList<T>({
   if (items.length === 0 && emptyState) return <>{emptyState}</>;
 
   return (
-    <div className={cn("flex flex-col gap-3", className)}>
+    <ul className={cn("flex flex-col gap-3 list-none p-0 m-0", className)}>
       {items.map((item, index) => (
-        <div key={index}>{renderCard(item, index)}</div>
+        <li key={index} className="list-none">{renderCard(item, index)}</li>
       ))}
-    </div>
+    </ul>
   );
 }
 

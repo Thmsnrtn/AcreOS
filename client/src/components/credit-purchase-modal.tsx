@@ -73,6 +73,7 @@ export function CreditPurchaseModal({ open, onOpenChange }: CreditPurchaseModalP
                 key={pack.id}
                 role="radio"
                 aria-checked={isSelected}
+                aria-label={`${pack.name} pack: ${pack.credits.toLocaleString()} credits, $${(pack.credits / 100).toFixed(0)} value`}
                 tabIndex={isSelected ? 0 : -1}
                 onClick={() => setSelectedPack(pack.id)}
                 onKeyDown={(e) => {
@@ -88,15 +89,15 @@ export function CreditPurchaseModal({ open, onOpenChange }: CreditPurchaseModalP
               >
                 <CardContent className="p-4 text-center relative">
                   {isSelected && (
-                    <div className="absolute top-2 right-2">
+                    <div className="absolute top-2 right-2" aria-hidden="true">
                       <Check className="w-4 h-4 text-primary" aria-hidden="true" />
                     </div>
                   )}
-                  <div className="text-2xl font-bold tabular-nums">{pack.name}</div>
-                  <div className="text-sm text-muted-foreground mt-1 tabular-nums">
+                  <div aria-hidden="true" className="text-2xl font-bold tabular-nums">{pack.name}</div>
+                  <div aria-hidden="true" className="text-sm text-muted-foreground mt-1 tabular-nums">
                     {pack.credits.toLocaleString()} credits
                   </div>
-                  <Badge variant="secondary" className="mt-2">
+                  <Badge aria-hidden="true" variant="secondary" className="mt-2 tabular-nums">
                     ${(pack.credits / 100).toFixed(0)} value
                   </Badge>
                 </CardContent>
@@ -107,6 +108,7 @@ export function CreditPurchaseModal({ open, onOpenChange }: CreditPurchaseModalP
 
         <div className="flex justify-end gap-3 pt-2">
           <Button
+            type="button"
             variant="outline"
             onClick={() => onOpenChange(false)}
             disabled={purchaseMutation.isPending}
@@ -115,8 +117,11 @@ export function CreditPurchaseModal({ open, onOpenChange }: CreditPurchaseModalP
             Cancel
           </Button>
           <Button
+            type="button"
             onClick={handlePurchase}
             disabled={purchaseMutation.isPending}
+            aria-busy={purchaseMutation.isPending}
+            aria-label={purchaseMutation.isPending ? "Starting purchase" : `Purchase ${CREDIT_PACKS.find(p => p.id === selectedPack)?.name || ""} credit pack`}
             data-testid="button-confirm-purchase"
           >
             {purchaseMutation.isPending ? (
