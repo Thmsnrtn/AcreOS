@@ -26,7 +26,7 @@ import {
   Cell,
   Legend,
 } from "recharts";
-import { TrendingUp, DollarSign, Target, Mail, Loader2 } from "lucide-react";
+import { TrendingUp, DollarSign, Target, Mail } from "lucide-react";
 
 interface AttributionRow {
   campaignId: number | null;
@@ -112,20 +112,24 @@ export function AttributionAnalytics() {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h2 className="font-semibold flex items-center gap-2">
-            <Target className="w-4 h-4" /> Attribution & ROI
+            <Target className="w-4 h-4" aria-hidden="true" /> Attribution & ROI
           </h2>
-          <p className="text-xs text-muted-foreground mt-0.5">
+          <p className="text-xs text-muted-foreground mt-0.5 m-0">
             Which campaigns, channels, and touch numbers convert leads?
           </p>
         </div>
-        <div className="flex gap-1">
+        <div className="flex gap-1" role="radiogroup" aria-label="Attribution date range">
           {DATE_RANGES.map(r => (
             <Button
               key={r.label}
+              type="button"
+              role="radio"
+              aria-checked={rangeDays === r.days}
               variant={rangeDays === r.days ? "default" : "outline"}
               size="sm"
               className="text-xs h-7"
               onClick={() => setRangeDays(r.days)}
+              aria-label={`Show last ${r.label}`}
             >
               {r.label}
             </Button>
@@ -134,43 +138,46 @@ export function AttributionAnalytics() {
       </div>
 
       {isLoading ? (
-        <div className="space-y-2">
+        <div className="space-y-2" role="status" aria-busy="true" aria-label="Loading attribution data">
           {[1, 2, 3].map(i => <Skeleton key={i} className="h-12 w-full" />)}
+          <span className="sr-only">Loading…</span>
         </div>
       ) : error ? (
         <Card>
-          <CardContent className="py-8 text-center text-muted-foreground text-sm">
+          <CardContent className="py-8 text-center text-muted-foreground text-sm" role="alert">
             Unable to load attribution data.
           </CardContent>
         </Card>
       ) : !data ? null : (
         <>
           {/* Summary */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <ul aria-label="Attribution summary" className="grid grid-cols-2 md:grid-cols-4 gap-3 list-none p-0 m-0">
             {[
-              { label: "Total Conversions", value: data.summary.totalConversions, icon: Target },
-              { label: "Revenue Attributed", value: fmt$(data.summary.totalRevenue), icon: DollarSign },
-              { label: "Best Campaign", value: data.summary.bestCampaign ?? "—", icon: TrendingUp },
-              { label: "Best Channel", value: data.summary.bestChannel ?? "—", icon: Mail },
+              { label: "Total conversions", value: data.summary.totalConversions, icon: Target },
+              { label: "Revenue attributed", value: fmt$(data.summary.totalRevenue), icon: DollarSign },
+              { label: "Best campaign", value: data.summary.bestCampaign ?? "—", icon: TrendingUp },
+              { label: "Best channel", value: data.summary.bestChannel ?? "—", icon: Mail },
             ].map(({ label, value, icon: Icon }) => (
-              <Card key={label}>
-                <CardContent className="pt-3 pb-3 flex items-center gap-2">
-                  <Icon className="w-4 h-4 text-muted-foreground shrink-0" />
-                  <div>
-                    <div className="text-xs text-muted-foreground">{label}</div>
-                    <div className="text-sm font-semibold truncate max-w-[110px]">{String(value)}</div>
-                  </div>
-                </CardContent>
-              </Card>
+              <li key={label} className="list-none">
+                <Card aria-label={`${label}: ${String(value)}`}>
+                  <CardContent className="pt-3 pb-3 flex items-center gap-2">
+                    <Icon className="w-4 h-4 text-muted-foreground shrink-0" aria-hidden="true" />
+                    <div>
+                      <div className="text-xs text-muted-foreground" aria-hidden="true">{label}</div>
+                      <div className="text-sm font-semibold truncate max-w-[110px] tabular-nums" aria-hidden="true">{String(value)}</div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </li>
             ))}
-          </div>
+          </ul>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Channel Pie */}
             {channelPieData.length > 0 && (
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">Conversions by Channel</CardTitle>
+                  <CardTitle className="text-sm">Conversions by channel</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div
@@ -197,7 +204,7 @@ export function AttributionAnalytics() {
             {touchChartData.length > 0 && (
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">Conversion by Touch Number</CardTitle>
+                  <CardTitle className="text-sm">Conversion by touch number</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div
@@ -227,7 +234,7 @@ export function AttributionAnalytics() {
               </CardHeader>
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
+                  <table className="w-full text-sm" aria-label="Campaign ROI by attribution">
                     <thead>
                       <tr className="border-b bg-muted/40">
                         <th scope="col" className="text-left px-4 py-2 font-medium text-xs text-muted-foreground">Campaign</th>
@@ -236,7 +243,7 @@ export function AttributionAnalytics() {
                         <th scope="col" className="text-right px-4 py-2 font-medium text-xs text-muted-foreground">Revenue</th>
                         <th scope="col" className="text-right px-4 py-2 font-medium text-xs text-muted-foreground">Cost</th>
                         <th scope="col" className="text-right px-4 py-2 font-medium text-xs text-muted-foreground">ROI</th>
-                        <th scope="col" className="text-right px-4 py-2 font-medium text-xs text-muted-foreground">Avg Days</th>
+                        <th scope="col" className="text-right px-4 py-2 font-medium text-xs text-muted-foreground">Avg days</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -252,13 +259,13 @@ export function AttributionAnalytics() {
                               {row.channel}
                             </Badge>
                           </td>
-                          <td className="px-4 py-2 text-right">{row.conversions}</td>
-                          <td className="px-4 py-2 text-right text-green-600 font-medium">{fmt$(row.totalRevenue)}</td>
-                          <td className="px-4 py-2 text-right text-muted-foreground">{fmt$(row.totalCost)}</td>
-                          <td className={`px-4 py-2 text-right font-semibold ${roiColor(row.roi)}`}>
+                          <td className="px-4 py-2 text-right tabular-nums">{row.conversions}</td>
+                          <td className="px-4 py-2 text-right text-green-600 font-medium tabular-nums">{fmt$(row.totalRevenue)}</td>
+                          <td className="px-4 py-2 text-right text-muted-foreground tabular-nums">{fmt$(row.totalCost)}</td>
+                          <td className={`px-4 py-2 text-right font-semibold tabular-nums ${roiColor(row.roi)}`}>
                             {row.totalCost > 0 ? `${(row.roi * 100).toFixed(0)}%` : "—"}
                           </td>
-                          <td className="px-4 py-2 text-right text-muted-foreground">
+                          <td className="px-4 py-2 text-right text-muted-foreground tabular-nums" aria-label={row.avgDaysToConvert != null ? `${Math.round(row.avgDaysToConvert)} days` : undefined}>
                             {row.avgDaysToConvert != null ? `${Math.round(row.avgDaysToConvert)}d` : "—"}
                           </td>
                         </tr>
@@ -272,7 +279,7 @@ export function AttributionAnalytics() {
 
           {!data.byCampaign.length && !data.byChannel.length && (
             <Card>
-              <CardContent className="py-8 text-center text-muted-foreground text-sm">
+              <CardContent className="py-8 text-center text-muted-foreground text-sm" role="status">
                 No conversion data in this date range. Run campaigns and track conversions to see attribution.
               </CardContent>
             </Card>
