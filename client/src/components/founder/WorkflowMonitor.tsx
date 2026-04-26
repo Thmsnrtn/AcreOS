@@ -74,17 +74,22 @@ function StepPill({ step }: { step: WorkflowStep }) {
   const Icon = style.icon;
   const avatar = AGENT_AVATARS[step.agentCodename] || "?";
   const role = AGENT_ROLES[step.agentCodename] || step.agentCodename;
+  const action = step.action.replace(/_/g, " ");
+  const durationText = step.durationMs ? `${(step.durationMs / 1000).toFixed(1)}s` : "";
 
   return (
-    <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border ${style.bg} transition-all`}>
-      <span className="text-base">{avatar}</span>
+    <div
+      className={`flex items-center gap-2 px-3 py-2 rounded-lg border ${style.bg} transition-all`}
+      aria-label={`${role}: ${action}, status ${step.status}${durationText ? `, ${durationText}` : ""}`}
+    >
+      <span aria-hidden="true" className="text-base">{avatar}</span>
       <div className="flex-1 min-w-0">
-        <div className="text-xs font-medium truncate">{role}</div>
-        <div className="text-[10px] text-muted-foreground truncate">{step.action.replace(/_/g, " ")}</div>
+        <p className="text-xs font-medium truncate m-0">{role}</p>
+        <p className="text-[10px] text-muted-foreground truncate m-0">{action}</p>
       </div>
-      <Icon className={`h-3.5 w-3.5 ${style.color} ${step.status === "running" ? "animate-spin" : ""}`} />
+      <Icon className={`h-3.5 w-3.5 ${style.color} ${step.status === "running" ? "animate-spin" : ""}`} aria-hidden="true" />
       {step.durationMs && (
-        <span className="text-[10px] text-muted-foreground">{(step.durationMs / 1000).toFixed(1)}s</span>
+        <span className="text-[10px] text-muted-foreground tabular-nums">{durationText}</span>
       )}
     </div>
   );
@@ -98,34 +103,34 @@ function RunCard({ run, workflowName }: { run: WorkflowRun; workflowName?: strin
     : "bg-muted text-muted-foreground";
 
   return (
-    <div className="border rounded-xl p-4 space-y-3">
+    <li className="border rounded-xl p-4 space-y-3 list-none">
       <div className="flex items-center justify-between">
         <div>
-          <div className="text-sm font-semibold">{workflowName || `Run #${run.id}`}</div>
-          <div className="text-xs text-muted-foreground">
-            Triggered by {run.triggeredBy} &middot; {new Date(run.startedAt).toLocaleString()}
-          </div>
+          <p className="text-sm font-semibold m-0">{workflowName || `Run #${run.id}`}</p>
+          <p className="text-xs text-muted-foreground m-0">
+            Triggered by {run.triggeredBy} &middot; <time dateTime={run.startedAt} className="tabular-nums">{new Date(run.startedAt).toLocaleString()}</time>
+          </p>
         </div>
-        <Badge variant="outline" className={statusColor}>{run.status}</Badge>
+        <Badge variant="outline" className={`capitalize ${statusColor}`} aria-label={`Status: ${run.status}`}>{run.status}</Badge>
       </div>
 
-      <div className="space-y-1.5">
+      <ol aria-label="Pipeline steps" className="space-y-1.5 list-none p-0 m-0">
         {steps.map((step, i) => (
-          <div key={i} className="flex items-center gap-1">
+          <li key={i} className="flex items-center gap-1">
             <StepPill step={step} />
             {i < steps.length - 1 && (
-              <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0 mx-0.5" />
+              <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0 mx-0.5" aria-hidden="true" />
             )}
-          </div>
+          </li>
         ))}
-      </div>
+      </ol>
 
       {run.durationMs && (
-        <div className="text-xs text-muted-foreground text-right">
-          Total: {(run.durationMs / 1000).toFixed(1)}s
-        </div>
+        <p className="text-xs text-muted-foreground text-right m-0">
+          Total: <span className="tabular-nums">{(run.durationMs / 1000).toFixed(1)}s</span>
+        </p>
       )}
-    </div>
+    </li>
   );
 }
 
@@ -151,7 +156,7 @@ export function WorkflowMonitor() {
   });
 
   if (loadingWorkflows || loadingRuns) {
-    return <Skeleton className="h-48 w-full rounded-xl" />;
+    return <Skeleton role="status" aria-busy="true" aria-label="Loading workflow monitor" className="h-48 w-full rounded-xl" />;
   }
 
   const workflowList = (workflows || []) as Workflow[];
@@ -166,11 +171,11 @@ export function WorkflowMonitor() {
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-base flex items-center gap-2">
-            <Workflow className="h-4 w-4" />
-            Agent Pipelines
+            <Workflow className="h-4 w-4" aria-hidden="true" />
+            Agent pipelines
           </CardTitle>
           {activeRuns.length > 0 && (
-            <Badge variant="outline" className="bg-blue-100 text-blue-800">
+            <Badge variant="outline" className="bg-blue-100 text-blue-800 tabular-nums" aria-label={`${activeRuns.length} running`}>
               {activeRuns.length} running
             </Badge>
           )}
@@ -178,49 +183,60 @@ export function WorkflowMonitor() {
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Active Runs */}
-        {activeRuns.map(run => (
-          <RunCard key={run.id} run={run} workflowName={workflowNames[run.workflowId]} />
-        ))}
+        {activeRuns.length > 0 && (
+          <ul aria-label="Active runs" className="space-y-4 list-none p-0 m-0">
+            {activeRuns.map(run => (
+              <RunCard key={run.id} run={run} workflowName={workflowNames[run.workflowId]} />
+            ))}
+          </ul>
+        )}
 
         {/* Available Workflows */}
-        <div className="space-y-2">
-          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Available Pipelines</div>
-          {workflowList.map(w => (
-            <div key={w.id} className="flex items-center justify-between py-2 px-3 rounded-lg border">
-              <div>
-                <div className="text-sm font-medium">{w.name}</div>
-                <div className="text-xs text-muted-foreground">
-                  {w.steps?.length || 0} steps &middot; {w.totalRuns} runs
-                  {w.successRate ? ` &middot; ${w.successRate}% success` : ""}
+        <section aria-labelledby="available-pipelines-heading" className="space-y-2">
+          <p id="available-pipelines-heading" className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Available pipelines</p>
+          <ul aria-labelledby="available-pipelines-heading" className="space-y-2 list-none p-0 m-0">
+            {workflowList.map(w => (
+              <li key={w.id} className="flex items-center justify-between py-2 px-3 rounded-lg border">
+                <div>
+                  <p className="text-sm font-medium m-0">{w.name}</p>
+                  <p className="text-xs text-muted-foreground m-0">
+                    <span className="tabular-nums">{w.steps?.length || 0}</span> steps &middot; <span className="tabular-nums">{w.totalRuns}</span> runs
+                    {w.successRate ? <> &middot; <span className="tabular-nums">{w.successRate}%</span> success</> : ""}
+                  </p>
                 </div>
-              </div>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-7 text-xs"
-                onClick={() => triggerMutation.mutate(w.id)}
-                disabled={triggerMutation.isPending}
-              >
-                <Play className="h-3 w-3 mr-1" /> Run
-              </Button>
-            </div>
-          ))}
-        </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-xs"
+                  onClick={() => triggerMutation.mutate(w.id)}
+                  disabled={triggerMutation.isPending}
+                  aria-busy={triggerMutation.isPending}
+                  aria-label={`Run ${w.name}`}
+                >
+                  <Play className="h-3 w-3 mr-1" aria-hidden="true" /> Run
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </section>
 
         {/* Recent Completed Runs */}
         {recentRuns.length > 0 && (
-          <div className="space-y-2">
-            <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Recent Runs</div>
-            {recentRuns.map(run => (
-              <RunCard key={run.id} run={run} workflowName={workflowNames[run.workflowId]} />
-            ))}
-          </div>
+          <section aria-labelledby="recent-runs-heading" className="space-y-2">
+            <p id="recent-runs-heading" className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Recent runs</p>
+            <ul aria-labelledby="recent-runs-heading" className="space-y-4 list-none p-0 m-0">
+              {recentRuns.map(run => (
+                <RunCard key={run.id} run={run} workflowName={workflowNames[run.workflowId]} />
+              ))}
+            </ul>
+          </section>
         )}
 
         {workflowList.length === 0 && runList.length === 0 && (
-          <div className="text-center py-6 text-sm text-muted-foreground">
+          <p className="text-center py-6 text-sm text-muted-foreground">
             No workflows configured yet. Workflows will auto-trigger when events occur.
-          </div>
+          </p>
         )}
       </CardContent>
     </Card>
