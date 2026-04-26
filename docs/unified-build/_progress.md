@@ -26,7 +26,20 @@ Canonical prompt: `docs/unified-build/UNIFIED-BUILD-PROMPT.md` (v3)
 - [/] **Phase 2A — Visual Revisit + Public Surfaces**
   - [x] 2A.1 — Sidebar visual treatment per prototype (commit 1bca3f3)
   - [x] 2A.2 — Tier 0 visual application: palette + toaster (commits 7309858, 8d6862e); shortcuts modal left as-is
-  - [ ] 2A.3 — Public landing page (per /acreos-landing/) ← NEXT
+  - [/] 2A.3 — Public landing page (per /acreos-landing/)
+    - [x] Hero + Fraunces/Inter foundation (commit fcb1143)
+    - [x] HowItWorks (commit 68dcbdd)
+    - [ ] Agents (tabbed, 3 panels) ← NEXT
+    - [ ] Day in Life (2-col timeline)
+    - [ ] Features (12-card grid + SVG glyphs)
+    - [ ] Quotes (6 testimonials)
+    - [ ] Founder note (portrait + serif body)
+    - [ ] Pricing (3 tiers + toggle)
+    - [ ] FAQ (accordion, 8 items)
+    - [ ] Final CTA (email capture)
+    - [ ] Footer
+    - [ ] Top nav redesign
+    - [ ] Drop legacy WaitlistSection / SOCIAL_PROOF
   - [ ] 2A.4 — Public onboarding (per /acreos-onboarding/)
   - [ ] 2A.5 — Deploy + smoke test (auto-fire authorized)
 - [ ] Phase 3 — Tier 1 Pipeline Core
@@ -40,9 +53,9 @@ Canonical prompt: `docs/unified-build/UNIFIED-BUILD-PROMPT.md` (v3)
 
 ## Current State
 
-Phase: 2A.3 — Public landing page (next)
-**Status: Phase 2A.1 (sidebar) and 2A.2 (palette + toaster) landed. Landing page next — large surface, deserves a fresh session context budget.**
-Last commit: 8d6862e (toaster semantic kinds)
+Phase: 2A.3 — Public landing page (in progress)
+**Status: Hero + HowItWorks landed; Fraunces/Inter foundation in place. 8 more sections + nav redesign + legacy cleanup remaining for 2A.3.**
+Last commit: 68dcbdd (HowItWorks section)
 Gate A: ✅ FOUNDER_USER_IDS deployed on Fly (digest 890511d964d7abda)
 Run mode: fully autonomous through Phase 10 (operator authorized via 7d4f318)
 

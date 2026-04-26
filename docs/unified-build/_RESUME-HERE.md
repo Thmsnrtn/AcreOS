@@ -1,80 +1,68 @@
 # RESUME HERE — Unified Build, autonomous run
 
-**Run mode: fully autonomous through Phase 10.** Operator authorized auto-fire deploys, pushes, smoke tests, migrations. End the loop only at 85% context or genuinely unresolvable Gate B ambiguity (rare — default to picking the recommended option, document in `phase-X.Y-decision-<topic>.md`, continue).
+**Run mode: fully autonomous through Phase 10.** Operator authorized auto-fire deploys, pushes, smoke tests, migrations. End the loop only at 85% context or genuinely unresolvable Gate B ambiguity.
 
 The full canonical prompt lives at `docs/unified-build/UNIFIED-BUILD-PROMPT.md`.
 
 ## Where the build stands
 
-Phase 0–2: ✅ deployed at https://acreos.io
-Phase 2A.1 (sidebar visual): ✅ commit `1bca3f3` — homestead palette + brand-pip active state landed
-Phase 2A.2 (palette + toaster): ✅ commits `7309858`, `8d6862e` — palette modal flat-surface treatment, warm-tinted backdrop, semantic toast kinds (success/warning/error tints)
+Phase 0–2 deployed at https://acreos.io.
 
-## Next action: Phase 2A.3 — Public landing page
+Phase 2A in progress:
+- 2A.1 ✅ Sidebar visual treatment (commit `1bca3f3`)
+- 2A.2 ✅ Palette modal + toaster kinds (commits `7309858`, `8d6862e`)
+- 2A.3 in progress — public landing page:
+  - ✅ Foundation: Fraunces + Inter from Google Fonts; `--font-serif` token (commit `fcb1143`)
+  - ✅ Hero: serif headline, three floating agent cards, parcel-grid backdrop (commit `fcb1143`)
+  - ✅ HowItWorks: 3-step grid replaces legacy 4-step icon section (commit `68dcbdd`)
+  - ⏳ Agents (next) — tabbed section, 3 agent panels, sample data row
+  - ⏳ DayInLife — two-column timeline (Before / With AcreOS)
+  - ⏳ Features — 12-card grid with SVG glyphs, 5 categories
+  - ⏳ Quotes — 6 testimonials in card grid
+  - ⏳ FounderNote — portrait + serif body paragraphs + signature
+  - ⏳ Pricing — 3 tiers with monthly/annual toggle
+  - ⏳ FAQ — accordion, 8 items
+  - ⏳ FinalCTA — email capture card
+  - ⏳ Footer — homestead-styled with brand mark
+  - ⏳ Top nav — replace existing nav with prototype-aligned anchored nav
+  - ⏳ Drop legacy WaitlistSection / SOCIAL_PROOF / Features grid below
+- 2A.4 — Onboarding (after landing complete)
+- 2A.5 — fly deploy + Playwright MCP smoke (auto-fire authorized)
 
-Source: `/acreos-landing/` (prototype, with `acreos-landing.html` entry point). Production landing lives at `client/src/pages/landing.tsx`.
+## Next action: Phase 2A.3.c — Agents section
 
-This is the most visible surface on the platform — the one operators, beta users, investors, press see first. The current production landing is essentially unchanged from pre-build state; the prototype's distinctive identity has not landed.
+Source: `/acreos-landing/sections-1.jsx` → `Agents` (lines 142-272). Tabbed UI with 3 agents (Atlas/Pax/Sophie). Each tab shows: avatar letter (brand-colored bg), name, role label. Clicking a tab swaps the panel below — left side shows tagline + bullet list with brand-color checkmarks; right side shows a "sample" card with the agent's recent activity (rows of label/value).
 
-**Before writing any code, read:**
+CSS source: `/acreos-landing/sections.css` lines 264 onward (find with `grep -n "lp-agents\|lp-agent-" acreos-landing/sections.css`).
 
-1. Open `/acreos-landing/` directory and read every file. Note the .jsx component structure.
-2. Open `acreos-landing.html` in a local browser tab to see the prototype rendered.
-3. Read `client/src/pages/landing.tsx` (production current state) to understand what's there and what existing integrations to preserve (Clerk sign-in flow, analytics, etc.).
-4. Note `handoff/screenshots/` for any landing-page comp screenshots if relevant.
+Agent data (verbatim from prototype):
+- Atlas — Analysis — `#C2531C` — "Pulls comps. Spots flaws. Prices parcels." — bullets + sample
+- Pax — Communication — `#4C7B80` — "Drafts replies. Books calls. Handles objections."
+- Sophie — Servicing — `#8B5A2B` — "Watches title. Services notes. Keeps the books."
 
-**Distinctive prototype landing elements:**
-- Cream backdrop `var(--acr-bg)` with terracotta accents
-- **Large serif display headline** — "Find motivated sellers. / Send mail. Close deals. / All in one place." with the middle line in italic brand-color serif
-- "For solo investors, partners, and small teams" pill above headline (with brand-color dot)
-- Side cards animated in (Atlas, Pax, Sophie) showing live agent activity
-- "Start free trial" + "See how it works" button pair
-- "14 days free · no card · cancel anytime" microcopy
-- "In private beta with 12 land investors. $1.4M closed in 90 days." trust pill
-- Top nav: How it works · The agents · Pricing · Why we built it · Sign in · Start free trial
-- Sections: How it works · The agents · Day in the life · Features grid · Quotes · Founder note · Pricing · FAQ
+Implementation:
+1. Create `client/src/pages/landing/Agents.tsx` per the prototype JSX.
+2. Add `.lp-agents-tabs`, `.lp-agent-tab`, `.lp-agent-tab-active`, `.lp-agent-panel`, `.lp-agent-sample`, etc. to `client/src/pages/landing/landing.css`. Use `--acr-*` tokens; the per-agent color (`#C2531C`, `#4C7B80`, `#8B5A2B`) stays as literal since these are agent identity colors not theme tokens. Atlas color = `--acr-brand`.
+3. Wire `<Agents />` into `landing.tsx` after `<HowItWorks />`.
+4. Commit: `feat(landing): the agents section [unified-build]`
 
-**Implementation approach:**
-
-Build section by section, committing each as a logical unit. Match the prototype's copy voice exactly — the prototype copy IS the canonical voice (serious, considered, founder-written, not SaaS-cute).
-
-Apply Per-Surface Fidelity Principle:
-- Add prototype-reference header to `client/src/pages/landing.tsx` listing what was brought across
-- Implement matching the prototype's layout grammar, hierarchy, density, voice, interaction patterns
-- Mobile responsive (extrapolate consistently — the prototype is desktop-only)
-- Side-by-side compare: open `acreos-landing.html` locally vs the production landing as you build
-
-**Don't break:**
-- Clerk sign-in flow (engineering refinement preserved)
-- Existing analytics integrations
-- Any A/B tests or feature flags currently wired
-- SEO meta tags, structured data, OpenGraph
-
-**Suggested commit cadence:**
-- `feat(landing): hero + trust pills [unified-build]`
-- `feat(landing): how it works section [unified-build]`
-- `feat(landing): the agents section [unified-build]`
-- `feat(landing): day in the life section [unified-build]`
-- `feat(landing): features grid [unified-build]`
-- `feat(landing): quotes + founder note [unified-build]`
-- `feat(landing): pricing + FAQ + footer [unified-build]`
-
-After 2A.3 lands, continue with 2A.4 (onboarding) then 2A.5 (deploy + smoke — auto-fire authorized).
+After Agents, continue through DayInLife → Features → Quotes → FounderNote → Pricing → FAQ → FinalCTA → Footer → Top nav. Each section is a separate commit with `feat(landing): <section> [unified-build]`. The legacy inline sections in `landing.tsx` get removed in the same commit that introduces the prototype-aligned replacement.
 
 ## Loop guidance
 
-After each commit:
-- ScheduleWakeup 270s for in-cache iteration on the next section
-- ScheduleWakeup 1200s if waiting on a deploy or external state
-- End the loop ONLY at 85% context or unresolvable Gate B
+After each section commit:
+- ScheduleWakeup 270s if continuing in-cache
+- ScheduleWakeup 1200s if waiting for deploy/external state
+- End loop ONLY at 85% context or unresolvable Gate B
 
-When ending: write _RESUME-HERE.md with the exact next-section to implement, commit, end. Operator re-invokes /loop in fresh session and the build resumes.
+When ending: write `_RESUME-HERE.md` with exact next-section to implement, commit progress, end. Operator re-invokes /loop in fresh session.
 
 ## Hard reminders
 
 - `[unified-build]` tag + Co-Authored-By trailer on every commit
 - Visual Application Mandate: prototype wins on visual conflicts
-- Per-Surface Fidelity Principle: read prototype before each surface, document reference in file header
+- Per-Surface Fidelity Principle: read prototype before each section, document reference at top of file
 - Pre-existing 10 test failures are baseline — don't block, don't add new
-- Autonomous run: don't ask for operator confirmation on visual judgment, deploys, smoke, push — pick recommended option and continue
-- Stash recovery SHA: `bd9d6af` (only relevant if operator asks)
+- Autonomous run: don't ask for operator confirmation on visual judgment, deploys, smoke, push
+- Stash recovery SHA: `bd9d6af` (only if operator asks)
+- Mobile responsive: each section needs <720px adaptation per the prototype's media queries
