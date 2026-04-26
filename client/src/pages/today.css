@@ -1,0 +1,436 @@
+/**
+ * Prototype reference: acreos/command-center.jsx (CC_CSS, lines 246–366)
+ *
+ * Page-scoped homestead Command Center styles for /today (and /dashboard
+ * alias). Class names prefixed `acr-cc-`, `acr-metric`, `acr-sugg`,
+ * `acr-deal-`, `acr-task`, `acr-activity` match the prototype one-to-one
+ * for fidelity verification.
+ *
+ * All `var(--brand)` etc. token references in the prototype are translated
+ * to the namespaced `--acr-*` tokens defined in client/src/index.css.
+ * Other tokens (--font-display, --font-sans, --font-mono) are global.
+ *
+ * Imported by client/src/pages/today.tsx — applies on /today and /dashboard.
+ *
+ * Skipped from prototype port: deal-temp-wick (wick column for hot/warm/cold
+ * dealflow), pipeline-value chart sparkline (production has its own
+ * AnimatedCounter + chart system), quiet-card autonomous executor (production
+ * has a richer agent activity surface). These can be pulled in later if
+ * needed.
+ */
+
+/* ─────────────────────────────────────────────────────── shell + hero */
+
+.acr-cc {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.acr-cc-hero {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-top: 4px;
+}
+.acr-cc-greeting {
+  font: 600 32px/1.15 var(--font-display, var(--font-sans));
+  letter-spacing: -0.03em;
+  color: var(--acr-ink);
+  margin: 4px 0 0;
+  text-wrap: pretty;
+  max-width: 680px;
+}
+.acr-cc-greeting-soft {
+  color: var(--acr-ink-3);
+  font-weight: 500;
+}
+.acr-cc-hero-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.acr-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font: 600 11px/1 var(--font-sans);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--acr-ink-3);
+}
+
+/* ─────────────────────────────────────────────────────── metric strip */
+
+.acr-cc-metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  background: var(--acr-surface);
+  border: 0.5px solid var(--acr-line);
+  border-radius: 14px;
+  box-shadow: var(--acr-shadow-1);
+  overflow: hidden;
+}
+.acr-metric {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-right: 0.5px solid var(--acr-line-soft);
+}
+.acr-metric:last-child {
+  border-right: 0;
+}
+.acr-metric-label {
+  font: 500 11.5px/1 var(--font-sans);
+  color: var(--acr-ink-3);
+}
+.acr-metric-value {
+  font: 600 22px/1.1 var(--font-display, var(--font-sans));
+  letter-spacing: -0.02em;
+  color: var(--acr-ink);
+}
+.acr-metric-delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font: 500 11px/1 var(--font-sans);
+}
+.acr-delta-pos {
+  color: var(--acr-pos);
+}
+.acr-delta-neg {
+  color: var(--acr-neg);
+}
+
+/* ─────────────────────────────────────────────────────── 2-column grid */
+
+.acr-cc-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 24px;
+  align-items: flex-start;
+}
+.acr-cc-main,
+.acr-cc-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+@media (max-width: 1180px) {
+  .acr-cc-grid {
+    grid-template-columns: 1fr;
+  }
+  .acr-cc-metrics {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* ─────────────────────────────────────────────────────── section title */
+
+.acr-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.acr-section-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.acr-section-title {
+  font: 600 13px/1 var(--font-sans);
+  color: var(--acr-ink);
+  letter-spacing: -0.005em;
+}
+.acr-muted {
+  color: var(--acr-ink-3);
+}
+
+/* ─────────────────────────────────────────────────────── AI suggestions */
+
+.acr-sugg-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+@media (max-width: 1100px) {
+  .acr-sugg-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.acr-sugg {
+  background: var(--acr-surface);
+  border: 0.5px solid var(--acr-line);
+  border-radius: 14px;
+  padding: 14px 14px 12px;
+  box-shadow: var(--acr-shadow-1);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+  overflow: hidden;
+}
+.acr-sugg::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--acr-brand), var(--acr-accent));
+  opacity: 0.7;
+}
+.acr-sugg-hd {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.acr-sugg-agent {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--acr-brand);
+  font: 600 11px/1 var(--font-sans);
+  letter-spacing: 0.01em;
+}
+.acr-sugg-dismiss {
+  width: 22px;
+  height: 22px;
+  border: 0;
+  background: transparent;
+  color: var(--acr-ink-4);
+  border-radius: 5px;
+  cursor: pointer;
+}
+.acr-sugg-dismiss:hover {
+  background: var(--acr-surface-2);
+  color: var(--acr-ink-2);
+}
+.acr-sugg-title {
+  font: 600 14px/1.3 var(--font-display, var(--font-sans));
+  letter-spacing: -0.01em;
+  color: var(--acr-ink);
+}
+.acr-sugg-body {
+  font: 400 12.5px/1.45 var(--font-sans);
+  color: var(--acr-ink-2);
+  text-wrap: pretty;
+}
+.acr-sugg-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+/* ─────────────────────────────────────────────────────── deals table */
+
+.acr-card-padded-0 {
+  background: var(--acr-surface);
+  border: 0.5px solid var(--acr-line);
+  border-radius: 14px;
+  box-shadow: var(--acr-shadow-1);
+  overflow: hidden;
+}
+.acr-deal-head,
+.acr-deal-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 1.2fr) minmax(140px, 1fr) 90px 80px minmax(120px, 0.9fr) 70px;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 18px;
+}
+.acr-deal-head {
+  font: 500 10.5px/1 var(--font-sans);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--acr-ink-3);
+  border-bottom: 0.5px solid var(--acr-line);
+  background: var(--acr-surface-2);
+}
+.acr-deal-row {
+  border-bottom: 0.5px solid var(--acr-line-soft);
+  transition: background 0.1s;
+}
+.acr-deal-row:last-child {
+  border-bottom: 0;
+}
+.acr-deal-row:hover {
+  background: var(--acr-surface-2);
+}
+.acr-deal-id {
+  font: 500 13px/1.2 var(--font-mono, var(--font-sans));
+  color: var(--acr-ink);
+}
+.acr-deal-county,
+.acr-deal-sub {
+  font: 500 11.5px/1.2 var(--font-sans);
+  color: var(--acr-ink-3);
+  margin-top: 3px;
+}
+.acr-deal-name {
+  font: 500 13px/1.2 var(--font-sans);
+  color: var(--acr-ink);
+}
+.acr-deal-ask {
+  font: 600 13px/1 var(--font-sans);
+  color: var(--acr-ink);
+  font-feature-settings: "tnum";
+}
+.acr-deal-stage {
+  font: 500 12.5px/1 var(--font-sans);
+  color: var(--acr-ink-2);
+}
+.acr-deal-touch {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: 500 12px/1 var(--font-sans);
+  color: var(--acr-ink-3);
+}
+
+/* ─────────────────────────────────────────────────────── tasks */
+
+.acr-task-list {
+  display: flex;
+  flex-direction: column;
+}
+.acr-task {
+  display: flex;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 0.5px solid var(--acr-line-soft);
+  align-items: flex-start;
+}
+.acr-task:last-child {
+  border-bottom: 0;
+}
+.acr-task:hover {
+  background: var(--acr-surface-2);
+}
+.acr-task-done .acr-task-title {
+  color: var(--acr-ink-3);
+  text-decoration: line-through;
+}
+.acr-checkbox {
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
+  border: 1px solid var(--acr-line);
+  background: var(--acr-surface);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1px;
+  cursor: pointer;
+  color: var(--acr-brand-ink);
+  flex-shrink: 0;
+  transition: background 0.1s, border-color 0.1s;
+}
+.acr-checkbox:hover {
+  border-color: var(--acr-ink-3);
+}
+.acr-checkbox-on {
+  background: var(--acr-brand);
+  border-color: var(--acr-brand);
+}
+.acr-task-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.acr-task-title {
+  font: 500 12.5px/1.35 var(--font-sans);
+  color: var(--acr-ink);
+  letter-spacing: -0.005em;
+}
+.acr-task-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  font: 500 11px/1 var(--font-sans);
+  color: var(--acr-ink-3);
+}
+.acr-task-due {
+  color: var(--acr-ink-2);
+}
+
+/* ─────────────────────────────────────────────────────── activity */
+
+.acr-activity-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.acr-activity {
+  display: flex;
+  gap: 10px;
+}
+.acr-activity-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: var(--acr-surface-2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.acr-activity-body {
+  flex: 1;
+  min-width: 0;
+}
+.acr-activity-text {
+  font: 500 12.5px/1.4 var(--font-sans);
+  color: var(--acr-ink-2);
+  text-wrap: pretty;
+}
+.acr-activity-who {
+  color: var(--acr-ink);
+  font-weight: 600;
+  margin-right: 4px;
+}
+.acr-activity-msg {
+  font-weight: 400;
+  color: var(--acr-ink-2);
+}
+.acr-activity-time {
+  font: 500 11px/1 var(--font-sans);
+  color: var(--acr-ink-3);
+  margin-top: 3px;
+}
+
+/* ─────────────────────────────────────────────────────── responsive */
+
+@media (max-width: 720px) {
+  .acr-cc {
+    gap: 20px;
+  }
+  .acr-cc-hero {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .acr-cc-greeting {
+    font-size: 26px;
+  }
+  .acr-cc-metrics {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .acr-deal-head,
+  .acr-deal-row {
+    grid-template-columns: 1fr 80px;
+    gap: 8px;
+    padding: 12px 14px;
+  }
+  .acr-deal-head > *:not(:nth-child(1)):not(:nth-child(3)),
+  .acr-deal-row > *:not(:nth-child(1)):not(:nth-child(3)) {
+    display: none;
+  }
+}
