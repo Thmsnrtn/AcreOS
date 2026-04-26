@@ -1,14 +1,7 @@
 import { useState, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -18,7 +11,6 @@ import { useOrganization } from "@/hooks/use-organization";
 import {
   Sparkles,
   ArrowRight,
-  ArrowLeft,
   Upload,
   Mail,
   Target,
@@ -46,6 +38,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import "./onboarding.css";
 
 type BusinessType =
   | "land_flipper"
@@ -710,114 +703,112 @@ export function OnboardingWizard() {
   };
 
   if (orgLoading) return null;
+  if (!open) return null;
 
   return (
-    <Dialog open={open} onOpenChange={() => handleDismiss(false)}>
-      <DialogContent 
-        className="sm:max-w-lg max-h-[90vh] overflow-y-auto"
-        data-testid="onboarding-wizard"
-      >
-        <VisuallyHidden>
-          <DialogTitle>Onboarding Wizard</DialogTitle>
-        </VisuallyHidden>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="absolute top-4 right-4"
+    <div
+      className="ob fixed inset-0 z-50 overflow-y-auto"
+      role="dialog"
+      aria-modal="true"
+      aria-label="AcreOS onboarding"
+      data-testid="onboarding-wizard"
+    >
+      <header className="ob-header">
+        <div className="ob-logo">
+          <span className="ob-logo-mark" aria-hidden="true">A</span>
+          AcreOS
+        </div>
+        <button
+          type="button"
+          className="ob-skip"
           onClick={() => handleDismiss(false)}
-          aria-label="Close wizard"
+          aria-label="Close onboarding"
           data-testid="button-close-wizard"
         >
-          <X className="w-4 h-4" />
-        </Button>
-        
-        <div className="space-y-6 pt-2">
-          <div className="space-y-3">
-            <div className="flex items-center justify-between text-sm text-muted-foreground">
-              <span>Step {currentStep + 1} of {WIZARD_STEPS.length}</span>
-              <span>{Math.round(progress)}% complete</span>
-            </div>
-            <Progress value={progress} className="h-2" data-testid="progress-onboarding" />
-            
-            <div className="flex items-center justify-center gap-2 pt-1">
-              {WIZARD_STEPS.map((s, idx) => (
-                <div
-                  key={s.id}
-                  className={`w-2 h-2 rounded-full transition-colors ${
-                    idx === currentStep 
-                      ? "bg-primary" 
-                      : idx < currentStep 
-                        ? "bg-primary/60" 
-                        : "bg-muted"
-                  }`}
-                />
-              ))}
-            </div>
-          </div>
+          <X className="w-4 h-4" aria-hidden="true" />
+        </button>
+      </header>
 
+      <div className="ob-progress" aria-label={`Step ${currentStep + 1} of ${WIZARD_STEPS.length}`}>
+        {WIZARD_STEPS.map((s, idx) => (
+          <div
+            key={s.id}
+            className={`ob-progress-step ${
+              idx === currentStep ? "is-active" : idx < currentStep ? "is-done" : ""
+            }`}
+            data-testid={`progress-step-${idx}`}
+          >
+            {idx === currentStep && <span className="ob-step-label">{s.name}</span>}
+          </div>
+        ))}
+      </div>
+
+      <main className="ob-stage">
+        <div className="ob-screen">
           <AnimatePresence mode="wait">
             {renderStepContent()}
           </AnimatePresence>
+        </div>
+      </main>
 
-          <div className="flex items-center justify-between pt-4 border-t">
-            <div>
-              {currentStep > 0 ? (
-                <Button 
-                  variant="ghost" 
-                  onClick={handleBack}
-                  disabled={isPending}
-                  data-testid="button-back"
-                >
-                  <ArrowLeft className="w-4 h-4 mr-2" />
-                  Back
-                </Button>
-              ) : (
-                <Button 
-                  variant="ghost" 
-                  onClick={() => handleDismiss(true)}
-                  disabled={isPending}
-                  data-testid="button-complete-later"
-                >
-                  Complete Later
-                </Button>
-              )}
-            </div>
-            
-            <div className="flex items-center gap-2">
-              {currentStep > 0 && currentStep < WIZARD_STEPS.length - 1 && (
-                <Button 
-                  variant="ghost" 
-                  onClick={handleSkip}
-                  disabled={isPending}
-                  data-testid="button-skip"
-                >
-                  <SkipForward className="w-4 h-4 mr-2" />
-                  Skip
-                </Button>
-              )}
-              <Button 
-                onClick={isLastStep ? handleGoToDashboard : handleNext}
-                disabled={isPending || !canContinue()}
-                data-testid="button-continue"
+      <footer className="ob-footer">
+        <div className="ob-actions">
+          {currentStep > 0 ? (
+            <button
+              type="button"
+              className="ob-btn ob-btn-ghost ob-btn-arrow-back"
+              onClick={handleBack}
+              disabled={isPending}
+              data-testid="button-back"
+            >
+              Back
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="ob-btn ob-btn-ghost"
+              onClick={() => handleDismiss(true)}
+              disabled={isPending}
+              data-testid="button-complete-later"
+            >
+              Complete Later
+            </button>
+          )}
+
+          <div className="flex items-center gap-4">
+            <span className="ob-meta">
+              Step {currentStep + 1} of {WIZARD_STEPS.length} · {Math.round(progress)}%
+            </span>
+            {currentStep > 0 && currentStep < WIZARD_STEPS.length - 1 && (
+              <button
+                type="button"
+                className="ob-btn ob-btn-ghost"
+                onClick={handleSkip}
+                disabled={isPending}
+                data-testid="button-skip"
               >
-                {isPending ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                ) : isLastStep ? (
-                  <>
-                    Go to Dashboard
-                    <ArrowRight className="w-4 h-4 ml-2" />
-                  </>
-                ) : (
-                  <>
-                    Continue
-                    <ArrowRight className="w-4 h-4 ml-2" />
-                  </>
-                )}
-              </Button>
-            </div>
+                <SkipForward className="w-4 h-4 mr-1" aria-hidden="true" />
+                Skip
+              </button>
+            )}
+            <button
+              type="button"
+              className="ob-btn ob-btn-primary ob-btn-arrow"
+              onClick={isLastStep ? handleGoToDashboard : handleNext}
+              disabled={isPending || !canContinue()}
+              data-testid="button-continue"
+            >
+              {isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+              ) : isLastStep ? (
+                "Go to Dashboard"
+              ) : (
+                "Continue"
+              )}
+            </button>
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+      </footer>
+    </div>
   );
 }
