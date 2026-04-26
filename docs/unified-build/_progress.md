@@ -20,7 +20,7 @@ Last updated: 2026-04-26 — session 2
   - [x] 2.4 — Command palette audit + programmatic open (commit 802f7ca)
   - [x] 2.5 — Keyboard shortcuts audit + close (commit 2ed261a)
   - [x] Retroactive prototype-reference headers (commit 52e3c01)
-  - [ ] 2.6 — Deploy + Playwright MCP smoke test (awaiting operator confirmation)
+  - [x] 2.6 — Deploy + Playwright MCP smoke test (commit pending; deploy live at acreos.io)
 - [ ] Phase 3 — Tier 1 Pipeline Core
 - [ ] Phase 4 — Tier 2 Sourcing
 - [ ] Phase 5 — Tier 3 Closing
@@ -31,9 +31,9 @@ Last updated: 2026-04-26 — session 2
 - [ ] Phase 10 — Handoff Preparation
 
 ## Current State
-Phase: 2 — Tier 0 Shell
-**Status: 2.1–2.5 complete; 2.6 deploy + smoke test pending operator confirmation**
-Last commit: 2ed261a (Phase 2.5 keyboard shortcuts close)
+Phase: 3 — Tier 1 Pipeline Core (next)
+**Status: Phase 2 Tier 0 Shell complete and deployed. Production smoke test passed at https://acreos.io.**
+Last commit: b7297b5 (Phase 2.5 close + stash recovery note)
 Gate A: confirmed (FOUNDER_USER_IDS deployed on Fly with digest 890511d964d7abda; FOUNDER_EMAILS also present)
 
 ### Phase 2 quality bar
