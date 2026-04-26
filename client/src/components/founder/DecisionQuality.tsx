@@ -53,11 +53,13 @@ export function DecisionQuality() {
     return (
       <Card>
         <CardContent className="p-6">
-          <Skeleton className="h-6 w-48 mb-4" />
-          <div className="grid grid-cols-3 gap-4">
-            <Skeleton className="h-16" />
-            <Skeleton className="h-16" />
-            <Skeleton className="h-16" />
+          <div role="status" aria-busy="true" aria-label="Loading decision quality">
+            <Skeleton className="h-6 w-48 mb-4" />
+            <div className="grid grid-cols-3 gap-4">
+              <Skeleton className="h-16" />
+              <Skeleton className="h-16" />
+              <Skeleton className="h-16" />
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -69,32 +71,37 @@ export function DecisionQuality() {
   return (
     <motion.div variants={staggerContainer} initial="initial" animate="animate">
       <Card>
-        <CardHeader
-          className="cursor-pointer flex flex-row items-center justify-between pb-2"
-          onClick={() => setExpanded(!expanded)}
-        >
-          <div className="flex items-center gap-2">
-            <Target className="h-5 w-5 text-primary" />
-            <CardTitle className="text-base">Decision Quality</CardTitle>
-          </div>
-          {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        <CardHeader className="pb-2 p-0">
+          <button
+            type="button"
+            onClick={() => setExpanded(!expanded)}
+            aria-expanded={expanded}
+            aria-label={expanded ? "Collapse decision quality details" : "Expand decision quality details"}
+            className="w-full flex items-center justify-between px-6 py-4 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg"
+          >
+            <span className="flex items-center gap-2">
+              <Target className="h-5 w-5 text-primary" aria-hidden="true" />
+              <CardTitle className="text-base">Decision quality</CardTitle>
+            </span>
+            {expanded ? <ChevronUp className="h-4 w-4" aria-hidden="true" /> : <ChevronDown className="h-4 w-4" aria-hidden="true" />}
+          </button>
         </CardHeader>
 
         <CardContent>
-          <motion.div variants={staggerItem} className="grid grid-cols-3 gap-4 mb-4">
+          <motion.dl variants={staggerItem} className="grid grid-cols-3 gap-4 mb-4 m-0">
             <div className="text-center p-3 rounded-lg bg-muted/50">
-              <p className="text-2xl font-bold">{data.totalDecisions}</p>
-              <p className="text-xs text-muted-foreground">Decisions</p>
+              <dd className="text-2xl font-bold tabular-nums m-0">{data.totalDecisions}</dd>
+              <dt className="text-xs text-muted-foreground">Decisions</dt>
             </div>
             <div className="text-center p-3 rounded-lg bg-muted/50">
-              <p className="text-2xl font-bold text-emerald-600">{data.approvalRate}%</p>
-              <p className="text-xs text-muted-foreground">Approval Rate</p>
+              <dd className="text-2xl font-bold text-emerald-600 tabular-nums m-0">{data.approvalRate}%</dd>
+              <dt className="text-xs text-muted-foreground">Approval rate</dt>
             </div>
             <div className="text-center p-3 rounded-lg bg-muted/50">
-              <p className="text-2xl font-bold text-blue-600">{data.positiveOutcomeRate}%</p>
-              <p className="text-xs text-muted-foreground">Positive Outcomes</p>
+              <dd className="text-2xl font-bold text-blue-600 tabular-nums m-0">{data.positiveOutcomeRate}%</dd>
+              <dt className="text-xs text-muted-foreground">Positive outcomes</dt>
             </div>
-          </motion.div>
+          </motion.dl>
 
           <AnimatePresence>
             {expanded && (
@@ -105,48 +112,63 @@ export function DecisionQuality() {
                 className="overflow-hidden"
               >
                 {data.agentAccuracy.length > 0 && (
-                  <div className="mt-4">
-                    <h4 className="text-sm font-semibold mb-2 flex items-center gap-1">
-                      <BarChart3 className="h-4 w-4" />
-                      Per-Agent Accuracy
+                  <section aria-labelledby="per-agent-heading" className="mt-4">
+                    <h4 id="per-agent-heading" className="text-sm font-semibold mb-2 flex items-center gap-1">
+                      <BarChart3 className="h-4 w-4" aria-hidden="true" />
+                      Per-agent accuracy
                     </h4>
-                    <div className="space-y-2">
-                      {data.agentAccuracy.map((agent) => (
-                        <div key={agent.agent} className="flex items-center justify-between text-sm">
-                          <span className="font-medium capitalize">{agent.agent.replace(/_/g, " ")}</span>
-                          <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                            <span className="text-emerald-600">{agent.approved} approved</span>
-                            <span className="text-red-500">{agent.rejected} rejected</span>
-                            <span className="text-amber-500">{agent.modified} modified</span>
-                            <span className="font-semibold text-foreground">{agent.outcomeQuality}% quality</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                    <ul aria-labelledby="per-agent-heading" className="space-y-2 list-none p-0 m-0">
+                      {data.agentAccuracy.map((agent) => {
+                        const agentLabel = agent.agent.replace(/_/g, " ");
+                        return (
+                          <li
+                            key={agent.agent}
+                            className="flex items-center justify-between text-sm"
+                            aria-label={`${agentLabel}: ${agent.approved} approved, ${agent.rejected} rejected, ${agent.modified} modified, ${agent.outcomeQuality}% quality`}
+                          >
+                            <span className="font-medium capitalize">{agentLabel}</span>
+                            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                              <span className="text-emerald-600 tabular-nums">{agent.approved} approved</span>
+                              <span className="text-red-500 tabular-nums">{agent.rejected} rejected</span>
+                              <span className="text-amber-500 tabular-nums">{agent.modified} modified</span>
+                              <span className="font-semibold text-foreground tabular-nums">{agent.outcomeQuality}% quality</span>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </section>
                 )}
 
                 {data.recentOutcomes.length > 0 && (
-                  <div className="mt-4">
-                    <h4 className="text-sm font-semibold mb-2 flex items-center gap-1">
-                      <TrendingUp className="h-4 w-4" />
-                      Recent Outcomes
+                  <section aria-labelledby="recent-outcomes-heading" className="mt-4">
+                    <h4 id="recent-outcomes-heading" className="text-sm font-semibold mb-2 flex items-center gap-1">
+                      <TrendingUp className="h-4 w-4" aria-hidden="true" />
+                      Recent outcomes
                     </h4>
-                    <div className="space-y-1">
-                      {data.recentOutcomes.slice(0, 5).map((outcome) => (
-                        <div key={outcome.id} className="flex items-center justify-between text-sm py-1">
-                          <span>{outcome.action.replace(/_/g, " ")}</span>
-                          <span className={`text-xs px-2 py-0.5 rounded-full ${
-                            outcome.score > 0 ? "bg-emerald-100 text-emerald-700" :
-                            outcome.score < 0 ? "bg-red-100 text-red-700" :
-                            "bg-gray-100 text-gray-700"
-                          }`}>
-                            {outcome.score > 0 ? "+" : ""}{outcome.score}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                    <ul aria-labelledby="recent-outcomes-heading" className="space-y-1 list-none p-0 m-0">
+                      {data.recentOutcomes.slice(0, 5).map((outcome) => {
+                        const action = outcome.action.replace(/_/g, " ");
+                        const sign = outcome.score > 0 ? "+" : "";
+                        return (
+                          <li
+                            key={outcome.id}
+                            className="flex items-center justify-between text-sm py-1"
+                            aria-label={`${action}: score ${sign}${outcome.score}`}
+                          >
+                            <span>{action}</span>
+                            <span className={`text-xs px-2 py-0.5 rounded-full tabular-nums ${
+                              outcome.score > 0 ? "bg-emerald-100 text-emerald-700" :
+                              outcome.score < 0 ? "bg-red-100 text-red-700" :
+                              "bg-gray-100 text-gray-700"
+                            }`}>
+                              {sign}{outcome.score}
+                            </span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </section>
                 )}
               </motion.div>
             )}
