@@ -1,3 +1,27 @@
+/**
+ * Prototype reference: /acreos/command-palette.jsx → CommandPalette
+ *
+ * Key patterns from prototype:
+ * - Three top-level groups: Navigate / Actions / Ask AcreOS
+ * - Per-item two-letter chord shortcuts (e.g., "G H" go-home, "N D" new-deal)
+ * - Bottom footer with discoverable keyboard hints (↑↓ navigate, ↵ open, ⌘J ask)
+ * - Empty state offers "Ask AcreOS '<query>'" — press ↵ to send to AcreOS Intelligence
+ * - Placeholder: "Search or ask AcreOS…"
+ * - max-width 560px, top 14vh, max-height 70vh, blur backdrop
+ *
+ * Patterns extrapolated (not in prototype):
+ * - Recent items section (production-only domain feature)
+ * - Lead/deal sub-action mutations (Update lead status, change deal stage)
+ * - Founder/admin group (gated by useIsFounder elsewhere)
+ * - Explicit AI-mode toggle vs prototype's natural-language fallthrough
+ * - Backdrop and dialog use Framer Motion spring rather than the prototype's CSS keyframes
+ *
+ * Phase 9 Final Coherence Pass should reconcile:
+ * - Placeholder copy (production vs "Search or ask AcreOS…")
+ * - Bottom footer with keyboard hints (currently absent in production)
+ * - max-width 560px vs production 640px
+ * - Two-letter chord shortcuts per item (currently absent)
+ */
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";

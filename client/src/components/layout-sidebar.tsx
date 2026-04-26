@@ -1,3 +1,31 @@
+/**
+ * Prototype reference: /acreos/shell.jsx → Sidebar (~260 lines)
+ *
+ * Production layout-sidebar is ~1380 lines vs the prototype's 260 — most
+ * structure (white-label branding, NotificationCenter, PaxNotificationBadge,
+ * provider-status, customizer, mobile Sheet, collapsed-popover children,
+ * sub-nav expansion, prefetch-on-hover, founder-only modules, etc.) is
+ * production-original elite-refinement work and predates this build.
+ *
+ * Patterns brought across from the prototype in Phases 2.1–2.2:
+ * - data-tour-nav={module.id} on every nav-row surface (matches the
+ *   prototype's data-tour-nav={item.id} convention; see acreos/shell.jsx:29)
+ * - Visible "Search or jump to…" trigger in the sidebar header (matches the
+ *   prototype's acr-search-trigger; placement and copy mirror the prototype)
+ *
+ * Patterns intentionally NOT brought across (preserved as elite-refinement):
+ * - Active state — production uses the Tahoe-capsule pill (rounded full,
+ *   primary tint, glass specular) rather than the prototype's flat 2px
+ *   brand-colored left indicator pip. The intent is the same; production's
+ *   treatment is the more refined evolution.
+ * - Sidebar palette tokens stay on shadcn --sidebar-* HSL (warm earth)
+ *   rather than flipping to --acr-sidebar-bg, to avoid destabilizing
+ *   surfaces that already depend on the shadcn semantic namespace.
+ *
+ * Phase 9 Final Coherence Pass should evaluate whether the prototype's
+ * "Workspace · ⌃" affordance below the brand and the simpler nav-group
+ * uppercase 10.5px titles are worth reconciling; both are minor.
+ */
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import {
