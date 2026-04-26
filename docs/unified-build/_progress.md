@@ -1,19 +1,19 @@
 # Unified Build Progress
 
-Last updated: 2026-04-25 — end of session 1
+Last updated: 2026-04-26 — session 2
 
 ## Phases
 - [x] Pre-Flight — extraction (commit 8a55b3a)
 - [x] Housekeeping — screenshots parked + .gitignore (commit 2b8fe93)
 - [x] Phase 0 — Prerequisites (rollback tag pre-unified-build at 2b8fe93, pushed)
-- [/] Phase 1 — Foundation (Gate A pending operator)
+- [x] Phase 1 — Foundation
   - [x] 1.1 — Source inventory (commit 77405e0)
   - [x] 1.2 — Design token extraction (commit c275e42)
   - [x] 1.3 — Globals replacement architecture (commit 7ba3a74)
-  - [x] 1.4 — Founder mode authorization code (commit 782393d) — ⚠ Gate A pending
-  - [ ] 1.5 — Feature flag infrastructure
-  - [ ] 1.6 — Phase 1 completion
-- [ ] Phase 2 — Tier 0 Shell
+  - [x] 1.4 — Founder mode authorization (commit 782393d) — Gate A confirmed: FOUNDER_USER_IDS deployed on Fly
+  - [x] 1.5 — Feature flag infrastructure (commit c7dbc5d) — audit-only; existing infra satisfies spec
+  - [x] 1.6 — Phase 1 completion
+- [/] Phase 2 — Tier 0 Shell
 - [ ] Phase 3 — Tier 1 Pipeline Core
 - [ ] Phase 4 — Tier 2 Sourcing
 - [ ] Phase 5 — Tier 3 Closing
@@ -24,9 +24,10 @@ Last updated: 2026-04-25 — end of session 1
 - [ ] Phase 10 — Handoff Preparation
 
 ## Current State
-Phase: 1.4 → 1.5
-**Status: Gate A pending — operator must set Fly secret FOUNDER_USER_IDS**
-Last commit: 782393d (Phase 1.4 founder mode authorization)
+Phase: 2 — Tier 0 Shell
+**Status: starting Phase 2.1 — Sidebar**
+Last commit: c7dbc5d (Phase 1.5 flag audit + close)
+Gate A: confirmed (FOUNDER_USER_IDS deployed on Fly with digest 890511d964d7abda; FOUNDER_EMAILS also present)
 
 ## What ships in the build so far
 
