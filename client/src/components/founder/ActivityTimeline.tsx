@@ -96,7 +96,7 @@ export default function ActivityTimeline() {
 
   if (isLoading) {
     return (
-      <div className="p-4 space-y-3">
+      <div role="status" aria-busy="true" aria-label="Loading activity timeline" className="p-4 space-y-3">
         {[1, 2, 3].map(i => (
           <div key={i} className="h-16 bg-gray-800/50 rounded-lg animate-pulse" />
         ))}
@@ -107,7 +107,7 @@ export default function ActivityTimeline() {
   if (entries.length === 0) {
     return (
       <div className="p-6 text-center text-gray-400">
-        <Clock className="w-8 h-8 mx-auto mb-2 opacity-50" />
+        <Clock className="w-8 h-8 mx-auto mb-2 opacity-50" aria-hidden="true" />
         <p className="text-sm">No agent activity yet. Your team is standing by.</p>
       </div>
     );
@@ -115,114 +115,126 @@ export default function ActivityTimeline() {
 
   return (
     <div className="space-y-4">
-      {Array.from(groups.entries()).map(([block, blockEntries]) => (
-        <div key={block}>
-          <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wide px-4 mb-2">
-            {block}
-          </h3>
-          <div className="space-y-1">
-            {blockEntries.map((entry: any) => {
-              const isExpanded = expanded.has(entry.id);
-              const agentName = AGENT_NAMES[entry.agentCodename] || entry.agentCodename;
-              const agentColor = AGENT_COLORS[entry.agentCodename] || "#6B7280";
+      {Array.from(groups.entries()).map(([block, blockEntries]) => {
+        const blockId = `timeline-block-${block.replace(/\s+/g, "-").toLowerCase()}`;
+        return (
+          <section key={block} aria-labelledby={blockId}>
+            <h3 id={blockId} className="text-xs font-medium text-gray-500 uppercase tracking-wide px-4 mb-2">
+              {block}
+            </h3>
+            <ul aria-labelledby={blockId} className="space-y-1 list-none p-0 m-0">
+              {blockEntries.map((entry: any) => {
+                const isExpanded = expanded.has(entry.id);
+                const agentName = AGENT_NAMES[entry.agentCodename] || entry.agentCodename;
+                const agentColor = AGENT_COLORS[entry.agentCodename] || "#6B7280";
+                const action = entry.humanReadable || entry.actionName.replace(/_/g, " ");
+                const outcomeText = entry.outcome === "success" ? "succeeded" : entry.outcome === "failure" ? "failed" : "pending";
 
-              return (
-                <div
-                  key={entry.id}
-                  className="mx-2 rounded-lg bg-gray-800/40 border border-gray-700/50 overflow-hidden"
-                >
-                  <button
-                    onClick={() => {
-                      const next = new Set(expanded);
-                      if (isExpanded) next.delete(entry.id);
-                      else next.add(entry.id);
-                      setExpanded(next);
-                    }}
-                    className="w-full flex items-center gap-3 p-3 text-left hover:bg-gray-700/30 transition-colors"
+                return (
+                  <li
+                    key={entry.id}
+                    className="mx-2 rounded-lg bg-gray-800/40 border border-gray-700/50 overflow-hidden"
                   >
-                    {/* Agent dot */}
-                    <div
-                      className="w-2 h-2 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: agentColor }}
-                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = new Set(expanded);
+                        if (isExpanded) next.delete(entry.id);
+                        else next.add(entry.id);
+                        setExpanded(next);
+                      }}
+                      aria-expanded={isExpanded}
+                      aria-label={`${agentName}: ${action}, ${outcomeText} at ${formatTime(entry.createdAt)}`}
+                      className="w-full flex items-center gap-3 p-3 text-left hover:bg-gray-700/30 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      {/* Agent dot */}
+                      <div
+                        aria-hidden="true"
+                        className="w-2 h-2 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: agentColor }}
+                      />
 
-                    {/* Content */}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-gray-200 truncate">
-                        <span className="font-medium" style={{ color: agentColor }}>
-                          {agentName}
-                        </span>
-                        {" "}
-                        {entry.humanReadable || entry.actionName.replace(/_/g, " ")}
-                      </p>
-                      <p className="text-xs text-gray-500 mt-0.5">
-                        {formatTime(entry.createdAt)}
-                      </p>
-                    </div>
+                      {/* Content */}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-gray-200 truncate">
+                          <span className="font-medium" style={{ color: agentColor }}>
+                            {agentName}
+                          </span>
+                          {" "}
+                          {action}
+                        </p>
+                        <time dateTime={entry.createdAt} className="text-xs text-gray-500 mt-0.5 block tabular-nums">
+                          {formatTime(entry.createdAt)}
+                        </time>
+                      </div>
 
-                    {/* Outcome badge */}
-                    {entry.outcome === "success" ? (
-                      <CheckCircle className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                    ) : entry.outcome === "failure" ? (
-                      <XCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
-                    ) : (
-                      <Clock className="w-4 h-4 text-yellow-400 flex-shrink-0" />
-                    )}
-
-                    {isExpanded ? (
-                      <ChevronUp className="w-4 h-4 text-gray-500" />
-                    ) : (
-                      <ChevronDown className="w-4 h-4 text-gray-500" />
-                    )}
-                  </button>
-
-                  {isExpanded && (
-                    <div className="px-3 pb-3 pt-1 border-t border-gray-700/30">
-                      <p className="text-xs text-gray-400 mb-2">
-                        {entry.detail || "No additional details."}
-                      </p>
-
-                      {entry.verification && (
-                        <div className={`text-xs px-2 py-1 rounded mb-2 ${
-                          entry.verification.success
-                            ? "bg-emerald-900/30 text-emerald-400"
-                            : "bg-red-900/30 text-red-400"
-                        }`}>
-                          Outcome: {entry.verification.detail}
-                        </div>
+                      {/* Outcome badge */}
+                      {entry.outcome === "success" ? (
+                        <CheckCircle className="w-4 h-4 text-emerald-400 flex-shrink-0" aria-hidden="true" />
+                      ) : entry.outcome === "failure" ? (
+                        <XCircle className="w-4 h-4 text-red-400 flex-shrink-0" aria-hidden="true" />
+                      ) : (
+                        <Clock className="w-4 h-4 text-yellow-400 flex-shrink-0" aria-hidden="true" />
                       )}
 
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-gray-500">
-                          {entry.triggeredBy === "reaction" ? "Auto-triggered" : entry.triggeredBy === "approval" ? "CEO-approved" : "Proactive"}
-                        </span>
+                      {isExpanded ? (
+                        <ChevronUp className="w-4 h-4 text-gray-500" aria-hidden="true" />
+                      ) : (
+                        <ChevronDown className="w-4 h-4 text-gray-500" aria-hidden="true" />
+                      )}
+                    </button>
 
-                        {entry.undoAvailable && !entry.undoExpired && !entry.undoExecuted && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              undoMutation.mutate(entry.id);
-                            }}
-                            disabled={undoMutation.isPending}
-                            className="ml-auto flex items-center gap-1 text-xs px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors"
-                          >
-                            <Undo2 className="w-3 h-3" />
-                            Undo
-                          </button>
+                    {isExpanded && (
+                      <div className="px-3 pb-3 pt-1 border-t border-gray-700/30">
+                        <p className="text-xs text-gray-400 mb-2">
+                          {entry.detail || "No additional details."}
+                        </p>
+
+                        {entry.verification && (
+                          <div className={`text-xs px-2 py-1 rounded mb-2 ${
+                            entry.verification.success
+                              ? "bg-emerald-900/30 text-emerald-400"
+                              : "bg-red-900/30 text-red-400"
+                          }`}>
+                            Outcome: {entry.verification.detail}
+                          </div>
                         )}
 
-                        {entry.undoExecuted && (
-                          <span className="ml-auto text-xs text-gray-500">Undone</span>
-                        )}
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-gray-500">
+                            {entry.triggeredBy === "reaction" ? "Auto-triggered" : entry.triggeredBy === "approval" ? "CEO-approved" : "Proactive"}
+                          </span>
+
+                          {entry.undoAvailable && !entry.undoExpired && !entry.undoExecuted && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                undoMutation.mutate(entry.id);
+                              }}
+                              disabled={undoMutation.isPending}
+                              aria-busy={undoMutation.isPending}
+                              aria-label={`Undo ${agentName}: ${action}`}
+                              className="ml-auto flex items-center gap-1 text-xs px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                              <Undo2 className="w-3 h-3" aria-hidden="true" />
+                              {undoMutation.isPending ? "Undoing…" : "Undo"}
+                            </button>
+                          )}
+
+                          {entry.undoExecuted && (
+                            <span className="ml-auto text-xs text-gray-500">Undone</span>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ))}
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        );
+      })}
     </div>
   );
 }
