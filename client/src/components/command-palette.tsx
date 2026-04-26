@@ -16,11 +16,24 @@
  * - Explicit AI-mode toggle vs prototype's natural-language fallthrough
  * - Backdrop and dialog use Framer Motion spring rather than the prototype's CSS keyframes
  *
- * Phase 9 Final Coherence Pass should reconcile:
- * - Placeholder copy (production vs "Search or ask AcreOS…")
- * - Bottom footer with keyboard hints (currently absent in production)
- * - max-width 560px vs production 640px
- * - Two-letter chord shortcuts per item (currently absent)
+ * Phase 2A.2 visual application:
+ * - Placeholder updated to "Search or ask AcreOS…" / "Ask AcreOS anything…"
+ * - Modal: max-w-[560px] (was 640), top-[14vh] (was 20%)
+ * - Background: .palette-modal (flat homestead surface) replaces .glass-panel
+ *   .floating-window for this palette only — other glass-panel surfaces
+ *   unaffected
+ * - Backdrop: warm-tinted scrim (var(--acr-bg-sunken) at 60%) + blur(10px),
+ *   replaces the prior cool-black scrim
+ * - Footer hints aligned to prototype's 3-item density (navigate/open/close)
+ *   on var(--acr-bg-sunken) with hairline top border
+ *
+ * Phase 9 Final Coherence Pass remaining:
+ * - Two-letter chord shortcuts per item ("G H", "N D", etc.) — absent because
+ *   production has many more nav targets than the prototype's curated set
+ *   (would need a per-item chord registry; lower priority)
+ * - Empty state copy: "Ask AcreOS '<query>'" with "Press ↵ to send as a
+ *   question to AcreOS Intelligence" — production currently relies on the
+ *   AI-mode toggle pattern instead
  */
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useLocation } from "wouter";
@@ -416,14 +429,14 @@ export function CommandPalette() {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.94, y: -12 }}
             transition={{ type: "spring", stiffness: 500, damping: 32, mass: 0.8 }}
-            className="fixed left-1/2 top-[20%] z-50 w-full max-w-[640px] -translate-x-1/2 p-4"
+            className="fixed left-1/2 top-[14vh] z-50 w-full max-w-[560px] -translate-x-1/2 p-4"
             data-testid="command-palette-dialog"
           >
-            <Command className="glass-panel floating-window overflow-hidden rounded-xl border" shouldFilter={!showAIMode}>
+            <Command className="palette-modal" shouldFilter={!showAIMode}>
               <div className="relative">
                 <CommandInput
                   ref={inputRef}
-                  placeholder={showAIMode ? "Ask me anything about your real estate business..." : "Search pages, actions, or type a question..."}
+                  placeholder={showAIMode ? "Ask AcreOS anything…" : "Search or ask AcreOS…"}
                   value={inputValue}
                   onValueChange={(val) => { setInputValue(val); setSearch(val); setQuery(val); }}
                   onKeyDown={(e) => {
@@ -781,11 +794,15 @@ export function CommandPalette() {
               </CommandList>
 
               {!selectedLeadId && !selectedDealId && (
-                <div className="border-t px-3 py-2 text-xs text-muted-foreground flex items-center justify-between">
-                  <span><Kbd size="sm">{"\u2191\u2193"}</Kbd> navigate</span>
-                  <span><Kbd size="sm">{"\u21b5"}</Kbd> {showAIMode ? "ask AI" : "select"}</span>
-                  <span><Kbd size="sm">{"\u2318K"}</Kbd> toggle</span>
-                  <span><Kbd size="sm">esc</Kbd> close</span>
+                /* Footer hints per acreos/command-palette.jsx:128 .cp-foot \u2014
+                   3-item flat density on bg-sunken with hairline top border. */
+                <div
+                  className="flex items-center gap-4 px-4 py-2.5 border-t text-[11px] font-medium text-muted-foreground"
+                  style={{ background: "var(--acr-bg-sunken)", borderColor: "var(--acr-line)" }}
+                >
+                  <span className="inline-flex items-center gap-1"><Kbd size="sm">{"\u2191"}</Kbd><Kbd size="sm">{"\u2193"}</Kbd> navigate</span>
+                  <span className="inline-flex items-center gap-1"><Kbd size="sm">{"\u21b5"}</Kbd> {showAIMode ? "ask" : "open"}</span>
+                  <span className="inline-flex items-center gap-1"><Kbd size="sm">esc</Kbd> close</span>
                 </div>
               )}
             </Command>

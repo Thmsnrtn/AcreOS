@@ -847,14 +847,32 @@
   animation: subItemsReveal 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-/* Spotlight command palette backdrop */
+/* Command palette modal — prototype acreos/command-palette.jsx:111 .cp-modal
+   Flat homestead surface, hairline border, no glass blur. Replaces the
+   prior glass-panel + floating-window treatment for the palette only;
+   other glass-panel uses elsewhere are unaffected. */
+.palette-modal {
+  background: var(--acr-surface);
+  border: 0.5px solid var(--acr-line);
+  border-radius: 14px;
+  box-shadow: var(--acr-shadow-3);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  max-height: 70vh;
+}
+
+/* Command palette backdrop — homestead warm-tinted scrim per prototype
+   acreos/command-palette.jsx:109. Light: bg-sunken (#F1E9D6) at 60%
+   opacity. Dark: bg-sunken (#120B05) at 60%. Blur 10px (prototype's
+   value, gentler than the prior 20px+saturate Apple-vibrancy treatment). */
 .command-backdrop {
-  backdrop-filter: blur(20px) saturate(160%);
-  -webkit-backdrop-filter: blur(20px) saturate(160%);
-  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  background: rgba(241, 233, 214, 0.60);
 }
 .dark .command-backdrop {
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(18, 11, 5, 0.60);
 }
 
 /* Command palette spring open */
