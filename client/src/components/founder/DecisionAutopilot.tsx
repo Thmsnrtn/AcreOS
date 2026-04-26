@@ -59,18 +59,21 @@ function PatternRow({ pattern }: { pattern: Pattern }) {
   });
 
   return (
-    <div className={`flex items-center gap-3 p-3 rounded-lg border ${
-      pattern.isAutopilotActive ? "bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200" :
-      pattern.isAutopilotEligible ? "bg-blue-50 dark:bg-blue-950/20 border-blue-200" :
-      "bg-background"
-    }`}>
-      <span className="text-base">{avatar}</span>
+    <li
+      className={`flex items-center gap-3 p-3 rounded-lg border list-none ${
+        pattern.isAutopilotActive ? "bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200" :
+        pattern.isAutopilotEligible ? "bg-blue-50 dark:bg-blue-950/20 border-blue-200" :
+        "bg-background"
+      }`}
+      aria-label={`${role} — ${pattern.description}: ${pattern.totalDecisions} decisions, ${approveRate}% approved, ${confidence}% confidence${pattern.isAutopilotActive ? ", on autopilot" : pattern.isAutopilotEligible ? ", ready for autopilot" : ", still learning"}`}
+    >
+      <span aria-hidden="true" className="text-base">{avatar}</span>
       <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium truncate">{pattern.description}</div>
+        <p className="text-sm font-medium truncate m-0">{pattern.description}</p>
         <div className="flex items-center gap-2 mt-0.5">
-          <span className="text-[10px] text-muted-foreground">{pattern.totalDecisions} decisions</span>
-          <span className="text-[10px] text-muted-foreground">{approveRate}% approved</span>
-          <span className="text-[10px] text-muted-foreground">{confidence}% confidence</span>
+          <span className="text-[10px] text-muted-foreground tabular-nums">{pattern.totalDecisions} decisions</span>
+          <span className="text-[10px] text-muted-foreground tabular-nums">{approveRate}% approved</span>
+          <span className="text-[10px] text-muted-foreground tabular-nums">{confidence}% confidence</span>
         </div>
       </div>
 
@@ -85,19 +88,20 @@ function PatternRow({ pattern }: { pattern: Pattern }) {
             checked={pattern.isAutopilotActive}
             onCheckedChange={() => toggleMutation.mutate()}
             disabled={toggleMutation.isPending}
+            aria-label={`Autopilot for ${role}: ${pattern.description}`}
           />
         </div>
       )}
 
       {!pattern.isAutopilotEligible && (
         <div className="w-16">
-          <Progress value={Math.min(100, (pattern.totalDecisions / 15) * 100)} className="h-1.5" />
-          <div className="text-[10px] text-muted-foreground text-center mt-0.5">
+          <Progress value={Math.min(100, (pattern.totalDecisions / 15) * 100)} className="h-1.5" aria-label={`Learning progress: ${pattern.totalDecisions} of 15 decisions`} />
+          <div className="text-[10px] text-muted-foreground text-center mt-0.5 tabular-nums">
             {pattern.totalDecisions}/15
           </div>
         </div>
       )}
-    </div>
+    </li>
   );
 }
 
@@ -114,7 +118,7 @@ export function DecisionAutopilot() {
     refetchInterval: 60000,
   });
 
-  if (loadingPatterns) return <Skeleton className="h-48 w-full rounded-xl" />;
+  if (loadingPatterns) return <Skeleton role="status" aria-busy="true" aria-label="Loading decision autopilot" className="h-48 w-full rounded-xl" />;
 
   const patternList = (patterns || []) as Pattern[];
   const autopilotStats = stats as AutopilotStats | undefined;
@@ -127,12 +131,12 @@ export function DecisionAutopilot() {
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-base flex items-center gap-2">
-            <Zap className="h-4 w-4" /> Decision Autopilot
+            <Zap className="h-4 w-4" aria-hidden="true" /> Decision autopilot
           </CardTitle>
           {autopilotStats && (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Shield className="h-3 w-3" />
-              {autopilotStats.overallAccuracy}% shadow accuracy
+            <div className="flex items-center gap-2 text-xs text-muted-foreground" aria-label={`Shadow accuracy: ${autopilotStats.overallAccuracy}%`}>
+              <Shield className="h-3 w-3" aria-hidden="true" />
+              <span className="tabular-nums">{autopilotStats.overallAccuracy}%</span> shadow accuracy
             </div>
           )}
         </div>
@@ -140,60 +144,66 @@ export function DecisionAutopilot() {
       <CardContent className="space-y-4">
         {/* Stats bar */}
         {autopilotStats && (autopilotStats.activeAutopilots > 0 || autopilotStats.eligibleNotActive > 0) && (
-          <div className="flex items-center gap-4 text-xs">
+          <ul aria-label="Autopilot statistics" className="flex items-center gap-4 text-xs list-none p-0 m-0">
             {autopilotStats.activeAutopilots > 0 && (
-              <div className="flex items-center gap-1.5">
-                <CheckCircle2 className="h-3 w-3 text-emerald-500" />
-                <span>{autopilotStats.activeAutopilots} on autopilot</span>
-              </div>
+              <li className="flex items-center gap-1.5" aria-label={`${autopilotStats.activeAutopilots} on autopilot`}>
+                <CheckCircle2 className="h-3 w-3 text-emerald-500" aria-hidden="true" />
+                <span><span className="tabular-nums">{autopilotStats.activeAutopilots}</span> on autopilot</span>
+              </li>
             )}
             {autopilotStats.eligibleNotActive > 0 && (
-              <div className="flex items-center gap-1.5">
-                <Brain className="h-3 w-3 text-blue-500" />
-                <span>{autopilotStats.eligibleNotActive} ready to enable</span>
-              </div>
+              <li className="flex items-center gap-1.5" aria-label={`${autopilotStats.eligibleNotActive} ready to enable`}>
+                <Brain className="h-3 w-3 text-blue-500" aria-hidden="true" />
+                <span><span className="tabular-nums">{autopilotStats.eligibleNotActive}</span> ready to enable</span>
+              </li>
             )}
-            <div className="flex items-center gap-1.5">
-              <TrendingUp className="h-3 w-3 text-muted-foreground" />
-              <span>{autopilotStats.totalPatterns} patterns tracked</span>
-            </div>
-          </div>
+            <li className="flex items-center gap-1.5" aria-label={`${autopilotStats.totalPatterns} patterns tracked`}>
+              <TrendingUp className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
+              <span><span className="tabular-nums">{autopilotStats.totalPatterns}</span> patterns tracked</span>
+            </li>
+          </ul>
         )}
 
         {/* Eligible for autopilot */}
         {eligible.length > 0 && (
-          <div className="space-y-2">
-            <div className="text-xs font-medium text-blue-600 uppercase tracking-wider">Ready for Autopilot</div>
-            {eligible.map(p => <PatternRow key={p.id} pattern={p} />)}
-          </div>
+          <section aria-labelledby="ready-heading" className="space-y-2">
+            <p id="ready-heading" className="text-xs font-medium text-blue-600 uppercase tracking-wider">Ready for autopilot</p>
+            <ul aria-labelledby="ready-heading" className="space-y-2 list-none p-0 m-0">
+              {eligible.map(p => <PatternRow key={p.id} pattern={p} />)}
+            </ul>
+          </section>
         )}
 
         {/* Active autopilots */}
         {active.length > 0 && (
-          <div className="space-y-2">
-            <div className="text-xs font-medium text-emerald-600 uppercase tracking-wider">On Autopilot</div>
-            {active.map(p => <PatternRow key={p.id} pattern={p} />)}
-          </div>
+          <section aria-labelledby="active-heading" className="space-y-2">
+            <p id="active-heading" className="text-xs font-medium text-emerald-600 uppercase tracking-wider">On autopilot</p>
+            <ul aria-labelledby="active-heading" className="space-y-2 list-none p-0 m-0">
+              {active.map(p => <PatternRow key={p.id} pattern={p} />)}
+            </ul>
+          </section>
         )}
 
         {/* Still learning */}
         {learning.length > 0 && (
-          <div className="space-y-2">
-            <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Learning Your Patterns</div>
-            {learning.slice(0, 5).map(p => <PatternRow key={p.id} pattern={p} />)}
+          <section aria-labelledby="learning-heading" className="space-y-2">
+            <p id="learning-heading" className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Learning your patterns</p>
+            <ul aria-labelledby="learning-heading" className="space-y-2 list-none p-0 m-0">
+              {learning.slice(0, 5).map(p => <PatternRow key={p.id} pattern={p} />)}
+            </ul>
             {learning.length > 5 && (
-              <div className="text-[10px] text-muted-foreground text-center">
-                +{learning.length - 5} more patterns being learned
-              </div>
+              <p className="text-[10px] text-muted-foreground text-center">
+                +<span className="tabular-nums">{learning.length - 5}</span> more patterns being learned
+              </p>
             )}
-          </div>
+          </section>
         )}
 
         {patternList.length === 0 && (
-          <div className="text-center py-6 text-sm text-muted-foreground">
+          <p className="text-center py-6 text-sm text-muted-foreground">
             Autopilot learns from your decisions. As you approve, reject, and override,
             it builds patterns to eventually handle routine decisions for you.
-          </div>
+          </p>
         )}
       </CardContent>
     </Card>
