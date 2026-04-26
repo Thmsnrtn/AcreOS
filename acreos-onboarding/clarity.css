@@ -1,0 +1,334 @@
+/* acreos-onboarding/clarity.css — explanation overlays, roadmap, callouts */
+
+/* ───────── Roadmap card on Welcome ───────── */
+.ob-roadmap {
+  margin: 32px 0 28px;
+  background: var(--surface);
+  border: 0.5px solid var(--line);
+  border-radius: 14px;
+  padding: 22px 24px 20px;
+  position: relative;
+}
+.ob-roadmap-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  margin-bottom: 14px;
+}
+.ob-roadmap-eyebrow {
+  font: 600 10px/1 var(--font-sans); letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.ob-roadmap-time {
+  font: 500 12px/1 var(--font-mono);
+  color: var(--ink-3);
+}
+.ob-roadmap-title {
+  font: 500 19px/1.25 var(--font-display);
+  font-variation-settings: 'opsz' 24;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  margin: 0 0 16px;
+}
+.ob-roadmap-list {
+  display: grid;
+  gap: 2px;
+  margin: 0; padding: 0;
+  list-style: none;
+}
+.ob-roadmap-row {
+  display: grid;
+  grid-template-columns: 22px 1fr auto;
+  gap: 14px;
+  align-items: baseline;
+  padding: 10px 0;
+  border-top: 0.5px solid var(--line-soft);
+}
+.ob-roadmap-row:first-child { border-top: 0; }
+.ob-roadmap-num {
+  font: 500 11px/1 var(--font-mono);
+  color: var(--ink-4);
+  letter-spacing: 0.04em;
+}
+.ob-roadmap-step-name {
+  font: 600 14px/1.4 var(--font-sans);
+  color: var(--ink);
+}
+.ob-roadmap-step-name span {
+  font: 400 13px/1.4 var(--font-sans);
+  color: var(--ink-3);
+  margin-left: 8px;
+}
+.ob-roadmap-step-time {
+  font: 500 11px/1 var(--font-mono);
+  color: var(--ink-4);
+  letter-spacing: 0.04em;
+}
+
+/* ───────── "What happens with this" callout ───────── */
+.ob-callout {
+  margin: -20px 0 32px;
+  background: var(--surface);
+  border: 0.5px solid var(--line);
+  border-left: 2px solid var(--brand);
+  border-radius: 4px 10px 10px 4px;
+  padding: 14px 18px 14px 16px;
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  gap: 12px;
+  align-items: flex-start;
+  max-width: 560px;
+}
+.ob-screen-wide .ob-callout { max-width: 720px; }
+.ob-callout-icon {
+  width: 18px; height: 18px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--brand);
+  margin-top: 2px;
+}
+.ob-callout-body {
+  font: 400 13.5px/1.5 var(--font-sans);
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+.ob-callout-body b {
+  color: var(--ink);
+  font-weight: 600;
+}
+.ob-callout-body code {
+  font: 500 12.5px/1.4 var(--font-mono);
+  background: var(--surface-2);
+  padding: 1px 6px;
+  border-radius: 4px;
+  color: var(--ink);
+}
+
+/* Agent-tagged callouts (Atlas, Pax, Sophie) */
+.ob-callout-atlas { border-left-color: #4C7B80; }
+.ob-callout-atlas .ob-callout-icon { color: #4C7B80; }
+.ob-callout-pax { border-left-color: var(--brand); }
+.ob-callout-pax .ob-callout-icon { color: var(--brand); }
+.ob-callout-sophie { border-left-color: #6B5594; }
+.ob-callout-sophie .ob-callout-icon { color: #6B5594; }
+
+/* Agent badge inside callout */
+.ob-callout-agent {
+  display: inline-flex; align-items: center; gap: 6px;
+  font: 600 10px/1 var(--font-sans); letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.ob-callout-agent-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: currentColor;
+}
+.ob-callout-atlas .ob-callout-agent { color: #4C7B80; }
+.ob-callout-pax .ob-callout-agent { color: var(--brand); }
+.ob-callout-sophie .ob-callout-agent { color: #6B5594; }
+
+/* ───────── Step header time chip ───────── */
+.ob-step-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 10px;
+  font: 500 10px/1 var(--font-mono);
+  letter-spacing: 0.06em;
+  color: var(--ink-4);
+  text-transform: none;
+}
+.ob-step-meta::before {
+  content: ''; width: 3px; height: 3px; border-radius: 50%;
+  background: var(--ink-4);
+}
+
+/* ───────── Pax explainer (phone step) ───────── */
+.ob-pax-explainer {
+  margin: 8px 0 28px;
+  background: linear-gradient(180deg, var(--surface) 0%, var(--bg-3) 100%);
+  border: 0.5px solid var(--line);
+  border-radius: 14px;
+  padding: 0;
+  overflow: hidden;
+}
+.ob-pax-explainer-head {
+  display: flex; align-items: center; gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 0.5px solid var(--line-soft);
+  background: var(--surface);
+}
+.ob-pax-explainer-mark {
+  width: 32px; height: 32px;
+  border-radius: 8px;
+  background: var(--brand); color: var(--bg-3);
+  display: inline-flex; align-items: center; justify-content: center;
+  font: 700 15px/1 var(--font-display);
+}
+.ob-pax-explainer-title {
+  font: 600 14px/1.3 var(--font-sans);
+  color: var(--ink);
+}
+.ob-pax-explainer-sub {
+  font: 400 12.5px/1.3 var(--font-sans);
+  color: var(--ink-3);
+  margin-top: 2px;
+}
+.ob-pax-explainer-body {
+  padding: 16px 20px 18px;
+  display: grid;
+  gap: 12px;
+}
+.ob-pax-explainer-row {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  gap: 12px;
+  align-items: flex-start;
+}
+.ob-pax-explainer-row svg {
+  color: var(--brand);
+  margin-top: 2px;
+}
+.ob-pax-explainer-row b {
+  font: 600 13px/1.45 var(--font-sans);
+  color: var(--ink);
+  display: block;
+  margin-bottom: 1px;
+}
+.ob-pax-explainer-row span {
+  font: 400 13px/1.5 var(--font-sans);
+  color: var(--ink-2);
+}
+
+/* ───────── Glossary chip (inline term tooltip) ───────── */
+.ob-term {
+  border-bottom: 1px dotted var(--ink-4);
+  cursor: help;
+  position: relative;
+}
+.ob-term:hover { color: var(--brand); border-bottom-color: var(--brand); }
+.ob-term[data-tip]:hover::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: 0; bottom: calc(100% + 8px);
+  background: var(--ink);
+  color: var(--bg-3);
+  font: 400 12px/1.45 var(--font-sans);
+  padding: 8px 10px;
+  border-radius: 6px;
+  width: max-content;
+  max-width: 280px;
+  z-index: 10;
+  box-shadow: 0 4px 16px rgba(36,22,7,0.16);
+}
+
+/* ───────── Inline "preview" of computed effect ───────── */
+.ob-preview-strip {
+  margin-top: 14px;
+  padding: 12px 14px;
+  background: var(--surface-2);
+  border-radius: 8px;
+  font: 400 12.5px/1.5 var(--font-sans);
+  color: var(--ink-2);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.ob-preview-strip-tag {
+  flex-shrink: 0;
+  font: 600 10px/1 var(--font-sans);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.ob-preview-strip b { color: var(--ink); font-weight: 600; }
+
+/* ───────── Help tag link in header ───────── */
+.ob-help-tip {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-left: 4px;
+  padding: 3px 8px;
+  border-radius: 99px;
+  background: var(--surface-2);
+  color: var(--ink-3);
+  font: 500 11px/1 var(--font-sans);
+  letter-spacing: 0.02em;
+}
+.ob-help-tip:hover { color: var(--brand); }
+
+/* ───────── Tweaks panel branding overrides ───────── */
+.tweaks-panel { font-family: var(--font-sans) !important; }
+
+/* ───────── Connections list (step 5) ───────── */
+.ob-conn-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 8px;
+}
+.ob-conn-card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 16px;
+  align-items: center;
+  background: var(--surface);
+  border: 0.5px solid var(--line);
+  border-radius: 12px;
+  padding: 16px 18px;
+  transition: all 0.15s;
+}
+.ob-conn-card.is-on {
+  background: var(--bg-3);
+  border-color: rgba(59, 124, 46, 0.4);
+}
+.ob-conn-card-head {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 4px;
+}
+.ob-conn-card-name {
+  font: 600 14px/1.2 var(--font-sans);
+  color: var(--ink);
+}
+.ob-conn-card-tag {
+  font: 600 9.5px/1 var(--font-sans);
+  letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 3px 7px;
+  border-radius: 99px;
+}
+.ob-conn-card-tag.is-req {
+  background: var(--brand-soft); color: var(--brand);
+}
+.ob-conn-card-tag.is-opt {
+  background: var(--surface-2); color: var(--ink-3);
+}
+.ob-conn-card-desc {
+  font: 500 12.5px/1.4 var(--font-sans);
+  color: var(--ink-2);
+  margin-bottom: 4px;
+}
+.ob-conn-card-why {
+  font: 400 12px/1.5 var(--font-sans);
+  color: var(--ink-3);
+  text-wrap: pretty;
+  max-width: 480px;
+}
+.ob-conn-status {
+  font: 600 12px/1 var(--font-sans);
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: var(--ink);
+  color: var(--bg-3);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.ob-conn-status.is-connected {
+  background: rgba(59, 124, 46, 0.12);
+  color: var(--pos);
+  border: 0.5px solid rgba(59, 124, 46, 0.35);
+}
+
+@keyframes ob-callout-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.ob-callout, .ob-pax-explainer, .ob-roadmap, .ob-preview-strip {
+  opacity: 1;
+}

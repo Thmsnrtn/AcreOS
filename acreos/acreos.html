@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>AcreOS — Refined</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+<style>
+  :root {
+    /* Inter as body with SF fallback — looks close to SF Pro Text */
+    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+    --font-display: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
+    --font-serif: 'Fraunces', ui-serif, Georgia, serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  html, body { margin: 0; padding: 0; height: 100%; background: #0b0a08; }
+  body {
+    font-family: var(--font-sans);
+    font-feature-settings: 'cv11', 'ss01', 'ss03';
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    color-scheme: light dark;
+  }
+  #root { min-height: 100%; }
+
+  /* Scrollbars */
+  *::-webkit-scrollbar { width: 10px; height: 10px; }
+  *::-webkit-scrollbar-track { background: transparent; }
+  *::-webkit-scrollbar-thumb { background: rgba(0,0,0,.12); border-radius: 10px; border: 2px solid transparent; background-clip: content-box; }
+  *::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,.22); border: 2px solid transparent; background-clip: content-box; }
+  .theme-dark *::-webkit-scrollbar-thumb { background: rgba(255,255,255,.1); border: 2px solid transparent; background-clip: content-box; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="acreos/theme.jsx"></script>
+<script type="text/babel" src="acreos/icons.jsx"></script>
+<script type="text/babel" src="acreos/data.jsx"></script>
+<script type="text/babel" src="acreos/primitives.jsx"></script>
+<script type="text/babel" src="acreos/tier-a.jsx"></script>
+<script type="text/babel" src="acreos/tier-c.jsx"></script>
+<script type="text/babel" src="acreos/shell.jsx"></script>
+<script type="text/babel" src="acreos/command-center.jsx"></script>
+<script type="text/babel" src="acreos/pax.jsx"></script>
+<script type="text/babel" src="acreos/settings.jsx"></script>
+<script type="text/babel" src="acreos/onboarding.jsx"></script>
+<script type="text/babel" src="acreos/command-palette.jsx"></script>
+<script type="text/babel" src="acreos/pages-tier1.jsx"></script>
+<script type="text/babel" src="acreos/pages-tier2345.jsx"></script>
+<script type="text/babel" src="acreos/tier-b.jsx"></script>
+<script type="text/babel" src="acreos/tier-c-wire.jsx"></script>
+<script type="text/babel" src="acreos/v2.jsx"></script>
+<script type="text/babel" src="acreos/round3-primitives.jsx"></script>
+<script type="text/babel" src="acreos/round3-features.jsx"></script>
+<script type="text/babel" src="acreos/round3-css.jsx"></script>
+<script type="text/babel" src="acreos/round3-integrations.jsx"></script>
+<script type="text/babel" src="acreos/round3-integrations-2.jsx"></script>
+<script type="text/babel" src="acreos/round3-integrations-css.jsx"></script>
+<script type="text/babel" src="acreos/guided-tour.jsx"></script>
+<script type="text/babel" src="acreos/app.jsx"></script>
+</body>
+</html>

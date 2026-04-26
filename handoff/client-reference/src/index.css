@@ -1,0 +1,1054 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
+
+  /* American Southwest Modern Desert - Light Mode */
+  /* Clean warm cream background */
+  --background: 38 35% 96%;
+  --foreground: 20 25% 18%;
+
+  /* Cards: Pure warm white */
+  --card: 40 30% 99%;
+  --card-foreground: 20 25% 18%;
+
+  --popover: 40 30% 99%;
+  --popover-foreground: 20 25% 18%;
+
+  /* Primary: Warm Terracotta */
+  --primary: 18 48% 52%;
+  --primary-foreground: 40 30% 98%;
+
+  /* Secondary: Soft warm sand */
+  --secondary: 35 28% 91%;
+  --secondary-foreground: 20 25% 22%;
+
+  /* Muted: Light desert sand */
+  --muted: 33 25% 92%;
+  --muted-foreground: 20 12% 48%;
+
+  /* Accent: Desert Slate Blue */
+  --accent: 195 14% 48%;
+  --accent-foreground: 40 30% 98%;
+
+  --destructive: 0 65% 50%;
+  --destructive-foreground: 40 30% 98%;
+
+  /* Subtle warm borders */
+  --border: 33 18% 87%;
+  --input: 33 18% 87%;
+  --ring: 18 48% 52%;
+
+  /* Sidebar: Soft warm cream */
+  --sidebar-background: 35 30% 95%;
+  --sidebar-foreground: 20 25% 22%;
+  --sidebar-primary: 18 48% 52%;
+  --sidebar-primary-foreground: 40 30% 98%;
+  --sidebar-accent: 35 25% 90%;
+  --sidebar-accent-foreground: 20 25% 22%;
+  --sidebar-border: 33 20% 88%;
+  --sidebar-ring: 18 48% 52%;
+
+  /* ── Liquid Glass tint tokens ───────────────────── */
+  --glass-bg-light:    rgba(252, 250, 247, 0.72);
+  --glass-bg-subtle:   rgba(252, 250, 247, 0.55);
+  --glass-bg-sm:       rgba(252, 250, 247, 0.65);
+  --glass-border:      rgba(255, 255, 255, 0.55);
+  --glass-border-sm:   rgba(255, 255, 255, 0.40);
+  --glass-specular:    linear-gradient(135deg, rgba(255,255,255,0.30) 0%, rgba(255,255,255,0) 60%);
+
+  /* ── 4-Level Elevation System (light) ──────────── */
+  --shadow-1: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.06);
+  --shadow-2: 0 0 0 0.5px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.08), 0 8px 24px -4px rgba(0,0,0,0.06);
+  --shadow-3: 0 0 0 0.5px rgba(0,0,0,0.08), 0 8px 40px rgba(0,0,0,0.12), 0 16px 48px -8px rgba(0,0,0,0.10);
+  --shadow-4: 0 0 0 0.5px rgba(0,0,0,0.10), 0 16px 64px rgba(0,0,0,0.16), 0 24px 72px -12px rgba(0,0,0,0.14);
+
+  /* ── Radius bump: 12px → 16px ───────────────────── */
+  --radius: 1rem;
+}
+
+.dark {
+  /* American Southwest Modern Desert - Dark Mode */
+  /* Rich chocolate brown like desert night */
+  --background: 20 30% 8%;
+  --foreground: 35 25% 92%;
+
+  /* Cards: Deep warm brown */
+  --card: 20 28% 12%;
+  --card-foreground: 35 25% 92%;
+
+  --popover: 20 28% 11%;
+  --popover-foreground: 35 25% 92%;
+
+  /* Primary: Warm Terracotta (brighter for visibility) */
+  --primary: 18 55% 58%;
+  --primary-foreground: 20 30% 8%;
+
+  /* Secondary: Deep earth */
+  --secondary: 20 22% 16%;
+  --secondary-foreground: 35 25% 88%;
+
+  /* Muted: Subtle warm earth */
+  --muted: 20 18% 18%;
+  --muted-foreground: 30 15% 58%;
+
+  /* Accent: Desert Slate Blue */
+  --accent: 195 16% 45%;
+  --accent-foreground: 35 25% 95%;
+
+  --destructive: 0 55% 48%;
+  --destructive-foreground: 35 25% 95%;
+
+  /* Subtle warm borders */
+  --border: 20 16% 20%;
+  --input: 20 16% 20%;
+  --ring: 18 55% 58%;
+
+  /* Sidebar: Rich warm brown */
+  --sidebar-background: 20 26% 10%;
+  --sidebar-foreground: 35 25% 88%;
+  --sidebar-primary: 18 55% 58%;
+  --sidebar-primary-foreground: 20 30% 8%;
+  --sidebar-accent: 20 20% 15%;
+  --sidebar-accent-foreground: 35 25% 88%;
+  --sidebar-border: 20 16% 18%;
+  --sidebar-ring: 18 55% 58%;
+
+  --glass-bg-light:  rgba(20, 14, 8, 0.78);
+  --glass-bg-subtle: rgba(20, 14, 8, 0.60);
+  --glass-bg-sm:     rgba(20, 14, 8, 0.70);
+  --glass-border:    rgba(255, 255, 255, 0.07);
+  --glass-border-sm: rgba(255, 255, 255, 0.05);
+  --glass-specular:  linear-gradient(135deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0) 60%);
+
+  --shadow-1: 0 1px 3px rgba(0,0,0,0.18), 0 1px 2px rgba(0,0,0,0.22);
+  --shadow-2: 0 0 0 0.5px rgba(255,255,255,0.04), 0 4px 16px rgba(0,0,0,0.36), 0 8px 24px -4px rgba(0,0,0,0.28);
+  --shadow-3: 0 0 0 0.5px rgba(255,255,255,0.05), 0 8px 40px rgba(0,0,0,0.50), 0 16px 48px -8px rgba(0,0,0,0.42);
+  --shadow-4: 0 0 0 0.5px rgba(255,255,255,0.06), 0 16px 64px rgba(0,0,0,0.64), 0 24px 72px -12px rgba(0,0,0,0.56);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   NAMED THEME PRESETS — applied via data-theme on <html>
+   Each preset overrides the primary hue and sidebar colors.
+   Dark mode variants automatically adjust via .dark class.
+═══════════════════════════════════════════════════════════════════ */
+
+/* Midnight — deep navy & indigo */
+[data-theme="midnight"]:root,
+[data-theme="midnight"] :root {
+  --primary: 230 70% 58%;
+  --primary-foreground: 230 100% 98%;
+  --accent: 260 50% 55%;
+  --accent-foreground: 260 100% 98%;
+  --ring: 230 70% 58%;
+  --sidebar-primary: 230 70% 58%;
+  --sidebar-ring: 230 70% 58%;
+}
+[data-theme="midnight"].dark,
+[data-theme="midnight"] .dark {
+  --background: 230 25% 8%;
+  --card: 230 22% 12%;
+  --popover: 230 22% 11%;
+  --sidebar-background: 230 24% 10%;
+  --sidebar-accent: 230 20% 15%;
+  --sidebar-border: 230 16% 18%;
+}
+
+/* Forest — deep green & sage */
+[data-theme="forest"]:root,
+[data-theme="forest"] :root {
+  --primary: 145 48% 42%;
+  --primary-foreground: 145 100% 98%;
+  --accent: 165 35% 42%;
+  --accent-foreground: 165 100% 98%;
+  --ring: 145 48% 42%;
+  --sidebar-primary: 145 48% 42%;
+  --sidebar-ring: 145 48% 42%;
+}
+[data-theme="forest"].dark,
+[data-theme="forest"] .dark {
+  --background: 145 20% 7%;
+  --card: 145 18% 11%;
+  --popover: 145 18% 10%;
+  --sidebar-background: 145 22% 9%;
+  --sidebar-accent: 145 16% 14%;
+  --sidebar-border: 145 14% 17%;
+}
+
+/* Ocean — blue & teal */
+[data-theme="ocean"]:root,
+[data-theme="ocean"] :root {
+  --primary: 205 70% 50%;
+  --primary-foreground: 205 100% 98%;
+  --accent: 185 55% 45%;
+  --accent-foreground: 185 100% 98%;
+  --ring: 205 70% 50%;
+  --sidebar-primary: 205 70% 50%;
+  --sidebar-ring: 205 70% 50%;
+}
+[data-theme="ocean"].dark,
+[data-theme="ocean"] .dark {
+  --background: 210 30% 8%;
+  --card: 210 28% 12%;
+  --popover: 210 28% 11%;
+  --sidebar-background: 210 28% 10%;
+  --sidebar-accent: 210 22% 15%;
+  --sidebar-border: 210 18% 18%;
+}
+
+/* Sunset — warm amber & rose */
+[data-theme="sunset"]:root,
+[data-theme="sunset"] :root {
+  --primary: 28 85% 55%;
+  --primary-foreground: 28 100% 98%;
+  --accent: 340 65% 55%;
+  --accent-foreground: 340 100% 98%;
+  --ring: 28 85% 55%;
+  --sidebar-primary: 28 85% 55%;
+  --sidebar-ring: 28 85% 55%;
+}
+[data-theme="sunset"].dark,
+[data-theme="sunset"] .dark {
+  --background: 25 28% 8%;
+  --card: 25 25% 12%;
+  --popover: 25 25% 11%;
+  --sidebar-background: 25 26% 10%;
+  --sidebar-accent: 25 20% 15%;
+  --sidebar-border: 25 16% 18%;
+}
+
+/* Monochrome — pure grayscale */
+[data-theme="monochrome"]:root,
+[data-theme="monochrome"] :root {
+  --primary: 220 9% 28%;
+  --primary-foreground: 220 9% 98%;
+  --accent: 220 9% 45%;
+  --accent-foreground: 220 9% 98%;
+  --ring: 220 9% 28%;
+  --sidebar-primary: 220 9% 28%;
+  --sidebar-ring: 220 9% 28%;
+}
+[data-theme="monochrome"].dark,
+[data-theme="monochrome"] .dark {
+  --background: 220 9% 8%;
+  --card: 220 9% 12%;
+  --popover: 220 9% 11%;
+  --sidebar-background: 220 9% 10%;
+  --sidebar-accent: 220 9% 15%;
+  --sidebar-border: 220 9% 18%;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   ACCENT OVERRIDES — data-accent attribute on <html>
+   These override just the --primary / --ring / sidebar-primary
+═══════════════════════════════════════════════════════════════════ */
+[data-theme="default"][data-accent="forest"]:root {
+  --primary: 145 48% 42%; --ring: 145 48% 42%;
+  --sidebar-primary: 145 48% 42%; --sidebar-ring: 145 48% 42%;
+}
+[data-theme="default"][data-accent="ocean"]:root {
+  --primary: 205 70% 50%; --ring: 205 70% 50%;
+  --sidebar-primary: 205 70% 50%; --sidebar-ring: 205 70% 50%;
+}
+[data-theme="default"][data-accent="amber"]:root {
+  --primary: 42 90% 50%; --ring: 42 90% 50%;
+  --sidebar-primary: 42 90% 50%; --sidebar-ring: 42 90% 50%;
+}
+[data-theme="default"][data-accent="rose"]:root {
+  --primary: 345 70% 55%; --ring: 345 70% 55%;
+  --sidebar-primary: 345 70% 55%; --sidebar-ring: 345 70% 55%;
+}
+[data-theme="default"][data-accent="slate"]:root {
+  --primary: 215 20% 48%; --ring: 215 20% 48%;
+  --sidebar-primary: 215 20% 48%; --sidebar-ring: 215 20% 48%;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  /* Kill iOS Safari's default semi-transparent tap flash on every
+     interactive element — our components manage their own :active
+     states, and the grey/purple flash reads as a rendering bug to
+     users. Applies site-wide. */
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* Prevent horizontal scroll from any accidental overflow. Children
+       that legitimately need to scroll (wide tables, carousels) still
+       can because they use overflow-x-auto on their own wrapper. */
+    overflow-x: hidden;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    letter-spacing: -0.018em;
+  }
+}
+
+/* macOS Tahoe-inspired scrollbars */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-foreground/15 rounded-full;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-foreground/25;
+}
+
+/* Apple-style Glass Panel Effect — Liquid Glass */
+.glass-panel {
+  position: relative;
+  backdrop-filter: blur(32px) saturate(190%);
+  -webkit-backdrop-filter: blur(32px) saturate(190%);
+  background: var(--glass-bg-light);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-3);
+  overflow: hidden;
+}
+.glass-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--glass-specular);
+  pointer-events: none;
+  z-index: 0;
+}
+.glass-panel > * { position: relative; z-index: 1; }
+
+/* ── Liquid Glass material primitives ─────────────────────────────── */
+.liquid-glass {
+  position: relative;
+  backdrop-filter: blur(32px) saturate(190%);
+  -webkit-backdrop-filter: blur(32px) saturate(190%);
+  background: var(--glass-bg-light);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-2);
+  overflow: hidden;
+}
+.liquid-glass::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--glass-specular);
+  pointer-events: none;
+  z-index: 0;
+}
+.liquid-glass > * { position: relative; z-index: 1; }
+
+.liquid-glass-sm {
+  position: relative;
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  background: var(--glass-bg-sm);
+  border: 1px solid var(--glass-border-sm);
+  box-shadow: var(--shadow-1);
+  overflow: hidden;
+}
+.liquid-glass-sm::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--glass-specular);
+  pointer-events: none;
+  z-index: 0;
+}
+.liquid-glass-sm > * { position: relative; z-index: 1; }
+
+.liquid-glass-subtle {
+  position: relative;
+  backdrop-filter: blur(20px) saturate(175%);
+  -webkit-backdrop-filter: blur(20px) saturate(175%);
+  background: var(--glass-bg-subtle);
+  border: 1px solid var(--glass-border-sm);
+  box-shadow: var(--shadow-1);
+  overflow: hidden;
+}
+.liquid-glass-subtle::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--glass-specular);
+  pointer-events: none;
+  z-index: 0;
+}
+.liquid-glass-subtle > * { position: relative; z-index: 1; }
+
+/* ── Capsule & Elevation utilities ────────────────────────────────── */
+.capsule { border-radius: 9999px; }
+.elevation-1 { box-shadow: var(--shadow-1); }
+.elevation-2 { box-shadow: var(--shadow-2); }
+.elevation-3 { box-shadow: var(--shadow-3); }
+.elevation-4 { box-shadow: var(--shadow-4); }
+
+/* ── Tahoe Typography ─────────────────────────────────────────────── */
+.heading-display  { font-family: var(--font-display); font-weight: 700; letter-spacing: -0.025em; line-height: 1.1; }
+.heading-section  { font-family: var(--font-display); font-weight: 600; letter-spacing: -0.015em; line-height: 1.25; }
+.caption-label    { font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: hsl(var(--muted-foreground)); }
+
+/* Floating window effect like macOS — Tahoe elevation */
+.floating-window {
+  @apply rounded-2xl;
+  box-shadow: var(--shadow-3);
+}
+
+/* Subtle card hover transitions */
+.card-hover {
+  @apply transition-all duration-200 ease-out;
+}
+.card-hover:hover {
+  @apply shadow-lg;
+  transform: translateY(-1px);
+}
+
+/* Apple-style vibrancy for sidebars — Tahoe Liquid Glass */
+.vibrancy-sidebar {
+  backdrop-filter: blur(28px) saturate(185%);
+  -webkit-backdrop-filter: blur(28px) saturate(185%);
+  background: rgba(245, 240, 233, 0.82);
+}
+.dark .vibrancy-sidebar {
+  background: rgba(22, 16, 10, 0.86);
+}
+
+/* Animation utilities */
+.animate-in {
+  animation: fadeSlideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes fadeSlideIn {
+  from { 
+    opacity: 0; 
+    transform: translateY(8px) scale(0.98); 
+  }
+  to { 
+    opacity: 1; 
+    transform: translateY(0) scale(1); 
+  }
+}
+
+/* Skip-to-content link for keyboard accessibility */
+.skip-to-content {
+  @apply fixed top-0 left-0 z-[9999] px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-br-lg;
+  transform: translateY(-100%);
+  transition: transform 0.2s ease;
+}
+.skip-to-content:focus {
+  transform: translateY(0);
+}
+
+/* macOS-style focus rings */
+*:focus-visible {
+  @apply outline-none ring-2 ring-primary/40 ring-offset-2 ring-offset-background;
+}
+
+/* Smooth page transitions */
+.page-transition {
+  @apply transition-opacity duration-200 ease-out;
+}
+
+/* Modern desert gradient overlays — Tahoe depth blooms for glass refraction */
+.desert-gradient {
+  background:
+    radial-gradient(ellipse 80% 50% at 20% 10%, hsl(18 48% 52% / 0.07) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 80% 80%, hsl(195 14% 48% / 0.06) 0%, transparent 55%),
+    linear-gradient(160deg, hsl(38 35% 97%) 0%, hsl(35 30% 94%) 50%, hsl(33 25% 92%) 100%);
+}
+.dark .desert-gradient {
+  background:
+    radial-gradient(ellipse 80% 50% at 20% 10%, hsl(18 55% 58% / 0.08) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 80% 80%, hsl(195 16% 45% / 0.06) 0%, transparent 55%),
+    linear-gradient(160deg, hsl(20 30% 8%) 0%, hsl(20 28% 10%) 50%, hsl(20 26% 12%) 100%);
+}
+
+/* Hover elevation utilities */
+.hover-elevate {
+  @apply transition-all duration-200 ease-out;
+}
+.hover-elevate:hover {
+  @apply bg-foreground/5;
+}
+.dark .hover-elevate:hover {
+  background-color: hsl(var(--foreground) / 0.08);
+}
+
+.active-elevate-2 {
+  @apply transition-all duration-100 ease-out;
+}
+.active-elevate-2:active {
+  @apply bg-foreground/10;
+  transform: scale(0.98);
+}
+
+/* Toggle elevation system */
+.toggle-elevate {
+  @apply transition-all duration-150 ease-out;
+}
+.toggle-elevated {
+  @apply bg-primary/10;
+}
+.dark .toggle-elevated {
+  @apply bg-primary/15;
+}
+
+/* Remove default hover/active when needed */
+.no-default-hover-elevate:hover {
+  @apply bg-transparent;
+}
+.no-default-active-elevate:active {
+  transform: none;
+  @apply bg-transparent;
+}
+
+/* macOS-style pill buttons */
+.pill-button {
+  @apply px-4 py-1.5 rounded-full text-sm font-medium transition-all duration-150;
+}
+
+/* Subtle inset effect for inputs */
+.inset-input {
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+.dark .inset-input {
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+/* Safe area insets for iOS devices */
+/* Hide scrollbars on elements that scroll horizontally — typically
+   mobile tab bars where showing a scrollbar adds visual noise. The
+   swipe gesture still works; only the chrome is hidden. */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+.safe-area-top {
+  padding-top: env(safe-area-inset-top, 0);
+}
+
+/* Mobile content padding to account for bottom nav */
+@media (max-width: 768px) {
+  .mobile-safe-content {
+    padding-bottom: 5rem;
+  }
+}
+
+/* Touch-friendly tap targets */
+@media (pointer: coarse) {
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   PHASE 9: macOS TAHOE-GRADE UI POLISH
+═══════════════════════════════════════════════════════════════════ */
+
+/* Enhanced sidebar vibrancy — Tahoe Liquid Glass */
+.sidebar-vibrancy {
+  backdrop-filter: blur(28px) saturate(185%);
+  -webkit-backdrop-filter: blur(28px) saturate(185%);
+  background: rgba(245, 240, 233, 0.82);
+  border-right: 1px solid rgba(0, 0, 0, 0.07);
+}
+.dark .sidebar-vibrancy {
+  background: rgba(22, 16, 10, 0.86);
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Active nav item — Tahoe capsule + specular */
+.nav-item-active {
+  position: relative;
+  border-radius: 9999px;
+  background: hsl(var(--primary) / 0.13);
+  color: hsl(var(--primary));
+}
+.nav-item-active::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--glass-specular);
+  box-shadow: inset 0 0 0 1px hsl(var(--primary) / 0.2);
+  pointer-events: none;
+}
+.dark .nav-item-active {
+  background: hsl(var(--primary) / 0.20);
+}
+
+/* Sidebar collapse spring animation */
+.sidebar-spring {
+  transition: width 280ms cubic-bezier(0.34, 1.56, 0.64, 1),
+              opacity 200ms ease-out,
+              transform 280ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Content area layout shift spring */
+.content-spring {
+  transition: margin-left 280ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Cards: frosted glass hover lift */
+.card-glass-hover {
+  @apply transition-all duration-200 ease-out;
+  will-change: transform;
+}
+.card-glass-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-3);
+}
+
+/* Button press micro-interaction */
+.btn-press {
+  @apply transition-transform duration-100 ease-out;
+  will-change: transform;
+}
+.btn-press:active {
+  transform: scale(0.96);
+}
+
+/* Shimmer skeleton for loading states */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    hsl(var(--muted)) 0%,
+    hsl(var(--muted-foreground) / 0.08) 40%,
+    hsl(var(--muted)) 80%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+  border-radius: 0.375rem;
+}
+
+/* Page entry animation — smooth Spotlight-style */
+@keyframes pageEnter {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.995);
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+.page-enter {
+  animation: pageEnter 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Toast: slide down from top-right with blur */
+@keyframes toastSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.95);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+.toast-enter {
+  animation: toastSlideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Popover / dropdown spring open */
+@keyframes popoverOpen {
+  from {
+    opacity: 0;
+    transform: scale(0.92) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+.popover-spring {
+  animation: popoverOpen 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transform-origin: top center;
+}
+
+/* Collapsible sub-items slide in */
+@keyframes subItemsReveal {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+.sub-items-reveal {
+  animation: subItemsReveal 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Spotlight command palette backdrop */
+.command-backdrop {
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  background: rgba(0, 0, 0, 0.35);
+}
+.dark .command-backdrop {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+/* Command palette spring open */
+@keyframes commandOpen {
+  from {
+    opacity: 0;
+    transform: scale(0.94) translateY(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+.command-spring {
+  animation: commandOpen 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Data table row hover — Apple-style highlight */
+.table-row-hover {
+  @apply transition-colors duration-100;
+}
+.table-row-hover:hover {
+  background: hsl(var(--primary) / 0.04);
+}
+.dark .table-row-hover:hover {
+  background: hsl(var(--primary) / 0.08);
+}
+
+/* Status badge pulse for active/urgent items */
+@keyframes badgePulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+.badge-pulse {
+  animation: badgePulse 2s ease-in-out infinite;
+}
+
+/* Notification dot */
+.notification-dot {
+  position: relative;
+}
+.notification-dot::after {
+  content: '';
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 8px;
+  height: 8px;
+  background: hsl(var(--primary));
+  border-radius: 50%;
+  border: 1.5px solid hsl(var(--background));
+  animation: badgePulse 2s ease-in-out infinite;
+}
+
+/* Improved focus ring — accent color with depth */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[role="button"]:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px hsl(var(--background)),
+              0 0 0 4px hsl(var(--primary) / 0.5);
+}
+
+/* Typography refinements for data density */
+.data-label {
+  font-size: 0.6875rem;  /* 11px */
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+}
+.data-value {
+  font-size: 0.8125rem;  /* 13px */
+  font-weight: 600;
+  line-height: 1.4;
+  color: hsl(var(--foreground));
+}
+
+/* Metric card gradient backgrounds */
+.metric-card-gradient-1 {
+  background: linear-gradient(135deg, hsl(var(--primary) / 0.08) 0%, transparent 60%);
+}
+.metric-card-gradient-2 {
+  background: linear-gradient(135deg, hsl(var(--accent) / 0.08) 0%, transparent 60%);
+}
+
+/* Sidebar toggle button */
+.sidebar-toggle-btn {
+  @apply flex items-center justify-center w-6 h-6 rounded-full transition-all duration-200;
+  background: hsl(var(--border));
+  color: hsl(var(--muted-foreground));
+}
+.sidebar-toggle-btn:hover {
+  background: hsl(var(--primary) / 0.15);
+  color: hsl(var(--primary));
+  transform: scale(1.1);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   PHASE 10: CURSOR-REACTIVE GLASS — Tahoe Liquid Glass specular
+   The ::after pseudo-element tracks --cursor-x / --cursor-y, set by
+   the useCursorGlass() hook, creating a live specular highlight.
+═══════════════════════════════════════════════════════════════════ */
+
+.liquid-glass::after,
+.liquid-glass-sm::after,
+.liquid-glass-subtle::after,
+.glass-panel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    circle 110px at var(--cursor-x, 30%) var(--cursor-y, 20%),
+    rgba(255, 255, 255, 0.22) 0%,
+    rgba(255, 255, 255, 0.05) 45%,
+    transparent 70%
+  );
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.liquid-glass:hover::after,
+.liquid-glass-sm:hover::after,
+.liquid-glass-subtle:hover::after,
+.glass-panel:hover::after {
+  opacity: 1;
+}
+.dark .liquid-glass::after,
+.dark .liquid-glass-sm::after,
+.dark .liquid-glass-subtle::after,
+.dark .glass-panel::after {
+  background: radial-gradient(
+    circle 110px at var(--cursor-x, 30%) var(--cursor-y, 20%),
+    rgba(255, 255, 255, 0.11) 0%,
+    rgba(255, 255, 255, 0.02) 45%,
+    transparent 70%
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   MESH / AURORA GRADIENT — animated depth-bloom background
+═══════════════════════════════════════════════════════════════════ */
+
+@keyframes meshShift1 {
+  0%, 100% { transform: translate(0%,  0%)  scale(1);    }
+  33%       { transform: translate(5%, -8%)  scale(1.08); }
+  66%       { transform: translate(-4%, 6%)  scale(0.94); }
+}
+@keyframes meshShift2 {
+  0%, 100% { transform: translate(0%,  0%)  scale(1);    }
+  40%       { transform: translate(-7%, 5%)  scale(1.10); }
+  80%       { transform: translate(8%, -4%)  scale(0.92); }
+}
+@keyframes meshShift3 {
+  0%, 100% { transform: translate(0%, 0%)  scale(1);    }
+  50%       { transform: translate(4%, 8%)  scale(1.06); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   SCROLL FADE EDGES — content-aware fade on scrollable containers
+═══════════════════════════════════════════════════════════════════ */
+
+.scroll-fade {
+  mask-image: linear-gradient(to bottom, transparent 0%, black 4%, black 96%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 4%, black 96%, transparent 100%);
+}
+.scroll-fade-x {
+  mask-image: linear-gradient(to right, transparent 0%, black 4%, black 96%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, black 4%, black 96%, transparent 100%);
+}
+.scroll-fade-bottom {
+  mask-image: linear-gradient(to bottom, black 70%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, black 70%, transparent 100%);
+}
+.scroll-fade-top {
+  mask-image: linear-gradient(to top, black 70%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to top, black 70%, transparent 100%);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   DYNAMIC ISLAND — floating status pill keyframes
+═══════════════════════════════════════════════════════════════════ */
+
+@keyframes islandBounce {
+  0%   { transform: translateX(-50%) scale(1);    }
+  30%  { transform: translateX(-50%) scale(0.96); }
+  70%  { transform: translateX(-50%) scale(1.03); }
+  100% { transform: translateX(-50%) scale(1);    }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   WINDOW TRAFFIC LIGHTS — macOS-style modal chrome
+═══════════════════════════════════════════════════════════════════ */
+
+.traffic-light-close {
+  width: 12px;
+  height: 12px;
+  border-radius: 9999px;
+  background: #FF5F57;
+  border: 0.5px solid rgba(0, 0, 0, 0.18);
+  box-shadow: inset 0 0.5px 0 rgba(255,255,255,0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: filter 0.1s ease, transform 0.1s ease;
+}
+.traffic-light-close:hover {
+  filter: brightness(1.1);
+  transform: scale(1.1);
+}
+.traffic-light-close:active {
+  filter: brightness(0.9);
+  transform: scale(0.94);
+}
+/* The × symbol — hidden until hover of the traffic light group */
+.traffic-light-close .tl-symbol {
+  opacity: 0;
+  font-size: 8px;
+  line-height: 1;
+  font-weight: 700;
+  color: rgba(100, 20, 15, 0.8);
+  transition: opacity 0.1s ease;
+  pointer-events: none;
+  user-select: none;
+}
+.traffic-light-group:hover .tl-symbol {
+  opacity: 1;
+}
+
+/* Reduced motion override — honor the system preference globally.
+   The specific class list kills our custom keyframes; the wildcard
+   clause below collapses every other transition/animation (framer-
+   motion variants, tailwind `transition-*`, etc.) so vestibular-
+   sensitive users get a fully still interface. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .sidebar-spring,
+  .content-spring,
+  .page-enter,
+  .toast-enter,
+  .popover-spring,
+  .sub-items-reveal,
+  .command-spring,
+  .skeleton-shimmer,
+  .badge-pulse,
+  .liquid-glass::after,
+  .liquid-glass-sm::after,
+  .liquid-glass-subtle::after,
+  .glass-panel::after {
+    animation: none !important;
+    transition: none !important;
+    opacity: 1 !important;
+  }
+}
+
+/* Print stylesheet — letters, summaries, monthly narrative should print
+   as clean documents. Hide app chrome, switch to serif prose width,
+   kill shadows/gradients so toner isn't wasted. Roadmap #53. */
+@media print {
+  @page {
+    margin: 0.75in;
+  }
+  html, body {
+    background: white !important;
+    color: black !important;
+    font-size: 11pt;
+  }
+  nav,
+  aside,
+  .pax-rail,
+  [data-pax-rail],
+  .sidebar,
+  [data-sidebar],
+  [data-print-hide],
+  .floating-dock,
+  [data-testid="mobile-bottom-nav"],
+  [data-testid="command-palette"],
+  button,
+  a[role="button"] {
+    display: none !important;
+  }
+  main,
+  [role="main"],
+  .page-shell {
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  /* Show URLs after links so a printed page is still usable */
+  a[href^="http"]::after {
+    content: " (" attr(href) ")";
+    font-size: 9pt;
+    color: #555;
+  }
+  /* Drop decorative effects that waste toner or render badly */
+  * {
+    box-shadow: none !important;
+    text-shadow: none !important;
+    background-image: none !important;
+  }
+  h1, h2, h3 {
+    page-break-after: avoid;
+  }
+  p, li {
+    orphans: 3;
+    widows: 3;
+  }
+  /* Expand max-w-prose / narrative bodies to full width for print */
+  .max-w-prose,
+  .max-w-2xl,
+  .max-w-3xl,
+  .max-w-4xl {
+    max-width: 100% !important;
+  }
+}

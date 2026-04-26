@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>AcreOS — The OS for land investors</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="acreos-landing/sections.css">
+<style>
+:root {
+  /* Homestead — warm earth, our brand */
+  --bg:        #FAF4E8;
+  --bg-2:      #F1E9D6;
+  --bg-3:      #FFFBF1;
+  --surface:   #FFFBF1;
+  --surface-2: #F3EAD4;
+  --line:      rgba(80, 40, 15, 0.14);
+  --line-soft: rgba(80, 40, 15, 0.07);
+  --ink:       #241607;
+  --ink-2:     #5A4424;
+  --ink-3:     #8F7A52;
+  --ink-4:     #BAAA85;
+  --brand:     #C2531C;
+  --brand-2:   #D77041;
+  --brand-soft:rgba(194, 83, 28, 0.10);
+  --accent:    #4C7B80;
+  --pos:       #3B7C2E;
+  --warn:      #B8770F;
+  --neg:       #B83B22;
+
+  --font-display: 'Fraunces', 'Times New Roman', serif;
+  --font-sans:    'Inter', -apple-system, system-ui, sans-serif;
+  --font-mono:    'JetBrains Mono', 'SF Mono', Menlo, monospace;
+
+  --shadow-1: 0 1px 2px rgba(80, 40, 15, 0.04), 0 0 0 0.5px rgba(80, 40, 15, 0.06);
+  --shadow-2: 0 8px 24px -8px rgba(80, 40, 15, 0.16), 0 0 0 0.5px rgba(80, 40, 15, 0.08);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font: 400 16px/1.55 var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+::selection { background: var(--brand); color: var(--bg-3); }
+
+a { color: inherit; text-decoration: none; }
+button { font: inherit; cursor: default; background: transparent; border: 0; color: inherit; }
+img { max-width: 100%; display: block; }
+
+/* ─────────────────────────────────────────── nav */
+.lp-nav {
+  position: sticky; top: 0; z-index: 90;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(20px) saturate(140%);
+  border-bottom: 0.5px solid var(--line-soft);
+}
+.lp-nav-row {
+  max-width: 1200px; margin: 0 auto; padding: 16px 32px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.lp-logo {
+  display: inline-flex; align-items: center; gap: 10px;
+  font: 600 17px/1 var(--font-display); letter-spacing: -0.02em;
+  color: var(--ink);
+}
+.lp-logo-mark {
+  width: 28px; height: 28px; border-radius: 7px;
+  background: var(--brand); color: var(--bg-3);
+  display: inline-flex; align-items: center; justify-content: center;
+  font: 700 16px/1 var(--font-display); letter-spacing: -0.04em;
+  position: relative;
+}
+.lp-logo-mark::after {
+  content: ''; position: absolute; right: -2px; bottom: -2px;
+  width: 6px; height: 6px; background: var(--accent); border-radius: 50%;
+  border: 1.5px solid var(--bg);
+}
+.lp-nav-links {
+  display: flex; align-items: center; gap: 28px;
+  font: 500 14px/1 var(--font-sans);
+  color: var(--ink-2);
+}
+.lp-nav-links a:hover { color: var(--ink); }
+.lp-nav-cta {
+  display: flex; align-items: center; gap: 12px;
+}
+.lp-nav-signin {
+  font: 500 14px/1 var(--font-sans); color: var(--ink-2);
+}
+.lp-nav-signin:hover { color: var(--ink); }
+
+/* ─────────────────────────────────────────── buttons */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 11px 18px; border-radius: 9px;
+  font: 600 14px/1 var(--font-sans); letter-spacing: -0.005em;
+  border: 0.5px solid transparent; cursor: default;
+  transition: transform .15s, background .15s, box-shadow .15s;
+  white-space: nowrap;
+}
+.btn-primary {
+  background: var(--ink); color: var(--bg-3);
+  border-color: var(--ink);
+}
+.btn-primary:hover { background: #000; transform: translateY(-1px); box-shadow: 0 6px 18px -4px rgba(36,22,7,.3); }
+.btn-secondary {
+  background: var(--surface); color: var(--ink);
+  border-color: var(--line);
+}
+.btn-secondary:hover { background: var(--surface-2); }
+.btn-brand {
+  background: var(--brand); color: var(--bg-3);
+}
+.btn-brand:hover { background: #A8451A; }
+.btn-ghost { color: var(--ink-2); padding: 8px 12px; }
+.btn-ghost:hover { color: var(--ink); }
+.btn-arrow::after { content: '→'; font-weight: 400; transition: transform .15s; }
+.btn-arrow:hover::after { transform: translateX(2px); }
+
+.btn-lg { padding: 14px 22px; font-size: 15px; border-radius: 10px; }
+
+/* ─────────────────────────────────────────── layout */
+.lp-section {
+  max-width: 1200px; margin: 0 auto; padding: 120px 32px;
+}
+.lp-section-tight { padding: 80px 32px; }
+.lp-eyebrow {
+  font: 600 11px/1 var(--font-sans); letter-spacing: 0.14em;
+  color: var(--ink-3); text-transform: uppercase;
+  margin-bottom: 16px;
+}
+.lp-eyebrow-brand { color: var(--brand); }
+
+@media (max-width: 720px) {
+  .lp-section { padding: 80px 24px; }
+  .lp-nav-row { padding: 14px 20px; }
+  .lp-nav-links { display: none; }
+}
+</style>
+</head>
+<body>
+
+<nav class="lp-nav">
+  <div class="lp-nav-row">
+    <a href="#" class="lp-logo">
+      <span class="lp-logo-mark">A</span>
+      AcreOS
+    </a>
+    <div class="lp-nav-links">
+      <a href="#how">How it works</a>
+      <a href="#agents">The agents</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#founder">Why we built it</a>
+    </div>
+    <div class="lp-nav-cta">
+      <a href="#" class="lp-nav-signin">Sign in</a>
+      <a href="#cta" class="btn btn-primary">Start free trial</a>
+    </div>
+  </div>
+</nav>
+
+<!-- SECTIONS GET INJECTED BELOW -->
+<div id="lp-content"></div>
+
+<!-- TWEAKS PANEL TOGGLES TONE/THEME -->
+<div id="tweaks-root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="acreos-landing/copy.jsx"></script>
+<script type="text/babel" src="acreos-landing/sections-1.jsx"></script>
+<script type="text/babel" src="acreos-landing/sections-2.jsx"></script>
+<script type="text/babel" src="acreos-landing/sections-3.jsx"></script>
+<script type="text/babel" src="acreos-landing/app.jsx"></script>
+
+</body>
+</html>

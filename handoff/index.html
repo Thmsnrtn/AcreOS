@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AcreOS · Handoff</title>
+<style>
+  :root {
+    --bg: #0e0f12;
+    --surface: #16181d;
+    --border: #25282f;
+    --fg: #e9eaee;
+    --muted: #8a8e98;
+    --accent: #b4d65e;
+    --accent-fg: #0e0f12;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); font-family: ui-sans-serif, -apple-system, "Segoe UI", Inter, sans-serif; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 80px 32px 120px; }
+  .eyebrow { font-size: 12px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--muted); }
+  h1 { font-size: 40px; line-height: 1.05; font-weight: 600; margin: 8px 0 14px; letter-spacing: -0.02em; }
+  .lede { color: var(--muted); font-size: 16px; line-height: 1.55; max-width: 56ch; margin: 0 0 48px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--muted); font-weight: 600; margin: 56px 0 16px; }
+  ol.toc { list-style: none; counter-reset: s; padding: 0; margin: 0; border-top: 1px solid var(--border); }
+  ol.toc > li { counter-increment: s; border-bottom: 1px solid var(--border); padding: 18px 0; display: grid; grid-template-columns: 48px 1fr auto; gap: 18px; align-items: baseline; }
+  ol.toc > li::before { content: counter(s, decimal-leading-zero); color: var(--muted); font-variant-numeric: tabular-nums; font-size: 13px; }
+  ol.toc .t { font-size: 17px; font-weight: 500; }
+  ol.toc .d { color: var(--muted); font-size: 14px; line-height: 1.5; margin-top: 4px; }
+  ol.toc .meta { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .cta-row { display: flex; gap: 12px; margin: 36px 0 0; flex-wrap: wrap; }
+  .btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 18px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 500; transition: all 0.15s; }
+  .btn-primary { background: var(--accent); color: var(--accent-fg); }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 20px -6px rgba(180,214,94,0.5); }
+  .btn-secondary { border: 1px solid var(--border); color: var(--fg); }
+  .btn-secondary:hover { border-color: #444; background: var(--surface); }
+  .pill-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 0; }
+  .pill { display: inline-block; padding: 5px 10px; border: 1px solid var(--border); border-radius: 999px; font-size: 12px; color: var(--muted); }
+  .key { background: var(--surface); border: 1px solid var(--border); padding: 24px; border-radius: 12px; margin: 24px 0 0; }
+  .key dt { font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+  .key dd { margin: 0 0 16px; font-size: 15px; }
+  .key dd:last-child { margin-bottom: 0; }
+  code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.92em; background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 4px; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="eyebrow">Prototype → Production</div>
+    <h1>AcreOS handoff package</h1>
+    <p class="lede">
+      Everything a developer needs to port the <code>/acreos</code> prototype into the real
+      <code>/client</code> codebase. Read top to bottom — the order matters.
+    </p>
+
+    <div class="cta-row">
+      <a class="btn btn-primary" href="HANDOFF.md">Open HANDOFF.md →</a>
+      <a class="btn btn-primary" href="GAPS.md">Open GAPS.md →</a>
+      <a class="btn btn-secondary" href="../acreos.html" target="_blank">View live prototype</a>
+    </div>
+
+    <div class="pill-row">
+      <span class="pill">React + TS + Vite target</span>
+      <span class="pill">Tailwind + shadcn/ui</span>
+      <span class="pill">wouter routing</span>
+      <span class="pill">Tanstack Query</span>
+    </div>
+
+    <h2>Key facts</h2>
+    <dl class="key">
+      <dt>Status</dt>
+      <dd>Prototype is feature-complete for design review. Nothing in <code>/acreos</code> ships — it's a spec.</dd>
+      <dt>Canonical pages</dt>
+      <dd>Where multiple versions exist (e.g. <code>CommandCenter</code>, <code>CommandCenterB</code>, <code>CommandCenterC</code>), the highest letter wins. Older ones stay in the prototype but don't get ported. Full table in §3.</dd>
+      <dt>Globals</dt>
+      <dd>Every <code>window.*</code> reference is a TODO. Each maps to a hook, router action, or delete. Full table in §4.</dd>
+      <dt>Data</dt>
+      <dd>All lists/tables/charts are frozen literals. Replace with Tanstack Query against API endpoints sketched in §6.</dd>
+      <dt>Tweaks panel</dt>
+      <dd>Review tool, not a feature. Most toggles ship as nothing; three become real settings. See §9.</dd>
+    </dl>
+
+    <h2>Document contents</h2>
+    <ol class="toc">
+      <li>
+        <div>
+          <div class="t">What the prototype is, and isn't</div>
+          <div class="d">The orientation. If a developer reads only one section, this is it.</div>
+        </div>
+        <span class="meta">~1 min</span>
+      </li>
+      <li>
+        <div>
+          <div class="t">Build order</div>
+          <div class="d">Six tiers. Don't try to port everything at once.</div>
+        </div>
+        <span class="meta">~2 min</span>
+      </li>
+      <li>
+        <div>
+          <div class="t">Canonical page table</div>
+          <div class="d">Which component to port for each route. The de-duplication source of truth.</div>
+        </div>
+        <span class="meta">~3 min</span>
+      </li>
+      <li>
+        <div>
+          <div class="t">Globals → real architecture</div>
+          <div class="d">Every <code>window.*</code> mapped to a production replacement.</div>
+        </div>
+        <span class="meta">~3 min</span>
+      </li>
+      <li>
+        <div>
+          <div class="t">Design tokens</div>
+          <div class="d">Where colors, spacing, type, shadows live in the prototype, and how they get into Tailwind.</div>
+        </div>
+        <span class="meta">~2 min</span>
+      </li>
+      <li>
+        <div>
+          <div class="t">Data sources</div>
+          <div class="d">Each frozen literal mapped to its API endpoint and shape.</div>
+        </div>
+        <span class="meta">~3 min</span>
+      </li>
+      <li>
+        <div>
+          <div class="t">Onboarding &amp; guided tour</div>
+          <div class="d">Replace localStorage with server-backed user state. Preserve <code>data-tour</code> selectors.</div>
+        </div>
+        <span class="meta">~2 min</span>
+      </li>
+      <li>
+        <div>
+          <div class="t">Empty / loading / error states</div>
+          <div class="d">Per-page checklist. Throw away the Tweaks-driven preview machinery.</div>
+        </div>
+        <span class="meta">~1 min</span>
+      </li>
+      <li>
+        <div>
+          <div class="t">Tweaks panel — fate of each toggle</div>
+          <div class="d">Delete most. Three ship as real settings.</div>
+        </div>
+        <span class="meta">~1 min</span>
+      </li>
+      <li>
+        <div>
+          <div class="t">Mobile / responsive</div>
+          <div class="d">Open question. Don't guess.</div>
+        </div>
+        <span class="meta">~1 min</span>
+      </li>
+      <li>
+        <div>
+          <div class="t">Accessibility</div>
+          <div class="d">Where the prototype falls short and what production needs to add.</div>
+        </div>
+        <span class="meta">~1 min</span>
+      </li>
+      <li>
+        <div>
+          <div class="t">Demo click-through script</div>
+          <div class="d">12-step QA pass for sales-grade demos.</div>
+        </div>
+        <span class="meta">~3 min</span>
+      </li>
+      <li>
+        <div>
+          <div class="t">What's not in this handoff</div>
+          <div class="d">Out of scope, by design.</div>
+        </div>
+        <span class="meta">~1 min</span>
+      </li>
+      <li>
+        <div>
+          <div class="t">Open questions</div>
+          <div class="d">Seven decisions that need a human, not a developer.</div>
+        </div>
+        <span class="meta">~2 min</span>
+      </li>
+    </ol>
+  </div>
+</body>
+</html>
