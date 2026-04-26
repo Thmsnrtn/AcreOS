@@ -122,21 +122,25 @@ function SignalBars({
 }
 
 function SourceRow({ source }: { source: DataSource }) {
+  const status = source.returned ? "OK" : "Miss";
+  const latencyText = source.latencyMs != null ? `, ${source.latencyMs} milliseconds` : "";
   return (
-    <motion.div
+    <motion.li
       variants={staggerItem}
-      className="flex items-center justify-between gap-3 py-1.5"
+      className="flex items-center justify-between gap-3 py-1.5 list-none"
+      aria-label={`${source.name}: ${status}${latencyText}`}
     >
       <div className="flex items-center gap-2 min-w-0">
         <span
+          aria-hidden="true"
           className={cn(
             "inline-block h-2 w-2 shrink-0 rounded-full",
             source.returned ? "bg-emerald-500" : "bg-red-400"
           )}
         />
-        <span className="text-sm truncate text-foreground">{source.name}</span>
+        <span className="text-sm truncate text-foreground" aria-hidden="true">{source.name}</span>
       </div>
-      <div className="flex items-center gap-2 shrink-0">
+      <div className="flex items-center gap-2 shrink-0" aria-hidden="true">
         {source.latencyMs != null && (
           <span className="text-xs text-muted-foreground tabular-nums">
             {source.latencyMs}ms
@@ -150,7 +154,7 @@ function SourceRow({ source }: { source: DataSource }) {
           <span className="text-xs font-medium text-red-500">Miss</span>
         )}
       </div>
-    </motion.div>
+    </motion.li>
   );
 }
 
@@ -162,12 +166,16 @@ export function DataConfidenceBadge({
   const clamped = Math.max(0, Math.min(100, confidence));
   const colors = getConfidenceColor(clamped);
   const returnedCount = sources.filter((s) => s.returned).length;
+  const lastFetchedIso = sources
+    .filter((s) => s.fetchedAt)
+    .sort((a, b) => new Date(b.fetchedAt!).getTime() - new Date(a.fetchedAt!).getTime())[0]?.fetchedAt;
 
   return (
     <Popover>
       <PopoverTrigger asChild>
         <motion.button
           type="button"
+          aria-label={`Data confidence: ${clamped}%, ${colors.label}. Open source breakdown.`}
           className={cn(
             "inline-flex items-center gap-1.5 rounded-full border px-2 py-1 transition-colors",
             "border-border/50 bg-background/80 hover:bg-accent/50",
@@ -181,6 +189,7 @@ export function DataConfidenceBadge({
           <SignalBars confidence={clamped} compact={compact} />
           {!compact && (
             <span
+              aria-hidden="true"
               className={cn(
                 "text-xs font-semibold tabular-nums",
                 colors.text
@@ -202,9 +211,10 @@ export function DataConfidenceBadge({
         <div className="flex items-center justify-between border-b border-border/50 px-4 py-3">
           <div className="flex items-center gap-2">
             <SignalBars confidence={clamped} />
-            <span className="text-sm font-semibold">Data Confidence</span>
+            <span className="text-sm font-semibold">Data confidence</span>
           </div>
           <span
+            aria-label={`${clamped}%`}
             className={cn(
               "rounded-full px-2 py-0.5 text-xs font-bold tabular-nums",
               colors.muted,
@@ -222,30 +232,26 @@ export function DataConfidenceBadge({
           initial="hidden"
           animate="visible"
         >
-          <p className="text-xs text-muted-foreground mb-1">
-            {returnedCount}/{sources.length} sources returned data
+          <p
+            id="confidence-sources-summary"
+            className="text-xs text-muted-foreground mb-1 m-0"
+            aria-label={`${returnedCount} of ${sources.length} sources returned data`}
+          >
+            <span className="tabular-nums" aria-hidden="true">{returnedCount}</span><span aria-hidden="true">/</span><span className="tabular-nums" aria-hidden="true">{sources.length}</span><span aria-hidden="true"> sources returned data</span>
           </p>
-          <div className="divide-y divide-border/30">
+          <ul aria-labelledby="confidence-sources-summary" className="divide-y divide-border/30 list-none p-0 m-0">
             {sources.map((source) => (
               <SourceRow key={source.name} source={source} />
             ))}
-          </div>
+          </ul>
         </motion.div>
 
         {/* Footer with timestamps */}
-        {sources.some((s) => s.fetchedAt) && (
+        {lastFetchedIso && (
           <div className="border-t border-border/50 px-4 py-2">
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-[11px] text-muted-foreground m-0">
               Last fetched:{" "}
-              {formatTimestamp(
-                sources
-                  .filter((s) => s.fetchedAt)
-                  .sort(
-                    (a, b) =>
-                      new Date(b.fetchedAt!).getTime() -
-                      new Date(a.fetchedAt!).getTime()
-                  )[0]?.fetchedAt ?? ""
-              )}
+              <time dateTime={lastFetchedIso} className="tabular-nums">{formatTimestamp(lastFetchedIso)}</time>
             </p>
           </div>
         )}
