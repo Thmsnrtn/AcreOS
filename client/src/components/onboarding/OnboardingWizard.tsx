@@ -1,16 +1,11 @@
 import { useState, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useOrganization } from "@/hooks/use-organization";
 import {
   Sparkles,
-  ArrowRight,
   Upload,
   Mail,
   Target,
@@ -19,7 +14,6 @@ import {
   SkipForward,
   X,
   Plus,
-  ExternalLink,
   Map,
   FileText,
   Building2,
@@ -359,169 +353,143 @@ export function OnboardingWizard() {
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
-            className="space-y-6"
             data-testid="onboarding-step-0"
           >
-            <div className="text-center mb-6">
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ type: "spring", stiffness: 200, damping: 15 }}
-                className="w-20 h-20 mx-auto rounded-full bg-primary/10 flex items-center justify-center mb-4"
-              >
-                <Sparkles className="w-10 h-10 text-primary" />
-              </motion.div>
-              <h2 className="text-2xl font-bold mb-2">Welcome to AcreOS</h2>
-              <p className="text-muted-foreground">The operating system for land investors — track leads, run campaigns, and close more deals.</p>
+            <div className="ob-welcome">
+              <div className="ob-eyebrow">
+                <span className="ob-eyebrow-dot" aria-hidden="true" />
+                Welcome to AcreOS
+              </div>
+              <h1 className="ob-welcome-title">
+                <span className="ob-welcome-line">Glad you&rsquo;re here.</span>
+                <span className="ob-welcome-line ob-welcome-line-2">
+                  Let&rsquo;s get you set up.
+                </span>
+              </h1>
+              <p className="ob-letter">
+                Setup takes about a minute. We&rsquo;ll ask what you&rsquo;re
+                building and what kind of investing you do — defaults are
+                sensible, and everything is editable later.
+              </p>
+              <p className="ob-letter">
+                When we&rsquo;re done, your workspace will be ready and the
+                agents will know how to help.
+              </p>
             </div>
 
-            <div className="grid grid-cols-1 gap-3 mb-4">
-              {[
-                { icon: Map, label: "Manage leads & properties in one place" },
-                { icon: Mail, label: "Run direct mail, email & SMS campaigns" },
-                { icon: Target, label: "Close deals faster with AI-powered insights" },
-              ].map(({ icon: Icon, label }) => (
-                <div key={label} className="flex items-center gap-3 p-3 rounded-md bg-muted/50">
-                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                    <Icon className="w-4 h-4 text-primary" />
-                  </div>
-                  <span className="text-sm">{label}</span>
-                </div>
-              ))}
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="org-name">Organization Name</Label>
-              <Input
+            <div className="ob-field" style={{ marginTop: 32 }}>
+              <label htmlFor="org-name" className="ob-label">
+                Workspace name
+              </label>
+              <input
                 id="org-name"
+                className="ob-input"
                 value={organizationName}
                 onChange={(e) => setOrganizationName(e.target.value)}
-                placeholder="e.g. Apex Real Estate Group"
+                placeholder="e.g. Apex Land Group"
                 data-testid="input-org-name"
               />
+              <p className="ob-hint">You can rename this anytime in Settings.</p>
             </div>
-            
-            <div className="space-y-3">
-              <Label>What type of investing do you do?</Label>
-              <div className="max-h-[280px] overflow-y-auto pr-1 -mr-1">
-                <RadioGroup
-                  value={businessType}
-                  onValueChange={(value) => setBusinessType(value as BusinessType)}
-                  className="grid grid-cols-2 gap-2"
-                >
-                  {INVESTOR_TYPES.map(({ value, label, icon: Icon, description }) => (
-                    <Label
-                      key={value}
-                      htmlFor={value}
-                      className={`flex items-start gap-3 p-3 rounded-md border cursor-pointer transition-colors ${
-                        businessType === value ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/30"
-                      }`}
-                      data-testid={`option-${value}`}
-                    >
-                      <RadioGroupItem value={value} id={value} className="mt-0.5 sr-only" />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-0.5">
-                          <Icon className="w-4 h-4 text-primary flex-shrink-0" />
-                          <span className="font-medium text-sm truncate">{label}</span>
-                        </div>
-                        <p className="text-xs text-muted-foreground line-clamp-2">
-                          {description}
-                        </p>
-                      </div>
-                    </Label>
-                  ))}
-                </RadioGroup>
-              </div>
+
+            <div className="ob-field">
+              <span className="ob-label">What kind of investing do you do?</span>
+              <RadioGroup
+                value={businessType}
+                onValueChange={(value) => setBusinessType(value as BusinessType)}
+                className="ob-cards"
+              >
+                {INVESTOR_TYPES.map(({ value, label, icon: Icon, description }) => (
+                  <label
+                    key={value}
+                    htmlFor={value}
+                    className={`ob-card ${businessType === value ? "is-on" : ""}`}
+                    data-testid={`option-${value}`}
+                  >
+                    <RadioGroupItem value={value} id={value} className="sr-only" />
+                    <span className="ob-card-glyph">
+                      <Icon className="w-4 h-4" aria-hidden="true" />
+                    </span>
+                    <span className="ob-card-title">{label}</span>
+                    <span className="ob-card-desc">{description}</span>
+                  </label>
+                ))}
+              </RadioGroup>
             </div>
           </motion.div>
         );
 
       case 1:
         return (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
-            className="space-y-6"
             data-testid="onboarding-step-1"
           >
-            <div className="text-center mb-6">
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ type: "spring", stiffness: 200, damping: 15 }}
-                className="w-20 h-20 mx-auto rounded-full bg-primary/10 flex items-center justify-center mb-4"
-              >
-                <Upload className="w-10 h-10 text-primary" />
-              </motion.div>
-              <h2 className="text-2xl font-bold mb-2">Get Started with Data</h2>
-              <p className="text-muted-foreground">Load sample data to explore or import your own</p>
+            <div className="ob-eyebrow">
+              <span className="ob-eyebrow-dot" aria-hidden="true" />
+              Step 1 · Your first leads
             </div>
-            
-            <Card 
-              className="cursor-pointer hover-elevate border-2 border-green-500/30 bg-green-500/5"
-              onClick={() => loadSampleDataMutation.mutate()}
-              data-testid="card-load-sample-data"
-            >
-              <CardContent className="p-4 flex items-center gap-4">
-                <div className="w-12 h-12 rounded-md bg-green-500/10 flex items-center justify-center flex-shrink-0">
-                  <Sparkles className="w-6 h-6 text-green-500" />
-                </div>
-                <div className="flex-1">
-                  <p className="font-medium">Load Sample Data</p>
-                  <p className="text-sm text-muted-foreground">
-                    Explore with realistic leads, properties & deals
-                  </p>
-                </div>
-                {loadSampleDataMutation.isPending ? (
-                  <Loader2 className="w-4 h-4 text-green-500 animate-spin flex-shrink-0" />
-                ) : (
-                  <ArrowRight className="w-4 h-4 text-green-500 flex-shrink-0" />
-                )}
-              </CardContent>
-            </Card>
+            <h1 className="ob-title">
+              Bring something <span className="ob-title-italic">to look at.</span>
+            </h1>
+            <p className="ob-sub">
+              Load a realistic sample dataset, import your own list, or add a
+              single lead by hand. You can switch approaches anytime.
+            </p>
 
-            <div className="text-center text-sm text-muted-foreground">or</div>
+            <div className="ob-cards">
+              <button
+                type="button"
+                className="ob-card"
+                onClick={() => loadSampleDataMutation.mutate()}
+                data-testid="card-load-sample-data"
+              >
+                <span className="ob-card-glyph">
+                  {loadSampleDataMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <Sparkles className="w-4 h-4" aria-hidden="true" />
+                  )}
+                </span>
+                <span className="ob-card-title">Load sample data</span>
+                <span className="ob-card-desc">
+                  Realistic leads, properties &amp; deals so you can explore
+                  immediately.
+                </span>
+              </button>
 
-            <Card 
-              className="cursor-pointer hover-elevate"
-              onClick={() => window.open("/leads?action=import", "_blank")}
-              data-testid="card-import-csv"
-            >
-              <CardContent className="p-4 flex items-center gap-4">
-                <div className="w-12 h-12 rounded-md bg-primary/10 flex items-center justify-center flex-shrink-0">
-                  <Upload className="w-6 h-6 text-primary" />
-                </div>
-                <div className="flex-1">
-                  <p className="font-medium">Import CSV File</p>
-                  <p className="text-sm text-muted-foreground">
-                    Upload leads from a spreadsheet
-                  </p>
-                </div>
-                <ExternalLink className="w-4 h-4 text-muted-foreground" />
-              </CardContent>
-            </Card>
+              <button
+                type="button"
+                className="ob-card"
+                onClick={() => window.open("/leads?action=import", "_blank")}
+                data-testid="card-import-csv"
+              >
+                <span className="ob-card-glyph">
+                  <Upload className="w-4 h-4" aria-hidden="true" />
+                </span>
+                <span className="ob-card-title">Import CSV</span>
+                <span className="ob-card-desc">
+                  Upload leads from a spreadsheet — opens in a new tab.
+                </span>
+              </button>
 
-            <div className="text-center text-sm text-muted-foreground">or</div>
-
-            <Card 
-              className="cursor-pointer hover-elevate"
-              onClick={() => window.open("/leads?action=new", "_blank")}
-              data-testid="card-add-lead"
-            >
-              <CardContent className="p-4 flex items-center gap-4">
-                <div className="w-12 h-12 rounded-md bg-muted flex items-center justify-center flex-shrink-0">
-                  <Plus className="w-6 h-6 text-muted-foreground" />
-                </div>
-                <div className="flex-1">
-                  <p className="font-medium">Create Lead Manually</p>
-                  <p className="text-sm text-muted-foreground">
-                    Add a new lead one at a time
-                  </p>
-                </div>
-                <ExternalLink className="w-4 h-4 text-muted-foreground" />
-              </CardContent>
-            </Card>
+              <button
+                type="button"
+                className="ob-card"
+                onClick={() => window.open("/leads?action=new", "_blank")}
+                data-testid="card-add-lead"
+              >
+                <span className="ob-card-glyph">
+                  <Plus className="w-4 h-4" aria-hidden="true" />
+                </span>
+                <span className="ob-card-title">Add one manually</span>
+                <span className="ob-card-desc">
+                  Type in a single lead — opens in a new tab.
+                </span>
+              </button>
+            </div>
           </motion.div>
         );
 
@@ -531,56 +499,62 @@ export function OnboardingWizard() {
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
-            className="space-y-6"
             data-testid="onboarding-step-2"
           >
-            <div className="text-center mb-6">
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ type: "spring", stiffness: 200, damping: 15 }}
-                className="w-20 h-20 mx-auto rounded-full bg-primary/10 flex items-center justify-center mb-4"
+            <div className="ob-eyebrow">
+              <span className="ob-eyebrow-dot" aria-hidden="true" />
+              Step 2 · Send from your own inbox
+            </div>
+            <h1 className="ob-title">
+              Connect <span className="ob-title-italic">your email.</span>
+            </h1>
+            <p className="ob-sub">
+              Outreach lands in better shape when it leaves from your real
+              address. Connect Gmail, Outlook, or any SMTP — replies come
+              back to your inbox.
+            </p>
+
+            <div className="ob-cards">
+              <button
+                type="button"
+                className="ob-card"
+                onClick={() => window.open("/settings?tab=email", "_blank")}
+                data-testid="card-connect-email"
               >
-                <Mail className="w-10 h-10 text-primary" />
-              </motion.div>
-              <h2 className="text-2xl font-bold mb-2">Connect Your Email</h2>
-              <p className="text-muted-foreground">Send campaigns directly from your own inbox for better deliverability</p>
+                <span className="ob-card-glyph">
+                  <Settings className="w-4 h-4" aria-hidden="true" />
+                </span>
+                <span className="ob-card-title">Open email settings</span>
+                <span className="ob-card-desc">
+                  Gmail, Outlook, or custom SMTP — opens in a new tab.
+                </span>
+              </button>
             </div>
 
-            <Card
-              className="cursor-pointer hover-elevate border-2 border-primary/20 bg-primary/5"
-              onClick={() => window.open("/settings?tab=email", "_blank")}
-              data-testid="card-connect-email"
-            >
-              <CardContent className="p-4 flex items-center gap-4">
-                <div className="w-12 h-12 rounded-md bg-primary/10 flex items-center justify-center flex-shrink-0">
-                  <Settings className="w-6 h-6 text-primary" />
-                </div>
-                <div className="flex-1">
-                  <p className="font-medium">Go to Email Settings</p>
-                  <p className="text-sm text-muted-foreground">
-                    Connect Gmail, Outlook, or custom SMTP
-                  </p>
-                </div>
-                <ExternalLink className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-              </CardContent>
-            </Card>
-
-            <div className="space-y-2">
+            <ul style={{ listStyle: "none", padding: 0, margin: "16px 0 0", display: "grid", gap: 6 }}>
               {[
-                { icon: Check, label: "Emails sent from your own address" },
-                { icon: Check, label: "Better inbox placement and open rates" },
-                { icon: Check, label: "Replies land in your inbox automatically" },
-              ].map(({ icon: Icon, label }) => (
-                <div key={label} className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Icon className="w-4 h-4 text-green-500 flex-shrink-0" />
-                  <span>{label}</span>
-                </div>
+                "Emails sent from your own address",
+                "Better inbox placement and open rates",
+                "Replies land in your inbox automatically",
+              ].map((label) => (
+                <li
+                  key={label}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    font: "400 13px/1.5 var(--font-sans)",
+                    color: "var(--acr-ink-2)",
+                  }}
+                >
+                  <Check className="w-4 h-4" style={{ color: "var(--acr-pos)" }} aria-hidden="true" />
+                  {label}
+                </li>
               ))}
-            </div>
+            </ul>
 
-            <p className="text-sm text-center text-muted-foreground">
-              This step is optional — you can set it up later in Settings &rsaquo; Email.
+            <p className="ob-hint" style={{ marginTop: 16 }}>
+              Optional — you can set this up later in Settings &rsaquo; Email.
             </p>
           </motion.div>
         );
@@ -591,56 +565,61 @@ export function OnboardingWizard() {
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
-            className="space-y-6"
             data-testid="onboarding-step-3"
           >
-            <div className="text-center mb-6">
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ type: "spring", stiffness: 200, damping: 15 }}
-                className="w-20 h-20 mx-auto rounded-full bg-primary/10 flex items-center justify-center mb-4"
+            <div className="ob-eyebrow">
+              <span className="ob-eyebrow-dot" aria-hidden="true" />
+              Step 3 · Reach the right sellers
+            </div>
+            <h1 className="ob-title">
+              Your first <span className="ob-title-italic">campaign.</span>
+            </h1>
+            <p className="ob-sub">
+              Pick a template, target leads by score, stage or location, and
+              send. Direct mail, email, or SMS — Pax handles the orchestration.
+            </p>
+
+            <div className="ob-cards">
+              <button
+                type="button"
+                className="ob-card"
+                onClick={() => window.open("/campaigns", "_blank")}
+                data-testid="card-create-campaign"
               >
-                <Target className="w-10 h-10 text-primary" />
-              </motion.div>
-              <h2 className="text-2xl font-bold mb-2">Create Your First Campaign</h2>
-              <p className="text-muted-foreground">Start reaching out to motivated sellers</p>
+                <span className="ob-card-glyph">
+                  <Target className="w-4 h-4" aria-hidden="true" />
+                </span>
+                <span className="ob-card-title">Open Marketing Hub</span>
+                <span className="ob-card-desc">
+                  Build a direct mail, email, or SMS campaign — opens in a new tab.
+                </span>
+              </button>
             </div>
 
-            <Card
-              className="cursor-pointer hover-elevate border-2 border-primary/20 bg-primary/5"
-              onClick={() => window.open("/campaigns", "_blank")}
-              data-testid="card-create-campaign"
-            >
-              <CardContent className="p-4 flex items-center gap-4">
-                <div className="w-12 h-12 rounded-md bg-primary/10 flex items-center justify-center flex-shrink-0">
-                  <Target className="w-6 h-6 text-primary" />
-                </div>
-                <div className="flex-1">
-                  <p className="font-medium">Go to Marketing Hub</p>
-                  <p className="text-sm text-muted-foreground">
-                    Create a direct mail, email, or SMS campaign
-                  </p>
-                </div>
-                <ExternalLink className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-              </CardContent>
-            </Card>
-
-            <div className="space-y-2">
+            <ul style={{ listStyle: "none", padding: 0, margin: "16px 0 0", display: "grid", gap: 6 }}>
               {[
-                { icon: Check, label: "Pre-built templates for land investors" },
-                { icon: Check, label: "Target leads by score, stage, or location" },
-                { icon: Check, label: "Track open rates and responses" },
-              ].map(({ icon: Icon, label }) => (
-                <div key={label} className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Icon className="w-4 h-4 text-green-500 flex-shrink-0" />
-                  <span>{label}</span>
-                </div>
+                "Pre-built templates for land investors",
+                "Target leads by score, stage, or location",
+                "Track open rates and responses",
+              ].map((label) => (
+                <li
+                  key={label}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    font: "400 13px/1.5 var(--font-sans)",
+                    color: "var(--acr-ink-2)",
+                  }}
+                >
+                  <Check className="w-4 h-4" style={{ color: "var(--acr-pos)" }} aria-hidden="true" />
+                  {label}
+                </li>
               ))}
-            </div>
+            </ul>
 
-            <p className="text-sm text-center text-muted-foreground">
-              You can create your first campaign now or skip and do it later.
+            <p className="ob-hint" style={{ marginTop: 16 }}>
+              You can build your first campaign now or skip and do it later.
             </p>
           </motion.div>
         );
@@ -651,49 +630,96 @@ export function OnboardingWizard() {
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
-            className="space-y-6"
             data-testid="onboarding-step-4"
           >
-            <div className="text-center mb-6">
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ type: "spring", stiffness: 200, damping: 15 }}
-                className="w-20 h-20 mx-auto rounded-full bg-green-500/10 flex items-center justify-center mb-4"
+            <div className="ob-reveal">
+              <div className="ob-reveal-icon">
+                <PartyPopper className="w-8 h-8" aria-hidden="true" />
+              </div>
+              <h1 className="ob-reveal-title">You&rsquo;re all set.</h1>
+              <p className="ob-reveal-sub">
+                Your workspace is ready. Head to the dashboard — Pax and the
+                agents already know how to help.
+              </p>
+
+              <ul
+                style={{
+                  listStyle: "none",
+                  padding: 0,
+                  margin: "0 auto",
+                  maxWidth: 420,
+                  display: "grid",
+                  gap: 8,
+                  textAlign: "left",
+                }}
               >
-                <PartyPopper className="w-10 h-10 text-green-500" />
-              </motion.div>
-              <h2 className="text-2xl font-bold mb-2">You're All Set!</h2>
-              <p className="text-muted-foreground">Your AcreOS workspace is ready. Head to the dashboard to get started.</p>
-            </div>
+                {[
+                  { icon: Upload, label: "Leads added", done: true, optional: false },
+                  { icon: Mail, label: "Email connected", done: false, optional: true },
+                  { icon: Target, label: "First campaign", done: false, optional: true },
+                ].map(({ icon: Icon, label, done, optional }) => (
+                  <li
+                    key={label}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 12,
+                      padding: "10px 14px",
+                      borderRadius: 10,
+                      background: done ? "var(--acr-pos-soft)" : "var(--acr-surface)",
+                      border: "0.5px solid var(--acr-line)",
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: 7,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        background: done ? "var(--acr-pos)" : "var(--acr-bg-raised)",
+                        color: done ? "var(--acr-brand-ink)" : "var(--acr-ink-3)",
+                        flexShrink: 0,
+                      }}
+                    >
+                      {done ? (
+                        <Check className="w-4 h-4" aria-hidden="true" />
+                      ) : (
+                        <Icon className="w-4 h-4" aria-hidden="true" />
+                      )}
+                    </span>
+                    <span
+                      style={{
+                        flex: 1,
+                        font: `${done ? 600 : 400} 14px/1.4 var(--font-sans)`,
+                        color: done ? "var(--acr-ink)" : "var(--acr-ink-2)",
+                      }}
+                    >
+                      {label}
+                    </span>
+                    {optional && !done && (
+                      <span
+                        style={{
+                          font: "500 11px/1 var(--font-sans)",
+                          color: "var(--acr-ink-3)",
+                          background: "var(--acr-surface-2)",
+                          padding: "4px 8px",
+                          borderRadius: 4,
+                        }}
+                      >
+                        optional
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
 
-            <div className="space-y-3">
-              {[
-                { icon: Upload, label: "Import leads", done: true },
-                { icon: Mail, label: "Email connected", done: false, optional: true },
-                { icon: Target, label: "First campaign", done: false, optional: true },
-              ].map(({ icon: Icon, label, done, optional }) => (
-                <div
-                  key={label}
-                  className={`flex items-center gap-3 p-3 rounded-md ${done ? "bg-green-500/10" : "bg-muted/50"}`}
-                >
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${done ? "bg-green-500/20" : "bg-muted"}`}>
-                    {done
-                      ? <Check className="w-4 h-4 text-green-500" />
-                      : <Icon className="w-4 h-4 text-muted-foreground" />
-                    }
-                  </div>
-                  <span className={`text-sm flex-1 ${done ? "font-medium" : "text-muted-foreground"}`}>{label}</span>
-                  {optional && !done && (
-                    <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">optional</span>
-                  )}
-                </div>
-              ))}
+              <p className="ob-hint" style={{ marginTop: 24, textAlign: "center" }}>
+                You can complete the optional steps any time from the
+                dashboard checklist.
+              </p>
             </div>
-
-            <p className="text-sm text-center text-muted-foreground pt-2">
-              You can complete the optional steps any time from the dashboard checklist.
-            </p>
           </motion.div>
         );
 
