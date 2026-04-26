@@ -6,6 +6,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { usd } from "@/lib/format";
+import "./today.css";
 import { OfferPreflightChecklist } from "@/components/offer-preflight-checklist";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import type { OfferLetter, OfferTemplate, Lead, Property } from "@shared/schema";
@@ -315,9 +316,16 @@ export default function OffersPage() {
         
           
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <h1 className="text-3xl font-bold" data-testid="text-page-title">Offer letters</h1>
-              <p className="text-muted-foreground">Generate and manage blind offer letters for property acquisitions.</p>
+            <div className="acr-cc-hero" style={{ marginTop: 0 }}>
+              <div>
+                <div className="acr-eyebrow">Offer letters</div>
+                <h1 className="acr-cc-greeting" data-testid="text-page-title">
+                  Make the offer.
+                  <span className="acr-cc-greeting-soft">
+                    {" "}Generate and track blind offers without leaving the app.
+                  </span>
+                </h1>
+              </div>
             </div>
           </div>
           

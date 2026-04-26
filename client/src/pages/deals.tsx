@@ -1,5 +1,6 @@
 import { PageShell } from "@/components/page-shell";
 import { plural, usd } from "@/lib/format";
+import "./today.css";
 import { DealJourney } from "@/components/ui/deal-journey";
 import { PaxContextButton } from "@/components/pax-context-button";
 import { ListPagination, usePagination } from "@/components/list-pagination";
@@ -455,9 +456,16 @@ export default function DealsPage() {
                 testId="inline-error-deals"
               />
             )}
-            <div>
-              <h1 className="text-3xl font-bold" data-testid="text-page-title">Deal Pipeline</h1>
-              <p className="text-muted-foreground">Track acquisitions and dispositions through your pipeline.</p>
+            <div className="acr-cc-hero" style={{ marginTop: 0 }}>
+              <div>
+                <div className="acr-eyebrow">Deals</div>
+                <h1 className="acr-cc-greeting" data-testid="text-page-title">
+                  Acquisitions and dispositions.
+                  <span className="acr-cc-greeting-soft">
+                    {" "}From offer to close, all on one rail.
+                  </span>
+                </h1>
+              </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Button 

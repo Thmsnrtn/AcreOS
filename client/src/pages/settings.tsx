@@ -60,6 +60,7 @@ import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { usd } from "@/lib/format";
+import "./today.css";
 
 interface SeatInfo {
   tier: string;
@@ -765,11 +766,16 @@ export default function Settings() {
 
   return (
     <PageShell label="Settings" maxWidth="4xl">
-          <div>
-            <h1 className="text-3xl font-bold" data-testid="text-settings-title">
-              Settings
-            </h1>
-            <p className="text-muted-foreground mt-2">Manage your organization, team, and preferences.</p>
+          <div className="acr-cc-hero" style={{ marginTop: 0 }}>
+            <div>
+              <div className="acr-eyebrow">Settings</div>
+              <h1 className="acr-cc-greeting" data-testid="text-settings-title">
+                Tune the workspace.
+                <span className="acr-cc-greeting-soft">
+                  {" "}Organization, team, and personal preferences.
+                </span>
+              </h1>
+            </div>
           </div>
 
           <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">

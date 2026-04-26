@@ -31,6 +31,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { format, addMonths } from "date-fns";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { usd } from "@/lib/format";
+import "./today.css";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { DisclaimerBanner } from "@/components/disclaimer-banner";
 import { QueryErrorState } from "@/components/query-error-state";
@@ -186,9 +187,16 @@ export default function FinancePage() {
           )}
 
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <h1 className="text-3xl font-bold" data-testid="text-page-title">Finance</h1>
-              <p className="text-muted-foreground">Manage promissory notes and track payments.</p>
+            <div className="acr-cc-hero" style={{ marginTop: 0 }}>
+              <div>
+                <div className="acr-eyebrow">Finance</div>
+                <h1 className="acr-cc-greeting" data-testid="text-page-title">
+                  The paper side.
+                  <span className="acr-cc-greeting-soft">
+                    {" "}Sophie keeps the notes, payments, and statements straight.
+                  </span>
+                </h1>
+              </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {/* r8 James: the borrower portal at /portal was advertised
