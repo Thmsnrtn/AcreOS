@@ -28,6 +28,7 @@ import { AcreosLogo } from "@/components/acreos-logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { SkipToContent } from "@/components/skip-to-content";
 import { Hero } from "./landing/Hero";
+import { HowItWorks } from "./landing/HowItWorks";
 import "./landing/landing.css";
 import {
   MapPin,
@@ -226,60 +227,20 @@ export default function LandingPage() {
         </div>
       </nav>
 
-      {/* Hero — homestead palette, serif display, three floating
-          agent cards. Per /acreos-landing/sections-1.jsx → Hero. */}
+      {/* Hero + How It Works per /acreos-landing/sections-1.jsx.
+          Subsequent sections (Agents, Day in Life, Features, Quotes,
+          Founder note, Pricing, FAQ, Final CTA) are pending and will
+          be ported in subsequent 2A.3 commits. The legacy inline
+          sections below remain until each is replaced. */}
       <main id="main-content">
         <Hero />
+        <HowItWorks />
       </main>
 
-      {/* How It Works */}
-      <section className="py-20 px-6 bg-muted/30 border-y">
-        <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-14">
-            <h2 className="text-3xl font-bold">How AcreOS Works</h2>
-            <p className="text-muted-foreground mt-3 max-w-xl mx-auto">
-              From raw land data to closed deals in four steps.
-            </p>
-          </div>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-8">
-            {[
-              {
-                icon: Map,
-                step: "1",
-                title: "Import or Find Parcels",
-                description: "Pull county data, import CSVs, or search by state and county to build your target list.",
-              },
-              {
-                icon: Sparkles,
-                step: "2",
-                title: "AI Analyzes Each Parcel",
-                description: "Instant valuations, comp analysis, and deal scoring powered by 9 data sources.",
-              },
-              {
-                icon: Mail,
-                step: "3",
-                title: "Launch Direct Mail Campaigns",
-                description: "Generate offer letters, set up mail sequences, and reach motivated sellers at scale.",
-              },
-              {
-                icon: DollarSign,
-                step: "4",
-                title: "Close Deals & Track Returns",
-                description: "Manage contracts, track your pipeline, and monitor ROI across your entire land portfolio.",
-              },
-            ].map(({ icon: Icon, step, title, description }) => (
-              <div key={step} className="text-center space-y-3">
-                <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto">
-                  <Icon className="h-7 w-7 text-primary" />
-                </div>
-                <div className="text-xs font-semibold text-primary uppercase tracking-wider">Step {step}</div>
-                <h3 className="font-semibold">{title}</h3>
-                <p className="text-sm text-muted-foreground">{description}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      {/* Legacy social-proof / waitlist / etc. sections remain below
+          until each prototype-aligned replacement lands in subsequent
+          2A.3 commits (Agents → Day in Life → Features → Quotes →
+          Founder → Pricing → FAQ → Final CTA → Footer). */}
 
       {/* Social proof */}
       <section className="border-y bg-muted/30 py-12 px-6">
