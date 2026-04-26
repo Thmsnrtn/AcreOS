@@ -100,10 +100,10 @@ const leadStatuses = [
 
 const dealStages = [
   { value: 'negotiating', label: 'Negotiating' },
-  { value: 'offer_sent', label: 'Offer Sent' },
+  { value: 'offer_sent', label: 'Offer sent' },
   { value: 'countered', label: 'Countered' },
   { value: 'accepted', label: 'Accepted' },
-  { value: 'in_escrow', label: 'In Escrow' },
+  { value: 'in_escrow', label: 'In escrow' },
   { value: 'closed', label: 'Closed' },
 ];
 
@@ -135,12 +135,12 @@ const pages = [
 ];
 
 const quickActions = [
-  { name: "New Lead", icon: UserPlus, action: "new-lead", path: "/leads?new=true" },
-  { name: "New Property", icon: Home, action: "new-property", path: "/properties?new=true" },
-  { name: "New Deal", icon: FileText, action: "new-deal", path: "/deals?new=true" },
-  { name: "New Task", icon: ListTodo, action: "new-task", path: "/tasks?action=new" },
-  { name: "Send Email", icon: Mail, action: "send-email", path: "/inbox" },
-  { name: "Generate Offer", icon: Sparkles, action: "generate-offer", path: "/offers?generate=true" },
+  { name: "New lead", icon: UserPlus, action: "new-lead", path: "/leads?new=true" },
+  { name: "New property", icon: Home, action: "new-property", path: "/properties?new=true" },
+  { name: "New deal", icon: FileText, action: "new-deal", path: "/deals?new=true" },
+  { name: "New task", icon: ListTodo, action: "new-task", path: "/tasks?action=new" },
+  { name: "Send email", icon: Mail, action: "send-email", path: "/inbox" },
+  { name: "Generate offer", icon: Sparkles, action: "generate-offer", path: "/offers?generate=true" },
 ];
 
 interface AIResponse {
@@ -361,6 +361,7 @@ export function CommandPalette() {
       {open && (
         <>
           <motion.div
+            aria-hidden="true"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -370,6 +371,9 @@ export function CommandPalette() {
             data-testid="command-palette-backdrop"
           />
           <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Command palette"
             initial={{ opacity: 0, scale: 0.92, y: -16 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.94, y: -12 }}
@@ -395,14 +399,17 @@ export function CommandPalette() {
                 />
                 {showAIMode && (
                   <button
+                    type="button"
                     onClick={handleAISubmit}
                     disabled={aiMutation.isPending || !inputValue.trim()}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md bg-primary text-primary-foreground disabled:opacity-50 hover:bg-primary/90 transition-colors"
+                    aria-busy={aiMutation.isPending}
+                    aria-label={aiMutation.isPending ? "Asking AI" : "Ask AI"}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md bg-primary text-primary-foreground disabled:opacity-50 hover:bg-primary/90 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     {aiMutation.isPending ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
                     ) : (
-                      <Send className="h-3.5 w-3.5" />
+                      <Send className="h-3.5 w-3.5" aria-hidden="true" />
                     )}
                   </button>
                 )}
@@ -411,7 +418,7 @@ export function CommandPalette() {
               {/* AI Mode Hint */}
               {!showAIMode && inputValue.length === 0 && (
                 <div className="px-3 py-1.5 text-xs text-muted-foreground border-b flex items-center gap-1.5">
-                  <MessageSquare className="h-3 w-3" />
+                  <MessageSquare className="h-3 w-3" aria-hidden="true" />
                   <span>Start with <span className="font-mono bg-muted px-1 rounded">?</span> or ask a question for AI assistance</span>
                 </div>
               )}
@@ -420,30 +427,32 @@ export function CommandPalette() {
               {showAIMode && (
                 <div className="px-4 py-3 border-b">
                   {aiMutation.isPending && (
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      <span>Thinking...</span>
+                    <div role="status" aria-busy="true" aria-label="AI is thinking" className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                      <span>Thinking…</span>
                     </div>
                   )}
                   {aiResponse && !aiMutation.isPending && (
-                    <div className="space-y-2">
+                    <div className="space-y-2" role="status">
                       <div className="flex items-start gap-2">
-                        <Sparkles className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                        <p className="text-sm leading-relaxed">{aiResponse.reply}</p>
+                        <Sparkles className="h-4 w-4 text-primary mt-0.5 shrink-0" aria-hidden="true" />
+                        <p className="text-sm leading-relaxed m-0">{aiResponse.reply}</p>
                       </div>
                       {aiResponse.actionPath && aiResponse.actionLabel && (
                         <button
+                          type="button"
                           onClick={() => handleSelect(aiResponse.actionPath!)}
-                          className="ml-6 text-xs text-primary hover:underline flex items-center gap-1"
+                          className="ml-6 text-xs text-primary hover:underline flex items-center gap-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                          aria-label={aiResponse.actionLabel}
                         >
-                          <span>{"\u2192"}</span>
+                          <span aria-hidden="true">{"\u2192"}</span>
                           <span>{aiResponse.actionLabel}</span>
                         </button>
                       )}
                     </div>
                   )}
                   {!aiResponse && !aiMutation.isPending && (
-                    <p className="text-xs text-muted-foreground">Press Enter or click the send button to ask</p>
+                    <p className="text-xs text-muted-foreground m-0">Press Enter or click the send button to ask</p>
                   )}
                 </div>
               )}
@@ -462,9 +471,9 @@ export function CommandPalette() {
                           data-testid={`command-lead-status-${status.value}`}
                         >
                           {selectedLead.status === status.value ? (
-                            <CheckCircle className="mr-2 h-4 w-4 text-green-500" />
+                            <CheckCircle className="mr-2 h-4 w-4 text-green-500" aria-hidden="true" />
                           ) : (
-                            <ArrowRight className="mr-2 h-4 w-4 text-muted-foreground" />
+                            <ArrowRight className="mr-2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
                           )}
                           <span>{status.label}</span>
                           {selectedLead.status === status.value && (
@@ -492,9 +501,9 @@ export function CommandPalette() {
                           data-testid={`command-deal-stage-${stage.value}`}
                         >
                           {selectedDeal.status === stage.value ? (
-                            <CheckCircle className="mr-2 h-4 w-4 text-green-500" />
+                            <CheckCircle className="mr-2 h-4 w-4 text-green-500" aria-hidden="true" />
                           ) : (
-                            <ArrowRight className="mr-2 h-4 w-4 text-muted-foreground" />
+                            <ArrowRight className="mr-2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
                           )}
                           <span>{stage.label}</span>
                           {selectedDeal.status === stage.value && (
@@ -515,7 +524,7 @@ export function CommandPalette() {
 
                     {/* Search Results (leads, properties, deals) */}
                     {query.trim().length > 0 && (
-                      <CommandGroup heading="Search Results">
+                      <CommandGroup heading="Search results">
                         {(() => {
                           const q = query.trim().toLowerCase();
                           const leadMatches = (leadsData || []).filter(l =>
@@ -530,7 +539,7 @@ export function CommandPalette() {
                           const results = [...leadMatches, ...propertyMatches, ...dealMatches].slice(0, 8);
                           return results.length ? results.map(r => (
                             <CommandItem key={r.path} onSelect={() => handleSelect(r.path)} className="cursor-pointer">
-                              <Search className="mr-2 h-4 w-4 text-muted-foreground" />
+                              <Search className="mr-2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
                               <span>{r.name}</span>
                             </CommandItem>
                           )) : <CommandItem disabled>No matches</CommandItem>;
@@ -541,7 +550,7 @@ export function CommandPalette() {
                     {/* Contextual Lead Actions */}
                     {matchingLeads.length > 0 && (
                       <>
-                        <CommandGroup heading="Leads - Quick Actions">
+                        <CommandGroup heading="Leads — quick actions">
                           {matchingLeads.map((lead) => (
                             <CommandItem
                               key={`lead-action-${lead.id}`}
@@ -549,14 +558,14 @@ export function CommandPalette() {
                               className="cursor-pointer"
                               data-testid={`command-lead-${lead.id}`}
                             >
-                              <Users className="mr-2 h-4 w-4 text-muted-foreground" />
+                              <Users className="mr-2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
                               <div className="flex flex-col">
                                 <span>{lead.firstName} {lead.lastName}</span>
                                 <span className="text-xs text-muted-foreground capitalize">
                                   {lead.status} {lead.phone && `\u00b7 ${lead.phone}`}
                                 </span>
                               </div>
-                              <ArrowRight className="ml-auto h-4 w-4 text-muted-foreground" />
+                              <ArrowRight className="ml-auto h-4 w-4 text-muted-foreground" aria-hidden="true" />
                             </CommandItem>
                           ))}
                         </CommandGroup>
@@ -567,7 +576,7 @@ export function CommandPalette() {
                     {/* Contextual Deal Actions */}
                     {matchingDeals.length > 0 && (
                       <>
-                        <CommandGroup heading="Deals - Quick Actions">
+                        <CommandGroup heading="Deals — quick actions">
                           {matchingDeals.map((deal) => (
                             <CommandItem
                               key={`deal-action-${deal.id}`}
@@ -575,7 +584,7 @@ export function CommandPalette() {
                               className="cursor-pointer"
                               data-testid={`command-deal-${deal.id}`}
                             >
-                              <Handshake className="mr-2 h-4 w-4 text-muted-foreground" />
+                              <Handshake className="mr-2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
                               <div className="flex flex-col">
                                 <span>
                                   {deal.property?.county ? `${deal.property.county}, ${deal.property.state}` : deal.type}
@@ -584,7 +593,7 @@ export function CommandPalette() {
                                   {deal.type} {"\u00b7"} {deal.status.replace(/_/g, ' ')}
                                 </span>
                               </div>
-                              <ArrowRight className="ml-auto h-4 w-4 text-muted-foreground" />
+                              <ArrowRight className="ml-auto h-4 w-4 text-muted-foreground" aria-hidden="true" />
                             </CommandItem>
                           ))}
                         </CommandGroup>
@@ -594,30 +603,30 @@ export function CommandPalette() {
 
                     {isFounder && (
                       <>
-                        <CommandGroup heading="Founder / Admin">
+                        <CommandGroup heading="Founder / admin">
                           <CommandItem
                             onSelect={() => handleSelect("/founder")}
                             data-testid="command-item-founder-dashboard"
                             className="cursor-pointer"
                           >
-                            <Sparkles className="mr-2 h-4 w-4 text-amber-500" />
-                            <span>Open Founder Dashboard</span>
+                            <Sparkles className="mr-2 h-4 w-4 text-amber-500" aria-hidden="true" />
+                            <span>Open founder dashboard</span>
                           </CommandItem>
                           <CommandItem
                             onSelect={() => handleSelect("/analytics")}
                             data-testid="command-item-system-health"
                             className="cursor-pointer"
                           >
-                            <Clock className="mr-2 h-4 w-4 text-muted-foreground" />
-                            <span>View System Health</span>
+                            <Clock className="mr-2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                            <span>View system health</span>
                           </CommandItem>
                           <CommandItem
                             onSelect={() => handleSelect("/finance")}
                             data-testid="command-item-credits"
                             className="cursor-pointer"
                           >
-                            <DollarSign className="mr-2 h-4 w-4 text-green-600" />
-                            <span>Open Credits & Costs</span>
+                            <DollarSign className="mr-2 h-4 w-4 text-green-600" aria-hidden="true" />
+                            <span>Open credits & costs</span>
                           </CommandItem>
                         </CommandGroup>
                         <CommandSeparator />
@@ -633,7 +642,7 @@ export function CommandPalette() {
                           data-testid={`command-item-${page.name.toLowerCase().replace(/\s+/g, "-")}`}
                           className="cursor-pointer"
                         >
-                          <page.icon className="mr-2 h-4 w-4 text-muted-foreground" />
+                          <page.icon className="mr-2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
                           <span>{page.name}</span>
                           {idx < 9 && (
                             <CommandShortcut>{`\u2318${idx + 1}`}</CommandShortcut>
@@ -644,7 +653,7 @@ export function CommandPalette() {
 
                     <CommandSeparator />
 
-                    <CommandGroup heading="Quick Actions">
+                    <CommandGroup heading="Quick actions">
                       {quickActions.map((action) => {
                         const requiresAI = action.action === 'generate-offer';
                         const disabled = requiresAI && !isAvailable('ai');
@@ -656,7 +665,7 @@ export function CommandPalette() {
                             className="cursor-pointer"
                             disabled={disabled}
                           >
-                            <action.icon className="mr-2 h-4 w-4 text-muted-foreground" />
+                            <action.icon className="mr-2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
                             <span>{action.name}{disabled ? ' (AI unavailable)' : ''}</span>
                             <CommandShortcut>{"\u21b5"}</CommandShortcut>
                           </CommandItem>
@@ -671,12 +680,12 @@ export function CommandPalette() {
                     {isFounder && (
                       <>
                         <CommandSeparator />
-                        <CommandGroup heading="Ask Your Team">
+                        <CommandGroup heading="Ask your team">
                           <CommandItem
                             onSelect={() => handleSelect("/founder")}
                             className="cursor-pointer"
                           >
-                            <MessageSquare className="mr-2 h-4 w-4 text-emerald-500" />
+                            <MessageSquare className="mr-2 h-4 w-4 text-emerald-500" aria-hidden="true" />
                             <span>How's revenue doing?</span>
                             <span className="ml-auto text-xs text-muted-foreground">Forge</span>
                           </CommandItem>
@@ -684,7 +693,7 @@ export function CommandPalette() {
                             onSelect={() => handleSelect("/founder")}
                             className="cursor-pointer"
                           >
-                            <MessageSquare className="mr-2 h-4 w-4 text-amber-500" />
+                            <MessageSquare className="mr-2 h-4 w-4 text-amber-500" aria-hidden="true" />
                             <span>Any support issues?</span>
                             <span className="ml-auto text-xs text-muted-foreground">Sophie</span>
                           </CommandItem>
@@ -692,7 +701,7 @@ export function CommandPalette() {
                             onSelect={() => handleSelect("/founder")}
                             className="cursor-pointer"
                           >
-                            <MessageSquare className="mr-2 h-4 w-4 text-blue-500" />
+                            <MessageSquare className="mr-2 h-4 w-4 text-blue-500" aria-hidden="true" />
                             <span>Is anything broken?</span>
                             <span className="ml-auto text-xs text-muted-foreground">Sentinel</span>
                           </CommandItem>
@@ -700,7 +709,7 @@ export function CommandPalette() {
                             onSelect={() => handleSelect("/founder")}
                             className="cursor-pointer"
                           >
-                            <MessageSquare className="mr-2 h-4 w-4 text-purple-500" />
+                            <MessageSquare className="mr-2 h-4 w-4 text-purple-500" aria-hidden="true" />
                             <span>Morning briefing</span>
                             <span className="ml-auto text-xs text-muted-foreground">All agents</span>
                           </CommandItem>
@@ -719,7 +728,7 @@ export function CommandPalette() {
                               data-testid={`command-item-recent-${item.type}-${index}`}
                               className="cursor-pointer"
                             >
-                              <Clock className="mr-2 h-4 w-4 text-muted-foreground" />
+                              <Clock className="mr-2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
                               <span className="capitalize text-muted-foreground text-xs mr-2">
                                 {item.type}:
                               </span>
