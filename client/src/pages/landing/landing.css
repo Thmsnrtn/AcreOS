@@ -760,3 +760,82 @@
   color: var(--acr-ink-2);
   margin: 0;
 }
+
+/* ─── Quotes (sections.css 493-546) ──────────────────────────────────── */
+
+.lp-quotes-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+@media (max-width: 1080px) {
+  .lp-quotes-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 720px) {
+  .lp-quotes-grid { grid-template-columns: 1fr; }
+}
+
+.lp-quote-card {
+  background: var(--acr-surface);
+  border: 0.5px solid var(--acr-line);
+  border-radius: 16px;
+  padding: 28px;
+  margin: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.lp-quote-mark {
+  position: absolute;
+  top: 16px;
+  right: 24px;
+  font-family: var(--font-serif);
+  font-size: 60px;
+  line-height: 0.8;
+  font-weight: 400;
+  color: var(--acr-brand);
+  opacity: 0.25;
+}
+
+.lp-quote-text {
+  font: 400 16px/1.5 var(--font-sans);
+  color: var(--acr-ink);
+  margin: 0;
+  flex: 1;
+  text-wrap: pretty;
+}
+
+.lp-quote-foot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 0.5px solid var(--acr-line-soft);
+}
+
+.lp-quote-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--acr-surface-2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-serif);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--acr-ink);
+}
+
+.lp-quote-name {
+  font: 600 14px/1.2 var(--font-sans);
+  color: var(--acr-ink);
+}
+.lp-quote-role {
+  font: 400 12px/1.2 var(--font-sans);
+  color: var(--acr-ink-3);
+  margin-top: 2px;
+}
