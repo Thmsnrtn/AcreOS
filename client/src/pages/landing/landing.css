@@ -1310,3 +1310,132 @@
 .lp-footer-fine a:hover {
   color: var(--acr-brand);
 }
+
+/* ───────────────────────────────────────────────────────────────── NAV */
+/* Prototype reference: acreos-landing/acreos-landing.html lines 57–166. */
+
+.lp-nav {
+  position: sticky;
+  top: 0;
+  z-index: 90;
+  background: color-mix(in srgb, var(--acr-bg) 88%, transparent);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  border-bottom: 0.5px solid var(--acr-line-soft);
+}
+.lp-nav-row {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 16px 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.lp-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font: 600 17px/1 var(--font-display, var(--font-sans));
+  letter-spacing: -0.02em;
+  color: var(--acr-ink);
+  text-decoration: none;
+}
+.lp-logo-mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: var(--acr-brand);
+  color: var(--acr-brand-ink);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font: 700 16px/1 var(--font-display, var(--font-sans));
+  letter-spacing: -0.04em;
+  position: relative;
+}
+.lp-logo-mark::after {
+  content: "";
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 6px;
+  height: 6px;
+  background: var(--acr-accent);
+  border-radius: 50%;
+  border: 1.5px solid var(--acr-bg);
+}
+.lp-nav-links {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  font: 500 14px/1 var(--font-sans);
+  color: var(--acr-ink-2);
+}
+.lp-nav-links a {
+  color: inherit;
+  text-decoration: none;
+  transition: color 0.15s;
+}
+.lp-nav-links a:hover,
+.lp-nav-links a:focus-visible {
+  color: var(--acr-ink);
+  outline: none;
+}
+.lp-nav-links a:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.lp-nav-cta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.lp-nav-signin {
+  font: 500 14px/1 var(--font-sans);
+  color: var(--acr-ink-2);
+  text-decoration: none;
+  transition: color 0.15s;
+}
+.lp-nav-signin:hover,
+.lp-nav-signin:focus-visible {
+  color: var(--acr-ink);
+  outline: none;
+}
+.lp-nav-signin:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.lp-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 11px 18px;
+  border-radius: 9px;
+  font: 600 14px/1 var(--font-sans);
+  letter-spacing: -0.005em;
+  border: 0.5px solid var(--acr-ink);
+  background: var(--acr-ink);
+  color: var(--acr-brand-ink);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: transform 0.15s, background 0.15s, box-shadow 0.15s;
+}
+.lp-nav-btn:hover {
+  background: #000;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px -4px rgba(36, 22, 7, 0.3);
+}
+.lp-nav-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--acr-ring);
+}
+
+@media (max-width: 720px) {
+  .lp-nav-row {
+    padding: 14px 20px;
+  }
+  .lp-nav-links {
+    display: none;
+  }
+}
