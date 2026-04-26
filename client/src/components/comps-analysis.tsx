@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, MapPin, TrendingUp, TrendingDown, BarChart3, AlertCircle, RefreshCw, Search, DollarSign, Star, Target, Info } from "lucide-react";
+import { Loader2, MapPin, TrendingUp, TrendingDown, BarChart3, AlertCircle, RefreshCw, Search, DollarSign, Star, Target } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Progress } from "@/components/ui/progress";
 import { DataProvenanceTag } from "@/components/data-provenance-tag";
@@ -213,7 +213,7 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
             aria-controls="comps-filters-panel"
           >
             <Search className="w-4 h-4 mr-1" aria-hidden="true" />
-            {showFilters ? "Hide Filters" : "Filters"}
+            {showFilters ? "Hide filters" : "Filters"}
           </Button>
           <div className="flex flex-col items-center gap-0.5">
             <Button
@@ -243,7 +243,7 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
           <CardContent className="pt-4">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
-                <Label htmlFor="radius" className="text-xs">Search Radius (miles)</Label>
+                <Label htmlFor="radius" className="text-xs">Search radius (miles)</Label>
                 <Input
                   id="radius"
                   type="number"
@@ -285,56 +285,64 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
       )}
 
       {analysis && analysis.sampleSize > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <Card>
-            <CardContent className="pt-4">
-              <div className="flex items-center gap-2">
-                <BarChart3 className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
-                <span className="text-xs text-muted-foreground">Avg $/Acre</span>
-              </div>
-              <p className="text-lg font-bold mt-1" data-testid="text-avg-price">
-                {formatCurrency(analysis.averagePricePerAcre)}
-              </p>
-              <DataProvenanceTag source={`${analysis.sampleSize} comps`} confidence={analysis.sampleSize >= 5 ? "high" : "medium"} />
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-4">
-              <div className="flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
-                <span className="text-xs text-muted-foreground">Median $/Acre</span>
-              </div>
-              <p className="text-lg font-bold mt-1" data-testid="text-median-price">
-                {formatCurrency(analysis.medianPricePerAcre)}
-              </p>
-              <DataProvenanceTag source={`${analysis.sampleSize} comps`} confidence={analysis.sampleSize >= 5 ? "high" : "medium"} />
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-4">
-              <div className="flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-green-500" aria-hidden="true" />
-                <span className="text-xs text-muted-foreground">High $/Acre</span>
-              </div>
-              <p className="text-lg font-bold mt-1 text-green-600" data-testid="text-high-price">
-                {formatCurrency(analysis.highPricePerAcre)}
-              </p>
-              <DataProvenanceTag source={`${analysis.sampleSize} comps`} confidence={analysis.sampleSize >= 5 ? "high" : "medium"} />
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-4">
-              <div className="flex items-center gap-2">
-                <TrendingDown className="w-4 h-4 text-red-500" aria-hidden="true" />
-                <span className="text-xs text-muted-foreground">Low $/Acre</span>
-              </div>
-              <p className="text-lg font-bold mt-1 text-red-600" data-testid="text-low-price">
-                {formatCurrency(analysis.lowPricePerAcre)}
-              </p>
-              <DataProvenanceTag source={`${analysis.sampleSize} comps`} confidence={analysis.sampleSize >= 5 ? "high" : "medium"} />
-            </CardContent>
-          </Card>
-        </div>
+        <ul aria-label="Comp price statistics" className="grid grid-cols-2 md:grid-cols-4 gap-3 list-none p-0 m-0">
+          <li>
+            <Card>
+              <CardContent className="pt-4">
+                <div className="flex items-center gap-2">
+                  <BarChart3 className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
+                  <span className="text-xs text-muted-foreground">Avg $/acre</span>
+                </div>
+                <p className="text-lg font-bold mt-1 tabular-nums m-0" data-testid="text-avg-price" aria-label={`Average price per acre: ${formatCurrency(analysis.averagePricePerAcre)}`}>
+                  {formatCurrency(analysis.averagePricePerAcre)}
+                </p>
+                <DataProvenanceTag source={`${analysis.sampleSize} comps`} confidence={analysis.sampleSize >= 5 ? "high" : "medium"} />
+              </CardContent>
+            </Card>
+          </li>
+          <li>
+            <Card>
+              <CardContent className="pt-4">
+                <div className="flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
+                  <span className="text-xs text-muted-foreground">Median $/acre</span>
+                </div>
+                <p className="text-lg font-bold mt-1 tabular-nums m-0" data-testid="text-median-price" aria-label={`Median price per acre: ${formatCurrency(analysis.medianPricePerAcre)}`}>
+                  {formatCurrency(analysis.medianPricePerAcre)}
+                </p>
+                <DataProvenanceTag source={`${analysis.sampleSize} comps`} confidence={analysis.sampleSize >= 5 ? "high" : "medium"} />
+              </CardContent>
+            </Card>
+          </li>
+          <li>
+            <Card>
+              <CardContent className="pt-4">
+                <div className="flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-green-500" aria-hidden="true" />
+                  <span className="text-xs text-muted-foreground">High $/acre</span>
+                </div>
+                <p className="text-lg font-bold mt-1 tabular-nums text-green-600 m-0" data-testid="text-high-price" aria-label={`High price per acre: ${formatCurrency(analysis.highPricePerAcre)}`}>
+                  {formatCurrency(analysis.highPricePerAcre)}
+                </p>
+                <DataProvenanceTag source={`${analysis.sampleSize} comps`} confidence={analysis.sampleSize >= 5 ? "high" : "medium"} />
+              </CardContent>
+            </Card>
+          </li>
+          <li>
+            <Card>
+              <CardContent className="pt-4">
+                <div className="flex items-center gap-2">
+                  <TrendingDown className="w-4 h-4 text-red-500" aria-hidden="true" />
+                  <span className="text-xs text-muted-foreground">Low $/acre</span>
+                </div>
+                <p className="text-lg font-bold mt-1 tabular-nums text-red-600 m-0" data-testid="text-low-price" aria-label={`Low price per acre: ${formatCurrency(analysis.lowPricePerAcre)}`}>
+                  {formatCurrency(analysis.lowPricePerAcre)}
+                </p>
+                <DataProvenanceTag source={`${analysis.sampleSize} comps`} confidence={analysis.sampleSize >= 5 ? "high" : "medium"} />
+              </CardContent>
+            </Card>
+          </li>
+        </ul>
       )}
 
       {analysis?.estimatedValue && (
@@ -342,7 +350,7 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2">
               <DollarSign className="w-4 h-4" aria-hidden="true" />
-              Estimated Market Value
+              Estimated market value
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -369,48 +377,48 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2">
               <Target className="w-4 h-4" aria-hidden="true" />
-              Offer Suggestions
+              Offer suggestions
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="p-3 rounded-md bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
+            <ul aria-label="Offer price tiers" className="grid grid-cols-1 md:grid-cols-3 gap-4 list-none p-0 m-0">
+              <li className="p-3 rounded-md bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
                 <div className="flex items-center gap-2 mb-1">
                   <Badge variant="outline" className="bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 border-green-300 dark:border-green-700">
                     Conservative
                   </Badge>
                 </div>
-                <p className="text-lg font-bold text-green-700 dark:text-green-300" data-testid="text-offer-conservative">
+                <p className="text-lg font-bold tabular-nums text-green-700 dark:text-green-300 m-0" data-testid="text-offer-conservative" aria-label={`Conservative offer: ${formatCurrency(data.offerPrices.conservative.min)} to ${formatCurrency(data.offerPrices.conservative.max)}`}>
                   {formatCurrency(data.offerPrices.conservative.min)} - {formatCurrency(data.offerPrices.conservative.max)}
                 </p>
-                <p className="text-xs text-muted-foreground mt-1">40-50% of market value</p>
+                <p className="text-xs text-muted-foreground mt-1 m-0">40-50% of market value</p>
                 <DataProvenanceTag source="AcreOS comp analysis" className="mt-1" />
-              </div>
-              <div className="p-3 rounded-md bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+              </li>
+              <li className="p-3 rounded-md bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
                 <div className="flex items-center gap-2 mb-1">
                   <Badge variant="outline" className="bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700">
                     Standard
                   </Badge>
                 </div>
-                <p className="text-lg font-bold text-blue-700 dark:text-blue-300" data-testid="text-offer-standard">
+                <p className="text-lg font-bold tabular-nums text-blue-700 dark:text-blue-300 m-0" data-testid="text-offer-standard" aria-label={`Standard offer: ${formatCurrency(data.offerPrices.standard.min)} to ${formatCurrency(data.offerPrices.standard.max)}`}>
                   {formatCurrency(data.offerPrices.standard.min)} - {formatCurrency(data.offerPrices.standard.max)}
                 </p>
-                <p className="text-xs text-muted-foreground mt-1">50-65% of market value</p>
+                <p className="text-xs text-muted-foreground mt-1 m-0">50-65% of market value</p>
                 <DataProvenanceTag source="AcreOS comp analysis" className="mt-1" />
-              </div>
-              <div className="p-3 rounded-md bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800">
+              </li>
+              <li className="p-3 rounded-md bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800">
                 <div className="flex items-center gap-2 mb-1">
                   <Badge variant="outline" className="bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300 border-orange-300 dark:border-orange-700">
                     Aggressive
                   </Badge>
                 </div>
-                <p className="text-lg font-bold text-orange-700 dark:text-orange-300" data-testid="text-offer-aggressive">
+                <p className="text-lg font-bold tabular-nums text-orange-700 dark:text-orange-300 m-0" data-testid="text-offer-aggressive" aria-label={`Aggressive offer: ${formatCurrency(data.offerPrices.aggressive.min)} to ${formatCurrency(data.offerPrices.aggressive.max)}`}>
                   {formatCurrency(data.offerPrices.aggressive.min)} - {formatCurrency(data.offerPrices.aggressive.max)}
                 </p>
-                <p className="text-xs text-muted-foreground mt-1">65-80% of market value</p>
+                <p className="text-xs text-muted-foreground mt-1 m-0">65-80% of market value</p>
                 <DataProvenanceTag source="AcreOS comp analysis" className="mt-1" />
-              </div>
-            </div>
+              </li>
+            </ul>
           </CardContent>
         </Card>
       )}
@@ -421,7 +429,7 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
             <CardTitle className="text-base flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <Star className="w-4 h-4" aria-hidden="true" />
-                Property Desirability Score
+                Property desirability score
               </div>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -438,8 +446,9 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
                     onClick={() => setShowScoreBreakdown(!showScoreBreakdown)}
                     aria-expanded={showScoreBreakdown}
                     aria-controls="desirability-score-breakdown"
+                    aria-label={`Property desirability score: ${data.desirabilityScore.totalScore} out of 100, grade ${data.desirabilityScore.grade}. ${showScoreBreakdown ? "Hide" : "Show"} breakdown`}
                   >
-                    {data.desirabilityScore.totalScore}/100 ({data.desirabilityScore.grade})
+                    <span className="tabular-nums">{data.desirabilityScore.totalScore}</span>/100 ({data.desirabilityScore.grade})
                   </button>
                 </TooltipTrigger>
                 <TooltipContent>
@@ -450,24 +459,31 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
           </CardHeader>
           {showScoreBreakdown && (
             <CardContent data-testid="score-breakdown" id="desirability-score-breakdown">
-              <div className="space-y-3">
-                {data.desirabilityScore.factors.map((factor, idx) => (
-                  <div key={idx} className="space-y-1">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="font-medium">{factor.name}</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-muted-foreground text-xs capitalize">{factor.description}</span>
-                        <span className="font-mono text-xs">{factor.score}/{factor.maxScore}</span>
+              <ul aria-label="Score factor breakdown" className="space-y-3 list-none p-0 m-0">
+                {data.desirabilityScore.factors.map((factor, idx) => {
+                  const factorPercent = Math.round((factor.score / factor.maxScore) * 100);
+                  return (
+                    <li key={idx} className="space-y-1" aria-label={`${factor.name}: ${factor.score} of ${factor.maxScore}, ${factor.description}`}>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="font-medium">{factor.name}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground text-xs capitalize">{factor.description}</span>
+                          <span className="font-mono text-xs tabular-nums" aria-hidden="true"><span className="tabular-nums">{factor.score}</span>/<span className="tabular-nums">{factor.maxScore}</span></span>
+                        </div>
                       </div>
-                    </div>
-                    <Progress 
-                      value={(factor.score / factor.maxScore) * 100} 
-                      className="h-2"
-                      data-testid={`progress-${factor.name.toLowerCase().replace(/\s+/g, "-")}`}
-                    />
-                  </div>
-                ))}
-              </div>
+                      <Progress
+                        value={factorPercent}
+                        className="h-2"
+                        data-testid={`progress-${factor.name.toLowerCase().replace(/\s+/g, "-")}`}
+                        aria-label={`${factor.name} score`}
+                        aria-valuenow={factorPercent}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                      />
+                    </li>
+                  );
+                })}
+              </ul>
             </CardContent>
           )}
         </Card>
@@ -477,22 +493,22 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center justify-between gap-2">
-              <span>Comparable Properties ({comps.length})</span>
-              <Badge variant="secondary">
-                Within {radius} miles
+              <span>Comparable properties (<span className="tabular-nums">{comps.length}</span>)</span>
+              <Badge variant="secondary" aria-label={`Within ${radius} miles`}>
+                Within <span className="tabular-nums mx-1">{radius}</span> miles
               </Badge>
             </CardTitle>
           </CardHeader>
           <CardContent className="px-0">
             <div className="overflow-x-auto">
-              <Table>
+              <Table aria-label="Comparable properties">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Address</TableHead>
                     <TableHead className="text-right">Acreage</TableHead>
-                    <TableHead className="text-right">Sale Date</TableHead>
-                    <TableHead className="text-right">Sale Price</TableHead>
-                    <TableHead className="text-right">$/Acre</TableHead>
+                    <TableHead className="text-right">Sale date</TableHead>
+                    <TableHead className="text-right">Sale price</TableHead>
+                    <TableHead className="text-right">$/acre</TableHead>
                     <TableHead className="text-right">Distance</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -506,7 +522,7 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
                         </div>
                         <div className="text-xs text-muted-foreground font-mono">{comp.apn}</div>
                       </TableCell>
-                      <TableCell className="text-right">{comp.acreage?.toFixed(2) || "N/A"}</TableCell>
+                      <TableCell className="text-right tabular-nums">{comp.acreage?.toFixed(2) || "N/A"}</TableCell>
                       <TableCell className="text-right">
                         {(() => {
                           const staleness = saleDateStaleness(comp.saleDate);
@@ -523,14 +539,14 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
                               ? "Sold more than 1 year ago"
                               : undefined;
                           return (
-                            <span className={tone} title={title}>
+                            <span className={`${tone} tabular-nums`} title={title} aria-label={title ? `${formatDate(comp.saleDate)} (${title})` : undefined}>
                               {formatDate(comp.saleDate)}
                             </span>
                           );
                         })()}
                       </TableCell>
                       <TableCell className="text-right">
-                        <span className="font-medium">{comp.salePrice ? formatCurrency(comp.salePrice) : "N/A"}</span>
+                        <span className="font-medium tabular-nums">{comp.salePrice ? formatCurrency(comp.salePrice) : "N/A"}</span>
                         {comp.salePrice && (
                           <DataProvenanceTag
                             source="County records"
@@ -539,10 +555,10 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
                           />
                         )}
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-right tabular-nums">
                         {comp.pricePerAcre ? formatCurrency(comp.pricePerAcre) : "N/A"}
                       </TableCell>
-                      <TableCell className="text-right text-muted-foreground">
+                      <TableCell className="text-right text-muted-foreground tabular-nums" aria-label={comp.distance !== undefined ? `${comp.distance.toFixed(1)} miles away` : undefined}>
                         {comp.distance?.toFixed(1)} mi
                       </TableCell>
                     </TableRow>
@@ -555,7 +571,7 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
       ) : (
         <div className="text-center py-8">
           <MapPin className="w-12 h-12 mx-auto text-muted-foreground mb-4" aria-hidden="true" />
-          <h3 className="font-medium mb-2">No Comparable Properties Found</h3>
+          <h3 className="font-medium mb-2">No comparable properties found</h3>
           <p className="text-sm text-muted-foreground">
             Try expanding the search radius or adjusting filters.
           </p>
