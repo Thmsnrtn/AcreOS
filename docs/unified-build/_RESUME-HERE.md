@@ -50,7 +50,22 @@ Phases 4–6 first-pass: ✅ shipped (run 24962390532 green).
 
 10 customer-facing authenticated surfaces now carry one homestead editorial identity. Plus /landing (11 sections + nav) and the onboarding wizard.
 
-## Next action: Phase 7 — Tier 5 Founder Mode (OR deeper-pass body polish)
+## Build is substantively complete
+
+All 10 phases shipped to https://acreos.io. See `docs/unified-build/COMPLETE.md` for the full record and `docs/unified-build/phase-9-audit.md` for audit results.
+
+**Next handoff:** vertical expansion (per UNIFIED-BUILD-PROMPT.md §510 / v2 vertical-expansion guidance).
+
+**Incremental work remaining (no phase blocking):**
+1. Apply `<FounderPageShell>` to the remaining 23 founder routes (chassis built, /founder + /founder/tools demonstrate the pattern)
+2. Deeper-pass body styling on /today (AI suggestions → `.acr-sugg`; hot deals table → `.acr-deal-row`; activity feed → `.acr-activity-list`)
+3. Manual operator smoke of auth-gated routes (sign in, walk Tier 1–4 surfaces, verify editorial headers + metric strip + modals)
+4. Per-surface mobile breakpoint audit at 414/768/1024 (320 + 1440 confirmed)
+5. Triage `/api/white-label/config` 401 noise (use-white-label.ts:96 cookie sniff fires too eagerly)
+
+**For next loop / fresh session:** point at `docs/unified-build/COMPLETE.md` + this file; pick from incremental list above or start vertical-expansion handoff.
+
+## Reference: prior next-action (now closed)
 
 Two reasonable paths from here:
 

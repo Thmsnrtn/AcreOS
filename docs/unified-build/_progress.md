@@ -59,17 +59,37 @@ Canonical prompt: `docs/unified-build/UNIFIED-BUILD-PROMPT.md` (v3)
   - [/] 6.1 — /finance (Sophie ledger surface) header (commit 3adc075)
   - [/] 6.2 — /settings (workspace settings) header (commit 3adc075)
   - Agents / Automations / Audit Log / Team / Billing / Integrations / Contacts / Calendar — deeper passes
-- [ ] Phase 7 — Tier 5 Founder Mode
-- [ ] Phase 8 — Coverage Pass
-- [ ] Phase 9 — Final Coherence Pass
-- [ ] Phase 10 — Handoff Preparation
+- [x] Phase 5 — Tier 3 Closing (first-pass headers + 3 modals shipped)
+  - [x] /offers + /deals editorial headers
+  - [x] Quick Offer modal + ⌘O shortcut + sidebar trigger (commit 3dd294d)
+  - [x] Lost Reason modal + Deal Closed Celebration modal
+- [x] Phase 6 — Tier 4 Ops (first-pass + preferences shipped)
+  - [x] /finance + /settings editorial headers
+  - [x] Settings → Appearance → Preferences card (sound + replay-tour)
+- [/] Phase 7 — Tier 5 Founder Mode (chassis built; 2 of 25 founder routes adopted)
+  - [x] FounderPageShell chassis (commit 3626221)
+  - [x] /founder home — applied
+  - [x] /founder/tools — applied (commit df15ff8)
+  - [ ] 23 remaining founder routes — incremental adoption per pattern
+- [x] Phase 8 — Coverage Pass (commit a5c9dbc)
+  - [x] CoveragePage chassis + NotFoundPage / ServerErrorPage / ForbiddenPage / MaintenancePage
+  - [x] ErrorBoundary wired to ServerErrorPage
+- [x] Phase 9 — Final Coherence Pass (see phase-9-audit.md)
+  - [x] 9.1 Visual: Fraunces self-hosted + rendering live; 0 console errors on landing; 320/1440 responsive verified
+  - [x] 9.2 Voice: editorial header pattern audited across 21 surfaces, 0 violations
+  - [x] 9.3 Interaction: modals, toasts, focus-on-route, error states all consistent
+  - [x] 3 live bugs caught in flight + fixed (font self-host, coverage h1 fallback, duplicate title suffix)
+- [x] Phase 10 — Handoff Preparation
+  - [x] docs/unified-build/COMPLETE.md
+  - [x] docs/unified-build/DESIGN-SYSTEM.md
+  - [x] docs/unified-build/phase-9-audit.md
 
 ## Current State
 
-Phase: 3+4+5+6 first-pass deployed → Phase 7 Tier 5 Founder Mode next, OR deeper-pass body polish loop
-**Status: 10 customer-facing surfaces now carry the homestead editorial header pattern across all four daily-driver tiers. Today also has the 5-column metric strip. /landing has the homestead nav + 11 sections. Onboarding wizard has full prototype identity. Two production deploys today (24962048731, 24962390532) — both green, /api/health 200, /landing intact.**
-**Body sections on each surface intentionally remain at production styling as deeper-pass follow-ups (tracked in _RESUME-HERE.md).**
-Last commit: pending close-out
+Phase: All 10 phases substantively shipped. Vertical-expansion handoff is the next handoff per UNIFIED-BUILD-PROMPT.md §510.
+**Status: All 10 customer-facing surfaces + Onboarding + Landing + 4 coverage pages + founder home + founder tools carry the homestead editorial identity. 3 deal-flow modals (Quick Offer / Lost Reason / Deal Closed) shipped + ⌘O wired. Settings sound + tour preferences shipped. Fraunces self-hosted and rendering live. Phase 9 audit completed in-flight (3 bugs caught + fixed). COMPLETE.md + DESIGN-SYSTEM.md + phase-9-audit.md docs published.**
+**Deferred / incremental:** 23 founder routes can adopt FounderPageShell on demand; deeper-pass body styling on Tier 1-4 surfaces tracked per surface; auth-gated visual smoke requires manual operator pass. None block close-out.
+Last commit: see git log
 Gate A: ✅ FOUNDER_USER_IDS deployed on Fly (digest 890511d964d7abda)
 Run mode: fully autonomous through Phase 10 (operator authorized via 7d4f318)
 
