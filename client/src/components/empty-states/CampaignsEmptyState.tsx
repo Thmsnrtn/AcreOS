@@ -46,7 +46,7 @@ export function CampaignsEmptyState({ onCreateCampaign }: CampaignsEmptyStatePro
         </p>
 
         {onCreateCampaign && (
-          <Button onClick={onCreateCampaign} data-testid="button-create-campaign-empty">
+          <Button type="button" onClick={onCreateCampaign} data-testid="button-create-campaign-empty">
             <Plus className="w-4 h-4 mr-2" aria-hidden="true" />
             Create your first campaign
           </Button>

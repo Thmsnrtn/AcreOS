@@ -61,13 +61,13 @@ export function PropertiesEmptyState({ onAddProperty, onImportProperties }: Prop
         
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
           {onAddProperty && (
-            <Button onClick={onAddProperty} data-testid="button-add-property">
+            <Button type="button" onClick={onAddProperty} data-testid="button-add-property">
               <Plus className="w-4 h-4 mr-2" aria-hidden="true" />
               Add a property
             </Button>
           )}
           {onImportProperties && (
-            <Button variant="outline" onClick={onImportProperties} data-testid="button-import-properties">
+            <Button type="button" variant="outline" onClick={onImportProperties} data-testid="button-import-properties">
               <Upload className="w-4 h-4 mr-2" aria-hidden="true" />
               Import from CSV
             </Button>

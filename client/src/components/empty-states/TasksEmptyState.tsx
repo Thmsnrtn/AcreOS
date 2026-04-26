@@ -46,7 +46,7 @@ export function TasksEmptyState({ onAddTask }: TasksEmptyStateProps) {
         </p>
 
         {onAddTask && (
-          <Button onClick={onAddTask} data-testid="button-add-task-empty">
+          <Button type="button" onClick={onAddTask} data-testid="button-add-task-empty">
             <Plus className="w-4 h-4 mr-2" aria-hidden="true" />
             Create your first task
           </Button>

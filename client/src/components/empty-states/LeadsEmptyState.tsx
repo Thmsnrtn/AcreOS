@@ -61,13 +61,13 @@ export function LeadsEmptyState({ onAddLead, onImportLeads }: LeadsEmptyStatePro
         
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
           {onAddLead && (
-            <Button onClick={onAddLead} data-testid="button-add-lead-empty">
+            <Button type="button" onClick={onAddLead} data-testid="button-add-lead-empty">
               <Plus className="w-4 h-4 mr-2" aria-hidden="true" />
               Add your first lead
             </Button>
           )}
           {onImportLeads && (
-            <Button variant="outline" onClick={onImportLeads} data-testid="button-import-leads">
+            <Button type="button" variant="outline" onClick={onImportLeads} data-testid="button-import-leads">
               <Upload className="w-4 h-4 mr-2" aria-hidden="true" />
               Import from CSV
             </Button>

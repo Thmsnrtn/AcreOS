@@ -60,7 +60,7 @@ export function DealsEmptyState({ onAddDeal }: DealsEmptyStateProps) {
         
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
           {onAddDeal && (
-            <Button onClick={onAddDeal} data-testid="button-add-deal">
+            <Button type="button" onClick={onAddDeal} data-testid="button-add-deal">
               <Plus className="w-4 h-4 mr-2" aria-hidden="true" />
               Create your first deal
             </Button>
