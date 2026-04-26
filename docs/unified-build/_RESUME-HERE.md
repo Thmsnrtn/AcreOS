@@ -1,57 +1,52 @@
-# RESUME HERE — Unified Build, Session 2
+# RESUME HERE — Unified Build, Session 3
 
-Operator just confirmed "Founder ID set" — they ran `fly secrets set FOUNDER_USER_IDS=user_3CK2u6pGH7EYHgFyMS99fwhLSM7 -a acreos`.
+The full canonical prompt lives at `docs/unified-build/UNIFIED-BUILD-PROMPT.md`.
+Read that first if you don't have full context.
 
-## Step 1: Verify the secret took effect
+## Where the build stands
 
-`fly secrets set` triggers a rolling deploy automatically. Either:
+Phase 0 prerequisites: ✅ (rollback tag `pre-unified-build` at `2b8fe93`).
+Phase 1 foundation: ✅ (tokens, globals, founder auth, flags).
+Phase 2 Tier 0 Shell: ✅ structurally — tour anchors on all sidebar nav surfaces, visible search trigger (3 surfaces), command palette + custom event opener, audit closes on toast/palette/shortcuts. Deployed and smoke-tested at https://acreos.io.
 
-- **Quick check:** `fly secrets list -a acreos | grep FOUNDER_USER_IDS` — should show the secret name and a digest, no value (Fly hides secret values).
-- **Functional check:** wait ~30s for the deploy to complete, then probe the endpoint. The operator's auth cookie isn't available to the session, so use the deploy log:
-  ```
-  fly logs -a acreos | grep -E "(deploy|started|FOUNDER)" | head -20
-  ```
+**Critical context: Phase 2 was structurally correct but visually under-applied.** Production looks essentially the same as it did before Phase 2 — the prototype's homestead palette, big serif display type, and brand-pip active state didn't visibly land. Root cause: misreading "preserve refinement" as preserving visual treatments. Course correction is in `UNIFIED-BUILD-PROMPT.md` under "Visual Application Mandate" and "Phase 2A".
 
-If the secret isn't visible or the deploy didn't complete, ask the operator to confirm.
+Operator Gate A: ✅ `FOUNDER_USER_IDS=user_3CK2u6pGH7EYHgFyMS99fwhLSM7` deployed on Fly (digest `890511d964d7abda`).
 
-## Step 2: Phase 1.5 — Feature flag infrastructure
+Operator stash recovery (mishap from session 2): the user WIP that was accidentally popped is preserved as **dangling commit `bd9d6af`** (`WIP on main: 7aa9aee fix: mount health endpoints before WhiteLabel middleware`). Recover with `git stash apply bd9d6af` if/when wanted. Two unrelated stashes (`stash@{0}` Clerk redirect, `stash@{1}` health endpoints) remain in `git stash list` untouched.
 
-Per mega prompt 1.5: "Build feature flag system for gating verticals and rollout (used in vertical expansion handoff later, set up now). Database table for flags, server middleware for evaluation, client provider/hooks, admin interface (founder-only)."
+## Next action: Phase 2A — Visual Revisit + Public Surfaces
 
-**Important:** `client/src/hooks/use-feature-flags.ts` already exists in production. Audit before duplicating. The pattern should be: extend the existing hook surface rather than create parallel infrastructure. Source inventory §0 flagged this.
+Phase 2A.1 first: **Sidebar visual application.** Read `/acreos/shell.jsx` Sidebar section + `SHELL_CSS` for `.acr-sidebar`, `.acr-nav-item`, `.acr-nav-item-active`. Apply to `client/src/components/layout-sidebar.tsx`:
 
-Sub-steps:
-1. Read `client/src/hooks/use-feature-flags.ts` and trace its server-side counterpart. Determine if there's already a flag DB table.
-2. If the existing system supports per-user, per-cohort, percentage rollout — done; skip schema work and just wire any missing admin UI.
-3. If the existing system is simpler (e.g., env-driven only), add Drizzle migration for a `feature_flags` table with proper columns (name, enabled, audience criteria, percentage, etc.). Use existing migration patterns.
-4. Build founder-only admin route (`/__internal/founder/feature-flags` or extend the existing founder routes) for toggling flags. Gate behind `requireFounder` server-side and `useIsFounder()` client-side.
-5. Commit: `feat(flags): feature flag infrastructure [unified-build]`
+1. Replace `nav-item-active` (in `client/src/index.css:704`) with the prototype's treatment: subtle `var(--acr-surface)` background + `box-shadow: var(--acr-shadow-1), inset 0 0 0 0.5px var(--acr-line)` + 2px × 14px brand-color pip at `left: -10px` via `::before`. Per `acreos/shell.jsx:195-203`.
+2. Switch sidebar background from `bg-sidebar` (shadcn HSL) to `bg-acr-sidebar-bg` (`#F1E7D0` from prototype `theme.jsx`).
+3. Match prototype nav-item type: `font: 500 13px/1`, `letter-spacing: -0.005em`.
+4. Match prototype nav-group title: `font: 500 10.5px/1`, uppercase, `letter-spacing: 0.07em`, `color: var(--acr-ink-4)`.
+5. Active item icon goes brand-color; active badge becomes brand-tinted (`var(--acr-brand-soft)` bg, `var(--acr-brand)` text).
+6. Sidebar container padding `14px 10px` per prototype.
 
-## Step 3: Phase 1.6 — Phase 1 completion
+Preserve as engineering refinement: all `aria-*` attributes, `min-h-[44px]` mobile touch targets, mobile Sheet pattern, white-label brand name resolution, PaxNotificationBadge / NotificationCenter / ThemeToggle wiring, founder gating via `useAuth().isFounder`, all `data-tour-nav` and `data-tour` anchors from Phase 2.1/2.2, the visible search trigger from Phase 2.2.
 
-Update `_progress.md` with Phase 1 fully checked. Output the closing summary:
-```
-✅ Phase 1 Foundation complete.
-Tokens extracted to Tailwind. Globals architecture in place. Founder
-mode authorization secured. Feature flags ready.
-Phase 2 next: Tier 0 Shell.
-```
-Commit: `chore(unified-build): phase 1 complete [unified-build]`
+Update the prototype-reference comment at the top of `layout-sidebar.tsx` to reflect what changed.
 
-## Step 4: Begin Phase 2 — Tier 0 Shell
+Commit: `feat(shell): sidebar visual treatment per prototype [unified-build]`
 
-The shell is large (sidebar, top bar, toast host, command palette, keyboard shortcuts). Will span 2–3 sessions. Read mega prompt §Phase 2 for full requirements before starting. Key handles:
+After 2A.1, proceed through 2A.2 (other Tier 0 visual application), 2A.3 (landing — `client/src/pages/landing.tsx` per `/acreos-landing/` prototype), 2A.4 (onboarding — `client/src/components/onboarding/` per `/acreos-onboarding/` prototype), 2A.5 (deploy + smoke). See UNIFIED-BUILD-PROMPT.md Phase 2A section for the full breakdown.
 
-- Sidebar must check `useIsFounder()` internally for founder section — don't trust parent gating.
-- Tour anchors per `data-tour-nav="..."` selectors from source inventory §5.
-- Mobile drawer pattern <768px, persistent ≥768px.
-- Use shadcn primitives (Sheet, Command) where applicable.
-- Verify with Playwright MCP at production after deploy.
+## Loop guidance for self-paced runs
+
+After each commit, decide:
+- **ScheduleWakeup (270s)** — mid-phase work, more commits in the same logical unit
+- **End loop** — phase boundary, gate, ~85% context, before any deploy or risky action
+
+Deploys (`fly deploy`), force-pushes, destructive git, external service writes pause for explicit operator approval — do not auto-fire from the loop.
 
 ## Hard reminders
+
 - `[unified-build]` tag on every commit
 - Co-Authored-By trailer on every commit
-- Don't introduce sonner — `client/src/lib/toast.ts` already wraps the existing toast
-- Don't undo any existing `[elite-refinement]` slice work
-- Run typecheck after any server-side change
-- End session at ~85% context per the resume protocol
+- Don't undo engineering-quality elite-refinement work (a11y, mobile, perf, code organization)
+- DO override visual treatments that conflict with the prototype (Visual Application Mandate)
+- Run `npm run check` after server-side changes; `npm run build` before deploy
+- The 10 pre-existing test failures are baseline (DB-dependent + calendar drift + nested zod) — don't let them block, but don't add new ones either
