@@ -28,7 +28,7 @@ import {
   ResponsiveContainer,
   Legend,
 } from "recharts";
-import { GitBranch, TrendingUp, Users, Clock } from "lucide-react";
+import { GitBranch, TrendingUp, Users } from "lucide-react";
 
 type CohortSegment = "source" | "state" | "county" | "campaign" | "import_month" | "import_quarter";
 
@@ -53,12 +53,12 @@ interface CohortReport {
 }
 
 const SEGMENT_OPTIONS: { value: CohortSegment; label: string }[] = [
-  { value: "source", label: "Lead Source" },
+  { value: "source", label: "Lead source" },
   { value: "state", label: "State" },
   { value: "county", label: "County" },
   { value: "campaign", label: "Campaign" },
-  { value: "import_month", label: "Import Month" },
-  { value: "import_quarter", label: "Import Quarter" },
+  { value: "import_month", label: "Import month" },
+  { value: "import_quarter", label: "Import quarter" },
 ];
 
 function pct(n: number) {
@@ -96,7 +96,7 @@ export function CohortAnalytics() {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h2 className="font-semibold flex items-center gap-2">
-            <GitBranch className="w-4 h-4" /> Cohort Conversion Analysis
+            <GitBranch className="w-4 h-4" aria-hidden="true" /> Cohort conversion analysis
           </h2>
           <p className="text-xs text-muted-foreground mt-0.5">
             Track lead cohorts through the funnel from import to close.
@@ -115,56 +115,59 @@ export function CohortAnalytics() {
       </div>
 
       {isLoading ? (
-        <div className="space-y-2">
+        <div className="space-y-2" role="status" aria-busy="true" aria-label="Loading cohort analytics">
           {[1, 2, 3].map(i => <Skeleton key={i} className="h-12 w-full" />)}
+          <span className="sr-only">Loading…</span>
         </div>
       ) : error ? (
         <Card>
-          <CardContent className="py-8 text-center text-muted-foreground text-sm">
+          <CardContent className="py-8 text-center text-muted-foreground text-sm" role="alert">
             Unable to load cohort data.
           </CardContent>
         </Card>
       ) : !data?.cohorts.length ? (
         <Card>
-          <CardContent className="py-8 text-center text-muted-foreground text-sm">
+          <CardContent className="py-8 text-center text-muted-foreground text-sm" role="status">
             No cohort data available yet. Import leads to see conversion funnels.
           </CardContent>
         </Card>
       ) : (
         <>
           {/* Summary Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <ul aria-label="Cohort summary statistics" className="grid grid-cols-2 md:grid-cols-4 gap-3 list-none p-0 m-0">
             {[
-              { label: "Total Leads", value: data.totalLeads.toLocaleString(), icon: Users },
+              { label: "Total leads", value: data.totalLeads.toLocaleString(), icon: Users },
               { label: "Cohorts", value: data.cohorts.length, icon: GitBranch },
               {
-                label: "Overall Close Rate",
+                label: "Overall close rate",
                 value: pct(data.overallClosedRate),
                 icon: TrendingUp,
               },
               {
-                label: "Best Segment",
+                label: "Best segment",
                 value: data.cohorts.sort((a, b) => b.closedRate - a.closedRate)[0]?.segment ?? "—",
                 icon: TrendingUp,
               },
             ].map(({ label, value, icon: Icon }) => (
-              <Card key={label}>
-                <CardContent className="pt-3 pb-3 flex items-center gap-2">
-                  <Icon className="w-4 h-4 text-muted-foreground shrink-0" />
-                  <div>
-                    <div className="text-xs text-muted-foreground">{label}</div>
-                    <div className="text-sm font-semibold truncate max-w-[100px]">{String(value)}</div>
-                  </div>
-                </CardContent>
-              </Card>
+              <li key={label} className="list-none">
+                <Card aria-label={`${label}: ${String(value)}`}>
+                  <CardContent className="pt-3 pb-3 flex items-center gap-2">
+                    <Icon className="w-4 h-4 text-muted-foreground shrink-0" aria-hidden="true" />
+                    <div>
+                      <div className="text-xs text-muted-foreground" aria-hidden="true">{label}</div>
+                      <div className="text-sm font-semibold truncate max-w-[100px] tabular-nums" aria-hidden="true">{String(value)}</div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </li>
             ))}
-          </div>
+          </ul>
 
           {/* Bar Chart */}
           {chartData.length > 0 && (
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Conversion Rates by {SEGMENT_OPTIONS.find(o => o.value === segment)?.label}</CardTitle>
+                <CardTitle className="text-sm">Conversion rates by {SEGMENT_OPTIONS.find(o => o.value === segment)?.label}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div
@@ -194,11 +197,11 @@ export function CohortAnalytics() {
           {/* Detail Table */}
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Cohort Detail</CardTitle>
+              <CardTitle className="text-sm">Cohort detail</CardTitle>
             </CardHeader>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full text-sm" aria-label="Cohort detail">
                   <thead>
                     <tr className="border-b bg-muted/40">
                       <th scope="col" className="text-left px-4 py-2 font-medium text-xs text-muted-foreground">Segment</th>
@@ -206,20 +209,20 @@ export function CohortAnalytics() {
                       <th scope="col" className="text-right px-4 py-2 font-medium text-xs text-muted-foreground">Contacted</th>
                       <th scope="col" className="text-right px-4 py-2 font-medium text-xs text-muted-foreground">Offer %</th>
                       <th scope="col" className="text-right px-4 py-2 font-medium text-xs text-muted-foreground">Close %</th>
-                      <th scope="col" className="text-right px-4 py-2 font-medium text-xs text-muted-foreground">Avg Days</th>
+                      <th scope="col" className="text-right px-4 py-2 font-medium text-xs text-muted-foreground">Avg days</th>
                     </tr>
                   </thead>
                   <tbody>
                     {data.cohorts.slice(0, 20).map((row) => (
                       <tr key={row.segment} className="border-b hover:bg-muted/30 transition-colors">
                         <td className="px-4 py-2 font-medium max-w-[160px] truncate">{row.segment}</td>
-                        <td className="px-4 py-2 text-right text-muted-foreground">{row.totalLeads}</td>
-                        <td className="px-4 py-2 text-right">{pct(row.contactedRate)}</td>
-                        <td className="px-4 py-2 text-right">{pct(row.offerRate)}</td>
-                        <td className={`px-4 py-2 text-right font-semibold ${colorForRate(row.closedRate)}`}>
+                        <td className="px-4 py-2 text-right text-muted-foreground tabular-nums">{row.totalLeads}</td>
+                        <td className="px-4 py-2 text-right tabular-nums">{pct(row.contactedRate)}</td>
+                        <td className="px-4 py-2 text-right tabular-nums">{pct(row.offerRate)}</td>
+                        <td className={`px-4 py-2 text-right font-semibold tabular-nums ${colorForRate(row.closedRate)}`}>
                           {pct(row.closedRate)}
                         </td>
-                        <td className="px-4 py-2 text-right text-muted-foreground">
+                        <td className="px-4 py-2 text-right text-muted-foreground tabular-nums" aria-label={row.avgDaysToClose != null ? `${Math.round(row.avgDaysToClose)} days` : "no data"}>
                           {row.avgDaysToClose != null ? `${Math.round(row.avgDaysToClose)}d` : "—"}
                         </td>
                       </tr>

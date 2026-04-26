@@ -57,8 +57,8 @@ export function CompMapOverlay({ subjectLat, subjectLng, comps }: CompMapOverlay
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium flex items-center gap-2">
-          <MapPin className="h-4 w-4 text-primary" />
-          Comp Map
+          <MapPin className="h-4 w-4 text-primary" aria-hidden="true" />
+          Comp map
         </CardTitle>
       </CardHeader>
       <CardContent className="p-0">
@@ -70,32 +70,43 @@ export function CompMapOverlay({ subjectLat, subjectLng, comps }: CompMapOverlay
             style={{ pointerEvents: "auto" }}
           />
           {/* Overlay legend */}
-          <div className="absolute bottom-2 left-2 bg-background/90 backdrop-blur-sm rounded-md p-2 text-xs space-y-1 border">
-            <div className="flex items-center gap-1">
-              <span className="inline-block w-2.5 h-2.5 rounded-full bg-primary" />
+          <ul aria-label="Map legend" className="absolute bottom-2 left-2 bg-background/90 backdrop-blur-sm rounded-md p-2 text-xs space-y-1 border list-none m-0">
+            <li className="flex items-center gap-1">
+              <span aria-hidden="true" className="inline-block w-2.5 h-2.5 rounded-full bg-primary" />
               Subject property
-            </div>
-            <div className="flex items-center gap-1">
-              <span className="inline-block w-2.5 h-2.5 rounded-full bg-secondary" />
-              {validComps.length} comparable{validComps.length !== 1 ? "s" : ""}
-            </div>
-          </div>
+            </li>
+            <li className="flex items-center gap-1" aria-label={`${validComps.length} comparable propert${validComps.length === 1 ? "y" : "ies"}`}>
+              <span aria-hidden="true" className="inline-block w-2.5 h-2.5 rounded-full bg-secondary" />
+              <span className="tabular-nums" aria-hidden="true">{validComps.length}</span>
+              <span aria-hidden="true">&nbsp;comparable{validComps.length !== 1 ? "s" : ""}</span>
+            </li>
+          </ul>
         </div>
         {/* Comp price list below map */}
-        <div className="px-3 py-2 space-y-1 border-t">
-          {validComps.slice(0, 6).map((c, i) => (
-            <div key={c.id ?? i} className="flex justify-between text-xs text-muted-foreground">
-              <span className="truncate max-w-[60%]">
-                {c.address || `Comp ${i + 1}`}
-                {c.distance != null ? ` (${c.distance.toFixed(1)} mi)` : ""}
-              </span>
-              <span className="font-medium text-foreground">
-                {formatPrice(c.salePrice)}
-                {c.pricePerAcre ? ` · ${formatPrice(c.pricePerAcre)}/ac` : ""}
-              </span>
-            </div>
-          ))}
-        </div>
+        <ul aria-label="Comparable property prices" className="px-3 py-2 space-y-1 border-t list-none m-0">
+          {validComps.slice(0, 6).map((c, i) => {
+            const label = c.address || `Comp ${i + 1}`;
+            const distance = c.distance != null ? `${c.distance.toFixed(1)} miles away` : null;
+            const price = formatPrice(c.salePrice);
+            const ppa = c.pricePerAcre ? `, ${formatPrice(c.pricePerAcre)} per acre` : "";
+            return (
+              <li
+                key={c.id ?? i}
+                className="flex justify-between text-xs text-muted-foreground"
+                aria-label={`${label}${distance ? `, ${distance}` : ""}: ${price}${ppa}`}
+              >
+                <span className="truncate max-w-[60%]" aria-hidden="true">
+                  {label}
+                  {c.distance != null ? ` (${c.distance.toFixed(1)} mi)` : ""}
+                </span>
+                <span className="font-medium text-foreground tabular-nums" aria-hidden="true">
+                  {price}
+                  {c.pricePerAcre ? ` · ${formatPrice(c.pricePerAcre)}/ac` : ""}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
       </CardContent>
     </Card>
   );
