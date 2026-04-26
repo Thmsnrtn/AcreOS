@@ -207,7 +207,7 @@ export function CustomFieldsManager() {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-4">
         <div>
-          <CardTitle data-testid="text-custom-fields-title">Custom Fields</CardTitle>
+          <CardTitle data-testid="text-custom-fields-title">Custom fields</CardTitle>
           <CardDescription>
             Define custom fields for leads, properties, and deals to capture additional information.
           </CardDescription>
@@ -218,7 +218,7 @@ export function CustomFieldsManager() {
               <SelectValue placeholder="Filter by type" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Types</SelectItem>
+              <SelectItem value="all">All types</SelectItem>
               <SelectItem value="lead">Leads</SelectItem>
               <SelectItem value="property">Properties</SelectItem>
               <SelectItem value="deal">Deals</SelectItem>
@@ -226,14 +226,14 @@ export function CustomFieldsManager() {
           </Select>
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
-              <Button onClick={() => { setEditingField(null); setFormData(defaultFormData); }} data-testid="button-add-custom-field">
-                <Plus className="w-4 h-4 mr-2" />
-                Add Field
+              <Button type="button" onClick={() => { setEditingField(null); setFormData(defaultFormData); }} data-testid="button-add-custom-field" aria-label="Add custom field">
+                <Plus className="w-4 h-4 mr-2" aria-hidden="true" />
+                Add field
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-md">
               <DialogHeader>
-                <DialogTitle>{editingField ? "Edit Custom Field" : "Add Custom Field"}</DialogTitle>
+                <DialogTitle>{editingField ? "Edit custom field" : "Add custom field"}</DialogTitle>
                 <DialogDescription>
                   {editingField 
                     ? "Update the custom field configuration." 
@@ -242,7 +242,7 @@ export function CustomFieldsManager() {
               </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="fieldLabel">Field Label</Label>
+                  <Label htmlFor="fieldLabel">Field label</Label>
                   <Input
                     id="fieldLabel"
                     value={formData.fieldLabel}
@@ -255,7 +255,7 @@ export function CustomFieldsManager() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="entityType">Entity Type</Label>
+                    <Label htmlFor="entityType">Entity type</Label>
                     <Select 
                       value={formData.entityType} 
                       onValueChange={(v) => setFormData({ ...formData, entityType: v as CustomFieldEntityType })}
@@ -272,7 +272,7 @@ export function CustomFieldsManager() {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="fieldType">Field Type</Label>
+                    <Label htmlFor="fieldType">Field type</Label>
                     <Select 
                       value={formData.fieldType} 
                       onValueChange={(v) => setFormData({ ...formData, fieldType: v as CustomFieldType })}
@@ -312,10 +312,11 @@ export function CustomFieldsManager() {
                           <button
                             type="button"
                             onClick={() => removeOption(option)}
-                            className="ml-1 hover:text-destructive"
+                            className="ml-1 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
                             data-testid={`button-remove-option-${option}`}
+                            aria-label={`Remove option: ${option}`}
                           >
-                            x
+                            <span aria-hidden="true">×</span>
                           </button>
                         </Badge>
                       ))}
@@ -324,7 +325,7 @@ export function CustomFieldsManager() {
                 )}
 
                 <div className="space-y-2">
-                  <Label htmlFor="placeholder">Placeholder Text</Label>
+                  <Label htmlFor="placeholder">Placeholder text</Label>
                   <Input
                     id="placeholder"
                     value={formData.placeholder}
@@ -335,7 +336,7 @@ export function CustomFieldsManager() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="helpText">Help Text</Label>
+                  <Label htmlFor="helpText">Help text</Label>
                   <Input
                     id="helpText"
                     value={formData.helpText}
@@ -361,7 +362,13 @@ export function CustomFieldsManager() {
                   <Button type="button" variant="outline" onClick={handleCloseDialog} data-testid="button-cancel">
                     Cancel
                   </Button>
-                  <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending} data-testid="button-save-field">
+                  <Button
+                    type="submit"
+                    disabled={createMutation.isPending || updateMutation.isPending}
+                    aria-busy={createMutation.isPending || updateMutation.isPending}
+                    aria-label={editingField ? (updateMutation.isPending ? "Updating custom field" : "Update custom field") : (createMutation.isPending ? "Creating custom field" : "Create custom field")}
+                    data-testid="button-save-field"
+                  >
                     {editingField ? "Update" : "Create"}
                   </Button>
                 </DialogFooter>
@@ -372,10 +379,10 @@ export function CustomFieldsManager() {
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <div className="text-center py-8 text-muted-foreground">Loading custom fields...</div>
+          <div className="text-center py-8 text-muted-foreground" role="status" aria-busy="true" aria-label="Loading custom fields">Loading custom fields…</div>
         ) : filteredDefinitions.length === 0 ? (
-          <div className="text-center py-8 text-muted-foreground">
-            No custom fields defined yet. Click "Add Field" to create one.
+          <div className="text-center py-8 text-muted-foreground" role="status">
+            No custom fields defined yet. Click "Add field" to create one.
           </div>
         ) : (
           <div className="space-y-6">
@@ -398,17 +405,17 @@ export function CustomFieldsManager() {
                         <TableRow key={field.id} data-testid={`row-custom-field-${field.id}`}>
                           <TableCell className="font-medium">
                             <div className="flex items-center gap-2">
-                              <GripVertical className="w-4 h-4 text-muted-foreground" />
+                              <GripVertical className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
                               {field.fieldLabel}
                             </div>
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2">
-                              <Icon className="w-4 h-4 text-muted-foreground" />
+                              <Icon className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
                               {FIELD_TYPE_LABELS[field.fieldType as CustomFieldType]}
                               {field.fieldType === "select" && field.options && (
-                                <span className="text-xs text-muted-foreground">
-                                  ({(field.options as string[]).length} options)
+                                <span className="text-xs text-muted-foreground" aria-label={`${(field.options as string[]).length} options`}>
+                                  (<span className="tabular-nums">{(field.options as string[]).length}</span> options)
                                 </span>
                               )}
                             </div>
@@ -419,21 +426,21 @@ export function CustomFieldsManager() {
                           <TableCell>
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" aria-label="Field actions" data-testid={`button-field-actions-${field.id}`}>
-                                  <MoreVertical className="w-4 h-4" />
+                                <Button type="button" variant="ghost" size="icon" aria-label={`Actions for ${field.fieldLabel}`} data-testid={`button-field-actions-${field.id}`}>
+                                  <MoreVertical className="w-4 h-4" aria-hidden="true" />
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
                                 <DropdownMenuItem onClick={() => handleEditField(field)} data-testid={`button-edit-field-${field.id}`}>
-                                  <Pencil className="w-4 h-4 mr-2" />
+                                  <Pencil className="w-4 h-4 mr-2" aria-hidden="true" />
                                   Edit
                                 </DropdownMenuItem>
-                                <DropdownMenuItem 
-                                  className="text-destructive" 
+                                <DropdownMenuItem
+                                  className="text-destructive"
                                   onClick={() => deleteMutation.mutate(field.id)}
                                   data-testid={`button-delete-field-${field.id}`}
                                 >
-                                  <Trash2 className="w-4 h-4 mr-2" />
+                                  <Trash2 className="w-4 h-4 mr-2" aria-hidden="true" />
                                   Delete
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
@@ -523,7 +530,7 @@ export function CustomFieldValuesEditor({ entityType, entityId, compact = false 
 
   return (
     <div className={compact ? "space-y-3" : "space-y-4"}>
-      <h3 className="text-sm font-medium text-muted-foreground">Custom Fields</h3>
+      <h3 className="text-sm font-medium text-muted-foreground">Custom fields</h3>
       {definitions.map((def) => {
         const currentValue = getValueForField(def.id);
         const hasChanged = editingValues[def.id] !== undefined && editingValues[def.id] !== (values.find((v) => v.definitionId === def.id)?.value || "");
