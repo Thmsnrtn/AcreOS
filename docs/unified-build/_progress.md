@@ -29,17 +29,13 @@ Canonical prompt: `docs/unified-build/UNIFIED-BUILD-PROMPT.md` (v3)
   - [/] 2A.3 — Public landing page (per /acreos-landing/)
     - [x] Hero + Fraunces/Inter foundation (commit fcb1143)
     - [x] HowItWorks (commit 68dcbdd)
-    - [ ] Agents (tabbed, 3 panels) ← NEXT
-    - [ ] Day in Life (2-col timeline)
-    - [ ] Features (12-card grid + SVG glyphs)
-    - [ ] Quotes (6 testimonials)
-    - [ ] Founder note (portrait + serif body)
-    - [ ] Pricing (3 tiers + toggle)
-    - [ ] FAQ (accordion, 8 items)
-    - [ ] Final CTA (email capture)
-    - [ ] Footer
-    - [ ] Top nav redesign
-    - [ ] Drop legacy WaitlistSection / SOCIAL_PROOF
+    - [x] Agents (commit 4506e79)
+    - [x] Day in Life (commit e9dad98)
+    - [x] Features (commit 2c1ea95)
+    - [x] Quotes (commit a333639)
+    - [x] Founder note (commit 9f1b8ab)
+    - [x] Pricing + FAQ + Final CTA + Footer + legacy cleanup (commit fa37629)
+    - [ ] Top nav redesign ← NEXT
   - [ ] 2A.4 — Public onboarding (per /acreos-onboarding/)
   - [ ] 2A.5 — Deploy + smoke test (auto-fire authorized)
 - [ ] Phase 3 — Tier 1 Pipeline Core
@@ -53,9 +49,9 @@ Canonical prompt: `docs/unified-build/UNIFIED-BUILD-PROMPT.md` (v3)
 
 ## Current State
 
-Phase: 2A.3 — Public landing page (in progress)
-**Status: Hero + HowItWorks landed; Fraunces/Inter foundation in place. 8 more sections + nav redesign + legacy cleanup remaining for 2A.3.**
-Last commit: 68dcbdd (HowItWorks section)
+Phase: 2A.3 — Public landing (substantively complete) → 2A.4 onboarding next
+**Status: All 11 prototype landing sections shipped. Top nav redesign + onboarding (2A.4) + deploy (2A.5) remain in Phase 2A.**
+Last commit: fa37629 (Pricing + FAQ + Final CTA + Footer + legacy cleanup)
 Gate A: ✅ FOUNDER_USER_IDS deployed on Fly (digest 890511d964d7abda)
 Run mode: fully autonomous through Phase 10 (operator authorized via 7d4f318)
 
