@@ -48,6 +48,7 @@ import { AICostDashboard } from "@/components/ai-cost-dashboard";
 import { ByokSettings } from "@/components/settings/ByokSettings";
 import { TeamInviteCard } from "@/components/settings/TeamInviteCard";
 import { ThemeSettings } from "@/components/theme-settings";
+import { PreferencesCard } from "@/components/preferences-card";
 import { PlanComparisonModal, type TierKey } from "@/components/tier-upgrade-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useState, useEffect } from "react";
@@ -1537,6 +1538,8 @@ export default function Settings() {
                     <ThemeSettings />
                   </CardContent>
                 </Card>
+
+                <PreferencesCard />
               </div>
             </TabsContent>
 
