@@ -108,6 +108,14 @@ export function KeyboardShortcutsProvider({ children }: { children: ReactNode })
           setNewMenuOpen(prev => !prev);
           return;
         }
+        if (e.key === "o" || e.key === "O") {
+          // ⌘O — Quick Offer (per HANDOFF demo script step 3)
+          e.preventDefault();
+          import("@/stores/modal-store").then(({ useModals }) => {
+            useModals.getState().openQuickOffer();
+          });
+          return;
+        }
         if (e.key === "/") {
           e.preventDefault();
           triggerSidebarToggle();

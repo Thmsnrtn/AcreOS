@@ -26,6 +26,7 @@ import { PWAInstallPrompt } from "@/components/pwa-install-prompt";
 import { ConversationTray } from "@/components/conversation-tray";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { OfflineIndicator } from "@/components/offline-indicator";
+import { DealModalsHost } from "@/components/modals";
 import { FloatingActionButton } from "@/components/floating-action-button";
 import { FloatingHelpButton } from "@/components/floating-help-button";
 import { EarlyAccessBanner } from "@/components/early-access-banner";
@@ -1008,6 +1009,7 @@ function App() {
                   <CookieConsentBanner />
                   <AppContent />
                   <KeyboardShortcutsModal />
+                  <DealModalsHost />
                 </KeyboardShortcutsProvider>
               </HintsProvider>
             </TooltipProvider>

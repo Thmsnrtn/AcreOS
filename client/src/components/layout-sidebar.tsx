@@ -98,9 +98,11 @@ import {
   Layers,
   FileCode,
   X,
+  Send,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useBrandName } from "@/hooks/use-white-label";
+import { useModals } from "@/stores/modal-store";
 import {
   useState,
   useCallback,
@@ -704,46 +706,85 @@ export function Sidebar() {
         )}
       </div>
 
-      {/* Search / command palette trigger.
-          Dispatches acreos:open-command-palette which the global
-          CommandPalette listens for. Mirrors the prototype's
-          acr-search-trigger placement (sidebar header, above nav). */}
-      <div className={cn("border-b border-sidebar-border", isCollapsed ? "px-2 py-2" : "px-3 py-2")}>
+      {/* Search / command palette trigger + Quick Offer trigger.
+          - Search dispatches acreos:open-command-palette which the global
+            CommandPalette listens for. Mirrors the prototype's
+            acr-search-trigger placement (sidebar header, above nav).
+          - Quick Offer opens the modal via the useModals store. Tour
+            anchor `data-tour="quick-offer"` per HANDOFF §7. */}
+      <div className={cn("border-b border-sidebar-border", isCollapsed ? "px-2 py-2 space-y-2" : "px-3 py-2 space-y-2")}>
         {isCollapsed ? (
-          <Tooltip delayDuration={0}>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={() => window.dispatchEvent(new CustomEvent("acreos:open-command-palette"))}
-                className="flex items-center justify-center w-full p-2.5 rounded-lg text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors min-h-[44px]"
-                aria-label="Search (⌘K)"
-                data-tour="cmd-palette-trigger"
-                data-testid="button-search-trigger"
-              >
-                <Search className="w-4 h-4" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="right">
-              <p className="font-medium">Search</p>
-              <p className="text-xs text-muted-foreground">⌘K</p>
-            </TooltipContent>
-          </Tooltip>
+          <>
+            <Tooltip delayDuration={0}>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => window.dispatchEvent(new CustomEvent("acreos:open-command-palette"))}
+                  className="flex items-center justify-center w-full p-2.5 rounded-lg text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors min-h-[44px]"
+                  aria-label="Search (⌘K)"
+                  data-tour="cmd-palette-trigger"
+                  data-testid="button-search-trigger"
+                >
+                  <Search className="w-4 h-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right">
+                <p className="font-medium">Search</p>
+                <p className="text-xs text-muted-foreground">⌘K</p>
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip delayDuration={0}>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => useModals.getState().openQuickOffer()}
+                  className="flex items-center justify-center w-full p-2.5 rounded-lg text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors min-h-[44px]"
+                  aria-label="Quick offer (⌘O)"
+                  data-tour="quick-offer"
+                  data-testid="button-quick-offer-trigger"
+                >
+                  <Send className="w-4 h-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right">
+                <p className="font-medium">Quick offer</p>
+                <p className="text-xs text-muted-foreground">⌘O</p>
+              </TooltipContent>
+            </Tooltip>
+          </>
         ) : (
-          <button
-            type="button"
-            onClick={() => window.dispatchEvent(new CustomEvent("acreos:open-command-palette"))}
-            className="flex items-center gap-2 w-full px-3 py-2 rounded-lg border border-sidebar-border bg-sidebar-accent/40 text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors min-h-[44px] text-sm"
-            aria-label="Search or jump to anywhere (Cmd K)"
-            data-tour="cmd-palette-trigger"
-            data-testid="button-search-trigger"
-          >
-            <Search className="w-3.5 h-3.5 shrink-0" />
-            <span className="flex-1 text-left truncate">Search or jump to…</span>
-            <span className="hidden md:inline-flex items-center gap-0.5 text-[10px] text-muted-foreground/70">
-              <kbd className="px-1 rounded bg-background/60 border border-sidebar-border font-sans">⌘</kbd>
-              <kbd className="px-1 rounded bg-background/60 border border-sidebar-border font-sans">K</kbd>
-            </span>
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent("acreos:open-command-palette"))}
+              className="flex items-center gap-2 w-full px-3 py-2 rounded-lg border border-sidebar-border bg-sidebar-accent/40 text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors min-h-[44px] text-sm"
+              aria-label="Search or jump to anywhere (Cmd K)"
+              data-tour="cmd-palette-trigger"
+              data-testid="button-search-trigger"
+            >
+              <Search className="w-3.5 h-3.5 shrink-0" />
+              <span className="flex-1 text-left truncate">Search or jump to…</span>
+              <span className="hidden md:inline-flex items-center gap-0.5 text-[10px] text-muted-foreground/70">
+                <kbd className="px-1 rounded bg-background/60 border border-sidebar-border font-sans">⌘</kbd>
+                <kbd className="px-1 rounded bg-background/60 border border-sidebar-border font-sans">K</kbd>
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => useModals.getState().openQuickOffer()}
+              className="flex items-center gap-2 w-full px-3 py-2 rounded-lg border border-sidebar-border bg-sidebar-accent/40 text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors min-h-[44px] text-sm"
+              aria-label="Quick offer (Cmd O)"
+              data-tour="quick-offer"
+              data-testid="button-quick-offer-trigger"
+            >
+              <Send className="w-3.5 h-3.5 shrink-0" />
+              <span className="flex-1 text-left truncate">Quick offer</span>
+              <span className="hidden md:inline-flex items-center gap-0.5 text-[10px] text-muted-foreground/70">
+                <kbd className="px-1 rounded bg-background/60 border border-sidebar-border font-sans">⌘</kbd>
+                <kbd className="px-1 rounded bg-background/60 border border-sidebar-border font-sans">O</kbd>
+              </span>
+            </button>
+          </>
         )}
       </div>
 
