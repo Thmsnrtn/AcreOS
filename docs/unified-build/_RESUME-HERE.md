@@ -27,30 +27,43 @@ Phase 2A.4 onboarding port: ✅ substantively complete
 
 Phase 2A.5 deploy + smoke: ✅ deployed and live (operator gave explicit "push and deploy" approval 2026-04-26). Smoke results: all 11 landing sections render, mobile nav collapses correctly, two non-blocking warnings logged (Fraunces font ERR_FAILED in Playwright env — verify in real browser; pre-existing `/api/white-label/config` 401). See `phase-2a.5-smoke.md`.
 
-## Next action: Phase 3 — Tier 1 Pipeline Core
+Phase 3 first-pass: ✅ shipped to acreos.io (run 24962048731).
+- 3.1 Today: CSS scaffold + hero + 5-col metric strip (commits 705023f, ce57920)
+- 3.2 Pipeline: editorial header (commit ff3bbb1)
+- 3.3 Properties: editorial header (commit 6bafba5)
+- 3.4 Inbox: editorial header (commit 6bafba5)
+- 3.5 Deploy + smoke: green; auth-gated bodies need manual operator smoke (see phase-3.5-smoke.md)
 
-Per UNIFIED-BUILD-PROMPT.md §385. Four canonical surfaces, port one at a time, commit per surface, deploy + smoke at end of phase.
+**Phase 3 deeper-pass follow-ups (deferred):** Within each Tier 1 surface, the body sections still use the existing production styling. These can be iterated incrementally without phase blocking — pull from this list when ready:
+- /today: AI suggestions cards → `.acr-sugg`; hot deals table → `.acr-deal-row`; activity feed → `.acr-activity-list`; agent activity card refresh
+- /pipeline: funnel card + velocity pills → homestead palette; tab triggers → `.acr-cc-metrics` style chips
+- /properties: list rows → homestead row pattern; map/list toggle → `.acr-pills`
+- /inbox: thread list → `.acr-deal-row` adaptation; conversation pane → reading-room treatment
 
-| Sub-phase | Prototype source | Production target | LOC |
-|-----------|------------------|-------------------|-----|
-| 3.1 Command Center | `acreos/command-center.jsx` (366 LOC) + inline CSS at end | `client/src/pages/today.tsx` (1360 LOC) | large |
-| 3.2 Pipeline | `acreos/pages-tier1.jsx` (Pipeline component) | `client/src/pages/pipeline.tsx` (310 LOC + tabs to leads/properties/deals/outreach) | medium |
-| 3.3 Parcel Detail | `acreos/tier-b.jsx` (`ParcelDetailB`, 309–998) | `client/src/pages/properties.tsx` | TBD |
-| 3.4 Inbox | unclear — likely `acreos/tier-c.jsx` (174 LOC) + supporting | `client/src/pages/inbox.tsx` (1107 LOC) | large |
-| 3.5 Deploy + smoke | — | — | — |
+## Next action: Phase 4 — Tier 2 Sourcing
 
-**Per-surface workflow (per build prompt §397):**
-1. Implement with TS, shadcn primitives, homestead Tailwind tokens
-2. Replace data literals from `data.jsx` with Tanstack Query against real APIs (production already does this; preserve)
-3. All states: loading skeleton (matching final layout, not spinner), empty-zero (first-run with CTA), empty-filtered, error
-4. Build shared `<EmptyState>` and `<ErrorState>` design-system components on first need; reuse thereafter
-5. Mobile responsive 320/375/414/768/1024/1440
-6. Tour anchors per HANDOFF.md §7
-7. AI output quality (Atlas/Pax) — apply prototype voice; preserve production business logic
+Per UNIFIED-BUILD-PROMPT.md §410. Same workflow as Phase 3.
 
-**Visual port pattern (proven on landing + onboarding):** read prototype → port scoped CSS to colocated `.css` file with `--brand` → `--acr-brand` translation → refactor JSX in incremental commits → type-check → commit.
+Surfaces: Buy Boxes (`BuyBoxes`), Lists, Campaigns, Campaign Performance (`CampaignPerf`).
 
-**Start with 3.1 Command Center:** read prototype `acreos/command-center.jsx` start-to-finish (incl. inline CSS at bottom), inventory production today.tsx (1360 LOC — heavy business logic, preserve refinement), then layer homestead identity over the existing data-bindings.
+Likely production targets:
+- `client/src/pages/buy-boxes.tsx` (or similar)
+- Lists — possibly part of `client/src/pages/leads.tsx` or campaigns subroute
+- `client/src/pages/campaigns.tsx`
+- `client/src/pages/campaign-performance.tsx` (or aggregated within campaigns)
+
+Start with route inventory (`grep -rn "Route.*path.*buy-box\|Route.*path.*campaign" client/src/App.tsx`) to confirm production targets, then read corresponding prototype sources in `acreos/` (likely scattered across `tier-a.jsx`, `tier-b.jsx`, `pages-tier2345.jsx`).
+
+**Same first-pass strategy:** apply the homestead editorial header pattern to each surface for immediate visual coherence with Tier 1, then layer body-level treatment in subsequent passes.
+
+## Phase 5+ outline
+
+- Phase 5 — Tier 3 Closing (Offers, Documents, Seller Finance, Dispositions; modals incl. Quick Offer ⌘N)
+- Phase 6 — Tier 4 Ops (Agents, Automations, Audit Log, Settings, Team, Billing, Integrations, Contacts, Calendar)
+- Phase 7 — Tier 5 Founder Mode (`FounderHomeC`, `AtlasRunC`, `FounderTenants`, etc.)
+- Phase 8 — Coverage Pass (uncovered routes: legal, 404/500, niche states)
+- Phase 9 — Final Coherence (visual + voice + interaction audits; reconcile gaps including Fraunces font load + /api/white-label/config 401)
+- Phase 10 — Handoff (`docs/unified-build/COMPLETE.md`, design system docs)
 
 ## Phase 2A.4 — Onboarding (after nav)
 

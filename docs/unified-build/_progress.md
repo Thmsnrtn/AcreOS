@@ -41,12 +41,12 @@ Canonical prompt: `docs/unified-build/UNIFIED-BUILD-PROMPT.md` (v3)
     - [x] Wizard outer shell — Dialog → .ob layout (commit 79b2bdd)
     - [x] Per-step visual treatment (commit ebed41a)
   - [x] 2A.5 — Deploy + smoke test (run 24961611010 green; see phase-2a.5-smoke.md)
-- [/] Phase 3 — Tier 1 Pipeline Core ← NEXT
-  - [ ] 3.1 — Command Center / Today (canonical: pages/today.tsx)
-  - [ ] 3.2 — Pipeline (canonical: pages/pipeline.tsx)
-  - [ ] 3.3 — Parcel Detail (production: pages/properties.tsx)
-  - [ ] 3.4 — Inbox (canonical: pages/inbox.tsx)
-  - [ ] 3.5 — Tier 1 deploy + smoke
+- [/] Phase 3 — Tier 1 Pipeline Core (first-pass headers shipped)
+  - [/] 3.1 — Command Center / Today: header + 5-col metric strip shipped (commits 705023f, ce57920); body sections (AI suggestions, hot deals table, activity feed, agent activity card) still on production styling
+  - [/] 3.2 — Pipeline: editorial header shipped (commit ff3bbb1); funnel + velocity pills + tabs body still on production styling
+  - [/] 3.3 — Properties (Parcel listing): editorial header shipped (commit 6bafba5); list/map grid body still on production styling
+  - [/] 3.4 — Inbox: editorial header shipped (commit 6bafba5); thread list + conversation pane still on production styling
+  - [x] 3.5 — Tier 1 deploy + smoke (run 24962048731 green; see phase-3.5-smoke.md — auth-gated bodies require manual operator smoke)
 - [ ] Phase 4 — Tier 2 Sourcing
 - [ ] Phase 5 — Tier 3 Closing
 - [ ] Phase 6 — Tier 4 Ops
@@ -57,8 +57,8 @@ Canonical prompt: `docs/unified-build/UNIFIED-BUILD-PROMPT.md` (v3)
 
 ## Current State
 
-Phase: 2A complete + deployed → Phase 3 Tier 1 Pipeline Core in flight
-**Status: 2A.3 (landing + nav) + 2A.4 (onboarding shell + per-step) deployed to acreos.io. Smoke green except two known warnings (Fraunces font load in Playwright env; pre-existing /api/white-label/config 401) — see phase-2a.5-smoke.md. Phase 3 surfaces queued: today.tsx, pipeline.tsx, properties.tsx (parcel detail), inbox.tsx.**
+Phase: 3 first-pass deployed → Phase 4 Tier 2 Sourcing next
+**Status: All four Tier 1 surfaces (today / pipeline / properties / inbox) carry the homestead editorial header pattern (eyebrow + Fraunces serif greeting + soft trailing clause). Today also has the 5-column `.acr-cc-metrics` strip. Body sections on each surface remain at production's existing visual treatment as deeper-pass follow-ups. Run 24962048731 green; manual operator smoke needed for auth-gated visual changes (see phase-3.5-smoke.md).**
 Last commit: pending close-out
 Gate A: ✅ FOUNDER_USER_IDS deployed on Fly (digest 890511d964d7abda)
 Run mode: fully autonomous through Phase 10 (operator authorized via 7d4f318)
