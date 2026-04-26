@@ -40,21 +40,33 @@ Phase 3 first-pass: ✅ shipped to acreos.io (run 24962048731).
 - /properties: list rows → homestead row pattern; map/list toggle → `.acr-pills`
 - /inbox: thread list → `.acr-deal-row` adaptation; conversation pane → reading-room treatment
 
-## Next action: Phase 4 — Tier 2 Sourcing
+Phases 4–6 first-pass: ✅ shipped (run 24962390532 green).
+- 4.1 /campaigns header (commit 522f2b2)
+- 4.2 /leads header (commit 522f2b2)
+- 5.1 /offers header (commit 3adc075)
+- 5.2 /deals header (commit 3adc075)
+- 6.1 /finance header (commit 3adc075)
+- 6.2 /settings header (commit 3adc075)
 
-Per UNIFIED-BUILD-PROMPT.md §410. Same workflow as Phase 3.
+10 customer-facing authenticated surfaces now carry one homestead editorial identity. Plus /landing (11 sections + nav) and the onboarding wizard.
 
-Surfaces: Buy Boxes (`BuyBoxes`), Lists, Campaigns, Campaign Performance (`CampaignPerf`).
+## Next action: Phase 7 — Tier 5 Founder Mode (OR deeper-pass body polish)
 
-Likely production targets:
-- `client/src/pages/buy-boxes.tsx` (or similar)
-- Lists — possibly part of `client/src/pages/leads.tsx` or campaigns subroute
-- `client/src/pages/campaigns.tsx`
-- `client/src/pages/campaign-performance.tsx` (or aggregated within campaigns)
+Two reasonable paths from here:
 
-Start with route inventory (`grep -rn "Route.*path.*buy-box\|Route.*path.*campaign" client/src/App.tsx`) to confirm production targets, then read corresponding prototype sources in `acreos/` (likely scattered across `tier-a.jsx`, `tier-b.jsx`, `pages-tier2345.jsx`).
+**Path A — Phase 7 Founder Mode first-pass headers** (per UNIFIED-BUILD-PROMPT.md §438):
+Surfaces: `FounderHomeC`, `AtlasRunC`, `FounderTenants`, `FounderRevenueC`, `FounderCost`, `FounderOps`. Production targets: `client/src/pages/founder-*.tsx` (multiple files). Apply same editorial header pattern. Verify founder routes still 404 to non-founders post-change.
 
-**Same first-pass strategy:** apply the homestead editorial header pattern to each surface for immediate visual coherence with Tier 1, then layer body-level treatment in subsequent passes.
+**Path B — Deeper-pass body polish on Tier 1** (highest visible-value-per-commit):
+Pull from this list, one section per commit:
+- /today: AI suggestions cards → `.acr-sugg`; hot deals table → `.acr-deal-row`; activity feed → `.acr-activity-list`; agent activity card refresh
+- /pipeline: funnel card + velocity pills → homestead palette; tab triggers → homestead chips
+- /properties: list rows → homestead row pattern; map/list toggle → `.acr-pills`
+- /inbox: thread list → `.acr-deal-row` adaptation; conversation pane → reading-room treatment
+- /campaigns: tab content cards → homestead surfaces
+- /leads: filter pills + table styling
+
+**Recommendation:** Path B for next loop iterations — first-pass headers across all 10 surfaces have established the visual identity; the highest-leverage next work is deepening that identity within the most-trafficked surface (today) before going wide on Founder Mode.
 
 ## Phase 5+ outline
 

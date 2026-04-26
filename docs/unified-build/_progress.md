@@ -47,9 +47,18 @@ Canonical prompt: `docs/unified-build/UNIFIED-BUILD-PROMPT.md` (v3)
   - [/] 3.3 — Properties (Parcel listing): editorial header shipped (commit 6bafba5); list/map grid body still on production styling
   - [/] 3.4 — Inbox: editorial header shipped (commit 6bafba5); thread list + conversation pane still on production styling
   - [x] 3.5 — Tier 1 deploy + smoke (run 24962048731 green; see phase-3.5-smoke.md — auth-gated bodies require manual operator smoke)
-- [ ] Phase 4 — Tier 2 Sourcing
-- [ ] Phase 5 — Tier 3 Closing
-- [ ] Phase 6 — Tier 4 Ops
+- [/] Phase 4 — Tier 2 Sourcing (first-pass headers shipped; run 24962390532 green)
+  - [/] 4.1 — /campaigns (Marketing hub) header (commit 522f2b2); tabs body unchanged
+  - [/] 4.2 — /leads (Leads CRM) header (commit 522f2b2); table + filters body unchanged
+  - Buy Boxes / Campaign Performance — no standalone production surface; concerns embedded in campaigns/leads/analytics
+- [/] Phase 5 — Tier 3 Closing (first-pass headers; run 24962390532 green)
+  - [/] 5.1 — /offers (Offer letters) header (commit 3adc075)
+  - [/] 5.2 — /deals (Deal Pipeline) header (commit 3adc075)
+  - Documents / Seller Finance / Dispositions / Quick Offer modal — deeper passes
+- [/] Phase 6 — Tier 4 Ops (first-pass headers; run 24962390532 green)
+  - [/] 6.1 — /finance (Sophie ledger surface) header (commit 3adc075)
+  - [/] 6.2 — /settings (workspace settings) header (commit 3adc075)
+  - Agents / Automations / Audit Log / Team / Billing / Integrations / Contacts / Calendar — deeper passes
 - [ ] Phase 7 — Tier 5 Founder Mode
 - [ ] Phase 8 — Coverage Pass
 - [ ] Phase 9 — Final Coherence Pass
@@ -57,8 +66,9 @@ Canonical prompt: `docs/unified-build/UNIFIED-BUILD-PROMPT.md` (v3)
 
 ## Current State
 
-Phase: 3 first-pass deployed → Phase 4 Tier 2 Sourcing next
-**Status: All four Tier 1 surfaces (today / pipeline / properties / inbox) carry the homestead editorial header pattern (eyebrow + Fraunces serif greeting + soft trailing clause). Today also has the 5-column `.acr-cc-metrics` strip. Body sections on each surface remain at production's existing visual treatment as deeper-pass follow-ups. Run 24962048731 green; manual operator smoke needed for auth-gated visual changes (see phase-3.5-smoke.md).**
+Phase: 3+4+5+6 first-pass deployed → Phase 7 Tier 5 Founder Mode next, OR deeper-pass body polish loop
+**Status: 10 customer-facing surfaces now carry the homestead editorial header pattern across all four daily-driver tiers. Today also has the 5-column metric strip. /landing has the homestead nav + 11 sections. Onboarding wizard has full prototype identity. Two production deploys today (24962048731, 24962390532) — both green, /api/health 200, /landing intact.**
+**Body sections on each surface intentionally remain at production styling as deeper-pass follow-ups (tracked in _RESUME-HERE.md).**
 Last commit: pending close-out
 Gate A: ✅ FOUNDER_USER_IDS deployed on Fly (digest 890511d964d7abda)
 Run mode: fully autonomous through Phase 10 (operator authorized via 7d4f318)
