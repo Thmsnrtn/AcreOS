@@ -47,43 +47,41 @@ function CommentBubble({
     minute: "2-digit",
   });
 
-  // Render @mentions as highlighted
-  const renderContent = (content: string) => {
-    return content.replace(/@([a-zA-Z0-9_-]+)/g, (match) => match);
-  };
-
   return (
-    <motion.div
+    <motion.li
       variants={fadeInUp}
       initial="hidden"
       animate="visible"
-      className={`group flex items-start gap-2 ${isOwn ? "opacity-100" : ""}`}
+      className={`group flex items-start gap-2 list-none ${isOwn ? "opacity-100" : ""}`}
     >
       {/* Avatar placeholder */}
-      <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium text-primary shrink-0">
+      <div
+        aria-hidden="true"
+        className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium text-primary shrink-0"
+      >
         {comment.userId.slice(0, 2).toUpperCase()}
       </div>
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium">{comment.userId}</span>
-          <span className="text-[10px] text-muted-foreground">{time}</span>
+          <time dateTime={comment.createdAt} className="text-[10px] text-muted-foreground tabular-nums">{time}</time>
           {isOwn && onDelete && (
             <button
               type="button"
               onClick={onDelete}
               className="opacity-0 group-hover:opacity-100 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm focus-visible:opacity-100"
-              aria-label="Delete comment"
+              aria-label={`Delete your comment from ${time}`}
             >
               <Trash2 className="w-3 h-3 text-muted-foreground hover:text-red-500" aria-hidden="true" />
             </button>
           )}
         </div>
-        <p className="text-sm whitespace-pre-wrap break-words">
+        <p className="text-sm whitespace-pre-wrap break-words m-0">
           {content(comment.content)}
         </p>
       </div>
-    </motion.div>
+    </motion.li>
   );
 }
 
@@ -193,6 +191,9 @@ export function CommentThread({ entityType, entityId, currentUserId }: CommentTh
 
   const commentCount = countData?.comments?.length ?? allComments.length;
 
+  const threadId = `comment-thread-${entityType}-${entityId}`;
+  const headingId = `${threadId}-heading`;
+
   // Collapsed pill
   if (!isExpanded) {
     return (
@@ -200,22 +201,30 @@ export function CommentThread({ entityType, entityId, currentUserId }: CommentTh
         type="button"
         onClick={() => setIsExpanded(true)}
         aria-expanded={false}
+        aria-controls={threadId}
         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border bg-card hover:bg-accent transition-colors text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         aria-label={commentCount === 1 ? "1 comment, open" : `${commentCount} comments, open`}
       >
         <MessageCircle className="w-3.5 h-3.5 text-muted-foreground" aria-hidden="true" />
-        <span className="font-medium">{commentCount > 0 ? commentCount : ""}</span>
+        <span className="font-medium tabular-nums">{commentCount > 0 ? commentCount : ""}</span>
       </button>
     );
   }
 
   // Expanded thread
   return (
-    <div className="border rounded-lg bg-card overflow-hidden">
+    <section id={threadId} aria-labelledby={headingId} className="border rounded-lg bg-card overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b">
-        <h3 className="text-xs font-semibold">Comments</h3>
-        <button type="button" onClick={() => setIsExpanded(false)} aria-label="Close comments" className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
+        <h3 id={headingId} className="text-xs font-semibold m-0">Comments</h3>
+        <button
+          type="button"
+          onClick={() => setIsExpanded(false)}
+          aria-label="Close comments"
+          aria-expanded={true}
+          aria-controls={threadId}
+          className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+        >
           <X className="w-4 h-4 text-muted-foreground hover:text-foreground" aria-hidden="true" />
         </button>
       </div>
@@ -225,12 +234,12 @@ export function CommentThread({ entityType, entityId, currentUserId }: CommentTh
         role="log"
         aria-live="polite"
         aria-label="Comments"
-        className="max-h-64 overflow-y-auto p-3 space-y-3"
+        className="max-h-64 overflow-y-auto p-3"
       >
         {isLoading ? (
           <div className="space-y-3" role="status" aria-busy="true" aria-label="Loading comments">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="flex items-start gap-2">
+              <div key={i} className="flex items-start gap-2" aria-hidden="true">
                 <Skeleton className="w-7 h-7 rounded-full" />
                 <div className="space-y-1 flex-1">
                   <Skeleton className="h-3 w-24" />
@@ -241,32 +250,35 @@ export function CommentThread({ entityType, entityId, currentUserId }: CommentTh
             <span className="sr-only">Loading…</span>
           </div>
         ) : allComments.length === 0 ? (
-          <p className="text-xs text-muted-foreground text-center py-2">No comments yet. Start the conversation.</p>
+          <p className="text-xs text-muted-foreground text-center py-2 m-0">No comments yet. Start the conversation.</p>
         ) : (
           <>
             {hasNextPage && (
               <button
                 type="button"
                 onClick={() => fetchNextPage()}
-                className="text-xs text-primary hover:underline w-full text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                className="text-xs text-primary hover:underline w-full text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm mb-3"
+                aria-label="Load older comments"
               >
                 Load older comments
               </button>
             )}
-            <AnimatePresence>
-              {allComments.map((comment) => (
-                <CommentBubble
-                  key={comment.id}
-                  comment={comment}
-                  isOwn={comment.userId === currentUserId}
-                  onDelete={
-                    comment.userId === currentUserId
-                      ? () => deleteMutation.mutate(comment.id)
-                      : undefined
-                  }
-                />
-              ))}
-            </AnimatePresence>
+            <ul aria-label="Comment list" className="space-y-3 list-none p-0 m-0">
+              <AnimatePresence>
+                {allComments.map((comment) => (
+                  <CommentBubble
+                    key={comment.id}
+                    comment={comment}
+                    isOwn={comment.userId === currentUserId}
+                    onDelete={
+                      comment.userId === currentUserId
+                        ? () => deleteMutation.mutate(comment.id)
+                        : undefined
+                    }
+                  />
+                ))}
+              </AnimatePresence>
+            </ul>
           </>
         )}
       </div>
@@ -286,11 +298,13 @@ export function CommentThread({ entityType, entityId, currentUserId }: CommentTh
           rows={1}
         />
         <Button
+          type="button"
           size="icon"
           variant="ghost"
           onClick={handleSubmit}
           disabled={!input.trim() || createMutation.isPending}
-          aria-label="Send comment"
+          aria-busy={createMutation.isPending}
+          aria-label={createMutation.isPending ? "Sending comment" : "Send comment"}
         >
           {createMutation.isPending ? (
             <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
@@ -299,6 +313,6 @@ export function CommentThread({ entityType, entityId, currentUserId }: CommentTh
           )}
         </Button>
       </div>
-    </div>
+    </section>
   );
 }
