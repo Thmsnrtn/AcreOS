@@ -1,3 +1,21 @@
+/**
+ * AcreOS public landing page.
+ *
+ * Phase 2A.3 (in progress) is rebuilding the landing surface to land
+ * the prototype's design identity (homestead palette, serif display
+ * type, three-agent illustration cards, the founder-letter voice).
+ *
+ * Prototype source: /acreos-landing/ (sections-1.jsx, sections-2.jsx,
+ * sections-3.jsx, sections.css, copy.jsx). The "letter" tone is the
+ * canonical voice — see client/src/pages/landing/copy.ts.
+ *
+ * This file currently composes:
+ *   - Production nav (preserved — Clerk sign-in flow + analytics)
+ *   - <Hero> from ./landing/Hero.tsx (Phase 2A.3.a — landed)
+ *   - Original sections kept inline below the hero until each is
+ *     ported in subsequent commits (How / Agents / Day in life /
+ *     Features / Quotes / Founder note / Pricing / FAQ / Final CTA)
+ */
 import { Link } from "wouter";
 import { useState } from "react";
 import { useDocumentTitle } from "@/hooks/use-document-title";
@@ -9,6 +27,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { AcreosLogo } from "@/components/acreos-logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { SkipToContent } from "@/components/skip-to-content";
+import { Hero } from "./landing/Hero";
+import "./landing/landing.css";
 import {
   MapPin,
   TrendingUp,
@@ -206,42 +226,11 @@ export default function LandingPage() {
         </div>
       </nav>
 
-      {/* Hero — aerial backdrop for emotional resonance, overlay keeps
-          copy readable. One of the 13 unused aerial photos that were
-          sitting in public/images/. */}
-      <section id="main-content" className="relative py-24 px-6 overflow-hidden">
-        <div
-          className="absolute inset-0 -z-10 bg-cover bg-center"
-          style={{ backgroundImage: "url(/images/aerial_view_wide_hor_0f1000c4.jpg)" }}
-          aria-hidden="true"
-        />
-        <div
-          className="absolute inset-0 -z-10 bg-gradient-to-b from-background/85 via-background/75 to-background"
-          aria-hidden="true"
-        />
-        <div className="max-w-4xl mx-auto text-center space-y-6">
-          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight">
-            The AI-Powered Platform for{" "}
-            <span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-              Land Investors
-            </span>
-          </h1>
-          <p className="text-lg sm:text-xl text-foreground/80 max-w-2xl mx-auto">
-            Find motivated sellers. Analyze parcels. Send direct mail. Close deals.
-            All in one platform.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-3 justify-center items-stretch sm:items-center pt-4 max-w-xs sm:max-w-none mx-auto">
-            <Button size="lg" asChild>
-              <Link href="/auth?mode=register">
-                Get Started Free <ArrowRight className="ml-2 h-4 w-4" />
-              </Link>
-            </Button>
-            <Button size="lg" variant="outline" asChild>
-              <Link href="/pricing">View Pricing</Link>
-            </Button>
-          </div>
-        </div>
-      </section>
+      {/* Hero — homestead palette, serif display, three floating
+          agent cards. Per /acreos-landing/sections-1.jsx → Hero. */}
+      <main id="main-content">
+        <Hero />
+      </main>
 
       {/* How It Works */}
       <section className="py-20 px-6 bg-muted/30 border-y">

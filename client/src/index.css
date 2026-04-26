@@ -120,8 +120,11 @@
 }
 
 :root {
-  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
   --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
+  /* Homestead serif for landing-page hero/section headings (acreos-landing's
+     --font-display). Variable font, optical size axis 9-144. */
+  --font-serif: 'Fraunces', 'Times New Roman', serif;
 
   /* American Southwest Modern Desert - Light Mode */
   /* Clean warm cream background */
