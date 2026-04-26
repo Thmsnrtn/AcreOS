@@ -1,5 +1,6 @@
 import DOMPurify from "isomorphic-dompurify";
 import { Sidebar, useSidebarCollapsed } from "@/components/layout-sidebar";
+import "./today.css";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -931,18 +932,28 @@ export default function InboxPage() {
       
       <main className={`flex-1 pt-16 md:pt-0 flex flex-col h-screen transition-all duration-200 ${isCollapsed ? "md:ml-[76px]" : "md:ml-[17rem]"}`}>
         <div className="flex items-center justify-between gap-4 p-4 border-b flex-wrap">
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold" data-testid="text-inbox-title">Inbox</h1>
-            {unreadCount > 0 && (
-              <Badge
-                variant="secondary"
-                className="tabular-nums"
-                data-testid="badge-unread-count"
-                aria-label={`${unreadCount} unread ${unreadCount === 1 ? "message" : "messages"}`}
-              >
-                {unreadCount.toLocaleString()}
-              </Badge>
-            )}
+          {/* Homestead editorial inbox header (prototype: tier-c.jsx Inbox) */}
+          <div>
+            <div className="acr-eyebrow">Inbox</div>
+            <h1
+              className="acr-cc-greeting"
+              style={{ fontSize: "26px", marginTop: 2 }}
+              data-testid="text-inbox-title"
+            >
+              {unreadCount > 0 ? (
+                <>
+                  {unreadCount.toLocaleString()}
+                  <span className="acr-cc-greeting-soft">
+                    {" "}{unreadCount === 1 ? "unread message" : "unread messages"}
+                  </span>
+                </>
+              ) : (
+                <>
+                  All caught up.
+                  <span className="acr-cc-greeting-soft"> Nothing waiting.</span>
+                </>
+              )}
+            </h1>
           </div>
 
           <div className="relative w-full md:w-64">

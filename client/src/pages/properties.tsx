@@ -1,5 +1,6 @@
 import { PageShell } from "@/components/page-shell";
-import { usd } from "@/lib/format";
+import { usd, plural } from "@/lib/format";
+import "./today.css";
 import { PaxContextButton } from "@/components/pax-context-button";
 import { ListPagination, usePagination } from "@/components/list-pagination";
 import { useProperties, usePropertiesPaginated, useCreateProperty, useDeleteProperty, useEnrichProperty } from "@/hooks/use-properties";
@@ -439,9 +440,27 @@ export default function PropertiesPage() {
     <PageShell label="Properties">
 
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <h1 className="text-3xl font-bold" data-testid="text-page-title">Inventory</h1>
-              <p className="text-muted-foreground">Track land parcels and their status.</p>
+            <div className="acr-cc-hero" style={{ marginTop: 0 }}>
+              <div>
+                <div className="acr-eyebrow">Inventory</div>
+                <h1 className="acr-cc-greeting" data-testid="text-page-title">
+                  {properties && properties.length > 0 ? (
+                    <>
+                      {plural(properties.length, "parcel")}
+                      <span className="acr-cc-greeting-soft">
+                        {" "}across your portfolio.
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      No parcels yet.
+                      <span className="acr-cc-greeting-soft">
+                        {" "}Add one to start tracking.
+                      </span>
+                    </>
+                  )}
+                </h1>
+              </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {/* List / Map view toggle */}
