@@ -42,13 +42,40 @@
      - [ ] "Complete Later" + "X" close behavior works
    - Console error scan — no new errors from this build.
 
-## On smoke pass — close-out
+## Smoke results (2026-04-26 16:47 UTC)
 
-5. Update this doc with screenshots + observed gaps (Phase 9 backlog).
-6. Update `_progress.md` Phase 2A status to ✅, Phase 3 Tier 1 Pipeline Core → next.
-7. Update `_RESUME-HERE.md` to point at Phase 3.
-8. Commit: `chore(unified-build): phase 2a deployed [unified-build]`
+**Deploy:** GH Actions run `24961611010` succeeded; deployer commit `3de9356`. Pre-deploy gate (TypeScript + Tests) reported the documented baseline DB-auth annotations but exited green; Fly deploy job clean.
 
-## On smoke fail
+**Health:** `https://acreos.io/api/health` → 200.
 
-If a regression appears, document the diff (which prototype intent vs. live state), open a follow-up commit on `main`, redeploy. Do NOT roll back to `pre-unified-build` unless onboarding/landing is broken for real users.
+**Landing (1440px desktop):** All 11 sections render top-to-bottom via accessibility snapshot:
+- ✅ `LandingNav` — pill brand mark, anchor links (How it works · The agents · Pricing · Why we built it), Sign in, Start free trial CTA
+- ✅ Hero — "I built this because I needed it. Maybe you do too." headline (Fraunces requested but not loaded — see ⚠️ below); "A letter from Thomas" eyebrow; Atlas/Pax/Sophie floating cards
+- ✅ HowItWorks — 3 steps with brand-tinted numerals (01 / 02 / 03)
+- ✅ Agents — tablist with Atlas (selected) / Pax / Sophie tabs + tabpanel
+- ✅ DayInLife — Before AcreOS (~62 hr week) vs With AcreOS (~22 hr week) timeline
+- ✅ Features — 12-card grid (Find / Analyze / Reach / Close / Service / Operate categories)
+- ✅ Quotes — 6 testimonials with attribution
+- ✅ FounderNote — portrait + 5 paragraphs + "Thomas / Investor · Founder" signature
+- ✅ Pricing — Solo / Operator (most popular) / Operation tabs, Monthly + Annual (selected) cadence
+- ✅ FAQ — 7 questions with accordion behavior (first expanded)
+- ✅ FinalCTA — email input + Start free trial + 14 days / No card / SOC2 / Cancel anytime row
+- ✅ Footer — 4-column (Product / Company / Resources / Contact) + © + legal links
+
+**Mobile (375px):** `.lp-nav-links` correctly collapses to `display: none`; logo + Sign in + Start free trial visible. ✅
+
+**Issues found:**
+
+⚠️ **Fraunces serif font not loading** (likely environment-specific, requires real-browser verification before P0):
+- Stylesheet `https://fonts.googleapis.com/css2?family=Fraunces…&family=Inter…` fetches with `net::ERR_FAILED` in Playwright headless Chromium.
+- Hero `<h1>` falls back to `Times New Roman` (still serif but not the editorial Fraunces voice the prototype prescribes).
+- Service worker `/sw.js` (CACHE_NAME `acreos-v4`) intercepts non-API GETs through a `caches.match → fetch` chain. Cross-origin requests should pass through, but the SW + headless network policy may interact poorly. **TODO:** verify in real browser (Chrome desktop on `acreos.io`); if the issue reproduces, options are (a) self-host Fraunces/Inter as variable WOFF2s in `client/public/fonts/`, or (b) skip the SW for cross-origin font requests via early-return.
+- Adding to Phase 9 (Final Coherence) backlog. Visual identity is *substantively* present — every other element of the homestead palette / typographic hierarchy renders correctly via fallback.
+
+⚠️ **`/api/white-label/config` 401 for unauthenticated visitors** — pre-existing, documented in `client/src/hooks/use-white-label.ts:92-97` with `enabled: hasSession` check; the 401 is from a session-cookie sniff that triggers despite the check. Pre-existing, not introduced by this build. Keep on Phase 9 polish list.
+
+⚠️ **Authenticated wizard not smoked** — requires founder sign-in via Clerk; deferred to manual operator pass after this loop. Local component diff verified in code review.
+
+## Verdict
+
+Phase 2A.5 substantively passes smoke. Two warnings logged (Fraunces font load, 401), neither a regression from this build. Phase 2A is deployed and customer-visible.

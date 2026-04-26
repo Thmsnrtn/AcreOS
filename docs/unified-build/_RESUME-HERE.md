@@ -6,7 +6,7 @@ The full canonical prompt lives at `docs/unified-build/UNIFIED-BUILD-PROMPT.md`.
 
 ## Where the build stands
 
-Phase 0–2 deployed at https://acreos.io.
+Phase 0–2A deployed at https://acreos.io (latest deploy: GH Actions run 24961611010, commit 3de9356).
 Phase 2A.1 sidebar visual: ✅ commit `1bca3f3`
 Phase 2A.2 palette + toaster: ✅ commits `7309858`, `8d6862e`
 Phase 2A.3 public landing: ✅ complete
@@ -25,18 +25,32 @@ Phase 2A.4 onboarding port: ✅ substantively complete
 - Wizard outer shell refactor (commit `79b2bdd`) — Dialog → full-viewport `.ob` layout, segmented `.ob-progress`, `.ob-btn` footer
 - Per-step visual treatment (commit `ebed41a`) — italic Fraunces welcome + reveal, eyebrow/title pattern for steps 1–3, `.ob-cards` action grids
 
-## Next action: Phase 2A.5 — Deploy + smoke (paused for operator approval)
+Phase 2A.5 deploy + smoke: ✅ deployed and live (operator gave explicit "push and deploy" approval 2026-04-26). Smoke results: all 11 landing sections render, mobile nav collapses correctly, two non-blocking warnings logged (Fraunces font ERR_FAILED in Playwright env — verify in real browser; pre-existing `/api/white-label/config` 401). See `phase-2a.5-smoke.md`.
 
-Local state is **5 commits ahead of origin/main, build + tests green** (10 baseline failures only). Smoke checklist drafted at `docs/unified-build/phase-2a.5-smoke.md`.
+## Next action: Phase 3 — Tier 1 Pipeline Core
 
-**Why paused:** `git push origin main` triggers `.github/workflows/deploy.yml` → `fly deploy` to live customers. Project guidance is contradictory (resume doc says "auto-fire authorized" but `_progress.md` Behavioral notes say "Deploys… pause for explicit operator approval, do NOT auto-fire from /loop"). The loop chose to pause — resolve the contradiction and explicitly say "deploy" to proceed.
+Per UNIFIED-BUILD-PROMPT.md §385. Four canonical surfaces, port one at a time, commit per surface, deploy + smoke at end of phase.
 
-**On operator go:**
-1. `git push origin main` (or `fly deploy -a acreos` directly).
-2. Watch GH Actions for green; verify `https://acreos.io/api/health` 200.
-3. Run Playwright MCP smoke per checklist in `phase-2a.5-smoke.md`.
-4. Document observed gaps; update `_progress.md` and this file to point at Phase 3 Tier 1 Pipeline Core.
-5. Commit: `chore(unified-build): phase 2a deployed [unified-build]`.
+| Sub-phase | Prototype source | Production target | LOC |
+|-----------|------------------|-------------------|-----|
+| 3.1 Command Center | `acreos/command-center.jsx` (366 LOC) + inline CSS at end | `client/src/pages/today.tsx` (1360 LOC) | large |
+| 3.2 Pipeline | `acreos/pages-tier1.jsx` (Pipeline component) | `client/src/pages/pipeline.tsx` (310 LOC + tabs to leads/properties/deals/outreach) | medium |
+| 3.3 Parcel Detail | `acreos/tier-b.jsx` (`ParcelDetailB`, 309–998) | `client/src/pages/properties.tsx` | TBD |
+| 3.4 Inbox | unclear — likely `acreos/tier-c.jsx` (174 LOC) + supporting | `client/src/pages/inbox.tsx` (1107 LOC) | large |
+| 3.5 Deploy + smoke | — | — | — |
+
+**Per-surface workflow (per build prompt §397):**
+1. Implement with TS, shadcn primitives, homestead Tailwind tokens
+2. Replace data literals from `data.jsx` with Tanstack Query against real APIs (production already does this; preserve)
+3. All states: loading skeleton (matching final layout, not spinner), empty-zero (first-run with CTA), empty-filtered, error
+4. Build shared `<EmptyState>` and `<ErrorState>` design-system components on first need; reuse thereafter
+5. Mobile responsive 320/375/414/768/1024/1440
+6. Tour anchors per HANDOFF.md §7
+7. AI output quality (Atlas/Pax) — apply prototype voice; preserve production business logic
+
+**Visual port pattern (proven on landing + onboarding):** read prototype → port scoped CSS to colocated `.css` file with `--brand` → `--acr-brand` translation → refactor JSX in incremental commits → type-check → commit.
+
+**Start with 3.1 Command Center:** read prototype `acreos/command-center.jsx` start-to-finish (incl. inline CSS at bottom), inventory production today.tsx (1360 LOC — heavy business logic, preserve refinement), then layer homestead identity over the existing data-bindings.
 
 ## Phase 2A.4 — Onboarding (after nav)
 

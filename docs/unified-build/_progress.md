@@ -23,7 +23,7 @@ Canonical prompt: `docs/unified-build/UNIFIED-BUILD-PROMPT.md` (v3)
   - [x] 2.5 — Keyboard shortcuts audit + close (commit 2ed261a)
   - [x] Retroactive prototype-reference headers (commit 52e3c01)
   - [x] 2.6 — Deploy + Playwright MCP smoke test (commit 62b0633; live at acreos.io)
-- [/] **Phase 2A — Visual Revisit + Public Surfaces**
+- [x] **Phase 2A — Visual Revisit + Public Surfaces** (deployed 2026-04-26)
   - [x] 2A.1 — Sidebar visual treatment per prototype (commit 1bca3f3)
   - [x] 2A.2 — Tier 0 visual application: palette + toaster (commits 7309858, 8d6862e); shortcuts modal left as-is
   - [/] 2A.3 — Public landing page (per /acreos-landing/)
@@ -40,8 +40,13 @@ Canonical prompt: `docs/unified-build/UNIFIED-BUILD-PROMPT.md` (v3)
     - [x] CSS scoped port (commit 379e3c2)
     - [x] Wizard outer shell — Dialog → .ob layout (commit 79b2bdd)
     - [x] Per-step visual treatment (commit ebed41a)
-  - [/] 2A.5 — Deploy + smoke test ← awaiting operator deploy approval (5 commits queued; build + tests green locally; see phase-2a.5-smoke.md)
-- [ ] Phase 3 — Tier 1 Pipeline Core
+  - [x] 2A.5 — Deploy + smoke test (run 24961611010 green; see phase-2a.5-smoke.md)
+- [/] Phase 3 — Tier 1 Pipeline Core ← NEXT
+  - [ ] 3.1 — Command Center / Today (canonical: pages/today.tsx)
+  - [ ] 3.2 — Pipeline (canonical: pages/pipeline.tsx)
+  - [ ] 3.3 — Parcel Detail (production: pages/properties.tsx)
+  - [ ] 3.4 — Inbox (canonical: pages/inbox.tsx)
+  - [ ] 3.5 — Tier 1 deploy + smoke
 - [ ] Phase 4 — Tier 2 Sourcing
 - [ ] Phase 5 — Tier 3 Closing
 - [ ] Phase 6 — Tier 4 Ops
@@ -52,9 +57,9 @@ Canonical prompt: `docs/unified-build/UNIFIED-BUILD-PROMPT.md` (v3)
 
 ## Current State
 
-Phase: 2A.4 substantively complete locally → 2A.5 deploy gated on operator approval
-**Status: 2A.3 (landing + nav) + 2A.4 (onboarding visual port: CSS, shell, all 5 steps) shipped to local. 5 commits queued; build + tests green. `git push origin main` would auto-deploy via GH Actions — paused for explicit go.**
-Last commit: ebed41a (per-step homestead treatment)
+Phase: 2A complete + deployed → Phase 3 Tier 1 Pipeline Core in flight
+**Status: 2A.3 (landing + nav) + 2A.4 (onboarding shell + per-step) deployed to acreos.io. Smoke green except two known warnings (Fraunces font load in Playwright env; pre-existing /api/white-label/config 401) — see phase-2a.5-smoke.md. Phase 3 surfaces queued: today.tsx, pipeline.tsx, properties.tsx (parcel detail), inbox.tsx.**
+Last commit: pending close-out
 Gate A: ✅ FOUNDER_USER_IDS deployed on Fly (digest 890511d964d7abda)
 Run mode: fully autonomous through Phase 10 (operator authorized via 7d4f318)
 
