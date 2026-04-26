@@ -814,7 +814,7 @@ export default function TodayPage() {
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <Zap className="w-4 h-4 text-amber-500" aria-hidden="true" />
-            <h2 className="text-lg font-semibold">Start here today</h2>
+            <h2 className="acr-section-h2">Start here today</h2>
             <Badge variant="secondary" className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 text-xs">
               AI
             </Badge>
@@ -869,7 +869,7 @@ export default function TodayPage() {
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <Calendar className="w-4 h-4 text-primary" aria-hidden="true" />
-            <h2 className="text-lg font-semibold">Today's actions</h2>
+            <h2 className="acr-section-h2">Today's actions</h2>
             {todayActions.length > 0 && (
               <Badge variant="secondary" className="bg-primary/10 text-primary text-xs tabular-nums">
                 {todayActions.length}
@@ -933,7 +933,7 @@ export default function TodayPage() {
         <div data-testid="section-alerts">
           <div className="flex items-center gap-2 mb-3">
             <Bell className="w-4 h-4 text-amber-500" aria-hidden="true" />
-            <h2 className="text-lg font-semibold">Portfolio alerts</h2>
+            <h2 className="acr-section-h2">Portfolio alerts</h2>
             <Badge variant="secondary" className="bg-amber-100 text-amber-700 text-xs tabular-nums">
               {systemAlerts.length}
             </Badge>
@@ -990,7 +990,7 @@ export default function TodayPage() {
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-primary" aria-hidden="true" />
-              <h2 className="text-lg font-semibold">Pax noticed</h2>
+              <h2 className="acr-section-h2">Pax noticed</h2>
               <Badge variant="secondary" className="bg-primary/10 text-primary text-xs">
                 AI
               </Badge>
@@ -1089,7 +1089,7 @@ export default function TodayPage() {
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-emerald-500" aria-hidden="true" />
-            <h2 className="text-lg font-semibold">Pax suggests</h2>
+            <h2 className="acr-section-h2">Pax suggests</h2>
             <Badge variant="secondary" className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 text-xs">
               AI
             </Badge>
@@ -1151,7 +1151,7 @@ export default function TodayPage() {
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <Target className="w-4 h-4 text-primary" aria-hidden="true" />
-              <h2 className="text-lg font-semibold">Goal progress</h2>
+              <h2 className="acr-section-h2">Goal progress</h2>
               <Badge variant="secondary" className="bg-primary/10 text-primary text-xs tabular-nums">
                 {activeGoals.length}
               </Badge>
@@ -1195,7 +1195,7 @@ export default function TodayPage() {
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <GitBranch className="w-4 h-4 text-primary" aria-hidden="true" />
-            <h2 className="text-lg font-semibold">AI action queue</h2>
+            <h2 className="acr-section-h2">AI action queue</h2>
           </div>
           <Button asChild variant="ghost" size="sm" className="gap-1 text-xs">
             <Link href="/pipeline">
@@ -1245,7 +1245,7 @@ export default function TodayPage() {
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <TrendingUp className="w-4 h-4 text-emerald-500" aria-hidden="true" />
-              <h2 className="text-lg font-semibold">Cash position</h2>
+              <h2 className="acr-section-h2">Cash position</h2>
               {cashPosition.lateCount > 0 && (
                 <Badge variant="secondary" className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 text-xs tabular-nums">
                   {cashPosition.lateCount} late

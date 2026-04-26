@@ -146,6 +146,15 @@
   color: var(--acr-ink);
   letter-spacing: -0.005em;
 }
+/* h2-grade section title — used inside a page that already has an
+   editorial header (h1 .acr-cc-greeting). Keeps Fraunces-display
+   identity but at body weight. */
+.acr-section-h2 {
+  font: 500 18px/1.2 var(--font-display, var(--font-sans));
+  letter-spacing: -0.015em;
+  color: var(--acr-ink);
+  font-variation-settings: "opsz" 36;
+}
 .acr-muted {
   color: var(--acr-ink-3);
 }
