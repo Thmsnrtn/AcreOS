@@ -67,36 +67,36 @@ export function SharePropertySheet({ property }: SharePropertyProps) {
   return (
     <Sheet>
       <SheetTrigger asChild>
-        <Button variant="outline" size="sm" aria-label="Share this property">
-          <Share2 className="h-4 w-4 mr-1" />
-          Share Property
+        <Button type="button" variant="outline" size="sm" aria-label="Share this property">
+          <Share2 className="h-4 w-4 mr-1" aria-hidden="true" />
+          Share property
         </Button>
       </SheetTrigger>
       <SheetContent side="bottom" className="max-h-[70vh]">
         <SheetHeader>
-          <SheetTitle>Share This Property</SheetTitle>
+          <SheetTitle>Share this property</SheetTitle>
         </SheetHeader>
         <Tabs defaultValue="facebook" className="mt-4">
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="facebook">
-              <Share2 className="h-3 w-3 mr-1" />
+              <Share2 className="h-3 w-3 mr-1" aria-hidden="true" />
               Facebook
             </TabsTrigger>
             <TabsTrigger value="craigslist">
-              <Globe className="h-3 w-3 mr-1" />
+              <Globe className="h-3 w-3 mr-1" aria-hidden="true" />
               Craigslist
             </TabsTrigger>
             <TabsTrigger value="social">
-              <MessageCircle className="h-3 w-3 mr-1" />
+              <MessageCircle className="h-3 w-3 mr-1" aria-hidden="true" />
               Social
             </TabsTrigger>
           </TabsList>
           {Object.entries(formats).map(([key, text]) => (
             <TabsContent key={key} value={key} className="space-y-3">
-              <Textarea value={text} readOnly rows={8} className="font-mono text-sm" />
+              <Textarea value={text} readOnly rows={8} className="font-mono text-sm" aria-label={`${key} listing text`} />
               <div className="flex gap-2">
-                <Button onClick={() => handleCopy(text, key)} aria-label={`Copy ${key} listing`}>
-                  {copiedTab === key ? <Check className="h-4 w-4 mr-1" /> : <Copy className="h-4 w-4 mr-1" />}
+                <Button type="button" onClick={() => handleCopy(text, key)} aria-label={copiedTab === key ? `${key} listing copied` : `Copy ${key} listing`}>
+                  {copiedTab === key ? <Check className="h-4 w-4 mr-1" aria-hidden="true" /> : <Copy className="h-4 w-4 mr-1" aria-hidden="true" />}
                   {copiedTab === key ? "Copied" : "Copy"}
                 </Button>
               </div>
@@ -104,18 +104,22 @@ export function SharePropertySheet({ property }: SharePropertyProps) {
           ))}
         </Tabs>
         {property.photos && property.photos.length > 0 && (
-          <div className="mt-4">
-            <p className="text-sm font-medium mb-2">Photos ({property.photos.length})</p>
-            <div className="flex gap-2 overflow-x-auto">
+          <section aria-labelledby="share-property-photos-heading" className="mt-4">
+            <p id="share-property-photos-heading" className="text-sm font-medium mb-2 m-0">
+              Photos (<span className="tabular-nums">{property.photos.length}</span>)
+            </p>
+            <ul aria-labelledby="share-property-photos-heading" className="flex gap-2 overflow-x-auto list-none p-0 m-0">
               {property.photos.slice(0, 6).map((url, i) => (
-                <img key={i} src={url} alt={`Property photo ${i + 1}`} className="h-20 w-20 object-cover rounded" />
+                <li key={i} className="list-none">
+                  <img src={url} alt={`Property photo ${i + 1}`} className="h-20 w-20 object-cover rounded" />
+                </li>
               ))}
-            </div>
-            <Button variant="outline" size="sm" className="mt-2" aria-label="Download photos">
-              <Download className="h-4 w-4 mr-1" />
-              Download Photos
+            </ul>
+            <Button type="button" variant="outline" size="sm" className="mt-2" aria-label="Download photos">
+              <Download className="h-4 w-4 mr-1" aria-hidden="true" />
+              Download photos
             </Button>
-          </div>
+          </section>
         )}
       </SheetContent>
     </Sheet>
@@ -164,31 +168,31 @@ export function ShareDealSheet({ deal }: ShareDealProps) {
   return (
     <Sheet>
       <SheetTrigger asChild>
-        <Button variant="outline" size="sm" aria-label="Share this deal">
-          <Share2 className="h-4 w-4 mr-1" />
-          Share Deal
+        <Button type="button" variant="outline" size="sm" aria-label="Share this deal">
+          <Share2 className="h-4 w-4 mr-1" aria-hidden="true" />
+          Share deal
         </Button>
       </SheetTrigger>
       <SheetContent side="bottom" className="max-h-[60vh]">
         <SheetHeader>
-          <SheetTitle>Share This Deal</SheetTitle>
+          <SheetTitle>Share this deal</SheetTitle>
         </SheetHeader>
         <Tabs defaultValue="social" className="mt-4">
           <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="social">Social Post</TabsTrigger>
-            <TabsTrigger value="casestudy">Case Study</TabsTrigger>
+            <TabsTrigger value="social">Social post</TabsTrigger>
+            <TabsTrigger value="casestudy">Case study</TabsTrigger>
           </TabsList>
           <TabsContent value="social" className="space-y-3">
-            <Textarea value={socialPost} readOnly rows={4} className="font-mono text-sm" />
-            <Button onClick={() => handleCopy(socialPost, "social")} aria-label="Copy social post">
-              {copiedTab === "social" ? <Check className="h-4 w-4 mr-1" /> : <Copy className="h-4 w-4 mr-1" />}
+            <Textarea value={socialPost} readOnly rows={4} className="font-mono text-sm" aria-label="Social post text" />
+            <Button type="button" onClick={() => handleCopy(socialPost, "social")} aria-label={copiedTab === "social" ? "Social post copied" : "Copy social post"}>
+              {copiedTab === "social" ? <Check className="h-4 w-4 mr-1" aria-hidden="true" /> : <Copy className="h-4 w-4 mr-1" aria-hidden="true" />}
               {copiedTab === "social" ? "Copied" : "Copy"}
             </Button>
           </TabsContent>
           <TabsContent value="casestudy" className="space-y-3">
-            <Textarea value={caseStudy} readOnly rows={6} className="font-mono text-sm" />
-            <Button onClick={() => handleCopy(caseStudy, "casestudy")} aria-label="Copy case study">
-              {copiedTab === "casestudy" ? <Check className="h-4 w-4 mr-1" /> : <Copy className="h-4 w-4 mr-1" />}
+            <Textarea value={caseStudy} readOnly rows={6} className="font-mono text-sm" aria-label="Case study text" />
+            <Button type="button" onClick={() => handleCopy(caseStudy, "casestudy")} aria-label={copiedTab === "casestudy" ? "Case study copied" : "Copy case study"}>
+              {copiedTab === "casestudy" ? <Check className="h-4 w-4 mr-1" aria-hidden="true" /> : <Copy className="h-4 w-4 mr-1" aria-hidden="true" />}
               {copiedTab === "casestudy" ? "Copied" : "Copy"}
             </Button>
           </TabsContent>
@@ -229,14 +233,16 @@ export function GenerateCampaignCopy({ onGenerated, audienceDescription }: Gener
 
   return (
     <Button
+      type="button"
       variant="outline"
       size="sm"
       onClick={() => generateMutation.mutate()}
       disabled={generateMutation.isPending}
-      aria-label="Generate campaign copy with AI"
+      aria-busy={generateMutation.isPending}
+      aria-label={generateMutation.isPending ? "Generating campaign copy" : "Generate campaign copy with AI"}
     >
-      <Sparkles className="h-4 w-4 mr-1" />
-      {generateMutation.isPending ? "Generating..." : "Generate Copy"}
+      <Sparkles className="h-4 w-4 mr-1" aria-hidden="true" />
+      {generateMutation.isPending ? "Generating…" : "Generate copy"}
     </Button>
   );
 }
