@@ -60,11 +60,11 @@ const SEVERITY_STYLES: Record<string, string> = {
 
 const MESSAGE_TYPE_LABEL: Record<string, string> = {
   analysis: "Analysis",
-  proposal: "Action Plan",
-  action_taken: "Action Taken",
+  proposal: "Action plan",
+  action_taken: "Action taken",
   data: "Data",
   question: "Question",
-  ceo_directive: "CEO Directive",
+  ceo_directive: "CEO directive",
 };
 
 const AGENT_BUBBLE_BG: Record<string, string> = {
@@ -89,17 +89,17 @@ function MessageBubble({ message }: { message: WarRoomMessageData }) {
   const typeLabel = MESSAGE_TYPE_LABEL[message.messageType] || message.messageType;
 
   return (
-    <div className={`rounded-lg border p-3 ${bgClass}`}>
+    <li className={`rounded-lg border p-3 list-none ${bgClass}`}>
       <div className="flex items-center gap-2 mb-1">
-        <span className="text-sm">{avatar}</span>
+        <span aria-hidden="true" className="text-sm">{avatar}</span>
         <span className="text-xs font-semibold">{name}</span>
         <Badge variant="outline" className="text-[10px] h-4 px-1.5">{typeLabel}</Badge>
-        <span className="text-[10px] text-muted-foreground ml-auto">
+        <time dateTime={message.createdAt} className="text-[10px] text-muted-foreground ml-auto tabular-nums">
           {new Date(message.createdAt).toLocaleTimeString()}
-        </span>
+        </time>
       </div>
-      <div className="text-sm whitespace-pre-wrap leading-relaxed">{message.content}</div>
-    </div>
+      <p className="text-sm whitespace-pre-wrap leading-relaxed m-0">{message.content}</p>
+    </li>
   );
 }
 
@@ -132,48 +132,53 @@ function WarRoomThread({ room }: { room: WarRoomData }) {
   const sevStyle = SEVERITY_STYLES[room.severity] || SEVERITY_STYLES.medium;
 
   return (
-    <div className="border rounded-xl overflow-hidden">
+    <li className="border rounded-xl overflow-hidden list-none">
       {/* Header */}
       <div className={`px-4 py-3 border-b ${sevStyle}`}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <AlertOctagon className="h-4 w-4" />
+            <AlertOctagon className="h-4 w-4" aria-hidden="true" />
             <span className="text-sm font-semibold">{room.title}</span>
           </div>
           <div className="flex items-center gap-2">
-            <Badge variant="outline" className="text-[10px]">
-              <Users2 className="h-2.5 w-2.5 mr-1" />
-              {room.participants?.length || 0} agents
+            <Badge variant="outline" className="text-[10px]" aria-label={`${room.participants?.length || 0} agents participating`}>
+              <Users2 className="h-2.5 w-2.5 mr-1" aria-hidden="true" />
+              <span className="tabular-nums">{room.participants?.length || 0}</span> agents
             </Badge>
             {room.status === "active" && (
               <Button
+                type="button"
                 size="sm"
                 variant="outline"
                 className="h-6 text-[10px]"
                 onClick={() => resolveRoom.mutate("Resolved by CEO")}
+                disabled={resolveRoom.isPending}
+                aria-busy={resolveRoom.isPending}
+                aria-label={`Resolve war room: ${room.title}`}
               >
-                <CheckCircle2 className="h-2.5 w-2.5 mr-1" /> Resolve
+                <CheckCircle2 className="h-2.5 w-2.5 mr-1" aria-hidden="true" /> {resolveRoom.isPending ? "Resolving…" : "Resolve"}
               </Button>
             )}
           </div>
         </div>
-        <div className="text-xs mt-1 opacity-75">
-          Lead: {AGENT_AVATARS[room.leadAgent]} {AGENT_ROLES[room.leadAgent] || room.leadAgent}
-          {" "}&middot; {new Date(room.createdAt).toLocaleString()}
-        </div>
+        <p className="text-xs mt-1 opacity-75 m-0">
+          Lead: <span aria-hidden="true">{AGENT_AVATARS[room.leadAgent]}</span> {AGENT_ROLES[room.leadAgent] || room.leadAgent}
+          {" "}&middot; <time dateTime={room.createdAt} className="tabular-nums">{new Date(room.createdAt).toLocaleString()}</time>
+        </p>
       </div>
 
       {/* Messages */}
-      <div className="p-3 space-y-2 max-h-80 overflow-y-auto">
+      <div role="log" aria-live="polite" aria-label={`${room.title} discussion`} className="p-3 space-y-2 max-h-80 overflow-y-auto">
         {isLoading ? (
-          <Skeleton className="h-20 w-full" />
+          <Skeleton role="status" aria-busy="true" aria-label="Loading messages" className="h-20 w-full" />
+        ) : msgList.length > 0 ? (
+          <ul aria-label="War room messages" className="space-y-2 list-none p-0 m-0">
+            {msgList.map(msg => <MessageBubble key={msg.id} message={msg} />)}
+          </ul>
         ) : (
-          msgList.map(msg => <MessageBubble key={msg.id} message={msg} />)
-        )}
-        {msgList.length === 0 && !isLoading && (
-          <div className="text-center py-4 text-xs text-muted-foreground">
-            Agents are analyzing the situation...
-          </div>
+          <p className="text-center py-4 text-xs text-muted-foreground">
+            Agents are analyzing the situation…
+          </p>
         )}
       </div>
 
@@ -186,6 +191,8 @@ function WarRoomThread({ room }: { room: WarRoomData }) {
               onChange={(e) => setDirective(e.target.value)}
               placeholder="Send a directive to the team…"
               className="text-sm h-8"
+              aria-label="CEO directive"
+              autoCapitalize="sentences"
               onKeyDown={(e) => {
                 if (e.key === "Enter" && directive.trim()) {
                   sendDirective.mutate(directive.trim());
@@ -193,12 +200,15 @@ function WarRoomThread({ room }: { room: WarRoomData }) {
               }}
             />
             <Button
+              type="button"
               size="sm"
               className="h-8 px-3"
               onClick={() => directive.trim() && sendDirective.mutate(directive.trim())}
               disabled={!directive.trim() || sendDirective.isPending}
+              aria-busy={sendDirective.isPending}
+              aria-label="Send directive"
             >
-              <Send className="h-3 w-3" />
+              <Send className="h-3 w-3" aria-hidden="true" />
             </Button>
           </div>
         </div>
@@ -206,11 +216,11 @@ function WarRoomThread({ room }: { room: WarRoomData }) {
 
       {/* Resolution */}
       {room.status === "resolved" && room.resolution && (
-        <div className="px-4 py-2 bg-emerald-50 dark:bg-emerald-950/20 border-t text-xs text-emerald-700 dark:text-emerald-400">
+        <p role="status" className="px-4 py-2 bg-emerald-50 dark:bg-emerald-950/20 border-t text-xs text-emerald-700 dark:text-emerald-400 m-0">
           Resolved: {room.resolution}
-        </div>
+        </p>
       )}
-    </div>
+    </li>
   );
 }
 
@@ -221,7 +231,7 @@ export function WarRoom() {
     refetchInterval: 10000,
   });
 
-  if (isLoading) return <Skeleton className="h-48 w-full rounded-xl" />;
+  if (isLoading) return <Skeleton role="status" aria-busy="true" aria-label="Loading war rooms" className="h-48 w-full rounded-xl" />;
 
   const roomList = (rooms || []) as WarRoomData[];
   const activeRooms = roomList.filter(r => r.status === "active");
@@ -232,13 +242,13 @@ export function WarRoom() {
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
-            <ShieldAlert className="h-4 w-4" /> War Rooms
+            <ShieldAlert className="h-4 w-4" aria-hidden="true" /> War rooms
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="text-center py-6 text-sm text-muted-foreground">
+          <p className="text-center py-6 text-sm text-muted-foreground">
             All clear. War rooms auto-convene when critical events occur.
-          </div>
+          </p>
         </CardContent>
       </Card>
     );
@@ -249,22 +259,24 @@ export function WarRoom() {
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-base flex items-center gap-2">
-            <ShieldAlert className="h-4 w-4" /> War Rooms
+            <ShieldAlert className="h-4 w-4" aria-hidden="true" /> War rooms
           </CardTitle>
           {activeRooms.length > 0 && (
-            <Badge variant="destructive" className="text-xs animate-pulse">
+            <Badge variant="destructive" className="text-xs animate-pulse tabular-nums" aria-label={`${activeRooms.length} active`}>
               {activeRooms.length} active
             </Badge>
           )}
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        {activeRooms.map(room => (
-          <WarRoomThread key={room.id} room={room} />
-        ))}
-        {resolvedRooms.map(room => (
-          <WarRoomThread key={room.id} room={room} />
-        ))}
+        <ul aria-label="War rooms" className="space-y-4 list-none p-0 m-0">
+          {activeRooms.map(room => (
+            <WarRoomThread key={room.id} room={room} />
+          ))}
+          {resolvedRooms.map(room => (
+            <WarRoomThread key={room.id} room={room} />
+          ))}
+        </ul>
       </CardContent>
     </Card>
   );
