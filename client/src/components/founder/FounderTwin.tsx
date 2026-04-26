@@ -35,10 +35,10 @@ interface Draft {
 }
 
 const DRAFT_TYPES = [
-  { value: "investor_update", label: "Investor Update" },
-  { value: "board_report", label: "Board Report" },
-  { value: "customer_response", label: "Customer Response" },
-  { value: "team_announcement", label: "Team Announcement" },
+  { value: "investor_update", label: "Investor update" },
+  { value: "board_report", label: "Board report" },
+  { value: "customer_response", label: "Customer response" },
+  { value: "team_announcement", label: "Team announcement" },
 ];
 
 function DraftCard({ draft }: { draft: Draft }) {
@@ -64,18 +64,20 @@ function DraftCard({ draft }: { draft: Draft }) {
   const typeLabel = DRAFT_TYPES.find(t => t.value === draft.draftType)?.label || draft.draftType;
 
   return (
-    <div className="border rounded-xl p-4 space-y-2">
+    <li className="border rounded-xl p-4 space-y-2 list-none">
       <div className="flex items-center justify-between">
         <div>
-          <div className="text-sm font-semibold">{draft.title}</div>
+          <p className="text-sm font-semibold m-0">{draft.title}</p>
           <div className="flex items-center gap-1.5 mt-0.5">
             <Badge variant="outline" className="text-[10px] h-4">{typeLabel}</Badge>
-            <span className="text-[10px] text-muted-foreground">{new Date(draft.createdAt).toLocaleString()}</span>
+            <time dateTime={draft.createdAt} className="text-[10px] text-muted-foreground tabular-nums">{new Date(draft.createdAt).toLocaleString()}</time>
           </div>
         </div>
-        <Badge variant="outline" className={
-          draft.status === "approved" ? "bg-emerald-100 text-emerald-800" : "bg-muted"
-        }>
+        <Badge
+          variant="outline"
+          className={`capitalize ${draft.status === "approved" ? "bg-emerald-100 text-emerald-800" : "bg-muted"}`}
+          aria-label={`Status: ${draft.status}`}
+        >
           {draft.status}
         </Badge>
       </div>
@@ -86,12 +88,13 @@ function DraftCard({ draft }: { draft: Draft }) {
             value={editContent}
             onChange={(e) => setEditContent(e.target.value)}
             className="text-sm min-h-[200px]"
+            aria-label={`Edit ${draft.title}`}
           />
           <div className="flex gap-2">
-            <Button size="sm" className="h-7 text-xs" onClick={() => saveMutation.mutate()}>
-              Save
+            <Button type="button" size="sm" className="h-7 text-xs" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} aria-busy={saveMutation.isPending}>
+              {saveMutation.isPending ? "Saving…" : "Save"}
             </Button>
-            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setEditing(false)}>
+            <Button type="button" size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setEditing(false)}>
               Cancel
             </Button>
           </div>
@@ -104,23 +107,25 @@ function DraftCard({ draft }: { draft: Draft }) {
 
       {!editing && draft.status === "draft" && (
         <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setEditing(true)}>
-            <PenTool className="h-3 w-3 mr-1" /> Edit
+          <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={() => setEditing(true)} aria-label={`Edit ${draft.title}`}>
+            <PenTool className="h-3 w-3 mr-1" aria-hidden="true" /> Edit
           </Button>
-          <Button size="sm" variant="default" className="h-7 text-xs" onClick={() => approveMutation.mutate()}>
-            <CheckCircle2 className="h-3 w-3 mr-1" /> Approve
+          <Button type="button" size="sm" variant="default" className="h-7 text-xs" onClick={() => approveMutation.mutate()} disabled={approveMutation.isPending} aria-busy={approveMutation.isPending} aria-label={`Approve ${draft.title}`}>
+            <CheckCircle2 className="h-3 w-3 mr-1" aria-hidden="true" /> {approveMutation.isPending ? "Approving…" : "Approve"}
           </Button>
           <Button
+            type="button"
             size="sm"
             variant="ghost"
             className="h-7 text-xs"
             onClick={() => navigator.clipboard.writeText(draft.content)}
+            aria-label={`Copy ${draft.title} to clipboard`}
           >
-            <Copy className="h-3 w-3 mr-1" /> Copy
+            <Copy className="h-3 w-3 mr-1" aria-hidden="true" /> Copy
           </Button>
         </div>
       )}
-    </div>
+    </li>
   );
 }
 
@@ -144,7 +149,7 @@ export function FounderTwin() {
     },
   });
 
-  if (isLoading) return <Skeleton className="h-48 w-full rounded-xl" />;
+  if (isLoading) return <Skeleton role="status" aria-busy="true" aria-label="Loading drafts" className="h-48 w-full rounded-xl" />;
 
   const draftList = (drafts || []) as Draft[];
 
@@ -152,7 +157,7 @@ export function FounderTwin() {
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="text-base flex items-center gap-2">
-          <UserCircle2 className="h-4 w-4" /> Your Digital Twin
+          <UserCircle2 className="h-4 w-4" aria-hidden="true" /> Your digital twin
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -163,7 +168,7 @@ export function FounderTwin() {
         {/* Generate new draft */}
         <div className="flex items-center gap-2">
           <Select value={draftType} onValueChange={setDraftType}>
-            <SelectTrigger className="w-44 h-8 text-xs">
+            <SelectTrigger className="w-44 h-8 text-xs" aria-label="Draft type">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -177,30 +182,35 @@ export function FounderTwin() {
             onChange={(e) => setTopic(e.target.value)}
             placeholder="Topic or focus (optional)"
             className="text-sm h-8 flex-1"
+            aria-label="Topic or focus (optional)"
           />
           <Button
+            type="button"
             size="sm"
             className="h-8 px-3"
             onClick={() => generateMutation.mutate()}
             disabled={generateMutation.isPending}
+            aria-busy={generateMutation.isPending}
           >
             {generateMutation.isPending ? (
-              <Sparkles className="h-3 w-3 animate-pulse" />
+              <><Sparkles className="h-3 w-3 mr-1 animate-pulse" aria-hidden="true" /> Drafting…</>
             ) : (
-              <><PenTool className="h-3 w-3 mr-1" /> Draft</>
+              <><PenTool className="h-3 w-3 mr-1" aria-hidden="true" /> Draft</>
             )}
           </Button>
         </div>
 
         {/* Drafts */}
-        {draftList.map(d => (
-          <DraftCard key={d.id} draft={d} />
-        ))}
-
-        {draftList.length === 0 && (
-          <div className="text-center py-4 text-xs text-muted-foreground">
+        {draftList.length > 0 ? (
+          <ul aria-label="Drafts" className="space-y-3 list-none p-0 m-0">
+            {draftList.map(d => (
+              <DraftCard key={d.id} draft={d} />
+            ))}
+          </ul>
+        ) : (
+          <p className="text-center py-4 text-xs text-muted-foreground">
             No drafts yet. Generate one above.
-          </div>
+          </p>
         )}
       </CardContent>
     </Card>
