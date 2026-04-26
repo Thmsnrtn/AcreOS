@@ -27,7 +27,7 @@ function MiniSparkline({ current, previous, direction }: { current: number; prev
   const currHeight = (current / max) * 24;
 
   return (
-    <svg width="40" height="28" viewBox="0 0 40 28" className="flex-shrink-0">
+    <svg width="40" height="28" viewBox="0 0 40 28" className="flex-shrink-0" aria-hidden="true">
       <rect x="4" y={28 - prevHeight} width="12" height={prevHeight} rx="2" fill={color} opacity={0.3} />
       <rect x="24" y={28 - currHeight} width="12" height={currHeight} rx="2" fill={color} />
     </svg>
@@ -44,7 +44,7 @@ export default function TrendCards() {
 
   if (isLoading) {
     return (
-      <div className="flex gap-3 overflow-x-auto px-4 pb-2">
+      <div role="status" aria-busy="true" aria-label="Loading trends" className="flex gap-3 overflow-x-auto px-4 pb-2">
         {[1, 2, 3].map(i => (
           <div key={i} className="h-20 w-36 bg-gray-800/50 rounded-xl animate-pulse flex-shrink-0" />
         ))}
@@ -55,15 +55,18 @@ export default function TrendCards() {
   if (trends.length === 0) return null;
 
   return (
-    <div className="flex gap-3 overflow-x-auto px-4 pb-2 scrollbar-hide">
+    <ul aria-label="This week vs last week trends" className="flex gap-3 overflow-x-auto px-4 pb-2 scrollbar-hide list-none m-0">
       {trends.map((trend) => {
         const DirectionIcon = trend.direction === "up" ? TrendingUp : trend.direction === "down" ? TrendingDown : Minus;
         const colorClass = trend.direction === "up" ? "text-emerald-400" : trend.direction === "down" ? "text-red-400" : "text-gray-400";
+        const directionWord = trend.direction === "up" ? "up" : trend.direction === "down" ? "down" : "flat";
+        const sign = trend.deltaPercent > 0 ? "+" : "";
 
         return (
-          <div
+          <li
             key={trend.metric}
             className="flex-shrink-0 w-40 p-3 rounded-xl bg-gray-800/40 border border-gray-700/50"
+            aria-label={`${trend.label}: ${trend.current}, ${directionWord} ${sign}${trend.deltaPercent}% vs ${trend.previous} previous`}
           >
             <div className="flex items-center justify-between mb-1">
               <span className="text-xs text-gray-500 font-medium">{trend.label}</span>
@@ -71,17 +74,17 @@ export default function TrendCards() {
             </div>
 
             <div className="flex items-baseline gap-1.5">
-              <span className="text-lg font-semibold text-gray-100">{trend.current}</span>
+              <span className="text-lg font-semibold text-gray-100 tabular-nums">{trend.current}</span>
               <div className={`flex items-center gap-0.5 ${colorClass}`}>
-                <DirectionIcon className="w-3 h-3" />
-                <span className="text-xs font-medium">
-                  {trend.deltaPercent > 0 ? "+" : ""}{trend.deltaPercent}%
+                <DirectionIcon className="w-3 h-3" aria-hidden="true" />
+                <span className="text-xs font-medium tabular-nums">
+                  {sign}{trend.deltaPercent}%
                 </span>
               </div>
             </div>
-          </div>
+          </li>
         );
       })}
-    </div>
+    </ul>
   );
 }
