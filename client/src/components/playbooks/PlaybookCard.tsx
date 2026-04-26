@@ -64,14 +64,14 @@ export function PlaybookCard({ template, activeInstance, onStart, onContinue }: 
       case "acquisition":
         return "Acquisition";
       case "due_diligence":
-        return "Due Diligence";
+        return "Due diligence";
       case "disposition":
         return "Disposition";
       default:
         return category;
     }
   };
-  
+
   const handleStart = async () => {
     if (onStart) {
       onStart(template.id);
@@ -79,7 +79,7 @@ export function PlaybookCard({ template, activeInstance, onStart, onContinue }: 
       try {
         await startPlaybook.mutateAsync({ templateId: template.id });
         toast({
-          title: "Playbook Started",
+          title: "Playbook started",
           description: `"${template.name}" has been started. Good luck!`,
         });
         setLocation(`/playbooks/${template.id}`);
@@ -117,13 +117,13 @@ export function PlaybookCard({ template, activeInstance, onStart, onContinue }: 
           </Badge>
           {isCompleted && (
             <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">
-              <CheckCircle2 className="w-3 h-3 mr-1" />
+              <CheckCircle2 className="w-3 h-3 mr-1" aria-hidden="true" />
               Completed
             </Badge>
           )}
           {isInProgress && (
             <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/20">
-              In Progress
+              In progress
             </Badge>
           )}
         </div>
@@ -133,57 +133,65 @@ export function PlaybookCard({ template, activeInstance, onStart, onContinue }: 
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="flex items-center gap-4 text-sm text-muted-foreground">
-          <div className="flex items-center gap-1">
-            <Clock className="w-4 h-4" />
+        <ul aria-label="Playbook overview" className="flex items-center gap-4 text-sm text-muted-foreground list-none p-0 m-0">
+          <li className="flex items-center gap-1" aria-label={`Estimated duration: ${template.estimatedDuration}`}>
+            <Clock className="w-4 h-4" aria-hidden="true" />
             <span>{template.estimatedDuration}</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <ListTodo className="w-4 h-4" />
-            <span>{totalSteps} steps</span>
-          </div>
-        </div>
-        
+          </li>
+          <li className="flex items-center gap-1" aria-label={`${totalSteps} steps`}>
+            <ListTodo className="w-4 h-4" aria-hidden="true" />
+            <span><span className="tabular-nums">{totalSteps}</span> steps</span>
+          </li>
+        </ul>
+
         {isInProgress && (
           <div className="space-y-2">
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Progress</span>
-              <span className="font-medium">{completedCount}/{totalSteps}</span>
+              <span className="text-muted-foreground" id={`playbook-progress-${template.id}`}>Progress</span>
+              <span className="font-medium tabular-nums">{completedCount}/{totalSteps}</span>
             </div>
-            <Progress value={progressPercent} className="h-2" />
+            <Progress value={progressPercent} className="h-2" aria-labelledby={`playbook-progress-${template.id}`} aria-valuenow={Math.round(progressPercent)} aria-valuemin={0} aria-valuemax={100} />
           </div>
         )}
-        
+
         <div className="flex gap-2">
           {isInProgress ? (
-            <Button 
-              className="flex-1" 
+            <Button
+              type="button"
+              className="flex-1"
               onClick={handleContinue}
+              aria-label={`Continue ${template.name}`}
               data-testid={`button-continue-playbook-${template.id}`}
             >
-              <PlayCircle className="w-4 h-4 mr-2" />
+              <PlayCircle className="w-4 h-4 mr-2" aria-hidden="true" />
               Continue
             </Button>
           ) : !isCompleted ? (
-            <Button 
-              className="flex-1" 
-              onClick={handleStart}
-              disabled={startPlaybook.isPending}
-              data-testid={`button-start-playbook-${template.id}`}
-            >
-              <PlayCircle className="w-4 h-4 mr-2" />
-              {startPlaybook.isPending ? "Starting..." : "Start Playbook"}
-            </Button>
-          ) : (
-            <Button 
-              variant="outline" 
+            <Button
+              type="button"
               className="flex-1"
               onClick={handleStart}
               disabled={startPlaybook.isPending}
+              aria-busy={startPlaybook.isPending}
+              aria-label={`Start ${template.name}`}
+              data-testid={`button-start-playbook-${template.id}`}
+            >
+              <PlayCircle className="w-4 h-4 mr-2" aria-hidden="true" />
+              {startPlaybook.isPending ? "Starting…" : "Start playbook"}
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1"
+              onClick={handleStart}
+              disabled={startPlaybook.isPending}
+              aria-busy={startPlaybook.isPending}
+              aria-label={`Restart ${template.name}`}
               data-testid={`button-restart-playbook-${template.id}`}
             >
-              <RefreshCw className="w-4 h-4 mr-2" />
-              {startPlaybook.isPending ? "Starting..." : "Restart Playbook"}
+              <RefreshCw className="w-4 h-4 mr-2" aria-hidden="true" />
+              {startPlaybook.isPending ? "Starting…" : "Restart playbook"}
             </Button>
           )}
         </div>
