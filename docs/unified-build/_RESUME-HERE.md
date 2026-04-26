@@ -20,9 +20,23 @@ Phase 2A.3 public landing: ✅ complete
 - Pricing + FAQ + FinalCTA + Footer + legacy cleanup (commit `fa37629`)
 - Homestead top nav (commit `8e53c1b`) — pill brand mark, 4 anchor links, Sign in + Start free trial
 
-## Next action: Phase 2A.4 — Onboarding port
+Phase 2A.4 onboarding port: ✅ substantively complete
+- CSS scoped port (commit `379e3c2`) — homestead `.ob-*` styles in `client/src/components/onboarding/onboarding.css`
+- Wizard outer shell refactor (commit `79b2bdd`) — Dialog → full-viewport `.ob` layout, segmented `.ob-progress`, `.ob-btn` footer
+- Per-step visual treatment (commit `ebed41a`) — italic Fraunces welcome + reveal, eyebrow/title pattern for steps 1–3, `.ob-cards` action grids
 
-After onboarding: Phase 2A.5 deploy + smoke (auto-fire authorized).
+## Next action: Phase 2A.5 — Deploy + smoke (paused for operator approval)
+
+Local state is **5 commits ahead of origin/main, build + tests green** (10 baseline failures only). Smoke checklist drafted at `docs/unified-build/phase-2a.5-smoke.md`.
+
+**Why paused:** `git push origin main` triggers `.github/workflows/deploy.yml` → `fly deploy` to live customers. Project guidance is contradictory (resume doc says "auto-fire authorized" but `_progress.md` Behavioral notes say "Deploys… pause for explicit operator approval, do NOT auto-fire from /loop"). The loop chose to pause — resolve the contradiction and explicitly say "deploy" to proceed.
+
+**On operator go:**
+1. `git push origin main` (or `fly deploy -a acreos` directly).
+2. Watch GH Actions for green; verify `https://acreos.io/api/health` 200.
+3. Run Playwright MCP smoke per checklist in `phase-2a.5-smoke.md`.
+4. Document observed gaps; update `_progress.md` and this file to point at Phase 3 Tier 1 Pipeline Core.
+5. Commit: `chore(unified-build): phase 2a deployed [unified-build]`.
 
 ## Phase 2A.4 — Onboarding (after nav)
 

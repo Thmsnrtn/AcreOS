@@ -36,8 +36,11 @@ Canonical prompt: `docs/unified-build/UNIFIED-BUILD-PROMPT.md` (v3)
     - [x] Founder note (commit 9f1b8ab)
     - [x] Pricing + FAQ + Final CTA + Footer + legacy cleanup (commit fa37629)
     - [x] Top nav redesign (commit 8e53c1b)
-  - [ ] 2A.4 — Public onboarding (per /acreos-onboarding/) ← NEXT
-  - [ ] 2A.5 — Deploy + smoke test (auto-fire authorized)
+  - [x] 2A.4 — Public onboarding (per /acreos-onboarding/)
+    - [x] CSS scoped port (commit 379e3c2)
+    - [x] Wizard outer shell — Dialog → .ob layout (commit 79b2bdd)
+    - [x] Per-step visual treatment (commit ebed41a)
+  - [/] 2A.5 — Deploy + smoke test ← awaiting operator deploy approval (5 commits queued; build + tests green locally; see phase-2a.5-smoke.md)
 - [ ] Phase 3 — Tier 1 Pipeline Core
 - [ ] Phase 4 — Tier 2 Sourcing
 - [ ] Phase 5 — Tier 3 Closing
@@ -49,9 +52,9 @@ Canonical prompt: `docs/unified-build/UNIFIED-BUILD-PROMPT.md` (v3)
 
 ## Current State
 
-Phase: 2A.3 — Public landing complete (incl. nav) → 2A.4 onboarding next
-**Status: All 11 prototype landing sections + homestead nav shipped. Onboarding (2A.4) + deploy (2A.5) remain in Phase 2A.**
-Last commit: 8e53c1b (homestead nav)
+Phase: 2A.4 substantively complete locally → 2A.5 deploy gated on operator approval
+**Status: 2A.3 (landing + nav) + 2A.4 (onboarding visual port: CSS, shell, all 5 steps) shipped to local. 5 commits queued; build + tests green. `git push origin main` would auto-deploy via GH Actions — paused for explicit go.**
+Last commit: ebed41a (per-step homestead treatment)
 Gate A: ✅ FOUNDER_USER_IDS deployed on Fly (digest 890511d964d7abda)
 Run mode: fully autonomous through Phase 10 (operator authorized via 7d4f318)
 
