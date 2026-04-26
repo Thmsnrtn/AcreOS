@@ -45,9 +45,9 @@ interface Scenario {
 }
 
 const OUTCOME_STYLES = {
-  best: { label: "Best Case", icon: TrendingUp, color: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-950/20" },
-  median: { label: "Most Likely", icon: Minus, color: "text-blue-600", bg: "bg-blue-50 dark:bg-blue-950/20" },
-  worst: { label: "Worst Case", icon: TrendingDown, color: "text-red-600", bg: "bg-red-50 dark:bg-red-950/20" },
+  best: { label: "Best case", icon: TrendingUp, color: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-950/20" },
+  median: { label: "Most likely", icon: Minus, color: "text-blue-600", bg: "bg-blue-50 dark:bg-blue-950/20" },
+  worst: { label: "Worst case", icon: TrendingDown, color: "text-red-600", bg: "bg-red-50 dark:bg-red-950/20" },
 };
 
 function ScenarioCard({ scenario }: { scenario: Scenario }) {
@@ -55,77 +55,90 @@ function ScenarioCard({ scenario }: { scenario: Scenario }) {
   const outcomes = scenario.scenarios;
 
   return (
-    <div className="border rounded-xl p-4 space-y-3">
+    <li className="border rounded-xl p-4 space-y-3 list-none">
       <div className="flex items-center justify-between">
         <div>
-          <div className="text-sm font-semibold">{scenario.title}</div>
-          <div className="text-xs text-muted-foreground">{new Date(scenario.createdAt).toLocaleString()}</div>
+          <p className="text-sm font-semibold m-0">{scenario.title}</p>
+          <time dateTime={scenario.createdAt} className="text-xs text-muted-foreground tabular-nums">{new Date(scenario.createdAt).toLocaleString()}</time>
         </div>
-        <Badge variant="outline" className={
-          scenario.status === "completed" ? "bg-emerald-100 text-emerald-800" :
-          scenario.status === "running" ? "bg-blue-100 text-blue-800 animate-pulse" :
-          "bg-red-100 text-red-800"
-        }>
-          {scenario.status === "running" && <Loader2 className="h-2.5 w-2.5 mr-1 animate-spin" />}
+        <Badge
+          variant="outline"
+          aria-label={`Status: ${scenario.status}`}
+          className={
+            scenario.status === "completed" ? "bg-emerald-100 text-emerald-800 capitalize" :
+            scenario.status === "running" ? "bg-blue-100 text-blue-800 animate-pulse capitalize" :
+            "bg-red-100 text-red-800 capitalize"
+          }
+        >
+          {scenario.status === "running" && <Loader2 className="h-2.5 w-2.5 mr-1 animate-spin" aria-hidden="true" />}
           {scenario.status}
         </Badge>
       </div>
 
       {/* Agent Analyses */}
       {analyses.length > 0 && (
-        <div className="space-y-1.5">
-          {analyses.map((a, i) => (
-            <div key={i} className="flex items-start gap-2 text-xs">
-              <span>{AGENT_AVATARS[a.agentCodename] || "?"}</span>
-              <div className="flex-1">
-                <span className="font-medium">{AGENT_ROLES[a.agentCodename] || a.agentCodename}</span>
-                <span className="text-muted-foreground ml-1">({a.perspective.replace(/_/g, " ")})</span>
-                <p className="text-muted-foreground mt-0.5">{a.analysis}</p>
-              </div>
-              <Badge variant="outline" className="text-[10px] h-4 px-1 shrink-0">{a.confidence}</Badge>
-            </div>
-          ))}
-        </div>
+        <ul aria-label="Agent analyses" className="space-y-1.5 list-none p-0 m-0">
+          {analyses.map((a, i) => {
+            const role = AGENT_ROLES[a.agentCodename] || a.agentCodename;
+            const persp = a.perspective.replace(/_/g, " ");
+            return (
+              <li key={i} className="flex items-start gap-2 text-xs" aria-label={`${role} (${persp}, ${a.confidence} confidence): ${a.analysis}`}>
+                <span aria-hidden="true">{AGENT_AVATARS[a.agentCodename] || "?"}</span>
+                <div className="flex-1">
+                  <span className="font-medium">{role}</span>
+                  <span className="text-muted-foreground ml-1">({persp})</span>
+                  <p className="text-muted-foreground mt-0.5 m-0">{a.analysis}</p>
+                </div>
+                <Badge variant="outline" className="text-[10px] h-4 px-1 shrink-0 capitalize">{a.confidence}</Badge>
+              </li>
+            );
+          })}
+        </ul>
       )}
 
       {/* Outcome Scenarios */}
       {outcomes && (
-        <div className="grid grid-cols-3 gap-2">
+        <ul aria-label="Outcome scenarios" className="grid grid-cols-3 gap-2 list-none p-0 m-0">
           {(["best", "median", "worst"] as const).map(key => {
             const outcome = outcomes[key];
             if (!outcome) return null;
             const style = OUTCOME_STYLES[key];
             const Icon = style.icon;
+            const probabilityPct = Math.round(outcome.probability * 100);
 
             return (
-              <div key={key} className={`p-2.5 rounded-lg ${style.bg}`}>
-                <div className={`text-[10px] font-medium ${style.color} flex items-center gap-1`}>
-                  <Icon className="h-2.5 w-2.5" />
+              <li
+                key={key}
+                className={`p-2.5 rounded-lg ${style.bg}`}
+                aria-label={`${style.label}: ${outcome.description}, ${probabilityPct}% likely`}
+              >
+                <p className={`text-[10px] font-medium ${style.color} flex items-center gap-1 m-0`}>
+                  <Icon className="h-2.5 w-2.5" aria-hidden="true" />
                   {style.label}
-                </div>
-                <div className="text-xs mt-1">{outcome.description}</div>
-                <div className="text-[10px] text-muted-foreground mt-1">
-                  {Math.round(outcome.probability * 100)}% likely
-                </div>
+                </p>
+                <p className="text-xs mt-1 m-0">{outcome.description}</p>
+                <p className="text-[10px] text-muted-foreground mt-1 m-0">
+                  <span className="tabular-nums">{probabilityPct}%</span> likely
+                </p>
                 {Object.entries(outcome.metrics || {}).slice(0, 2).map(([k, v]) => (
-                  <div key={k} className="text-[10px] text-muted-foreground">
-                    {k.replace(/_/g, " ")}: {typeof v === "number" ? (v > 0 ? "+" : "") + v.toLocaleString() : v}
-                  </div>
+                  <p key={k} className="text-[10px] text-muted-foreground m-0">
+                    {k.replace(/_/g, " ")}: <span className="tabular-nums">{typeof v === "number" ? (v > 0 ? "+" : "") + v.toLocaleString() : v}</span>
+                  </p>
                 ))}
-              </div>
+              </li>
             );
           })}
-        </div>
+        </ul>
       )}
 
       {/* Recommendation */}
       {scenario.recommendation && (
-        <div className="p-2.5 rounded-lg bg-muted/50 border">
-          <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Recommendation</div>
-          <div className="text-sm">{scenario.recommendation}</div>
-        </div>
+        <section aria-labelledby={`recommendation-${scenario.id}`} className="p-2.5 rounded-lg bg-muted/50 border">
+          <p id={`recommendation-${scenario.id}`} className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Recommendation</p>
+          <p className="text-sm m-0">{scenario.recommendation}</p>
+        </section>
       )}
-    </div>
+    </li>
   );
 }
 
@@ -148,7 +161,7 @@ export function ScenarioEngine() {
     },
   });
 
-  if (isLoading) return <Skeleton className="h-48 w-full rounded-xl" />;
+  if (isLoading) return <Skeleton role="status" aria-busy="true" aria-label="Loading scenarios" className="h-48 w-full rounded-xl" />;
 
   const scenarioList = (scenarios || []) as Scenario[];
 
@@ -156,7 +169,7 @@ export function ScenarioEngine() {
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="text-base flex items-center gap-2">
-          <FlaskConical className="h-4 w-4" /> What If? Simulator
+          <FlaskConical className="h-4 w-4" aria-hidden="true" /> What if? Simulator
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -167,6 +180,8 @@ export function ScenarioEngine() {
             onChange={(e) => setHypothesis(e.target.value)}
             placeholder="What if we raise prices 20%? What if we hire 3 engineers?"
             className="text-sm h-9"
+            aria-label="Hypothesis to simulate"
+            autoCapitalize="sentences"
             onKeyDown={(e) => {
               if (e.key === "Enter" && hypothesis.trim()) {
                 simulateMutation.mutate(hypothesis.trim());
@@ -174,28 +189,32 @@ export function ScenarioEngine() {
             }}
           />
           <Button
+            type="button"
             size="sm"
             className="h-9 px-4"
             onClick={() => hypothesis.trim() && simulateMutation.mutate(hypothesis.trim())}
             disabled={!hypothesis.trim() || simulateMutation.isPending}
+            aria-busy={simulateMutation.isPending}
           >
             {simulateMutation.isPending ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" aria-hidden="true" /> Simulating…</>
             ) : (
-              <><FlaskConical className="h-3.5 w-3.5 mr-1" /> Simulate</>
+              <><FlaskConical className="h-3.5 w-3.5 mr-1" aria-hidden="true" /> Simulate</>
             )}
           </Button>
         </div>
 
         {/* Scenarios */}
-        {scenarioList.map(s => (
-          <ScenarioCard key={s.id} scenario={s} />
-        ))}
-
-        {scenarioList.length === 0 && (
-          <div className="text-center py-4 text-xs text-muted-foreground">
+        {scenarioList.length > 0 ? (
+          <ul aria-label="Simulated scenarios" className="space-y-3 list-none p-0 m-0">
+            {scenarioList.map(s => (
+              <ScenarioCard key={s.id} scenario={s} />
+            ))}
+          </ul>
+        ) : (
+          <p className="text-center py-4 text-xs text-muted-foreground">
             Ask "what if?" and your entire AI team will model the outcomes.
-          </div>
+          </p>
         )}
       </CardContent>
     </Card>
