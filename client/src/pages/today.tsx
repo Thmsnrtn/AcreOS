@@ -1,6 +1,5 @@
 import React from "react";
 import { PageShell } from "@/components/page-shell";
-import { StatCard } from "@/components/stat-card";
 import { GettingStartedChecklist } from "@/components/getting-started-checklist";
 import { useOrganization, useDashboardStats } from "@/hooks/use-organization";
 import { useAuth } from "@/hooks/use-auth";
@@ -48,6 +47,7 @@ import { plural, usd, dollarsCompact } from "@/lib/format";
 import { VerticalBadge } from "@/components/ui/vertical-badge";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
+import "./today.css";
 
 interface GoalWithProgress {
   id: number;
@@ -626,32 +626,41 @@ export default function TodayPage() {
         </div>
       )}
 
-      {/* Header */}
-      <div className="flex flex-col gap-1">
-        <div className="flex items-center gap-2 flex-wrap">
-          <Sun className="w-5 h-5 text-amber-500" aria-hidden="true" />
-          <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-today-title">
-            {greeting()}{user?.firstName ? `, ${user.firstName}` : ""}
+      {/* Header — homestead Command Center editorial greeting (prototype: acreos/command-center.jsx hero) */}
+      <div className="acr-cc-hero">
+        <div>
+          <div className="acr-eyebrow flex items-center gap-2">
+            <Sun className="w-3 h-3" aria-hidden="true" />
+            <span className="tabular-nums">{format(new Date(), "EEEE, MMMM d")}</span>
+            <VerticalBadge className="ml-1" />
+          </div>
+          <h1 className="acr-cc-greeting" data-testid="text-today-title">
+            {greeting()}{user?.firstName ? `, ${user.firstName}` : ""}.
+            {pendingDecisionCount > 0 ? (
+              <span className="acr-cc-greeting-soft">
+                {" "}{plural(pendingDecisionCount, "deal")} need your attention today.
+              </span>
+            ) : (
+              <span className="acr-cc-greeting-soft">
+                {" "}Here's what's on the horizon.
+              </span>
+            )}
           </h1>
-          <VerticalBadge className="ml-1" />
+          {pendingDecisionCount > 0 && (
+            <Link href="/decision-queue">
+              <div
+                className="inline-flex items-center gap-2 mt-3 px-3 py-1.5 rounded-full bg-red-50 border border-red-200 dark:bg-red-900/20 dark:border-red-800 text-sm text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors cursor-pointer"
+                role="link"
+                aria-label={`${plural(pendingDecisionCount, "pending decision")} — review now`}
+              >
+                <Clock className="w-4 h-4" aria-hidden="true" />
+                <span className="font-medium">Review now</span>
+                <Badge variant="destructive" className="text-xs px-1.5 py-0 tabular-nums">{pendingDecisionCount}</Badge>
+                <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
+              </div>
+            </Link>
+          )}
         </div>
-        <p className="text-muted-foreground text-sm tabular-nums">
-          {format(new Date(), "EEEE, MMMM d, yyyy")} — here's what needs your attention today.
-        </p>
-        {pendingDecisionCount > 0 && (
-          <Link href="/decision-queue">
-            <div
-              className="inline-flex items-center gap-2 mt-2 px-3 py-1.5 rounded-full bg-red-50 border border-red-200 dark:bg-red-900/20 dark:border-red-800 text-sm text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors cursor-pointer"
-              role="link"
-              aria-label={`${plural(pendingDecisionCount, "pending decision")} — review now`}
-            >
-              <Clock className="w-4 h-4" aria-hidden="true" />
-              <span className="font-medium">{plural(pendingDecisionCount, "pending decision")}</span>
-              <Badge variant="destructive" className="text-xs px-1.5 py-0 tabular-nums">{pendingDecisionCount}</Badge>
-              <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
-            </div>
-          </Link>
-        )}
       </div>
 
       {/* Agent Activity — sovereign system status */}
@@ -1312,47 +1321,60 @@ export default function TodayPage() {
       </>
       )}
 
-      {/* Section 4: KPI Stats */}
+      {/* Section 4: KPI strip — homestead .acr-cc-metrics (prototype: 5-column metric strip) */}
       <div data-testid="section-stats">
-        <h2 className="text-lg font-semibold mb-3">Portfolio overview</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-5" data-testid="stats-grid">
-          <StatCard
-            title="Active leads"
-            value={statsLoading ? "—" : stats?.activeLeads ?? leads.length}
-            icon={Users}
-            trend={`${leads.filter((l) => l.status === "new").length} new`}
-            color="terracotta"
-            data-testid="stat-active-leads"
-          />
-          <StatCard
-            title="Properties"
-            value={statsLoading ? "—" : properties.length}
-            icon={Map}
-            trend={(() => {
-              const owned = properties.filter((p) => p.status === "owned").length;
-              const prospects = properties.filter((p) => p.status === "prospect").length;
-              if (owned > 0 && prospects > 0) return `${owned} owned · ${prospects} prospect`;
-              if (owned > 0) return `${owned} owned`;
-              if (prospects > 0) return `${prospects} prospect`;
-              return "none";
-            })()}
-            color="sage"
-            data-testid="stat-properties"
-          />
-          <StatCard
-            title="Active notes"
-            value={statsLoading ? "—" : stats?.activeNotes ?? 0}
-            icon={Banknote}
-            color="terracotta"
-            data-testid="stat-active-notes"
-          />
-          <StatCard
-            title="Open deals"
-            value={statsLoading ? "—" : stats?.activeDeals ?? 0}
-            icon={GitBranch}
-            color="sage"
-            data-testid="stat-open-deals"
-          />
+        <h2 className="acr-eyebrow mb-3" style={{ color: "var(--acr-ink-3)" }}>
+          Portfolio overview
+        </h2>
+        <div className="acr-cc-metrics" data-testid="stats-grid">
+          <div className="acr-metric" data-testid="stat-active-leads">
+            <div className="acr-metric-label">Active leads</div>
+            <div className="acr-metric-value">
+              {statsLoading ? "—" : (stats?.activeLeads ?? leads.length)}
+            </div>
+            <div className="acr-metric-delta acr-delta-pos">
+              {leads.filter((l) => l.status === "new").length} new
+            </div>
+          </div>
+          <div className="acr-metric" data-testid="stat-properties">
+            <div className="acr-metric-label">Properties</div>
+            <div className="acr-metric-value">
+              {statsLoading ? "—" : properties.length}
+            </div>
+            <div className="acr-metric-delta">
+              {(() => {
+                const owned = properties.filter((p) => p.status === "owned").length;
+                const prospects = properties.filter((p) => p.status === "prospect").length;
+                if (owned > 0 && prospects > 0) return `${owned} owned · ${prospects} prospect`;
+                if (owned > 0) return `${owned} owned`;
+                if (prospects > 0) return `${prospects} prospect`;
+                return "none";
+              })()}
+            </div>
+          </div>
+          <div className="acr-metric" data-testid="stat-active-notes">
+            <div className="acr-metric-label">Active notes</div>
+            <div className="acr-metric-value">
+              {statsLoading ? "—" : (stats?.activeNotes ?? 0)}
+            </div>
+            <div className="acr-metric-delta">&nbsp;</div>
+          </div>
+          <div className="acr-metric" data-testid="stat-open-deals">
+            <div className="acr-metric-label">Open deals</div>
+            <div className="acr-metric-value">
+              {statsLoading ? "—" : (stats?.activeDeals ?? 0)}
+            </div>
+            <div className="acr-metric-delta">&nbsp;</div>
+          </div>
+          <div className="acr-metric" data-testid="stat-pending-decisions">
+            <div className="acr-metric-label">Pending decisions</div>
+            <div className="acr-metric-value">
+              {pendingDecisionCount}
+            </div>
+            <div className={`acr-metric-delta ${pendingDecisionCount > 0 ? "acr-delta-neg" : "acr-muted"}`}>
+              {pendingDecisionCount > 0 ? "needs review" : "all clear"}
+            </div>
+          </div>
         </div>
       </div>
     </PageShell>
