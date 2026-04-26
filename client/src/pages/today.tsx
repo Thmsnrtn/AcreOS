@@ -647,17 +647,15 @@ export default function TodayPage() {
             )}
           </h1>
           {pendingDecisionCount > 0 && (
-            <Link href="/decision-queue">
-              <div
-                className="inline-flex items-center gap-2 mt-3 px-3 py-1.5 rounded-full bg-red-50 border border-red-200 dark:bg-red-900/20 dark:border-red-800 text-sm text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors cursor-pointer"
-                role="link"
-                aria-label={`${plural(pendingDecisionCount, "pending decision")} — review now`}
-              >
-                <Clock className="w-4 h-4" aria-hidden="true" />
-                <span className="font-medium">Review now</span>
-                <Badge variant="destructive" className="text-xs px-1.5 py-0 tabular-nums">{pendingDecisionCount}</Badge>
-                <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
-              </div>
+            <Link
+              href="/decision-queue"
+              className="inline-flex items-center gap-2 mt-3 px-3 py-1.5 rounded-full bg-red-50 border border-red-200 dark:bg-red-900/20 dark:border-red-800 text-sm text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label={`${plural(pendingDecisionCount, "pending decision")} — review now`}
+            >
+              <Clock className="w-4 h-4" aria-hidden="true" />
+              <span className="font-medium">Review now</span>
+              <Badge variant="destructive" className="text-xs px-1.5 py-0 tabular-nums">{pendingDecisionCount}</Badge>
+              <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
             </Link>
           )}
         </div>

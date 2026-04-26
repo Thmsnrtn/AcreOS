@@ -1,3 +1,4 @@
+import * as React from "react";
 import { useState, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -728,6 +729,18 @@ export function OnboardingWizard() {
     }
   };
 
+  // Focus the close button when the wizard opens so keyboard users
+  // can dismiss without tabbing through the whole flow.
+  const closeBtnRef = React.useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (open && closeBtnRef.current) {
+      // Small delay so the dialog mounts + transitions complete before
+      // focus moves — otherwise screen readers can miss the change.
+      const t = setTimeout(() => closeBtnRef.current?.focus(), 50);
+      return () => clearTimeout(t);
+    }
+  }, [open]);
+
   if (orgLoading) return null;
   if (!open) return null;
 
@@ -745,6 +758,7 @@ export function OnboardingWizard() {
           AcreOS
         </div>
         <button
+          ref={closeBtnRef}
           type="button"
           className="ob-skip"
           onClick={() => handleDismiss(false)}
