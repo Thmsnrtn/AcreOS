@@ -52,7 +52,10 @@ export function DealClosedModal() {
           <DialogTitle
             className="text-center"
             style={{
-              font: "400 28px/1.1 var(--font-display, var(--font-sans))",
+              fontFamily: "Fraunces, 'Times New Roman', serif",
+              fontWeight: 400,
+              fontSize: "28px",
+              lineHeight: 1.1,
               fontStyle: "italic",
               color: "var(--acr-ink)",
             }}
