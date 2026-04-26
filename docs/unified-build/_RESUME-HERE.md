@@ -26,11 +26,20 @@ After onboarding: Phase 2A.5 deploy + smoke (auto-fire authorized).
 
 ## Phase 2A.4 — Onboarding (after nav)
 
-Source: `/acreos-onboarding/` (with `acreos-onboarding.html` entry point). Production onboarding lives at `client/src/components/onboarding/` and `client/src/components/founder-setup-wizard.tsx`.
+Source: `/acreos-onboarding/` (with `acreos-onboarding.html` entry point — 9 prototype screens: welcome → markets → buybox → goals → autonomy → connections → phone → billing → reveal).
 
-Read the prototype directory first, identify the canonical step components, port section by section. Per founder decisions, onboarding state is server-side via `user.onboardedAt` (already wired from Phase 1.3).
+**Canonical production surface (port target):** `client/src/components/onboarding/OnboardingWizard.tsx` (823 LOC), mounted by `client/src/pages/dashboard.tsx:655`. 5 production steps (welcome / import_leads / connect_email / create_campaign / done), supports 14 business types.
 
-Don't break the existing setup-wizard's white-label / Clerk onboarding flow — preserve as engineering refinement, apply visual identity as a layer.
+**Onboarding state lives at ORG level**, not user — `organizations.onboardingCompleted/Step/Data` (jsonb). There is no `user.onboardedAt` field; earlier resume notes had this wrong. Endpoints: `GET /api/onboarding/status`, `POST /api/onboarding/complete-step`, `POST /api/onboarding/provision`, `POST /api/onboarding/sample-data`, `POST /api/onboarding/complete`.
+
+**Other onboarding surfaces — leave alone:**
+- `components/onboarding-wizard.tsx` (Surface #1) — vestigial session-nudge banner; don't apply visuals
+- `pages/onboarding-wizard.tsx` (Surface #3) — likely obsolete standalone page
+- `components/founder-setup-wizard.tsx` (Surface #4) — founder credential setup, NOT customer onboarding
+
+**Port strategy:** preserve production's 5-step structure + 14-business-type intelligence (engineering refinement). Apply prototype's visual treatment as a layer — homestead palette, serif headings, `.ob-*` shell (header/progress dots/footer with arrow buttons), per-step layouts inspired by prototype `screens-1.jsx` through `screens-4.jsx`. Skip the prototype's Tweaks panel entirely.
+
+Don't break the existing wizard's Clerk + provision-templates flow — preserve as engineering refinement.
 
 ## Phase 2A.5 — Deploy + smoke
 
