@@ -14,6 +14,13 @@ Last updated: 2026-04-26 — session 2
   - [x] 1.5 — Feature flag infrastructure (commit c7dbc5d) — audit-only; existing infra satisfies spec
   - [x] 1.6 — Phase 1 completion
 - [/] Phase 2 — Tier 0 Shell
+  - [x] 2.1 — Sidebar tour anchors (commit 6d746fe)
+  - [x] 2.2 — Visible search trigger + programmatic palette open (commit 5327c5d)
+  - [x] 2.3 — Toast host audit + close (commit 70bb6bf)
+  - [x] 2.4 — Command palette audit + programmatic open (commit 802f7ca)
+  - [x] 2.5 — Keyboard shortcuts audit + close (commit 2ed261a)
+  - [x] Retroactive prototype-reference headers (commit 52e3c01)
+  - [ ] 2.6 — Deploy + Playwright MCP smoke test (awaiting operator confirmation)
 - [ ] Phase 3 — Tier 1 Pipeline Core
 - [ ] Phase 4 — Tier 2 Sourcing
 - [ ] Phase 5 — Tier 3 Closing
@@ -25,9 +32,22 @@ Last updated: 2026-04-26 — session 2
 
 ## Current State
 Phase: 2 — Tier 0 Shell
-**Status: starting Phase 2.1 — Sidebar**
-Last commit: c7dbc5d (Phase 1.5 flag audit + close)
+**Status: 2.1–2.5 complete; 2.6 deploy + smoke test pending operator confirmation**
+Last commit: 2ed261a (Phase 2.5 keyboard shortcuts close)
 Gate A: confirmed (FOUNDER_USER_IDS deployed on Fly with digest 890511d964d7abda; FOUNDER_EMAILS also present)
+
+### Phase 2 quality bar
+- `npm run check` clean (TypeScript)
+- `npm run build` succeeds (vite + esbuild server bundle)
+- `npm test` — 10 failures persist, but all 10 are baseline failures unrelated to this work; confirmed by checking out `pre-unified-build` tag and getting identical 9 file / 10 test failure counts
+  - tax/cohort calendar-drift bugs (date math broken because clock moved past test calibration)
+  - DB-dependent unit tests (org-middleware, IDOR, stripe webhook idempotency) — fail without a running Postgres
+  - vitest picking up nested `tests/e2e-intelligent/node_modules/zod/...` files
+  - `tests/unit/leadScoring.test.ts` — server import error pre-existing
+- Phase 2 introduced ZERO new regressions
+
+### Stash mishap during 2.6 baseline verification
+While confirming the test failures predate this build, I did `git stash` (saved nothing — clean working tree) then `git checkout pre-unified-build` then back to `main`, then `git stash pop` — which popped a PRE-EXISTING user WIP stash I didn't know about, applying it on top of main with merge conflicts. Recovered by `git reset --hard HEAD`. The popped stash content is preserved as **dangling commit `bd9d6af`** ("WIP on main: 7aa9aee fix: mount health endpoints before WhiteLabel middleware") and is recoverable via `git stash apply bd9d6af`. Two other stashes (`stash@{0}` Clerk redirect, `stash@{1}` health endpoints) remain untouched in `git stash list`.
 
 ## What ships in the build so far
 
