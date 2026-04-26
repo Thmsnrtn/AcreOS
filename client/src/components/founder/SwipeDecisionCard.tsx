@@ -144,6 +144,7 @@ export function SwipeDecisionCard({ item, onAction }: SwipeDecisionCardProps) {
       >
         {/* Swipe indicators */}
         <motion.div
+          aria-hidden="true"
           className="absolute inset-y-0 right-4 flex items-center pointer-events-none"
           style={{ opacity: approveOpacity }}
         >
@@ -153,6 +154,7 @@ export function SwipeDecisionCard({ item, onAction }: SwipeDecisionCardProps) {
           </div>
         </motion.div>
         <motion.div
+          aria-hidden="true"
           className="absolute inset-y-0 left-4 flex items-center pointer-events-none"
           style={{ opacity: rejectOpacity }}
         >
@@ -166,6 +168,9 @@ export function SwipeDecisionCard({ item, onAction }: SwipeDecisionCardProps) {
         <AnimatePresence>
           {flashState !== 'none' && (
             <motion.div
+              role="status"
+              aria-live="polite"
+              aria-label={flashState === 'approved' ? "Approved" : "Rejected"}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -177,11 +182,11 @@ export function SwipeDecisionCard({ item, onAction }: SwipeDecisionCardProps) {
             >
               {flashState === 'approved' ? (
                 <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 400, damping: 15 }}>
-                  <Check className="h-12 w-12 text-green-600" strokeWidth={3} />
+                  <Check className="h-12 w-12 text-green-600" strokeWidth={3} aria-hidden="true" />
                 </motion.div>
               ) : (
                 <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 400, damping: 15 }}>
-                  <X className="h-12 w-12 text-red-600" strokeWidth={3} />
+                  <X className="h-12 w-12 text-red-600" strokeWidth={3} aria-hidden="true" />
                 </motion.div>
               )}
             </motion.div>
@@ -193,7 +198,7 @@ export function SwipeDecisionCard({ item, onAction }: SwipeDecisionCardProps) {
           {/* Header: agent + type + urgency */}
           <div className="flex items-start justify-between gap-2">
             <div className="flex items-center gap-3">
-              <span className="text-2xl" role="img" aria-label={role}>{avatar}</span>
+              <span className="text-2xl" aria-hidden="true">{avatar}</span>
               <div>
                 <p className="text-sm font-medium text-foreground">{role}</p>
                 <p className="text-xs text-muted-foreground">
@@ -216,17 +221,19 @@ export function SwipeDecisionCard({ item, onAction }: SwipeDecisionCardProps) {
           {/* Impact if available */}
           {item.estimatedImpactCents && (
             <p className="text-xs text-muted-foreground">
-              Estimated impact: ${(item.estimatedImpactCents / 100).toLocaleString()}/yr
+              Estimated impact: <span className="tabular-nums">${(item.estimatedImpactCents / 100).toLocaleString()}</span>/yr
             </p>
           )}
 
           {/* Expandable context */}
           {item.contextBundle && Object.keys(item.contextBundle).length > 0 && (
             <button
-              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              type="button"
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
               onClick={(e) => { e.stopPropagation(); setExpanded(e => !e); }}
+              aria-expanded={expanded}
             >
-              {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+              {expanded ? <ChevronUp className="h-3 w-3" aria-hidden="true" /> : <ChevronDown className="h-3 w-3" aria-hidden="true" />}
               {expanded ? "Hide details" : "Show details"}
             </button>
           )}
@@ -250,34 +257,42 @@ export function SwipeDecisionCard({ item, onAction }: SwipeDecisionCardProps) {
           {/* Action buttons (fallback for non-swipe users) */}
           <div className="flex items-center gap-2 pt-1">
             <Button
+              type="button"
               size="sm"
               className="bg-green-600 hover:bg-green-700 text-white flex-1"
               disabled={mutate.isPending}
+              aria-busy={mutate.isPending}
               onClick={(e) => { e.stopPropagation(); mutate.mutate({ action: "approve" }); }}
             >
-              <Check className="h-3.5 w-3.5 mr-1.5" />
+              <Check className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
               {item.recommendedActionLabel}
             </Button>
             <Button
+              type="button"
               size="sm"
               variant="outline"
               disabled={mutate.isPending}
+              aria-busy={mutate.isPending}
+              aria-label="Reject"
               onClick={(e) => { e.stopPropagation(); mutate.mutate({ action: "reject" }); }}
             >
-              <X className="h-3.5 w-3.5" />
+              <X className="h-3.5 w-3.5" aria-hidden="true" />
             </Button>
             <Button
+              type="button"
               size="sm"
               variant="outline"
               disabled={mutate.isPending}
+              aria-busy={mutate.isPending}
+              aria-label="Defer 24 hours"
               onClick={(e) => { e.stopPropagation(); mutate.mutate({ action: "defer", body: { hours: 24 } }); }}
             >
-              <Clock className="h-3.5 w-3.5" />
+              <Clock className="h-3.5 w-3.5" aria-hidden="true" />
             </Button>
           </div>
 
           {/* Swipe hint */}
-          <p className="text-[10px] text-muted-foreground/50 text-center select-none">
+          <p aria-hidden="true" className="text-[10px] text-muted-foreground/50 text-center select-none">
             Swipe right to approve · left to reject
           </p>
         </div>
