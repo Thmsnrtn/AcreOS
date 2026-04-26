@@ -625,3 +625,85 @@
   font-weight: 600;
   font-feature-settings: "tnum";
 }
+
+/* ─── Day in Life (sections.css 384-442) ─────────────────────────────── */
+
+.lp-day-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px;
+}
+@media (max-width: 880px) {
+  .lp-day-grid { grid-template-columns: 1fr; }
+}
+
+.lp-day-col {
+  background: var(--acr-surface);
+  border: 0.5px solid var(--acr-line);
+  border-radius: 16px;
+  padding: 32px;
+}
+.lp-day-before {
+  background: #F5EDDD;
+}
+.lp-day-after {
+  background: var(--acr-bg-raised);
+  box-shadow: var(--acr-shadow-2);
+}
+
+.lp-day-col-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 0.5px solid var(--acr-line);
+}
+.lp-day-col-label {
+  font: 600 11px/1 var(--font-sans);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--acr-ink-3);
+}
+.lp-day-col-label-after {
+  color: var(--acr-brand);
+}
+.lp-day-col-meta {
+  font: 600 13px/1 ui-monospace, "JetBrains Mono", "SF Mono", Menlo, monospace;
+  color: var(--acr-ink);
+  font-feature-settings: "tnum";
+}
+
+.lp-day-row {
+  display: grid;
+  grid-template-columns: 80px 1fr;
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 0.5px solid var(--acr-line-soft);
+}
+.lp-day-row:last-of-type {
+  border: 0;
+  padding-bottom: 16px;
+}
+.lp-day-time {
+  font: 500 13px/1.5 ui-monospace, "JetBrains Mono", "SF Mono", Menlo, monospace;
+  color: var(--acr-ink-3);
+  font-feature-settings: "tnum";
+}
+.lp-day-event {
+  font: 400 14px/1.5 var(--font-sans);
+  color: var(--acr-ink-2);
+}
+
+.lp-day-foot {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--acr-line);
+  font: 400 14px/1.5 var(--font-sans);
+}
+.lp-day-foot-bad { color: var(--acr-neg); }
+.lp-day-foot-good { color: var(--acr-pos); }
+.lp-day-foot b {
+  color: inherit;
+  font-weight: 600;
+}

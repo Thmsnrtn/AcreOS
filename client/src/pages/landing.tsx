@@ -30,6 +30,7 @@ import { SkipToContent } from "@/components/skip-to-content";
 import { Hero } from "./landing/Hero";
 import { HowItWorks } from "./landing/HowItWorks";
 import { Agents } from "./landing/Agents";
+import { DayInLife } from "./landing/DayInLife";
 import "./landing/landing.css";
 import {
   MapPin,
@@ -237,6 +238,7 @@ export default function LandingPage() {
         <Hero />
         <HowItWorks />
         <Agents />
+        <DayInLife />
       </main>
 
       {/* Legacy social-proof / waitlist / etc. sections remain below
