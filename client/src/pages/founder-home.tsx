@@ -1,4 +1,6 @@
 import { PageShell } from "@/components/page-shell";
+import { FounderPageShell } from "@/components/founder/founder-page-shell";
+import "./today.css";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
@@ -232,29 +234,50 @@ function AutonomyHealthCard({ report }: { report: AutonomyHealthReport }) {
   );
 }
 
-function HeroCard({ metrics, actionCount }: { metrics?: ExecutiveMetrics; actionCount: number }) {
-  const { text, Icon } = getGreeting();
+function HeroStatus({
+  metrics,
+  actionCount,
+}: {
+  metrics?: ExecutiveMetrics;
+  actionCount: number;
+}) {
+  // Status pill — replaces the old HeroCard's bg-tinted card. The
+  // greeting + identity now lives in FounderPageShell's editorial
+  // header (eyebrow + title + soft clause). This is just the
+  // operational health badge below.
   const hasCritical = metrics && (metrics.churnRate > 10 || metrics.nps.score < 20);
-  let statusText = "Everything is running smoothly";
-  let statusColor = "text-emerald-600";
-  let statusBg = "bg-emerald-50 dark:bg-emerald-950/30";
+  let label: string;
+  let tone: "pos" | "warn" | "neg";
   if (hasCritical) {
-    statusText = "Action required"; statusColor = "text-red-600"; statusBg = "bg-red-50 dark:bg-red-950/30";
+    label = "Action required";
+    tone = "neg";
   } else if (actionCount > 0) {
-    statusText = `${actionCount} item${actionCount !== 1 ? "s" : ""} need${actionCount === 1 ? "s" : ""} your attention`;
-    statusColor = "text-amber-600"; statusBg = "bg-amber-50 dark:bg-amber-950/30";
+    label = `${actionCount} item${actionCount !== 1 ? "s" : ""} need${actionCount === 1 ? "s" : ""} your attention`;
+    tone = "warn";
+  } else {
+    label = "Everything is running smoothly";
+    tone = "pos";
   }
+  const color = tone === "neg" ? "var(--acr-neg)" : tone === "warn" ? "var(--acr-warn)" : "var(--acr-pos)";
+  const bg =
+    tone === "neg"
+      ? "var(--acr-neg-soft)"
+      : tone === "warn"
+        ? "var(--acr-warn-soft)"
+        : "var(--acr-pos-soft)";
   return (
-    <motion.div variants={staggerItem}>
-      <Card className={statusBg}>
-        <CardContent className="p-6 flex items-center gap-4">
-          <Icon className={`h-8 w-8 ${statusColor} shrink-0`} aria-hidden="true" />
-          <div role="status" aria-label={`${text}. ${statusText}`}>
-            <h1 className="text-2xl font-bold text-foreground">{text}</h1>
-            <p className={`text-sm font-medium ${statusColor}`}>{statusText}</p>
-          </div>
-        </CardContent>
-      </Card>
+    <motion.div
+      variants={staggerItem}
+      role="status"
+      className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full"
+      style={{
+        background: bg,
+        color,
+        font: "500 13px/1 var(--font-sans)",
+      }}
+    >
+      <span className="w-1.5 h-1.5 rounded-full" style={{ background: color }} aria-hidden="true" />
+      {label}
     </motion.div>
   );
 }
@@ -402,13 +425,23 @@ export default function FounderHome() {
     );
   }
 
+  const greeting = getGreeting();
+  const actionCount = actions.data?.items.length ?? 0;
+  const totalDeals = metrics.data?.activeOrganizations ?? 0;
   return (
-    <PageShell label="Founder home" isLoading={allLoading}>
+    <FounderPageShell
+      eyebrow="Founder · home"
+      title={greeting.text}
+      titleSoft={
+        actionCount > 0
+          ? `${actionCount} item${actionCount !== 1 ? "s" : ""} need attention.`
+          : `${totalDeals.toLocaleString()} active customers · all green.`
+      }
+      pageTitle="Founder home"
+    >
       <motion.div variants={staggerContainer} initial="hidden" animate="visible" className="space-y-8 max-w-5xl mx-auto">
-        {metrics.isLoading ? (
-          <Skel><Skeleton className="h-8 w-48 mb-2" /><Skeleton className="h-5 w-64" /></Skel>
-        ) : (
-          <HeroCard metrics={metrics.data} actionCount={actions.data?.items.length ?? 0} />
+        {!metrics.isLoading && (
+          <HeroStatus metrics={metrics.data} actionCount={actionCount} />
         )}
 
         {autonomy.isLoading ? (
@@ -445,6 +478,6 @@ export default function FounderHome() {
           ) : agents.data ? <AgentCards agents={agents.data} /> : null}
         </section>
       </motion.div>
-    </PageShell>
+    </FounderPageShell>
   );
 }
