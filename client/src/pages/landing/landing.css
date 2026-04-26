@@ -707,3 +707,56 @@
   color: inherit;
   font-weight: 600;
 }
+
+/* ─── Features (sections.css 444-491) ────────────────────────────────── */
+
+.lp-features-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+@media (max-width: 1080px) {
+  .lp-features-grid { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 720px) {
+  .lp-features-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 480px) {
+  .lp-features-grid { grid-template-columns: 1fr; }
+}
+
+.lp-feature-card {
+  background: var(--acr-surface);
+  border: 0.5px solid var(--acr-line);
+  border-radius: 14px;
+  padding: 24px;
+  transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+  position: relative;
+}
+.lp-feature-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--acr-shadow-2);
+  border-color: var(--acr-brand);
+}
+.lp-feature-cat {
+  font: 600 10px/1 var(--font-sans);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--acr-ink-3);
+  margin-bottom: 16px;
+}
+.lp-feature-glyph {
+  margin-bottom: 12px;
+  display: block;
+}
+.lp-feature-title {
+  font: 600 16px/1.3 var(--font-sans);
+  color: var(--acr-ink);
+  margin: 0 0 6px;
+  letter-spacing: -0.005em;
+}
+.lp-feature-desc {
+  font: 400 13px/1.5 var(--font-sans);
+  color: var(--acr-ink-2);
+  margin: 0;
+}

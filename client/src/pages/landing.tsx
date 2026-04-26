@@ -31,6 +31,7 @@ import { Hero } from "./landing/Hero";
 import { HowItWorks } from "./landing/HowItWorks";
 import { Agents } from "./landing/Agents";
 import { DayInLife } from "./landing/DayInLife";
+import { Features } from "./landing/Features";
 import "./landing/landing.css";
 import {
   MapPin,
@@ -239,6 +240,7 @@ export default function LandingPage() {
         <HowItWorks />
         <Agents />
         <DayInLife />
+        <Features />
       </main>
 
       {/* Legacy social-proof / waitlist / etc. sections remain below
