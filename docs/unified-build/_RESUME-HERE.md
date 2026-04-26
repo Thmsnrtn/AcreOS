@@ -1,4 +1,6 @@
-# RESUME HERE — Unified Build, Session 3
+# RESUME HERE — Unified Build, autonomous run
+
+**Run mode: fully autonomous through Phase 10.** Operator authorized auto-fire deploys, pushes, smoke tests, migrations. End the loop only at 85% context or genuinely unresolvable Gate B ambiguity (rare — default to picking the recommended option, document in `phase-X.Y-decision-<topic>.md`, continue).
 
 The full canonical prompt lives at `docs/unified-build/UNIFIED-BUILD-PROMPT.md`.
 Read that first if you don't have full context.
@@ -15,32 +17,50 @@ Operator Gate A: ✅ `FOUNDER_USER_IDS=user_3CK2u6pGH7EYHgFyMS99fwhLSM7` deploye
 
 Operator stash recovery (mishap from session 2): the user WIP that was accidentally popped is preserved as **dangling commit `bd9d6af`** (`WIP on main: 7aa9aee fix: mount health endpoints before WhiteLabel middleware`). Recover with `git stash apply bd9d6af` if/when wanted. Two unrelated stashes (`stash@{0}` Clerk redirect, `stash@{1}` health endpoints) remain in `git stash list` untouched.
 
-## Next action: Phase 2A — Visual Revisit + Public Surfaces
+## Next action: Phase 2A.2 — Tier 0 visual application (remaining shell)
 
-Phase 2A.1 first: **Sidebar visual application.** Read `/acreos/shell.jsx` Sidebar section + `SHELL_CSS` for `.acr-sidebar`, `.acr-nav-item`, `.acr-nav-item-active`. Apply to `client/src/components/layout-sidebar.tsx`:
+Phase 2A.1 (sidebar visual treatment) is complete (commit `1bca3f3`). Continue with Phase 2A.2: apply prototype palette and visual treatments across the remaining Tier 0 shell.
 
-1. Replace `nav-item-active` (in `client/src/index.css:704`) with the prototype's treatment: subtle `var(--acr-surface)` background + `box-shadow: var(--acr-shadow-1), inset 0 0 0 0.5px var(--acr-line)` + 2px × 14px brand-color pip at `left: -10px` via `::before`. Per `acreos/shell.jsx:195-203`.
-2. Switch sidebar background from `bg-sidebar` (shadcn HSL) to `bg-acr-sidebar-bg` (`#F1E7D0` from prototype `theme.jsx`).
-3. Match prototype nav-item type: `font: 500 13px/1`, `letter-spacing: -0.005em`.
-4. Match prototype nav-group title: `font: 500 10.5px/1`, uppercase, `letter-spacing: 0.07em`, `color: var(--acr-ink-4)`.
-5. Active item icon goes brand-color; active badge becomes brand-tinted (`var(--acr-brand-soft)` bg, `var(--acr-brand)` text).
-6. Sidebar container padding `14px 10px` per prototype.
+**2A.2 work:**
 
-Preserve as engineering refinement: all `aria-*` attributes, `min-h-[44px]` mobile touch targets, mobile Sheet pattern, white-label brand name resolution, PaxNotificationBadge / NotificationCenter / ThemeToggle wiring, founder gating via `useAuth().isFounder`, all `data-tour-nav` and `data-tour` anchors from Phase 2.1/2.2, the visible search trigger from Phase 2.2.
+1. **Command palette modal styling** (`client/src/components/command-palette.tsx`).
+   Read `acreos/command-palette.jsx` lines 108-130 for `CP_CSS`. Apply:
+   - Backdrop: `color-mix(in srgb, var(--acr-bg-sunken) 60%, transparent)` + `backdrop-filter: blur(10px)`
+   - Modal: `var(--acr-surface)` bg, `0.5px solid var(--acr-line)`, `border-radius: 14px`, `box-shadow: var(--acr-shadow-3)`
+   - Width 560px (currently 640px); `max-height: 70vh`
+   - Group titles: `font: 500 10.5px/1`, uppercase, `letter-spacing: 0.08em`, `color: var(--acr-ink-4)`
+   - Active item: `var(--acr-brand-soft)` background, brand-color icon
+   - **Bottom keyboard-hint footer** (currently absent): `↑↓ navigate · ↵ open · ⌘J ask` per prototype `.cp-foot`
+   - Empty state copy: "Ask AcreOS '<query>'" with "Press ↵ to send as a question to AcreOS Intelligence" microcopy
+   - Placeholder: "Search or ask AcreOS…" (currently "Search pages, actions, or type a question…")
 
-Update the prototype-reference comment at the top of `layout-sidebar.tsx` to reflect what changed.
+2. **Toaster kinds** (`client/src/components/ui/toaster.tsx` and/or its variant CSS).
+   Apply `var(--acr-pos)`, `var(--acr-warn)`, `var(--acr-neg)` semantic tints to success/warn/error toasts. Hover-check the toast variants exist; if shadcn's default variant only is `destructive`, extend with semantic variants in the toast component.
 
-Commit: `feat(shell): sidebar visual treatment per prototype [unified-build]`
+3. **Keyboard shortcuts modal** (`client/src/components/keyboard-shortcuts.tsx`).
+   Apply prototype typography density. Match the prototype's serif headings if any are visible in `acreos/settings.jsx` Help section. Modal background uses `var(--acr-surface)`.
 
-After 2A.1, proceed through 2A.2 (other Tier 0 visual application), 2A.3 (landing — `client/src/pages/landing.tsx` per `/acreos-landing/` prototype), 2A.4 (onboarding — `client/src/components/onboarding/` per `/acreos-onboarding/` prototype), 2A.5 (deploy + smoke). See UNIFIED-BUILD-PROMPT.md Phase 2A section for the full breakdown.
+Each component keeps its prototype-reference header; document what was changed.
 
-## Loop guidance for self-paced runs
+Commit per logical area:
+- `feat(palette): visual treatment per prototype [unified-build]`
+- `feat(toaster): semantic kind colors per prototype [unified-build]`
+- `feat(shortcuts): visual treatment per prototype [unified-build]`
 
-After each commit, decide:
-- **ScheduleWakeup (270s)** — mid-phase work, more commits in the same logical unit
-- **End loop** — phase boundary, gate, ~85% context, before any deploy or risky action
+## After 2A.2
 
-Deploys (`fly deploy`), force-pushes, destructive git, external service writes pause for explicit operator approval — do not auto-fire from the loop.
+- 2A.3 — Public landing page (`client/src/pages/landing.tsx` per `/acreos-landing/` prototype). Most-visible surface.
+- 2A.4 — Public onboarding (`client/src/components/onboarding/` per `/acreos-onboarding/` prototype).
+- 2A.5 — `fly deploy -a acreos` (auto-fire authorized) + Playwright MCP smoke against acreos.io. Then continue into Phase 3.
+
+## Loop guidance (autonomous mode)
+
+After each commit:
+- **ScheduleWakeup 270s** if more work in the same logical unit, in-cache iteration
+- **ScheduleWakeup 1200s** if waiting for a deploy to propagate or external state to settle
+- **End the loop** ONLY at 85% context (forced break) or genuinely unresolvable Gate B ambiguity
+
+Auto-fire authorized: `fly deploy`, `git push`, smoke tests, npm install for required deps, schema migrations. Still need operator: force-push, hard-reset to non-HEAD, deleting unmerged branches, modifying Fly secrets / Clerk / Stripe accounts directly, stash pop of operator's WIP.
 
 ## Hard reminders
 
@@ -50,3 +70,4 @@ Deploys (`fly deploy`), force-pushes, destructive git, external service writes p
 - DO override visual treatments that conflict with the prototype (Visual Application Mandate)
 - Run `npm run check` after server-side changes; `npm run build` before deploy
 - The 10 pre-existing test failures are baseline (DB-dependent + calendar drift + nested zod) — don't let them block, but don't add new ones either
+- Autonomous run: don't ask the operator to confirm deploys, smoke tests, pushes, or visual judgment calls — pick the recommended option and continue, document the choice for Phase 9 review

@@ -8,13 +8,16 @@ to bootstrap from scratch.
 
 ## Build Status (as of 2026-04-26)
 
+**Run mode: fully autonomous through Phase 10 completion.** Operator has authorized auto-fire deploys, smoke tests, pushes, schema migrations. Loop ends only at 85% context (forces fresh session) or genuine unresolvable Gate B ambiguity. Default to picking the recommended option and continuing on visual judgment calls.
+
 | Item | Status |
 |---|---|
 | Pre-flight extraction | ✅ commit `8a55b3a` (`/acreos/`, `/acreos-landing/`, `/acreos-onboarding/`, `/handoff/` all in repo) |
 | Phase 0 — Prerequisites | ✅ rollback tag `pre-unified-build` at `2b8fe93` |
 | Phase 1 — Foundation | ✅ tokens, globals, founder auth, flags |
 | Phase 2 — Tier 0 Shell (structural) | ✅ deployed at https://acreos.io |
-| Phase 2A — **Visual Revisit + Public Surfaces** | ⏳ NEXT — see below |
+| Phase 2A.1 — Sidebar visual treatment | ✅ commit `1bca3f3` |
+| Phase 2A.2-2A.5 — remaining visual revisit + public surfaces | ⏳ in progress |
 | Phase 3+ | pending |
 | Operator Gate A (FOUNDER_USER_IDS) | ✅ deployed (digest `890511d964d7abda`) |
 | Production URL | https://acreos.io |
@@ -100,26 +103,44 @@ the file comment, synthesize coherently.
 
 ## Loop Behavior (when invoked via /loop)
 
+**Operator authorization (durable for this build):** the operator has explicitly authorized fully autonomous execution through Phase 10 completion. Do NOT pause for approval at phase boundaries, deploys, or Gate B visual ambiguity. The only legitimate end-loop conditions are context exhaustion (~85%) and Gate B ambiguity that genuinely cannot be resolved without operator input (rare — pick the recommended option, document the choice, and move on for everything reasonable).
+
 The /loop fires self-paced. On each fire:
 
 1. Read `docs/unified-build/_progress.md`
 2. Read `docs/unified-build/_RESUME-HERE.md` if present
 3. Continue from the documented next-action
 4. After each meaningful unit of work, commit
-5. Decide whether to **ScheduleWakeup** to keep going, or **end the loop** for operator review
+5. ScheduleWakeup to keep going, unless one of the end conditions below is hit
 
-**End the loop (no ScheduleWakeup) at:**
-- Major phase completion (after the phase's deploy + smoke test)
-- Operator Gate A or Gate B (await operator action in fresh session)
-- 85% context approaching
-- Production deploy that needs operator authorization (deploy is risky — confirm before firing)
+**End the loop ONLY at:**
+- 85% context approaching (mandatory — context exhaustion forces a fresh session)
+- Genuine Gate B blocker: visual ambiguity or technical question where the prototype + handoff + reasonable defaults can't produce a confident choice. (Rare. Default behavior on ambiguity is: pick the recommended option, document in a `phase-X.Y-decision-<topic>.md` file, continue.)
 
-**ScheduleWakeup (continuing) at:**
-- Mid-phase commits within the same logical unit
-- Doc updates, audits, prep work
-- Default delay: 270s for active-context work; 1200s if waiting for something to settle
+**Auto-fire authorized (no operator pause):**
+- `fly deploy -a acreos` after each phase's smoke test (mega-prompt mandates these; operator authorized them as part of the autonomous run)
+- `git push origin main` to push commits
+- Playwright MCP smoke tests against production after deploy
+- npm install for dependencies the prototype requires
+- Schema migrations via Drizzle when needed for new features
+- Standard git operations: commit, branch, tag, push (NOT force-push or `reset --hard` to non-HEAD)
 
-**Operator authorization for risky actions still applies:** even when running on /loop, deploys (`fly deploy`), force-pushes, destructive git operations, and external service writes pause for explicit operator approval in a fresh message — they don't auto-fire from the loop.
+**Still requires explicit operator authorization (NOT auto-fire):**
+- Force-push to main (rare; investigate root cause first)
+- `git reset --hard` to a non-HEAD ref
+- Deleting branches that contain unmerged work
+- Modifying Fly secrets (operator manages these)
+- Modifying Clerk dashboard config (operator manages)
+- Deleting Stripe products/subscriptions (operator manages)
+- External-account writes outside the AcreOS Fly app (Stripe live mode, Twilio, Lob — only via the app's own integrations, never directly to those accounts)
+- Any git stash pop / apply unless the operator's stash is what's being recovered
+
+**ScheduleWakeup delay:**
+- 270s default for active mid-phase work (in-cache, fast iteration)
+- 1200s if waiting for a deploy to fully propagate or an external state to settle
+- 60s minimum (clamped by the runtime)
+
+The 85% context guardrail is the build's natural break point. When that hits: commit, write `_RESUME-HERE.md` with the exact next action, end the loop. The operator re-invokes /loop in a fresh session and the build resumes.
 
 ---
 
@@ -471,7 +492,7 @@ Forbidden:
 - Generic shadcn defaults instead of prototype-specific styling decisions
 - Inventing new patterns when the prototype has an answer
 - Drift accumulation across surfaces
-- Auto-firing risky actions from /loop (deploy, force-push, destructive git, external service writes — pause for explicit operator approval)
+- Force-push to main, `reset --hard` to non-HEAD, deleting unmerged branches, modifying Fly secrets / Clerk / Stripe accounts directly (still require explicit operator authorization even under autonomous run)
 
 Required:
 - Atomic commits per logical unit
