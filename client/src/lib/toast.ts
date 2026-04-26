@@ -23,7 +23,15 @@ export const toast = {
       title: label,
       description: opts?.description,
       duration: opts?.duration,
-      variant: "default",
+      variant: "success",
+    }),
+
+  warning: (label: string, opts?: ToastOptions) =>
+    baseToast({
+      title: label,
+      description: opts?.description,
+      duration: opts?.duration,
+      variant: "warning",
     }),
 
   error: (label: string, opts?: ToastOptions) =>

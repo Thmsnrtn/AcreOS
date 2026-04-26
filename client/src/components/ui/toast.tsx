@@ -22,14 +22,23 @@ const ToastViewport = React.forwardRef<
 ))
 ToastViewport.displayName = ToastPrimitives.Viewport.displayName
 
+// Toast variants — synthesized per Per-Surface Fidelity Principle
+// (no direct prototype reference). Closest analogs: .cp-modal in
+// acreos/command-palette.jsx (flat homestead surface, hairline border,
+// shadow), and the semantic palette tokens --acr-pos/--acr-warn/--acr-neg
+// from acreos/theme.jsx.
 const toastVariants = cva(
   "group pointer-events-auto relative flex w-full items-center justify-between space-x-4 overflow-hidden rounded-xl p-4 pr-8 transition-all data-[swipe=cancel]:translate-x-0 data-[swipe=end]:translate-x-[var(--radix-toast-swipe-end-x)] data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)] data-[swipe=move]:transition-none data-[state=open]:toast-enter data-[state=closed]:animate-out data-[swipe=end]:animate-out data-[state=closed]:fade-out-80 data-[state=closed]:slide-out-to-right-full",
   {
     variants: {
       variant: {
         default: "liquid-glass",
+        success:
+          "border-l-4 bg-[var(--acr-pos-soft)] border-[var(--acr-pos)] text-[var(--acr-ink)] shadow-[var(--acr-shadow-2)]",
+        warning:
+          "border-l-4 bg-[var(--acr-warn-soft)] border-[var(--acr-warn)] text-[var(--acr-ink)] shadow-[var(--acr-shadow-2)]",
         destructive:
-          "destructive group border-destructive/50 bg-destructive/90 text-destructive-foreground backdrop-blur-xl",
+          "destructive group border-l-4 bg-[var(--acr-neg-soft)] border-[var(--acr-neg)] text-[var(--acr-ink)] shadow-[var(--acr-shadow-2)]",
       },
     },
     defaultVariants: {
