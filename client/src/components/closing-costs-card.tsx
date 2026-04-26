@@ -53,42 +53,49 @@ export function ClosingCostsCard({ state, county, salePrice, annualTax }: Closin
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium flex items-center gap-2">
-          <DollarSign className="h-4 w-4" />
-          Estimated Closing Costs
+          <DollarSign className="h-4 w-4" aria-hidden="true" />
+          Estimated closing costs
         </CardTitle>
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <div className="space-y-2">
+          <div className="space-y-2" role="status" aria-busy="true" aria-label="Loading closing-cost estimate">
             <Skeleton className="h-5 w-full" />
             <Skeleton className="h-5 w-3/4" />
             <Skeleton className="h-5 w-1/2" />
+            <span className="sr-only">Loading…</span>
           </div>
         ) : data ? (
           <div className="space-y-2">
-            {data.breakdown.map((item, i) => (
-              <div key={i} className="flex justify-between items-start text-sm">
-                <div className="flex items-center gap-1">
-                  <span>{item.item}</span>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Info className="h-3 w-3 text-muted-foreground cursor-help" />
-                    </TooltipTrigger>
-                    <TooltipContent className="max-w-[200px] text-xs">
-                      {item.source}
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
-                <span className="font-medium tabular-nums">{fmt$(item.amount)}</span>
-              </div>
-            ))}
+            <ul aria-label="Closing-cost breakdown" className="space-y-2 list-none p-0 m-0">
+              {data.breakdown.map((item, i) => (
+                <li
+                  key={i}
+                  className="flex justify-between items-start text-sm"
+                  aria-label={`${item.item}: ${fmt$(item.amount)}, source: ${item.source}`}
+                >
+                  <div className="flex items-center gap-1" aria-hidden="true">
+                    <span>{item.item}</span>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-3 w-3 text-muted-foreground cursor-help" aria-hidden="true" />
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-[200px] text-xs">
+                        {item.source}
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                  <span className="font-medium tabular-nums" aria-hidden="true">{fmt$(item.amount)}</span>
+                </li>
+              ))}
+            </ul>
             <div className="border-t pt-2 flex justify-between items-center">
               <span className="font-medium text-sm">Total estimated</span>
-              <Badge variant="outline" className="text-sm font-semibold">
+              <Badge variant="outline" className="text-sm font-semibold tabular-nums" aria-label={`Total estimated: ${fmt$(data.totalEstimated)}`}>
                 {fmt$(data.totalEstimated)}
               </Badge>
             </div>
-            <p className="text-[10px] text-muted-foreground leading-tight mt-2">
+            <p className="text-[10px] text-muted-foreground leading-tight mt-2 m-0">
               {data.disclaimer}
             </p>
           </div>

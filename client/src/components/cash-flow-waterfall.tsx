@@ -61,12 +61,12 @@ export function CashFlowWaterfall() {
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
-            <DollarSign className="h-4 w-4" />
-            Cash Flow Waterfall
+            <DollarSign className="h-4 w-4" aria-hidden="true" />
+            Cash flow waterfall
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground py-8 text-center">
+          <p className="text-sm text-muted-foreground py-8 text-center m-0" role="status">
             Cash flow tracking starts when you create your first seller-financed note.
           </p>
         </CardContent>
@@ -74,40 +74,47 @@ export function CashFlowWaterfall() {
     );
   }
 
+  const chartSummary = data
+    .slice(-3)
+    .map((m) => `${m.month}: ${fmt$(m.netCashFlow)} net`)
+    .join(", ");
+
   return (
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium flex items-center gap-2">
-          <DollarSign className="h-4 w-4" />
-          Cash Flow Waterfall
+          <DollarSign className="h-4 w-4" aria-hidden="true" />
+          Cash flow waterfall
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <ResponsiveContainer width="100%" height={260}>
-          <BarChart data={data} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
-            <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-            <XAxis dataKey="month" className="text-xs" tick={{ fontSize: 11 }} />
-            <YAxis
-              className="text-xs"
-              tick={{ fontSize: 11 }}
-              tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`}
-            />
-            <Tooltip
-              formatter={((value: number, name: string) => [fmt$(value), name]) as any}
-              contentStyle={{
-                backgroundColor: "hsl(var(--popover))",
-                border: "1px solid hsl(var(--border))",
-                borderRadius: "6px",
-                fontSize: "12px",
-              }}
-            />
-            <Legend iconSize={8} wrapperStyle={{ fontSize: "11px" }} />
-            <Bar dataKey="grossDue" name="Gross Due" fill="hsl(var(--chart-1))" radius={[2, 2, 0, 0]} />
-            <Bar dataKey="collected" name="Collected" fill="hsl(var(--chart-2))" radius={[2, 2, 0, 0]} />
-            <Bar dataKey="lateFees" name="Late Fees" fill="hsl(var(--chart-4))" radius={[2, 2, 0, 0]} />
-            <Bar dataKey="netCashFlow" name="Net Cash Flow" fill="hsl(var(--chart-3))" radius={[2, 2, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
+        <div role="img" aria-label={`Cash flow waterfall, last 3 months: ${chartSummary}`}>
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart data={data} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+              <XAxis dataKey="month" className="text-xs" tick={{ fontSize: 11 }} />
+              <YAxis
+                className="text-xs"
+                tick={{ fontSize: 11 }}
+                tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`}
+              />
+              <Tooltip
+                formatter={((value: number, name: string) => [fmt$(value), name]) as any}
+                contentStyle={{
+                  backgroundColor: "hsl(var(--popover))",
+                  border: "1px solid hsl(var(--border))",
+                  borderRadius: "6px",
+                  fontSize: "12px",
+                }}
+              />
+              <Legend iconSize={8} wrapperStyle={{ fontSize: "11px" }} />
+              <Bar dataKey="grossDue" name="Gross due" fill="hsl(var(--chart-1))" radius={[2, 2, 0, 0]} />
+              <Bar dataKey="collected" name="Collected" fill="hsl(var(--chart-2))" radius={[2, 2, 0, 0]} />
+              <Bar dataKey="lateFees" name="Late fees" fill="hsl(var(--chart-4))" radius={[2, 2, 0, 0]} />
+              <Bar dataKey="netCashFlow" name="Net cash flow" fill="hsl(var(--chart-3))" radius={[2, 2, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
       </CardContent>
     </Card>
   );
