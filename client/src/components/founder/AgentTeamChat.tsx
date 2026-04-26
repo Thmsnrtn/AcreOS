@@ -68,10 +68,13 @@ function AgentSelector({
   ];
 
   return (
-    <div className="flex items-center gap-1 px-2 py-1.5 overflow-x-auto scrollbar-hide">
+    <div role="radiogroup" aria-label="Route to agent" className="flex items-center gap-1 px-2 py-1.5 overflow-x-auto scrollbar-hide">
       <button
+        type="button"
+        role="radio"
+        aria-checked={!selected}
         onClick={() => onSelect(null)}
-        className={`shrink-0 text-xs px-2 py-1 rounded-full transition-colors ${
+        className={`shrink-0 text-xs px-2 py-1 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
           !selected ? "bg-primary/10 text-primary font-medium" : "text-muted-foreground hover:text-foreground"
         }`}
       >
@@ -80,13 +83,17 @@ function AgentSelector({
       {agents.map(agent => (
         <button
           key={agent}
+          type="button"
+          role="radio"
+          aria-checked={agent === selected}
+          aria-label={AGENT_ROLES[agent]}
           onClick={() => onSelect(agent === selected ? null : agent)}
-          className={`shrink-0 flex items-center gap-1 text-xs px-2 py-1 rounded-full transition-colors ${
+          className={`shrink-0 flex items-center gap-1 text-xs px-2 py-1 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
             agent === selected ? "bg-primary/10 text-primary font-medium" : "text-muted-foreground hover:text-foreground"
           }`}
           title={AGENT_ROLES[agent]}
         >
-          <span className="text-sm">{AGENT_AVATARS[agent]}</span>
+          <span aria-hidden="true" className="text-sm">{AGENT_AVATARS[agent]}</span>
           <span className="hidden sm:inline">{AGENT_ROLES[agent]}</span>
         </button>
       ))}
@@ -232,7 +239,7 @@ export function AgentTeamChat() {
       >
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center py-12">
-            <span className="text-3xl mb-3">💬</span>
+            <span aria-hidden="true" className="text-3xl mb-3">💬</span>
             <p className="text-sm font-medium text-foreground">Talk to your team</p>
             <p className="text-xs text-muted-foreground mt-1 max-w-[240px]">
               Ask about revenue, support tickets, infrastructure — they'll respond with live data.
@@ -268,7 +275,7 @@ export function AgentTeamChat() {
                 animate={{ opacity: 1, y: 0 }}
                 className="flex items-start gap-2"
               >
-                <span className="text-lg mt-1 shrink-0">{AGENT_AVATARS[agent]}</span>
+                <span aria-hidden="true" className="text-lg mt-1 shrink-0">{AGENT_AVATARS[agent]}</span>
                 <div className={`max-w-[80%] border rounded-2xl rounded-bl-md px-4 py-2.5 ${bubbleClass}`}>
                   <p className="text-[10px] font-medium text-muted-foreground mb-1">
                     {AGENT_ROLES[agent]}
@@ -316,9 +323,10 @@ export function AgentTeamChat() {
             size="icon"
             className="shrink-0 rounded-xl h-10 w-10"
             disabled={!input.trim() || sendMessage.isPending}
+            aria-busy={sendMessage.isPending}
             aria-label="Send message"
           >
-            <Send className="h-4 w-4" />
+            <Send className="h-4 w-4" aria-hidden="true" />
           </Button>
         </div>
       </form>
