@@ -2,6 +2,123 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ═══════════════════════════════════════════════════════════════════
+   ACREOS PROTOTYPE-DERIVED DESIGN TOKENS (HOMESTEAD)
+   Lifted from acreos/theme.jsx + HANDOFF.md §5. Namespaced --acr-*
+   to coexist with the production HSL token system declared below.
+   See tailwind.config.ts for matching `acr` color/shadow/duration utilities.
+═══════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* Surface */
+  --acr-bg:           #FAF4E8;
+  --acr-bg-sunken:    #F1E9D6;
+  --acr-bg-raised:    #FFFBF1;
+  --acr-surface:      #FFFBF1;
+  --acr-surface-2:    #F3EAD4;
+  --acr-sidebar-bg:   #F1E7D0;
+  --acr-sidebar-ink:  #2B1B0A;
+
+  /* Foreground (text) */
+  --acr-ink:    #241607;
+  --acr-ink-2:  #5A4424;
+  --acr-ink-3:  #8F7A52;
+  --acr-ink-4:  #BAAA85;
+
+  /* Lines / borders */
+  --acr-line:       rgba(80, 40, 15, 0.14);
+  --acr-line-soft:  rgba(80, 40, 15, 0.07);
+
+  /* Brand */
+  --acr-brand:      #C2531C;
+  --acr-brand-ink:  #FFFBF1;
+  --acr-brand-soft: rgba(194, 83, 28, 0.14);
+
+  /* Semantic accents */
+  --acr-accent:    #4C7B80;
+  --acr-pos:       #3B7C2E;
+  --acr-pos-soft:  rgba(59, 124, 46, 0.14);
+  --acr-warn:      #C48A1E;
+  --acr-warn-soft: rgba(196, 138, 30, 0.14);
+  --acr-neg:       #B33419;
+  --acr-neg-soft:  rgba(179, 52, 25, 0.14);
+
+  /* Effects */
+  --acr-glow:     rgba(194, 83, 28, 0.35);
+  --acr-shadow-1: 0 1px 2px rgba(60, 30, 8, 0.06);
+  --acr-shadow-2: 0 1px 2px rgba(60, 30, 8, 0.06), 0 8px 22px -6px rgba(60, 30, 8, 0.16);
+  --acr-shadow-3: 0 2px 4px rgba(60, 30, 8, 0.08), 0 22px 50px -12px rgba(60, 30, 8, 0.22);
+  --acr-ring:     0 0 0 3px rgba(194, 83, 28, 0.28);
+
+  /* Charts */
+  --acr-chart-a: #C2531C;
+  --acr-chart-b: #4C7B80;
+  --acr-chart-c: #C48A1E;
+  --acr-chart-d: #3B7C2E;
+
+  /* Motion (HANDOFF.md §5) */
+  --acr-dur-fast:      120ms;
+  --acr-dur-normal:    240ms;
+  --acr-dur-slow:      320ms;
+  --acr-ease-spring:   cubic-bezier(.22, 1, .36, 1);
+  --acr-ease-standard: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+
+  /* Z-index */
+  --acr-z-sidebar: 10;
+  --acr-z-topbar:  20;
+  --acr-z-drawer:  30;
+  --acr-z-modal:   9100;
+  --acr-z-toast:   9999;
+}
+
+.dark {
+  /* Surface */
+  --acr-bg:           #1A120A;
+  --acr-bg-sunken:    #120B05;
+  --acr-bg-raised:    #241811;
+  --acr-surface:      #241811;
+  --acr-surface-2:    #2D2017;
+  --acr-sidebar-bg:   #130C05;
+  --acr-sidebar-ink:  #F2E0C4;
+
+  /* Foreground */
+  --acr-ink:    #F8EAD2;
+  --acr-ink-2:  #CBB896;
+  --acr-ink-3:  #8F7E62;
+  --acr-ink-4:  #5C4E3C;
+
+  /* Lines */
+  --acr-line:       rgba(255, 230, 195, 0.10);
+  --acr-line-soft:  rgba(255, 230, 195, 0.05);
+
+  /* Brand */
+  --acr-brand:      #ED8852;
+  --acr-brand-ink:  #1A0E05;
+  --acr-brand-soft: rgba(237, 136, 82, 0.16);
+
+  /* Semantic */
+  --acr-accent:    #7FB3B7;
+  --acr-pos:       #7FCA72;
+  --acr-pos-soft:  rgba(127, 202, 114, 0.16);
+  --acr-warn:      #F0BC58;
+  --acr-warn-soft: rgba(240, 188, 88, 0.16);
+  --acr-neg:       #EE8063;
+  --acr-neg-soft:  rgba(238, 128, 99, 0.16);
+
+  /* Effects */
+  --acr-glow:     rgba(237, 136, 82, 0.40);
+  --acr-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --acr-shadow-2: 0 2px 4px rgba(0, 0, 0, 0.35), 0 14px 36px -8px rgba(0, 0, 0, 0.55);
+  --acr-shadow-3: 0 4px 8px rgba(0, 0, 0, 0.4), 0 26px 60px -12px rgba(0, 0, 0, 0.7);
+  --acr-ring:     0 0 0 3px rgba(237, 136, 82, 0.35);
+
+  /* Charts */
+  --acr-chart-a: #ED8852;
+  --acr-chart-b: #7FB3B7;
+  --acr-chart-c: #F0BC58;
+  --acr-chart-d: #7FCA72;
+}
+
 :root {
   --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
   --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;

@@ -18,6 +18,20 @@ export default {
         "level-2": "var(--shadow-2)",
         "level-3": "var(--shadow-3)",
         "level-4": "var(--shadow-4)",
+        // Prototype-derived shadows (acreos/theme.jsx homestead).
+        "acr-1": "var(--acr-shadow-1)",
+        "acr-2": "var(--acr-shadow-2)",
+        "acr-3": "var(--acr-shadow-3)",
+        "acr-ring": "var(--acr-ring)",
+      },
+      transitionDuration: {
+        "acr-fast": "120ms",
+        "acr-normal": "240ms",
+        "acr-slow": "320ms",
+      },
+      transitionTimingFunction: {
+        "acr-spring": "cubic-bezier(.22, 1, .36, 1)",
+        "acr-standard": "cubic-bezier(0.25, 0.46, 0.45, 0.94)",
       },
       colors: {
         // Flat / base colors (regular buttons)
@@ -89,6 +103,39 @@ export default {
           away: "rgb(245 158 11)",
           busy: "rgb(239 68 68)",
           offline: "rgb(156 163 175)",
+        },
+        // Prototype-derived semantic tokens (acreos/theme.jsx homestead).
+        // Literal hex/rgba — alpha modifiers (e.g. `bg-acr-brand/50`) are not
+        // alpha-aware; use `*-soft` variants for tinted variants.
+        acr: {
+          bg:           "var(--acr-bg)",
+          "bg-sunken":  "var(--acr-bg-sunken)",
+          "bg-raised":  "var(--acr-bg-raised)",
+          surface:      "var(--acr-surface)",
+          "surface-2":  "var(--acr-surface-2)",
+          "sidebar-bg": "var(--acr-sidebar-bg)",
+          "sidebar-ink": "var(--acr-sidebar-ink)",
+          ink:    "var(--acr-ink)",
+          "ink-2": "var(--acr-ink-2)",
+          "ink-3": "var(--acr-ink-3)",
+          "ink-4": "var(--acr-ink-4)",
+          line:        "var(--acr-line)",
+          "line-soft": "var(--acr-line-soft)",
+          brand:        "var(--acr-brand)",
+          "brand-ink":  "var(--acr-brand-ink)",
+          "brand-soft": "var(--acr-brand-soft)",
+          accent: "var(--acr-accent)",
+          pos:        "var(--acr-pos)",
+          "pos-soft": "var(--acr-pos-soft)",
+          warn:       "var(--acr-warn)",
+          "warn-soft": "var(--acr-warn-soft)",
+          neg:       "var(--acr-neg)",
+          "neg-soft": "var(--acr-neg-soft)",
+          glow: "var(--acr-glow)",
+          "chart-a": "var(--acr-chart-a)",
+          "chart-b": "var(--acr-chart-b)",
+          "chart-c": "var(--acr-chart-c)",
+          "chart-d": "var(--acr-chart-d)",
         },
       },
       fontFamily: {
