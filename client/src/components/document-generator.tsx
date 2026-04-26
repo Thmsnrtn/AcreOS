@@ -67,7 +67,7 @@ const documentTypes: {
 }[] = [
   {
     value: "promissory-note",
-    label: "Promissory Note",
+    label: "Promissory note",
     category: "legal",
     icon: ScrollText,
     description: "Generate a promissory note for seller financing",
@@ -75,7 +75,7 @@ const documentTypes: {
   },
   {
     value: "warranty-deed",
-    label: "Warranty Deed",
+    label: "Warranty deed",
     category: "closing",
     icon: FileSignature,
     description: "Generate a warranty deed for property transfer",
@@ -83,7 +83,7 @@ const documentTypes: {
   },
   {
     value: "settlement-statement",
-    label: "Settlement Statement (HUD-1)",
+    label: "Settlement statement (HUD-1)",
     category: "closing",
     icon: Receipt,
     description: "Generate a closing settlement statement",
@@ -91,7 +91,7 @@ const documentTypes: {
   },
   {
     value: "offer-letter",
-    label: "Offer Letter",
+    label: "Offer letter",
     category: "marketing",
     icon: Mail,
     description: "Generate an offer letter for a property",
@@ -100,7 +100,7 @@ const documentTypes: {
   },
   {
     value: "property-flyer",
-    label: "Property Flyer",
+    label: "Property flyer",
     category: "marketing",
     icon: ImageIcon,
     description: "Generate a marketing flyer for a property",
@@ -216,15 +216,15 @@ export function DocumentGenerator({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         {trigger || (
-          <Button variant="outline" data-testid="button-open-document-generator">
-            <FileText className="w-4 h-4 mr-2" />
-            Generate Document
+          <Button type="button" variant="outline" data-testid="button-open-document-generator" aria-label="Open document generator">
+            <FileText className="w-4 h-4 mr-2" aria-hidden="true" />
+            Generate document
           </Button>
         )}
       </DialogTrigger>
       <DialogContent className="sm:max-w-[600px] max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Document Generator</DialogTitle>
+          <DialogTitle>Document generator</DialogTitle>
           <DialogDescription>
             Generate legal, closing, and marketing documents
           </DialogDescription>
@@ -233,71 +233,74 @@ export function DocumentGenerator({
         <Tabs defaultValue="select" className="w-full">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="select" data-testid="tab-select-document">
-              Select Document
+              Select document
             </TabsTrigger>
             <TabsTrigger
               value="form"
               disabled={!selectedType}
               data-testid="tab-document-form"
             >
-              Fill Details
+              Fill details
             </TabsTrigger>
           </TabsList>
 
           <TabsContent value="select" className="space-y-4 mt-4">
-            <div className="space-y-3">
-              <h4 className="text-sm font-medium text-muted-foreground">
-                Legal Documents
+            <section aria-labelledby="doc-cat-legal-heading" className="space-y-3">
+              <h4 id="doc-cat-legal-heading" className="text-sm font-medium text-muted-foreground m-0">
+                Legal documents
               </h4>
-              <div className="grid gap-2">
+              <ul aria-labelledby="doc-cat-legal-heading" className="grid gap-2 list-none p-0 m-0">
                 {documentTypes
                   .filter((d) => d.category === "legal")
                   .map((docType) => (
-                    <DocumentTypeCard
-                      key={docType.value}
-                      docType={docType}
-                      selected={selectedType === docType.value}
-                      onSelect={() => setSelectedType(docType.value)}
-                    />
+                    <li key={docType.value} className="list-none">
+                      <DocumentTypeCard
+                        docType={docType}
+                        selected={selectedType === docType.value}
+                        onSelect={() => setSelectedType(docType.value)}
+                      />
+                    </li>
                   ))}
-              </div>
-            </div>
+              </ul>
+            </section>
 
-            <div className="space-y-3">
-              <h4 className="text-sm font-medium text-muted-foreground">
-                Closing Documents
+            <section aria-labelledby="doc-cat-closing-heading" className="space-y-3">
+              <h4 id="doc-cat-closing-heading" className="text-sm font-medium text-muted-foreground m-0">
+                Closing documents
               </h4>
-              <div className="grid gap-2">
+              <ul aria-labelledby="doc-cat-closing-heading" className="grid gap-2 list-none p-0 m-0">
                 {documentTypes
                   .filter((d) => d.category === "closing")
                   .map((docType) => (
-                    <DocumentTypeCard
-                      key={docType.value}
-                      docType={docType}
-                      selected={selectedType === docType.value}
-                      onSelect={() => setSelectedType(docType.value)}
-                    />
+                    <li key={docType.value} className="list-none">
+                      <DocumentTypeCard
+                        docType={docType}
+                        selected={selectedType === docType.value}
+                        onSelect={() => setSelectedType(docType.value)}
+                      />
+                    </li>
                   ))}
-              </div>
-            </div>
+              </ul>
+            </section>
 
-            <div className="space-y-3">
-              <h4 className="text-sm font-medium text-muted-foreground">
-                Marketing Materials
+            <section aria-labelledby="doc-cat-marketing-heading" className="space-y-3">
+              <h4 id="doc-cat-marketing-heading" className="text-sm font-medium text-muted-foreground m-0">
+                Marketing materials
               </h4>
-              <div className="grid gap-2">
+              <ul aria-labelledby="doc-cat-marketing-heading" className="grid gap-2 list-none p-0 m-0">
                 {documentTypes
                   .filter((d) => d.category === "marketing")
                   .map((docType) => (
-                    <DocumentTypeCard
-                      key={docType.value}
-                      docType={docType}
-                      selected={selectedType === docType.value}
-                      onSelect={() => setSelectedType(docType.value)}
-                    />
+                    <li key={docType.value} className="list-none">
+                      <DocumentTypeCard
+                        docType={docType}
+                        selected={selectedType === docType.value}
+                        onSelect={() => setSelectedType(docType.value)}
+                      />
+                    </li>
                   ))}
-              </div>
-            </div>
+              </ul>
+            </section>
           </TabsContent>
 
           <TabsContent value="form" className="mt-4">
@@ -361,30 +364,42 @@ function DocumentTypeCard({
   const Icon = docType.icon;
   return (
     <Card
-      className={`cursor-pointer transition-colors ${
+      role="button"
+      tabIndex={0}
+      aria-pressed={selected}
+      aria-label={`${docType.label}: ${docType.description}${selected ? " (selected)" : ""}`}
+      onClick={onSelect}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelect();
+        }
+      }}
+      className={`cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
         selected
           ? "border-primary bg-primary/5"
           : "hover-elevate"
       }`}
-      onClick={onSelect}
       data-testid={`card-document-type-${docType.value}`}
     >
       <CardContent className="flex items-center gap-3 p-4">
         <div
+          aria-hidden="true"
           className={`p-2 rounded-md ${
             selected ? "bg-primary/10" : "bg-muted"
           }`}
         >
           <Icon
+            aria-hidden="true"
             className={`w-5 h-5 ${selected ? "text-primary" : "text-muted-foreground"}`}
           />
         </div>
         <div className="flex-1">
-          <p className="font-medium">{docType.label}</p>
-          <p className="text-sm text-muted-foreground">{docType.description}</p>
+          <p className="font-medium m-0" aria-hidden="true">{docType.label}</p>
+          <p className="text-sm text-muted-foreground m-0" aria-hidden="true">{docType.description}</p>
         </div>
         {selected && (
-          <div className="w-2 h-2 rounded-full bg-primary" />
+          <div aria-hidden="true" className="w-2 h-2 rounded-full bg-primary" />
         )}
       </CardContent>
     </Card>
@@ -439,13 +454,13 @@ function PromissoryNoteForm({
           )}
         />
 
-        <Button type="submit" disabled={isGenerating} className="w-full" data-testid="button-generate-promissory-note">
+        <Button type="submit" disabled={isGenerating} aria-busy={isGenerating} aria-label={isGenerating ? "Generating promissory note" : "Generate promissory note"} className="w-full" data-testid="button-generate-promissory-note">
           {isGenerating ? (
-            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
           ) : (
-            <Download className="w-4 h-4 mr-2" />
+            <Download className="w-4 h-4 mr-2" aria-hidden="true" />
           )}
-          Generate Promissory Note
+          Generate promissory note
         </Button>
       </form>
     </Form>
@@ -509,13 +524,13 @@ function WarrantyDeedForm({
           )}
         />
 
-        <Button type="submit" disabled={isGenerating} className="w-full" data-testid="button-generate-warranty-deed">
+        <Button type="submit" disabled={isGenerating} aria-busy={isGenerating} aria-label={isGenerating ? "Generating warranty deed" : "Generate warranty deed"} className="w-full" data-testid="button-generate-warranty-deed">
           {isGenerating ? (
-            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
           ) : (
-            <Download className="w-4 h-4 mr-2" />
+            <Download className="w-4 h-4 mr-2" aria-hidden="true" />
           )}
-          Generate Warranty Deed
+          Generate warranty deed
         </Button>
       </form>
     </Form>
@@ -594,7 +609,7 @@ function SettlementStatementForm({
             name="purchasePrice"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Purchase Price</FormLabel>
+                <FormLabel>Purchase price</FormLabel>
                 <FormControl>
                   <Input
                     type="number"
@@ -615,7 +630,7 @@ function SettlementStatementForm({
             name="closingDate"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Closing Date</FormLabel>
+                <FormLabel>Closing date</FormLabel>
                 <FormControl>
                   <Input type="date" {...field} data-testid="input-settlement-closing-date" />
                 </FormControl>
@@ -631,7 +646,7 @@ function SettlementStatementForm({
             name="buyerName"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Buyer Name</FormLabel>
+                <FormLabel>Buyer name</FormLabel>
                 <FormControl>
                   <Input placeholder="Buyer name" autoCapitalize="words" {...field} data-testid="input-settlement-buyer-name" />
                 </FormControl>
@@ -645,7 +660,7 @@ function SettlementStatementForm({
             name="sellerName"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Seller Name</FormLabel>
+                <FormLabel>Seller name</FormLabel>
                 <FormControl>
                   <Input placeholder="Seller name" autoCapitalize="words" {...field} data-testid="input-settlement-seller-name" />
                 </FormControl>
@@ -661,7 +676,7 @@ function SettlementStatementForm({
             name="earnestMoney"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Earnest Money</FormLabel>
+                <FormLabel>Earnest money</FormLabel>
                 <FormControl>
                   <Input
                     type="number"
@@ -682,7 +697,7 @@ function SettlementStatementForm({
             name="titleInsurance"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Title Insurance</FormLabel>
+                <FormLabel>Title insurance</FormLabel>
                 <FormControl>
                   <Input
                     type="number"
@@ -705,7 +720,7 @@ function SettlementStatementForm({
             name="recordingFees"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Recording Fees</FormLabel>
+                <FormLabel>Recording fees</FormLabel>
                 <FormControl>
                   <Input
                     type="number"
@@ -726,7 +741,7 @@ function SettlementStatementForm({
             name="escrowFees"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Escrow Fees</FormLabel>
+                <FormLabel>Escrow fees</FormLabel>
                 <FormControl>
                   <Input
                     type="number"
@@ -747,7 +762,7 @@ function SettlementStatementForm({
             name="transferTax"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Transfer Tax</FormLabel>
+                <FormLabel>Transfer tax</FormLabel>
                 <FormControl>
                   <Input
                     type="number"
@@ -764,13 +779,13 @@ function SettlementStatementForm({
           />
         </div>
 
-        <Button type="submit" disabled={isGenerating} className="w-full" data-testid="button-generate-settlement-statement">
+        <Button type="submit" disabled={isGenerating} aria-busy={isGenerating} aria-label={isGenerating ? "Generating settlement statement" : "Generate settlement statement"} className="w-full" data-testid="button-generate-settlement-statement">
           {isGenerating ? (
-            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
           ) : (
-            <Download className="w-4 h-4 mr-2" />
+            <Download className="w-4 h-4 mr-2" aria-hidden="true" />
           )}
-          Generate Settlement Statement
+          Generate settlement statement
         </Button>
       </form>
     </Form>
@@ -848,7 +863,7 @@ function OfferLetterForm({
           name="leadId"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Lead (Seller)</FormLabel>
+              <FormLabel>Lead (seller)</FormLabel>
               <Select
                 value={field.value ? String(field.value) : ""}
                 onValueChange={(val) => field.onChange(Number(val))}
@@ -877,7 +892,7 @@ function OfferLetterForm({
             name="offerAmount"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Offer Amount</FormLabel>
+                <FormLabel>Offer amount</FormLabel>
                 <FormControl>
                   <Input
                     type="number"
@@ -898,7 +913,7 @@ function OfferLetterForm({
             name="earnestMoney"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Earnest Money</FormLabel>
+                <FormLabel>Earnest money</FormLabel>
                 <FormControl>
                   <Input
                     type="number"
@@ -920,7 +935,7 @@ function OfferLetterForm({
           name="closingDate"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Target Closing Date</FormLabel>
+              <FormLabel>Target closing date</FormLabel>
               <FormControl>
                 <Input type="date" {...field} data-testid="input-offer-closing-date" />
               </FormControl>
@@ -947,13 +962,13 @@ function OfferLetterForm({
           )}
         />
 
-        <Button type="submit" disabled={isGenerating} className="w-full" data-testid="button-generate-offer-letter">
+        <Button type="submit" disabled={isGenerating} aria-busy={isGenerating} aria-label={isGenerating ? "Generating offer letter" : "Generate offer letter"} className="w-full" data-testid="button-generate-offer-letter">
           {isGenerating ? (
-            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
           ) : (
-            <Download className="w-4 h-4 mr-2" />
+            <Download className="w-4 h-4 mr-2" aria-hidden="true" />
           )}
-          Generate Offer Letter
+          Generate offer letter
         </Button>
       </form>
     </Form>
@@ -1064,7 +1079,7 @@ function PropertyFlyerForm({
             name="priceLabel"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Price Label</FormLabel>
+                <FormLabel>Price label</FormLabel>
                 <FormControl>
                   <Input placeholder="Asking Price" {...field} data-testid="input-flyer-price-label" />
                 </FormControl>
@@ -1079,7 +1094,7 @@ function PropertyFlyerForm({
           name="contactName"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Contact Name</FormLabel>
+              <FormLabel>Contact name</FormLabel>
               <FormControl>
                 <Input placeholder="Your name or company" autoComplete="name" autoCapitalize="words" {...field} data-testid="input-flyer-contact-name" />
               </FormControl>
@@ -1094,7 +1109,7 @@ function PropertyFlyerForm({
             name="contactPhone"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Contact Phone</FormLabel>
+                <FormLabel>Contact phone</FormLabel>
                 <FormControl>
                   <Input placeholder="(555) 123-4567" type="tel" inputMode="tel" autoComplete="tel" {...field} data-testid="input-flyer-contact-phone" />
                 </FormControl>
@@ -1108,7 +1123,7 @@ function PropertyFlyerForm({
             name="contactEmail"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Contact Email</FormLabel>
+                <FormLabel>Contact email</FormLabel>
                 <FormControl>
                   <Input placeholder="email@example.com" type="email" inputMode="email" autoCapitalize="off" autoCorrect="off" spellCheck={false} autoComplete="email" {...field} data-testid="input-flyer-contact-email" />
                 </FormControl>
@@ -1118,13 +1133,13 @@ function PropertyFlyerForm({
           />
         </div>
 
-        <Button type="submit" disabled={isGenerating} className="w-full" data-testid="button-generate-property-flyer">
+        <Button type="submit" disabled={isGenerating} aria-busy={isGenerating} aria-label={isGenerating ? "Generating property flyer" : "Generate property flyer"} className="w-full" data-testid="button-generate-property-flyer">
           {isGenerating ? (
-            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
           ) : (
-            <Download className="w-4 h-4 mr-2" />
+            <Download className="w-4 h-4 mr-2" aria-hidden="true" />
           )}
-          Generate Property Flyer
+          Generate property flyer
         </Button>
       </form>
     </Form>
