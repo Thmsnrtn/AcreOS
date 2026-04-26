@@ -85,11 +85,15 @@ export function CoveragePage({
           </div>
           <h1
             style={{
-              font: "400 36px/1.1 var(--font-display, var(--font-sans))",
+              fontFamily: "Fraunces, 'Times New Roman', serif",
+              fontWeight: 400,
+              fontSize: "36px",
+              lineHeight: 1.1,
               fontStyle: "italic",
               letterSpacing: "-0.025em",
               color: "var(--acr-ink)",
               textWrap: "balance",
+              margin: 0,
             }}
             data-testid={`${testId}-title`}
           >
@@ -161,7 +165,7 @@ export function NotFoundPage() {
       }
       primaryAction={{ href: "/today", label: "Back to AcreOS", icon: Home }}
       secondaryAction={{ href: "/help", label: "Get help", icon: LifeBuoy }}
-      pageTitle="Page not found · AcreOS"
+      pageTitle="Page not found"
       testId="page-not-found"
     />
   );
@@ -194,7 +198,7 @@ export function ServerErrorPage({
           ? { href: "/today", label: "Back to AcreOS", icon: Home }
           : { href: "/help", label: "Get help", icon: LifeBuoy }
       }
-      pageTitle="Server error · AcreOS"
+      pageTitle="Server error"
       testId="page-server-error"
     />
   );
@@ -215,7 +219,7 @@ export function ForbiddenPage() {
       }
       primaryAction={{ href: "/today", label: "Back to AcreOS", icon: Home }}
       secondaryAction={{ href: "/help", label: "Get help", icon: LifeBuoy }}
-      pageTitle="Access denied · AcreOS"
+      pageTitle="Access denied"
       testId="page-forbidden"
     />
   );
@@ -239,7 +243,7 @@ export function MaintenancePage() {
         icon: RefreshCw,
         onClick: () => window.location.reload(),
       }}
-      pageTitle="Maintenance · AcreOS"
+      pageTitle="Maintenance"
       testId="page-maintenance"
     />
   );
