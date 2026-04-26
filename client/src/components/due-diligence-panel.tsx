@@ -124,8 +124,8 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
         setDossierId(result.dossierId);
         setShouldPollDossier(true);
         toast({
-          title: "AI Dossier Requested",
-          description: "Generating comprehensive due diligence report...",
+          title: "AI dossier requested",
+          description: "Generating comprehensive due diligence report…",
         });
       }
     } catch (error: any) {
@@ -140,7 +140,7 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
   const getRecommendationBadge = (recommendation: string | null | undefined) => {
     if (!recommendation) return null;
     const variants: Record<string, { variant: "default" | "destructive" | "secondary" | "outline"; label: string }> = {
-      strong_buy: { variant: "default", label: "Strong Buy" },
+      strong_buy: { variant: "default", label: "Strong buy" },
       buy: { variant: "default", label: "Buy" },
       hold: { variant: "secondary", label: "Hold" },
       pass: { variant: "outline", label: "Pass" },
@@ -153,8 +153,9 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
   if (isLoading) {
     return (
       <Card data-testid="due-diligence-panel">
-        <CardContent className="py-8 flex justify-center">
-          <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+        <CardContent className="py-8 flex justify-center" role="status" aria-busy="true" aria-label="Loading due-diligence checklist">
+          <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" aria-hidden="true" />
+          <span className="sr-only">Loading…</span>
         </CardContent>
       </Card>
     );
@@ -310,15 +311,18 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <CardTitle className="flex items-center gap-2 text-lg">
             Checklist
-            <Badge variant="outline" data-testid="text-progress-percent">
-              {checklist.completedPercent}% Complete
+            <Badge variant="outline" data-testid="text-progress-percent" aria-label={`Checklist ${checklist.completedPercent}% complete`}>
+              <span className="tabular-nums">{checklist.completedPercent}</span>% complete
             </Badge>
           </CardTitle>
           <Button
+            type="button"
             variant="outline"
             size="sm"
             onClick={runAllLookups}
             disabled={runningAll || isLookingUpFlood || isLookingUpWetlands || isLookingUpTax || isLookingUpSoil || isLookingUpEnvironmental}
+            aria-busy={runningAll}
+            aria-label={runningAll ? "Running all lookups" : "Run all due-diligence lookups"}
             data-testid="button-run-all-lookups"
           >
             {runningAll ? (
@@ -326,17 +330,25 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
             ) : (
               <PlayCircle className="w-4 h-4 mr-2" aria-hidden="true" />
             )}
-            Run All Lookups
+            Run all lookups
           </Button>
         </div>
-        <Progress value={checklist.completedPercent || 0} className="h-2 mt-2" data-testid="progress-checklist" />
+        <Progress
+          value={checklist.completedPercent || 0}
+          className="h-2 mt-2"
+          data-testid="progress-checklist"
+          aria-label="Checklist completion"
+          aria-valuenow={checklist.completedPercent || 0}
+          aria-valuemin={0}
+          aria-valuemax={100}
+        />
       </CardHeader>
       <CardContent className="space-y-6">
         <Card className="border-2 border-dashed" data-testid="ai-dossier-section">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-base">
               <Brain className="w-5 h-5 text-primary" aria-hidden="true" />
-              AI Dossier
+              AI dossier
             </CardTitle>
             <CardDescription>
               AI-powered comprehensive due diligence report that analyzes title, tax, environmental, zoning, access, market comps, and owner research.
@@ -345,8 +357,11 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
           <CardContent>
             {!dossierId && !dossier && (
               <Button
+                type="button"
                 onClick={handleGenerateDossier}
                 disabled={isRequestingDossier}
+                aria-busy={isRequestingDossier}
+                aria-label={isRequestingDossier ? "Requesting AI dossier" : "Generate AI dossier"}
                 className="w-full"
                 data-testid="button-generate-dossier"
               >
@@ -358,7 +373,7 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
                 ) : (
                   <>
                     <Brain className="w-4 h-4 mr-2" aria-hidden="true" />
-                    Generate AI Dossier
+                    Generate AI dossier
                   </>
                 )}
               </Button>
@@ -397,11 +412,13 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
               <div className="text-center py-4" data-testid="dossier-error" role="alert">
                 <AlertTriangle className="w-8 h-8 text-destructive mx-auto mb-2" aria-hidden="true" />
                 <p className="text-sm text-destructive">Failed to load dossier</p>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
                   onClick={handleGenerateDossier}
                   className="mt-2"
+                  aria-label="Retry loading dossier"
                   data-testid="button-retry-dossier"
                 >
                   Retry
@@ -413,14 +430,16 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
               <div className="text-center py-4" data-testid="dossier-failed" role="alert">
                 <XCircle className="w-8 h-8 text-destructive mx-auto mb-2" aria-hidden="true" />
                 <p className="text-sm text-destructive">Dossier generation failed</p>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
                   onClick={() => { setDossierId(null); handleGenerateDossier(); }}
                   className="mt-2"
+                  aria-label="Try again to generate AI dossier"
                   data-testid="button-regenerate-dossier"
                 >
-                  Try Again
+                  Try again
                 </Button>
               </div>
             )}
@@ -433,54 +452,74 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
                     {getRecommendationBadge(dossier.recommendation)}
                   </div>
                   <div className="flex items-center gap-4 text-sm">
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1" aria-label={`Investability ${dossier.investabilityScore}%`}>
                       <ShieldCheck className="w-4 h-4 text-green-600" aria-hidden="true" />
-                      <span>Investability: {dossier.investabilityScore}%</span>
+                      <span aria-hidden="true">Investability: <span className="tabular-nums">{dossier.investabilityScore}</span>%</span>
                     </div>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1" aria-label={`Risk ${dossier.riskScore}%`}>
                       <ShieldAlert className="w-4 h-4 text-yellow-600" aria-hidden="true" />
-                      <span>Risk: {dossier.riskScore}%</span>
+                      <span aria-hidden="true">Risk: <span className="tabular-nums">{dossier.riskScore}</span>%</span>
                     </div>
                   </div>
                 </div>
                 
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <span className="text-xs text-muted-foreground">Investability</span>
-                    <Progress value={dossier.investabilityScore || 0} className="h-2" data-testid="progress-investability" />
+                    <span id="dossier-investability-label" className="text-xs text-muted-foreground">Investability</span>
+                    <Progress
+                      value={dossier.investabilityScore || 0}
+                      className="h-2"
+                      data-testid="progress-investability"
+                      aria-labelledby="dossier-investability-label"
+                      aria-valuenow={dossier.investabilityScore || 0}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                    />
                   </div>
                   <div>
-                    <span className="text-xs text-muted-foreground">Risk Level</span>
-                    <Progress value={dossier.riskScore || 0} className="h-2" data-testid="progress-risk" />
+                    <span id="dossier-risk-label" className="text-xs text-muted-foreground">Risk level</span>
+                    <Progress
+                      value={dossier.riskScore || 0}
+                      className="h-2"
+                      data-testid="progress-risk"
+                      aria-labelledby="dossier-risk-label"
+                      aria-valuenow={dossier.riskScore || 0}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                    />
                   </div>
                 </div>
 
                 {(dossier.greenFlags && dossier.greenFlags.length > 0) && (
-                  <div className="space-y-1">
-                    <span className="text-xs font-medium text-green-600">Green Flags:</span>
-                    <div className="flex flex-wrap gap-1">
+                  <section aria-labelledby="dossier-green-flags-label" className="space-y-1">
+                    <span id="dossier-green-flags-label" className="text-xs font-medium text-green-600">Green flags:</span>
+                    <ul aria-labelledby="dossier-green-flags-label" className="flex flex-wrap gap-1 list-none p-0 m-0">
                       {(dossier.greenFlags as string[]).map((flag, i) => (
-                        <Badge key={i} variant="outline" className="text-xs text-green-600 border-green-200">
-                          <CheckCircle className="w-3 h-3 mr-1" aria-hidden="true" />
-                          {flag}
-                        </Badge>
+                        <li key={i}>
+                          <Badge variant="outline" className="text-xs text-green-600 border-green-200">
+                            <CheckCircle className="w-3 h-3 mr-1" aria-hidden="true" />
+                            {flag}
+                          </Badge>
+                        </li>
                       ))}
-                    </div>
-                  </div>
+                    </ul>
+                  </section>
                 )}
 
                 {(dossier.redFlags && dossier.redFlags.length > 0) && (
-                  <div className="space-y-1">
-                    <span className="text-xs font-medium text-red-600">Red Flags:</span>
-                    <div className="flex flex-wrap gap-1">
+                  <section aria-labelledby="dossier-red-flags-label" className="space-y-1">
+                    <span id="dossier-red-flags-label" className="text-xs font-medium text-red-600">Red flags:</span>
+                    <ul aria-labelledby="dossier-red-flags-label" className="flex flex-wrap gap-1 list-none p-0 m-0">
                       {(dossier.redFlags as string[]).map((flag, i) => (
-                        <Badge key={i} variant="outline" className="text-xs text-red-600 border-red-200">
-                          <AlertTriangle className="w-3 h-3 mr-1" aria-hidden="true" />
-                          {flag}
-                        </Badge>
+                        <li key={i}>
+                          <Badge variant="outline" className="text-xs text-red-600 border-red-200">
+                            <AlertTriangle className="w-3 h-3 mr-1" aria-hidden="true" />
+                            {flag}
+                          </Badge>
+                        </li>
                       ))}
-                    </div>
-                  </div>
+                    </ul>
+                  </section>
                 )}
 
                 <Separator />
@@ -491,9 +530,9 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
                       <AccordionTrigger className="hover:no-underline">
                         <div className="flex items-center gap-2">
                           <FileSearch className="w-4 h-4" aria-hidden="true" />
-                          <span>Title Search</span>
+                          <span>Title search</span>
                           <Badge variant={dossier.findings.titleStatus.clear ? "default" : "destructive"} className="text-xs">
-                            {dossier.findings.titleStatus.clear ? "Clear" : "Issues Found"}
+                            {dossier.findings.titleStatus.clear ? "Clear" : "Issues found"}
                           </Badge>
                         </div>
                       </AccordionTrigger>
@@ -532,7 +571,7 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
                       <AccordionTrigger className="hover:no-underline">
                         <div className="flex items-center gap-2">
                           <DollarSign className="w-4 h-4" aria-hidden="true" />
-                          <span>Tax Analysis</span>
+                          <span>Tax analysis</span>
                           <Badge variant={dossier.findings.taxStatus.current ? "default" : "destructive"} className="text-xs">
                             {dossier.findings.taxStatus.current ? "Current" : "Delinquent"}
                           </Badge>
@@ -644,7 +683,7 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
                           <Route className="w-4 h-4" aria-hidden="true" />
                           <span>Access</span>
                           <Badge variant={dossier.findings.access.legal ? "default" : "destructive"} className="text-xs">
-                            {dossier.findings.access.legal ? "Legal Access" : "Access Issues"}
+                            {dossier.findings.access.legal ? "Legal access" : "Access issues"}
                           </Badge>
                         </div>
                       </AccordionTrigger>
@@ -674,7 +713,7 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
                       <AccordionTrigger className="hover:no-underline">
                         <div className="flex items-center gap-2">
                           <TrendingUp className="w-4 h-4" aria-hidden="true" />
-                          <span>Market Comps</span>
+                          <span>Market comps</span>
                           {dossier.findings.comps.trend && (
                             <Badge variant="outline" className="text-xs">{dossier.findings.comps.trend}</Badge>
                           )}
@@ -701,7 +740,7 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
                       <AccordionTrigger className="hover:no-underline">
                         <div className="flex items-center gap-2">
                           <Users className="w-4 h-4" aria-hidden="true" />
-                          <span>Owner Research</span>
+                          <span>Owner research</span>
                           <Badge variant="outline" className="text-xs">{dossier.findings.owner.type}</Badge>
                         </div>
                       </AccordionTrigger>
@@ -727,7 +766,7 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
 
                 {dossier.executiveSummary && (
                   <div className="mt-4 p-3 bg-muted rounded-md">
-                    <span className="text-xs font-medium">Executive Summary:</span>
+                    <span className="text-xs font-medium">Executive summary:</span>
                     <p className="text-sm text-muted-foreground mt-1">{dossier.executiveSummary}</p>
                   </div>
                 )}
