@@ -35,8 +35,8 @@ Canonical prompt: `docs/unified-build/UNIFIED-BUILD-PROMPT.md` (v3)
     - [x] Quotes (commit a333639)
     - [x] Founder note (commit 9f1b8ab)
     - [x] Pricing + FAQ + Final CTA + Footer + legacy cleanup (commit fa37629)
-    - [ ] Top nav redesign ← NEXT
-  - [ ] 2A.4 — Public onboarding (per /acreos-onboarding/)
+    - [x] Top nav redesign (commit 8e53c1b)
+  - [ ] 2A.4 — Public onboarding (per /acreos-onboarding/) ← NEXT
   - [ ] 2A.5 — Deploy + smoke test (auto-fire authorized)
 - [ ] Phase 3 — Tier 1 Pipeline Core
 - [ ] Phase 4 — Tier 2 Sourcing
@@ -49,9 +49,9 @@ Canonical prompt: `docs/unified-build/UNIFIED-BUILD-PROMPT.md` (v3)
 
 ## Current State
 
-Phase: 2A.3 — Public landing (substantively complete) → 2A.4 onboarding next
-**Status: All 11 prototype landing sections shipped. Top nav redesign + onboarding (2A.4) + deploy (2A.5) remain in Phase 2A.**
-Last commit: fa37629 (Pricing + FAQ + Final CTA + Footer + legacy cleanup)
+Phase: 2A.3 — Public landing complete (incl. nav) → 2A.4 onboarding next
+**Status: All 11 prototype landing sections + homestead nav shipped. Onboarding (2A.4) + deploy (2A.5) remain in Phase 2A.**
+Last commit: 8e53c1b (homestead nav)
 Gate A: ✅ FOUNDER_USER_IDS deployed on Fly (digest 890511d964d7abda)
 Run mode: fully autonomous through Phase 10 (operator authorized via 7d4f318)
 

@@ -9,7 +9,7 @@ The full canonical prompt lives at `docs/unified-build/UNIFIED-BUILD-PROMPT.md`.
 Phase 0–2 deployed at https://acreos.io.
 Phase 2A.1 sidebar visual: ✅ commit `1bca3f3`
 Phase 2A.2 palette + toaster: ✅ commits `7309858`, `8d6862e`
-Phase 2A.3 public landing: ✅ substantively complete
+Phase 2A.3 public landing: ✅ complete
 - Hero (commit `fcb1143`) — Fraunces serif headline, parcel-grid backdrop, 3 floating agent cards
 - HowItWorks (commit `68dcbdd`) — 3-step grid, brand-tinted numerals
 - Agents (commit `4506e79`) — tabbed UI with 3 agent panels
@@ -18,21 +18,11 @@ Phase 2A.3 public landing: ✅ substantively complete
 - Quotes (commit `a333639`) — 6 testimonials
 - FounderNote (commit `9f1b8ab`) — portrait + serif body + signature
 - Pricing + FAQ + FinalCTA + Footer + legacy cleanup (commit `fa37629`)
+- Homestead top nav (commit `8e53c1b`) — pill brand mark, 4 anchor links, Sign in + Start free trial
 
-## Next action: Phase 2A.3 follow-up — top nav redesign
+## Next action: Phase 2A.4 — Onboarding port
 
-The landing's top nav still uses production's pre-build nav (border-b, AcreosLogo, ThemeToggle, Sign-in / Get-Started buttons). The prototype's nav has anchor links (How it works · The agents · Pricing · Why we built it) plus Sign in + Start free trial.
-
-Implementation:
-1. Read `acreos-landing/acreos-landing.html` lines around 149 onward (`<nav class="lp-nav">`) for the prototype nav HTML and the inline CSS for `.lp-nav`, `.lp-nav-row`, `.lp-nav-links`, etc.
-2. Add nav styles to `client/src/pages/landing/landing.css` (or a new `LandingNav.tsx`).
-3. Update `client/src/pages/landing.tsx` — replace the existing `<nav>` block with the homestead-styled version. Keep the AcreosLogo wiring (it powers white-label brand replacement) but match the prototype's flat-pill brand mark.
-4. Anchor links: `#how`, `#agents`, `#pricing`, `#founder` (all already exist as section IDs from the rebuild).
-5. Sign-in route stays `/auth`. Start-free-trial route stays `/auth?mode=register`.
-6. Mobile <720px: drop the anchor links, keep brand + sign-in + CTA.
-7. Commit: `feat(landing): homestead nav [unified-build]`
-
-After top nav: Phase 2A.4 onboarding (per `/acreos-onboarding/`), then 2A.5 deploy + smoke (auto-fire authorized).
+After onboarding: Phase 2A.5 deploy + smoke (auto-fire authorized).
 
 ## Phase 2A.4 — Onboarding (after nav)
 
