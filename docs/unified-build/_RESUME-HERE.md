@@ -3,71 +3,78 @@
 **Run mode: fully autonomous through Phase 10.** Operator authorized auto-fire deploys, pushes, smoke tests, migrations. End the loop only at 85% context or genuinely unresolvable Gate B ambiguity (rare — default to picking the recommended option, document in `phase-X.Y-decision-<topic>.md`, continue).
 
 The full canonical prompt lives at `docs/unified-build/UNIFIED-BUILD-PROMPT.md`.
-Read that first if you don't have full context.
 
 ## Where the build stands
 
-Phase 0 prerequisites: ✅ (rollback tag `pre-unified-build` at `2b8fe93`).
-Phase 1 foundation: ✅ (tokens, globals, founder auth, flags).
-Phase 2 Tier 0 Shell: ✅ structurally — tour anchors on all sidebar nav surfaces, visible search trigger (3 surfaces), command palette + custom event opener, audit closes on toast/palette/shortcuts. Deployed and smoke-tested at https://acreos.io.
+Phase 0–2: ✅ deployed at https://acreos.io
+Phase 2A.1 (sidebar visual): ✅ commit `1bca3f3` — homestead palette + brand-pip active state landed
+Phase 2A.2 (palette + toaster): ✅ commits `7309858`, `8d6862e` — palette modal flat-surface treatment, warm-tinted backdrop, semantic toast kinds (success/warning/error tints)
 
-**Critical context: Phase 2 was structurally correct but visually under-applied.** Production looks essentially the same as it did before Phase 2 — the prototype's homestead palette, big serif display type, and brand-pip active state didn't visibly land. Root cause: misreading "preserve refinement" as preserving visual treatments. Course correction is in `UNIFIED-BUILD-PROMPT.md` under "Visual Application Mandate" and "Phase 2A".
+## Next action: Phase 2A.3 — Public landing page
 
-Operator Gate A: ✅ `FOUNDER_USER_IDS=user_3CK2u6pGH7EYHgFyMS99fwhLSM7` deployed on Fly (digest `890511d964d7abda`).
+Source: `/acreos-landing/` (prototype, with `acreos-landing.html` entry point). Production landing lives at `client/src/pages/landing.tsx`.
 
-Operator stash recovery (mishap from session 2): the user WIP that was accidentally popped is preserved as **dangling commit `bd9d6af`** (`WIP on main: 7aa9aee fix: mount health endpoints before WhiteLabel middleware`). Recover with `git stash apply bd9d6af` if/when wanted. Two unrelated stashes (`stash@{0}` Clerk redirect, `stash@{1}` health endpoints) remain in `git stash list` untouched.
+This is the most visible surface on the platform — the one operators, beta users, investors, press see first. The current production landing is essentially unchanged from pre-build state; the prototype's distinctive identity has not landed.
 
-## Next action: Phase 2A.2 — Tier 0 visual application (remaining shell)
+**Before writing any code, read:**
 
-Phase 2A.1 (sidebar visual treatment) is complete (commit `1bca3f3`). Continue with Phase 2A.2: apply prototype palette and visual treatments across the remaining Tier 0 shell.
+1. Open `/acreos-landing/` directory and read every file. Note the .jsx component structure.
+2. Open `acreos-landing.html` in a local browser tab to see the prototype rendered.
+3. Read `client/src/pages/landing.tsx` (production current state) to understand what's there and what existing integrations to preserve (Clerk sign-in flow, analytics, etc.).
+4. Note `handoff/screenshots/` for any landing-page comp screenshots if relevant.
 
-**2A.2 work:**
+**Distinctive prototype landing elements:**
+- Cream backdrop `var(--acr-bg)` with terracotta accents
+- **Large serif display headline** — "Find motivated sellers. / Send mail. Close deals. / All in one place." with the middle line in italic brand-color serif
+- "For solo investors, partners, and small teams" pill above headline (with brand-color dot)
+- Side cards animated in (Atlas, Pax, Sophie) showing live agent activity
+- "Start free trial" + "See how it works" button pair
+- "14 days free · no card · cancel anytime" microcopy
+- "In private beta with 12 land investors. $1.4M closed in 90 days." trust pill
+- Top nav: How it works · The agents · Pricing · Why we built it · Sign in · Start free trial
+- Sections: How it works · The agents · Day in the life · Features grid · Quotes · Founder note · Pricing · FAQ
 
-1. **Command palette modal styling** (`client/src/components/command-palette.tsx`).
-   Read `acreos/command-palette.jsx` lines 108-130 for `CP_CSS`. Apply:
-   - Backdrop: `color-mix(in srgb, var(--acr-bg-sunken) 60%, transparent)` + `backdrop-filter: blur(10px)`
-   - Modal: `var(--acr-surface)` bg, `0.5px solid var(--acr-line)`, `border-radius: 14px`, `box-shadow: var(--acr-shadow-3)`
-   - Width 560px (currently 640px); `max-height: 70vh`
-   - Group titles: `font: 500 10.5px/1`, uppercase, `letter-spacing: 0.08em`, `color: var(--acr-ink-4)`
-   - Active item: `var(--acr-brand-soft)` background, brand-color icon
-   - **Bottom keyboard-hint footer** (currently absent): `↑↓ navigate · ↵ open · ⌘J ask` per prototype `.cp-foot`
-   - Empty state copy: "Ask AcreOS '<query>'" with "Press ↵ to send as a question to AcreOS Intelligence" microcopy
-   - Placeholder: "Search or ask AcreOS…" (currently "Search pages, actions, or type a question…")
+**Implementation approach:**
 
-2. **Toaster kinds** (`client/src/components/ui/toaster.tsx` and/or its variant CSS).
-   Apply `var(--acr-pos)`, `var(--acr-warn)`, `var(--acr-neg)` semantic tints to success/warn/error toasts. Hover-check the toast variants exist; if shadcn's default variant only is `destructive`, extend with semantic variants in the toast component.
+Build section by section, committing each as a logical unit. Match the prototype's copy voice exactly — the prototype copy IS the canonical voice (serious, considered, founder-written, not SaaS-cute).
 
-3. **Keyboard shortcuts modal** (`client/src/components/keyboard-shortcuts.tsx`).
-   Apply prototype typography density. Match the prototype's serif headings if any are visible in `acreos/settings.jsx` Help section. Modal background uses `var(--acr-surface)`.
+Apply Per-Surface Fidelity Principle:
+- Add prototype-reference header to `client/src/pages/landing.tsx` listing what was brought across
+- Implement matching the prototype's layout grammar, hierarchy, density, voice, interaction patterns
+- Mobile responsive (extrapolate consistently — the prototype is desktop-only)
+- Side-by-side compare: open `acreos-landing.html` locally vs the production landing as you build
 
-Each component keeps its prototype-reference header; document what was changed.
+**Don't break:**
+- Clerk sign-in flow (engineering refinement preserved)
+- Existing analytics integrations
+- Any A/B tests or feature flags currently wired
+- SEO meta tags, structured data, OpenGraph
 
-Commit per logical area:
-- `feat(palette): visual treatment per prototype [unified-build]`
-- `feat(toaster): semantic kind colors per prototype [unified-build]`
-- `feat(shortcuts): visual treatment per prototype [unified-build]`
+**Suggested commit cadence:**
+- `feat(landing): hero + trust pills [unified-build]`
+- `feat(landing): how it works section [unified-build]`
+- `feat(landing): the agents section [unified-build]`
+- `feat(landing): day in the life section [unified-build]`
+- `feat(landing): features grid [unified-build]`
+- `feat(landing): quotes + founder note [unified-build]`
+- `feat(landing): pricing + FAQ + footer [unified-build]`
 
-## After 2A.2
+After 2A.3 lands, continue with 2A.4 (onboarding) then 2A.5 (deploy + smoke — auto-fire authorized).
 
-- 2A.3 — Public landing page (`client/src/pages/landing.tsx` per `/acreos-landing/` prototype). Most-visible surface.
-- 2A.4 — Public onboarding (`client/src/components/onboarding/` per `/acreos-onboarding/` prototype).
-- 2A.5 — `fly deploy -a acreos` (auto-fire authorized) + Playwright MCP smoke against acreos.io. Then continue into Phase 3.
-
-## Loop guidance (autonomous mode)
+## Loop guidance
 
 After each commit:
-- **ScheduleWakeup 270s** if more work in the same logical unit, in-cache iteration
-- **ScheduleWakeup 1200s** if waiting for a deploy to propagate or external state to settle
-- **End the loop** ONLY at 85% context (forced break) or genuinely unresolvable Gate B ambiguity
+- ScheduleWakeup 270s for in-cache iteration on the next section
+- ScheduleWakeup 1200s if waiting on a deploy or external state
+- End the loop ONLY at 85% context or unresolvable Gate B
 
-Auto-fire authorized: `fly deploy`, `git push`, smoke tests, npm install for required deps, schema migrations. Still need operator: force-push, hard-reset to non-HEAD, deleting unmerged branches, modifying Fly secrets / Clerk / Stripe accounts directly, stash pop of operator's WIP.
+When ending: write _RESUME-HERE.md with the exact next-section to implement, commit, end. Operator re-invokes /loop in fresh session and the build resumes.
 
 ## Hard reminders
 
-- `[unified-build]` tag on every commit
-- Co-Authored-By trailer on every commit
-- Don't undo engineering-quality elite-refinement work (a11y, mobile, perf, code organization)
-- DO override visual treatments that conflict with the prototype (Visual Application Mandate)
-- Run `npm run check` after server-side changes; `npm run build` before deploy
-- The 10 pre-existing test failures are baseline (DB-dependent + calendar drift + nested zod) — don't let them block, but don't add new ones either
-- Autonomous run: don't ask the operator to confirm deploys, smoke tests, pushes, or visual judgment calls — pick the recommended option and continue, document the choice for Phase 9 review
+- `[unified-build]` tag + Co-Authored-By trailer on every commit
+- Visual Application Mandate: prototype wins on visual conflicts
+- Per-Surface Fidelity Principle: read prototype before each surface, document reference in file header
+- Pre-existing 10 test failures are baseline — don't block, don't add new
+- Autonomous run: don't ask for operator confirmation on visual judgment, deploys, smoke, push — pick recommended option and continue
+- Stash recovery SHA: `bd9d6af` (only relevant if operator asks)

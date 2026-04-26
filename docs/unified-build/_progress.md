@@ -23,12 +23,12 @@ Canonical prompt: `docs/unified-build/UNIFIED-BUILD-PROMPT.md` (v3)
   - [x] 2.5 — Keyboard shortcuts audit + close (commit 2ed261a)
   - [x] Retroactive prototype-reference headers (commit 52e3c01)
   - [x] 2.6 — Deploy + Playwright MCP smoke test (commit 62b0633; live at acreos.io)
-- [ ] **Phase 2A — Visual Revisit + Public Surfaces (NEW in v3 prompt)** ← NEXT
-  - [ ] 2A.1 — Sidebar visual treatment per prototype (replace Tahoe-capsule active state with brand-pip)
-  - [ ] 2A.2 — Tier 0 visual application (palette modal styling, toaster kinds, shortcuts modal)
-  - [ ] 2A.3 — Public landing page (per /acreos-landing/)
+- [/] **Phase 2A — Visual Revisit + Public Surfaces**
+  - [x] 2A.1 — Sidebar visual treatment per prototype (commit 1bca3f3)
+  - [x] 2A.2 — Tier 0 visual application: palette + toaster (commits 7309858, 8d6862e); shortcuts modal left as-is
+  - [ ] 2A.3 — Public landing page (per /acreos-landing/) ← NEXT
   - [ ] 2A.4 — Public onboarding (per /acreos-onboarding/)
-  - [ ] 2A.5 — Deploy + smoke test
+  - [ ] 2A.5 — Deploy + smoke test (auto-fire authorized)
 - [ ] Phase 3 — Tier 1 Pipeline Core
 - [ ] Phase 4 — Tier 2 Sourcing
 - [ ] Phase 5 — Tier 3 Closing
@@ -40,10 +40,11 @@ Canonical prompt: `docs/unified-build/UNIFIED-BUILD-PROMPT.md` (v3)
 
 ## Current State
 
-Phase: 2A — Visual Revisit + Public Surfaces (next)
-**Status: Phase 2 deployed. Visual application revisit + landing + onboarding pending.**
-Last commit: 62b0633 (Phase 2.6 deploy + smoke)
+Phase: 2A.3 — Public landing page (next)
+**Status: Phase 2A.1 (sidebar) and 2A.2 (palette + toaster) landed. Landing page next — large surface, deserves a fresh session context budget.**
+Last commit: 8d6862e (toaster semantic kinds)
 Gate A: ✅ FOUNDER_USER_IDS deployed on Fly (digest 890511d964d7abda)
+Run mode: fully autonomous through Phase 10 (operator authorized via 7d4f318)
 
 ## v2 → v3 course correction
 
