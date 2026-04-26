@@ -57,21 +57,21 @@ export function TimelineView({ deals = [], milestones: externalMilestones = [], 
         items.push({
           id: `deal-created-${deal.id}`,
           date: new Date(deal.createdAt),
-          title: `Deal Created: ${dealAny.name || `Deal #${deal.id}`}`,
+          title: `Deal created: ${dealAny.name || `Deal #${deal.id}`}`,
           type: "deal",
           status: "completed",
           entityId: deal.id,
           entityType: "deal",
         });
       }
-      
+
       if (dealAny.expectedCloseDate) {
         const closeDate = new Date(dealAny.expectedCloseDate);
         const isOverdue = closeDate < today && deal.status !== "closed";
         items.push({
           id: `deal-close-${deal.id}`,
           date: closeDate,
-          title: `Expected Close: ${dealAny.name || `Deal #${deal.id}`}`,
+          title: `Expected close: ${dealAny.name || `Deal #${deal.id}`}`,
           type: "deadline",
           status: deal.status === "closed" ? "completed" : isOverdue ? "overdue" : "pending",
           entityId: deal.id,
@@ -115,26 +115,26 @@ export function TimelineView({ deals = [], milestones: externalMilestones = [], 
   const getStatusIcon = (status: string) => {
     switch (status) {
       case "completed":
-        return <CheckCircle2 className="w-3 h-3" />;
+        return <CheckCircle2 className="w-3 h-3" aria-hidden="true" />;
       case "in_progress":
-        return <Clock className="w-3 h-3" />;
+        return <Clock className="w-3 h-3" aria-hidden="true" />;
       case "overdue":
-        return <AlertTriangle className="w-3 h-3" />;
+        return <AlertTriangle className="w-3 h-3" aria-hidden="true" />;
       default:
-        return <Milestone className="w-3 h-3" />;
+        return <Milestone className="w-3 h-3" aria-hidden="true" />;
     }
   };
-  
+
   const getMilestoneIcon = (type: string) => {
     switch (type) {
       case "deal":
-        return <Home className="w-4 h-4" />;
+        return <Home className="w-4 h-4" aria-hidden="true" />;
       case "deadline":
-        return <Flag className="w-4 h-4" />;
+        return <Flag className="w-4 h-4" aria-hidden="true" />;
       case "task":
-        return <CheckCircle2 className="w-4 h-4" />;
+        return <CheckCircle2 className="w-4 h-4" aria-hidden="true" />;
       default:
-        return <Milestone className="w-4 h-4" />;
+        return <Milestone className="w-4 h-4" aria-hidden="true" />;
     }
   };
   
@@ -158,20 +158,23 @@ export function TimelineView({ deals = [], milestones: externalMilestones = [], 
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <CardTitle className="flex items-center gap-2">
-            <Calendar className="w-5 h-5 text-primary" />
+            <Calendar className="w-5 h-5 text-primary" aria-hidden="true" />
             Timeline
           </CardTitle>
           <div className="flex items-center gap-2">
             <Button
+              type="button"
               variant="outline"
               size="sm"
               onClick={scrollToToday}
+              aria-label="Scroll timeline to today"
               data-testid="button-timeline-today"
             >
               Today
             </Button>
             <div className="flex items-center gap-1 border rounded-md">
               <Button
+                type="button"
                 variant="ghost"
                 size="icon"
                 onClick={handleZoomIn}
@@ -179,12 +182,13 @@ export function TimelineView({ deals = [], milestones: externalMilestones = [], 
                 aria-label="Zoom in"
                 data-testid="button-timeline-zoom-in"
               >
-                <ZoomIn className="w-4 h-4" />
+                <ZoomIn className="w-4 h-4" aria-hidden="true" />
               </Button>
-              <span className="text-xs font-medium px-2 min-w-[60px] text-center">
+              <span className="text-xs font-medium px-2 min-w-[60px] text-center" aria-label={`Current zoom: ${zoom.label}`}>
                 {zoom.label}
               </span>
               <Button
+                type="button"
                 variant="ghost"
                 size="icon"
                 onClick={handleZoomOut}
@@ -192,7 +196,7 @@ export function TimelineView({ deals = [], milestones: externalMilestones = [], 
                 aria-label="Zoom out"
                 data-testid="button-timeline-zoom-out"
               >
-                <ZoomOut className="w-4 h-4" />
+                <ZoomOut className="w-4 h-4" aria-hidden="true" />
               </Button>
             </div>
           </div>
@@ -234,28 +238,28 @@ export function TimelineView({ deals = [], milestones: externalMilestones = [], 
               })}
             </div>
             
-            <div className="absolute top-0 bottom-0 w-0.5 bg-primary z-10" 
+            <div aria-hidden="true" className="absolute top-0 bottom-0 w-0.5 bg-primary z-10"
               style={{ left: `${getPositionForDate(today)}px` }}
             />
-            
-            <div className="relative pt-4 pb-8 min-h-[120px]">
+
+            <ul aria-label="Timeline milestones" className="relative pt-4 pb-8 min-h-[120px] list-none p-0 m-0">
               {visibleMilestones.map((milestone, index) => {
                 const position = getPositionForDate(milestone.date);
                 const row = index % 3;
-                
+
                 return (
-                  <div
+                  <li
                     key={milestone.id}
                     className="absolute transform -translate-x-1/2"
-                    style={{ 
+                    style={{
                       left: `${position}px`,
                       top: `${16 + row * 36}px`
                     }}
                     data-testid={`timeline-milestone-${milestone.id}`}
+                    aria-label={`${milestone.title} on ${format(milestone.date, "MMM d, yyyy")}: ${milestone.status.replace(/_/g, " ")}${milestone.description ? `. ${milestone.description}` : ""}`}
                   >
-                    <div 
-                      className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs whitespace-nowrap ${getStatusColor(milestone.status)} cursor-pointer hover:opacity-90 transition-opacity`}
-                      title={milestone.description || milestone.title}
+                    <div
+                      className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs whitespace-nowrap ${getStatusColor(milestone.status)} hover:opacity-90 transition-opacity`}
                     >
                       {getMilestoneIcon(milestone.type)}
                       <span className="max-w-[120px] truncate">
@@ -263,39 +267,49 @@ export function TimelineView({ deals = [], milestones: externalMilestones = [], 
                       </span>
                       {getStatusIcon(milestone.status)}
                     </div>
-                  </div>
+                  </li>
                 );
               })}
-            </div>
+            </ul>
           </div>
           <ScrollBar orientation="horizontal" />
         </ScrollArea>
-        
+
         {visibleMilestones.length === 0 && (
           <div className="text-center py-8 text-muted-foreground">
-            <Calendar className="w-8 h-8 mx-auto mb-2 opacity-50" />
+            <Calendar className="w-8 h-8 mx-auto mb-2 opacity-50" aria-hidden="true" />
             <p>No milestones in this time range</p>
           </div>
         )}
-        
+
         <div className="flex items-center gap-4 mt-4 pt-4 border-t flex-wrap">
-          <span className="text-xs text-muted-foreground">Legend:</span>
-          <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">
-            <CheckCircle2 className="w-3 h-3 mr-1" />
-            Completed
-          </Badge>
-          <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
-            <Clock className="w-3 h-3 mr-1" />
-            In Progress
-          </Badge>
-          <Badge variant="outline" className="bg-muted text-muted-foreground">
-            <Milestone className="w-3 h-3 mr-1" />
-            Pending
-          </Badge>
-          <Badge variant="outline" className="bg-red-500/10 text-red-600 border-red-500/20">
-            <AlertTriangle className="w-3 h-3 mr-1" />
-            Overdue
-          </Badge>
+          <span id="timeline-legend-label" className="text-xs text-muted-foreground">Legend:</span>
+          <ul aria-labelledby="timeline-legend-label" className="flex items-center gap-2 flex-wrap list-none p-0 m-0">
+            <li>
+              <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">
+                <CheckCircle2 className="w-3 h-3 mr-1" aria-hidden="true" />
+                Completed
+              </Badge>
+            </li>
+            <li>
+              <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
+                <Clock className="w-3 h-3 mr-1" aria-hidden="true" />
+                In progress
+              </Badge>
+            </li>
+            <li>
+              <Badge variant="outline" className="bg-muted text-muted-foreground">
+                <Milestone className="w-3 h-3 mr-1" aria-hidden="true" />
+                Pending
+              </Badge>
+            </li>
+            <li>
+              <Badge variant="outline" className="bg-red-500/10 text-red-600 border-red-500/20">
+                <AlertTriangle className="w-3 h-3 mr-1" aria-hidden="true" />
+                Overdue
+              </Badge>
+            </li>
+          </ul>
         </div>
       </CardContent>
     </Card>
