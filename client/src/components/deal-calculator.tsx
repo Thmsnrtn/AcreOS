@@ -171,8 +171,8 @@ export function DealCalculator({ deal, property, onSave, isSaving, showSaveButto
       <Card className="glass-panel">
         <CardHeader className="pb-4">
           <CardTitle className="flex items-center gap-2">
-            <Calculator className="w-5 h-5" />
-            Deal Analysis Calculator
+            <Calculator className="w-5 h-5" aria-hidden="true" />
+            Deal analysis calculator
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -184,10 +184,10 @@ export function DealCalculator({ deal, property, onSave, isSaving, showSaveButto
                   name="purchasePrice"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Purchase Price</FormLabel>
+                      <FormLabel>Purchase price</FormLabel>
                       <FormControl>
                         <div className="relative">
-                          <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                          <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
                           <Input 
                             type="number" 
                             placeholder="0" 
@@ -207,10 +207,10 @@ export function DealCalculator({ deal, property, onSave, isSaving, showSaveButto
                   name="downPayment"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Down Payment / Cash Investment</FormLabel>
+                      <FormLabel>Down payment / cash investment</FormLabel>
                       <FormControl>
                         <div className="relative">
-                          <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                          <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
                           <Input 
                             type="number" 
                             placeholder="0" 
@@ -230,10 +230,10 @@ export function DealCalculator({ deal, property, onSave, isSaving, showSaveButto
                   name="interestRate"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Interest Rate (Annual %)</FormLabel>
+                      <FormLabel>Interest rate (annual %)</FormLabel>
                       <FormControl>
                         <div className="relative">
-                          <Percent className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                          <Percent className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
                           <Input 
                             type="number" 
                             step="0.1"
@@ -254,10 +254,10 @@ export function DealCalculator({ deal, property, onSave, isSaving, showSaveButto
                   name="holdingCostsMonthly"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Monthly Holding Costs</FormLabel>
+                      <FormLabel>Monthly holding costs</FormLabel>
                       <FormControl>
                         <div className="relative">
-                          <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                          <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
                           <Input 
                             type="number" 
                             placeholder="0" 
@@ -277,7 +277,7 @@ export function DealCalculator({ deal, property, onSave, isSaving, showSaveButto
                   name="holdingPeriodMonths"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Holding Period (Months)</FormLabel>
+                      <FormLabel>Holding period (months)</FormLabel>
                       <FormControl>
                         <Input 
                           type="number" 
@@ -296,10 +296,10 @@ export function DealCalculator({ deal, property, onSave, isSaving, showSaveButto
                   name="improvementCosts"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Improvement Costs (Optional)</FormLabel>
+                      <FormLabel>Improvement costs (optional)</FormLabel>
                       <FormControl>
                         <div className="relative">
-                          <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                          <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
                           <Input 
                             type="number" 
                             placeholder="0" 
@@ -319,10 +319,10 @@ export function DealCalculator({ deal, property, onSave, isSaving, showSaveButto
                   name="expectedSalePrice"
                   render={({ field }) => (
                     <FormItem className="md:col-span-2">
-                      <FormLabel>Expected Sale Price</FormLabel>
+                      <FormLabel>Expected sale price</FormLabel>
                       <FormControl>
                         <div className="relative">
-                          <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                          <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
                           <Input 
                             type="number" 
                             placeholder="0" 
@@ -339,12 +339,12 @@ export function DealCalculator({ deal, property, onSave, isSaving, showSaveButto
               </div>
 
               <div className="flex flex-wrap gap-2 pt-2">
-                <Button type="submit" data-testid="button-calculate">
-                  <Calculator className="w-4 h-4 mr-2" />
+                <Button type="submit" data-testid="button-calculate" aria-label="Calculate deal analysis">
+                  <Calculator className="w-4 h-4 mr-2" aria-hidden="true" />
                   Calculate
                 </Button>
-                <Button type="button" variant="outline" onClick={handleReset} data-testid="button-reset">
-                  <RotateCcw className="w-4 h-4 mr-2" />
+                <Button type="button" variant="outline" onClick={handleReset} data-testid="button-reset" aria-label="Reset calculator inputs">
+                  <RotateCcw className="w-4 h-4 mr-2" aria-hidden="true" />
                   Reset
                 </Button>
               </div>
@@ -358,44 +358,47 @@ export function DealCalculator({ deal, property, onSave, isSaving, showSaveButto
           <CardHeader className="pb-4">
             <div className="flex items-center justify-between gap-4 flex-wrap">
               <CardTitle className="flex items-center gap-2">
-                <TrendingUp className="w-5 h-5" />
-                Analysis Results
+                <TrendingUp className="w-5 h-5" aria-hidden="true" />
+                Analysis results
               </CardTitle>
               {showSaveButton && onSave && (
-                <Button 
-                  onClick={handleSave} 
+                <Button
+                  type="button"
+                  onClick={handleSave}
                   disabled={isSaving}
+                  aria-busy={isSaving}
+                  aria-label={isSaving ? "Saving analysis" : "Save analysis"}
                   data-testid="button-save-analysis"
                 >
-                  <Save className="w-4 h-4 mr-2" />
-                  {isSaving ? "Saving..." : "Save Analysis"}
+                  <Save className="w-4 h-4 mr-2" aria-hidden="true" />
+                  {isSaving ? "Saving…" : "Save analysis"}
                 </Button>
               )}
             </div>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <dl aria-label="Analysis results" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 m-0">
               <ResultCard
-                label="Total Investment"
+                label="Total investment"
                 value={formatCurrency(results.totalInvestment)}
                 description="Down payment + holding costs + improvements"
                 testId="result-total-investment"
               />
               <ResultCard
-                label="Total Cost"
+                label="Total cost"
                 value={formatCurrency(results.totalCost)}
                 description="All-in cost including interest"
                 testId="result-total-cost"
               />
               <ResultCard
-                label="Gross Profit"
+                label="Gross profit"
                 value={formatCurrency(results.grossProfit)}
                 variant={results.grossProfit >= 0 ? "positive" : "negative"}
                 description="Sale price minus total cost"
                 testId="result-gross-profit"
               />
               <ResultCard
-                label="Net Profit"
+                label="Net profit"
                 value={formatCurrency(results.netProfit)}
                 variant={results.netProfit >= 0 ? "positive" : "negative"}
                 description="After 10% selling costs"
@@ -416,7 +419,7 @@ export function DealCalculator({ deal, property, onSave, isSaving, showSaveButto
                 testId="result-annualized-roi"
               />
               <ResultCard
-                label="Cash-on-Cash Return"
+                label="Cash-on-cash return"
                 value={formatPercent(results.cashOnCashReturn)}
                 variant={results.cashOnCashReturn >= 0 ? "positive" : "negative"}
                 description="Net profit / down payment"
@@ -424,13 +427,13 @@ export function DealCalculator({ deal, property, onSave, isSaving, showSaveButto
               />
               {results.financedAmount > 0 && (
                 <ResultCard
-                  label="Financed Amount"
+                  label="Financed amount"
                   value={formatCurrency(results.financedAmount)}
                   description={`At ${results.interestRate}% annual interest`}
                   testId="result-financed-amount"
                 />
               )}
-            </div>
+            </dl>
           </CardContent>
         </Card>
       )}
@@ -455,12 +458,12 @@ function ResultCard({ label, value, description, variant = "default", testId }: 
 
   return (
     <div className="p-4 rounded-lg bg-muted/50 space-y-1">
-      <p className="text-sm text-muted-foreground">{label}</p>
-      <p className={`text-xl font-bold font-mono ${valueColor}`} data-testid={testId}>
+      <dt className="text-sm text-muted-foreground m-0">{label}</dt>
+      <dd className={`text-xl font-bold font-mono tabular-nums m-0 ${valueColor}`} data-testid={testId} aria-label={`${label}: ${value}`}>
         {value}
-      </p>
+      </dd>
       {description && (
-        <p className="text-xs text-muted-foreground">{description}</p>
+        <p className="text-xs text-muted-foreground m-0">{description}</p>
       )}
     </div>
   );
