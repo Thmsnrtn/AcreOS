@@ -21,8 +21,9 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ConversionFunnel, type FunnelStage } from "@/components/ui/conversion-funnel";
 import DealsPage from "@/pages/deals";
-import { dollarsCompact } from "@/lib/format";
+import { dollarsCompact, plural } from "@/lib/format";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import "./today.css";
 
 const LeadsPage = lazy(() => import("@/pages/leads"));
 const PropertiesPage = lazy(() => import("@/pages/properties"));
@@ -233,15 +234,33 @@ export default function PipelinePage() {
   const activeLeads = leads.filter((l) => !["closed", "dead"].includes(l.status)).length;
   const activeDealsCount = deals.filter((d) => !["closed", "cancelled", "dead"].includes(d.status)).length;
 
+  // Homestead editorial pipeline summary (prototype: acreos/pages-tier1.jsx
+  // Pipeline header — "{n} active deals · {value} in flight")
+  const totalActiveDeals = activeDealsCount;
+
   return (
     <PageShell>
-      <div>
-        <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-pipeline-title">
-          Pipeline
-        </h1>
-        <p className="text-muted-foreground text-sm md:text-base">
-          Your complete deal machine — leads, properties, deals, and outreach.
-        </p>
+      <div className="acr-cc-hero">
+        <div>
+          <div className="acr-eyebrow">Pipeline</div>
+          <h1 className="acr-cc-greeting" data-testid="text-pipeline-title">
+            {totalActiveDeals > 0 ? (
+              <>
+                {plural(totalActiveDeals, "active deal")}
+                <span className="acr-cc-greeting-soft">
+                  {" "}across leads, properties, and outreach.
+                </span>
+              </>
+            ) : (
+              <>
+                Your deal machine.
+                <span className="acr-cc-greeting-soft">
+                  {" "}Bring in your first lead to get going.
+                </span>
+              </>
+            )}
+          </h1>
+        </div>
       </div>
 
       {/* Pipeline intelligence header (funnel + velocity) */}
