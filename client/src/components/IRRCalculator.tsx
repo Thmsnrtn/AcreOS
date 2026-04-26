@@ -15,7 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { TrendingUp, Calculator, FileDown } from 'lucide-react';
+import { Calculator, FileDown } from 'lucide-react';
 
 // ─── Math utilities ───────────────────────────────────────────────────────────
 
@@ -205,22 +205,33 @@ export function IRRCalculator({
       ? 'text-yellow-600'
       : 'text-red-500';
 
+  const irrText = fmtPct(results.irr);
+  const npvText = fmtDollar(results.npv);
+  const emText = `${results.equityMultiple.toFixed(2)}x`;
+  const cocText = fmtPct(results.cashOnCashReturn);
+
   return (
     <Card className={className}>
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
             <CardTitle className="flex items-center gap-2">
-              <Calculator className="w-5 h-5 text-primary" />
-              IRR / Return Calculator
+              <Calculator className="w-5 h-5 text-primary" aria-hidden="true" />
+              IRR / return calculator
             </CardTitle>
             <CardDescription>
               Calculate IRR, NPV, equity multiple, and cash-on-cash return
             </CardDescription>
           </div>
           {showExport && (
-            <Button size="sm" variant="outline" onClick={handleExport}>
-              <FileDown className="w-4 h-4 mr-1" /> Export CSV
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={handleExport}
+              aria-label="Export IRR analysis as CSV"
+            >
+              <FileDown className="w-4 h-4 mr-1" aria-hidden="true" /> Export CSV
             </Button>
           )}
         </div>
@@ -229,123 +240,144 @@ export function IRRCalculator({
         {/* Inputs */}
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           <div>
-            <Label className="text-xs">Purchase Price ($)</Label>
+            <Label htmlFor="irr-purchase-price" className="text-xs">Purchase price ($)</Label>
             <Input
+              id="irr-purchase-price"
               type="number"
               value={inputs.purchasePrice}
               onChange={e => setField('purchasePrice', e.target.value)}
               min={0}
+              className="tabular-nums"
             />
           </div>
           <div>
-            <Label className="text-xs">Annual Net Income ($)</Label>
+            <Label htmlFor="irr-annual-income" className="text-xs">Annual net income ($)</Label>
             <Input
+              id="irr-annual-income"
               type="number"
               value={inputs.annualIncome}
               onChange={e => setField('annualIncome', e.target.value)}
               min={0}
+              className="tabular-nums"
             />
           </div>
           <div>
-            <Label className="text-xs">Exit / Sale Value ($)</Label>
+            <Label htmlFor="irr-exit-value" className="text-xs">Exit / sale value ($)</Label>
             <Input
+              id="irr-exit-value"
               type="number"
               value={inputs.exitValue}
               onChange={e => setField('exitValue', e.target.value)}
               min={0}
+              className="tabular-nums"
             />
           </div>
           <div>
-            <Label className="text-xs">Hold Period (Years)</Label>
+            <Label htmlFor="irr-hold-years" className="text-xs">Hold period (years)</Label>
             <Input
+              id="irr-hold-years"
               type="number"
               value={inputs.holdYears}
               onChange={e => setField('holdYears', e.target.value)}
               min={1}
               max={50}
+              className="tabular-nums"
             />
           </div>
           <div>
-            <Label className="text-xs">Financing % (LTV)</Label>
+            <Label htmlFor="irr-financing-pct" className="text-xs">Financing % (LTV)</Label>
             <Input
+              id="irr-financing-pct"
               type="number"
               value={inputs.financingPct}
               onChange={e => setField('financingPct', e.target.value)}
               min={0}
               max={100}
+              className="tabular-nums"
             />
           </div>
           <div>
-            <Label className="text-xs">Discount Rate for NPV (%)</Label>
+            <Label htmlFor="irr-discount-rate" className="text-xs">Discount rate for NPV (%)</Label>
             <Input
+              id="irr-discount-rate"
               type="number"
               value={inputs.discountRate}
               onChange={e => setField('discountRate', e.target.value)}
               min={0}
               max={100}
+              className="tabular-nums"
             />
           </div>
         </div>
 
         {/* Results */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <dl
+          aria-label="IRR calculator results"
+          className="grid grid-cols-2 md:grid-cols-4 gap-4 m-0"
+        >
           <div className="p-4 rounded-lg bg-muted/40 text-center">
-            <p className="text-xs text-muted-foreground mb-1">IRR</p>
-            <p className={`text-3xl font-bold ${irrColor}`}>
-              {fmtPct(results.irr)}
-            </p>
-            <p className="text-xs text-muted-foreground mt-0.5">Internal Rate of Return</p>
+            <dt className="text-xs text-muted-foreground mb-1">IRR</dt>
+            <dd className={`text-3xl font-bold tabular-nums m-0 ${irrColor}`} aria-label={`IRR: ${irrText}`}>
+              {irrText}
+            </dd>
+            <p className="text-xs text-muted-foreground mt-0.5">Internal rate of return</p>
           </div>
           <div className="p-4 rounded-lg bg-muted/40 text-center">
-            <p className="text-xs text-muted-foreground mb-1">NPV</p>
-            <p className={`text-3xl font-bold ${results.npv >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-              {fmtDollar(results.npv)}
-            </p>
-            <p className="text-xs text-muted-foreground mt-0.5">@ {inputs.discountRate}% discount</p>
+            <dt className="text-xs text-muted-foreground mb-1">NPV</dt>
+            <dd className={`text-3xl font-bold tabular-nums m-0 ${results.npv >= 0 ? 'text-emerald-600' : 'text-red-500'}`} aria-label={`NPV: ${npvText}`}>
+              {npvText}
+            </dd>
+            <p className="text-xs text-muted-foreground mt-0.5">@ <span className="tabular-nums">{inputs.discountRate}</span>% discount</p>
           </div>
           <div className="p-4 rounded-lg bg-muted/40 text-center">
-            <p className="text-xs text-muted-foreground mb-1">Equity Multiple</p>
-            <p className="text-3xl font-bold text-blue-600">
-              {results.equityMultiple.toFixed(2)}x
-            </p>
+            <dt className="text-xs text-muted-foreground mb-1">Equity multiple</dt>
+            <dd className="text-3xl font-bold tabular-nums text-blue-600 m-0" aria-label={`Equity multiple: ${emText}`}>
+              {emText}
+            </dd>
             <p className="text-xs text-muted-foreground mt-0.5">Total return on equity</p>
           </div>
           <div className="p-4 rounded-lg bg-muted/40 text-center">
-            <p className="text-xs text-muted-foreground mb-1">Cash-on-Cash</p>
-            <p className="text-3xl font-bold text-purple-600">
-              {fmtPct(results.cashOnCashReturn)}
-            </p>
+            <dt className="text-xs text-muted-foreground mb-1">Cash-on-cash</dt>
+            <dd className="text-3xl font-bold tabular-nums text-purple-600 m-0" aria-label={`Cash-on-cash return: ${cocText}`}>
+              {cocText}
+            </dd>
             <p className="text-xs text-muted-foreground mt-0.5">Annual income yield</p>
           </div>
-        </div>
+        </dl>
 
         {/* Summary Row */}
-        <div className="flex flex-wrap gap-3 text-sm">
-          <Badge variant="outline">
-            Equity Invested: {fmtDollar(results.totalEquityInvested)}
-          </Badge>
-          <Badge variant="outline">
-            Total Profit: {fmtDollar(results.totalProfit)}
-          </Badge>
-          <Badge variant="outline">
-            Hold: {inputs.holdYears} year{inputs.holdYears !== 1 ? 's' : ''}
-          </Badge>
-        </div>
+        <ul aria-label="Investment summary" className="flex flex-wrap gap-3 text-sm list-none p-0 m-0">
+          <li>
+            <Badge variant="outline" aria-label={`Equity invested: ${fmtDollar(results.totalEquityInvested)}`}>
+              Equity invested: <span className="tabular-nums ml-1">{fmtDollar(results.totalEquityInvested)}</span>
+            </Badge>
+          </li>
+          <li>
+            <Badge variant="outline" aria-label={`Total profit: ${fmtDollar(results.totalProfit)}`}>
+              Total profit: <span className="tabular-nums ml-1">{fmtDollar(results.totalProfit)}</span>
+            </Badge>
+          </li>
+          <li>
+            <Badge variant="outline" aria-label={`Hold period: ${inputs.holdYears} year${inputs.holdYears !== 1 ? 's' : ''}`}>
+              Hold: <span className="tabular-nums ml-1">{inputs.holdYears}</span> year{inputs.holdYears !== 1 ? 's' : ''}
+            </Badge>
+          </li>
+        </ul>
 
         {/* Annual cash flows */}
-        <div>
-          <p className="text-xs text-muted-foreground font-medium mb-2">Annual Cash Flow Schedule</p>
-          <div className="flex gap-2 flex-wrap">
+        <section aria-labelledby="irr-cashflow-heading">
+          <p id="irr-cashflow-heading" className="text-xs text-muted-foreground font-medium mb-2">Annual cash flow schedule</p>
+          <ol aria-label="Annual cash flows by year" className="flex gap-2 flex-wrap list-none p-0 m-0">
             {results.annualCashFlows.map((cf, i) => (
-              <div key={i} className="text-center">
-                <p className="text-xs text-muted-foreground">Y{i}</p>
-                <p className={`text-xs font-mono font-bold ${cf >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+              <li key={i} className="text-center" aria-label={`Year ${i}: ${fmtDollar(cf)}`}>
+                <p className="text-xs text-muted-foreground" aria-hidden="true">Y<span className="tabular-nums">{i}</span></p>
+                <p className={`text-xs font-mono font-bold tabular-nums ${cf >= 0 ? 'text-emerald-600' : 'text-red-500'}`} aria-hidden="true">
                   {fmtDollar(cf)}
                 </p>
-              </div>
+              </li>
             ))}
-          </div>
-        </div>
+          </ol>
+        </section>
       </CardContent>
     </Card>
   );
