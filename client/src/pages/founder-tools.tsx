@@ -14,7 +14,8 @@
 
 import { useState, useId } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { PageShell } from "@/components/page-shell";
+import { FounderPageShell } from "@/components/founder/founder-page-shell";
+import "./today.css";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,7 +28,6 @@ import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { Wrench, Check, X, Clock, Rocket } from "lucide-react";
 import { relative, usd } from "@/lib/format";
-import { PageHeader } from "@/components/ui/page-header";
 
 interface ToolProposalRow {
   id: number;
@@ -96,13 +96,20 @@ export default function FounderToolsPage() {
   for (const p of proposals) byStatus[p.status]?.push(p);
 
   return (
-    <PageShell label="Tool Proposals">
+    <FounderPageShell
+      eyebrow="Founder · tools"
+      title="Capability growth queue"
+      titleSoft={`${proposals.length} proposal${proposals.length === 1 ? "" : "s"} in flight.`}
+      pageTitle="Tool Proposals"
+    >
       <div className="space-y-6 max-w-5xl mx-auto">
-        <PageHeader
-          title="Capability growth queue"
-          icon={<Wrench className="h-5 w-5 text-muted-foreground" aria-hidden="true" />}
-          description={`What the system needs to do its job better. Proposals come from agents and from the monthly strategic synthesis. Approving a proposal doesn't build it — it moves it onto the engineering backlog. Mark it "building" when you start, "shipped" when it's live.`}
-        />
+        <p className="text-sm text-muted-foreground">
+          What the system needs to do its job better. Proposals come from
+          agents and from the monthly strategic synthesis. Approving a
+          proposal doesn&rsquo;t build it &mdash; it moves it onto the
+          engineering backlog. Mark it &ldquo;building&rdquo; when you start,
+          &ldquo;shipped&rdquo; when it&rsquo;s live.
+        </p>
 
         {isLoading ? (
           <Card>
@@ -169,7 +176,7 @@ export default function FounderToolsPage() {
           </>
         )}
       </div>
-    </PageShell>
+    </FounderPageShell>
   );
 }
 
