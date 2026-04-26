@@ -3,7 +3,6 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -173,7 +172,7 @@ export function CohortRetentionDashboard() {
       <motion.div variants={staggerItem} className="flex flex-wrap items-center gap-3">
         <Select value={granularity} onValueChange={(v) => setGranularity(v as "week" | "month")}>
           <SelectTrigger className="w-[140px]" aria-label="Select granularity">
-            <Calendar className="h-4 w-4 mr-2" />
+            <Calendar className="h-4 w-4 mr-2" aria-hidden="true" />
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -194,64 +193,72 @@ export function CohortRetentionDashboard() {
       </motion.div>
 
       {/* Summary Cards */}
-      <motion.div variants={staggerItem} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Signups</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalSignups.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">
-              Across {cohorts.length} cohorts
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(totalRevenue)}</div>
-            <p className="text-xs text-muted-foreground">
-              From closed deals
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Avg Conversion Rate</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{pct(avgConversionRate)}</div>
-            <p className="text-xs text-muted-foreground">
-              Leads to closed deals
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Revenue per Lead</CardTitle>
-            <BarChart3 className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(avgRevenuePerLead)}</div>
-            <p className="text-xs text-muted-foreground">
-              Average across all cohorts
-            </p>
-          </CardContent>
-        </Card>
-      </motion.div>
+      <motion.ul variants={staggerItem} aria-label="Cohort retention summary" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 list-none p-0 m-0">
+        <li>
+          <Card aria-label={`Total signups: ${totalSignups.toLocaleString()} across ${cohorts.length} cohorts`}>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total signups</CardTitle>
+              <Users className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold tabular-nums" aria-hidden="true">{totalSignups.toLocaleString()}</div>
+              <p className="text-xs text-muted-foreground m-0" aria-hidden="true">
+                Across <span className="tabular-nums">{cohorts.length}</span> cohorts
+              </p>
+            </CardContent>
+          </Card>
+        </li>
+        <li>
+          <Card aria-label={`Total revenue: ${formatCurrency(totalRevenue)} from closed deals`}>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total revenue</CardTitle>
+              <DollarSign className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold tabular-nums" aria-hidden="true">{formatCurrency(totalRevenue)}</div>
+              <p className="text-xs text-muted-foreground m-0" aria-hidden="true">
+                From closed deals
+              </p>
+            </CardContent>
+          </Card>
+        </li>
+        <li>
+          <Card aria-label={`Average conversion rate: ${pct(avgConversionRate)}, leads to closed deals`}>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Avg conversion rate</CardTitle>
+              <TrendingUp className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold tabular-nums" aria-hidden="true">{pct(avgConversionRate)}</div>
+              <p className="text-xs text-muted-foreground m-0" aria-hidden="true">
+                Leads to closed deals
+              </p>
+            </CardContent>
+          </Card>
+        </li>
+        <li>
+          <Card aria-label={`Revenue per lead: ${formatCurrency(avgRevenuePerLead)} average across all cohorts`}>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Revenue per lead</CardTitle>
+              <BarChart3 className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold tabular-nums" aria-hidden="true">{formatCurrency(avgRevenuePerLead)}</div>
+              <p className="text-xs text-muted-foreground m-0" aria-hidden="true">
+                Average across all cohorts
+              </p>
+            </CardContent>
+          </Card>
+        </li>
+      </motion.ul>
 
       {/* Retention Heatmap Table */}
       <motion.div variants={staggerItem}>
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <TrendingUp className="h-5 w-5" />
-              Retention Curves
+              <TrendingUp className="h-5 w-5" aria-hidden="true" />
+              Retention curves
             </CardTitle>
             <CardDescription>
               Percentage of each cohort still active (created deals) after N weeks
@@ -259,14 +266,14 @@ export function CohortRetentionDashboard() {
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
-              <Table>
+              <Table aria-label="Retention rates by cohort and week">
                 <TableHeader>
                   <TableRow>
                     <TableHead className="min-w-[120px]">Cohort</TableHead>
                     <TableHead className="text-right min-w-[60px]">Size</TableHead>
                     {weekColumns.map((w) => (
                       <TableHead key={w} className="text-center min-w-[60px]">
-                        Wk {w}
+                        Wk <span className="tabular-nums">{w}</span>
                       </TableHead>
                     ))}
                   </TableRow>
@@ -282,21 +289,22 @@ export function CohortRetentionDashboard() {
                           {cohort.label}
                         </TableCell>
                         <TableCell className="text-right">
-                          <Badge variant="secondary">{cohort.signups}</Badge>
+                          <Badge variant="secondary" className="tabular-nums" aria-label={`${cohort.signups} signups`}>{cohort.signups}</Badge>
                         </TableCell>
                         {weekColumns.map((w) => {
                           const point = retentionMap.get(w);
                           const rate = point?.rate ?? 0;
                           return (
-                            <TableCell key={w} className="text-center p-1">
+                            <TableCell key={w} className="text-center p-1" aria-label={point ? `Week ${w}: ${pct(rate)} retained` : `Week ${w}: no data`}>
                               {point ? (
                                 <span
-                                  className={`inline-block px-2 py-1 rounded text-xs font-medium ${getRetentionColor(rate)}`}
+                                  aria-hidden="true"
+                                  className={`inline-block px-2 py-1 rounded text-xs font-medium tabular-nums ${getRetentionColor(rate)}`}
                                 >
                                   {pct(rate)}
                                 </span>
                               ) : (
-                                <span className="text-muted-foreground text-xs">-</span>
+                                <span aria-hidden="true" className="text-muted-foreground text-xs">-</span>
                               )}
                             </TableCell>
                           );
@@ -316,8 +324,8 @@ export function CohortRetentionDashboard() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <DollarSign className="h-5 w-5" />
-              Revenue and Conversion by Cohort
+              <DollarSign className="h-5 w-5" aria-hidden="true" />
+              Revenue and conversion by cohort
             </CardTitle>
             <CardDescription>
               Revenue, deals closed, and conversion rates per signup cohort
@@ -325,17 +333,17 @@ export function CohortRetentionDashboard() {
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
-              <Table>
+              <Table aria-label="Revenue and conversion by cohort">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Cohort</TableHead>
                     <TableHead className="text-right">Leads</TableHead>
                     <TableHead className="text-right">Contacted</TableHead>
-                    <TableHead className="text-right">Contact Rate</TableHead>
+                    <TableHead className="text-right">Contact rate</TableHead>
                     <TableHead className="text-right">Converted</TableHead>
-                    <TableHead className="text-right">Conv. Rate</TableHead>
+                    <TableHead className="text-right">Conv. rate</TableHead>
                     <TableHead className="text-right">Revenue</TableHead>
-                    <TableHead className="text-right">Rev/Lead</TableHead>
+                    <TableHead className="text-right">Rev/lead</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -344,39 +352,39 @@ export function CohortRetentionDashboard() {
                       <TableCell className="font-medium whitespace-nowrap">
                         {cohort.label}
                       </TableCell>
-                      <TableCell className="text-right">{cohort.totalLeads}</TableCell>
-                      <TableCell className="text-right">{cohort.contacted}</TableCell>
+                      <TableCell className="text-right tabular-nums">{cohort.totalLeads}</TableCell>
+                      <TableCell className="text-right tabular-nums">{cohort.contacted}</TableCell>
                       <TableCell className="text-right">
                         <span
-                          className={
+                          className={`tabular-nums ${
                             cohort.contactRate >= 0.5
                               ? "text-green-600"
                               : cohort.contactRate >= 0.3
                                 ? "text-yellow-600"
                                 : "text-red-500"
-                          }
+                          }`}
                         >
                           {pct(cohort.contactRate)}
                         </span>
                       </TableCell>
-                      <TableCell className="text-right">{cohort.converted}</TableCell>
+                      <TableCell className="text-right tabular-nums">{cohort.converted}</TableCell>
                       <TableCell className="text-right">
                         <span
-                          className={
+                          className={`tabular-nums ${
                             cohort.conversionRate >= 0.1
                               ? "text-green-600"
                               : cohort.conversionRate >= 0.05
                                 ? "text-yellow-600"
                                 : "text-red-500"
-                          }
+                          }`}
                         >
                           {pct(cohort.conversionRate)}
                         </span>
                       </TableCell>
-                      <TableCell className="text-right font-medium">
+                      <TableCell className="text-right font-medium tabular-nums">
                         {formatCurrency(cohort.revenue)}
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-right tabular-nums">
                         {cohort.totalLeads > 0
                           ? formatCurrency(cohort.revenue / cohort.totalLeads)
                           : "-"}
