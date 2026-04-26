@@ -11,7 +11,6 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 
 // ---------------------------------------------------------------
 // Types
@@ -125,39 +124,62 @@ function CallRow({ call }: { call: VoiceCall }) {
     null;
   const transcript = detail?.transcript?.fullTranscript || null;
 
+  const durationStr = formatDuration(call.durationSeconds);
+  const durationAria = call.durationSeconds && call.durationSeconds > 0
+    ? `${Math.floor(call.durationSeconds / 60)} minutes ${call.durationSeconds % 60} seconds`
+    : "no duration recorded";
+
+  const detailId = `call-detail-${call.id}`;
+  const rowAriaLabel = [
+    `${call.direction} call`,
+    dateLabel,
+    `duration ${durationAria}`,
+    call.sentimentScore !== undefined && call.sentimentScore !== null ? `sentiment ${sentimentLabel.toLowerCase()}` : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
+
   return (
-    <div className="border rounded-lg overflow-hidden">
+    <li className="border rounded-lg overflow-hidden list-none">
       {/* Row header — click to expand */}
       <button
-        className="w-full flex items-center gap-3 px-4 py-3 bg-background hover:bg-muted/50 transition-colors text-left"
+        type="button"
+        className="w-full flex items-center gap-3 px-4 py-3 bg-background hover:bg-muted/50 transition-colors text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         onClick={() => setExpanded((v) => !v)}
         aria-expanded={expanded}
+        aria-controls={detailId}
+        aria-label={`${expanded ? "Collapse" : "Expand"} ${rowAriaLabel}`}
       >
         {/* Direction icon */}
-        <span className="text-muted-foreground shrink-0">
+        <span aria-hidden="true" className="text-muted-foreground shrink-0">
           {isInbound ? (
-            <PhoneIncoming className="w-4 h-4 text-blue-500" />
+            <PhoneIncoming className="w-4 h-4 text-blue-500" aria-hidden="true" />
           ) : (
-            <PhoneOutgoing className="w-4 h-4 text-indigo-500" />
+            <PhoneOutgoing className="w-4 h-4 text-indigo-500" aria-hidden="true" />
           )}
         </span>
 
         {/* Date */}
-        <span className="flex-1 text-sm font-medium">{dateLabel}</span>
+        {call.createdAt ? (
+          <time dateTime={call.createdAt} className="flex-1 text-sm font-medium tabular-nums">{dateLabel}</time>
+        ) : (
+          <span className="flex-1 text-sm font-medium">{dateLabel}</span>
+        )}
 
         {/* Duration */}
-        <span className="text-sm text-muted-foreground shrink-0">
-          {formatDuration(call.durationSeconds)}
+        <span className="text-sm text-muted-foreground shrink-0 tabular-nums" aria-hidden="true">
+          {durationStr}
         </span>
 
         {/* Direction badge */}
-        <Badge variant="outline" className="capitalize shrink-0 text-xs">
+        <Badge variant="outline" className="capitalize shrink-0 text-xs" aria-hidden="true">
           {call.direction}
         </Badge>
 
         {/* Sentiment badge */}
         {call.sentimentScore !== undefined && call.sentimentScore !== null && (
           <span
+            aria-hidden="true"
             className={`text-xs font-medium px-2 py-0.5 rounded-full shrink-0 ${sentimentClass}`}
           >
             {sentimentLabel}
@@ -165,21 +187,21 @@ function CallRow({ call }: { call: VoiceCall }) {
         )}
 
         {/* Expand toggle */}
-        <span className="shrink-0 text-muted-foreground">
+        <span aria-hidden="true" className="shrink-0 text-muted-foreground">
           {expanded ? (
-            <ChevronUp className="w-4 h-4" />
+            <ChevronUp className="w-4 h-4" aria-hidden="true" />
           ) : (
-            <ChevronDown className="w-4 h-4" />
+            <ChevronDown className="w-4 h-4" aria-hidden="true" />
           )}
         </span>
       </button>
 
       {/* Expanded detail section */}
       {expanded && (
-        <div className="px-4 py-3 border-t bg-muted/20 space-y-3">
+        <div id={detailId} role="region" aria-label={`Call details: ${dateLabel}`} className="px-4 py-3 border-t bg-muted/20 space-y-3">
           {detailLoading ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="w-4 h-4 animate-spin" />
+            <div role="status" aria-busy="true" aria-label="Loading transcript" className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
               Loading transcript…
             </div>
           ) : (
@@ -187,25 +209,25 @@ function CallRow({ call }: { call: VoiceCall }) {
               {summary && (
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">
-                    AI Summary
+                    AI summary
                   </p>
-                  <p className="text-sm">{summary}</p>
+                  <p className="text-sm m-0">{summary}</p>
                 </div>
               )}
 
               {transcript && (
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">
+                  <p id={`${detailId}-transcript-label`} className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">
                     Transcript
                   </p>
-                  <pre className="text-xs whitespace-pre-wrap bg-background border rounded p-2 max-h-48 overflow-y-auto font-sans leading-relaxed">
+                  <pre aria-labelledby={`${detailId}-transcript-label`} className="text-xs whitespace-pre-wrap bg-background border rounded p-2 max-h-48 overflow-y-auto font-sans leading-relaxed m-0">
                     {transcript}
                   </pre>
                 </div>
               )}
 
               {!summary && !transcript && (
-                <p className="text-sm text-muted-foreground italic">
+                <p className="text-sm text-muted-foreground italic m-0">
                   No transcript or summary available yet.
                 </p>
               )}
@@ -213,7 +235,7 @@ function CallRow({ call }: { call: VoiceCall }) {
           )}
         </div>
       )}
-    </div>
+    </li>
   );
 }
 
@@ -245,30 +267,31 @@ export function CallLog({ leadId }: CallLogProps) {
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="text-base flex items-center gap-2">
-          <Phone className="w-4 h-4" />
-          Call Log
+          <Phone className="w-4 h-4" aria-hidden="true" />
+          Call log
         </CardTitle>
       </CardHeader>
 
       <CardContent>
         {isLoading ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+          <div role="status" aria-busy="true" aria-label="Loading calls" className="flex items-center justify-center py-8">
+            <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" aria-hidden="true" />
+            <span className="sr-only">Loading…</span>
           </div>
         ) : isError ? (
-          <p className="text-sm text-destructive text-center py-4">
+          <p role="alert" className="text-sm text-destructive text-center py-4 m-0">
             Failed to load calls.
           </p>
         ) : calls.length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-6">
+          <p className="text-sm text-muted-foreground text-center py-6 m-0">
             No calls recorded yet.
           </p>
         ) : (
-          <div className="space-y-2">
+          <ul aria-label="Call history" className="space-y-2 list-none p-0 m-0">
             {calls.map((call) => (
               <CallRow key={call.id} call={call} />
             ))}
-          </div>
+          </ul>
         )}
       </CardContent>
     </Card>
