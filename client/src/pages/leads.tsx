@@ -1,5 +1,7 @@
 import { PageShell } from "@/components/page-shell";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { plural } from "@/lib/format";
+import "./today.css";
 import { PaxContextButton } from "@/components/pax-context-button";
 import { ListPagination, usePagination } from "@/components/list-pagination";
 import { useLeads, useLeadsPaginated, useCreateLead, useUpdateLead, useDeleteLead } from "@/hooks/use-leads";
@@ -1035,9 +1037,27 @@ export default function LeadsPage() {
                 testId="inline-error-leads"
               />
             )}
-            <div>
-              <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-page-title">Leads CRM</h1>
-              <p className="text-muted-foreground">Manage your potential buyers and sellers.</p>
+            <div className="acr-cc-hero" style={{ marginTop: 0 }}>
+              <div>
+                <div className="acr-eyebrow">Leads</div>
+                <h1 className="acr-cc-greeting" data-testid="text-page-title">
+                  {leads && leads.length > 0 ? (
+                    <>
+                      {plural(leads.length, "lead")}
+                      <span className="acr-cc-greeting-soft">
+                        {" "}— buyers, sellers, and warm intros.
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      No leads yet.
+                      <span className="acr-cc-greeting-soft">
+                        {" "}Import a CSV or add one by hand to get started.
+                      </span>
+                    </>
+                  )}
+                </h1>
+              </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {/* Desktop: show all buttons */}

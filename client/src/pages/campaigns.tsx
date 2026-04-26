@@ -8,6 +8,7 @@ import { AbTestsContent } from "@/components/ab-tests-content";
 import { SequencesContent } from "@/components/sequences-content";
 import { LowBalanceAlert } from "@/components/low-balance-alert";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import "./today.css";
 
 const menuItems = [
   { title: "Dashboard", href: "/", icon: TrendingUp },
@@ -86,9 +87,16 @@ export default function MarketingHub() {
         <LowBalanceAlert />
         <div className="max-w-7xl mx-auto space-y-6 p-6 flex-1">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <h1 className="text-3xl font-bold" data-testid="text-marketing-hub-title">Marketing hub</h1>
-              <p className="text-muted-foreground">Manage campaigns, A/B tests, and drip sequences.</p>
+            <div className="acr-cc-hero" style={{ marginTop: 0 }}>
+              <div>
+                <div className="acr-eyebrow">Marketing hub</div>
+                <h1 className="acr-cc-greeting" data-testid="text-marketing-hub-title">
+                  Reach the right sellers.
+                  <span className="acr-cc-greeting-soft">
+                    {" "}Campaigns, A/B tests, and drip sequences in one place.
+                  </span>
+                </h1>
+              </div>
             </div>
           </div>
 
