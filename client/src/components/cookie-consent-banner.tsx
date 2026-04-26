@@ -60,16 +60,20 @@ export function CookieConsentBanner() {
         </div>
         <div className="flex gap-2 shrink-0">
           <Button
+            type="button"
             variant="outline"
             size="sm"
             onClick={decline}
+            aria-label="Decline cookies"
             data-testid="cookie-consent-decline"
           >
             Decline
           </Button>
           <Button
+            type="button"
             size="sm"
             onClick={accept}
+            aria-label="Accept all cookies"
             data-testid="cookie-consent-accept"
           >
             Accept all

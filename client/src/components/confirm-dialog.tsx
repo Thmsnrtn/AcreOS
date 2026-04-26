@@ -53,6 +53,8 @@ export function ConfirmDialog({
           <AlertDialogAction
             onClick={handleConfirm}
             disabled={isLoading}
+            aria-busy={isLoading}
+            aria-label={isLoading ? `Processing: ${confirmLabel}` : confirmLabel}
             className={variant === "destructive" ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" : ""}
             data-testid="button-confirm-action"
           >

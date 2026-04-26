@@ -92,19 +92,21 @@ export function CancellationDialog({ open, onOpenChange, currentTier }: Cancella
             </DialogHeader>
 
             {contextQuery.data?.usage && (
-              <div className="rounded-lg border bg-muted/50 p-4 text-sm">
-                <p className="font-medium mb-1">Your usage this month:</p>
-                <ul className="space-y-1 text-muted-foreground">
-                  {Object.entries(contextQuery.data.usage).map(([key, val]: [string, any]) => (
-                    val?.used != null && (
-                      <li key={key} className="flex justify-between">
-                        <span className="capitalize">{key.replace(/([A-Z])/g, " $1")}</span>
-                        <span className="font-mono">{val.used} / {val.limit}</span>
+              <section aria-labelledby="cancel-usage-heading" className="rounded-lg border bg-muted/50 p-4 text-sm">
+                <p id="cancel-usage-heading" className="font-medium mb-1 m-0">Your usage this month:</p>
+                <ul aria-labelledby="cancel-usage-heading" className="space-y-1 text-muted-foreground list-none p-0 m-0">
+                  {Object.entries(contextQuery.data.usage).map(([key, val]: [string, any]) => {
+                    if (val?.used == null) return null;
+                    const niceKey = key.replace(/([A-Z])/g, " $1");
+                    return (
+                      <li key={key} className="flex justify-between" aria-label={`${niceKey}: ${val.used} of ${val.limit} used`}>
+                        <span className="capitalize" aria-hidden="true">{niceKey}</span>
+                        <span className="font-mono tabular-nums" aria-hidden="true">{val.used} / {val.limit}</span>
                       </li>
-                    )
-                  ))}
+                    );
+                  })}
                 </ul>
-              </div>
+              </section>
             )}
 
             <div className="space-y-3">
@@ -131,12 +133,13 @@ export function CancellationDialog({ open, onOpenChange, currentTier }: Cancella
 
             <DialogFooter className="flex-col sm:flex-row gap-2">
               {currentTier !== "free" && currentTier !== "sprout" && (
-                <Button variant="outline" onClick={handleClose} className="flex items-center gap-1">
+                <Button type="button" variant="outline" onClick={handleClose} className="flex items-center gap-1" aria-label="Downgrade instead of cancelling">
                   <TrendingDown className="h-4 w-4" aria-hidden="true" />
                   Downgrade instead
                 </Button>
               )}
               <Button
+                type="button"
                 variant="destructive"
                 disabled={!reason}
                 onClick={() => setStep("confirm")}
@@ -156,12 +159,15 @@ export function CancellationDialog({ open, onOpenChange, currentTier }: Cancella
             </DialogHeader>
 
             <DialogFooter className="gap-2">
-              <Button variant="outline" onClick={() => setStep("reason")}>
+              <Button type="button" variant="outline" onClick={() => setStep("reason")}>
                 Go back
               </Button>
               <Button
+                type="button"
                 variant="destructive"
                 disabled={cancelMutation.isPending}
+                aria-busy={cancelMutation.isPending}
+                aria-label={cancelMutation.isPending ? "Processing cancellation" : "Confirm cancellation"}
                 onClick={() => cancelMutation.mutate()}
               >
                 {cancelMutation.isPending ? "Processing…" : "Confirm cancellation"}
