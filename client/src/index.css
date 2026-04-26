@@ -537,14 +537,17 @@
   transform: translateY(-1px);
 }
 
-/* Apple-style vibrancy for sidebars — Tahoe Liquid Glass */
+/* Sidebar surface — homestead palette behind Apple-vibrancy blur.
+   Preserves the elite-refinement glass effect (blur + saturation) while
+   landing the prototype's literal sidebar color (acreos/theme.jsx
+   --sidebar-bg). Light: #F1E7D0 @ 0.82 opacity. Dark: #130C05 @ 0.86. */
 .vibrancy-sidebar {
   backdrop-filter: blur(28px) saturate(185%);
   -webkit-backdrop-filter: blur(28px) saturate(185%);
-  background: rgba(245, 240, 233, 0.82);
+  background: rgba(241, 231, 208, 0.82);
 }
 .dark .vibrancy-sidebar {
-  background: rgba(22, 16, 10, 0.86);
+  background: rgba(19, 12, 5, 0.86);
 }
 
 /* Animation utilities */
@@ -700,24 +703,35 @@
   border-right: 1px solid rgba(255, 255, 255, 0.05);
 }
 
-/* Active nav item — Tahoe capsule + specular */
+/* Active nav item — homestead treatment per acreos/shell.jsx:195-203
+   Subtle elevated surface + 2px brand-color pip at left. Replaces the
+   prior Tahoe-capsule treatment (preserved in git history before commit
+   e61e1ba). The container needs overflow:visible so the -10px pip shows. */
 .nav-item-active {
   position: relative;
-  border-radius: 9999px;
-  background: hsl(var(--primary) / 0.13);
-  color: hsl(var(--primary));
+  background: var(--acr-surface);
+  color: var(--acr-ink);
+  box-shadow: var(--acr-shadow-1), inset 0 0 0 0.5px var(--acr-line);
 }
 .nav-item-active::before {
+  /* Adapted from prototype's left:-10px (acreos/shell.jsx:200) — production's
+     <nav> uses overflow-x-hidden which would clip a negative-positioned pip,
+     so the pip sits at the item's left edge instead of in the gap. Same
+     visual signature: brand-color marker on the active row. */
   content: '';
   position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: var(--glass-specular);
-  box-shadow: inset 0 0 0 1px hsl(var(--primary) / 0.2);
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2px;
+  height: 14px;
+  border-radius: 2px;
+  background: var(--acr-brand);
   pointer-events: none;
 }
 .dark .nav-item-active {
-  background: hsl(var(--primary) / 0.20);
+  background: var(--acr-surface);
+  color: var(--acr-ink);
 }
 
 /* Sidebar collapse spring animation */

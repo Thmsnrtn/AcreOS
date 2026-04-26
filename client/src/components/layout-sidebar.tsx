@@ -7,24 +7,37 @@
  * sub-nav expansion, prefetch-on-hover, founder-only modules, etc.) is
  * production-original elite-refinement work and predates this build.
  *
- * Patterns brought across from the prototype in Phases 2.1–2.2:
- * - data-tour-nav={module.id} on every nav-row surface (matches the
- *   prototype's data-tour-nav={item.id} convention; see acreos/shell.jsx:29)
- * - Visible "Search or jump to…" trigger in the sidebar header (matches the
- *   prototype's acr-search-trigger; placement and copy mirror the prototype)
+ * Patterns brought across from the prototype:
+ * - Phase 2.1: data-tour-nav={module.id} on every nav-row surface (matches
+ *   the prototype's data-tour-nav={item.id} convention; see acreos/shell.jsx:29)
+ * - Phase 2.2: Visible "Search or jump to…" trigger in the sidebar header
+ *   (matches the prototype's acr-search-trigger; placement and copy mirror
+ *   the prototype)
+ * - Phase 2A.1: Active nav-item visual treatment per acreos/shell.jsx:195-203
+ *   — subtle var(--acr-surface) bg + box-shadow + 2px brand-color pip at
+ *   the row's left edge. Replaced the prior Tahoe-capsule pill (which was
+ *   engineering-quality but visually conflicted with the prototype). See
+ *   client/src/index.css:704 for the .nav-item-active treatment.
+ * - Phase 2A.1: Active-icon color uses var(--acr-ink) (inherits from the
+ *   active row's color), not text-primary, per prototype's behavior of not
+ *   tinting icons brand on active.
+ * - Phase 2A.1: Sidebar surface uses homestead literal #F1E7D0 (light) /
+ *   #130C05 (dark) behind the existing vibrancy blur+saturation effect.
  *
- * Patterns intentionally NOT brought across (preserved as elite-refinement):
- * - Active state — production uses the Tahoe-capsule pill (rounded full,
- *   primary tint, glass specular) rather than the prototype's flat 2px
- *   brand-colored left indicator pip. The intent is the same; production's
- *   treatment is the more refined evolution.
- * - Sidebar palette tokens stay on shadcn --sidebar-* HSL (warm earth)
- *   rather than flipping to --acr-sidebar-bg, to avoid destabilizing
- *   surfaces that already depend on the shadcn semantic namespace.
+ * Engineering refinement preserved:
+ * - All aria-* attributes, min-h-[44px] mobile touch targets
+ * - Mobile Sheet pattern, white-label brand name, founder gating via
+ *   useAuth().isFounder
+ * - PaxNotificationBadge, NotificationCenter, ThemeToggle wiring
+ * - Vibrancy backdrop-filter blur(28px) saturate(185%)
+ * - Sidebar collapse spring animation, hover prefetch, Popover for
+ *   collapsed-children
  *
- * Phase 9 Final Coherence Pass should evaluate whether the prototype's
- * "Workspace · ⌃" affordance below the brand and the simpler nav-group
- * uppercase 10.5px titles are worth reconciling; both are minor.
+ * Phase 9 Final Coherence Pass remaining items:
+ * - Active-state badge brand-tinting (.acr-nav-item-active .acr-nav-badge
+ *   in prototype) is not yet replicated on production's <Badge variant=
+ *   "secondary"> showBadge instances
+ * - Optional "Workspace · ⌃" affordance below the brand
  */
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
@@ -817,7 +830,7 @@ export function Sidebar() {
                       className={cn(
                         "w-4 h-4 shrink-0 transition-colors",
                         active
-                          ? "text-primary"
+                          ? "text-acr-ink"
                           : "text-muted-foreground group-hover:text-sidebar-foreground"
                       )}
                     />
@@ -840,7 +853,7 @@ export function Sidebar() {
                       className={cn(
                         "w-4 h-4 shrink-0 transition-colors",
                         active
-                          ? "text-primary"
+                          ? "text-acr-ink"
                           : "text-muted-foreground group-hover:text-sidebar-foreground"
                       )}
                     />
@@ -896,7 +909,7 @@ export function Sidebar() {
                           className={cn(
                             "w-3.5 h-3.5 shrink-0",
                             childActive
-                              ? "text-primary"
+                              ? "text-acr-ink"
                               : "text-muted-foreground group-hover:text-sidebar-foreground"
                           )}
                         />
@@ -1087,7 +1100,7 @@ export function Sidebar() {
                     <module.icon
                       className={cn(
                         "w-5 h-5 shrink-0",
-                        active ? "text-primary" : "text-muted-foreground"
+                        active ? "text-acr-ink" : "text-muted-foreground"
                       )}
                     />
                     <span className="font-medium text-sm flex-1 truncate">
@@ -1104,7 +1117,7 @@ export function Sidebar() {
                     <module.icon
                       className={cn(
                         "w-5 h-5 shrink-0",
-                        active ? "text-primary" : "text-muted-foreground"
+                        active ? "text-acr-ink" : "text-muted-foreground"
                       )}
                     />
                     <Link
@@ -1153,7 +1166,7 @@ export function Sidebar() {
                           className={cn(
                             "w-4 h-4 shrink-0",
                             childActive
-                              ? "text-primary"
+                              ? "text-acr-ink"
                               : "text-muted-foreground"
                           )}
                         />
@@ -1263,7 +1276,7 @@ function CollapsedModuleItem({
             <module.icon
               className={cn(
                 "w-4 h-4 shrink-0",
-                isActive ? "text-primary" : "text-muted-foreground"
+                isActive ? "text-acr-ink" : "text-muted-foreground"
               )}
             />
             {showBadge && (
@@ -1300,7 +1313,7 @@ function CollapsedModuleItem({
               <module.icon
                 className={cn(
                   "w-4 h-4 shrink-0",
-                  isActive ? "text-primary" : "text-muted-foreground"
+                  isActive ? "text-acr-ink" : "text-muted-foreground"
                 )}
               />
               {showBadge && (
