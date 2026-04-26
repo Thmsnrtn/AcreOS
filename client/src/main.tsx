@@ -1,6 +1,7 @@
 import { createRoot } from "react-dom/client";
 import { ClerkProvider } from "@clerk/react";
 import App from "./App";
+import "./fonts.css";
 import "./index.css";
 import { initClientSentry } from "./lib/sentry";
 import { installCsrfFetchInterceptor } from "./lib/csrf-fetch";
