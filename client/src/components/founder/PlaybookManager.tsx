@@ -68,27 +68,28 @@ function PlaybookCard({ playbook }: { playbook: Playbook }) {
   const steps = playbook.steps || [];
 
   return (
-    <div className="border rounded-xl p-4 space-y-3">
+    <li className="border rounded-xl p-4 space-y-3 list-none">
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <div className="text-sm font-semibold">{playbook.name}</div>
+          <p className="text-sm font-semibold m-0">{playbook.name}</p>
           <div className="flex items-center gap-1.5 mt-0.5">
-            <span className="text-sm">{ownerAvatar}</span>
+            <span aria-hidden="true" className="text-sm">{ownerAvatar}</span>
             <span className="text-xs text-muted-foreground">Owned by {ownerRole}</span>
           </div>
         </div>
         <div className="flex items-center gap-2">
           {playbook.isApproved ? (
-            <Badge variant="outline" className="bg-emerald-100 text-emerald-800">Approved</Badge>
+            <Badge variant="outline" className="bg-emerald-100 text-emerald-800" aria-label="Approved">Approved</Badge>
           ) : (
-            <Badge variant="outline" className="bg-amber-100 text-amber-800">Pending</Badge>
+            <Badge variant="outline" className="bg-amber-100 text-amber-800" aria-label="Pending approval">Pending</Badge>
           )}
           {playbook.isApproved && (
             <Switch
               checked={playbook.isActive}
               onCheckedChange={() => toggleMutation.mutate()}
               disabled={toggleMutation.isPending}
+              aria-label={`Activate ${playbook.name}`}
             />
           )}
         </div>
@@ -100,58 +101,67 @@ function PlaybookCard({ playbook }: { playbook: Playbook }) {
       )}
 
       {/* Trigger */}
-      <div className="text-xs px-2 py-1.5 rounded-md bg-muted/50 border">
+      <p className="text-xs px-2 py-1.5 rounded-md bg-muted/50 border m-0">
         Trigger: {playbook.triggerCondition}
-      </div>
+      </p>
 
       {/* Steps */}
-      <div className="space-y-1">
+      <ol aria-label="Playbook steps" className="space-y-1 list-none p-0 m-0">
         {steps.map((step, i) => (
-          <div key={i} className="flex items-center gap-2 text-xs">
-            <span className="text-muted-foreground font-mono w-4">{step.order + 1}.</span>
-            <span>{AGENT_AVATARS[step.agentCodename] || "?"}</span>
-            <span className="text-muted-foreground">{step.description}</span>
-          </div>
+          <li key={i} className="flex items-center gap-2 text-xs">
+            <span aria-hidden="true" className="text-muted-foreground font-mono w-4 tabular-nums">{step.order + 1}.</span>
+            <span aria-hidden="true">{AGENT_AVATARS[step.agentCodename] || "?"}</span>
+            <span className="text-muted-foreground">
+              <span className="sr-only">{AGENT_ROLES[step.agentCodename] || step.agentCodename}: </span>
+              {step.description}
+            </span>
+          </li>
         ))}
-      </div>
+      </ol>
 
       {/* Stats */}
       {playbook.totalExecutions > 0 && (
-        <div className="flex items-center gap-3 text-xs text-muted-foreground">
-          <span>{playbook.totalExecutions} runs</span>
-          {playbook.successRate && <span>{playbook.successRate}% success</span>}
+        <ul aria-label="Playbook statistics" className="flex items-center gap-3 text-xs text-muted-foreground list-none p-0 m-0">
+          <li><span className="tabular-nums">{playbook.totalExecutions}</span> runs</li>
+          {playbook.successRate && <li><span className="tabular-nums">{playbook.successRate}%</span> success</li>}
           {playbook.lastExecutedAt && (
-            <span>Last: {new Date(playbook.lastExecutedAt).toLocaleDateString()}</span>
+            <li>Last: <time dateTime={playbook.lastExecutedAt} className="tabular-nums">{new Date(playbook.lastExecutedAt).toLocaleDateString()}</time></li>
           )}
-        </div>
+        </ul>
       )}
 
       {/* Actions */}
       <div className="flex items-center gap-2">
         {!playbook.isApproved && (
           <Button
+            type="button"
             size="sm"
             variant="default"
             className="h-7 text-xs"
             onClick={() => approveMutation.mutate()}
             disabled={approveMutation.isPending}
+            aria-busy={approveMutation.isPending}
+            aria-label={`Approve ${playbook.name}`}
           >
-            <CheckCircle2 className="h-3 w-3 mr-1" /> Approve
+            <CheckCircle2 className="h-3 w-3 mr-1" aria-hidden="true" /> {approveMutation.isPending ? "Approving…" : "Approve"}
           </Button>
         )}
         {playbook.isApproved && playbook.isActive && (
           <Button
+            type="button"
             size="sm"
             variant="outline"
             className="h-7 text-xs"
             onClick={() => executeMutation.mutate()}
             disabled={executeMutation.isPending}
+            aria-busy={executeMutation.isPending}
+            aria-label={`Run ${playbook.name} now`}
           >
-            <Play className="h-3 w-3 mr-1" /> Run Now
+            <Play className="h-3 w-3 mr-1" aria-hidden="true" /> {executeMutation.isPending ? "Running…" : "Run now"}
           </Button>
         )}
       </div>
-    </div>
+    </li>
   );
 }
 
@@ -162,7 +172,7 @@ export function PlaybookManager() {
     refetchInterval: 30000,
   });
 
-  if (isLoading) return <Skeleton className="h-48 w-full rounded-xl" />;
+  if (isLoading) return <Skeleton role="status" aria-busy="true" aria-label="Loading playbooks" className="h-48 w-full rounded-xl" />;
 
   const list = (playbooks || []) as Playbook[];
   const pending = list.filter(p => !p.isApproved);
@@ -173,9 +183,9 @@ export function PlaybookManager() {
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-base flex items-center gap-2">
-            <BookOpen className="h-4 w-4" /> Playbooks
+            <BookOpen className="h-4 w-4" aria-hidden="true" /> Playbooks
             {pending.length > 0 && (
-              <Badge variant="outline" className="bg-amber-100 text-amber-800 ml-1">
+              <Badge variant="outline" className="bg-amber-100 text-amber-800 ml-1 tabular-nums" aria-label={`${pending.length} awaiting approval`}>
                 {pending.length} awaiting approval
               </Badge>
             )}
@@ -184,23 +194,27 @@ export function PlaybookManager() {
       </CardHeader>
       <CardContent className="space-y-4">
         {pending.length > 0 && (
-          <div className="space-y-2">
-            <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Needs Your Approval</div>
-            {pending.map(p => <PlaybookCard key={p.id} playbook={p} />)}
-          </div>
+          <section aria-labelledby="needs-approval-heading" className="space-y-2">
+            <p id="needs-approval-heading" className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Needs your approval</p>
+            <ul aria-labelledby="needs-approval-heading" className="space-y-3 list-none p-0 m-0">
+              {pending.map(p => <PlaybookCard key={p.id} playbook={p} />)}
+            </ul>
+          </section>
         )}
 
         {approved.length > 0 && (
-          <div className="space-y-2">
-            <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Active Playbooks</div>
-            {approved.map(p => <PlaybookCard key={p.id} playbook={p} />)}
-          </div>
+          <section aria-labelledby="active-playbooks-heading" className="space-y-2">
+            <p id="active-playbooks-heading" className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Active playbooks</p>
+            <ul aria-labelledby="active-playbooks-heading" className="space-y-3 list-none p-0 m-0">
+              {approved.map(p => <PlaybookCard key={p.id} playbook={p} />)}
+            </ul>
+          </section>
         )}
 
         {list.length === 0 && (
-          <div className="text-center py-6 text-sm text-muted-foreground">
+          <p className="text-center py-6 text-sm text-muted-foreground">
             No playbooks yet. Agents propose SOPs when they spot repeatable patterns.
-          </div>
+          </p>
         )}
       </CardContent>
     </Card>
