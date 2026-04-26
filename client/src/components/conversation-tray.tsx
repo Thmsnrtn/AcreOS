@@ -50,11 +50,11 @@ interface SeatInfo {
 function TierGatingPrompt() {
   return (
     <div className="flex flex-col items-center justify-center h-full p-6 text-center">
-      <div className="rounded-full bg-muted p-4 mb-4">
-        <Lock className="w-8 h-8 text-muted-foreground" />
+      <div aria-hidden="true" className="rounded-full bg-muted p-4 mb-4">
+        <Lock className="w-8 h-8 text-muted-foreground" aria-hidden="true" />
       </div>
-      <h3 className="text-lg font-semibold mb-2">Team Messaging</h3>
-      <p 
+      <h3 className="text-lg font-semibold mb-2">Team messaging</h3>
+      <p
         className="text-muted-foreground mb-4 max-w-[280px]"
         data-testid="text-tier-upgrade-prompt"
       >
@@ -94,7 +94,7 @@ function ConversationList({
       return member?.displayName || "Unknown";
     });
     
-    return names.length > 0 ? names.join(", ") : "Direct Message";
+    return names.length > 0 ? names.join(", ") : "Direct message";
   };
 
   const getInitials = (name: string) => {
@@ -118,54 +118,60 @@ function ConversationList({
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between gap-2 p-3 border-b">
-        <h3 className="font-semibold">Messages</h3>
+        <h3 className="font-semibold m-0">Messages</h3>
         <Button
+          type="button"
           size="icon"
           variant="ghost"
           onClick={onNewConversation}
           aria-label="New conversation"
           data-testid="button-new-conversation"
         >
-          <Plus className="w-4 h-4" />
+          <Plus className="w-4 h-4" aria-hidden="true" />
         </Button>
       </div>
-      
+
       <ScrollArea className="flex-1">
-        <div 
-          className="divide-y"
-          data-testid="conversation-list"
-        >
-          {conversations.length === 0 ? (
-            <div className="p-6 text-center text-muted-foreground">
-              <p className="text-sm">No conversations yet.</p>
-              <p className="text-sm">Start a new message to begin chatting.</p>
-            </div>
-          ) : (
-            conversations.map((conv) => {
+        {conversations.length === 0 ? (
+          <div className="p-6 text-center text-muted-foreground" role="status">
+            <p className="text-sm m-0">No conversations yet.</p>
+            <p className="text-sm m-0">Start a new message to begin chatting.</p>
+          </div>
+        ) : (
+          <ul
+            aria-label="Conversation list"
+            className="divide-y list-none p-0 m-0"
+            data-testid="conversation-list"
+          >
+            {conversations.map((conv) => {
               const displayName = getConversationDisplayName(conv);
+              const lastActivity = conv.lastMessageAt
+                ? new Date(conv.lastMessageAt).toLocaleDateString()
+                : "No messages yet";
               return (
-                <button
-                  key={conv.id}
-                  className="flex items-center gap-3 w-full p-3 text-left hover-elevate"
-                  onClick={() => onSelectConversation(conv)}
-                  data-testid={`conversation-item-${conv.id}`}
-                >
-                  <Avatar className="w-10 h-10">
-                    <AvatarFallback>{getInitials(displayName)}</AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium truncate">{displayName}</p>
-                    <p className="text-sm text-muted-foreground truncate">
-                      {conv.lastMessageAt 
-                        ? new Date(conv.lastMessageAt).toLocaleDateString() 
-                        : "No messages yet"}
-                    </p>
-                  </div>
-                </button>
+                <li key={conv.id} className="list-none">
+                  <button
+                    type="button"
+                    className="flex items-center gap-3 w-full p-3 text-left hover-elevate"
+                    onClick={() => onSelectConversation(conv)}
+                    data-testid={`conversation-item-${conv.id}`}
+                    aria-label={`Open conversation with ${displayName}, last activity ${lastActivity}`}
+                  >
+                    <Avatar className="w-10 h-10" aria-hidden="true">
+                      <AvatarFallback>{getInitials(displayName)}</AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium truncate m-0">{displayName}</p>
+                      <p className="text-sm text-muted-foreground truncate m-0 tabular-nums">
+                        {lastActivity}
+                      </p>
+                    </div>
+                  </button>
+                </li>
               );
-            })
-          )}
-        </div>
+            })}
+          </ul>
+        )}
       </ScrollArea>
     </div>
   );
@@ -193,41 +199,45 @@ function NewConversationView({
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-2 p-3 border-b">
-        <Button size="icon" variant="ghost" onClick={onBack} aria-label="Back to conversations">
-          <ArrowLeft className="w-4 h-4" />
+        <Button type="button" size="icon" variant="ghost" onClick={onBack} aria-label="Back to conversations">
+          <ArrowLeft className="w-4 h-4" aria-hidden="true" />
         </Button>
-        <h3 className="font-semibold">New Message</h3>
+        <h3 className="font-semibold m-0">New message</h3>
       </div>
-      
+
       <ScrollArea className="flex-1">
-        <div className="divide-y">
-          {otherMembers.length === 0 ? (
-            <div className="p-6 text-center text-muted-foreground">
-              <p className="text-sm">No team members available.</p>
-            </div>
-          ) : (
-            otherMembers.map((member) => {
-              const displayName = member.displayName || "Team Member";
+        {otherMembers.length === 0 ? (
+          <div className="p-6 text-center text-muted-foreground" role="status">
+            <p className="text-sm m-0">No team members available.</p>
+          </div>
+        ) : (
+          <ul aria-label="Team members" className="divide-y list-none p-0 m-0">
+            {otherMembers.map((member) => {
+              const displayName = member.displayName || "Team member";
               return (
-                <button
-                  key={member.userId}
-                  className="flex items-center gap-3 w-full p-3 text-left hover-elevate disabled:opacity-50"
-                  onClick={() => onStartConversation(member.userId)}
-                  disabled={isCreating}
-                  data-testid={`select-member-${member.userId}`}
-                >
-                  <Avatar className="w-10 h-10">
-                    <AvatarFallback>{getInitials(displayName)}</AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium truncate">{displayName}</p>
-                  </div>
-                  {isCreating && <Loader2 className="w-4 h-4 animate-spin" />}
-                </button>
+                <li key={member.userId} className="list-none">
+                  <button
+                    type="button"
+                    className="flex items-center gap-3 w-full p-3 text-left hover-elevate disabled:opacity-50"
+                    onClick={() => onStartConversation(member.userId)}
+                    disabled={isCreating}
+                    aria-busy={isCreating}
+                    aria-label={`Start conversation with ${displayName}`}
+                    data-testid={`select-member-${member.userId}`}
+                  >
+                    <Avatar className="w-10 h-10" aria-hidden="true">
+                      <AvatarFallback>{getInitials(displayName)}</AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium truncate m-0">{displayName}</p>
+                    </div>
+                    {isCreating && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
+                  </button>
+                </li>
               );
-            })
-          )}
-        </div>
+            })}
+          </ul>
+        )}
       </ScrollArea>
     </div>
   );
@@ -301,7 +311,7 @@ function ChatView({
       return member?.displayName || "Unknown";
     });
     
-    return names.length > 0 ? names.join(", ") : "Direct Message";
+    return names.length > 0 ? names.join(", ") : "Direct message";
   };
 
   const getSenderName = (senderId: string) => {
@@ -324,37 +334,42 @@ function ChatView({
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-2 p-3 border-b">
-        <Button size="icon" variant="ghost" onClick={onBack} aria-label="Back to conversations">
-          <ArrowLeft className="w-4 h-4" />
+        <Button type="button" size="icon" variant="ghost" onClick={onBack} aria-label="Back to conversations">
+          <ArrowLeft className="w-4 h-4" aria-hidden="true" />
         </Button>
-        <h3 className="font-semibold truncate">{getConversationDisplayName()}</h3>
+        <h3 className="font-semibold truncate m-0">{getConversationDisplayName()}</h3>
       </div>
-      
+
       <ScrollArea className="flex-1 p-3">
         {isLoadingMessages ? (
-          <div className="flex items-center justify-center h-20">
-            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+          <div className="flex items-center justify-center h-20" role="status" aria-busy="true" aria-label="Loading messages">
+            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" aria-hidden="true" />
+            <span className="sr-only">Loading messages…</span>
           </div>
         ) : sortedMessages.length === 0 ? (
-          <div className="flex items-center justify-center h-20 text-muted-foreground">
-            <p className="text-sm">No messages yet. Start the conversation!</p>
+          <div className="flex items-center justify-center h-20 text-muted-foreground" role="status">
+            <p className="text-sm m-0">No messages yet. Start the conversation!</p>
           </div>
         ) : (
-          <div className="space-y-3">
+          <ul role="log" aria-live="polite" aria-label="Conversation messages" className="space-y-3 list-none p-0 m-0">
             {sortedMessages.map((msg) => {
               const isOwn = msg.senderId === currentUserId;
               const senderName = getSenderName(msg.senderId);
-              
+              const timeStr = msg.createdAt
+                ? new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                : "";
+
               return (
-                <div
+                <li
                   key={msg.id}
                   className={cn(
-                    "flex gap-2",
+                    "flex gap-2 list-none",
                     isOwn ? "flex-row-reverse" : "flex-row"
                   )}
+                  aria-label={`${senderName} at ${timeStr}: ${msg.body}`}
                 >
                   {!isOwn && (
-                    <Avatar className="w-8 h-8 flex-shrink-0">
+                    <Avatar className="w-8 h-8 flex-shrink-0" aria-hidden="true">
                       <AvatarFallback className="text-xs">
                         {getInitials(senderName)}
                       </AvatarFallback>
@@ -369,29 +384,28 @@ function ChatView({
                     )}
                   >
                     {!isOwn && (
-                      <p className="text-xs font-medium mb-1 opacity-70">
+                      <p className="text-xs font-medium mb-1 opacity-70 m-0" aria-hidden="true">
                         {senderName}
                       </p>
                     )}
-                    <p className="text-sm whitespace-pre-wrap break-words">{msg.body}</p>
-                    <p className={cn(
-                      "text-xs mt-1",
-                      isOwn ? "text-primary-foreground/70" : "text-muted-foreground"
-                    )}>
-                      {msg.createdAt && new Date(msg.createdAt).toLocaleTimeString([], { 
-                        hour: "2-digit", 
-                        minute: "2-digit" 
-                      })}
-                    </p>
+                    <p className="text-sm whitespace-pre-wrap break-words m-0" aria-hidden="true">{msg.body}</p>
+                    {msg.createdAt && (
+                      <time dateTime={typeof msg.createdAt === "string" ? msg.createdAt : new Date(msg.createdAt).toISOString()} className={cn(
+                        "block text-xs mt-1 tabular-nums",
+                        isOwn ? "text-primary-foreground/70" : "text-muted-foreground"
+                      )} aria-hidden="true">
+                        {timeStr}
+                      </time>
+                    )}
                   </div>
-                </div>
+                </li>
               );
             })}
-            <div ref={messagesEndRef} />
-          </div>
+            <li ref={messagesEndRef} aria-hidden="true" className="list-none" />
+          </ul>
         )}
       </ScrollArea>
-      
+
       <Separator />
       <div className="p-3 flex items-center gap-2">
         <Input
@@ -400,19 +414,22 @@ function ChatView({
           onChange={(e) => setMessageInput(e.target.value)}
           onKeyDown={handleKeyDown}
           disabled={sendMessageMutation.isPending}
+          aria-label="Message"
           data-testid="input-message"
         />
         <Button
+          type="button"
           size="icon"
           onClick={handleSendMessage}
           disabled={!messageInput.trim() || sendMessageMutation.isPending}
-          aria-label="Send message"
+          aria-busy={sendMessageMutation.isPending}
+          aria-label={sendMessageMutation.isPending ? "Sending message" : "Send message"}
           data-testid="button-send-message"
         >
           {sendMessageMutation.isPending ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
+            <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
           ) : (
-            <Send className="w-4 h-4" />
+            <Send className="w-4 h-4" aria-hidden="true" />
           )}
         </Button>
       </div>
@@ -497,8 +514,9 @@ function ConversationTrayContent({ onClose }: { onClose?: () => void }) {
 
   if (isSeatInfoLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+      <div className="flex items-center justify-center h-64" role="status" aria-busy="true" aria-label="Loading messaging settings">
+        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" aria-hidden="true" />
+        <span className="sr-only">Loading…</span>
       </div>
     );
   }
@@ -554,17 +572,18 @@ export function ConversationTray() {
       <Sheet open={isOpen} onOpenChange={setIsOpen}>
         <SheetTrigger asChild>
           <Button
+            type="button"
             size="icon"
             className="fixed bottom-[160px] md:bottom-24 right-4 md:right-16 z-[49] rounded-full shadow-lg safe-area-bottom"
             aria-label="Open conversations"
             data-testid="button-open-conversations"
           >
-            <MessageCircle className="w-5 h-5" />
+            <MessageCircle className="w-5 h-5" aria-hidden="true" />
           </Button>
         </SheetTrigger>
         <SheetContent side="bottom" className="h-[85vh] p-0 rounded-t-xl">
           <SheetHeader className="sr-only">
-            <SheetTitle>Team Messages</SheetTitle>
+            <SheetTitle>Team messages</SheetTitle>
           </SheetHeader>
           <ConversationTrayContent onClose={() => setIsOpen(false)} />
         </SheetContent>
@@ -576,31 +595,33 @@ export function ConversationTray() {
     <>
       {!isOpen && (
         <Button
+          type="button"
           size="icon"
           className="fixed bottom-[160px] md:bottom-24 right-4 md:right-16 z-[49] rounded-full shadow-lg safe-area-bottom"
           onClick={() => setIsOpen(true)}
           aria-label="Open conversations"
           data-testid="button-open-conversations"
         >
-          <MessageCircle className="w-5 h-5" />
+          <MessageCircle className="w-5 h-5" aria-hidden="true" />
         </Button>
       )}
-      
+
       {isOpen && (
-        <div className="fixed bottom-[160px] md:bottom-24 right-4 md:right-16 z-[49] w-[360px] h-[500px] bg-background border rounded-lg shadow-xl flex flex-col overflow-hidden safe-area-bottom">
+        <section role="dialog" aria-label="Team messages" className="fixed bottom-[160px] md:bottom-24 right-4 md:right-16 z-[49] w-[360px] h-[500px] bg-background border rounded-lg shadow-xl flex flex-col overflow-hidden safe-area-bottom">
           <div className="absolute top-2 right-2 z-10">
             <Button
+              type="button"
               size="icon"
               variant="ghost"
               onClick={() => setIsOpen(false)}
               aria-label="Close conversations"
               data-testid="button-close-conversations"
             >
-              <X className="w-4 h-4" />
+              <X className="w-4 h-4" aria-hidden="true" />
             </Button>
           </div>
           <ConversationTrayContent onClose={() => setIsOpen(false)} />
-        </div>
+        </section>
       )}
     </>
   );
