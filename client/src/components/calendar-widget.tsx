@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
-import { Calendar, ExternalLink, MapPin, DollarSign, Phone } from "lucide-react";
+import { Calendar } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -90,7 +90,7 @@ export function CalendarWidget() {
   if (!hasEvents && !calendarStatus?.connected) {
     return (
       <div className="border rounded-lg p-4 text-center text-sm">
-        <Calendar className="h-8 w-8 mx-auto mb-2 text-muted-foreground opacity-50" />
+        <Calendar className="h-8 w-8 mx-auto mb-2 text-muted-foreground opacity-50" aria-hidden="true" />
         <p className="text-muted-foreground mb-2">No upcoming events</p>
         <Button variant="outline" size="sm" asChild>
           <Link href="/settings?tab=integrations" aria-label="Connect Google Calendar">
@@ -102,65 +102,72 @@ export function CalendarWidget() {
   }
 
   return (
-    <div className="border rounded-lg p-4">
+    <section aria-labelledby="calendar-week-heading" className="border rounded-lg p-4">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-medium flex items-center gap-2">
-          <Calendar className="h-4 w-4 text-muted-foreground" />
-          This Week
+        <h3 id="calendar-week-heading" className="text-sm font-medium flex items-center gap-2 m-0">
+          <Calendar className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+          This week
         </h3>
-        <div className="flex gap-2">
+        <ul aria-label="Event types" className="flex gap-2 list-none p-0 m-0">
           {Object.entries(EVENT_COLORS).map(([type, colors]) => (
-            <div key={type} className="flex items-center gap-1">
-              <span className={`h-2 w-2 rounded-full ${colors.dot}`} />
+            <li key={type} className="flex items-center gap-1">
+              <span aria-hidden="true" className={`h-2 w-2 rounded-full ${colors.dot}`} />
               <span className="text-[10px] text-muted-foreground capitalize">{type.replace(/_/g, " ")}</span>
-            </div>
+            </li>
           ))}
-        </div>
+        </ul>
       </div>
 
-      <motion.div
+      <motion.ul
         variants={staggerContainer}
         initial="hidden"
         animate="visible"
-        className="grid grid-cols-7 gap-1"
+        aria-label="Week calendar"
+        className="grid grid-cols-7 gap-1 list-none p-0 m-0"
       >
         {weekDays.map((day, i) => {
           const key = day.toISOString().split("T")[0];
           const dayEvents = eventsByDay[key] || [];
           const isToday = isSameDay(day, today);
+          const dayLabel = day.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" });
 
           return (
-            <motion.div
+            <motion.li
               key={key}
               variants={staggerItem}
               className={`min-h-[80px] rounded p-1.5 ${isToday ? "ring-2 ring-primary bg-primary/5" : "bg-muted/30"}`}
+              aria-label={`${dayLabel}${isToday ? " (today)" : ""}: ${dayEvents.length} event${dayEvents.length === 1 ? "" : "s"}`}
+              aria-current={isToday ? "date" : undefined}
             >
-              <div className={`text-xs font-medium mb-1 ${isToday ? "text-primary" : "text-muted-foreground"}`}>
-                {DAY_LABELS[i]} {day.getDate()}
+              <div className={`text-xs font-medium mb-1 ${isToday ? "text-primary" : "text-muted-foreground"}`} aria-hidden="true">
+                {DAY_LABELS[i]} <span className="tabular-nums">{day.getDate()}</span>
               </div>
-              <div className="space-y-0.5">
-                {dayEvents.slice(0, 3).map((event) => {
-                  const colors = EVENT_COLORS[event.type] || EVENT_COLORS.other;
-                  return (
-                    <div
-                      key={event.id}
-                      className={`${colors.bg} ${colors.text} rounded px-1 py-0.5 text-[10px] truncate cursor-default`}
-                      title={`${event.title}${event.time ? ` at ${event.time}` : ""}`}
-                    >
-                      {event.title}
-                    </div>
-                  );
-                })}
-                {dayEvents.length > 3 && (
-                  <div className="text-[10px] text-muted-foreground text-center">
-                    +{dayEvents.length - 3} more
-                  </div>
-                )}
-              </div>
-            </motion.div>
+              {dayEvents.length > 0 && (
+                <ul aria-label={`${dayLabel} events`} className="space-y-0.5 list-none p-0 m-0">
+                  {dayEvents.slice(0, 3).map((event) => {
+                    const colors = EVENT_COLORS[event.type] || EVENT_COLORS.other;
+                    const eventLabel = `${event.type.replace(/_/g, " ")}: ${event.title}${event.time ? ` at ${event.time}` : ""}`;
+                    return (
+                      <li
+                        key={event.id}
+                        className={`${colors.bg} ${colors.text} rounded px-1 py-0.5 text-[10px] truncate`}
+                        aria-label={eventLabel}
+                      >
+                        {event.title}
+                      </li>
+                    );
+                  })}
+                  {dayEvents.length > 3 && (
+                    <li className="text-[10px] text-muted-foreground text-center" aria-label={`${dayEvents.length - 3} more events`}>
+                      +<span className="tabular-nums">{dayEvents.length - 3}</span> more
+                    </li>
+                  )}
+                </ul>
+              )}
+            </motion.li>
           );
         })}
-      </motion.div>
-    </div>
+      </motion.ul>
+    </section>
   );
 }
