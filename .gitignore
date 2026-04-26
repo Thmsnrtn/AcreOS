@@ -28,6 +28,7 @@ test-results/
 
 # Simulation / audit artifacts
 /*.pdf
+audit-screenshots/
 /tests.zip
 /test-results.zip
 /PRODUCTION-REFINEMENT-ROADMAP.md
