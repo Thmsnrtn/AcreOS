@@ -3,7 +3,7 @@ import type { RequestHandler } from "express";
 import { db } from "../db";
 import { users } from "@shared/models/auth";
 import { eq } from "drizzle-orm";
-import { isFounderEmail } from "../services/founder";
+import { isFounderEmail, isFounderIdentity } from "../services/founder";
 import { logger } from "../utils/logger";
 
 export { clerkMiddleware };
@@ -96,8 +96,10 @@ async function hydrateUser(req: any, res: any, next: any) {
     }
 
     req.user = user;
-    // Set isFounder flag for founder-only routes
-    if (user.email && isFounderEmail(user.email)) {
+    // Set isFounder flag for founder-only routes. Matches by email
+    // (FOUNDER_EMAIL/FOUNDER_EMAILS) or Clerk user ID (FOUNDER_USER_IDS) —
+    // see server/services/founder.ts.
+    if (isFounderIdentity({ email: user.email, userId })) {
       req.isFounder = true;
     }
     next();
@@ -133,14 +135,18 @@ export const isAuthenticated: RequestHandler = (req: any, res, next) => {
  * Middleware that requires the user to be a founder.
  * Returns 404 to hide the existence of founder-only routes from non-founders.
  * Must run after isAuthenticated (requires req.user to be set).
+ *
+ * Matches founders by email (FOUNDER_EMAIL/FOUNDER_EMAILS) or Clerk user ID
+ * (FOUNDER_USER_IDS) — see server/services/founder.ts.
  */
-export const requireFounder: RequestHandler = (req, res, next) => {
+export const requireFounder: RequestHandler = (req: any, res, next) => {
   if (!req.user) {
     return res.status(404).json({ message: "Not found" });
   }
 
   const user = req.user as any;
-  if (!isFounderEmail(user.email)) {
+  const userId = req.auth?.userId ?? user.clerkUserId ?? null;
+  if (!isFounderIdentity({ email: user.email, userId })) {
     return res.status(404).json({ message: "Not found" });
   }
 

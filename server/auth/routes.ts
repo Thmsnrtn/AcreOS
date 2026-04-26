@@ -1,17 +1,27 @@
 import type { Express } from "express";
-import { isAuthenticated } from "./clerkAuth";
-import { isFounderEmail } from "../services/founder";
+import { isAuthenticated, requireFounder } from "./clerkAuth";
+import { isFounderIdentity } from "../services/founder";
 
 export function registerAuthRoutes(app: Express): void {
   // Get current authenticated user (used by frontend useAuth hook)
   // Cache-Control: no-store is belt-and-suspenders. Safari / iOS have
   // historic Vary: Cookie bugs that can serve a stale signed-out 200
   // after sign-in, trapping the user on the auth page.
-  app.get("/api/auth/user", isAuthenticated, (req, res) => {
+  app.get("/api/auth/user", isAuthenticated, (req: any, res) => {
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     const user = req.user as any;
-    const isFounder = isFounderEmail(user?.email);
+    const userId = req.auth?.userId ?? user?.clerkUserId ?? null;
+    const isFounder = isFounderIdentity({ email: user?.email, userId });
     res.json(isFounder ? { ...user, isFounder: true } : user);
+  });
+
+  // Founder-only existence probe. Returns 200 with { isFounder: true } for
+  // founders; returns 404 (NOT 403) for everyone else so non-founders cannot
+  // distinguish "endpoint exists but I lack access" from "endpoint missing".
+  // Used by useIsFounder() on the client to gate founder-only UI.
+  app.get("/api/auth/is-founder", isAuthenticated, requireFounder, (_req, res) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    res.json({ isFounder: true });
   });
 
   // UTM attribution stub — kept for API compatibility; UTM tracking
