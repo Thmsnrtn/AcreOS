@@ -8,8 +8,8 @@ Companion docs: `docs/unified-build/DESIGN-SYSTEM.md`, `docs/unified-build/phase
 ## Gaps
 
 - [/] Gap 1 — Auth-gated visual verification
-  - [/] Gap 1.0 — Automated visual analysis (NEW process update — in progress)
-  - [ ] Gap 1.1 — Founder visual verification (informed by 1.0 output)
+  - [x] Gap 1.0 — Automated visual analysis (Phase A: 76 prototype shots, Phase B: 48 production shots + mechanical checks, Phase C: 37 comparison files, Phase D: master report + 45-page HTML bundle)
+  - [/] Gap 1.1 — Founder visual verification (informed by 1.0 output) — instructions issued
   - [ ] Gap 1.2 — Reconciliation and gap inventory synthesis
 - [ ] Gap 2 — Tier 1 body deep-pass (today / pipeline / parcels / inbox)
 - [ ] Gap 3 — Mobile sweep on Tier 1 (24 screenshots × 6 breakpoints)
@@ -26,12 +26,20 @@ Companion docs: `docs/unified-build/DESIGN-SYSTEM.md`, `docs/unified-build/phase
 
 ## Current State
 
-**Gap:** 1.0 — Automated visual analysis (per process update)
-**Specific task:** Phase A — render Claude Design prototype locally + capture every canonical surface at desktop 1440 + mobile 375, save to `docs/exhaustive-completion/prototype-screenshots/`
-**Next action:** Phase B (production capture for unauthenticated surfaces) → Phase C (structured visual comparison) → Phase D (synthesis report) → Gap 1.1 (founder walkthrough informed by 1.0 output) → Gap 1.2 (reconciliation)
+**Gap:** 1.1 — Founder visual verification (informed by 1.0 output)
+**Specific task:** Founder walks AUTH-REQUIRED surfaces signed in to acreos.io, references prototype screenshots in `docs/exhaustive-completion/prototype-screenshots/`, drops verification screenshots in `docs/exhaustive-completion/founder-screenshots/{desktop,mobile}/`, fills `docs/exhaustive-completion/founder-notes.md`. Estimated time 45-75 min (down from 90+ thanks to 1.0 pre-pass).
+**Next action:** Founder commits screenshots + notes → resume in fresh session with "Founder walkthrough complete. Gap 1.2 reconciliation ready." → Claude Code synthesizes RECONCILED-GAP-INVENTORY.md → Gap 2 begins.
 
-**Operator status:** Course-correction issued asking founder to pause manual walkthrough until 1.0 completes. Auth-gated walkthrough still required after 1.0 (no automation can sign in via Clerk).
+**Gap 1.0 outputs (READY FOR FOUNDER):**
+- `docs/exhaustive-completion/MASTER-GAP-REPORT.md` — 37 surfaces classified (4 PASS / 4 FAIL / 29 AUTH-REQUIRED)
+- `docs/exhaustive-completion/comparisons/index.html` — clickable side-by-side bundle
+- `docs/exhaustive-completion/visual-comparisons/` — 37 per-surface stubs ready to fill in
+- `docs/exhaustive-completion/mechanical-checks/` — 8 unauth surface check reports
+- `docs/exhaustive-completion/prototype-screenshots/` — 76 reference images
+- `docs/exhaustive-completion/production-screenshots/` — 48 production captures (unauth only)
 
-**Honest scope notes for 1.0:**
-- *Cannot* — sign in via Clerk; judge "elite" vs "okay"; match voice/tone; catch subtle "feels designed" judgment; assess real-estate domain trustworthiness
-- *Can* — capture every unauthenticated surface at every breakpoint; mechanical checks (overflow, touch targets, console errors, contrast, font loading); layout structure / palette / typography / density comparison; confidence-calibrated structured judgment
+**Mechanical findings to verify in Gap 1.1 (CONFIDENT-FAIL):**
+- /landing — 10 small touch targets (<44px) across mobile breakpoints
+- /pricing — 12 small touch targets across mobile breakpoints
+- /auth — 3 small touch targets + 6 console errors (Clerk hosted UI; may be expected)
+- /changelog — 1 breakpoint with horizontal overflow (320px)

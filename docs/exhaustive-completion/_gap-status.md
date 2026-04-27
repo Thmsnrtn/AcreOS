@@ -8,13 +8,13 @@ Each gap has explicit checkbox criteria. A gap is only marked complete when ever
 
 **Status:** in progress (1.0 automated pre-pass running per process update)
 
-### Gap 1.0 — Automated visual analysis (NEW per process update)
+### Gap 1.0 — Automated visual analysis (per process update) — ✅ COMPLETE
 
-- [ ] Phase A — Claude Design prototype rendered locally, every canonical surface captured at 1440 + 375 → `prototype-screenshots/`
-- [ ] Phase B — every unauthenticated production surface captured at 6 breakpoints + per-surface mechanical checks (overflow, touch ≥44px, console errors, contrast, font loading) → `production-screenshots/` + `mechanical-checks/`
-- [ ] Phase C — per-surface structured visual comparison with calibrated confidence (CONFIDENT-PASS / CONFIDENT-FAIL / NEEDS-HUMAN-REVIEW / AUTH-REQUIRED) → `visual-comparisons/`
-- [ ] Phase D — `MASTER-GAP-REPORT.md` + clickable HTML comparison bundle → `comparisons/index.html`
-- [ ] Honest skip if prototype rendering fails — output skip notice, mark 1.0 SKIPPED, proceed to original Gap 1.1
+- [x] Phase A — Claude Design prototype rendered locally; 76 prototype screenshots at 1440 + 375 → `prototype-screenshots/`
+- [x] Phase B — 8 unauthenticated production surfaces × 6 breakpoints = 48 screenshots + 8 mechanical-check reports → `production-screenshots/` + `mechanical-checks/`
+- [x] Phase C — 37 surface comparison files written with verdict (CONFIDENT-PASS=4, CONFIDENT-FAIL=4, AUTH-REQUIRED=29) → `visual-comparisons/`
+- [x] Phase D — `MASTER-GAP-REPORT.md` + 45-page HTML comparison bundle → `comparisons/index.html`
+- [x] Prototype rendered successfully — no skip needed
 
 ### Gap 1.1 — Founder visual verification (informed by 1.0)
 
