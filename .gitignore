@@ -55,3 +55,8 @@ coverage/
 # Cycle handoff scratch notes (may contain secrets for test rigs)
 tests/e2e-intelligent/runs/_RESUME-HERE.md
 tests/e2e-intelligent/runs/**/_RESUME-HERE.md
+
+# Dev founder bypass artifacts (REMOVE_BEFORE_LAUNCH — see Gap 1.1.G)
+# .env.local already gitignored above; .log already gitignored above.
+# Explicit entry for the local secret file:
+.dev-bypass-secret

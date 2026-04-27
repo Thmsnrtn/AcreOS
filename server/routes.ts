@@ -7,6 +7,8 @@ import { storage, db } from "./storage";
 
 // Auth imports
 import { clerkMiddleware, isAuthenticated, registerAuthRoutes } from "./auth";
+// REMOVE_BEFORE_LAUNCH (or at Gap 1.1.G — whichever first):
+import { devFounderBypass } from "./auth/__DEV_BYPASS_REMOVE_BEFORE_LAUNCH";
 
 // Feature routes (Router-based)
 import { registerAIOperationsRoutes } from "./routes-ai-operations";
@@ -446,6 +448,11 @@ export async function registerRoutes(
     jwtKey: process.env.CLERK_JWT_KEY,
     proxyUrl: process.env.APP_URL ? `${process.env.APP_URL}/__clerk` : undefined,
   }));
+
+  // REMOVE_BEFORE_LAUNCH (Gap 1.1.G) — dev-mode founder identity bypass.
+  // Runs after clerkMiddleware so it can override req.auth for bypass-marked
+  // requests. Inert unless DEV_FOUNDER_BYPASS env vars are set + correct secret.
+  app.use(devFounderBypass);
 
   // Register auth routes (/api/auth/user, /api/auth/attribution)
   registerAuthRoutes(app);
