@@ -7,7 +7,10 @@ Companion docs: `docs/unified-build/DESIGN-SYSTEM.md`, `docs/unified-build/phase
 
 ## Gaps
 
-- [/] Gap 1 — Auth-gated visual verification (operator-driven; awaiting founder screenshots)
+- [/] Gap 1 — Auth-gated visual verification
+  - [/] Gap 1.0 — Automated visual analysis (NEW process update — in progress)
+  - [ ] Gap 1.1 — Founder visual verification (informed by 1.0 output)
+  - [ ] Gap 1.2 — Reconciliation and gap inventory synthesis
 - [ ] Gap 2 — Tier 1 body deep-pass (today / pipeline / parcels / inbox)
 - [ ] Gap 3 — Mobile sweep on Tier 1 (24 screenshots × 6 breakpoints)
 - [ ] Gap 4 — Tier 2 body deep-pass (buyboxes / lists / campaigns / campaigns/performance)
@@ -23,8 +26,12 @@ Companion docs: `docs/unified-build/DESIGN-SYSTEM.md`, `docs/unified-build/phase
 
 ## Current State
 
-**Gap:** 1 — Auth-gated visual verification
-**Specific task:** Awaiting founder screenshots of all customer surfaces (desktop 1440px + mobile 375px) plus founder notes per surface
-**Next action:** When founder commits screenshots and notes, walk through every screenshot, compare to Claude Design prototype, produce comprehensive `gap-inventory.md` (severity-classified work list for Gaps 2-9)
+**Gap:** 1.0 — Automated visual analysis (per process update)
+**Specific task:** Phase A — render Claude Design prototype locally + capture every canonical surface at desktop 1440 + mobile 375, save to `docs/exhaustive-completion/prototype-screenshots/`
+**Next action:** Phase B (production capture for unauthenticated surfaces) → Phase C (structured visual comparison) → Phase D (synthesis report) → Gap 1.1 (founder walkthrough informed by 1.0 output) → Gap 1.2 (reconciliation)
 
-**Operator instructions issued:** see Gap 1.1 in the resume prompt — founder takes 60-90 minutes to walk every customer surface signed in on desktop AND mobile, screenshots each, notes per surface, commits to `docs/exhaustive-completion/founder-screenshots/{desktop,mobile}/` and `docs/exhaustive-completion/founder-notes.md`.
+**Operator status:** Course-correction issued asking founder to pause manual walkthrough until 1.0 completes. Auth-gated walkthrough still required after 1.0 (no automation can sign in via Clerk).
+
+**Honest scope notes for 1.0:**
+- *Cannot* — sign in via Clerk; judge "elite" vs "okay"; match voice/tone; catch subtle "feels designed" judgment; assess real-estate domain trustworthiness
+- *Can* — capture every unauthenticated surface at every breakpoint; mechanical checks (overflow, touch targets, console errors, contrast, font loading); layout structure / palette / typography / density comparison; confidence-calibrated structured judgment

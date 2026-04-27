@@ -6,13 +6,30 @@ Each gap has explicit checkbox criteria. A gap is only marked complete when ever
 
 ## Gap 1 — Auth-Gated Visual Verification
 
-**Status:** in progress (1.1 awaiting founder)
+**Status:** in progress (1.0 automated pre-pass running per process update)
+
+### Gap 1.0 — Automated visual analysis (NEW per process update)
+
+- [ ] Phase A — Claude Design prototype rendered locally, every canonical surface captured at 1440 + 375 → `prototype-screenshots/`
+- [ ] Phase B — every unauthenticated production surface captured at 6 breakpoints + per-surface mechanical checks (overflow, touch ≥44px, console errors, contrast, font loading) → `production-screenshots/` + `mechanical-checks/`
+- [ ] Phase C — per-surface structured visual comparison with calibrated confidence (CONFIDENT-PASS / CONFIDENT-FAIL / NEEDS-HUMAN-REVIEW / AUTH-REQUIRED) → `visual-comparisons/`
+- [ ] Phase D — `MASTER-GAP-REPORT.md` + clickable HTML comparison bundle → `comparisons/index.html`
+- [ ] Honest skip if prototype rendering fails — output skip notice, mark 1.0 SKIPPED, proceed to original Gap 1.1
+
+### Gap 1.1 — Founder visual verification (informed by 1.0)
 
 - [ ] All 21+ customer surfaces have desktop screenshots in `docs/exhaustive-completion/founder-screenshots/desktop/`
 - [ ] All 21+ customer surfaces have mobile screenshots in `docs/exhaustive-completion/founder-screenshots/mobile/`
 - [ ] Founder notes exist for every surface in `docs/exhaustive-completion/founder-notes.md`
-- [ ] Comprehensive `docs/exhaustive-completion/gap-inventory.md` produced
+- [ ] All NEEDS-HUMAN-REVIEW surfaces from 1.0 explicitly judged by founder
+- [ ] All CONFIDENT-FAIL surfaces verified by founder before fix
+- [ ] 3-5 CONFIDENT-PASS surfaces spot-checked
+
+### Gap 1.2 — Reconciliation and gap inventory synthesis
+
+- [ ] `docs/exhaustive-completion/RECONCILED-GAP-INVENTORY.md` produced (work list for Gaps 2-9)
 - [ ] Severity classified per gap (critical / important / nice-to-have)
+- [ ] `docs/exhaustive-completion/automation-calibration.md` produced (where automation aligned/missed/over-confident)
 
 ---
 
