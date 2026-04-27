@@ -1,6 +1,6 @@
 # Exhaustive Completion Progress
 
-Last updated: 2026-04-27 (session paused — awaiting founder walkthrough)
+Last updated: 2026-04-27 (Gap 1.1 V2 workflow active — Claude Code executing 1.1.A)
 
 Predecessor: `docs/unified-build/COMPLETE.md` (unified build shipped through Phase 10).
 Companion docs: `docs/unified-build/DESIGN-SYSTEM.md`, `docs/unified-build/phase-9-audit.md`.
@@ -9,8 +9,15 @@ Companion docs: `docs/unified-build/DESIGN-SYSTEM.md`, `docs/unified-build/phase
 
 - [/] Gap 1 — Auth-gated visual verification
   - [x] Gap 1.0 — Automated visual analysis (Phase A: 76 prototype shots, Phase B: 48 production shots + mechanical checks, Phase C: 37 comparison files, Phase D: master report + 45-page HTML bundle)
-  - [/] Gap 1.1 — Founder visual verification (informed by 1.0 output) — instructions issued
-  - [ ] Gap 1.2 — Reconciliation and gap inventory synthesis
+  - [/] Gap 1.1 — Autonomous gap fixing + variant picker (V2 workflow — supersedes the original founder-walkthrough plan)
+    - [/] 1.1.A — Dev-mode founder bypass (header + cookie, secret-gated, launch-marker safeguard)
+    - [ ] 1.1.B — Claude Code authenticated visual analysis (Playwright + bypass header)
+    - [ ] 1.1.C — Autonomous gap fixing (CONFIDENT-FAIL items across all surfaces)
+    - [ ] 1.1.D — Variant picker construction (Vite app: shell → variant → 3-panel → copy → breakpoints → density → color → export → polish)
+    - [ ] 1.1.E — Founder picker interaction (operator-driven, end of Claude session)
+    - [ ] 1.1.F — Audit-after-fix loop (apply selections, re-capture, iterate until founder-approved)
+    - [ ] 1.1.G — Bypass cleanup (delete bypass code/secrets/logs immediately after 1.1.F approval — NOT deferred to launch)
+  - [x] Gap 1.2 — Reconciliation rolled into 1.1.F audit report (no longer a separate phase)
 - [ ] Gap 2 — Tier 1 body deep-pass (today / pipeline / parcels / inbox)
 - [ ] Gap 3 — Mobile sweep on Tier 1 (24 screenshots × 6 breakpoints)
 - [ ] Gap 4 — Tier 2 body deep-pass (buyboxes / lists / campaigns / campaigns/performance)
@@ -26,30 +33,39 @@ Companion docs: `docs/unified-build/DESIGN-SYSTEM.md`, `docs/unified-build/phase
 
 ## Current State
 
-**Gap:** 1.1 — Founder visual verification (informed by 1.0 output)
-**Status:** AWAITING FOUNDER — no work in progress in Claude Code. Session paused cleanly 2026-04-27.
-**Verified at pause:** `founder-screenshots/{desktop,mobile}/` empty, `founder-notes.md` still the unfilled template, no commits since `f934aa4` (Gap 1.0 phase D). Gap 1.1 is correctly "not started" — do not treat as in-progress.
+**Gap:** 1.1.A — Dev-mode founder bypass implementation
+**Status:** IN PROGRESS — Claude Code executing V2 workflow.
 
-**Founder offline task (45–75 min block):**
-1. Sign in to acreos.io on desktop @ 1440px, walk surfaces listed in `founder-notes.md`, screenshot each → `docs/exhaustive-completion/founder-screenshots/desktop/<surface-slug>.png`.
-2. Repeat on mobile @ 375px → `docs/exhaustive-completion/founder-screenshots/mobile/<surface-slug>.png`.
-3. Reference `prototype-screenshots/` and `comparisons/index.html` while walking — they are the ground-truth comparison.
-4. Fill `founder-notes.md` per-surface using the template block already in the file.
-5. Explicitly judge every AUTH-REQUIRED surface from `MASTER-GAP-REPORT.md`; verify the 4 CONFIDENT-FAIL surfaces; spot-check 3–5 CONFIDENT-PASS surfaces.
-6. Commit: `git add docs/exhaustive-completion/founder-screenshots docs/exhaustive-completion/founder-notes.md && git commit -m "docs(exhaustive): founder visual verification screenshots [exhaustive] [gap-1.1]"`.
+**V2 workflow summary (supersedes original 1.1 founder-walkthrough plan):**
+Instead of an offline founder walkthrough, Claude Code uses a development-mode founder authentication bypass to access auth-gated surfaces directly. Bypass is dual-mode: `X-Dev-Founder-Bypass: <secret>` header for Playwright captures (1.1.B), and `?dev_bypass=<secret>` query param that mints a short-lived signed HttpOnly cookie for picker iframes (1.1.D–F). Bypass is secret-gated, audited, and refuses to run if `.launched` marker exists. Cleanup is automatic at Gap 1.1.G (immediately after audit-after-fix is approved) — NOT deferred to launch.
 
-**Resume protocol:** Fresh Claude Code session, paste the exhaustive completion prompt, send "Founder walkthrough complete. Gap 1.2 reconciliation ready." Claude verifies artifacts on disk, then synthesizes `RECONCILED-GAP-INVENTORY.md` + `automation-calibration.md` → Gap 2 begins.
+**Sub-phase end states:**
+- 1.1.A done → bypass live on acreos.fly.dev, inert without secret, header + cookie paths verified
+- 1.1.B done → all auth-gated surfaces captured at 6 breakpoints, master gap report updated to cover all surfaces
+- 1.1.C done → all CONFIDENT-FAIL items have fix attempts deployed and verified; variant-required items escalated to picker
+- 1.1.D done → picker app built locally per D.6 incremental sequence, all four capabilities (3-panel, breakpoints, density, color) functional
+- 1.1.E (founder) → picker selections committed to `founder-selections.json`
+- 1.1.F done → selections applied, audit-after-fix report generated, founder approves
+- 1.1.G done → bypass code/secrets/logs/audit-log fully removed, deploy clean version, verify
 
-**Gap 1.0 outputs (READY FOR FOUNDER):**
+**Gap 1.0 outputs (preserved as reference):**
 - `docs/exhaustive-completion/MASTER-GAP-REPORT.md` — 37 surfaces classified (4 PASS / 4 FAIL / 29 AUTH-REQUIRED)
 - `docs/exhaustive-completion/comparisons/index.html` — clickable side-by-side bundle
-- `docs/exhaustive-completion/visual-comparisons/` — 37 per-surface stubs ready to fill in
+- `docs/exhaustive-completion/visual-comparisons/` — 37 per-surface stubs (will be filled in 1.1.B)
 - `docs/exhaustive-completion/mechanical-checks/` — 8 unauth surface check reports
 - `docs/exhaustive-completion/prototype-screenshots/` — 76 reference images
-- `docs/exhaustive-completion/production-screenshots/` — 48 production captures (unauth only)
+- `docs/exhaustive-completion/production-screenshots/` — 48 production captures (unauth only — 1.1.B adds auth surfaces)
 
-**Mechanical findings to verify in Gap 1.1 (CONFIDENT-FAIL):**
+**Mechanical findings (CONFIDENT-FAIL — to fix in 1.1.C):**
 - /landing — 10 small touch targets (<44px) across mobile breakpoints
 - /pricing — 12 small touch targets across mobile breakpoints
 - /auth — 3 small touch targets + 6 console errors (Clerk hosted UI; may be expected)
 - /changelog — 1 breakpoint with horizontal overflow (320px)
+
+**Bypass safety locks (1.1.A):**
+- Requires `DEV_FOUNDER_BYPASS=true` AND `DEV_FOUNDER_BYPASS_SECRET` set
+- Refuses to run (process.exit FATAL) if `NODE_ENV=production` AND `.launched` marker exists at repo root
+- Every bypass use logged to `dev-bypass-audit.log` (gitignored)
+- Cookie path: `?dev_bypass=<secret>` → HttpOnly, Secure, SameSite=Lax, 1hr TTL signed cookie; param stripped via redirect
+- Header path: `X-Dev-Founder-Bypass: <secret>` for Playwright (no cookie, per-request)
+- Removal at 1.1.G is mandatory before Gap 1 marks complete

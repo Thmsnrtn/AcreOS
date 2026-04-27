@@ -16,20 +16,75 @@ Each gap has explicit checkbox criteria. A gap is only marked complete when ever
 - [x] Phase D — `MASTER-GAP-REPORT.md` + 45-page HTML comparison bundle → `comparisons/index.html`
 - [x] Prototype rendered successfully — no skip needed
 
-### Gap 1.1 — Founder visual verification (informed by 1.0)
+### Gap 1.1 — Autonomous gap fixing + variant picker (V2 workflow)
 
-- [ ] All 21+ customer surfaces have desktop screenshots in `docs/exhaustive-completion/founder-screenshots/desktop/`
-- [ ] All 21+ customer surfaces have mobile screenshots in `docs/exhaustive-completion/founder-screenshots/mobile/`
-- [ ] Founder notes exist for every surface in `docs/exhaustive-completion/founder-notes.md`
-- [ ] All NEEDS-HUMAN-REVIEW surfaces from 1.0 explicitly judged by founder
-- [ ] All CONFIDENT-FAIL surfaces verified by founder before fix
-- [ ] 3-5 CONFIDENT-PASS surfaces spot-checked
+V2 supersedes the original founder-walkthrough plan. Claude Code uses a dev-mode founder bypass to access auth-gated surfaces, autonomously fixes confident-fail items, and presents variant-decision items to the founder via an interactive picker. Bypass cleanup at 1.1.G is mandatory before Gap 1 closes.
 
-### Gap 1.2 — Reconciliation and gap inventory synthesis
+#### Gap 1.1.A — Dev-mode founder bypass implementation
+- [ ] `server/auth/__DEV_BYPASS_REMOVE_BEFORE_LAUNCH.ts` created with header + cookie paths
+- [ ] Bypass wired into `server/routes.ts` after `clerkMiddleware` (overrides `req.auth` via `Object.defineProperty`)
+- [ ] Launch-marker safeguard: refuses to run if `NODE_ENV=production` AND `.launched` exists
+- [ ] Local secret in `.env.local` and `.dev-bypass-secret`; both gitignored
+- [ ] Fly secrets set on `acreos`: `DEV_FOUNDER_BYPASS`, `DEV_FOUNDER_BYPASS_SECRET`, `DEV_FOUNDER_USER_ID`
+- [ ] `docs/exhaustive-completion/REMOVE-BEFORE-LAUNCH.md` created (with 1.1.G amendment)
+- [ ] Deployed to `acreos.fly.dev`, app starts, audit log writes on bypass use
+- [ ] Verified: header path injects founder identity; cookie path mints HttpOnly cookie via `?dev_bypass=<secret>`; bypass inert without correct secret
 
-- [ ] `docs/exhaustive-completion/RECONCILED-GAP-INVENTORY.md` produced (work list for Gaps 2-9)
-- [ ] Severity classified per gap (critical / important / nice-to-have)
-- [ ] `docs/exhaustive-completion/automation-calibration.md` produced (where automation aligned/missed/over-confident)
+#### Gap 1.1.B — Authenticated visual analysis
+- [ ] Tier 1 (Pipeline) auth surfaces captured at 6 breakpoints with bypass header → `auth-screenshots/`
+- [ ] Tier 2 (Sourcing) auth surfaces captured at 6 breakpoints
+- [ ] Tier 3 (Closing) auth surfaces captured at 6 breakpoints
+- [ ] Tier 4 (Ops) auth surfaces captured at 6 breakpoints
+- [ ] Tier 5 (Founder) auth surfaces captured at 6 breakpoints
+- [ ] State variants captured per surface (default / empty / error / loading)
+- [ ] Per-surface comparison reports generated → `auth-comparisons/<surface>.md`
+- [ ] `MASTER-GAP-REPORT.md` updated to cover all surfaces (auth + unauth)
+
+#### Gap 1.1.C — Autonomous gap fixing
+- [ ] Every CONFIDENT-FAIL surface (unauth + auth) has a fix attempt
+- [ ] Fixes verified by re-capture at affected breakpoints
+- [ ] Per-surface comparison reports updated with "after fix" status
+- [ ] Items requiring founder taste (variant choices, density, copy alternatives) escalated to 1.1.D inventory
+- [ ] All fixes deployed to `acreos.fly.dev`
+
+#### Gap 1.1.D — Variant picker construction
+- [ ] `docs/exhaustive-completion/variant-inventory.md` produced (every decision: surface, type, options, source files, recommended default)
+- [ ] Picker shell + sidebar/main/topbar/bottombar navigation
+- [ ] Variant chooser (basic selection per decision)
+- [ ] Three-panel comparison (prototype / current production via cookie bypass / proposed-after preview)
+- [ ] Inline copy editing
+- [ ] Multi-breakpoint preview tabs (320 / 375 / 414 / 768 / 1024 / 1440 + split view)
+- [ ] Drag-to-resize density adjustment (compact / comfortable / spacious / custom + per-property sliders)
+- [ ] Color/token override picker (within design-system tokens only)
+- [ ] Export selections to `founder-selections.json` (validated format)
+- [ ] Picker UI polish pass (picker chrome itself feels designed)
+
+#### Gap 1.1.E — Founder picker interaction (operator-driven)
+- [ ] `founder-selections.json` committed with selections for every variant decision
+
+#### Gap 1.1.F — Audit-after-fix loop
+- [ ] All selections applied to production code per decision_type (variant / copy / config / density / token-override / layout)
+- [ ] Deploy after selections applied
+- [ ] Re-capture every surface at all breakpoints with bypass
+- [ ] Re-run mechanical checks
+- [ ] `AUDIT-AFTER-FIX.md` generated (resolved / remaining / new issues / recommended next action)
+- [ ] Founder approves audit (loop iterates until "Audit approved")
+
+#### Gap 1.1.G — Bypass cleanup (mandatory before Gap 1 closes)
+- [ ] `server/auth/__DEV_BYPASS_REMOVE_BEFORE_LAUNCH.ts` deleted
+- [ ] `devFounderBypass` middleware registration removed from `server/routes.ts`
+- [ ] Fly secrets unset: `DEV_FOUNDER_BYPASS`, `DEV_FOUNDER_BYPASS_SECRET`, `DEV_FOUNDER_USER_ID`
+- [ ] `.dev-bypass-secret` deleted locally
+- [ ] `dev-bypass-audit.log` deleted
+- [ ] `DEV_FOUNDER_BYPASS_*` lines removed from `.env.local`
+- [ ] Codebase grep for `DEV_FOUNDER_BYPASS` returns 0 references
+- [ ] Codebase grep for `REMOVE_BEFORE_LAUNCH` returns 0 references
+- [ ] Verified: request with `X-Dev-Founder-Bypass` header returns 401 (clerkAuth catches normally)
+- [ ] Verified: `?dev_bypass=...` query param has no effect
+- [ ] Verified: founder routes still return 404 to non-founders (existing security intact)
+- [ ] Verified: founder can sign in normally via Clerk
+- [ ] Clean deploy: `fly deploy -a acreos` successful
+- [ ] Final commit: `chore(cleanup): remove dev founder bypass [exhaustive] [post-gap-1]`
 
 ---
 
