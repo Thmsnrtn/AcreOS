@@ -60,12 +60,21 @@ if (BYPASS_ENABLED && BYPASS_SECRET && FOUNDER_USER_ID) {
   );
 }
 
+let auditWarned = false;
 function appendAudit(req: Request, mode: 'header' | 'cookie' | 'cookie-mint') {
   try {
-    const entry = `${new Date().toISOString()} ${mode} ${req.method} ${req.path} ip=${req.ip ?? 'unknown'} ua=${(req.headers['user-agent'] ?? '').toString().slice(0, 80)}\n`;
+    const ua = (req.headers['user-agent'] ?? '').toString().slice(0, 80);
+    const ip = (req.ip ?? 'unknown').toString();
+    const entry = `${new Date().toISOString()} ${mode} ${req.method} ${req.path} ip=${ip} ua=${ua}\n`;
     fs.appendFileSync(BYPASS_LOG, entry);
-  } catch {
-    // Never let audit-log failure break the request
+  } catch (err: unknown) {
+    // Never let audit-log failure break the request — but surface the error
+    // once so we know if logging is silently broken.
+    if (!auditWarned) {
+      auditWarned = true;
+      // eslint-disable-next-line no-console
+      console.error('[DEV BYPASS] audit-log write failed:', (err as Error)?.message ?? err);
+    }
   }
 }
 

@@ -10,6 +10,10 @@ vite.config.ts.*
 .env.*
 .env*.local
 
+# Dev founder bypass artifacts (REMOVE_BEFORE_LAUNCH — Gap 1.1.G)
+.dev-bypass-secret
+dev-bypass-audit.log
+
 # Local backups
 .acreos-backups/
 
