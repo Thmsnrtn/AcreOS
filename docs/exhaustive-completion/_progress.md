@@ -1,6 +1,6 @@
 # Exhaustive Completion Progress
 
-Last updated: 2026-04-26 (initialization)
+Last updated: 2026-04-27 (session paused — awaiting founder walkthrough)
 
 Predecessor: `docs/unified-build/COMPLETE.md` (unified build shipped through Phase 10).
 Companion docs: `docs/unified-build/DESIGN-SYSTEM.md`, `docs/unified-build/phase-9-audit.md`.
@@ -27,8 +27,18 @@ Companion docs: `docs/unified-build/DESIGN-SYSTEM.md`, `docs/unified-build/phase
 ## Current State
 
 **Gap:** 1.1 — Founder visual verification (informed by 1.0 output)
-**Specific task:** Founder walks AUTH-REQUIRED surfaces signed in to acreos.io, references prototype screenshots in `docs/exhaustive-completion/prototype-screenshots/`, drops verification screenshots in `docs/exhaustive-completion/founder-screenshots/{desktop,mobile}/`, fills `docs/exhaustive-completion/founder-notes.md`. Estimated time 45-75 min (down from 90+ thanks to 1.0 pre-pass).
-**Next action:** Founder commits screenshots + notes → resume in fresh session with "Founder walkthrough complete. Gap 1.2 reconciliation ready." → Claude Code synthesizes RECONCILED-GAP-INVENTORY.md → Gap 2 begins.
+**Status:** AWAITING FOUNDER — no work in progress in Claude Code. Session paused cleanly 2026-04-27.
+**Verified at pause:** `founder-screenshots/{desktop,mobile}/` empty, `founder-notes.md` still the unfilled template, no commits since `f934aa4` (Gap 1.0 phase D). Gap 1.1 is correctly "not started" — do not treat as in-progress.
+
+**Founder offline task (45–75 min block):**
+1. Sign in to acreos.io on desktop @ 1440px, walk surfaces listed in `founder-notes.md`, screenshot each → `docs/exhaustive-completion/founder-screenshots/desktop/<surface-slug>.png`.
+2. Repeat on mobile @ 375px → `docs/exhaustive-completion/founder-screenshots/mobile/<surface-slug>.png`.
+3. Reference `prototype-screenshots/` and `comparisons/index.html` while walking — they are the ground-truth comparison.
+4. Fill `founder-notes.md` per-surface using the template block already in the file.
+5. Explicitly judge every AUTH-REQUIRED surface from `MASTER-GAP-REPORT.md`; verify the 4 CONFIDENT-FAIL surfaces; spot-check 3–5 CONFIDENT-PASS surfaces.
+6. Commit: `git add docs/exhaustive-completion/founder-screenshots docs/exhaustive-completion/founder-notes.md && git commit -m "docs(exhaustive): founder visual verification screenshots [exhaustive] [gap-1.1]"`.
+
+**Resume protocol:** Fresh Claude Code session, paste the exhaustive completion prompt, send "Founder walkthrough complete. Gap 1.2 reconciliation ready." Claude verifies artifacts on disk, then synthesizes `RECONCILED-GAP-INVENTORY.md` + `automation-calibration.md` → Gap 2 begins.
 
 **Gap 1.0 outputs (READY FOR FOUNDER):**
 - `docs/exhaustive-completion/MASTER-GAP-REPORT.md` — 37 surfaces classified (4 PASS / 4 FAIL / 29 AUTH-REQUIRED)
