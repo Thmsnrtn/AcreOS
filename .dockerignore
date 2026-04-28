@@ -14,6 +14,18 @@ vite.config.ts.*
 .dev-bypass-secret
 dev-bypass-audit.log
 
+# Picker source files (REMOVE_BEFORE_LAUNCH — Gap 1.1.G)
+# Exclude node_modules + raw source; INCLUDE acreos-picker/dist so the
+# server can serve the bundled picker at /__dev/picker/ on Fly.
+acreos-picker/node_modules/
+acreos-picker/src/
+acreos-picker/package.json
+acreos-picker/package-lock.json
+acreos-picker/vite.config.ts
+acreos-picker/tsconfig.json
+acreos-picker/tailwind.config.js
+acreos-picker/postcss.config.js
+
 # Local backups
 .acreos-backups/
 

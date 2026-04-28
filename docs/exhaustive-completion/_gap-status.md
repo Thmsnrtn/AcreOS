@@ -60,17 +60,18 @@ Per founder-approved scope reduction: depth matches Gap 1.0 prototype reference 
 - [x] NEW findings recorded: 4 unregistered founder sub-routes (/founder/revenue, /cost, /ops, /tenants) — NEEDS-IMPLEMENTATION, escalated to founder decision (1.1.E or deferred)
 - [x] Items requiring founder taste deferred to 1.1.D picker (24 NEEDS-HUMAN-REVIEW surfaces still need pixel comparison)
 
-#### Gap 1.1.D — Variant picker construction
-- [ ] `docs/exhaustive-completion/variant-inventory.md` produced (every decision: surface, type, options, source files, recommended default)
-- [ ] Picker shell + sidebar/main/topbar/bottombar navigation
-- [ ] Variant chooser (basic selection per decision)
-- [ ] Three-panel comparison (prototype / current production via cookie bypass / proposed-after preview)
-- [ ] Inline copy editing
-- [ ] Multi-breakpoint preview tabs (320 / 375 / 414 / 768 / 1024 / 1440 + split view)
-- [ ] Drag-to-resize density adjustment (compact / comfortable / spacious / custom + per-property sliders)
-- [ ] Color/token override picker (within design-system tokens only)
-- [ ] Export selections to `founder-selections.json` (validated format)
-- [ ] Picker UI polish pass (picker chrome itself feels designed)
+#### Gap 1.1.D — Variant picker construction (in progress)
+- [x] `docs/exhaustive-completion/variant-inventory.md` produced (28 visual-review + 4 platform-tweak + 4 build-defer = 36 decisions). Adapted from V2 spec to match actual prototype reality (no parallel A/B variants — instead: per-surface fidelity review + global tweaks + build-defer for unimplemented routes).
+- [x] Picker shell scaffold — Vite + React + TS + Tailwind app at `acreos-picker/`. Shell layout: top bar (progress + export), sidebar (decisions grouped by category, status indicators), main panel (decision card with three-panel placeholder), bottom bar (prev/next nav). Basic selection persistence via localStorage; export-to-JSON wired.
+- [x] Hosting: built bundle served by acreos express server at `/__dev/picker/` (gated on `DEV_FOUNDER_BYPASS=true`). Same-origin so picker iframes carry Clerk session cookies.
+- [ ] D.6.2 — Variant chooser polish (basic chooser already in shell; needs better visual states + keyboard nav)
+- [ ] D.6.3 — Three-panel comparison (placeholder rendered; iframes need wiring with prototype Babel-render + current production + preview)
+- [ ] D.6.4 — Inline copy editing (textarea exists for free-form notes; copy editing per decision needs to load surface text and allow inline edits)
+- [ ] D.6.5 — Multi-breakpoint preview (320 / 375 / 414 / 768 / 1024 / 1440 + split view)
+- [ ] D.6.6 — Drag-to-resize density adjustment (compact / regular / comfy + custom sliders)
+- [ ] D.6.7 — Color/token override picker (within design-system tokens only)
+- [ ] D.6.8 — Export selections to `founder-selections.json` written to disk (currently downloads via browser); add server endpoint for direct save
+- [ ] D.6.9 — UI polish pass (picker chrome itself feels designed, not utilitarian)
 
 #### Gap 1.1.E — Founder picker interaction (operator-driven)
 - [ ] `founder-selections.json` committed with selections for every variant decision

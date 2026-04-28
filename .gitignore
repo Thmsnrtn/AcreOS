@@ -60,3 +60,9 @@ tests/e2e-intelligent/runs/**/_RESUME-HERE.md
 # .env.local already gitignored above; .log already gitignored above.
 # Explicit entry for the local secret file:
 .dev-bypass-secret
+
+# Variant picker (REMOVE_BEFORE_LAUNCH — Gap 1.1.G)
+# dist/ is committed so the picker is served from acreos.fly.dev with no
+# extra build step — same-origin hosting is required for picker iframes
+# to carry Clerk session cookies.
+acreos-picker/node_modules/

@@ -13,6 +13,7 @@ Companion docs: `docs/unified-build/DESIGN-SYSTEM.md`, `docs/unified-build/phase
     - [x] 1.1.A — Dev-mode founder bypass (header + cookie + Clerk-ticket signin, secret-gated, launch-marker safeguard) — deployed + verified on acreos.io
     - [x] 1.1.B — Claude Code authenticated visual analysis — 28 auth surfaces captured at 1440 + 375; per-surface comparison reports written; 4 CONFIDENT-FAIL surfaced (pipeline/inbox/offers/founder); 24 NEEDS-HUMAN-REVIEW
     - [x] 1.1.C — Autonomous gap fixing — 7 of 8 confident-fails resolved (3 list-page array bugs via fetchJsonArray; founder schema mismatch via select transform; landing/pricing touch targets; changelog overflow). Founder rate-limit residual is capture infra, not product. 4 new NEEDS-IMPLEMENTATION findings for unregistered founder sub-routes.
+    - [/] 1.1.D — Variant picker construction — D.1 inventory + D.6.1 shell scaffold complete; D.6.2-9 (variant chooser, three-panel comparison, copy editing, breakpoint preview, density slider, color picker, export, polish) deferred to next sessions.
     - [ ] 1.1.D — Variant picker construction (Vite app: shell → variant → 3-panel → copy → breakpoints → density → color → export → polish)
     - [ ] 1.1.E — Founder picker interaction (operator-driven, end of Claude session)
     - [ ] 1.1.F — Audit-after-fix loop (apply selections, re-capture, iterate until founder-approved)
