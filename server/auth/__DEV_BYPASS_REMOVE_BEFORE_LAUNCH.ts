@@ -191,11 +191,17 @@ export function devFounderBypass(req: Request, res: Response, next: NextFunction
         return next();
       }
       appendAudit(req, 'signin-ticket');
-      const url = new URL(req.originalUrl, 'http://placeholder');
-      url.searchParams.delete('dev_signin');
-      url.searchParams.set('__clerk_ticket', token);
-      const target = url.pathname + url.search;
-      res.redirect(302, target);
+      // Clerk only redeems __clerk_ticket on a page that mounts the <SignIn>
+      // component (here: /auth). Redirect to /auth with the ticket and a
+      // redirect_url that points to the originally-requested path. After
+      // redemption, Clerk navigates to redirect_url with a real session.
+      const original = new URL(req.originalUrl, 'http://placeholder');
+      original.searchParams.delete('dev_signin');
+      const redirectUrl = original.pathname + (original.search || '');
+      const authUrl = new URL('/auth', 'http://placeholder');
+      authUrl.searchParams.set('__clerk_ticket', token);
+      authUrl.searchParams.set('redirect_url', redirectUrl);
+      res.redirect(302, authUrl.pathname + authUrl.search);
     })();
     return;
   }
