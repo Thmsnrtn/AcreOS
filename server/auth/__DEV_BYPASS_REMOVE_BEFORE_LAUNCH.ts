@@ -167,6 +167,26 @@ async function createClerkSignInTicket(userId: string): Promise<string | null> {
 export function devFounderBypass(req: Request, res: Response, next: NextFunction) {
   if (!BYPASS_ENABLED || !BYPASS_SECRET || !FOUNDER_USER_ID) return next();
 
+  // Mode 4: Token endpoint — returns a fresh Clerk sign-in token as JSON
+  // when the bypass header is presented. Used by visual-capture scripts to
+  // sign in programmatically via window.Clerk.client.signIn.create.
+  if (req.method === 'GET' && req.path === '/api/__dev/signin-token') {
+    const headerProvided = req.headers['x-dev-founder-bypass'];
+    if (typeof headerProvided !== 'string' || !constantTimeEqual(headerProvided, BYPASS_SECRET)) {
+      return next();
+    }
+    void (async () => {
+      const token = await createClerkSignInTicket(FOUNDER_USER_ID);
+      if (!token) {
+        appendAudit(req, 'signin-ticket-failed');
+        return res.status(500).json({ error: 'token-generation-failed' });
+      }
+      appendAudit(req, 'signin-ticket');
+      res.json({ token, userId: FOUNDER_USER_ID });
+    })();
+    return;
+  }
+
   // Mode 1: Header (per-request server-side founder identity for API calls)
   const headerProvided = req.headers['x-dev-founder-bypass'];
   if (typeof headerProvided === 'string' && headerProvided.length > 0) {
