@@ -8,11 +8,19 @@
  * surfaces during pre-launch development. The platform is not yet live with
  * real customers, so this bypass cannot impact users.
  *
- * Two activation modes:
- *   1. HEADER  — `X-Dev-Founder-Bypass: <secret>` (per-request; for Playwright captures)
- *   2. COOKIE  — `?dev_bypass=<secret>` query param mints a signed HttpOnly cookie
- *      with 1-hour TTL, then redirects to strip the param. Subsequent requests
- *      use the cookie automatically (for picker iframes — must be same-origin).
+ * Three activation modes:
+ *   1. HEADER  — `X-Dev-Founder-Bypass: <secret>` (per-request; for API calls)
+ *      Injects req.auth.userId server-side. Backend-only — does NOT sign the
+ *      user into Clerk's React client. Useful for raw API tests.
+ *   2. COOKIE  — `?dev_bypass=<secret>` mints a signed HttpOnly cookie (1hr TTL)
+ *      and redirects to strip the param. Backend-only as well — same caveat
+ *      as the header path.
+ *   3. SIGNIN  — `?dev_signin=<secret>` calls Clerk's Backend API to create a
+ *      one-time sign-in token for the founder, then redirects to
+ *      `<path>?__clerk_ticket=<token>`. Clerk's React client redeems the ticket
+ *      into a real Clerk session and sets the `__session` cookie. After this,
+ *      the SPA renders authenticated UI normally. Used for visual capture
+ *      (1.1.B) and picker iframes (1.1.D). Requires `CLERK_SECRET_KEY` env var.
  *
  * Safety locks:
  *   - Inert unless DEV_FOUNDER_BYPASS=true AND DEV_FOUNDER_BYPASS_SECRET set
@@ -66,7 +74,7 @@ if (BYPASS_ENABLED && BYPASS_SECRET && FOUNDER_USER_ID) {
 }
 
 let auditWarned = false;
-function appendAudit(req: Request, mode: 'header' | 'cookie' | 'cookie-mint') {
+function appendAudit(req: Request, mode: 'header' | 'cookie' | 'cookie-mint' | 'signin-ticket' | 'signin-ticket-failed') {
   try {
     const ua = (req.headers['user-agent'] ?? '').toString().slice(0, 80);
     const ip = (req.ip ?? 'unknown').toString();
@@ -130,10 +138,36 @@ function injectFounderAuth(req: Request, userId: string) {
   });
 }
 
+async function createClerkSignInTicket(userId: string): Promise<string | null> {
+  const clerkSecret = process.env.CLERK_SECRET_KEY;
+  if (!clerkSecret) return null;
+  try {
+    const resp = await fetch('https://api.clerk.com/v1/sign_in_tokens', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${clerkSecret}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ user_id: userId, expires_in_seconds: 600 }),
+    });
+    if (!resp.ok) {
+      // eslint-disable-next-line no-console
+      console.error('[DEV BYPASS] Clerk sign-in token failed:', resp.status, (await resp.text()).slice(0, 200));
+      return null;
+    }
+    const data = (await resp.json()) as { token?: string };
+    return typeof data.token === 'string' ? data.token : null;
+  } catch (err: unknown) {
+    // eslint-disable-next-line no-console
+    console.error('[DEV BYPASS] Clerk sign-in token threw:', (err as Error)?.message ?? err);
+    return null;
+  }
+}
+
 export function devFounderBypass(req: Request, res: Response, next: NextFunction) {
   if (!BYPASS_ENABLED || !BYPASS_SECRET || !FOUNDER_USER_ID) return next();
 
-  // Mode 1: Header (Playwright captures)
+  // Mode 1: Header (per-request server-side founder identity for API calls)
   const headerProvided = req.headers['x-dev-founder-bypass'];
   if (typeof headerProvided === 'string' && headerProvided.length > 0) {
     if (constantTimeEqual(headerProvided, BYPASS_SECRET)) {
@@ -143,7 +177,30 @@ export function devFounderBypass(req: Request, res: Response, next: NextFunction
     return next();
   }
 
-  // Mode 2a: Query-param mint (picker iframe entry point)
+  // Mode 3: Signin ticket — call Clerk Backend API, redirect with ticket so
+  // the SPA's Clerk client can redeem it into a real session. This is what
+  // makes the SPA show authenticated UI for visual capture / picker iframes.
+  const signinProvided = typeof req.query.dev_signin === 'string' ? req.query.dev_signin : '';
+  if (signinProvided) {
+    if (!constantTimeEqual(signinProvided, BYPASS_SECRET)) return next();
+    // Async branch — return a promise (express handles thrown errors via next)
+    void (async () => {
+      const token = await createClerkSignInTicket(FOUNDER_USER_ID);
+      if (!token) {
+        appendAudit(req, 'signin-ticket-failed');
+        return next();
+      }
+      appendAudit(req, 'signin-ticket');
+      const url = new URL(req.originalUrl, 'http://placeholder');
+      url.searchParams.delete('dev_signin');
+      url.searchParams.set('__clerk_ticket', token);
+      const target = url.pathname + url.search;
+      res.redirect(302, target);
+    })();
+    return;
+  }
+
+  // Mode 2a: Query-param mint (legacy picker iframe entry — backend identity only)
   const queryProvided = typeof req.query.dev_bypass === 'string' ? req.query.dev_bypass : '';
   if (queryProvided) {
     if (constantTimeEqual(queryProvided, BYPASS_SECRET)) {
@@ -158,17 +215,15 @@ export function devFounderBypass(req: Request, res: Response, next: NextFunction
       if (process.env.NODE_ENV === 'production') cookieAttrs.push('Secure');
       res.setHeader('Set-Cookie', cookieAttrs.join('; '));
 
-      // Redirect to same path with the dev_bypass param stripped
       const url = new URL(req.originalUrl, 'http://placeholder');
       url.searchParams.delete('dev_bypass');
       const target = url.pathname + (url.search ? url.search : '');
       return res.redirect(302, target);
     }
-    // Wrong secret — silent fall-through to normal auth (no audit)
     return next();
   }
 
-  // Mode 2b: Cookie verification (subsequent picker requests)
+  // Mode 2b: Bypass cookie verification (legacy)
   const cookieHeader = req.headers.cookie ?? '';
   const cookieMatch = new RegExp(`(?:^|;\\s*)${COOKIE_NAME}=([^;]+)`).exec(cookieHeader);
   if (cookieMatch) {
