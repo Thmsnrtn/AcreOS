@@ -329,6 +329,7 @@
   cursor: pointer;
   transition: background 0.15s, color 0.15s, transform 0.1s;
   text-decoration: none;
+  min-height: 44px;
 }
 .lp-btn-primary {
   background: var(--acr-brand);
@@ -931,6 +932,7 @@
   gap: 8px;
   cursor: pointer;
   transition: all 0.2s;
+  min-height: 44px;
 }
 .lp-pricing-toggle button:hover {
   color: var(--acr-ink);
@@ -1346,6 +1348,8 @@
   letter-spacing: -0.02em;
   color: var(--acr-ink);
   text-decoration: none;
+  min-height: 44px;
+  padding: 0 4px;
 }
 .lp-logo-mark {
   width: 28px;

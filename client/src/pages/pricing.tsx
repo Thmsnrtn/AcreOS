@@ -113,8 +113,8 @@ export default function PricingPage() {
           </Link>
           <div className="flex items-center gap-2">
             <ThemeToggle />
-            <Button size="sm" asChild>
-              <Link href="/auth?mode=register">Get started</Link>
+            <Button asChild>
+              <Link href="/auth?mode=register" className="min-h-11">Get started</Link>
             </Button>
           </div>
         </div>
