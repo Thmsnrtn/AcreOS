@@ -601,6 +601,9 @@ export function registerCommunicationRoutes(app: Express): void {
     try {
       const org = req.organization;
       const id = parseInt(req.params.id);
+      if (Number.isNaN(id)) {
+        return Errors.notFound(res, "Message");
+      }
       const message = await storage.getInboxMessage(id);
       // Task #2: IDOR prevention — verify resource belongs to requesting org
       if (!message || message.organizationId !== org.id) {

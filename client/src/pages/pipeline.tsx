@@ -1,5 +1,6 @@
 import { useEffect, useState, lazy, Suspense } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { fetchJsonArray } from "@/lib/queryClient";
 import { PageShell } from "@/components/page-shell";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -205,12 +206,13 @@ export default function PipelinePage() {
 
   const { data: leads = [] } = useQuery<Lead[]>({
     queryKey: ["/api/leads"],
+    queryFn: () => fetchJsonArray<Lead>("/api/leads"),
     staleTime: 2 * 60 * 1000,
   });
 
   const { data: deals = [] } = useQuery<Deal[]>({
     queryKey: ["/api/deals"],
-    queryFn: () => fetch("/api/deals").then((r) => r.json()),
+    queryFn: () => fetchJsonArray<Deal>("/api/deals"),
     staleTime: 2 * 60 * 1000,
   });
 

@@ -2,7 +2,7 @@ import DOMPurify from "isomorphic-dompurify";
 import { Sidebar, useSidebarCollapsed } from "@/components/layout-sidebar";
 import "./today.css";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, fetchJsonArray } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useMemo, useEffect } from "react";
 import { useDocumentTitle } from "@/hooks/use-document-title";
@@ -812,6 +812,7 @@ export default function InboxPage() {
 
   const { data: leads = [] } = useQuery<Lead[]>({
     queryKey: ["/api/leads"],
+    queryFn: () => fetchJsonArray<Lead>("/api/leads"),
   });
 
   const { toast } = useToast();

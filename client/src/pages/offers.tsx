@@ -2,7 +2,7 @@ import { useState, useMemo, useId } from "react";
 import { PageShell } from "@/components/page-shell";
 import { ListSkeleton } from "@/components/list-skeleton";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, fetchJsonArray } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { usd } from "@/lib/format";
@@ -70,21 +70,26 @@ export default function OffersPage() {
   const [pendingDeleteTemplate, setPendingDeleteTemplate] = useState<OfferTemplate | null>(null);
   const [pendingBulkDelete, setPendingBulkDelete] = useState(false);
   
-  // Queries
+  // Queries — fetchJsonArray handles both raw [] and {data:[...]} envelopes
+  // so all four queries are safe even though some endpoints wrap in envelopes.
   const { data: offerLetters, isLoading: offersLoading } = useQuery<OfferLetter[]>({
     queryKey: ['/api/offer-letters'],
+    queryFn: () => fetchJsonArray<OfferLetter>('/api/offer-letters'),
   });
-  
+
   const { data: templates, isLoading: templatesLoading } = useQuery<OfferTemplate[]>({
     queryKey: ['/api/offer-templates'],
+    queryFn: () => fetchJsonArray<OfferTemplate>('/api/offer-templates'),
   });
-  
+
   const { data: leads } = useQuery<Lead[]>({
     queryKey: ['/api/leads'],
+    queryFn: () => fetchJsonArray<Lead>('/api/leads'),
   });
-  
+
   const { data: properties } = useQuery<Property[]>({
     queryKey: ['/api/properties'],
+    queryFn: () => fetchJsonArray<Property>('/api/properties'),
   });
   
   // Mutations
