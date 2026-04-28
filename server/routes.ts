@@ -471,10 +471,10 @@ export async function registerRoutes(
     // Prototype source (HTML + JSX served raw — Babel compiles in browser)
     const prototypeDir = path.resolve(process.cwd(), "acreos");
     if (fs.existsSync(prototypeDir)) {
-      app.use("/__dev/prototype", express.static(prototypeDir, { fallthrough: false }));
-      app.get("/__dev/prototype", (_req, res) => {
-        res.sendFile(path.join(prototypeDir, "acreos.html"));
-      });
+      app.use(
+        "/__dev/prototype",
+        express.static(prototypeDir, { index: "acreos.html", fallthrough: false })
+      );
     }
   }
 

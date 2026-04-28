@@ -458,7 +458,7 @@ function ThreePanelComparison({ decision }: { decision: Decision }) {
         <Panel title="Prototype" subtitle={decision.prototypeRef ?? ''}>
           <ScaledIframe
             ref={protoRef}
-            src={`/__dev/prototype/`}
+            src={`/__dev/prototype/acreos.html`}
             width={bp}
             innerHeight={innerHeight}
             scaledWidth={scaledWidth}
