@@ -20,15 +20,15 @@ Each gap has explicit checkbox criteria. A gap is only marked complete when ever
 
 V2 supersedes the original founder-walkthrough plan. Claude Code uses a dev-mode founder bypass to access auth-gated surfaces, autonomously fixes confident-fail items, and presents variant-decision items to the founder via an interactive picker. Bypass cleanup at 1.1.G is mandatory before Gap 1 closes.
 
-#### Gap 1.1.A — Dev-mode founder bypass implementation
-- [ ] `server/auth/__DEV_BYPASS_REMOVE_BEFORE_LAUNCH.ts` created with header + cookie paths
-- [ ] Bypass wired into `server/routes.ts` after `clerkMiddleware` (overrides `req.auth` via `Object.defineProperty`)
-- [ ] Launch-marker safeguard: refuses to run if `NODE_ENV=production` AND `.launched` exists
-- [ ] Local secret in `.env.local` and `.dev-bypass-secret`; both gitignored
-- [ ] Fly secrets set on `acreos`: `DEV_FOUNDER_BYPASS`, `DEV_FOUNDER_BYPASS_SECRET`, `DEV_FOUNDER_USER_ID`
-- [ ] `docs/exhaustive-completion/REMOVE-BEFORE-LAUNCH.md` created (with 1.1.G amendment)
-- [ ] Deployed to `acreos.fly.dev`, app starts, audit log writes on bypass use
-- [ ] Verified: header path injects founder identity; cookie path mints HttpOnly cookie via `?dev_bypass=<secret>`; bypass inert without correct secret
+#### Gap 1.1.A — Dev-mode founder bypass implementation — ✅ COMPLETE
+- [x] `server/auth/__DEV_BYPASS_REMOVE_BEFORE_LAUNCH.ts` created with header + cookie paths
+- [x] Bypass wired into `server/routes.ts` after `clerkMiddleware` (overrides `req.auth` via `Object.defineProperty`)
+- [x] Launch-marker safeguard: refuses to run if `NODE_ENV=production` AND `.launched` exists
+- [x] Local secret in `.env.local` and `.dev-bypass-secret`; both gitignored AND dockerignored
+- [x] Fly secrets set on `acreos`: `DEV_FOUNDER_BYPASS`, `DEV_FOUNDER_BYPASS_SECRET`, `DEV_FOUNDER_USER_ID`
+- [x] `docs/exhaustive-completion/REMOVE-BEFORE-LAUNCH.md` created (with 1.1.G amendment)
+- [x] Deployed to acreos.io (acreos.fly.dev 301-redirects to canonical domain), app starts, audit log writes on bypass use to `/tmp/dev-bypass-audit.log`
+- [x] Verified: header path injects founder identity; cookie path mints HttpOnly cookie via `?dev_bypass=<secret>`; bypass inert without correct secret (5/5 verification pass)
 
 #### Gap 1.1.B — Authenticated visual analysis
 - [ ] Tier 1 (Pipeline) auth surfaces captured at 6 breakpoints with bypass header → `auth-screenshots/`

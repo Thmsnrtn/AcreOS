@@ -1,6 +1,6 @@
 # Exhaustive Completion Progress
 
-Last updated: 2026-04-27 (Gap 1.1 V2 workflow active — Claude Code executing 1.1.A)
+Last updated: 2026-04-27 (1.1.A complete — bypass deployed and verified on acreos.io)
 
 Predecessor: `docs/unified-build/COMPLETE.md` (unified build shipped through Phase 10).
 Companion docs: `docs/unified-build/DESIGN-SYSTEM.md`, `docs/unified-build/phase-9-audit.md`.
@@ -10,8 +10,8 @@ Companion docs: `docs/unified-build/DESIGN-SYSTEM.md`, `docs/unified-build/phase
 - [/] Gap 1 — Auth-gated visual verification
   - [x] Gap 1.0 — Automated visual analysis (Phase A: 76 prototype shots, Phase B: 48 production shots + mechanical checks, Phase C: 37 comparison files, Phase D: master report + 45-page HTML bundle)
   - [/] Gap 1.1 — Autonomous gap fixing + variant picker (V2 workflow — supersedes the original founder-walkthrough plan)
-    - [/] 1.1.A — Dev-mode founder bypass (header + cookie, secret-gated, launch-marker safeguard)
-    - [ ] 1.1.B — Claude Code authenticated visual analysis (Playwright + bypass header)
+    - [x] 1.1.A — Dev-mode founder bypass (header + cookie, secret-gated, launch-marker safeguard) — deployed + verified on acreos.io
+    - [/] 1.1.B — Claude Code authenticated visual analysis (Playwright + bypass header) — next
     - [ ] 1.1.C — Autonomous gap fixing (CONFIDENT-FAIL items across all surfaces)
     - [ ] 1.1.D — Variant picker construction (Vite app: shell → variant → 3-panel → copy → breakpoints → density → color → export → polish)
     - [ ] 1.1.E — Founder picker interaction (operator-driven, end of Claude session)
@@ -33,8 +33,18 @@ Companion docs: `docs/unified-build/DESIGN-SYSTEM.md`, `docs/unified-build/phase
 
 ## Current State
 
-**Gap:** 1.1.A — Dev-mode founder bypass implementation
-**Status:** IN PROGRESS — Claude Code executing V2 workflow.
+**Gap:** 1.1.B — Claude Code authenticated visual analysis (Playwright + bypass)
+**Status:** READY TO START. 1.1.A bypass live on acreos.io with 5/5 verification pass.
+
+**1.1.A artifacts (deployed):**
+- `server/auth/__DEV_BYPASS_REMOVE_BEFORE_LAUNCH.ts` — middleware (header + cookie modes)
+- `server/routes.ts` — registered after `clerkMiddleware`
+- Fly secrets set: `DEV_FOUNDER_BYPASS=true`, `DEV_FOUNDER_BYPASS_SECRET`, `DEV_FOUNDER_USER_ID=user_3CK2u6pGH7EYHgFyMS99fwhLSM7`
+- Local: `.env.local`, `.dev-bypass-secret` (both gitignored, not in docker context)
+- Audit log: `/tmp/dev-bypass-audit.log` on each Fly machine (per-machine, ephemeral). Read via `fly ssh console -a acreos -C 'cat /tmp/dev-bypass-audit.log'`
+- Verification: GET /api/auth/user without secret → 401; with `X-Dev-Founder-Bypass: $SECRET` → 200 with founder identity (Thomas Norton, user_3CK2u6pGH7EYHgFyMS99fwhLSM7); `?dev_bypass=$SECRET` → 302 + signed HttpOnly cookie; cookie path → 200
+
+**Important domain note:** acreos.fly.dev 301-redirects to acreos.io (canonical). All Playwright captures and verification should target `https://acreos.io`, not `acreos.fly.dev`.
 
 **V2 workflow summary (supersedes original 1.1 founder-walkthrough plan):**
 Instead of an offline founder walkthrough, Claude Code uses a development-mode founder authentication bypass to access auth-gated surfaces directly. Bypass is dual-mode: `X-Dev-Founder-Bypass: <secret>` header for Playwright captures (1.1.B), and `?dev_bypass=<secret>` query param that mints a short-lived signed HttpOnly cookie for picker iframes (1.1.D–F). Bypass is secret-gated, audited, and refuses to run if `.launched` marker exists. Cleanup is automatic at Gap 1.1.G (immediately after audit-after-fix is approved) — NOT deferred to launch.
