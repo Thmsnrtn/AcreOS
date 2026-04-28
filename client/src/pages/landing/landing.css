@@ -1433,6 +1433,7 @@
   background: var(--acr-ink);
   color: var(--acr-brand-ink);
   text-decoration: none;
+  min-height: 44px;
   white-space: nowrap;
   transition: transform 0.15s, background 0.15s, box-shadow 0.15s;
 }
