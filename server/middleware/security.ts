@@ -11,6 +11,28 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
   // Skip CSP for Clerk proxy — Clerk manages its own headers
   if (req.path.startsWith("/__clerk")) return next();
 
+  // REMOVE_BEFORE_LAUNCH (Gap 1.1.G): the variant picker + prototype need
+  // unpkg.com (React+Babel CDN), inline eval (Babel-in-browser), framing
+  // by self, etc. Skip strict CSP for /__dev/* when bypass is active —
+  // these routes are dev-only and gated on DEV_FOUNDER_BYPASS.
+  if (
+    process.env.DEV_FOUNDER_BYPASS === "true" &&
+    req.path.startsWith("/__dev/")
+  ) {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+    // Looser CSP: allow unpkg + inline eval (Babel) + same-origin framing
+    res.setHeader(
+      "Content-Security-Policy",
+      "default-src 'self' https: data: blob: 'unsafe-inline' 'unsafe-eval'; " +
+        "frame-ancestors 'self'; " +
+        "img-src 'self' data: blob: https:; " +
+        "script-src 'self' https: 'unsafe-inline' 'unsafe-eval'; " +
+        "style-src 'self' https: 'unsafe-inline';"
+    );
+    return next();
+  }
+
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
   res.setHeader("X-XSS-Protection", "1; mode=block");
@@ -49,7 +71,8 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
     "base-uri 'self'",
     "form-action 'self'",
     // REMOVE_BEFORE_LAUNCH (Gap 1.1.G): bypass active = picker may frame
-    // same-origin pages for visual review. Default stays 'none' for prod.
+    // same-origin pages (production iframes inside picker). Default stays
+    // 'none' for prod.
     process.env.DEV_FOUNDER_BYPASS === "true" ? "frame-ancestors 'self'" : "frame-ancestors 'none'",
   ];
 
