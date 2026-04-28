@@ -48,7 +48,9 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
-    "frame-ancestors 'none'",
+    // REMOVE_BEFORE_LAUNCH (Gap 1.1.G): bypass active = picker may frame
+    // same-origin pages for visual review. Default stays 'none' for prod.
+    process.env.DEV_FOUNDER_BYPASS === "true" ? "frame-ancestors 'self'" : "frame-ancestors 'none'",
   ];
 
   // Only upgrade to HTTPS in production

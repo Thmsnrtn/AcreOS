@@ -532,10 +532,10 @@ const ScaledIframe = forwardRef<HTMLIFrameElement, ScaledIframeProps>(
             border: 0,
             display: 'block',
           }}
-          // sandbox keeps iframes from breaking out; allow-scripts so React
-          // mounts; allow-same-origin so we can call window.__nav on the
-          // prototype + carry Clerk cookies on production
-          sandbox="allow-scripts allow-same-origin allow-forms"
+          // No sandbox: we need full same-origin so the picker can call
+          // window.__nav on the prototype iframe + Clerk cookies carry on
+          // the production iframe. The picker itself is dev-only and gated
+          // on DEV_FOUNDER_BYPASS, so the lower isolation is acceptable.
         />
       </div>
     );
