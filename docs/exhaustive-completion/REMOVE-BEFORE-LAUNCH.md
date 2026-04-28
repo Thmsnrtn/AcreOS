@@ -21,7 +21,7 @@ below is fully verified.
 ## Files to delete
 
 - [ ] `server/auth/__DEV_BYPASS_REMOVE_BEFORE_LAUNCH.ts`
-- [ ] `dev-bypass-audit.log` (gitignored — local artifact)
+- [ ] `dev-bypass-audit.log` (in `os.tmpdir()` — `/tmp/dev-bypass-audit.log` on Linux/macOS; ephemeral, but inspect via `fly ssh console -a acreos -C 'cat /tmp/dev-bypass-audit.log'`)
 - [ ] `.dev-bypass-secret` (gitignored — local artifact)
 
 ## Code to remove

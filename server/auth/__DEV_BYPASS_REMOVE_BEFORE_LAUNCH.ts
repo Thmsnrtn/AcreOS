@@ -25,6 +25,7 @@
 
 import type { Request, Response, NextFunction } from 'express';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import * as crypto from 'crypto';
 
@@ -36,7 +37,11 @@ const COOKIE_NAME = '__dev_founder_bypass';
 const COOKIE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 const LAUNCH_MARKER = path.join(process.cwd(), '.launched');
-const BYPASS_LOG = path.join(process.cwd(), 'dev-bypass-audit.log');
+// Use os.tmpdir() so the audit log is writable regardless of process uid.
+// In containers /app is often root-owned while node runs as uid 1000 — /tmp
+// (or os.tmpdir()) is always writable. To inspect on Fly:
+//   fly ssh console -a acreos -C 'cat /tmp/dev-bypass-audit.log'
+const BYPASS_LOG = path.join(os.tmpdir(), 'dev-bypass-audit.log');
 
 if (BYPASS_ENABLED && process.env.NODE_ENV === 'production' && fs.existsSync(LAUNCH_MARKER)) {
   // eslint-disable-next-line no-console
