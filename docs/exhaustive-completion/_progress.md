@@ -1,6 +1,6 @@
 # Exhaustive Completion Progress
 
-Last updated: 2026-04-27 (1.1.A complete — bypass deployed and verified on acreos.io)
+Last updated: 2026-04-28 (1.1.B complete — auth surfaces captured + classified; 4 CONFIDENT-FAIL identified)
 
 Predecessor: `docs/unified-build/COMPLETE.md` (unified build shipped through Phase 10).
 Companion docs: `docs/unified-build/DESIGN-SYSTEM.md`, `docs/unified-build/phase-9-audit.md`.
@@ -10,9 +10,9 @@ Companion docs: `docs/unified-build/DESIGN-SYSTEM.md`, `docs/unified-build/phase
 - [/] Gap 1 — Auth-gated visual verification
   - [x] Gap 1.0 — Automated visual analysis (Phase A: 76 prototype shots, Phase B: 48 production shots + mechanical checks, Phase C: 37 comparison files, Phase D: master report + 45-page HTML bundle)
   - [/] Gap 1.1 — Autonomous gap fixing + variant picker (V2 workflow — supersedes the original founder-walkthrough plan)
-    - [x] 1.1.A — Dev-mode founder bypass (header + cookie, secret-gated, launch-marker safeguard) — deployed + verified on acreos.io
-    - [/] 1.1.B — Claude Code authenticated visual analysis (Playwright + bypass header) — next
-    - [ ] 1.1.C — Autonomous gap fixing (CONFIDENT-FAIL items across all surfaces)
+    - [x] 1.1.A — Dev-mode founder bypass (header + cookie + Clerk-ticket signin, secret-gated, launch-marker safeguard) — deployed + verified on acreos.io
+    - [x] 1.1.B — Claude Code authenticated visual analysis — 28 auth surfaces captured at 1440 + 375; per-surface comparison reports written; 4 CONFIDENT-FAIL surfaced (pipeline/inbox/offers/founder); 24 NEEDS-HUMAN-REVIEW
+    - [/] 1.1.C — Autonomous gap fixing (8 CONFIDENT-FAIL across all surfaces) — next
     - [ ] 1.1.D — Variant picker construction (Vite app: shell → variant → 3-panel → copy → breakpoints → density → color → export → polish)
     - [ ] 1.1.E — Founder picker interaction (operator-driven, end of Claude session)
     - [ ] 1.1.F — Audit-after-fix loop (apply selections, re-capture, iterate until founder-approved)
@@ -33,8 +33,24 @@ Companion docs: `docs/unified-build/DESIGN-SYSTEM.md`, `docs/unified-build/phase
 
 ## Current State
 
-**Gap:** 1.1.B — Claude Code authenticated visual analysis (Playwright + bypass)
-**Status:** READY TO START. 1.1.A bypass live on acreos.io with 5/5 verification pass.
+**Gap:** 1.1.C — Autonomous gap fixing (CONFIDENT-FAIL items)
+**Status:** READY TO START. 1.1.B captured 28 auth surfaces; 4 confident-fails identified with concrete fix candidates.
+
+**1.1.B outputs:**
+- 56 production screenshots in `auth-screenshots/` (28 surfaces × 1440 + 375)
+- `auth-screenshots/_capture-report.json` — capture metadata + per-surface console errors
+- 28 per-surface comparison reports overwritten in `visual-comparisons/<slug>-AUTH-REQUIRED.md`
+- Master gap report updated to cover all surfaces (4 + 4 CONFIDENT-FAIL, 4 PASS, 24 NEEDS-HUMAN-REVIEW)
+- `tests/e2e/capture-auth-surfaces.ts` — Playwright capture script (REMOVE_BEFORE_LAUNCH)
+- `tests/e2e/build-auth-comparisons.ts` — comparison-report generator (REMOVE_BEFORE_LAUNCH)
+
+**4 auth CONFIDENT-FAIL surfaces (1.1.C fix queue):**
+1. /pipeline — `m.filter is not a function` in `pipeline-ScU16Kxc.js`. Likely `useQuery` data not an array on initial render.
+2. /inbox — `j.forEach is not a function` (same pattern). Plus `/api/inbox/threads` returns 500 — separate backend bug.
+3. /offers — `L.filter is not a function` (same pattern).
+4. /founder — Rate-limited toast + Loading skeleton; needs re-capture to distinguish transient 429 from persistent failure.
+
+**Common root cause hypothesis:** /pipeline, /inbox, /offers all share `X.<array-method> is not a function` on minified bundles. Likely a single missing `Array.isArray()` defensive pattern across list components.
 
 **1.1.A artifacts (deployed):**
 - `server/auth/__DEV_BYPASS_REMOVE_BEFORE_LAUNCH.ts` — middleware (header + cookie modes)

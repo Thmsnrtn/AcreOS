@@ -30,15 +30,21 @@ V2 supersedes the original founder-walkthrough plan. Claude Code uses a dev-mode
 - [x] Deployed to acreos.io (acreos.fly.dev 301-redirects to canonical domain), app starts, audit log writes on bypass use to `/tmp/dev-bypass-audit.log`
 - [x] Verified: header path injects founder identity; cookie path mints HttpOnly cookie via `?dev_bypass=<secret>`; bypass inert without correct secret (5/5 verification pass)
 
-#### Gap 1.1.B — Authenticated visual analysis
-- [ ] Tier 1 (Pipeline) auth surfaces captured at 6 breakpoints with bypass header → `auth-screenshots/`
-- [ ] Tier 2 (Sourcing) auth surfaces captured at 6 breakpoints
-- [ ] Tier 3 (Closing) auth surfaces captured at 6 breakpoints
-- [ ] Tier 4 (Ops) auth surfaces captured at 6 breakpoints
-- [ ] Tier 5 (Founder) auth surfaces captured at 6 breakpoints
-- [ ] State variants captured per surface (default / empty / error / loading)
-- [ ] Per-surface comparison reports generated → `auth-comparisons/<surface>.md`
-- [ ] `MASTER-GAP-REPORT.md` updated to cover all surfaces (auth + unauth)
+#### Gap 1.1.B — Authenticated visual analysis — ✅ COMPLETE (pragmatic depth)
+
+Per founder-approved scope reduction: depth matches Gap 1.0 prototype reference (1440 + 375 default state) instead of full 6-breakpoint × 4-state matrix. Full breakpoint/state coverage deferred to focused passes after 1.1.C identifies surfaces with real gaps.
+
+- [x] All 28 AUTH-REQUIRED surfaces captured at 1440 + 375 → `auth-screenshots/`
+- [x] Tier 1 (Pipeline): /today, /pipeline, /parcels/81, /inbox, /contacts, /calendar
+- [x] Tier 2 (Sourcing): /buyboxes, /lists, /campaigns, /campaigns/performance
+- [x] Tier 3 (Closing): /offers, /documents, /finance, /dispositions
+- [x] Tier 4 (Ops): /agents, /automations, /audit, /settings, /team, /billing, /integrations, /ai
+- [x] Tier 5 (Founder): /founder, /founder/atlas-run, /founder/revenue, /founder/tenants, /founder/cost, /founder/ops
+- [x] Per-surface comparison reports generated → `visual-comparisons/<slug>-AUTH-REQUIRED.md`
+- [x] `MASTER-GAP-REPORT.md` updated to cover all surfaces (auth + unauth)
+- [ ] _Deferred to follow-up:_ State variants (loading / empty / error) per surface
+- [ ] _Deferred to follow-up:_ Intermediate breakpoints (320 / 414 / 768 / 1024)
+- [ ] _Deferred to 1.1.C re-capture:_ /onboarding (no prototype reference yet)
 
 #### Gap 1.1.C — Autonomous gap fixing
 - [ ] Every CONFIDENT-FAIL surface (unauth + auth) has a fix attempt

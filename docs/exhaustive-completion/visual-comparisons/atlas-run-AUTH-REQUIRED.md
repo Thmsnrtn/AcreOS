@@ -1,26 +1,53 @@
-# /atlas-run — Founder Review Required (AUTH-REQUIRED)
+# /founder/atlas-run — Auth-gated visual comparison (1.1.B)
 
 **Production URL:** https://acreos.io/founder/atlas-run
-**Tier:** 5
-**Prototype source:** `/acreos/round3-integrations-2.jsx → AtlasRunC`
-
-**Reason:** Authenticated surface, Playwright cannot drive Clerk sign-in. Requires founder verification.
+**Captured:** 2026-04-28T01:42:17.949Z via Playwright + dev-bypass Clerk sign-in token
 
 ## Prototype reference
 
-- Desktop: `docs/exhaustive-completion/prototype-screenshots/atlas-run-1440.png`
-- Mobile: `docs/exhaustive-completion/prototype-screenshots/atlas-run-375.png`
+- Desktop (1440): `prototype-screenshots/atlas-run-1440.png` 
+- Mobile (375):  `prototype-screenshots/atlas-run-375.png` 
 
-## Founder must:
+## Production capture (this run)
 
-1. Sign in to https://acreos.io
-2. Navigate to `/founder/atlas-run` on desktop (1440px)
-3. Compare to the prototype reference above
-4. Take screenshot → `docs/exhaustive-completion/founder-screenshots/desktop/atlas-run.png`
-5. Repeat on mobile (375px) → `docs/exhaustive-completion/founder-screenshots/mobile/atlas-run.png`
-6. Document findings in `docs/exhaustive-completion/founder-notes.md` per the template
+- Desktop (1440): `auth-screenshots/atlas-run-1440.png`
+- Mobile (375):  `auth-screenshots/atlas-run-375.png`
 
-## Final Classification
+## Capture metadata
 
-[x] AUTH-REQUIRED
+| Breakpoint | File size | Final URL | Issues |
+|---|---|---|---|
+| 1440 | 72KB | (no redirect) | 5 |
+| 375 | 42KB | (no redirect) | 1 |
 
+### Desktop (1440) console issues
+
+```
+console.error: Failed to load resource: the server responded with a status of 500 ()
+console.error: Failed to load resource: the server responded with a status of 500 ()
+console.error: [Query Error] Error: 500: Internal server error
+    at eu (https://acreos.io/assets/index-i4wXazLj.js:2:67740)
+    at async https://acreos.io/assets/index-i4wXazLj.js:2:70242
+console.error: Failed to load resource: the server responded with a status of 403 ()
+networkidle timeout (non-fatal)
+```
+
+### Mobile (375) console issues
+
+```
+console.error: Failed to load resource: the server responded with a status of 429 ()
+```
+
+## Provisional verdict
+
+**Classification:** NEEDS-HUMAN-REVIEW
+
+**Reasons:**
+- mobile: hit rate limit (429) during rapid capture sequence — likely transient, re-capture to confirm
+- No render-blocking errors or auth redirects detected. Pixel-level comparison vs prototype required to classify pass/fail.
+
+## Notes
+
+Provisional verdict from automated capture analysis. Pixel-level comparison vs prototype happens in 1.1.D picker via three-panel view.
+
+No automatic fail signal detected. Open both shots side-by-side to verify visual fidelity vs prototype.

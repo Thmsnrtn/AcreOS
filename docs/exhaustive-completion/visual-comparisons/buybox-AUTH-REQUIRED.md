@@ -1,26 +1,58 @@
-# /buybox — Founder Review Required (AUTH-REQUIRED)
+# /buyboxes — Auth-gated visual comparison (1.1.B)
 
-**Production URL:** https://acreos.io/buyboxes (or embedded)
-**Tier:** 2
-**Prototype source:** `/acreos/pages-tier2345.jsx → BuyBoxes`
-
-**Reason:** Authenticated surface, Playwright cannot drive Clerk sign-in. Requires founder verification.
+**Production URL:** https://acreos.io/buyboxes
+**Captured:** 2026-04-28T01:42:17.940Z via Playwright + dev-bypass Clerk sign-in token
 
 ## Prototype reference
 
-- Desktop: `docs/exhaustive-completion/prototype-screenshots/buybox-1440.png`
-- Mobile: `docs/exhaustive-completion/prototype-screenshots/buybox-375.png`
+- Desktop (1440): `prototype-screenshots/buybox-1440.png` 
+- Mobile (375):  `prototype-screenshots/buybox-375.png` 
 
-## Founder must:
+## Production capture (this run)
 
-1. Sign in to https://acreos.io
-2. Navigate to `/buyboxes (or embedded)` on desktop (1440px)
-3. Compare to the prototype reference above
-4. Take screenshot → `docs/exhaustive-completion/founder-screenshots/desktop/buybox.png`
-5. Repeat on mobile (375px) → `docs/exhaustive-completion/founder-screenshots/mobile/buybox.png`
-6. Document findings in `docs/exhaustive-completion/founder-notes.md` per the template
+- Desktop (1440): `auth-screenshots/buybox-1440.png`
+- Mobile (375):  `auth-screenshots/buybox-375.png`
 
-## Final Classification
+## Capture metadata
 
-[x] AUTH-REQUIRED
+| Breakpoint | File size | Final URL | Issues |
+|---|---|---|---|
+| 1440 | 72KB | (no redirect) | 5 |
+| 375 | 64KB | (no redirect) | 5 |
 
+### Desktop (1440) console issues
+
+```
+console.error: Failed to load resource: the server responded with a status of 500 ()
+console.error: Failed to load resource: the server responded with a status of 500 ()
+console.error: [Query Error] Error: 500: Internal server error
+    at eu (https://acreos.io/assets/index-i4wXazLj.js:2:67740)
+    at async https://acreos.io/assets/index-i4wXazLj.js:2:70242
+console.error: Failed to load resource: the server responded with a status of 403 ()
+networkidle timeout (non-fatal)
+```
+
+### Mobile (375) console issues
+
+```
+console.error: Failed to load resource: the server responded with a status of 500 ()
+console.error: Failed to load resource: the server responded with a status of 500 ()
+console.error: [Query Error] Error: 500: Internal server error
+    at eu (https://acreos.io/assets/index-i4wXazLj.js:2:67740)
+    at async https://acreos.io/assets/index-i4wXazLj.js:2:70242
+console.error: Failed to load resource: the server responded with a status of 403 ()
+networkidle timeout (non-fatal)
+```
+
+## Provisional verdict
+
+**Classification:** NEEDS-HUMAN-REVIEW
+
+**Reasons:**
+- No render-blocking errors or auth redirects detected. Pixel-level comparison vs prototype required to classify pass/fail.
+
+## Notes
+
+Provisional verdict from automated capture analysis. Pixel-level comparison vs prototype happens in 1.1.D picker via three-panel view.
+
+No automatic fail signal detected. Open both shots side-by-side to verify visual fidelity vs prototype.
