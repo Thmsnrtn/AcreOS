@@ -83,8 +83,8 @@ export default function ChangelogPage() {
     <div className="min-h-screen bg-background overflow-x-hidden">
       <div className="max-w-2xl mx-auto px-6 py-16">
         <div className="mb-8">
-          <Button variant="ghost" size="sm" asChild>
-            <Link href="/">
+          <Button variant="ghost" asChild>
+            <Link href="/" className="min-h-11">
               <ArrowLeft className="w-4 h-4 mr-2" aria-hidden="true" /> Back to AcreOS
             </Link>
           </Button>

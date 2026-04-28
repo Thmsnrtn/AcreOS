@@ -49,11 +49,17 @@ export function CookieConsentBanner() {
         <div className="flex-1 text-sm text-muted-foreground">
           We use cookies and similar technologies to improve your experience.
           By continuing, you agree to our{" "}
-          <Link href="/privacy" className="underline hover:text-foreground">
+          <Link
+            href="/privacy"
+            className="underline hover:text-foreground inline-flex items-center min-h-11 px-1 -mx-1"
+          >
             Privacy Policy
           </Link>{" "}
           and{" "}
-          <Link href="/terms" className="underline hover:text-foreground">
+          <Link
+            href="/terms"
+            className="underline hover:text-foreground inline-flex items-center min-h-11 px-1 -mx-1"
+          >
             Terms of Service
           </Link>
           .
@@ -62,19 +68,19 @@ export function CookieConsentBanner() {
           <Button
             type="button"
             variant="outline"
-            size="sm"
             onClick={decline}
             aria-label="Decline cookies"
             data-testid="cookie-consent-decline"
+            className="min-h-11"
           >
             Decline
           </Button>
           <Button
             type="button"
-            size="sm"
             onClick={accept}
             aria-label="Accept all cookies"
             data-testid="cookie-consent-accept"
+            className="min-h-11"
           >
             Accept all
           </Button>

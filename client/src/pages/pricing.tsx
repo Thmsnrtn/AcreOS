@@ -107,7 +107,7 @@ export default function PricingPage() {
       {/* Nav */}
       <nav className="border-b bg-background/95 backdrop-blur sticky top-0 z-50">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+          <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity min-h-11 py-1">
             <ArrowLeft className="h-4 w-4" aria-hidden="true" />
             <AcreosLogo size={30} />
           </Link>
