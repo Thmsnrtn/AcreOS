@@ -454,18 +454,26 @@ export async function registerRoutes(
   // requests. Inert unless DEV_FOUNDER_BYPASS env vars are set + correct secret.
   app.use(devFounderBypass);
 
-  // REMOVE_BEFORE_LAUNCH (Gap 1.1.G) — variant picker static bundle.
-  // Hosted same-origin so picker iframes can load /<surface> with Clerk
+  // REMOVE_BEFORE_LAUNCH (Gap 1.1.G) — variant picker + prototype static bundles.
+  // Both hosted same-origin so picker iframes can load /<surface> with Clerk
   // session cookies intact. Gated on DEV_FOUNDER_BYPASS env var.
   if (process.env.DEV_FOUNDER_BYPASS === "true") {
     const path = await import("path");
     const fs = await import("fs");
+    // Picker
     const pickerDist = path.resolve(process.cwd(), "acreos-picker/dist");
     if (fs.existsSync(pickerDist)) {
       app.use("/__dev/picker", express.static(pickerDist, { fallthrough: false }));
-      // SPA fallback for /__dev/picker/ deep links
       app.get("/__dev/picker", (_req, res) => {
         res.sendFile(path.join(pickerDist, "index.html"));
+      });
+    }
+    // Prototype source (HTML + JSX served raw — Babel compiles in browser)
+    const prototypeDir = path.resolve(process.cwd(), "acreos");
+    if (fs.existsSync(prototypeDir)) {
+      app.use("/__dev/prototype", express.static(prototypeDir, { fallthrough: false }));
+      app.get("/__dev/prototype", (_req, res) => {
+        res.sendFile(path.join(prototypeDir, "acreos.html"));
       });
     }
   }
