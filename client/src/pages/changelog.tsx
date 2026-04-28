@@ -80,7 +80,7 @@ export default function ChangelogPage() {
   });
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background overflow-x-hidden">
       <div className="max-w-2xl mx-auto px-6 py-16">
         <div className="mb-8">
           <Button variant="ghost" size="sm" asChild>
@@ -122,7 +122,7 @@ export default function ChangelogPage() {
                             .map((item, i) => (
                               <li key={i} className="text-sm text-muted-foreground flex gap-2">
                                 <span className="text-muted-foreground/50 shrink-0" aria-hidden="true">-</span>
-                                <span>{item}</span>
+                                <span className="break-words min-w-0">{item}</span>
                               </li>
                             ))}
                         </ul>

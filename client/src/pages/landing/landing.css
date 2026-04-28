@@ -1288,6 +1288,9 @@
   font: 400 14px/1.4 var(--font-sans);
   color: var(--acr-ink-2);
   text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
 }
 .lp-footer-col a:hover {
   color: var(--acr-brand);
@@ -1306,6 +1309,10 @@
 .lp-footer-fine a {
   color: var(--acr-ink-3);
   text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 6px;
 }
 .lp-footer-fine a:hover {
   color: var(--acr-brand);
@@ -1395,6 +1402,10 @@
   color: var(--acr-ink-2);
   text-decoration: none;
   transition: color 0.15s;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 8px;
 }
 .lp-nav-signin:hover,
 .lp-nav-signin:focus-visible {

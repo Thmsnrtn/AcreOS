@@ -95,7 +95,37 @@ function getGreeting() {
   return { text: "Good evening", Icon: Moon };
 }
 
-const useMetrics = () => useQuery<ExecutiveMetrics>({ queryKey: ["/api/founder/executive-dashboard"], staleTime: 120_000 });
+// The /api/founder/executive-dashboard response uses different field names
+// than the UI's ExecutiveMetrics interface and is missing some fields that
+// the dashboard hasn't added yet (nps, churnRate). Normalize at the seam so
+// the page never crashes on missing data — render zeros/placeholders for
+// fields the API doesn't yet supply.
+interface ExecutiveDashboardApiResponse {
+  mrr?: number;
+  activeOrgs?: number;
+  newOrgsLast30?: number;
+  // Future fields (not currently returned):
+  nps?: { score: number };
+  churnRate?: number;
+  churnedOrgsLast30Days?: number;
+}
+
+const useMetrics = () =>
+  useQuery<ExecutiveMetrics, Error, ExecutiveMetrics>({
+    queryKey: ["/api/founder/executive-dashboard"],
+    staleTime: 120_000,
+    select: (raw) => {
+      const r = raw as unknown as ExecutiveDashboardApiResponse;
+      return {
+        mrr: r.mrr ?? 0,
+        activeOrganizations: r.activeOrgs ?? 0,
+        nps: r.nps ?? { score: 0 },
+        churnRate: r.churnRate ?? 0,
+        churnedOrgsLast30Days: r.churnedOrgsLast30Days ?? 0,
+        newOrgsLast30Days: r.newOrgsLast30 ?? 0,
+      };
+    },
+  });
 const useActionQueue = () => useQuery<ActionQueueData>({ queryKey: ["/api/founder/action-queue"], staleTime: 300_000 });
 const useAgents = () => useQuery<AgentHealth[]>({ queryKey: ["/api/admin/agents/status"], refetchInterval: 10_000 });
 const useAutonomyHealth = () =>

@@ -272,13 +272,13 @@ export default function PricingPage() {
       <footer className="border-t py-8 px-6">
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 text-sm text-muted-foreground">
           <span>&copy; {new Date().getFullYear()} AcreOS. All rights reserved.</span>
-          <div className="flex flex-wrap gap-x-4 gap-y-2">
-            <Link href="/" className="hover:text-foreground">Home</Link>
-            <Link href="/status" className="hover:text-foreground">Status</Link>
-            <Link href="/changelog" className="hover:text-foreground">Changelog</Link>
-            <Link href="/terms" className="hover:text-foreground">Terms</Link>
-            <Link href="/privacy" className="hover:text-foreground">Privacy</Link>
-            <Link href="/auth" className="hover:text-foreground">Sign in</Link>
+          <div className="flex flex-wrap gap-x-2 gap-y-1">
+            <Link href="/" className="hover:text-foreground inline-flex items-center min-h-11 px-2">Home</Link>
+            <Link href="/status" className="hover:text-foreground inline-flex items-center min-h-11 px-2">Status</Link>
+            <Link href="/changelog" className="hover:text-foreground inline-flex items-center min-h-11 px-2">Changelog</Link>
+            <Link href="/terms" className="hover:text-foreground inline-flex items-center min-h-11 px-2">Terms</Link>
+            <Link href="/privacy" className="hover:text-foreground inline-flex items-center min-h-11 px-2">Privacy</Link>
+            <Link href="/auth" className="hover:text-foreground inline-flex items-center min-h-11 px-2">Sign in</Link>
           </div>
         </div>
       </footer>

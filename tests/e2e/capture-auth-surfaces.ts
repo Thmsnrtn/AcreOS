@@ -30,7 +30,11 @@ interface Surface {
   notes?: string;
 }
 
-const SURFACES: Surface[] = [
+const SURFACE_FILTER = process.env.SURFACE_FILTER
+  ? new Set(process.env.SURFACE_FILTER.split(',').map((s) => s.trim()))
+  : null;
+
+const ALL_SURFACES: Surface[] = [
   // Tier 1
   { slug: 'home', pathname: '/today', tier: 1 },
   { slug: 'pipeline', pathname: '/pipeline', tier: 1 },
@@ -65,6 +69,10 @@ const SURFACES: Surface[] = [
   { slug: 'founder-cost', pathname: '/founder/cost', tier: 5 },
   { slug: 'founder-ops', pathname: '/founder/ops', tier: 5 },
 ];
+
+const SURFACES = SURFACE_FILTER
+  ? ALL_SURFACES.filter((s) => SURFACE_FILTER.has(s.slug))
+  : ALL_SURFACES;
 
 const BREAKPOINTS = [
   { width: 1440, height: 900, label: '1440' },
