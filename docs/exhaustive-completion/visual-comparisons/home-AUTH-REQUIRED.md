@@ -1,7 +1,7 @@
 # /today — Auth-gated visual comparison (1.1.B)
 
 **Production URL:** https://acreos.io/today
-**Captured:** 2026-04-28T01:42:17.934Z via Playwright + dev-bypass Clerk sign-in token
+**Captured:** 2026-04-28T11:27:57.629Z via Playwright + dev-bypass Clerk sign-in token
 
 ## Prototype reference
 
@@ -17,25 +17,25 @@
 
 | Breakpoint | File size | Final URL | Issues |
 |---|---|---|---|
-| 1440 | 1351KB | (no redirect) | 9 |
-| 375 | 675KB | (no redirect) | 11 |
+| 1440 | 1349KB | (no redirect) | 9 |
+| 375 | 665KB | (no redirect) | 9 |
 
 ### Desktop (1440) console issues
 
 ```
 console.error: Failed to load resource: the server responded with a status of 500 ()
 console.error: Failed to load resource: the server responded with a status of 404 ()
-console.error: Failed to load resource: the server responded with a status of 404 ()
 console.error: [Query Error — suppressed toast] Error: 404: Not found
-    at eu (https://acreos.io/assets/index-i4wXazLj.js:2:67740)
-    at async https://acreos.io/assets/index-i4wXazLj.js:2:70242
-console.error: [Query Error — suppressed toast] Error: 404: Not found
-    at eu (https://acreos.io/assets/index-i4wXazLj.js:2:67740)
-    at async https://acreos.io/assets/index-i4wXazLj.js:2:70242
+    at eu (https://acreos.io/assets/index-D183Bp82.js:2:67740)
+    at async https://acreos.io/assets/index-D183Bp82.js:2:70242
 console.error: Failed to load resource: the server responded with a status of 500 ()
+console.error: Failed to load resource: the server responded with a status of 404 ()
 console.error: [Query Error] Error: 500: Internal server error
-    at eu (https://acreos.io/assets/index-i4wXazLj.js:2:67740)
-    at async https://acreos.io/assets/index-i4wXazLj.js:2:70242
+    at eu (https://acreos.io/assets/index-D183Bp82.js:2:67740)
+    at async https://acreos.io/assets/index-D183Bp82.js:2:70242
+console.error: [Query Error — suppressed toast] Error: 404: Not found
+    at eu (https://acreos.io/assets/index-D183Bp82.js:2:67740)
+    at async https://acreos.io/assets/index-D183Bp82.js:2:70242
 console.error: Failed to load resource: the server responded with a status of 403 ()
 ... and 1 more
 ```
@@ -43,19 +43,21 @@ console.error: Failed to load resource: the server responded with a status of 40
 ### Mobile (375) console issues
 
 ```
-console.error: Failed to load resource: the server responded with a status of 429 ()
-console.error: Failed to load resource: the server responded with a status of 429 ()
-console.error: Failed to load resource: the server responded with a status of 403 ()
 console.error: Failed to load resource: the server responded with a status of 500 ()
 console.error: Failed to load resource: the server responded with a status of 404 ()
 console.error: [Query Error — suppressed toast] Error: 404: Not found
-    at eu (https://acreos.io/assets/index-i4wXazLj.js:2:67740)
-    at async https://acreos.io/assets/index-i4wXazLj.js:2:70242
+    at eu (https://acreos.io/assets/index-D183Bp82.js:2:67740)
+    at async https://acreos.io/assets/index-D183Bp82.js:2:70242
 console.error: Failed to load resource: the server responded with a status of 404 ()
 console.error: [Query Error — suppressed toast] Error: 404: Not found
-    at eu (https://acreos.io/assets/index-i4wXazLj.js:2:67740)
-    at async https://acreos.io/assets/index-i4wXazLj.js:2:70242
-... and 3 more
+    at eu (https://acreos.io/assets/index-D183Bp82.js:2:67740)
+    at async https://acreos.io/assets/index-D183Bp82.js:2:70242
+console.error: Failed to load resource: the server responded with a status of 500 ()
+console.error: [Query Error] Error: 500: Internal server error
+    at eu (https://acreos.io/assets/index-D183Bp82.js:2:67740)
+    at async https://acreos.io/assets/index-D183Bp82.js:2:70242
+console.error: Failed to load resource: the server responded with a status of 403 ()
+... and 1 more
 ```
 
 ## Provisional verdict
@@ -63,7 +65,6 @@ console.error: [Query Error — suppressed toast] Error: 404: Not found
 **Classification:** NEEDS-HUMAN-REVIEW
 
 **Reasons:**
-- mobile: hit rate limit (429) during rapid capture sequence — likely transient, re-capture to confirm
 - No render-blocking errors or auth redirects detected. Pixel-level comparison vs prototype required to classify pass/fail.
 
 ## Notes

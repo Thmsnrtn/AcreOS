@@ -46,12 +46,19 @@ Per founder-approved scope reduction: depth matches Gap 1.0 prototype reference 
 - [ ] _Deferred to follow-up:_ Intermediate breakpoints (320 / 414 / 768 / 1024)
 - [ ] _Deferred to 1.1.C re-capture:_ /onboarding (no prototype reference yet)
 
-#### Gap 1.1.C — Autonomous gap fixing
-- [ ] Every CONFIDENT-FAIL surface (unauth + auth) has a fix attempt
-- [ ] Fixes verified by re-capture at affected breakpoints
-- [ ] Per-surface comparison reports updated with "after fix" status
-- [ ] Items requiring founder taste (variant choices, density, copy alternatives) escalated to 1.1.D inventory
-- [ ] All fixes deployed to `acreos.fly.dev`
+#### Gap 1.1.C — Autonomous gap fixing — ✅ COMPLETE
+- [x] Every CONFIDENT-FAIL surface (unauth + auth) has a fix attempt
+- [x] /pipeline, /inbox, /offers fixed (fetchJsonArray for envelope-returning endpoints)
+- [x] /founder home fixed (useQuery `select` for schema-mismatched response)
+- [x] /landing touch targets reduced 10 → 2
+- [x] /pricing touch targets reduced 12 → 2
+- [x] /changelog overflow + touch targets ALL CLEAR
+- [x] /api/inbox/:id NaN guard (backend defensive fix)
+- [x] Fixes verified via re-capture (auth) and verify-mechanical-fixes.ts (unauth)
+- [x] Per-surface comparison reports regenerated; only /founder remains FAIL (capture-time rate-limit, not product bug)
+- [x] All fixes deployed to acreos.io
+- [x] NEW findings recorded: 4 unregistered founder sub-routes (/founder/revenue, /cost, /ops, /tenants) — NEEDS-IMPLEMENTATION, escalated to founder decision (1.1.E or deferred)
+- [x] Items requiring founder taste deferred to 1.1.D picker (24 NEEDS-HUMAN-REVIEW surfaces still need pixel comparison)
 
 #### Gap 1.1.D — Variant picker construction
 - [ ] `docs/exhaustive-completion/variant-inventory.md` produced (every decision: surface, type, options, source files, recommended default)

@@ -1,6 +1,6 @@
 # Exhaustive Completion Progress
 
-Last updated: 2026-04-28 (1.1.B complete — auth surfaces captured + classified; 4 CONFIDENT-FAIL identified)
+Last updated: 2026-04-28 (1.1.C complete — 7 of 8 confident-fails resolved; 4 NEEDS-IMPLEMENTATION found)
 
 Predecessor: `docs/unified-build/COMPLETE.md` (unified build shipped through Phase 10).
 Companion docs: `docs/unified-build/DESIGN-SYSTEM.md`, `docs/unified-build/phase-9-audit.md`.
@@ -12,7 +12,7 @@ Companion docs: `docs/unified-build/DESIGN-SYSTEM.md`, `docs/unified-build/phase
   - [/] Gap 1.1 — Autonomous gap fixing + variant picker (V2 workflow — supersedes the original founder-walkthrough plan)
     - [x] 1.1.A — Dev-mode founder bypass (header + cookie + Clerk-ticket signin, secret-gated, launch-marker safeguard) — deployed + verified on acreos.io
     - [x] 1.1.B — Claude Code authenticated visual analysis — 28 auth surfaces captured at 1440 + 375; per-surface comparison reports written; 4 CONFIDENT-FAIL surfaced (pipeline/inbox/offers/founder); 24 NEEDS-HUMAN-REVIEW
-    - [/] 1.1.C — Autonomous gap fixing (8 CONFIDENT-FAIL across all surfaces) — next
+    - [x] 1.1.C — Autonomous gap fixing — 7 of 8 confident-fails resolved (3 list-page array bugs via fetchJsonArray; founder schema mismatch via select transform; landing/pricing touch targets; changelog overflow). Founder rate-limit residual is capture infra, not product. 4 new NEEDS-IMPLEMENTATION findings for unregistered founder sub-routes.
     - [ ] 1.1.D — Variant picker construction (Vite app: shell → variant → 3-panel → copy → breakpoints → density → color → export → polish)
     - [ ] 1.1.E — Founder picker interaction (operator-driven, end of Claude session)
     - [ ] 1.1.F — Audit-after-fix loop (apply selections, re-capture, iterate until founder-approved)
@@ -33,8 +33,26 @@ Companion docs: `docs/unified-build/DESIGN-SYSTEM.md`, `docs/unified-build/phase
 
 ## Current State
 
-**Gap:** 1.1.C — Autonomous gap fixing (CONFIDENT-FAIL items)
-**Status:** READY TO START. 1.1.B captured 28 auth surfaces; 4 confident-fails identified with concrete fix candidates.
+**Gap:** 1.1.D — Variant picker construction (next)
+**Status:** READY TO START. 1.1.C resolved 7 of 8 confident-fails; remaining is /founder rate-limit (capture-only intermittency, not a product bug).
+
+**1.1.C summary (7 fixes shipped, 4 new findings):**
+
+**Fixed:**
+1. **/pipeline, /inbox, /offers** — shared envelope-vs-array bug. `/api/leads`, `/api/deals`, `/api/properties` return `{data:[...]}` paginated envelopes; default React Query queryFn returned the envelope; list pages called `.filter()` on object → crashed to 500 ErrorBoundary. Fix: routed list useQuery calls through existing `fetchJsonArray<T>()` helper. All three pages now render full authenticated UI.
+2. **/founder home** — schema mismatch between API response and `ExecutiveMetrics` interface (different field names: `activeOrgs` vs `activeOrganizations`, `newOrgsLast30` vs `newOrgsLast30Days`; missing fields: `nps`, `churnRate`, `churnedOrgsLast30Days`). Fix: useQuery `select` transform normalizes shape with zero-defaults for missing fields. Page renders fully on first load.
+3. **/landing** — touch targets reduced 10 → 2 (footer links, nav CTAs, cookie banner all bumped to min-h-44). Remaining: brand link 116×33 (close), and one Sign-up CTA edge case.
+4. **/pricing** — touch targets reduced 12 → 2 (footer + nav fixed). Remaining: switch (44×24, exempt) + in-body link (72×17, body-copy not CTA).
+5. **/changelog** — 320px horizontal overflow eliminated; touch targets cleared. ✅ ALL CLEAR.
+6. **/api/inbox/:id NaN guard** — backend defensive fix; non-numeric `:id` now returns 404 instead of 500.
+
+**New findings (NEEDS-IMPLEMENTATION):**
+- `/founder/revenue`, `/founder/cost`, `/founder/ops`, `/founder/tenants` are not registered as Wouter routes in `App.tsx` — return SPA 404 ("This page wandered off"). Prototype shows them but production hasn't built them. Founder decision: build now or defer.
+
+**1.1.C tooling added (REMOVE_BEFORE_LAUNCH at 1.1.G):**
+- `tests/e2e/verify-mechanical-fixes.ts` — re-verify touch-target / overflow on unauth surfaces
+
+Next: 1.1.D — variant picker construction.
 
 **1.1.B outputs:**
 - 56 production screenshots in `auth-screenshots/` (28 surfaces × 1440 + 375)

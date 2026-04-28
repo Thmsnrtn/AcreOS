@@ -1,7 +1,7 @@
 # /documents — Auth-gated visual comparison (1.1.B)
 
 **Production URL:** https://acreos.io/documents
-**Captured:** 2026-04-28T01:42:17.943Z via Playwright + dev-bypass Clerk sign-in token
+**Captured:** 2026-04-28T11:27:57.643Z via Playwright + dev-bypass Clerk sign-in token
 
 ## Prototype reference
 
@@ -17,18 +17,17 @@
 
 | Breakpoint | File size | Final URL | Issues |
 |---|---|---|---|
-| 1440 | 376KB | (no redirect) | 6 |
-| 375 | 266KB | (no redirect) | 6 |
+| 1440 | 366KB | (no redirect) | 5 |
+| 375 | 262KB | (no redirect) | 5 |
 
 ### Desktop (1440) console issues
 
 ```
-console.error: Failed to load resource: the server responded with a status of 403 ()
 console.error: Failed to load resource: the server responded with a status of 500 ()
 console.error: Failed to load resource: the server responded with a status of 500 ()
 console.error: [Query Error] Error: 500: Internal server error
-    at eu (https://acreos.io/assets/index-i4wXazLj.js:2:67740)
-    at async https://acreos.io/assets/index-i4wXazLj.js:2:70242
+    at eu (https://acreos.io/assets/index-D183Bp82.js:2:67740)
+    at async https://acreos.io/assets/index-D183Bp82.js:2:70242
 console.error: Failed to load resource: the server responded with a status of 403 ()
 networkidle timeout (non-fatal)
 ```
@@ -36,12 +35,11 @@ networkidle timeout (non-fatal)
 ### Mobile (375) console issues
 
 ```
-console.error: Failed to load resource: the server responded with a status of 403 ()
 console.error: Failed to load resource: the server responded with a status of 500 ()
 console.error: Failed to load resource: the server responded with a status of 500 ()
 console.error: [Query Error] Error: 500: Internal server error
-    at eu (https://acreos.io/assets/index-i4wXazLj.js:2:67740)
-    at async https://acreos.io/assets/index-i4wXazLj.js:2:70242
+    at eu (https://acreos.io/assets/index-D183Bp82.js:2:67740)
+    at async https://acreos.io/assets/index-D183Bp82.js:2:70242
 console.error: Failed to load resource: the server responded with a status of 403 ()
 networkidle timeout (non-fatal)
 ```

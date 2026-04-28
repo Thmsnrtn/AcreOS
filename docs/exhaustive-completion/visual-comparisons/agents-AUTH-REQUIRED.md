@@ -1,7 +1,7 @@
 # /agents — Auth-gated visual comparison (1.1.B)
 
 **Production URL:** https://acreos.io/agents
-**Captured:** 2026-04-28T01:42:17.945Z via Playwright + dev-bypass Clerk sign-in token
+**Captured:** 2026-04-28T11:27:57.645Z via Playwright + dev-bypass Clerk sign-in token
 
 ## Prototype reference
 
@@ -17,8 +17,8 @@
 
 | Breakpoint | File size | Final URL | Issues |
 |---|---|---|---|
-| 1440 | 483KB | (no redirect) | 5 |
-| 375 | 32KB | (no redirect) | 5 |
+| 1440 | 477KB | (no redirect) | 5 |
+| 375 | 34KB | (no redirect) | 5 |
 
 ### Desktop (1440) console issues
 
@@ -26,8 +26,8 @@
 console.error: Failed to load resource: the server responded with a status of 500 ()
 console.error: Failed to load resource: the server responded with a status of 500 ()
 console.error: [Query Error] Error: 500: Internal server error
-    at eu (https://acreos.io/assets/index-i4wXazLj.js:2:67740)
-    at async https://acreos.io/assets/index-i4wXazLj.js:2:70242
+    at eu (https://acreos.io/assets/index-D183Bp82.js:2:67740)
+    at async https://acreos.io/assets/index-D183Bp82.js:2:70242
 console.error: Failed to load resource: the server responded with a status of 403 ()
 networkidle timeout (non-fatal)
 ```
@@ -39,7 +39,7 @@ console.error: Failed to load resource: the server responded with a status of 42
 console.error: Failed to load resource: the server responded with a status of 429 ()
 console.error: Failed to load resource: the server responded with a status of 429 ()
 console.error: [Query Error] Error: 429: 
-    at Jw (https://acreos.io/assets/index-i4wXazLj.js:16:28456)
+    at Jw (https://acreos.io/assets/index-D183Bp82.js:16:28568)
 loading-state-stuck (non-fatal)
 ```
 

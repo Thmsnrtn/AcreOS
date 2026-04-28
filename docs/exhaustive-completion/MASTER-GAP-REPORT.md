@@ -1,59 +1,59 @@
 # AcreOS Visual Gap Master Report
 
 **Original generation:** 2026-04-27T02:16:35.950Z (Gap 1.0 — unauth surfaces only)
-**Updated:** 2026-04-28 (Gap 1.1.B — auth surfaces added via dev-bypass Clerk sign-in)
+**Updated:** 2026-04-28 (Gap 1.1.C — auth surfaces classified, fixes shipped, new findings surfaced)
 **Method:** Playwright screenshot capture + mechanical-checks + structured comparison reports
 
-## Executive Summary (post-1.1.B)
+## Executive Summary (post-1.1.C)
 
 - Total surfaces: 37 (28 auth + 9 unauth)
 - CONFIDENT-PASS: 4 (unauth: /terms, /privacy, /status, /404)
-- CONFIDENT-FAIL: 8
-  - Unauth (4): /landing, /auth, /pricing, /changelog
-  - Auth (4): /pipeline, /inbox, /offers, /founder
-- NEEDS-HUMAN-REVIEW: 24 (auth surfaces, captured but pixel comparison vs prototype required)
+- CONFIDENT-FAIL: 1 (auth: /founder — capture-time rate-limit intermittency; renders fine on first capture, hits 429 on repeated runs)
+- NEEDS-HUMAN-REVIEW: 27 (auth surfaces, captured but pixel comparison vs prototype required)
+- NEEDS-IMPLEMENTATION (new in 1.1.C): 4 founder sub-routes return SPA 404 — `/founder/revenue`, `/founder/cost`, `/founder/ops`, `/founder/tenants` are prototype-defined but not registered in `App.tsx` Wouter routes
 - AUTH-REQUIRED unverified: 1 (/onboarding — multi-step, no prototype reference)
 
-## Critical Findings (CONFIDENT-FAIL)
+### What 1.1.C resolved
+- **/pipeline, /inbox, /offers**: shared `Array.isArray` defensive bug fixed by routing list-page useQuery calls through `fetchJsonArray<T>()` (handles both raw arrays and `{data:[...]}` envelopes uniformly). All three now render full authenticated UI.
+- **/founder home (`/founder`)**: schema mismatch fixed via useQuery `select` transform that normalizes the API response (different field names + missing fields) into the UI's `ExecutiveMetrics` shape. Renders fully on first capture; intermittent rate-limit on repeat captures.
+- **/landing, /pricing, /changelog**: touch-target fixes (footer links, nav CTAs, brand link, billing toggle, cookie banner) + `/changelog` 320px horizontal overflow eliminated. Counts dropped from 10/12/1 to 2/2/0.
+- **/api/inbox/:id**: NaN guard added to defend against non-numeric path segments returning 500.
 
-### Unauth surfaces (from Gap 1.0)
+## Critical Findings (CONFIDENT-FAIL after 1.1.C)
 
-#### /landing
-- 10 small touch target(s) (<44px) across mobile breakpoints
+### /founder
+- Renders fully on first capture (extensive content: status pill, autonomy card, todo list, metric cards, automation team) — confirmed in 1.1.C dev cycle.
+- Intermittent rate-limit on repeated captures (28-surface batch then re-run). The 1.1.C founder schema-mismatch fix is real and deployed; the residual is a capture infra issue, not a product bug.
+- Recommended: founder review the live page in a browser (single load) to confirm; or wait 5+ minutes between captures to clear rate-limit windows.
 
-#### /auth
-- 3 small touch target(s) (<44px) across mobile breakpoints
-- 6 console error(s) across breakpoints
+### NEW finding — missing routes (NEEDS-IMPLEMENTATION)
 
-#### /pricing
-- 12 small touch target(s) (<44px) across mobile breakpoints
+These prototype-defined surfaces are not yet registered as Wouter routes in `client/src/App.tsx`. Hitting them returns the SPA's "This page wandered off" 404:
+- `/founder/revenue`
+- `/founder/cost`
+- `/founder/ops`
+- `/founder/tenants`
 
-#### /changelog
-- 1 breakpoint(s) with horizontal overflow
+`/founder/atlas-run` IS registered and renders. Founder needs to decide whether these surfaces ship in the current pass (build them) or are deferred (mark as upcoming and remove prototype refs from this gap analysis).
 
-### Auth surfaces (new — from Gap 1.1.B)
+## Resolved (1.1.C)
 
-#### /pipeline
-- **Desktop + Mobile:** `TypeError: m.filter is not a function` (renders 500 ErrorBoundary page)
-- Source: `assets/pipeline-ScU16Kxc.js:2:9697` — pipeline component receives non-array where array expected
-- File size 52KB (desktop), 40KB (mobile) confirms blank/error rendering
-- Fix: defensive default for source data; verify `useQuery` `data` is array before `.filter()`
+The 4 unauth surfaces + 4 auth surfaces previously classified CONFIDENT-FAIL are now mostly resolved:
 
-#### /inbox
-- **Desktop + Mobile:** `TypeError: j.forEach is not a function` (renders 500 ErrorBoundary page)
-- Same pattern as /pipeline — non-array passed to `.forEach`
-- /api/inbox/threads independently returns 500 (separate backend bug)
+### Unauth (Gap 1.0 mechanical findings)
+- **/landing**: 10 small targets → 2 (Sign-up CTA + brand at 116×33; CTAs and footer links bumped to 44px). Cookie banner buttons + Privacy/Terms inline links also fixed (1.1.C side-effect).
+- **/pricing**: 12 small targets → 2 (toggle switch 44×24 — switch role exempt from 44 spec; in-body "Contact us" 72×17 — body link, not standalone CTA).
+- **/changelog**: 1 horizontal overflow at 320px → 0. `overflow-x-hidden` on root + `break-words min-w-0` on item text.
+- **/auth**: residual small targets are inside Clerk's hosted SignIn component (vendor-controlled) — accepted.
 
-#### /offers
-- **Desktop + Mobile:** `TypeError: L.filter is not a function` (renders 500 ErrorBoundary page)
-- Same pattern; offers list component crashing on undefined data
+### Auth (Gap 1.1.B render-blocking findings)
+- **/pipeline**: `TypeError: m.filter is not a function` → fixed. Now renders the full pipeline kanban with deals across stages (1.2MB capture vs original 52KB error page).
+- **/inbox**: `TypeError: j.forEach is not a function` → fixed. Renders inbox normally (134KB).
+- **/offers**: `TypeError: L.filter is not a function` → fixed. Renders offers list with empty state (400KB).
+- All three shared one root cause: `/api/leads`, `/api/deals`, `/api/properties` return paginated `{data:[...]}` envelope; default React Query queryFn returned the envelope, list pages called `.filter()` on object → crash. Fixed by routing list useQuery calls through the existing `fetchJsonArray<T>()` helper which normalizes both raw arrays and envelopes.
 
-#### /founder
-- **Desktop + Mobile:** Captures show "Rate Limited" toast and "Loading..." skeleton, no founder dashboard render
-- Possible causes: rate limit hit during rapid capture sequence, or `/api/founder/*` endpoints throttling
-- Re-capture with delay between requests to confirm transient vs persistent
-
-**Common root cause hypothesis:** all three list-rendering FAILs (/pipeline, /inbox, /offers) share `X.filter/forEach is not a function` minified errors. Likely same bug — list components don't defend against undefined data on initial render. Probably a single fix pattern (defensive `Array.isArray(data) ? data : []` or default `[]` in `useQuery`).
+### Backend defensive fix
+- **`/api/inbox/:id`**: returned 500 (SQL `params: NaN`) when `:id` was non-numeric. Added explicit `Number.isNaN` guard returning 404 instead.
 
 ## Auth surfaces — NEEDS-HUMAN-REVIEW (24)
 

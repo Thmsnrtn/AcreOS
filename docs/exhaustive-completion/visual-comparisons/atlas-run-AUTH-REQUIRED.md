@@ -1,7 +1,7 @@
 # /founder/atlas-run — Auth-gated visual comparison (1.1.B)
 
 **Production URL:** https://acreos.io/founder/atlas-run
-**Captured:** 2026-04-28T01:42:17.949Z via Playwright + dev-bypass Clerk sign-in token
+**Captured:** 2026-04-28T11:27:57.651Z via Playwright + dev-bypass Clerk sign-in token
 
 ## Prototype reference
 
@@ -17,8 +17,8 @@
 
 | Breakpoint | File size | Final URL | Issues |
 |---|---|---|---|
-| 1440 | 72KB | (no redirect) | 5 |
-| 375 | 42KB | (no redirect) | 1 |
+| 1440 | 73KB | (no redirect) | 5 |
+| 375 | 44KB | (no redirect) | 1 |
 
 ### Desktop (1440) console issues
 
@@ -26,8 +26,8 @@
 console.error: Failed to load resource: the server responded with a status of 500 ()
 console.error: Failed to load resource: the server responded with a status of 500 ()
 console.error: [Query Error] Error: 500: Internal server error
-    at eu (https://acreos.io/assets/index-i4wXazLj.js:2:67740)
-    at async https://acreos.io/assets/index-i4wXazLj.js:2:70242
+    at eu (https://acreos.io/assets/index-D183Bp82.js:2:67740)
+    at async https://acreos.io/assets/index-D183Bp82.js:2:70242
 console.error: Failed to load resource: the server responded with a status of 403 ()
 networkidle timeout (non-fatal)
 ```

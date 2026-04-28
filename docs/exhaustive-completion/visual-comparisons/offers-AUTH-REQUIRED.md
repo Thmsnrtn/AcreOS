@@ -1,7 +1,7 @@
 # /offers — Auth-gated visual comparison (1.1.B)
 
 **Production URL:** https://acreos.io/offers
-**Captured:** 2026-04-28T01:42:17.943Z via Playwright + dev-bypass Clerk sign-in token
+**Captured:** 2026-04-28T11:27:57.643Z via Playwright + dev-bypass Clerk sign-in token
 
 ## Prototype reference
 
@@ -17,62 +17,42 @@
 
 | Breakpoint | File size | Final URL | Issues |
 |---|---|---|---|
-| 1440 | 52KB | (no redirect) | 5 |
-| 375 | 40KB | (no redirect) | 6 |
+| 1440 | 381KB | (no redirect) | 5 |
+| 375 | 157KB | (no redirect) | 5 |
 
 ### Desktop (1440) console issues
 
 ```
 console.error: Failed to load resource: the server responded with a status of 500 ()
-console.error: TypeError: L.filter is not a function
-    at https://acreos.io/assets/offers-CfkAD7gZ.js:1:11554
-    at Object.Ea [as useMemo] (https://acreos.io/assets/vendor-clerk-DiCNwVIv.js:6:21454
-console.error: [ErrorBoundary] Error captured: {errorId: err_1777340070719_wx7j6wfz5, timestamp: 2026-04-28T01:34:30.719Z, error: Object, componentStack: 
-    at Yt (https://acreos.io/assets/offers-Cf
-console.error: Failed to load resource: the server responded with a status of 415 ()
+console.error: Failed to load resource: the server responded with a status of 500 ()
 console.error: [Query Error] Error: 500: Internal server error
-    at eu (https://acreos.io/assets/index-i4wXazLj.js:2:67740)
-    at async https://acreos.io/assets/index-i4wXazLj.js:2:70242
+    at eu (https://acreos.io/assets/index-D183Bp82.js:2:67740)
+    at async https://acreos.io/assets/index-D183Bp82.js:2:70242
+console.error: Failed to load resource: the server responded with a status of 403 ()
+networkidle timeout (non-fatal)
 ```
 
 ### Mobile (375) console issues
 
 ```
-console.error: Failed to load resource: the server responded with a status of 429 ()
 console.error: Failed to load resource: the server responded with a status of 500 ()
-console.error: TypeError: B.map is not a function
-    at https://acreos.io/assets/offers-CfkAD7gZ.js:1:11636
-    at Object.Ea [as useMemo] (https://acreos.io/assets/vendor-clerk-DiCNwVIv.js:6:21454)
- 
-console.error: [ErrorBoundary] Error captured: {errorId: err_1777340305472_1klkdwuf8, timestamp: 2026-04-28T01:38:25.472Z, error: Object, componentStack: 
-    at Yt (https://acreos.io/assets/offers-Cf
-console.error: Failed to load resource: the server responded with a status of 415 ()
+console.error: Failed to load resource: the server responded with a status of 500 ()
 console.error: [Query Error] Error: 500: Internal server error
-    at eu (https://acreos.io/assets/index-i4wXazLj.js:2:67740)
-    at async https://acreos.io/assets/index-i4wXazLj.js:2:70242
+    at eu (https://acreos.io/assets/index-D183Bp82.js:2:67740)
+    at async https://acreos.io/assets/index-D183Bp82.js:2:70242
+console.error: Failed to load resource: the server responded with a status of 403 ()
+networkidle timeout (non-fatal)
 ```
 
 ## Provisional verdict
 
-**Classification:** CONFIDENT-FAIL
+**Classification:** NEEDS-HUMAN-REVIEW
 
 **Reasons:**
-- desktop: 1 render-blocking JS error(s) — first: console.error: TypeError: L.filter is not a function
-    at https://acreos.io/assets/offers-CfkAD7gZ.js:1:11554
-    at O
-- mobile: 1 render-blocking JS error(s) — first: console.error: TypeError: B.map is not a function
-    at https://acreos.io/assets/offers-CfkAD7gZ.js:1:11636
-    at Obje
-- mobile: hit rate limit (429) during rapid capture sequence — likely transient, re-capture to confirm
-
-**Fix candidates (1.1.C):**
-- fix JS error: console.error: TypeError: L.filter is not a function
-    at https://acreos.io/assets/offers-CfkAD7gZ.js:1:11554
-    at Object.Ea [as useMemo
-- fix JS error: console.error: TypeError: B.map is not a function
-    at https://acreos.io/assets/offers-CfkAD7gZ.js:1:11636
-    at Object.Ea [as useMemo] (
+- No render-blocking errors or auth redirects detected. Pixel-level comparison vs prototype required to classify pass/fail.
 
 ## Notes
 
 Provisional verdict from automated capture analysis. Pixel-level comparison vs prototype happens in 1.1.D picker via three-panel view.
+
+No automatic fail signal detected. Open both shots side-by-side to verify visual fidelity vs prototype.
