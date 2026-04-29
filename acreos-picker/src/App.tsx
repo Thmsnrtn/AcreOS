@@ -426,6 +426,8 @@ export default function App() {
                     <li key={d.id}>
                       <button
                         type="button"
+                        data-decision-id={d.id}
+                        data-category={d.category}
                         onClick={() => setActiveId(d.id)}
                         className={`w-full text-left px-5 py-2.5 text-sm flex items-center gap-2.5 transition-colors ${
                           isActive

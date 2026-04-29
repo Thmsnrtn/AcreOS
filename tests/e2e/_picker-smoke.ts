@@ -112,17 +112,23 @@ async function main() {
     record('Fraunces editorial font loaded', headerFont.toLowerCase().includes('fraunces'),
       `font-family: ${headerFont.slice(0, 80)}`);
 
-    // Verify --acr-* palette is in use (warm cream bg)
-    const bgColor = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
-    record('Warm cream bg from --acr-* palette', bgColor.includes('250') || bgColor.includes('FAF4E8') ||
-      bgColor === 'rgb(250, 244, 232)', `bg: ${bgColor}`);
+    // Verify --acr-* palette is in use (warm cream bg). Picker sets background
+    // on :root (html), not body — body is transparent.
+    const bgColor = await page.evaluate(() =>
+      getComputedStyle(document.documentElement).backgroundColor
+    );
+    record(
+      'Warm cream bg from --acr-* palette',
+      bgColor === 'rgb(250, 244, 232)',
+      `html bg: ${bgColor}`
+    );
 
     // Verify tier badges present
     const tierCount = await page.locator('[class*="tier-"]').count();
     record('Tier badges rendered in sidebar', tierCount > 0, `${tierCount} tier markers`);
 
     // Step 3: First decision should be vr-home (/today). Click sidebar item.
-    const homeButton = page.locator('aside button:has-text("/today")').first();
+    const homeButton = page.locator('aside button[data-decision-id="vr-home"]');
     await homeButton.click();
     await page.waitForTimeout(2000);
 
@@ -190,7 +196,7 @@ async function main() {
     await page.waitForTimeout(500);
 
     // Step 8: Navigate to platform-density decision
-    const densityButton = page.locator('aside button:has-text("Platform density")').first();
+    const densityButton = page.locator('aside button[data-decision-id="platform-density"]');
     await densityButton.click();
     await page.waitForTimeout(2500);
 
@@ -211,7 +217,7 @@ async function main() {
     await shot(page, '06-density-custom');
 
     // Step 9: Navigate to platform-primary-color
-    const colorBtn = page.locator('aside button:has-text("Platform primary color")').first();
+    const colorBtn = page.locator('aside button[data-decision-id="platform-primary-color"]');
     await colorBtn.click();
     await page.waitForTimeout(2500);
 
@@ -224,13 +230,16 @@ async function main() {
     record('Brand color swatch chosen', true);
     await shot(page, '07-color-deeper');
 
-    // Step 10: Test export endpoint
-    // First mark a build-defer decision
-    const buildDeferBtn = page.locator('aside button').filter({ hasText: '/founder/revenue' }).first();
+    // Step 10: Test export endpoint. First mark a build-defer decision —
+    // use data-decision-id to avoid matching the visual-review entry that
+    // shares the title "/founder/revenue".
+    const buildDeferBtn = page.locator('aside button[data-decision-id="founder-revenue-route"]');
+    await buildDeferBtn.scrollIntoViewIfNeeded();
     await buildDeferBtn.click();
     await page.waitForTimeout(1000);
-    await page.locator('button:has-text("Build now")').first().click();
+    await page.locator('main button:has-text("Build now")').first().click();
     await page.waitForTimeout(500);
+    record('Build/defer option chosen', true);
 
     // Click export
     await page.locator('button:has-text("Export selections")').first().click();
