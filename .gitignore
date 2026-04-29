@@ -64,5 +64,13 @@ tests/e2e-intelligent/runs/**/_RESUME-HERE.md
 # Variant picker (REMOVE_BEFORE_LAUNCH — Gap 1.1.G)
 # dist/ is committed so the picker is served from acreos.fly.dev with no
 # extra build step — same-origin hosting is required for picker iframes
-# to carry Clerk session cookies.
+# to carry Clerk session cookies. The leading `dist` rule above would
+# normally exclude it; explicitly negate.
 acreos-picker/node_modules/
+!acreos-picker/dist/
+!acreos-picker/dist/**
+
+# 1.1.D resume handoff doc (REMOVE_BEFORE_LAUNCH — Gap 1.1.G; gets
+# committed intentionally so a fresh session can pick up where the
+# previous one left off)
+!docs/exhaustive-completion/_RESUME-*.md
