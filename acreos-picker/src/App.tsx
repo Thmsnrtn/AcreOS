@@ -300,12 +300,26 @@ export default function App() {
         body: JSON.stringify(payload),
       });
       if (resp.ok) {
-        const data = (await resp.json()) as { target?: string };
+        const data = (await resp.json()) as {
+          target?: string;
+          retrieval?: { command?: string };
+        };
         setExportStatus({
           state: 'ok',
-          message: `Saved → ${data.target ?? 'docs/exhaustive-completion/founder-selections.json'}`,
+          message: `Saved → ${data.target ?? 'server'}${
+            data.retrieval?.command ? ` · retrieve: ${data.retrieval.command}` : ''
+          }`,
         });
-        setTimeout(() => setExportStatus({ state: 'idle' }), 4000);
+        // Also trigger a download for immediate access — server file is on
+        // Fly tmp, so download is the founder's local backup copy.
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'founder-selections.json';
+        a.click();
+        URL.revokeObjectURL(url);
+        setTimeout(() => setExportStatus({ state: 'idle' }), 8000);
         return;
       }
       // Server endpoint refused — fall back to browser download

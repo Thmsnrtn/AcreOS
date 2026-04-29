@@ -477,12 +477,14 @@ export async function registerRoutes(
       );
     }
 
-    // Server-side founder-selections export (Gap 1.1.D D.6.8). Writes the
-    // picker payload to docs/exhaustive-completion/founder-selections.json
-    // so the founder doesn't have to manage a downloaded file. Accepts
-    // either the bypass header (already injects req.auth) or an existing
-    // Clerk session matching DEV_FOUNDER_USER_ID.
+    // Server-side founder-selections export (Gap 1.1.D D.6.8). On Fly, /app
+    // is read-only for the node user (image is built as root, runs as 1000),
+    // so we write to os.tmpdir() — same writable path used by the bypass
+    // audit log. The response carries both the saved path and a retrieval
+    // command so the founder (or 1.1.F Claude Code) can pull the file back
+    // into the repo.
     app.post("/api/__dev/founder-selections", async (req, res) => {
+      const os = await import("os");
       const founderUserId = process.env.DEV_FOUNDER_USER_ID;
       const reqAuth = (req as Request & { auth?: { userId?: string } }).auth;
       if (!founderUserId || !reqAuth?.userId || reqAuth.userId !== founderUserId) {
@@ -491,19 +493,24 @@ export async function registerRoutes(
       if (!req.body || typeof req.body !== "object") {
         return res.status(400).json({ error: "invalid-payload" });
       }
-      const target = path.resolve(process.cwd(), "docs/exhaustive-completion/founder-selections.json");
+      const tmpDir = os.tmpdir();
+      const target = path.join(tmpDir, "founder-selections.json");
       try {
         if (fs.existsSync(target)) {
-          const histDir = path.resolve(process.cwd(), "docs/exhaustive-completion/founder-selections-history");
-          if (!fs.existsSync(histDir)) fs.mkdirSync(histDir, { recursive: true });
           const ts = new Date().toISOString().replace(/[:.]/g, "-");
-          fs.copyFileSync(target, path.join(histDir, `selections-${ts}.json`));
+          fs.copyFileSync(target, path.join(tmpDir, `founder-selections-${ts}.json`));
         }
         fs.writeFileSync(target, JSON.stringify(req.body, null, 2) + "\n", "utf8");
         res.json({
           ok: true,
-          target: "docs/exhaustive-completion/founder-selections.json",
+          target,
           writtenAt: new Date().toISOString(),
+          retrieval: {
+            command: `fly ssh console -a acreos -C 'cat ${target}'`,
+            note: "On Fly the container's /app is read-only; export writes to /tmp. " +
+                  "Use the command above to copy the file into the repo at " +
+                  "docs/exhaustive-completion/founder-selections.json before committing.",
+          },
         });
       } catch (err) {
         res.status(500).json({ error: "write-failed", message: (err as Error).message });

@@ -241,25 +241,47 @@ async function main() {
     await page.waitForTimeout(500);
     record('Build/defer option chosen', true);
 
+    // Listen for the export response
+    let exportResponse: { ok: boolean; status: number; body?: unknown } | null = null;
+    const responseListener = async (resp: import('playwright').Response) => {
+      if (resp.url().endsWith('/api/__dev/founder-selections') && resp.request().method() === 'POST') {
+        try {
+          exportResponse = { ok: resp.ok(), status: resp.status(), body: await resp.json() };
+        } catch {
+          exportResponse = { ok: resp.ok(), status: resp.status() };
+        }
+      }
+    };
+    page.on('response', responseListener);
+
     // Click export
     await page.locator('button:has-text("Export selections")').first().click();
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(4000);
+    page.off('response', responseListener);
 
-    // Check status indicator
-    const exportStatus = await page.locator('text=/Saved.*founder-selections.json/').first().textContent({ timeout: 5000 }).catch(() => '');
-    record('Server-side export succeeded', Boolean(exportStatus),
-      exportStatus ? exportStatus.slice(0, 100) : 'no status');
-    await shot(page, '08-export-result');
-
-    // Step 11: Verify file was actually written
-    const targetFile = path.resolve(process.cwd(), 'docs/exhaustive-completion/founder-selections.json');
-    const fileExists = fs.existsSync(targetFile);
-    record('founder-selections.json written to disk', fileExists, fileExists ? `${fs.statSync(targetFile).size} bytes` : '');
-    if (fileExists) {
-      const content = JSON.parse(fs.readFileSync(targetFile, 'utf8'));
-      record('File contains version field', content.version === 2);
-      record('File contains selections', typeof content.selections === 'object' && Object.keys(content.selections).length > 0);
+    record(
+      'Server-side export endpoint returns 200',
+      Boolean(exportResponse?.ok),
+      exportResponse ? `status ${exportResponse.status}` : 'no response captured'
+    );
+    if (exportResponse?.ok) {
+      const body = exportResponse.body as {
+        target?: string;
+        retrieval?: { command?: string };
+        writtenAt?: string;
+      };
+      record(
+        'Response includes server target path',
+        Boolean(body?.target),
+        body?.target ?? ''
+      );
+      record(
+        'Response includes retrieval command for founder',
+        Boolean(body?.retrieval?.command),
+        body?.retrieval?.command ?? ''
+      );
     }
+    await shot(page, '08-export-result');
 
     // Final summary screenshot
     await shot(page, '99-final');
