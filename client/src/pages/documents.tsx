@@ -50,13 +50,14 @@ const DOCUMENT_CATEGORIES = [
   { value: "financing", label: "Financing" },
 ];
 
+// Status → semantic --acr-* tone (Tier 1 pattern).
 const STATUS_BADGES: Record<string, { color: string; icon: typeof Clock; label: string }> = {
-  draft: { color: "bg-muted text-muted-foreground", icon: FilePenLine, label: "Draft" },
-  pending_signature: { color: "bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300", icon: Clock, label: "Pending signature" },
-  partially_signed: { color: "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300", icon: FilePenLine, label: "Partially signed" },
-  signed: { color: "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300", icon: FileCheck, label: "Signed" },
-  completed: { color: "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300", icon: CheckCircle, label: "Completed" },
-  cancelled: { color: "bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300", icon: XCircle, label: "Cancelled" },
+  draft: { color: "bg-acr-surface-2 text-acr-ink-3 border-transparent", icon: FilePenLine, label: "Draft" },
+  pending_signature: { color: "bg-acr-warn-soft text-acr-warn border-transparent", icon: Clock, label: "Pending signature" },
+  partially_signed: { color: "bg-acr-brand-soft text-acr-brand border-transparent", icon: FilePenLine, label: "Partially signed" },
+  signed: { color: "bg-acr-pos-soft text-acr-pos border-transparent", icon: FileCheck, label: "Signed" },
+  completed: { color: "bg-acr-pos-soft text-acr-pos border-transparent", icon: CheckCircle, label: "Completed" },
+  cancelled: { color: "bg-acr-neg-soft text-acr-neg border-transparent", icon: XCircle, label: "Cancelled" },
 };
 
 const capitalizeFirst = (s: string) => (s.length === 0 ? s : s.charAt(0).toUpperCase() + s.slice(1));
@@ -757,9 +758,9 @@ export default function DocumentsPage() {
 
   const PACKAGE_STATUS_BADGES: Record<string, { color: string; icon: typeof Clock; label: string }> = {
     draft: { color: "bg-muted text-muted-foreground", icon: FilePenLine, label: "Draft" },
-    complete: { color: "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300", icon: CheckCircle, label: "Complete" },
-    sent: { color: "bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300", icon: Send, label: "Sent" },
-    signed: { color: "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300", icon: FileCheck, label: "Signed" },
+    complete: { color: "bg-acr-brand-soft text-acr-brand border-transparent", icon: CheckCircle, label: "Complete" },
+    sent: { color: "bg-acr-warn-soft text-acr-warn border-transparent", icon: Send, label: "Sent" },
+    signed: { color: "bg-acr-pos-soft text-acr-pos border-transparent", icon: FileCheck, label: "Signed" },
   };
 
   const renderPackagesTab = () => {

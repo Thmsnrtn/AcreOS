@@ -120,22 +120,23 @@ export default function FinancePage() {
   const monthlyIncome = activeNotes.reduce((sum, n) => sum + Number(n.monthlyPayment || 0), 0);
   const totalPrincipal = activeNotes.reduce((sum, n) => sum + Number(n.originalPrincipal || 0), 0);
 
+  // Status / loan-health → semantic --acr-* tone (Tier 1 pattern).
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'active': return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400';
-      case 'paid_off': return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400';
-      case 'defaulted': return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400';
-      case 'pending': return 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400';
-      default: return 'bg-muted text-muted-foreground';
+      case 'active': return 'bg-acr-pos-soft text-acr-pos border-transparent';
+      case 'paid_off': return 'bg-acr-brand-soft text-acr-brand border-transparent';
+      case 'defaulted': return 'bg-acr-neg-soft text-acr-neg border-transparent';
+      case 'pending': return 'bg-acr-warn-soft text-acr-warn border-transparent';
+      default: return 'bg-acr-surface-2 text-acr-ink-3 border-transparent';
     }
   };
 
   const getLoanHealth = (note: NoteWithDetails) => {
-    if (!note.nextPaymentDate) return { status: 'good', label: 'Current', color: 'text-emerald-600' };
+    if (!note.nextPaymentDate) return { status: 'good', label: 'Current', color: 'text-acr-pos' };
     const daysUntilDue = Math.floor((new Date(note.nextPaymentDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
-    if (daysUntilDue < 0) return { status: 'late', label: `${Math.abs(daysUntilDue)} days late`, color: 'text-red-600' };
-    if (daysUntilDue <= 5) return { status: 'due', label: `Due in ${daysUntilDue} days`, color: 'text-amber-600' };
-    return { status: 'good', label: 'Current', color: 'text-emerald-600' };
+    if (daysUntilDue < 0) return { status: 'late', label: `${Math.abs(daysUntilDue)} days late`, color: 'text-acr-neg' };
+    if (daysUntilDue <= 5) return { status: 'due', label: `Due in ${daysUntilDue} days`, color: 'text-acr-warn' };
+    return { status: 'good', label: 'Current', color: 'text-acr-pos' };
   };
 
   const handleDelete = () => {

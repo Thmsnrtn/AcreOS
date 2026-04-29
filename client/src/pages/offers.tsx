@@ -30,15 +30,17 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 
+// Status → semantic --acr-* tone (Tier 1 pattern). Re-skins across all
+// five themes; replaces raw blue/indigo/purple/amber/emerald/red hardcodes.
 const offerStatuses = [
-  { value: "draft", label: "Draft", color: "bg-muted text-muted-foreground" },
-  { value: "queued", label: "Queued", color: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400" },
-  { value: "sent", label: "Sent", color: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400" },
-  { value: "delivered", label: "Delivered", color: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400" },
-  { value: "responded", label: "Responded", color: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400" },
-  { value: "accepted", label: "Accepted", color: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400" },
-  { value: "rejected", label: "Rejected", color: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400" },
-  { value: "expired", label: "Expired", color: "bg-muted text-muted-foreground" },
+  { value: "draft", label: "Draft", color: "bg-acr-surface-2 text-acr-ink-3 border-transparent" },
+  { value: "queued", label: "Queued", color: "bg-acr-brand-soft text-acr-brand border-transparent" },
+  { value: "sent", label: "Sent", color: "bg-acr-brand-soft text-acr-brand border-transparent" },
+  { value: "delivered", label: "Delivered", color: "bg-acr-accent/10 text-acr-accent border-transparent" },
+  { value: "responded", label: "Responded", color: "bg-acr-warn-soft text-acr-warn border-transparent" },
+  { value: "accepted", label: "Accepted", color: "bg-acr-pos-soft text-acr-pos border-transparent" },
+  { value: "rejected", label: "Rejected", color: "bg-acr-neg-soft text-acr-neg border-transparent" },
+  { value: "expired", label: "Expired", color: "bg-acr-surface-2 text-acr-ink-3 border-transparent" },
 ];
 
 const getStatusBadge = (status: string) => {
