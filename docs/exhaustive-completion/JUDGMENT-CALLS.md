@@ -256,6 +256,24 @@ Format note: entries terse — 2-3 sentences each. Never expand into prose.
 to chain through to Phase H. Resume protocol fires on real context fill,
 not at clean checkpoints. -->
 
+### E.6.1 — founder-dashboard.tsx (7435 lines, 293 hardcodes) deferred to Phase G dedicated polish
+- **Surface/component:** `client/src/pages/founder-dashboard.tsx`
+- **Question:** Tier 5 calls for re-skinning founder mode surfaces.
+  founder-dashboard.tsx is 7435 lines with 293 raw color hardcodes —
+  full token replacement requires 100s of edits and risks breakage.
+- **Default chosen:** Defer to Phase G dedicated polish. Founder mode is
+  one of six explicit Phase G surfaces (design-system §14: "Continuous
+  design language with subtle accent + denser layout. Same family,
+  deeper data."). Tier 5 commit ports the smaller bounded founder
+  surfaces (strategy / experiments) and leaves the dashboard for
+  focused polish.
+- **Reasoning:** A 7435-line surface with 293 hardcodes isn't a
+  re-skin job — it's a near-rewrite. Risk of regression on a daily
+  founder-driver surface outweighs the benefit of partial improvement.
+  Phase G polish gets dedicated attention with full prototype reference
+  comparison.
+- **Where:** No code change. Phase G TODO.
+
 ### E.2.4.1 — Inbox Pax-draft pre-fill is a feature add, not a visual port
 - **Surface/component:** `client/src/pages/inbox.tsx` reply panel
 - **Question:** Prototype Inbox surfaces a "Pax drafted a reply · ready to

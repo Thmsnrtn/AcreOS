@@ -72,12 +72,13 @@ interface ExperimentAnalysis {
   commentary: string;
 }
 
+// Experiment status → semantic --acr-* tone (Tier 1 pattern).
 const STATUS_COLOR: Record<Experiment["status"], string> = {
-  draft: "bg-muted text-muted-foreground",
-  running: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300",
-  paused: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
-  completed: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
-  aborted: "bg-muted text-muted-foreground",
+  draft: "bg-acr-surface-2 text-acr-ink-3 border-transparent",
+  running: "bg-acr-pos-soft text-acr-pos border-transparent",
+  paused: "bg-acr-warn-soft text-acr-warn border-transparent",
+  completed: "bg-acr-brand-soft text-acr-brand border-transparent",
+  aborted: "bg-acr-surface-2 text-acr-ink-3 border-transparent",
 };
 
 const ACTION_REASSURANCE: Record<string, string> = {
@@ -149,7 +150,7 @@ export default function FounderExperimentsPage() {
           </Card>
         ) : isError ? (
           <Card>
-            <CardContent className="p-6 text-sm text-red-600" role="alert">
+            <CardContent className="p-6 text-sm text-acr-neg" role="alert">
               Couldn't load experiments. The experiment list is unchanged —{" "}
               <button
                 type="button"
@@ -293,14 +294,14 @@ function ExperimentCard({
             return (
               <li
                 key={v.key}
-                className={`border rounded p-3 ${isLeader ? "border-emerald-400 dark:border-emerald-700 bg-emerald-50/40 dark:bg-emerald-950/20" : "border-border"}`}
+                className={`border rounded p-3 ${isLeader ? "border-[color:var(--acr-pos)]/30 bg-acr-pos-soft" : "border-border"}`}
               >
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <div>
                     <p className="text-sm font-medium">
                       {v.label}{" "}
                       <span className="text-[11px] text-muted-foreground font-mono">({v.key})</span>
-                      {isLeader && <span className="text-[10px] text-emerald-600 ml-2" aria-label="Leading variant">leader</span>}
+                      {isLeader && <span className="text-[10px] text-acr-pos ml-2" aria-label="Leading variant">leader</span>}
                     </p>
                     <p className="text-[11px] text-muted-foreground tabular-nums">
                       Weight: {v.weight}%

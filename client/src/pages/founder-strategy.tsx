@@ -43,12 +43,16 @@ interface StrategicProposal {
   createdAt: string;
 }
 
+// Strategic category → semantic --acr-* tone (Tier 1 pattern). Categories
+// don't map 1:1 to status semantics, but we project them onto the available
+// tones: revenue→pos, ops→warn (operational alerts), risk→neg, retention/
+// product→brand/accent (informational categorization).
 const CATEGORY_COLOR: Record<string, string> = {
-  revenue: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300",
-  retention: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
-  product: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300",
-  ops: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
-  risk: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
+  revenue: "bg-acr-pos-soft text-acr-pos border-transparent",
+  retention: "bg-acr-brand-soft text-acr-brand border-transparent",
+  product: "bg-acr-accent/10 text-acr-accent border-transparent",
+  ops: "bg-acr-warn-soft text-acr-warn border-transparent",
+  risk: "bg-acr-neg-soft text-acr-neg border-transparent",
 };
 
 export default function FounderStrategyPage() {
@@ -154,7 +158,7 @@ export default function FounderStrategyPage() {
                 <Skeleton className="h-16 w-full" />
               </div>
             ) : isError ? (
-              <p className="text-sm text-red-600" role="alert">
+              <p className="text-sm text-acr-neg" role="alert">
                 Couldn't load proposals. The proposal queue is unchanged —{" "}
                 <button
                   type="button"
