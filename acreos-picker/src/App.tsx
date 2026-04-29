@@ -712,7 +712,8 @@ function ThreePanelComparison({
   const [bpPrimary, setBpPrimary] = useState<Breakpoint>(1440);
   const [bpSecondary, setBpSecondary] = useState<Breakpoint>(375);
   const [splitView, setSplitView] = useState(false);
-  const [zoom, setZoom] = useState<number>(0.5);
+  // 1.0 = fit-to-column. Higher values zoom in (with horizontal scroll).
+  const [zoom, setZoom] = useState<number>(1);
   const [editMode, setEditMode] = useState(false);
   const [editorStatus, setEditorStatus] = useState<'idle' | 'injecting' | 'ready'>('idle');
   const previewRef = useRef<HTMLIFrameElement | null>(null);
@@ -890,12 +891,14 @@ function ThreePanelComparison({
             </span>
           )}
           <div className="flex items-center gap-2 text-ink-2">
-            <span>Zoom</span>
+            <span title="100% fits the column; higher values zoom in with horizontal scroll">
+              Zoom
+            </span>
             <input
               type="range"
-              min={25}
-              max={100}
-              step={5}
+              min={100}
+              max={400}
+              step={25}
               value={zoom * 100}
               onChange={(e) => setZoom(Number(e.target.value) / 100)}
               className="w-24"
@@ -1022,9 +1025,6 @@ function PanelRow({
   }, [slug]);
 
   const visibleHeight = 600;
-  const scaledWidth = breakpoint * zoom;
-  const scaledHeight = visibleHeight;
-  const innerHeight = visibleHeight / zoom;
 
   return (
     <div>
@@ -1037,18 +1037,16 @@ function PanelRow({
             ref={protoRef}
             src={`/__dev/prototype/acreos.html`}
             width={breakpoint}
-            innerHeight={innerHeight}
-            scaledWidth={scaledWidth}
-            scaledHeight={scaledHeight}
+            visibleHeight={visibleHeight}
+            zoom={zoom}
           />
         </Panel>
         <Panel title="Production" subtitle={`acreos.io${productionUrl}`}>
           <ScaledIframe
             src={productionUrl}
             width={breakpoint}
-            innerHeight={innerHeight}
-            scaledWidth={scaledWidth}
-            scaledHeight={scaledHeight}
+            visibleHeight={visibleHeight}
+            zoom={zoom}
           />
         </Panel>
         <Panel
@@ -1060,9 +1058,8 @@ function PanelRow({
             ref={registerPreview ?? undefined}
             src={productionUrl}
             width={breakpoint}
-            innerHeight={innerHeight}
-            scaledWidth={scaledWidth}
-            scaledHeight={scaledHeight}
+            visibleHeight={visibleHeight}
+            zoom={zoom}
           />
         </Panel>
       </div>
@@ -1085,7 +1082,8 @@ function TweakPanel({
 }) {
   const previewSurface = decision.surface ?? '/today';
   const [bp, setBp] = useState<Breakpoint>(1440);
-  const [zoom, setZoom] = useState(0.5);
+  // 1.0 = fit-to-column. Higher values zoom in (with horizontal scroll).
+  const [zoom, setZoom] = useState(1);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const [densityReady, setDensityReady] = useState(false);
   const [tokensReady, setTokensReady] = useState(false);
@@ -1213,8 +1211,6 @@ function TweakPanel({
   }
 
   const visibleHeight = 600;
-  const scaledWidth = bp * zoom;
-  const innerHeight = visibleHeight / zoom;
 
   return (
     <div className="mb-6">
@@ -1381,9 +1377,8 @@ function TweakPanel({
           ref={iframeRef}
           src={previewSurface}
           width={bp}
-          innerHeight={innerHeight}
-          scaledWidth={scaledWidth}
-          scaledHeight={visibleHeight}
+          visibleHeight={visibleHeight}
+          zoom={zoom}
         />
       </Panel>
     </div>
@@ -1456,33 +1451,90 @@ function Panel({
 
 interface ScaledIframeProps {
   src: string;
+  /** Logical breakpoint width the iframe renders at (e.g., 1440). */
   width: number;
-  innerHeight: number;
-  scaledWidth: number;
-  scaledHeight: number;
+  /** Height of the visible viewport (after scaling). */
+  visibleHeight: number;
+  /** User zoom multiplier on top of fit-to-container. 1 = fits exactly. */
+  zoom: number;
 }
 
+/**
+ * Renders an iframe at its native breakpoint width (e.g., 1440px) but scales
+ * it via CSS transform so it fits the actual container width. The user's zoom
+ * slider is a multiplier on top of the fit scale, so zoom=1 always fits the
+ * column exactly and zoom>1 reveals more detail with horizontal scroll.
+ *
+ * Without this, a 1440px iframe inside a ~400px column with `overflow:hidden`
+ * shows only the leftmost ~28% of the page (which is exactly what the founder
+ * saw — the prototype's left sidebar with the right side clipped).
+ */
 const ScaledIframe = forwardRef<HTMLIFrameElement, ScaledIframeProps>(
-  ({ src, width, innerHeight, scaledWidth, scaledHeight }, ref) => {
-    const scale = scaledWidth / width;
+  ({ src, width, visibleHeight, zoom }, ref) => {
+    const wrapperRef = useRef<HTMLDivElement | null>(null);
+    const [containerWidth, setContainerWidth] = useState(0);
+
+    useEffect(() => {
+      const wrapper = wrapperRef.current;
+      if (!wrapper) return;
+      const observer = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          const w = entry.contentRect.width;
+          if (w > 0) setContainerWidth(w);
+        }
+      });
+      observer.observe(wrapper);
+      // Initial measurement
+      setContainerWidth(wrapper.getBoundingClientRect().width);
+      return () => observer.disconnect();
+    }, []);
+
+    // Fit scale makes the iframe render at exactly the container width.
+    // Effective scale applies user zoom on top.
+    const fitScale = containerWidth > 0 ? containerWidth / width : 1;
+    const effectiveScale = fitScale * zoom;
+    // The transform-scaled iframe occupies (width × effectiveScale) horizontally.
+    // When zoom > 1 this exceeds container width → horizontal scroll appears.
+    const scaledTotalWidth = width * effectiveScale;
+    const scaledTotalHeight = visibleHeight; // visible viewport height, fixed
+
+    // Inner iframe height is set so visibleHeight / effectiveScale yields
+    // enough native pixels to fill the visible viewport vertically too.
+    const innerHeight = effectiveScale > 0 ? Math.ceil(visibleHeight / effectiveScale) : visibleHeight;
+
     return (
-      <div style={{ width: scaledWidth, height: scaledHeight, position: 'relative' }}>
-        <iframe
-          ref={ref}
-          src={src}
-          width={width}
-          height={innerHeight}
+      <div
+        ref={wrapperRef}
+        style={{
+          width: '100%',
+          height: scaledTotalHeight,
+          overflowX: zoom > 1 ? 'auto' : 'hidden',
+          overflowY: 'hidden',
+          position: 'relative',
+        }}
+      >
+        <div
           style={{
-            transform: `scale(${scale})`,
-            transformOrigin: 'top left',
-            border: 0,
-            display: 'block',
+            width: scaledTotalWidth,
+            height: scaledTotalHeight,
+            position: 'relative',
           }}
-          // No sandbox: we need full same-origin so the picker can call
-          // window.__nav on the prototype iframe + Clerk cookies carry on
-          // the production iframe. The picker itself is dev-only and gated
-          // on DEV_FOUNDER_BYPASS, so the lower isolation is acceptable.
-        />
+        >
+          <iframe
+            ref={ref}
+            src={src}
+            width={width}
+            height={innerHeight}
+            style={{
+              transform: `scale(${effectiveScale})`,
+              transformOrigin: 'top left',
+              border: 0,
+              display: 'block',
+            }}
+            // No sandbox — same-origin needed for window.__nav() on prototype
+            // and Clerk session cookies on production. Dev-only / gated.
+          />
+        </div>
       </div>
     );
   }
