@@ -74,16 +74,78 @@ Per founder-approved scope reduction: depth matches Gap 1.0 prototype reference 
 - [x] D.6.9 — Polish pass: Fraunces editorial headers (Google Fonts), --acr-* warm cream + terracotta palette mirroring production, tier badges (T1-T5) on visual-review decisions, status chips (✓ for decided), generous breathing room, refined option cards with terracotta selection ring.
 - [x] End-to-end Playwright verification — 22/22 smoke checks pass; verification screenshots in `docs/exhaustive-completion/auth-screenshots/_picker-verification-*.png`.
 
-#### Gap 1.1.E — Founder picker interaction (operator-driven)
-- [ ] `founder-selections.json` committed with selections for every variant decision
+#### Gap 1.1.E/F — Production Port (supersedes original picker session + audit-fix loop)
 
-#### Gap 1.1.F — Audit-after-fix loop
-- [ ] All selections applied to production code per decision_type (variant / copy / config / density / token-override / layout)
-- [ ] Deploy after selections applied
-- [ ] Re-capture every surface at all breakpoints with bypass
-- [ ] Re-run mechanical checks
-- [ ] `AUDIT-AFTER-FIX.md` generated (resolved / remaining / new issues / recommended next action)
-- [ ] Founder approves audit (loop iterates until "Audit approved")
+The production port directive replaces 1.1.E (founder picker session) and
+1.1.F (apply selections + audit). Picker remains live as a refinement tool
+but is no longer the primary mechanism. Eight phases run from the canonical
+design export at `~/Desktop/acreos-design-export/`.
+
+**Phase A — Design-system extraction — ✅ COMPLETE**
+- [x] Design export extracted to `~/Desktop/acreos-design-export/`
+- [x] All 5 themes × light/dark token tables documented (Homestead / Quarry / Nocturne / Meadow / Slate)
+- [x] Titan → Slate rename recorded
+- [x] Type system spec — five curated font pairings (Editorial / Modern / Classic / Native / Refined)
+- [x] Component mapping table — prototype primitives → production components
+- [x] Density rules per surface
+- [x] Motion specifications + z-index layers + spacing rhythm + radius scale
+- [x] Voice exemplar (founder letter) + voice rules + voice anti-patterns
+- [x] AI agent framing (Atlas / Pax / Sophie)
+- [x] Autonomy matrix spec (per-agent × per-action × thresholds × time guardrails)
+- [x] Feature flag system architecture
+- [x] Six extra-attention surfaces enumerated
+- [x] Expert designer permissions documented
+- [x] State coverage requirements (loading / empty-zero / empty-filtered / error)
+- [x] Output: `docs/exhaustive-completion/prototype-design-system.md`
+- [x] Phase B resume doc: `_RESUME-PORT-PHASE-B.md`
+
+**Phase B — Theme + font + appearance settings — pending**
+- [ ] All 5 themes implemented in production CSS (light + dark)
+- [ ] Theme switching works live (no reload) across every surface
+- [ ] All 4–5 font pairings load efficiently (lazy on demand)
+- [ ] Settings → Appearance surface built per `acreos/settings.jsx`
+- [ ] User preferences persist server-side (theme, mode, font, density, motion)
+- [ ] No type-check or test regressions
+- [ ] PORT-AUDIT-PHASE-B.md complete with verification screenshots
+
+**Phase C — Personalization infrastructure — pending**
+- [ ] Sidebar config (show/hide/reorder) with drag UI
+- [ ] Notification preferences (per-event × per-channel + quiet hours)
+- [ ] List-view preferences per list type (rows / cards / expand-on-click)
+- [ ] Autonomy matrix UI with progressive disclosure
+- [ ] Audit log captures every autonomous action
+
+**Phase D — Feature flag system — pending**
+- [ ] Flag infrastructure (off / founder-only / beta / tier / on)
+- [ ] `/founder/features` UI
+- [ ] Underlying features inert when off (404 routes, hidden nav, rejecting APIs)
+- [ ] Initial flags wired (`module.land-academy`, `module.marketplace`, etc.)
+
+**Phase E — Surface-by-surface design port — pending**
+- [ ] All 28+ customer surfaces re-skinned per design brief
+- [ ] All 4 unimplemented founder sub-routes built
+- [ ] Landing + pricing + onboarding ported
+- [ ] All four states designed per surface (loading / empty-zero / empty-filtered / error)
+
+**Phase F — Capture + audit per tier — pending**
+- [ ] Re-capture every surface at 1440 + 375 (auth + unauth)
+- [ ] PORT-AUDIT.md per tier with before/after, judgment-call notes, theme/font/personalization verification
+- [ ] Founder reviews each tier audit
+
+**Phase G — Polish on extra-attention surfaces — pending**
+- [ ] /today polished
+- [ ] Onboarding polished
+- [ ] Founder mode polished
+- [ ] Settings polished
+- [ ] Landing polished
+- [ ] Pricing polished
+
+**Phase H — End-to-end verification — pending**
+- [ ] Walk through full platform in each theme × each font pairing
+- [ ] All customization flows verified (theme / font / sidebar / notifications / list-views / autonomy / feature flag)
+- [ ] No functionality regressions (auth / data / AI agents / integrations / billing)
+- [ ] Mobile responsive verified at 320, 375, 768
+- [ ] FINAL-PORT-AUDIT.md complete
 
 #### Gap 1.1.G — Bypass cleanup (mandatory before Gap 1 closes)
 - [ ] `server/auth/__DEV_BYPASS_REMOVE_BEFORE_LAUNCH.ts` deleted

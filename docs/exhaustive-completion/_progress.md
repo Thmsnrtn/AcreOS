@@ -1,6 +1,20 @@
 # Exhaustive Completion Progress
 
-Last updated: 2026-04-29 (1.1.D complete — picker fully built + verified end-to-end; 22/22 smoke checks pass)
+Last updated: 2026-04-29 (Port Phase A complete — design-system extraction document landed)
+
+**Active directive:** Production port from prototype (replaces Gap 1.1.E/F).
+Phases A–H: A) extraction, B) theme + font + appearance, C) personalization
+infra, D) feature flags, E) surface-by-surface port, F) capture + audit per
+tier, G) polish on six extra-attention surfaces, H) end-to-end verification.
+Picker remains live as a refinement tool but is no longer the primary
+mechanism.
+
+**Phase A output:** `docs/exhaustive-completion/prototype-design-system.md` —
+token inventory (5 themes × light/dark), font pairings, component mapping,
+density rules, motion specs, voice exemplar (founder letter), full design
+brief embedded.
+
+**Next session entry point:** `_RESUME-PORT-PHASE-B.md`
 
 Predecessor: `docs/unified-build/COMPLETE.md` (unified build shipped through Phase 10).
 Companion docs: `docs/unified-build/DESIGN-SYSTEM.md`, `docs/unified-build/phase-9-audit.md`.
@@ -14,9 +28,16 @@ Companion docs: `docs/unified-build/DESIGN-SYSTEM.md`, `docs/unified-build/phase
     - [x] 1.1.B — Claude Code authenticated visual analysis — 28 auth surfaces captured at 1440 + 375; per-surface comparison reports written; 4 CONFIDENT-FAIL surfaced (pipeline/inbox/offers/founder); 24 NEEDS-HUMAN-REVIEW
     - [x] 1.1.C — Autonomous gap fixing — 7 of 8 confident-fails resolved (3 list-page array bugs via fetchJsonArray; founder schema mismatch via select transform; landing/pricing touch targets; changelog overflow). Founder rate-limit residual is capture infra, not product. 4 new NEEDS-IMPLEMENTATION findings for unregistered founder sub-routes.
     - [x] 1.1.D — Variant picker construction (D.1 inventory + D.6.1 shell + D.6.2 chooser + D.6.3 three-panel + D.6.4 inline copy edit + D.6.5 split-view + D.6.6 density slider + D.6.7 color/token picker + D.6.8 server export + D.6.9 polish — all verified end-to-end via Playwright smoke, 22/22 checks pass)
-    - [ ] 1.1.E — Founder picker interaction (operator-driven, end of Claude session)
-    - [ ] 1.1.F — Audit-after-fix loop (apply selections, re-capture, iterate until founder-approved)
-    - [ ] 1.1.G — Bypass cleanup (delete bypass code/secrets/logs immediately after 1.1.F approval — NOT deferred to launch)
+    - [/] 1.1.E/F — **Superseded by Production Port directive (Phase A–H).** Picker remains as refinement tool but is no longer primary mechanism. See `prototype-design-system.md`.
+      - [x] Phase A — Design-system extraction (token inventory × 5 themes × light/dark; font pairings; component mapping; density/motion specs; voice exemplar; full design brief)
+      - [ ] Phase B — Theme system + font system + appearance settings
+      - [ ] Phase C — Personalization infrastructure (sidebar config / notifications / list views / autonomy matrix)
+      - [ ] Phase D — Feature flag system + founder UI
+      - [ ] Phase E — Surface-by-surface design port (28+ customer surfaces, 4 unimplemented founder sub-routes, landing/pricing/onboarding)
+      - [ ] Phase F — Capture + audit per tier
+      - [ ] Phase G — Polish pass (today, onboarding, founder mode, settings, landing, pricing)
+      - [ ] Phase H — End-to-end verification + FINAL-PORT-AUDIT.md
+    - [ ] 1.1.G — Bypass cleanup (delete bypass code/secrets/logs after Phase H approval — NOT deferred to launch)
   - [x] Gap 1.2 — Reconciliation rolled into 1.1.F audit report (no longer a separate phase)
 - [ ] Gap 2 — Tier 1 body deep-pass (today / pipeline / parcels / inbox)
 - [ ] Gap 3 — Mobile sweep on Tier 1 (24 screenshots × 6 breakpoints)
@@ -33,8 +54,8 @@ Companion docs: `docs/unified-build/DESIGN-SYSTEM.md`, `docs/unified-build/phase
 
 ## Current State
 
-**Gap:** 1.1.E — Founder picker interaction (next — operator-driven)
-**Status:** READY FOR FOUNDER. Picker live at https://acreos.io/__dev/picker/. End-to-end verification clean (22/22 smoke checks). Founder works through 36 decisions; export writes to Fly /tmp + browser download.
+**Phase:** Port Phase B — Theme system + font system + appearance settings (next)
+**Status:** Phase A complete. Design-system documentation landed at `prototype-design-system.md` (~870 lines): five themes × light/dark token tables, four-to-five curated font pairings spec, component mapping (prototype primitives → production), density rules per surface, motion tokens, voice exemplar (founder letter), expert-designer permissions, accessibility floor, state-coverage requirements. Picker remains live at https://acreos.io/__dev/picker/ as a refinement tool.
 
 **1.1.D summary (all 9 sub-phases shipped + verified):**
 - D.1 — variant-inventory.md (36 decisions across visual-review/platform-tweak/build-defer)
