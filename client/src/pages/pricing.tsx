@@ -80,7 +80,7 @@ function FeatureValue({ value }: { value: string | boolean }) {
   if (value === true)
     return (
       <>
-        <Check className="h-4 w-4 text-green-500 mx-auto" aria-hidden="true" />
+        <Check className="h-4 w-4 text-acr-pos mx-auto" aria-hidden="true" />
         <span className="sr-only">Included</span>
       </>
     );

@@ -256,6 +256,21 @@ Format note: entries terse — 2-3 sentences each. Never expand into prose.
 to chain through to Phase H. Resume protocol fires on real context fill,
 not at clean checkpoints. -->
 
+### E.7.1 — onboarding-v2.tsx (1543 lines, 56 hardcodes) deferred to Phase G dedicated polish
+- **Surface/component:** `client/src/pages/onboarding-v2.tsx`
+- **Question:** Onboarding has 56 raw color hardcodes across 1543 lines —
+  full re-skin in E.7 or defer?
+- **Default chosen:** Defer to Phase G. Onboarding is one of six explicit
+  Phase G surfaces (design-system §14: "First impression. Multi-screen
+  wizard. Walk-into-a-workspace feel, not a tour overlay. Reference:
+  acreos-onboarding/."). Phase G gets full prototype-reference comparison.
+- **Reasoning:** Same logic as E.6.1 (founder-dashboard) — partial
+  hardcode replacement on a high-stakes Phase G surface risks regression
+  without yielding the design care the brief explicitly schedules. E.7
+  ports the bounded surfaces (landing already clean per its docstring;
+  pricing's single hardcode fixed) and leaves onboarding for Phase G.
+- **Where:** No code change. Phase G TODO.
+
 ### E.6.1 — founder-dashboard.tsx (7435 lines, 293 hardcodes) deferred to Phase G dedicated polish
 - **Surface/component:** `client/src/pages/founder-dashboard.tsx`
 - **Question:** Tier 5 calls for re-skinning founder mode surfaces.
