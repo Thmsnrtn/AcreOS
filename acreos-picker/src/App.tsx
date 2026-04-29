@@ -979,30 +979,46 @@ function PanelRow({
   const protoRef = useRef<HTMLIFrameElement | null>(null);
   const protoWindowReady = useRef(false);
 
-  // After prototype iframe loads, call its window.__nav(slug) to switch surface
+  // After prototype iframe loads, poll for window.__nav and call it as soon
+  // as it appears. Babel-in-browser + React from unpkg can take 4-8s on a
+  // cold load; fixed timeouts miss it.
   useEffect(() => {
     const iframe = protoRef.current;
     if (!iframe) return;
-    const tryNav = () => {
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+    const tryNav = (): boolean => {
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const w = iframe.contentWindow as any;
         if (w && typeof w.__nav === 'function') {
           w.__nav(slug);
           protoWindowReady.current = true;
+          return true;
         }
       } catch {
         /* not yet ready */
       }
+      return false;
     };
-    const onLoad = () => {
-      setTimeout(tryNav, 500);
-      setTimeout(tryNav, 1500);
-      setTimeout(tryNav, 3000);
+    const startPolling = () => {
+      if (intervalId) clearInterval(intervalId);
+      let attempts = 0;
+      intervalId = setInterval(() => {
+        attempts++;
+        if (tryNav() || attempts > 75) {
+          if (intervalId) clearInterval(intervalId);
+          intervalId = null;
+        }
+      }, 200);
     };
+    const onLoad = () => startPolling();
     iframe.addEventListener('load', onLoad);
     if (protoWindowReady.current) tryNav();
-    return () => iframe.removeEventListener('load', onLoad);
+    else startPolling();
+    return () => {
+      iframe.removeEventListener('load', onLoad);
+      if (intervalId) clearInterval(intervalId);
+    };
   }, [slug]);
 
   const visibleHeight = 600;

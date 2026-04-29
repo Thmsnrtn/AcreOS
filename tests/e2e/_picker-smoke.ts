@@ -130,11 +130,30 @@ async function main() {
     // Step 3: First decision should be vr-home (/today). Click sidebar item.
     const homeButton = page.locator('aside button[data-decision-id="vr-home"]');
     await homeButton.click();
-    await page.waitForTimeout(2000);
+    // Babel-in-browser + React from unpkg + nav routing — give the prototype
+    // ~6s to bootstrap before screenshotting so it renders the right surface.
+    await page.waitForTimeout(6500);
 
     // Verify three iframes loaded
     const iframeCount = await page.locator('iframe').count();
     record('Three-panel iframes mounted', iframeCount === 3, `${iframeCount} iframes`);
+
+    // Verify prototype iframe actually rendered the requested surface (not blank)
+    const protoBootstrapped = await page.evaluate(async () => {
+      const iframe = document.querySelector('iframe') as HTMLIFrameElement | null;
+      if (!iframe) return false;
+      try {
+        const w = iframe.contentWindow as { __nav?: unknown } | null;
+        if (!w || typeof w.__nav !== 'function') return false;
+        const doc = iframe.contentDocument;
+        if (!doc?.body) return false;
+        // Body should contain rendered content (>1000 chars of text)
+        return (doc.body.innerText || '').length > 100;
+      } catch {
+        return false;
+      }
+    });
+    record('Prototype iframe bootstrapped (window.__nav + content)', protoBootstrapped);
     await shot(page, '02-three-panel');
 
     // Verify decision title rendered as Fraunces
@@ -262,7 +281,9 @@ async function main() {
     record(
       'Server-side export endpoint returns 200',
       Boolean(exportResponse?.ok),
-      exportResponse ? `status ${exportResponse.status}` : 'no response captured'
+      exportResponse
+        ? `status ${exportResponse.status}; body: ${JSON.stringify(exportResponse.body).slice(0, 200)}`
+        : 'no response captured'
     );
     if (exportResponse?.ok) {
       const body = exportResponse.body as {
