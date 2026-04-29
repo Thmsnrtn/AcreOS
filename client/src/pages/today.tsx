@@ -982,18 +982,18 @@ export default function TodayPage() {
         </div>
       )}
 
-      {/* Section 2b: Pax Noticed */}
+      {/* Section 2b: Pax Noticed
+          Per design-system §1.3: agent attribution lives in the section
+          header itself ("Pax noticed"). No additional "AI" badge — the
+          name IS the byline. */}
       {!paxLoading && paxItemCount > 0 && (
         <div data-testid="section-pax-noticed">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-primary" aria-hidden="true" />
+              <Sparkles className="w-4 h-4 text-acr-brand" aria-hidden="true" />
               <h2 className="acr-section-h2">Pax noticed</h2>
-              <Badge variant="secondary" className="bg-primary/10 text-primary text-xs">
-                AI
-              </Badge>
               {paxItemCount > 0 && (
-                <Badge variant="secondary" className="bg-primary/10 text-primary text-xs tabular-nums">
+                <Badge variant="secondary" className="bg-acr-brand-soft text-acr-brand border-transparent text-xs tabular-nums">
                   {paxItemCount}
                 </Badge>
               )}
@@ -1011,23 +1011,34 @@ export default function TodayPage() {
               const isHigh = obs.severity === "high";
               const isMedium = obs.severity === "medium";
               const isLow = obs.severity === "low";
-              const borderClass = isHigh
-                ? "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20"
+              // Use semantic --acr-* tones so observation cards re-skin
+              // automatically across all five themes (homestead/quarry/
+              // nocturne/meadow/slate). Severity → tone:
+              //   high → neg (destructive)
+              //   medium → warn
+              //   low → accent (informational)
+              const toneClass = isHigh
+                ? "border-[color:var(--acr-neg)]/30 bg-acr-neg-soft"
                 : isMedium
-                ? "border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20"
+                ? "border-[color:var(--acr-warn)]/30 bg-acr-warn-soft"
                 : isLow
-                ? "border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-900/20"
-                : "border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800/20";
+                ? "border-acr-line bg-acr-surface-2"
+                : "border-acr-line bg-acr-surface-2";
               const badgeClass = isHigh
-                ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
+                ? "bg-acr-neg-soft text-acr-neg border-transparent"
                 : isMedium
-                ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+                ? "bg-acr-warn-soft text-acr-warn border-transparent"
                 : isLow
-                ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
-                : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400";
+                ? "bg-acr-surface-2 text-acr-ink-2 border-transparent"
+                : "bg-acr-surface-2 text-acr-ink-3 border-transparent";
+              const iconColor = isHigh
+                ? "text-acr-neg"
+                : isMedium
+                ? "text-acr-warn"
+                : "text-acr-brand";
               return (
-                <div key={`obs-${obs.id}`} className={`flex items-start gap-3 rounded-lg border p-3 ${borderClass}`}>
-                  <Sparkles className="w-4 h-4 shrink-0 mt-0.5 text-primary" aria-hidden="true" />
+                <div key={`obs-${obs.id}`} className={`flex items-start gap-3 rounded-card border p-3 ${toneClass}`}>
+                  <Sparkles className={`w-4 h-4 shrink-0 mt-0.5 ${iconColor}`} aria-hidden="true" />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-sm font-medium">{obs.title}</p>
@@ -1043,8 +1054,8 @@ export default function TodayPage() {
 
             {/* Stale lead cards */}
             {paxStaleLeads.map((lead) => (
-              <div key={`stale-${lead.id}`} className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20 p-3">
-                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-500" aria-hidden="true" />
+              <div key={`stale-${lead.id}`} className="flex items-start gap-3 rounded-card border border-[color:var(--acr-warn)]/30 bg-acr-warn-soft p-3">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-acr-warn" aria-hidden="true" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium">
                     {lead.firstName} {lead.lastName} hasn't been contacted
@@ -1063,10 +1074,10 @@ export default function TodayPage() {
             {paxExpiringOffers.map((offer) => (
               <div
                 key={`offer-${offer.id}`}
-                className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20 p-3"
+                className="flex items-start gap-3 rounded-card border border-[color:var(--acr-neg)]/30 bg-acr-neg-soft p-3"
                 role="alert"
               >
-                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-red-500" aria-hidden="true" />
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-acr-neg" aria-hidden="true" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium">{offer.title}</p>
                   <p className="text-xs text-muted-foreground mt-0.5 tabular-nums">
@@ -1082,15 +1093,14 @@ export default function TodayPage() {
         </div>
       )}
 
-      {/* Section 2c: Pax Suggests */}
+      {/* Section 2c: Pax Suggests
+          Same byline pattern as Pax Noticed — section header IS the
+          attribution (design-system §1.3). */}
       <div data-testid="section-pax-suggests">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-emerald-500" aria-hidden="true" />
+            <Sparkles className="w-4 h-4 text-acr-brand" aria-hidden="true" />
             <h2 className="acr-section-h2">Pax suggests</h2>
-            <Badge variant="secondary" className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 text-xs">
-              AI
-            </Badge>
           </div>
           <Button asChild variant="ghost" size="sm" className="gap-1 text-xs">
             <Link href="/leads">
