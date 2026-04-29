@@ -43,6 +43,26 @@
   --radius: 1rem;
 }
 
+/* ─────────────── Motion preference ─────────────── */
+/* Default durations (above) apply when data-motion="full".
+ * Explicit reduced (user picked it in Settings) → collapse durations.
+ * OS-level prefers-reduced-motion → collapse unless user explicitly
+ * opted into "full" via Settings. Manual pick wins per Apple-native rule. */
+[data-motion="reduced"]:root {
+  --acr-dur-fast:      30ms;
+  --acr-dur-normal:    60ms;
+  --acr-dur-slow:      60ms;
+  --acr-ease-spring:   var(--acr-ease-standard);
+}
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion="full"]) {
+    --acr-dur-fast:      30ms;
+    --acr-dur-normal:    60ms;
+    --acr-dur-slow:      60ms;
+    --acr-ease-spring:   var(--acr-ease-standard);
+  }
+}
+
 /* ─────────────── Glass + 4-level elevation (mode-only, not per-theme) ─────────────── */
 :root {
   --glass-bg-light:    rgba(252, 250, 247, 0.72);

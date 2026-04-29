@@ -14,20 +14,33 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 export type ThemeId = "homestead" | "quarry" | "nocturne" | "meadow" | "slate";
 export type ThemeMode = "light" | "dark" | "auto";
 export type FontPairing = "editorial" | "modern" | "classic" | "native" | "refined";
+export type Density = "compact" | "comfortable" | "adaptive";
+export type MotionPreference = "full" | "reduced";
 
 export const THEME_IDS: ThemeId[] = ["homestead", "quarry", "nocturne", "meadow", "slate"];
 export const FONT_PAIRINGS: FontPairing[] = ["editorial", "modern", "classic", "native", "refined"];
+export const DENSITIES: Density[] = ["compact", "comfortable", "adaptive"];
+export const MOTION_PREFERENCES: MotionPreference[] = ["full", "reduced"];
 
 export interface ThemeConfig {
   theme: ThemeId;
   mode: ThemeMode;
   fontPairing: FontPairing;
+  density: Density;
+  motion: MotionPreference;
+}
+
+function getInitialMotion(): MotionPreference {
+  if (typeof window === "undefined") return "full";
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "reduced" : "full";
 }
 
 const DEFAULT_CONFIG: ThemeConfig = {
   theme: "homestead",
   mode: "auto",
   fontPairing: "editorial",
+  density: "adaptive",
+  motion: "full",
 };
 
 const STORAGE_KEY = "acreos-theme-config";
@@ -73,15 +86,24 @@ function loadStoredConfig(): ThemeConfig {
       if (parsed.fontPairing && (FONT_PAIRINGS as readonly string[]).includes(parsed.fontPairing)) {
         next.fontPairing = parsed.fontPairing;
       }
+      if (parsed.density && (DENSITIES as readonly string[]).includes(parsed.density)) {
+        next.density = parsed.density;
+      }
+      if (parsed.motion && (MOTION_PREFERENCES as readonly string[]).includes(parsed.motion)) {
+        next.motion = parsed.motion;
+      } else {
+        // First load with no stored motion pref — honor OS prefers-reduced-motion.
+        next.motion = getInitialMotion();
+      }
       return next;
     }
     // Migrate from very-old "acreos-theme" light|dark key.
     const legacy = localStorage.getItem(LEGACY_LIGHTDARK_KEY) as "light" | "dark" | null;
-    if (legacy) return { ...DEFAULT_CONFIG, mode: legacy };
+    if (legacy) return { ...DEFAULT_CONFIG, mode: legacy, motion: getInitialMotion() };
   } catch {
     // localStorage unavailable / malformed — fall through to defaults.
   }
-  return DEFAULT_CONFIG;
+  return { ...DEFAULT_CONFIG, motion: getInitialMotion() };
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
@@ -119,6 +141,16 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     document.documentElement.setAttribute("data-font-pairing", themeConfig.fontPairing);
   }, [themeConfig.fontPairing]);
+
+  // Apply [data-density] for surface-level density rules.
+  useEffect(() => {
+    document.documentElement.setAttribute("data-density", themeConfig.density);
+  }, [themeConfig.density]);
+
+  // Apply [data-motion] so motion-sensitive utilities can opt out.
+  useEffect(() => {
+    document.documentElement.setAttribute("data-motion", themeConfig.motion);
+  }, [themeConfig.motion]);
 
   const setThemeConfig = (update: Partial<ThemeConfig>) => {
     setThemeConfigState((prev) => {

@@ -47,7 +47,9 @@ import { ProviderSettings } from "@/components/provider-settings";
 import { AICostDashboard } from "@/components/ai-cost-dashboard";
 import { ByokSettings } from "@/components/settings/ByokSettings";
 import { TeamInviteCard } from "@/components/settings/TeamInviteCard";
-import { ThemeSettings } from "@/components/theme-settings";
+// ThemeSettings (dialog quick-picker) is intended for top-bar mount in Phase E;
+// the full Settings → Appearance surface uses AppearancePanel below.
+import { AppearancePanel } from "@/components/settings/appearance-panel";
 import { PreferencesCard } from "@/components/preferences-card";
 import { PlanComparisonModal, type TierKey } from "@/components/tier-upgrade-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -1524,21 +1526,11 @@ export default function Settings() {
                     Appearance
                   </h2>
                   <p className="text-muted-foreground text-sm">
-                    Customize the look and feel of AcreOS.
+                    Five themes, five type pairings, and the small comforts that make
+                    the workspace feel like yours.
                   </p>
                 </div>
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base">Theme & Colors</CardTitle>
-                    <CardDescription>
-                      Choose from named presets, accent colors, and light/dark/system mode.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <ThemeSettings />
-                  </CardContent>
-                </Card>
-
+                <AppearancePanel />
                 <PreferencesCard />
               </div>
             </TabsContent>
