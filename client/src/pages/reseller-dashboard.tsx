@@ -1,5 +1,4 @@
 import { useId, useState, useEffect, type FormEvent } from "react";
-import { loadGoogleFont } from "@/lib/font-loader";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { usd } from "@/lib/format";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -486,10 +485,17 @@ function UsageBreakdown({ tenants }: { tenants: Tenant[] }) {
 
 // ─── White-Label Customization Panel ─────────────────────────────────────────
 
+// Self-hosted only — no runtime Google Fonts CDN per design-system §0.1.
+// Resellers pick from the same curated pairings as the main app (§4.1);
+// arbitrary font picking is forbidden by the brief ("never let users pick
+// fonts à-la-carte"). Each option maps to a self-hosted face in
+// client/public/fonts via @font-face in client/src/fonts.css.
 const FONT_OPTIONS = [
-  { label: "Inter", value: "Inter, sans-serif" },
-  { label: "Roboto", value: "Roboto, sans-serif" },
-  { label: "DM Sans", value: "'DM Sans', sans-serif" },
+  { label: "Inter",            value: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif" },
+  { label: "Inter Tight",      value: "'Inter Tight', -apple-system, BlinkMacSystemFont, sans-serif" },
+  { label: "Fraunces",         value: "'Fraunces', Georgia, serif" },
+  { label: "Source Serif",     value: "'Source Serif 4', Georgia, serif" },
+  { label: "Newsreader",       value: "'Newsreader', Georgia, serif" },
 ];
 
 function WhiteLabelPanel() {
@@ -506,13 +512,7 @@ function WhiteLabelPanel() {
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [preview, setPreview] = useState(false);
 
-  // Dynamically load Google Fonts for the white-label font picker
-  useEffect(() => {
-    for (const opt of FONT_OPTIONS) {
-      loadGoogleFont(opt.label);
-    }
-  }, []);
-
+  // White-label fonts are all self-hosted (see fonts.css) — no runtime load.
   const saveMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch("/api/white-label/branding", {

@@ -20,13 +20,11 @@
 ═══════════════════════════════════════════════════════════════════ */
 
 /* ─────────────── Theme-agnostic globals (mode-independent) ─────────────── */
+/* Type system tokens (--font-sans / --font-display / --font-serif / --font-mono)
+ * are owned by client/src/fonts.css per [data-font-pairing] on <html>.
+ * fonts.css imports BEFORE index.css in main.tsx, so pairing defaults are
+ * already resolved when this :root block parses. */
 :root {
-  /* Type system — pairing tokens (driven by --font-pairing on <html>; see fonts.css) */
-  --font-sans:    'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
-  --font-display: 'Fraunces', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, serif;
-  --font-serif:   'Fraunces', 'Times New Roman', serif;
-  --font-mono:    'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
-
   /* Motion (HANDOFF.md §5 + round3-css.jsx) */
   --acr-dur-fast:      120ms;
   --acr-dur-normal:    240ms;

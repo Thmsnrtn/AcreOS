@@ -61,9 +61,11 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
   const cspDirectives = [
     "default-src 'self'",
     `script-src ${scriptSrcSources.join(" ")}`,
-    `style-src 'self' 'unsafe-inline' https://api.mapbox.com https://fonts.googleapis.com`,
+    // Fonts are self-hosted from /fonts/* per design-system §0.1 — no
+    // runtime Google Fonts CDN. Mapbox CSS still required for tile styling.
+    `style-src 'self' 'unsafe-inline' https://api.mapbox.com`,
     "img-src 'self' data: blob: https: http:",
-    "font-src 'self' data: https://fonts.gstatic.com",
+    "font-src 'self' data:",
     "connect-src 'self' https://api.stripe.com https://api.mapbox.com https://events.mapbox.com https://*.clerk.accounts.dev https://*.clerk.dev wss: ws:",
     "frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://*.clerk.accounts.dev https://challenges.cloudflare.com",
     "worker-src 'self' blob:",

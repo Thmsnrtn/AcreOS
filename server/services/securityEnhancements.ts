@@ -9,7 +9,8 @@ import { sql } from "drizzle-orm";
 // Item 221: Enhanced CSP headers
 export function getCSPHeaders(): Record<string, string> {
   return {
-    "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://clerk.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https://*.mapbox.com https://*.tile.openstreetmap.org; connect-src 'self' https://api.stripe.com https://api.clerk.com https://*.mapbox.com wss:; frame-src https://js.stripe.com https://hooks.stripe.com;",
+    // Fonts self-hosted from /fonts/* per design-system §0.1 — no Google Fonts CDN.
+    "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://clerk.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.mapbox.com https://*.tile.openstreetmap.org; connect-src 'self' https://api.stripe.com https://api.clerk.com https://*.mapbox.com wss:; frame-src https://js.stripe.com https://hooks.stripe.com;",
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
     "X-XSS-Protection": "1; mode=block",

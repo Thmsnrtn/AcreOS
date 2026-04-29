@@ -554,7 +554,7 @@ ID never change.
 |---|---|---|---|---|
 | `editorial` (default) | **Fraunces** (variable, opt 9–144) | **Inter** (variable, 100–900) | **JetBrains Mono** | All OFL. House default. Already in production. |
 | `modern` | **Inter Tight** (variable display cut) | **Inter** (variable) | **JetBrains Mono** | All OFL. Two Inter cuts — Tight is meaningfully different at display sizes. |
-| `classic` | **Charter** (Bitstream / Matthew Butterick redistribution) | **Inter** | **JetBrains Mono** | Charter via Butterick is free; if licensing is at all unclear in Phase B audit, swap to **Source Serif Pro** or **EB Garamond** without changing the pairing name. |
+| `classic` | **Source Serif 4** (Adobe, SIL OFL) — substituted for Charter at Phase B.3 | **Inter** | **JetBrains Mono** | Charter's redistribution chain (Bitstream → Butterick) had license-history ambiguity; SIL OFL is unambiguous. Pairing ID and user-visible name unchanged. See `JUDGMENT-CALLS.md` B.3.1. |
 | `native` | **SF Pro Display** (system) | **SF Pro Text** (system) | **SF Mono** (system) | System fonts on Apple platforms; Inter fallback elsewhere. Zero font load. |
 | `refined` | **Newsreader** (Production Type via Google Fonts) | **Inter** | **JetBrains Mono** | Newsreader is OFL; soft editorial register. |
 
