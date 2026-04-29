@@ -60,18 +60,19 @@ Per founder-approved scope reduction: depth matches Gap 1.0 prototype reference 
 - [x] NEW findings recorded: 4 unregistered founder sub-routes (/founder/revenue, /cost, /ops, /tenants) — NEEDS-IMPLEMENTATION, escalated to founder decision (1.1.E or deferred)
 - [x] Items requiring founder taste deferred to 1.1.D picker (24 NEEDS-HUMAN-REVIEW surfaces still need pixel comparison)
 
-#### Gap 1.1.D — Variant picker construction (in progress)
-- [x] `docs/exhaustive-completion/variant-inventory.md` produced (28 visual-review + 4 platform-tweak + 4 build-defer = 36 decisions). Adapted from V2 spec to match actual prototype reality (no parallel A/B variants — instead: per-surface fidelity review + global tweaks + build-defer for unimplemented routes).
-- [x] Picker shell scaffold — Vite + React + TS + Tailwind app at `acreos-picker/`. Shell layout: top bar (progress + export), sidebar (decisions grouped by category, status indicators), main panel (decision card with three-panel placeholder), bottom bar (prev/next nav). Basic selection persistence via localStorage; export-to-JSON wired.
-- [x] Hosting: built bundle served by acreos express server at `/__dev/picker/` (gated on `DEV_FOUNDER_BYPASS=true`). Same-origin so picker iframes carry Clerk session cookies.
-- [x] D.6.2 — Variant chooser: progress bar in topbar, filter chips (all/undecided/decided), per-category progress in sidebar header, option label next to decided items, keyboard nav (j/k/↑/↓ + 1/2/3 + a/u/d).
-- [x] D.6.3 — Three-panel comparison: prototype iframe (Babel-renders /__dev/prototype/acreos.html, then `iframe.contentWindow.__nav(slug)` switches to the right surface), production iframe (`/<surface>` same-origin so Clerk session cookies carry), preview iframe (currently same as production). Breakpoint selector + zoom slider. Required: removed iframe sandbox attribute (was creating cross-origin), loosened CSP for /__dev/* paths when bypass active (allow unpkg + inline + eval + same-origin framing). Verified end-to-end via Playwright — prototype renders with `rootHtmlLen: 45529`, `window.__nav` callable.
-- [ ] D.6.4 — Inline copy editing (textarea exists for free-form notes; copy editing per decision needs to load surface text and allow inline edits)
-- [ ] D.6.5 — Multi-breakpoint preview (320 / 375 / 414 / 768 / 1024 / 1440 + split view)
-- [ ] D.6.6 — Drag-to-resize density adjustment (compact / regular / comfy + custom sliders)
-- [ ] D.6.7 — Color/token override picker (within design-system tokens only)
-- [ ] D.6.8 — Export selections to `founder-selections.json` written to disk (currently downloads via browser); add server endpoint for direct save
-- [ ] D.6.9 — UI polish pass (picker chrome itself feels designed, not utilitarian)
+#### Gap 1.1.D — Variant picker construction — ✅ COMPLETE
+- [x] `docs/exhaustive-completion/variant-inventory.md` produced (28 visual-review + 4 platform-tweak + 4 build-defer = 36 decisions).
+- [x] Picker shell scaffold — Vite + React + TS + Tailwind app at `acreos-picker/`. Top bar (progress + export), sidebar (decisions grouped by category, status indicators), main panel (decision card), bottom bar (prev/next nav). Selection persistence via localStorage.
+- [x] Hosting: built bundle served by acreos express at `/__dev/picker/` (gated on `DEV_FOUNDER_BYPASS=true`). Same-origin so picker iframes carry Clerk session cookies.
+- [x] D.6.2 — Variant chooser: progress bar, filter chips (all/undecided/decided), per-category progress, option label next to decided items, keyboard nav (j/k/↑/↓ + 1/2/3 + a/u/d).
+- [x] D.6.3 — Three-panel comparison: prototype iframe + production iframe + preview iframe; breakpoint selector + zoom slider; CSP loosened for /__dev/*; sandbox removed for same-origin iframe access; React+Babel bundled as same-origin vendor files (Chrome blocks cross-origin scripts inside iframes).
+- [x] D.6.4 — Inline copy editing: same-origin injector wraps text-bearing elements in contenteditable spans with stable `data-copy-id` (surfacePath::djb2Hash(text)); MutationObserver re-applies markers after React re-renders; edits saved to `selection.copyOverrides` keyed by id; reset-per-edit; injector served as static JS at `/__dev/picker/injectors/copy-edit.js` so production iframe CSP `script-src 'self'` accepts it. Smoke verified: 218 editable spans on /today.
+- [x] D.6.5 — Split-view multi-breakpoint: toggle to 2-row layout (6 panels total), independent primary/secondary breakpoint selectors; copy edit confined to primary preview to avoid duplicate edits.
+- [x] D.6.6 — Density slider: 4 discrete presets (compact / comfortable / spacious / custom); custom mode reveals 4 sliders (font-size 0.85-1.15, line-height 1.2-1.8, section padding 0.6-1.5, item spacing 0.6-1.5); injected `<style>` block in preview iframe applies via CSS variables on broad-target selectors; saved to `selection.densityOverrides`.
+- [x] D.6.7 — Color/token override picker: 3 design-system-approved terracotta swatches (--acr-brand: #C2531C, #A04316, #E07749 — no arbitrary hex); each updates --acr-brand, --acr-brand-soft, --acr-glow, --acr-ring, --acr-chart-a together via injected `<style>` block; reset-to-default; saved to `selection.tokenOverrides`.
+- [x] D.6.8 — Server-side export endpoint: POST /api/__dev/founder-selections accepts authenticated Clerk founder session OR bypass header; writes to `os.tmpdir()/founder-selections.json` (Fly `/app` is read-only for the `node` user); response carries retrieval command (`fly ssh console -a acreos -C 'cat /tmp/founder-selections.json'`); picker triggers browser download as backup.
+- [x] D.6.9 — Polish pass: Fraunces editorial headers (Google Fonts), --acr-* warm cream + terracotta palette mirroring production, tier badges (T1-T5) on visual-review decisions, status chips (✓ for decided), generous breathing room, refined option cards with terracotta selection ring.
+- [x] End-to-end Playwright verification — 22/22 smoke checks pass; verification screenshots in `docs/exhaustive-completion/auth-screenshots/_picker-verification-*.png`.
 
 #### Gap 1.1.E — Founder picker interaction (operator-driven)
 - [ ] `founder-selections.json` committed with selections for every variant decision

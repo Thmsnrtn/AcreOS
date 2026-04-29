@@ -1,6 +1,6 @@
 # Exhaustive Completion Progress
 
-Last updated: 2026-04-28 (1.1.C complete — 7 of 8 confident-fails resolved; 4 NEEDS-IMPLEMENTATION found)
+Last updated: 2026-04-29 (1.1.D complete — picker fully built + verified end-to-end; 22/22 smoke checks pass)
 
 Predecessor: `docs/unified-build/COMPLETE.md` (unified build shipped through Phase 10).
 Companion docs: `docs/unified-build/DESIGN-SYSTEM.md`, `docs/unified-build/phase-9-audit.md`.
@@ -13,8 +13,7 @@ Companion docs: `docs/unified-build/DESIGN-SYSTEM.md`, `docs/unified-build/phase
     - [x] 1.1.A — Dev-mode founder bypass (header + cookie + Clerk-ticket signin, secret-gated, launch-marker safeguard) — deployed + verified on acreos.io
     - [x] 1.1.B — Claude Code authenticated visual analysis — 28 auth surfaces captured at 1440 + 375; per-surface comparison reports written; 4 CONFIDENT-FAIL surfaced (pipeline/inbox/offers/founder); 24 NEEDS-HUMAN-REVIEW
     - [x] 1.1.C — Autonomous gap fixing — 7 of 8 confident-fails resolved (3 list-page array bugs via fetchJsonArray; founder schema mismatch via select transform; landing/pricing touch targets; changelog overflow). Founder rate-limit residual is capture infra, not product. 4 new NEEDS-IMPLEMENTATION findings for unregistered founder sub-routes.
-    - [/] 1.1.D — Variant picker construction — D.1 inventory + D.6.1 shell + D.6.2 variant chooser polish + D.6.3 three-panel comparison complete; D.6.4-9 (copy editing, density slider, color picker, server export endpoint, polish) deferred to next sessions.
-    - [ ] 1.1.D — Variant picker construction (Vite app: shell → variant → 3-panel → copy → breakpoints → density → color → export → polish)
+    - [x] 1.1.D — Variant picker construction (D.1 inventory + D.6.1 shell + D.6.2 chooser + D.6.3 three-panel + D.6.4 inline copy edit + D.6.5 split-view + D.6.6 density slider + D.6.7 color/token picker + D.6.8 server export + D.6.9 polish — all verified end-to-end via Playwright smoke, 22/22 checks pass)
     - [ ] 1.1.E — Founder picker interaction (operator-driven, end of Claude session)
     - [ ] 1.1.F — Audit-after-fix loop (apply selections, re-capture, iterate until founder-approved)
     - [ ] 1.1.G — Bypass cleanup (delete bypass code/secrets/logs immediately after 1.1.F approval — NOT deferred to launch)
@@ -34,8 +33,34 @@ Companion docs: `docs/unified-build/DESIGN-SYSTEM.md`, `docs/unified-build/phase
 
 ## Current State
 
-**Gap:** 1.1.D — Variant picker construction (next)
-**Status:** READY TO START. 1.1.C resolved 7 of 8 confident-fails; remaining is /founder rate-limit (capture-only intermittency, not a product bug).
+**Gap:** 1.1.E — Founder picker interaction (next — operator-driven)
+**Status:** READY FOR FOUNDER. Picker live at https://acreos.io/__dev/picker/. End-to-end verification clean (22/22 smoke checks). Founder works through 36 decisions; export writes to Fly /tmp + browser download.
+
+**1.1.D summary (all 9 sub-phases shipped + verified):**
+- D.1 — variant-inventory.md (36 decisions across visual-review/platform-tweak/build-defer)
+- D.6.1 — shell scaffold (Vite + React + TS + Tailwind, served at /__dev/picker/)
+- D.6.2 — variant chooser w/ keyboard nav (j/k, 1/2/3, a/u/d filter), progress bar, filter chips
+- D.6.3 — three-panel comparison (prototype | production | preview) with breakpoint selector + zoom
+- D.6.4 — inline copy editing — same-origin script injection wraps text in contenteditable spans w/ stable data-copy-id (surfacePath::sha1(text)); MutationObserver re-applies after React re-render; edits saved to selection.copyOverrides; verified 218 editable spans on /today
+- D.6.5 — split-view multi-breakpoint (toggle to 2-row layout, 6 panels at 2 different breakpoints)
+- D.6.6 — density slider (compact/comfortable/spacious/custom, 4 sliders for fs/lh/pad/gap, real-time preview via injected style block)
+- D.6.7 — color/token override picker (--acr-brand swatches, constrained to 3 design-system terracottas; updates --acr-brand-soft/glow/ring/chart-a together)
+- D.6.8 — server-side export endpoint (POST /api/__dev/founder-selections, accepts Clerk founder session OR bypass header, writes to /tmp on Fly, returns retrieval command + browser-download fallback)
+- D.6.9 — polish pass (Fraunces editorial headers, --acr-* warm cream + terracotta palette, tier badges T1-T5, status chips, generous breathing room)
+
+**1.1.D infrastructure additions (all REMOVE_BEFORE_LAUNCH at 1.1.G):**
+- `acreos-picker/` — Vite + React + TS + Tailwind app (committed dist/ via .gitignore negation)
+- `acreos-picker/public/injectors/{copy-edit,density,tokens}.js` — same-origin scripts injected into preview iframe (script.src = '/__dev/picker/injectors/<name>.js' — production iframe CSP requires script-src 'self' which inline-script injection violated)
+- `acreos/vendor/{react.development,react-dom.development,babel.min}.js` — React/Babel bundled as same-origin static files (Chrome blocks cross-origin script tags inside iframes even with CSP allow + CORS — bundling fixes it)
+- `tests/e2e/_picker-smoke.ts` — 22-check Playwright smoke test (sign-in, shell, polish, three-panel, breakpoints, split-view, copy edit, density, color, export, retrieval)
+
+**Verification screenshots:** `docs/exhaustive-completion/auth-screenshots/_picker-verification-{01-shell,02-three-panel,03-split-view,04-edit-mode,05-density-spacious,06-density-custom,07-color-deeper,08-export-result,99-final}.png`
+
+**Picker URL:** https://acreos.io/__dev/picker/ — founder must sign into acreos.io first via normal Clerk flow, then navigate to picker. Same-origin iframes carry session cookies for production preview panel.
+
+---
+
+## (Previous) 1.1.C summary
 
 **1.1.C summary (7 fixes shipped, 4 new findings):**
 
