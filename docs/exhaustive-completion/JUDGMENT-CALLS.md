@@ -256,6 +256,44 @@ Format note: entries terse — 2-3 sentences each. Never expand into prose.
 to chain through to Phase H. Resume protocol fires on real context fill,
 not at clean checkpoints. -->
 
+### E.2.4.1 — Inbox Pax-draft pre-fill is a feature add, not a visual port
+- **Surface/component:** `client/src/pages/inbox.tsx` reply panel
+- **Question:** Prototype Inbox surfaces a "Pax drafted a reply · ready to
+  review" card with pre-filled suggested copy under the message. Production
+  inbox shows a blank textarea. Build the Pax-draft integration in E.2.4?
+- **Default chosen:** Defer feature add. E.2.4 ships visual port only —
+  added `data-tour="inbox-ai-draft"` anchor for future tour wiring,
+  `rounded-card` radius on reply panel, and inline TODO comment marking
+  where Pax-draft integration should mount.
+- **Reasoning:** Per Phase E directive: business logic / AI integrations
+  not changed in port phase. Pax-draft requires a new POST endpoint
+  (`/api/ai/draft-reply` per HANDOFF.md §6 stub spec) plus UI surface
+  for source attribution + edit/send actions. That's a feature build,
+  not a re-skin. Deferred to a focused Pax integration phase post-port.
+- **Where:** `client/src/pages/inbox.tsx` reply panel inline TODO comment.
+
+### E.2.3.1 — /parcels/:id has no production analog; port deferred as feature-add
+- **Surface/component:** N/A — production has no `/parcels/:id` route
+- **Question:** Prototype's Parcel detail surface (Atlas Run panel + map +
+  comps + title) has no direct production equivalent. Production's
+  `/properties` is a list view; `property-enrichment.tsx` and
+  `property-tax.tsx` cover specific enrichment paths but not the
+  full parcel detail experience. Build the route now, or defer?
+- **Default chosen:** Defer. The prototype's parcel detail is genuinely
+  a surface that doesn't exist in production yet — building it would
+  be a feature-add, not a port. Phase E is "re-skin existing surfaces
+  to match prototype," not "build new surfaces from prototype."
+- **Reasoning:** Per Phase E directive "Change functionality. Auth,
+  database, AI agents, business logic, integrations remain untouched"
+  — adding a new top-level route + Atlas analysis integration at the
+  detail level is functional addition not visual port. The Atlas Run
+  panel pattern (confidence + comps + recommendation) lives elsewhere
+  in production via the existing AVM and Atlas pages; that surface
+  gets its design pass when E.5 reaches `/atlas`/`/avm`. If founder
+  later decides parcel-detail-as-a-route is wanted, it's a separate
+  build phase.
+- **Where:** No code change. Tier 1 self-audit will note this as a
+  surface deferred from Tier 1 scope.
 
 ## Phase F — Capture + tier audit
 

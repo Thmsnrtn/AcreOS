@@ -140,11 +140,13 @@ function PipelineIntelligenceHeader({ leads, deals }: { leads: Lead[]; deals: De
         </CardContent>
       </Card>
 
-      {/* Velocity metrics */}
+      {/* Velocity metrics — semantic --acr-* tones so all five themes
+          re-skin automatically. brand=hot, warn=stalled, accent=value,
+          pos=closed, brand-soft=quality */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2" role="group" aria-label="Pipeline velocity metrics">
         {hotDeals > 0 && (
-          <div className="flex items-center gap-2 rounded-lg border border-orange-200 bg-orange-50 dark:border-orange-800 dark:bg-orange-900/20 px-3 py-2">
-            <Flame className="w-4 h-4 text-orange-500 shrink-0" aria-hidden="true" />
+          <div className="flex items-center gap-2 rounded-card border border-[color:var(--acr-brand)]/30 bg-acr-brand-soft px-3 py-2">
+            <Flame className="w-4 h-4 text-acr-brand shrink-0" aria-hidden="true" />
             <div>
               <p className="text-xs font-semibold tabular-nums">{hotDeals} hot</p>
               <p className="text-[10px] text-muted-foreground">accepted / in escrow</p>
@@ -152,8 +154,8 @@ function PipelineIntelligenceHeader({ leads, deals }: { leads: Lead[]; deals: De
           </div>
         )}
         {stalledDeals > 0 && (
-          <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20 px-3 py-2">
-            <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" aria-hidden="true" />
+          <div className="flex items-center gap-2 rounded-card border border-[color:var(--acr-warn)]/30 bg-acr-warn-soft px-3 py-2">
+            <AlertTriangle className="w-4 h-4 text-acr-warn shrink-0" aria-hidden="true" />
             <div>
               <p className="text-xs font-semibold tabular-nums">{stalledDeals} stalled</p>
               <p className="text-[10px] text-muted-foreground">14+ days idle</p>
@@ -161,8 +163,8 @@ function PipelineIntelligenceHeader({ leads, deals }: { leads: Lead[]; deals: De
           </div>
         )}
         {totalPipelineValue > 0 && (
-          <div className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-900/20 px-3 py-2">
-            <DollarSign className="w-4 h-4 text-blue-500 shrink-0" aria-hidden="true" />
+          <div className="flex items-center gap-2 rounded-card border border-acr-line bg-acr-surface-2 px-3 py-2">
+            <DollarSign className="w-4 h-4 text-acr-accent shrink-0" aria-hidden="true" />
             <div>
               <p className="text-xs font-semibold tabular-nums">
                 {dollarsCompact(totalPipelineValue * 100)}
@@ -172,8 +174,8 @@ function PipelineIntelligenceHeader({ leads, deals }: { leads: Lead[]; deals: De
           </div>
         )}
         {avgScore !== null && (
-          <div className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 dark:border-primary/30 dark:bg-primary/10 px-3 py-2">
-            <TrendingUp className="w-4 h-4 text-primary shrink-0" aria-hidden="true" />
+          <div className="flex items-center gap-2 rounded-card border border-[color:var(--acr-brand)]/20 bg-acr-brand-soft px-3 py-2">
+            <TrendingUp className="w-4 h-4 text-acr-brand shrink-0" aria-hidden="true" />
             <div>
               <p className="text-xs font-semibold tabular-nums">Score {avgScore}</p>
               <p className="text-[10px] text-muted-foreground">avg lead quality</p>
@@ -181,8 +183,8 @@ function PipelineIntelligenceHeader({ leads, deals }: { leads: Lead[]; deals: De
           </div>
         )}
         {closedValue > 0 && (
-          <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-900/20 px-3 py-2">
-            <TrendingUp className="w-4 h-4 text-emerald-500 shrink-0" aria-hidden="true" />
+          <div className="flex items-center gap-2 rounded-card border border-[color:var(--acr-pos)]/30 bg-acr-pos-soft px-3 py-2">
+            <TrendingUp className="w-4 h-4 text-acr-pos shrink-0" aria-hidden="true" />
             <div>
               <p className="text-xs font-semibold tabular-nums">
                 {dollarsCompact(closedValue * 100)}

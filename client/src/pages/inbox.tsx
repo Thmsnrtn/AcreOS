@@ -450,6 +450,7 @@ function EmailMessageDetail({
             data-testid="button-reply"
             aria-expanded={showReply}
             aria-controls="inbox-reply-panel"
+            data-tour="inbox-ai-draft"
           >
             <Send className="h-4 w-4 mr-1" aria-hidden="true" />
             Reply
@@ -523,7 +524,13 @@ function EmailMessageDetail({
           </div>
 
           {showReply && (
-            <Card className="mt-4" id="inbox-reply-panel">
+            // TODO (Phase E.2.4 follow-up — feature add, not visual port):
+            // wire Pax draft integration here per prototype's Inbox AI
+            // attribution pattern ("Pax drafted a reply · ready to review").
+            // The prototype pre-fills suggested copy with the Pax byline;
+            // production currently shows a blank textarea. Adding the
+            // server-side draft + UI surface is JUDGMENT-CALLS.md follow-up.
+            <Card className="mt-4 rounded-card" id="inbox-reply-panel">
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between gap-2">
                   <CardTitle className="text-sm">Reply to {message.senderName || message.senderEmail}</CardTitle>
