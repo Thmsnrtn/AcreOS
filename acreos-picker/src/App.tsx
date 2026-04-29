@@ -1,9 +1,9 @@
 import { useMemo, useState, useEffect, useRef, forwardRef, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import { CATEGORIES, DECISIONS, type Decision, type CategoryId } from './inventory';
-import { COPY_EDIT_INJECTOR_SOURCE } from './copy-edit-injector';
-import { DENSITY_INJECTOR_SOURCE } from './density-injector';
-import { TOKEN_INJECTOR_SOURCE } from './token-injector';
+import { COPY_EDIT_INJECTOR_URL } from './copy-edit-injector';
+import { DENSITY_INJECTOR_URL } from './density-injector';
+import { TOKEN_INJECTOR_URL } from './token-injector';
 
 // Slugs in our inventory match the prototype's window.__nav(id) — see acreos/app.jsx
 function slugFromDecisionId(id: string): string {
@@ -707,7 +707,10 @@ function ThreePanelComparison({
   const onCopyEditRef = useRef(onCopyEdit);
   onCopyEditRef.current = onCopyEdit;
 
-  // Inject copy-edit script into the preview iframe (same-origin direct DOM access)
+  // Inject copy-edit script into the preview iframe. Loaded via same-origin
+  // URL (not inline) so the production iframe's strict CSP (script-src 'self')
+  // accepts it. If the script already exists (e.g. iframe didn't reload), the
+  // injector's IIFE guard skips re-running.
   function injectIntoPreview() {
     const iframe = previewRef.current;
     if (!iframe) return false;
@@ -717,7 +720,8 @@ function ThreePanelComparison({
       if (doc.querySelector('script[data-acreos-copy-edit]')) return true;
       const s = doc.createElement('script');
       s.dataset.acreosCopyEdit = 'true';
-      s.textContent = COPY_EDIT_INJECTOR_SOURCE;
+      s.src = COPY_EDIT_INJECTOR_URL;
+      s.async = false;
       (doc.head || doc.documentElement).appendChild(s);
       return true;
     } catch {
@@ -1071,7 +1075,8 @@ function TweakPanel({
       if (isDensity && !doc.querySelector('script[data-acreos-density]')) {
         const s = doc.createElement('script');
         s.dataset.acreosDensity = 'true';
-        s.textContent = DENSITY_INJECTOR_SOURCE;
+        s.src = DENSITY_INJECTOR_URL;
+        s.async = false;
         (doc.head || doc.documentElement).appendChild(s);
       } else if (isDensity) {
         setDensityReady(true);
@@ -1079,7 +1084,8 @@ function TweakPanel({
       if (isBrandColor && !doc.querySelector('script[data-acreos-tokens]')) {
         const s = doc.createElement('script');
         s.dataset.acreosTokens = 'true';
-        s.textContent = TOKEN_INJECTOR_SOURCE;
+        s.src = TOKEN_INJECTOR_URL;
+        s.async = false;
         (doc.head || doc.documentElement).appendChild(s);
       } else if (isBrandColor) {
         setTokensReady(true);
