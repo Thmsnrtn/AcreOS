@@ -79,6 +79,29 @@ pre-existing unrelated `ease-[cubic-bezier(...)]` ambiguous-class warning).
 Per `prototype-design-system.md` §4.1 (locked, free-only). Standing
 constraint: **no paid design assets**.
 
+### Three founder-flagged constraints for B.3
+
+1. **Charter caveat — bias toward swap.** If Butterick's redistribution
+   license shows *any* ambiguity at all, do not ship Charter. Swap the
+   `classic` pairing's display face to Source Serif Pro (Adobe, OFL) or
+   EB Garamond (Georg Duffner, OFL). No commercial faces, ever, even
+   with friendly licensing. If the swap happens, document it inline in
+   `prototype-design-system.md` §4.1, not just in PORT-AUDIT.
+
+2. **Self-host strictly — zero runtime CDN.** No Google Fonts CDN at
+   runtime. No `@import url("https://fonts.googleapis.com/...")`. No
+   `<link href="https://fonts.googleapis.com">`. Grep both client and
+   server for those patterns at the end of B.3 and remove any that
+   sneak in. All faces served from `client/public/fonts/` via
+   `@font-face` only.
+
+3. **Lazy loading verification is part of the audit.** Open DevTools
+   network tab during B.6, switch pairings, confirm only the active
+   pairing's faces fetch. If the naïve `[data-font-pairing]` approach
+   over-fetches (some browsers prefetch all referenced `@font-face`
+   blocks), document the behavior and decide whether to optimize
+   before launch — don't silently ship a 5x font cost.
+
 ### Files to add to `client/public/fonts/`
 
 | Pairing | Faces needed | Source | License |
@@ -173,23 +196,32 @@ constraint: **no paid design assets**.
 
 Reference: `~/Desktop/acreos-design-export/acreos/settings.jsx` lines 102–159.
 
+**Two surfaces, do not conflate.** `theme-settings.tsx` (top-bar quick
+picker, already shipped in B.2) is the fast path: 5-theme swatch grid +
+mode segmented control inside a Dialog. The Settings → Appearance panel
+built here is the **trust surface** per design-system §14 — fuller, calmer,
+with font pairing previews that actually render the sample text "AcreOS ·
+the work is its own reward" in each pairing's display + body fonts so the
+user can read the typographic personality before picking. The two surfaces
+share theme/mode controls but the panel adds font pairing, density, and
+motion. Don't merge them; don't gut the dialog.
+
 Build at `client/src/components/settings/appearance-panel.tsx`:
 
-- 5-up theme grid (use the same swatch shape as
-  `client/src/components/theme-settings.tsx`)
+- 5-up theme grid (use the same swatch shape as `theme-settings.tsx` —
+  factor a shared `<ThemeSwatch>` component if useful)
 - 3-up mode segmented control (Light / Dark / Auto)
 - 5-up font pairing cards — each previewing display + body in the actual
-  pairing fonts at sample text "AcreOS · the work is its own reward"
+  pairing fonts at sample text **"AcreOS · the work is its own reward"**.
+  Display line in display face, body line in body face, both at intended
+  size + weight. The visual difference between pairings has to be visible
+  in the card itself.
 - Density Select dropdown (Compact / Comfortable / Adaptive)
 - Reduce-motion Toggle — initial state from `prefers-reduced-motion` if
   the user hasn't set anything
 
 Wire into `client/src/pages/settings.tsx` — likely a new tab or section.
 Read existing settings page first to understand the chrome.
-
-The existing `theme-settings.tsx` quick-picker stays as the top-bar shortcut
-— full panel in settings is the trust surface (§14 design-system doc),
-the dialog is the fast path.
 
 ---
 
@@ -239,11 +271,16 @@ Update `theme-context.tsx`:
 
 ### No-flash strategy
 
-Server-side: render `<html data-theme="<theme>" class="<dark?>">` from the
-session-loaded preferences before client hydration. If using
-client-only rendering, fall through to the existing localStorage hydration
-in `loadStoredConfig` — first paint is correct as long as we localStorage
-on every change.
+Server must render `<html data-theme="<theme>" class="<dark?>" data-font-pairing="<pairing>">`
+from session-loaded preferences **before** client hydration. That is the
+primary path. localStorage hydration in `loadStoredConfig` is the fallback
+only — used when the user is unauthenticated or when server-side preferences
+are not yet loaded. Resolve mode server-side too (auto → light/dark from a
+sensible default like dark for evening hours, or simply light) so the first
+paint never flips. PATCH writes are debounced ~300 ms and **fail silently**:
+log via `console.warn` or structured client logger, never block UI on
+server preference errors. Local state is canonical until the next
+successful PATCH; a 500 doesn't roll back the user's choice.
 
 ---
 
