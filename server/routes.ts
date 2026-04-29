@@ -76,6 +76,7 @@ import propertyEnrichmentRouter from "./routes-property-enrichment";
 import exchange1031Router from "./routes-exchange-1031";
 import dunningRouter from "./routes-dunning";
 import onboardingRouter from "./routes-onboarding";
+import preferencesRouter from "./routes-preferences";
 import epicServicesRouter from "./routes-epic-services";
 import dataIntelligenceRouter from "./routes-data-intelligence";
 import taxDelinquentRouter from "./routes-tax-delinquent";
@@ -1191,6 +1192,9 @@ export async function registerRoutes(
   app.use('/api/exchange-1031', isAuthenticated, getOrCreateOrg, exchange1031Router);
   app.use('/api/dunning', isAuthenticated, dunningRouter);
   app.use('/api/onboarding', isAuthenticated, getOrCreateOrg, onboardingRouter);
+  // User-scoped appearance preferences (theme/mode/font/density/motion).
+  // No org context needed — preferences are user-level.
+  app.use('/api/me/preferences', isAuthenticated, preferencesRouter);
 
   // Swagger UI + OpenAPI spec — no auth required so external integrators
   // can consume the spec before signing up. Registered BEFORE the

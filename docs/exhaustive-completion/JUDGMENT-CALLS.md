@@ -65,7 +65,34 @@ Format note: entries terse — 2-3 sentences each. Never expand into prose.
 
 ## Phase B.5 — Server-side preferences persistence
 
-(reserved)
+### B.5.1 — No-flash strategy: localStorage-first hydration, not SSR
+- **Surface/component:** `client/src/contexts/theme-context.tsx`
+- **Question:** Resume doc spec mentioned server-rendering `<html data-theme=...>`
+  before client hydration as the primary no-flash path. Implement?
+- **Default chosen:** localStorage-first hydration. Server fetch runs on mount
+  and overwrites local state only if it returns valid prefs. Cross-device
+  drift (one device's localStorage stale relative to server) results in a
+  brief flicker on first paint of that device.
+- **Reasoning:** App is a client-only SPA (`createRoot` in `main.tsx`, no
+  `renderToString` / `hydrateRoot`). True SSR no-flash requires significant
+  SSR scaffolding work beyond Phase B scope. localStorage hydration covers
+  the common case (same device, repeat visits) cleanly. Cross-device edge
+  case is acceptable per design-system §2.2 — small, brief, infrequent.
+- **Where:** `client/src/contexts/theme-context.tsx` (B.5 commit). Document
+  in PORT-AUDIT-PHASE-B.md if cross-device flicker is observed during B.6.
+
+### B.5.2 — Preferences shape lives on `users` table, not `organizations.settings`
+- **Surface/component:** `shared/models/auth.ts`, schema design
+- **Question:** Add appearance prefs to existing `organizations.settings` JSONB
+  (where other ad-hoc settings live) or a new column on `users`?
+- **Default chosen:** New `appearance_preferences` JSONB column on `users`.
+  Migration `0028_user_appearance_preferences.sql` adds it nullable.
+- **Reasoning:** Appearance is inherently user-scoped (each person picks
+  their own theme). Project memory explicitly notes onboarding state is
+  org-scoped, NOT user-scoped — implication is that user preferences belong
+  on the user table, not the org. Putting it on `users` keeps the
+  multi-user-per-org case clean (each member sees their own theme).
+- **Where:** `shared/models/auth.ts:23` (column), `migrations/0028_user_appearance_preferences.sql`.
 
 ## Phase C — Personalization infrastructure
 

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
 /**
  * Theme system — five themes × light/dark + five font pairings.
@@ -106,11 +106,79 @@ function loadStoredConfig(): ThemeConfig {
   return { ...DEFAULT_CONFIG, motion: getInitialMotion() };
 }
 
+/**
+ * Server preferences sync — fetch on mount, debounced PATCH on change.
+ * The local state remains canonical; failures log silently (per design-system
+ * §0.2 + B.5 spec) and never block UI. localStorage hydration runs first to
+ * avoid a flash; the server fetch overwrites only if it returns valid prefs.
+ */
+const PREFERENCES_ENDPOINT = "/api/me/preferences";
+const PATCH_DEBOUNCE_MS = 300;
+
+async function fetchServerPreferences(): Promise<Partial<ThemeConfig> | null> {
+  try {
+    const res = await fetch(PREFERENCES_ENDPOINT, { credentials: "include" });
+    if (!res.ok) return null;
+    const data = (await res.json()) as Partial<ThemeConfig>;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+async function patchServerPreferences(update: Partial<ThemeConfig>): Promise<void> {
+  try {
+    await fetch(PREFERENCES_ENDPOINT, {
+      method: "PATCH",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(update),
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn("[theme] PATCH /api/me/preferences failed; local state retained", err);
+  }
+}
+
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [themeConfig, setThemeConfigState] = useState<ThemeConfig>(loadStoredConfig);
+  const pendingPatchRef = useRef<Partial<ThemeConfig>>({});
+  const patchTimerRef = useRef<number | undefined>(undefined);
 
   const resolvedMode: "light" | "dark" =
     themeConfig.mode === "auto" ? getSystemPreference() : themeConfig.mode;
+
+  // Hydrate from server on mount — server preferences (if available) win
+  // over localStorage for cross-device consistency. If the user is
+  // unauthenticated or the endpoint errors, local state stays as-is.
+  useEffect(() => {
+    let cancelled = false;
+    fetchServerPreferences().then((server) => {
+      if (cancelled || !server) return;
+      setThemeConfigState((local) => {
+        const next: ThemeConfig = { ...local };
+        if (server.theme && (THEME_IDS as readonly string[]).includes(server.theme)) {
+          next.theme = server.theme;
+        }
+        if (server.mode === "light" || server.mode === "dark" || server.mode === "auto") {
+          next.mode = server.mode;
+        }
+        if (server.fontPairing && (FONT_PAIRINGS as readonly string[]).includes(server.fontPairing)) {
+          next.fontPairing = server.fontPairing;
+        }
+        if (server.density && (DENSITIES as readonly string[]).includes(server.density)) {
+          next.density = server.density;
+        }
+        if (server.motion && (MOTION_PREFERENCES as readonly string[]).includes(server.motion)) {
+          next.motion = server.motion;
+        }
+        // Update localStorage to match server state.
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch {}
+        return next;
+      });
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   // Track system preference — but only re-render when the user is on Auto.
   // Apple-native: a manual pick wins, OS flips do not surprise the user.
@@ -164,6 +232,22 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       }
       return next;
     });
+
+    // Server PATCH — debounced. Accumulate field updates from rapid clicks
+    // (e.g. theme + mode toggled in succession) and flush as a single PATCH
+    // after the user pauses. Failure logs silently; local state is canonical.
+    pendingPatchRef.current = { ...pendingPatchRef.current, ...update };
+    if (patchTimerRef.current !== undefined) {
+      window.clearTimeout(patchTimerRef.current);
+    }
+    patchTimerRef.current = window.setTimeout(() => {
+      const flush = pendingPatchRef.current;
+      pendingPatchRef.current = {};
+      patchTimerRef.current = undefined;
+      if (Object.keys(flush).length > 0) {
+        void patchServerPreferences(flush);
+      }
+    }, PATCH_DEBOUNCE_MS);
   };
 
   const setTheme = (t: "light" | "dark") => setThemeConfig({ mode: t });
