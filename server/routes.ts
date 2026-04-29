@@ -476,6 +476,39 @@ export async function registerRoutes(
         express.static(prototypeDir, { index: "acreos.html", fallthrough: false })
       );
     }
+
+    // Server-side founder-selections export (Gap 1.1.D D.6.8). Writes the
+    // picker payload to docs/exhaustive-completion/founder-selections.json
+    // so the founder doesn't have to manage a downloaded file. Accepts
+    // either the bypass header (already injects req.auth) or an existing
+    // Clerk session matching DEV_FOUNDER_USER_ID.
+    app.post("/api/__dev/founder-selections", async (req, res) => {
+      const founderUserId = process.env.DEV_FOUNDER_USER_ID;
+      const reqAuth = (req as Request & { auth?: { userId?: string } }).auth;
+      if (!founderUserId || !reqAuth?.userId || reqAuth.userId !== founderUserId) {
+        return res.status(403).json({ error: "forbidden" });
+      }
+      if (!req.body || typeof req.body !== "object") {
+        return res.status(400).json({ error: "invalid-payload" });
+      }
+      const target = path.resolve(process.cwd(), "docs/exhaustive-completion/founder-selections.json");
+      try {
+        if (fs.existsSync(target)) {
+          const histDir = path.resolve(process.cwd(), "docs/exhaustive-completion/founder-selections-history");
+          if (!fs.existsSync(histDir)) fs.mkdirSync(histDir, { recursive: true });
+          const ts = new Date().toISOString().replace(/[:.]/g, "-");
+          fs.copyFileSync(target, path.join(histDir, `selections-${ts}.json`));
+        }
+        fs.writeFileSync(target, JSON.stringify(req.body, null, 2) + "\n", "utf8");
+        res.json({
+          ok: true,
+          target: "docs/exhaustive-completion/founder-selections.json",
+          writtenAt: new Date().toISOString(),
+        });
+      } catch (err) {
+        res.status(500).json({ error: "write-failed", message: (err as Error).message });
+      }
+    });
   }
 
   // Register auth routes (/api/auth/user, /api/auth/attribution)
