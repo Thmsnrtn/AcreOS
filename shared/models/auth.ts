@@ -3,7 +3,8 @@ import { index, integer, jsonb, pgTable, serial, text, timestamp, varchar } from
 
 /**
  * User-scoped appearance preferences. Drives the theme system (5 themes ×
- * light/dark + 5 font pairings + density + motion) per design-system §3-§6.
+ * light/dark + 5 font pairings + density + motion) per design-system §3-§6,
+ * plus sidebar/mobile-nav ordering and per-list-type view preferences (§6.3).
  * Mirror of `ThemeConfig` in client/src/contexts/theme-context.tsx — keep
  * the union types in sync when adding new options.
  */
@@ -13,6 +14,66 @@ export interface AppearancePreferences {
   fontPairing?: "editorial" | "modern" | "classic" | "native" | "refined";
   density?: "compact" | "comfortable" | "adaptive";
   motion?: "full" | "reduced";
+  /**
+   * Sidebar + mobile bottom-bar customization. IDs reference the flat
+   * registry in client/src/lib/nav-items.ts. Desktop sidebar refactor to
+   * consume this lands in Phase E with the shell re-skin (JUDGMENT-CALLS C.1.1).
+   */
+  sidebarConfig?: {
+    sidebarItems?: string[];
+    mobileItems?: string[];
+  };
+  /**
+   * Per-list-type view preferences (rows / cards / expand-on-click). Keys
+   * are list-type IDs from design-system §5.5.
+   */
+  listViews?: Record<string, "rows" | "cards" | "expand-on-click">;
+  /**
+   * Notification quiet hours (per-user, applies to all channels).
+   * Hours are 0-23 in the user's local timezone (browser-detected at
+   * enable time). When `enabled`, in-app + email + SMS notifications are
+   * suppressed during the [start, end) window; if start > end the window
+   * wraps midnight (e.g. 19→8 = 7pm to 8am next day).
+   */
+  notificationQuietHours?: {
+    enabled?: boolean;
+    startHour?: number;
+    endHour?: number;
+  };
+  /**
+   * Per-agent autonomy matrix (design-system §7). 4-level scale
+   * (0 Observe / 1 Draft / 2 Execute / 3 Autonomous) per agent, with
+   * per-action overrides and monetary thresholds where applicable.
+   * Time guards apply to all agents.
+   *
+   * Server-side enforcement is wired progressively as Phase E surfaces
+   * touch agent action paths — for now this stores the user's intent;
+   * agents read it at action time and gate / ask / log accordingly.
+   *
+   * Phase D will gate this UI behind feature.autonomy-matrix flag
+   * (founder-only) until UX polish complete (design-system §8.4).
+   */
+  autonomy?: {
+    atlas?: AgentAutonomy;
+    pax?: AgentAutonomy;
+    sophie?: AgentAutonomy;
+    timeGuards?: {
+      pauseStartHour?: number;
+      pauseEndHour?: number;
+      dailyActionLimit?: number;
+    };
+  };
+}
+
+export type AutonomyLevel = 0 | 1 | 2 | 3;
+
+export interface AgentAutonomy {
+  /** Top-level scale (0 Observe / 1 Draft / 2 Execute / 3 Autonomous). */
+  level?: AutonomyLevel;
+  /** Per-action overrides — keys are action IDs from per-agent registry. */
+  perAction?: Record<string, AutonomyLevel>;
+  /** Monetary thresholds (cents) — keys are action IDs that gate on $$$. */
+  thresholdsCents?: Record<string, number>;
 }
 
 // User storage table.

@@ -1,6 +1,6 @@
 # Exhaustive Completion Progress
 
-Last updated: 2026-04-29 (Port Phase B complete end-to-end across B.1 through B.7; ready for Phase C)
+Last updated: 2026-04-29 (Port Phase C complete end-to-end across C.1 through C.5; chaining into Phase D autonomously)
 
 **Active directive:** Production port from prototype (replaces Gap 1.1.E/F).
 Phases A–H: A) extraction, B) theme + font + appearance, C) personalization
@@ -27,7 +27,16 @@ brief embedded.
 
 **Migration deployment note:** `migrations/0028_user_appearance_preferences.sql` runs at deploy time via existing drizzle-kit pipeline; client falls back gracefully if column missing.
 
-**Next session entry point:** `_RESUME-PORT-PHASE-C.md`
+**Phase C complete:**
+- C.1 — Sidebar/mobile-nav prefs server-synced via `/api/me/preferences`; existing NavCustomizer Sheet mounted on Settings → Appearance. Desktop sidebar refactor deferred to Phase E shell re-skin (JUDGMENT-CALLS C.1.1).
+- C.2 — Notification quiet hours card (per-user, applies to all channels). Existing per-event matrix retained; full matrix redesign deferred to Phase E (JUDGMENT-CALLS C.2.1).
+- C.3 — `useListView()` hook + `<ListViewsPanel />` on Settings → Appearance. 12 list-types with rows/cards/expand-on-click. Surface-level rendering wires up as Phase E ports each list-bearing page.
+- C.4 — `<AutonomyPanel />` on new Settings → Autonomy tab. Per-agent (Atlas/Pax/Sophie) 4-step scale + per-action overrides + monetary thresholds + time guardrails. Stored in `users.appearance_preferences.autonomy`. Tab gates behind `feature.autonomy-matrix` (founder-only) once Phase D ships flag system.
+- C.5 — PORT-AUDIT-PHASE-C.md + _RESUME-PORT-PHASE-D.md written; tracker updated.
+
+No new migrations in Phase C — JSONB schema flexes. `npm run check` clean. Five new files; seven modified.
+
+**Next session entry point:** `_RESUME-PORT-PHASE-D.md`
 
 Predecessor: `docs/unified-build/COMPLETE.md` (unified build shipped through Phase 10).
 Companion docs: `docs/unified-build/DESIGN-SYSTEM.md`, `docs/unified-build/phase-9-audit.md`.
@@ -67,8 +76,8 @@ Companion docs: `docs/unified-build/DESIGN-SYSTEM.md`, `docs/unified-build/phase
 
 ## Current State
 
-**Phase:** Port Phase B complete — Phase C (personalization infra) is next
-**Status:** Theme system + font pairings + Appearance panel + server persistence all landed in autonomous run. Static verification clean throughout. `PORT-AUDIT-PHASE-B.md` carries the live-eye checklist for founder review when next at the Mac. Phase C resume doc (`_RESUME-PORT-PHASE-C.md`) covers: sidebar config, notification preferences, list-view preferences, autonomy matrix UI. Phases D–H queued; running autonomously per founder directive.
+**Phase:** Port Phase C complete — Phase D (feature flag system) chaining now per founder directive
+**Status:** Personalization infrastructure landed in autonomous run — sidebar + mobile nav server-synced, notification quiet hours, list-view preferences, autonomy matrix UI on new Settings tab. PORT-AUDIT-PHASE-C.md and Phase D resume both written. Three deferred items documented in JUDGMENT-CALLS (desktop sidebar refactor → E, full notifications matrix redesign → E, autonomy server enforcement → E surface-by-surface). Phase D begins now; chaining straight through to Phase H per the new resume protocol.
 
 **1.1.D summary (all 9 sub-phases shipped + verified):**
 - D.1 — variant-inventory.md (36 decisions across visual-review/platform-tweak/build-defer)

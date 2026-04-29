@@ -114,12 +114,19 @@ design export at `~/Desktop/acreos-design-export/`.
 - [x] Phase C resume doc written — B.7
 - [x] Type-check + Tailwind build clean throughout
 
-**Phase C — Personalization infrastructure — pending**
-- [ ] Sidebar config (show/hide/reorder) with drag UI
-- [ ] Notification preferences (per-event × per-channel + quiet hours)
-- [ ] List-view preferences per list type (rows / cards / expand-on-click)
-- [ ] Autonomy matrix UI with progressive disclosure
-- [ ] Audit log captures every autonomous action
+**Phase C — Personalization infrastructure — ✅ COMPLETE (UI + storage)**
+- [x] Sidebar/mobile-nav config server-synced via /api/me/preferences (existing NavCustomizer Sheet wired) — C.1
+- [x] Notification quiet hours (per-user, all channels; window wraps midnight) — C.2
+- [x] List-view preferences per list type with rows/cards/expand-on-click for 12 known surfaces — C.3
+- [x] Autonomy matrix UI on Settings → Autonomy: per-agent 4-step scale + per-action overrides + monetary thresholds + time guardrails + reset — C.4
+- [x] Schema validation via strict Zod — C.1-C.4
+- [x] PORT-AUDIT-PHASE-C.md written — C.5
+- [x] _RESUME-PORT-PHASE-D.md written — C.5
+- [ ] Desktop sidebar visual ordering deferred to Phase E shell re-skin (JUDGMENT-CALLS C.1.1)
+- [ ] Notification matrix redesign deferred to Phase E channels surface (JUDGMENT-CALLS C.2.1)
+- [ ] Autonomy server-side enforcement (agents reading config at action time) deferred to Phase E surface ports
+- [ ] Autonomy tab to be gated behind `feature.autonomy-matrix` flag in Phase D (JUDGMENT-CALLS C.4.2)
+- [ ] Audit log captures every autonomous action (server-side, ships with Phase E surface ports)
 
 **Phase D — Feature flag system — pending**
 - [ ] Flag infrastructure (off / founder-only / beta / tier / on)

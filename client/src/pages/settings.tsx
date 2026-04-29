@@ -22,7 +22,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, Crown, Check, ExternalLink, CreditCard, Loader2, Lightbulb, RotateCcw, Database, Trash2, BarChart3, Users, Home, FileText, Sparkles, TrendingUp, Coins, Shield, Mail, Phone, Bell, Code, Settings as SettingsIcon, Gift, Link2, AlertCircle, CheckCircle2, Clock, RefreshCw, Unlink, Wallet, Target, Plus, X, Calendar, Zap, Download, AlertTriangle, Lock } from "lucide-react";
+import { Building2, Crown, Check, ExternalLink, CreditCard, Loader2, Lightbulb, RotateCcw, Database, Trash2, BarChart3, Users, Home, FileText, Sparkles, TrendingUp, Coins, Shield, Mail, Phone, Bell, Code, Settings as SettingsIcon, Gift, Link2, AlertCircle, CheckCircle2, Clock, RefreshCw, Unlink, Wallet, Target, Plus, X, Calendar, Zap, Download, AlertTriangle, Lock, Bot } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Progress } from "@/components/ui/progress";
@@ -50,6 +50,8 @@ import { TeamInviteCard } from "@/components/settings/TeamInviteCard";
 // ThemeSettings (dialog quick-picker) is intended for top-bar mount in Phase E;
 // the full Settings → Appearance surface uses AppearancePanel below.
 import { AppearancePanel } from "@/components/settings/appearance-panel";
+import { NotificationQuietHours } from "@/components/settings/notification-quiet-hours";
+import { AutonomyPanel } from "@/components/settings/autonomy-panel";
 import { PreferencesCard } from "@/components/preferences-card";
 import { PlanComparisonModal, type TierKey } from "@/components/tier-upgrade-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -86,7 +88,7 @@ interface SeatPricing {
   yearly?: { id: string; amount: number; currency: string } | null;
 }
 
-const VALID_TABS = ["general", "appearance", "team", "payments", "communications", "notifications", "ai", "data", "integrations", "developer", "goals", "referral", "automations", "ai-tasks", "privacy"] as const;
+const VALID_TABS = ["general", "appearance", "autonomy", "team", "payments", "communications", "notifications", "ai", "data", "integrations", "developer", "goals", "referral", "automations", "ai-tasks", "privacy"] as const;
 type TabValue = typeof VALID_TABS[number];
 
 interface StripeConnectStatusResponse {
@@ -816,6 +818,10 @@ export default function Settings() {
                   <SettingsIcon className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
                   Appearance
                 </TabsTrigger>
+                <TabsTrigger value="autonomy" data-testid="tab-autonomy" className="gap-1">
+                  <Bot className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
+                  Autonomy
+                </TabsTrigger>
                 <TabsTrigger value="integrations" data-testid="tab-integrations" className="gap-1">
                   <Link2 className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
                   Integrations
@@ -1467,7 +1473,8 @@ export default function Settings() {
               </div>
             </TabsContent>
 
-            <TabsContent value="notifications" className="space-y-8 mt-6" data-testid="tab-content-notifications">
+            <TabsContent value="notifications" className="space-y-6 mt-6" data-testid="tab-content-notifications">
+              <NotificationQuietHours />
               <NotificationPreferences />
             </TabsContent>
 
@@ -1533,6 +1540,10 @@ export default function Settings() {
                 <AppearancePanel />
                 <PreferencesCard />
               </div>
+            </TabsContent>
+
+            <TabsContent value="autonomy" className="space-y-8 mt-6" data-testid="tab-content-autonomy">
+              <AutonomyPanel />
             </TabsContent>
 
             <TabsContent value="developer" className="space-y-8 mt-6" data-testid="tab-content-developer">

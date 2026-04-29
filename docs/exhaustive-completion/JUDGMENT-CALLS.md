@@ -96,7 +96,87 @@ Format note: entries terse — 2-3 sentences each. Never expand into prose.
 
 ## Phase C — Personalization infrastructure
 
-(reserved)
+### C.1.1 — Sidebar customization scope split: server-persist now, desktop refactor deferred to Phase E
+- **Surface/component:** `client/src/hooks/use-nav-preferences.ts`,
+  `client/src/components/layout-sidebar.tsx`, `client/src/components/nav-customizer.tsx`
+- **Question:** Existing infrastructure (`NavCustomizer` Sheet,
+  `useNavPreferences`, flat `ALL_NAV_ITEMS` registry, `MobileBottomNav`)
+  customizes mobile bottom bar but NOT desktop sidebar (`NAV_MODULES` in
+  `layout-sidebar.tsx` is a separate structured tree). Phase C wants
+  full sidebar customization. Refactor layout-sidebar to consume the
+  flat registry now, or defer?
+- **Default chosen:** Server-persist existing flat prefs via
+  `/api/me/preferences` extension (cross-device works for mobile).
+  Mount `NavCustomizer` as a trigger button on Settings → Appearance.
+  Defer mapping the flat IDs to `NAV_MODULES` filter+reorder for
+  desktop sidebar to Phase E, where layout-sidebar gets re-skinned
+  to the prototype's `acr-sidebar` shape anyway.
+- **Reasoning:** Refactoring layout-sidebar mid-port without the
+  prototype-shaped re-skin would create double work (refactor once
+  for IDs, refactor again in Phase E for visuals). Phase E E.1 (shell
+  / sidebar) will consume the flat registry directly. Mobile customization
+  works today; desktop customization arrives with the shell port.
+- **Where:** `client/src/hooks/use-nav-preferences.ts` (server-sync),
+  `shared/models/auth.ts` (extended AppearancePreferences),
+  `client/src/components/settings/appearance-panel.tsx` (trigger),
+  Phase C commit. Phase E will land the layout-sidebar refactor.
+
+### C.2.1 — Notification preferences: add quiet hours, defer matrix redesign
+- **Surface/component:** `client/src/components/settings/notification-quiet-hours.tsx` (new), existing `notification-preferences.tsx` left as-is
+- **Question:** Existing per-event × per-channel matrix works against
+  the older `notification_preferences` table schema. Newer service
+  (`server/services/notificationPreferences.ts`) carries a richer
+  category/event tree. Refactor matrix to consume that, or just add
+  quiet hours and defer?
+- **Default chosen:** Shipped `<NotificationQuietHours />` card above the
+  existing matrix in the notifications tab. Quiet hours stored on
+  `users.appearance_preferences.notificationQuietHours`. Existing matrix
+  left untouched. Outbound channel paths read quiet hours when wired in
+  Phase E.
+- **Reasoning:** Matrix redesign couples to a schema migration. Phase E
+  touches outbound channel surfaces and is the natural moment to re-skin
+  the notifications tab to prototype tone (calm matrix per design-brief
+  §6.3). Quiet hours is the genuine gap that ships now.
+- **Where:** `client/src/components/settings/notification-quiet-hours.tsx`,
+  `client/src/pages/settings.tsx` notifications tab,
+  `shared/models/auth.ts` AppearancePreferences extension,
+  `server/routes-preferences.ts` Zod schema.
+
+### C.4.1 — Autonomy stored in appearance_preferences blob, not new column
+- **Surface/component:** `shared/models/auth.ts` AppearancePreferences,
+  `client/src/components/settings/autonomy-panel.tsx` (new)
+- **Question:** Autonomy config (per-agent × per-action × thresholds × time
+  guards) is operational not appearance — separate JSONB column on
+  `users` or extend `appearance_preferences`?
+- **Default chosen:** Extended `appearance_preferences` with
+  `autonomy: { atlas, pax, sophie, timeGuards }` nested shape. No new
+  schema migration needed.
+- **Reasoning:** Migration cost and coordination outweigh naming purity
+  for now. The blob is "user preferences"; autonomy is one. Phase D
+  gates the UI behind a feature flag anyway, and if the shape grows
+  unwieldy later it splits cleanly. Server enforcement (agents reading
+  config at action time) is wired in Phase E surface-by-surface.
+- **Where:** `shared/models/auth.ts` AppearancePreferences,
+  `server/routes-preferences.ts` Zod schemas (autonomyLevelSchema +
+  agentAutonomySchema + autonomy field), `client/src/components/settings/autonomy-panel.tsx`,
+  `client/src/pages/settings.tsx` autonomy tab.
+
+### C.4.2 — Autonomy tab visible without feature flag — flag wires in Phase D
+- **Surface/component:** `client/src/pages/settings.tsx` autonomy tab
+- **Question:** Design-system §8.4 marks `feature.autonomy-matrix` as
+  founder-only until UX polish. Hide the tab now, or ship visible and
+  flag in Phase D?
+- **Default chosen:** Tab visible to all users in Phase C. Phase D will
+  wrap the tab + route in `feature.autonomy-matrix` gating with a
+  founder-only default state.
+- **Reasoning:** Phase D builds the flag infrastructure; gating before
+  the infra exists would be a hide-from-sidebar hack the brief
+  forbids (§8.3). Until D ships, tab is visible but server-side
+  enforcement of autonomy choices is also pending (Phase E),
+  so users can configure but agents don't yet read. Hidden behind the
+  /settings → autonomy URL — not in any nav link or hero CTA.
+- **Where:** `client/src/pages/settings.tsx` autonomy tab + VALID_TABS,
+  Phase D will add flag gate to App.tsx routing.
 
 ## Phase D — Feature flag system
 
