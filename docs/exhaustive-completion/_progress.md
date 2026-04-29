@@ -1,6 +1,6 @@
 # Exhaustive Completion Progress
 
-Last updated: 2026-04-29 (Port Phase B.1 + B.2 complete — 5 themes × light/dark live in CSS, theme runtime updated, type-check clean)
+Last updated: 2026-04-29 (Port Phase B complete end-to-end across B.1 through B.7; ready for Phase C)
 
 **Active directive:** Production port from prototype (replaces Gap 1.1.E/F).
 Phases A–H: A) extraction, B) theme + font + appearance, C) personalization
@@ -14,16 +14,20 @@ token inventory (5 themes × light/dark), font pairings, component mapping,
 density rules, motion specs, voice exemplar (founder letter), full design
 brief embedded.
 
-**Phase B progress (in flight):**
-- **B.1 ✅** — `client/src/index.css` head replaced (lines 1–784): theme-agnostic globals (fonts/motion/z/radius), mode-only glass + 4-level shadow tokens, then 10 theme blocks (5 themes × light/dark) with `--acr-*` hex AND derived HSL parallel kept visually adjacent. Legacy `[data-theme="midnight|forest|ocean|sunset|monochrome"]` + `[data-accent="..."]` system deleted.
-- **B.1 ✅** — `tailwind.config.ts`: `rounded-card: ".875rem"` (14px) added per design-system §0.2.
-- **B.2 ✅** — `theme-context.tsx` rewritten: new types (`ThemeId`, `ThemeMode` with `auto`, `FontPairing`), `THEME_IDS`/`FONT_PAIRINGS` exports, Apple-native auto semantics (system listener only fires under `mode === "auto"`), `[data-theme]` and `[data-font-pairing]` applied to `<html>`, legacy storage migration, legacy compat exports preserved.
-- **B.2 ✅** — `theme-settings.tsx` quick-picker rewritten: 5 prototype themes with 4-cell swatch grid + tagline; modes use `light|dark|auto`; reset targets Homestead.
-- **B.3–B.7 ⏳** — fonts, full Settings → Appearance UI, server persistence, capture/audit, handoff. Remaining work specced in `_RESUME-PORT-PHASE-B.md`.
+**Phase B complete (end-to-end across B.1 → B.7):**
+- **B.1** — 5 themes × light/dark in `client/src/index.css` with `--acr-*` + HSL parallel kept adjacent; legacy theme + accent system deleted; `rounded-card: 14px` added (commit `e96ef89`)
+- **B.2** — `theme-context.tsx` rewrite: new types, Apple-native auto, `[data-theme]` + `[data-font-pairing]` on `<html>`, legacy compat preserved (commit `e96ef89`)
+- **B.3** — 5 self-hosted free font pairings (Editorial / Modern / Classic / Native / Refined); Charter swapped to Source Serif 4 per JUDGMENT-CALLS B.3.1 on license-history ambiguity; all Google Fonts CDN refs killed in client + server CSP (commit `50f3499`)
+- **B.4** — Full Settings → Appearance panel: Theme + Mode + Type (with sample-text font previews) + Density + Motion sections (commit `77295f3`)
+- **B.5** — `users.appearance_preferences` JSONB column + GET/PATCH `/api/me/preferences` + debounced server sync from theme-context; localStorage-first hydration (no SSR) (commit `955d1c7`)
+- **B.6** — `PORT-AUDIT-PHASE-B.md` written with static verification (passes) + live-eye checklist for founder review when reachable (this commit)
+- **B.7** — Tracker updates + `_RESUME-PORT-PHASE-C.md` written (this commit)
 
-**Phase B verification so far:** `npm run check` clean, `npx tailwindcss build` produces clean CSS.
+**Phase B static verification:** `npm run check` clean across all commits, Tailwind build clean, 0 Google Fonts CDN refs platform-wide, 6 self-hosted woff2 files (~456KB total bundle), 10 [data-theme] selectors, 5 [data-font-pairing] selectors.
 
-**Next session entry point:** `_RESUME-PORT-PHASE-B.md` (continuation: B.3 onward)
+**Migration deployment note:** `migrations/0028_user_appearance_preferences.sql` runs at deploy time via existing drizzle-kit pipeline; client falls back gracefully if column missing.
+
+**Next session entry point:** `_RESUME-PORT-PHASE-C.md`
 
 Predecessor: `docs/unified-build/COMPLETE.md` (unified build shipped through Phase 10).
 Companion docs: `docs/unified-build/DESIGN-SYSTEM.md`, `docs/unified-build/phase-9-audit.md`.
@@ -63,8 +67,8 @@ Companion docs: `docs/unified-build/DESIGN-SYSTEM.md`, `docs/unified-build/phase
 
 ## Current State
 
-**Phase:** Port Phase B partway — B.3 (font self-hosting) is next
-**Status:** B.1 + B.2 complete — five themes × light/dark live in CSS with `--acr-*` and HSL parallel kept adjacent per founder requirement. Theme runtime updated to new IDs with Apple-native auto. `rounded-card: 14px` added. Type-check + Tailwind build both clean. Top-bar quick theme picker (`theme-settings.tsx`) functional with 5-theme grid. B.3 (fonts) → B.4 (full Appearance panel) → B.5 (server persistence) → B.6 (audit) → B.7 (handoff) remaining; spec in `_RESUME-PORT-PHASE-B.md`.
+**Phase:** Port Phase B complete — Phase C (personalization infra) is next
+**Status:** Theme system + font pairings + Appearance panel + server persistence all landed in autonomous run. Static verification clean throughout. `PORT-AUDIT-PHASE-B.md` carries the live-eye checklist for founder review when next at the Mac. Phase C resume doc (`_RESUME-PORT-PHASE-C.md`) covers: sidebar config, notification preferences, list-view preferences, autonomy matrix UI. Phases D–H queued; running autonomously per founder directive.
 
 **1.1.D summary (all 9 sub-phases shipped + verified):**
 - D.1 — variant-inventory.md (36 decisions across visual-review/platform-tweak/build-defer)

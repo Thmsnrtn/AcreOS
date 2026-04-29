@@ -99,19 +99,20 @@ design export at `~/Desktop/acreos-design-export/`.
 - [x] Output: `docs/exhaustive-completion/prototype-design-system.md`
 - [x] Phase B resume doc: `_RESUME-PORT-PHASE-B.md`
 
-**Phase B — Theme + font + appearance settings — partway**
+**Phase B — Theme + font + appearance settings — ✅ COMPLETE**
 - [x] All 5 themes implemented in production CSS (light + dark) — B.1
 - [x] `--acr-*` and HSL parallel tokens kept adjacent per theme block — B.1
 - [x] Legacy `[data-theme="midnight|forest|ocean|sunset|monochrome"]` + `[data-accent="..."]` blocks deleted — B.1
 - [x] `rounded-card: 14px` added to tailwind config — B.1
 - [x] Theme runtime updated (`theme-context.tsx`): new IDs, Apple-native auto, font-pairing data attribute — B.2
 - [x] Top-bar quick theme picker rewritten with 5 prototype themes — B.2
-- [x] Type-check + Tailwind build clean — B.1+B.2
-- [ ] All 5 font pairings self-hosted from free sources (Inter Tight, Charter, Newsreader, JetBrains Mono) — B.3
-- [ ] Full Settings → Appearance panel built per `acreos/settings.jsx` — B.4
-- [ ] User preferences persist server-side (theme, mode, font, density, motion) — B.5
-- [ ] PORT-AUDIT-PHASE-B.md complete with verification screenshots — B.6
-- [ ] Phase C resume doc written — B.7
+- [x] All 5 font pairings self-hosted from free sources (Inter Tight, Source Serif 4 substituting for Charter, Newsreader, JetBrains Mono) — B.3
+- [x] All Google Fonts CDN refs killed (font-loader.ts deleted, CSP allowlists removed, white-label refactored) — B.3
+- [x] Full Settings → Appearance panel built per `acreos/settings.jsx` reference (Theme + Mode + Type + Density + Motion) — B.4
+- [x] User preferences persist server-side via /api/me/preferences (theme, mode, font, density, motion) — B.5
+- [x] PORT-AUDIT-PHASE-B.md written with static verification + live-eye checklist for founder review — B.6
+- [x] Phase C resume doc written — B.7
+- [x] Type-check + Tailwind build clean throughout
 
 **Phase C — Personalization infrastructure — pending**
 - [ ] Sidebar config (show/hide/reorder) with drag UI
