@@ -34,11 +34,14 @@ const AGENT_COLORS: Record<string, string> = {
   compass_pm: "text-cyan-600", crucible_qa: "text-amber-600",
 };
 
+// Outcome → semantic --acr-* tone (Tier 1 pattern). AGENT_COLORS above
+// stays per-agent identity (Phase G polish opportunity to reconcile with
+// design-system §1.3 "simple letter mark beside it").
 const OUTCOME_STYLES: Record<string, { icon: React.ElementType; color: string; label: string }> = {
-  success: { icon: CheckCircle2, color: "text-green-600", label: "Success" },
-  failure: { icon: XCircle, color: "text-red-600", label: "Failure" },
-  escalated: { icon: AlertTriangle, color: "text-amber-600", label: "Escalated" },
-  pending: { icon: Clock, color: "text-blue-600", label: "Pending" },
+  success: { icon: CheckCircle2, color: "text-acr-pos", label: "Success" },
+  failure: { icon: XCircle, color: "text-acr-neg", label: "Failure" },
+  escalated: { icon: AlertTriangle, color: "text-acr-warn", label: "Escalated" },
+  pending: { icon: Clock, color: "text-acr-brand", label: "Pending" },
 };
 
 export default function AgentDetailPage() {
@@ -163,7 +166,7 @@ export default function AgentDetailPage() {
                 aria-label={`Trust level ${trustPct}%, ${trustLabel(trustPct)}`}
               >
                 <div
-                  className={`h-full rounded-full ${trustPct >= 75 ? "bg-green-500" : trustPct >= 50 ? "bg-amber-500" : "bg-red-500"}`}
+                  className={`h-full rounded-full ${trustPct >= 75 ? "bg-acr-pos" : trustPct >= 50 ? "bg-acr-warn" : "bg-acr-neg"}`}
                   style={{ width: `${trustPct}%` }}
                 />
               </div>
@@ -219,10 +222,10 @@ export default function AgentDetailPage() {
           <CardContent>
             <ul className="grid grid-cols-1 md:grid-cols-4 gap-3" aria-label="Authority levels by trust threshold">
               {[
-                { level: 0, label: "Full autonomy", color: "bg-green-500/10 border-green-500/30", req: 90 },
-                { level: 1, label: "Auto + notify", color: "bg-blue-500/10 border-blue-500/30", req: 70 },
-                { level: 2, label: "Recommend + wait", color: "bg-amber-500/10 border-amber-500/30", req: 40 },
-                { level: 3, label: "Always escalate", color: "bg-red-500/10 border-red-500/30", req: 0 },
+                { level: 0, label: "Full autonomy", color: "bg-acr-pos-soft border-[color:var(--acr-pos)]/30", req: 90 },
+                { level: 1, label: "Auto + notify", color: "bg-acr-brand-soft border-[color:var(--acr-brand)]/30", req: 70 },
+                { level: 2, label: "Recommend + wait", color: "bg-acr-warn-soft border-[color:var(--acr-warn)]/30", req: 40 },
+                { level: 3, label: "Always escalate", color: "bg-acr-neg-soft border-[color:var(--acr-neg)]/30", req: 0 },
               ].map(({ level, label, color, req }) => {
                 const actions = (agent.authorityConfig as any)?.[`level${level}Actions`] || [];
                 const active = trustPct >= req;

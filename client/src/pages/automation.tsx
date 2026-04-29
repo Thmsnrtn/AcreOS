@@ -650,11 +650,11 @@ export default function AutomationPage() {
                           <div className="flex items-center justify-between gap-4">
                             <div className="flex items-center gap-3">
                               {exec.status === "completed" ? (
-                                <CheckCircle2 className="w-5 h-5 text-green-500" aria-label="Completed" />
+                                <CheckCircle2 className="w-5 h-5 text-acr-pos" aria-label="Completed" />
                               ) : exec.status === "failed" ? (
-                                <AlertCircle className="w-5 h-5 text-red-500" aria-label="Failed" />
+                                <AlertCircle className="w-5 h-5 text-acr-neg" aria-label="Failed" />
                               ) : (
-                                <Clock className="w-5 h-5 text-amber-500" aria-label="Pending" />
+                                <Clock className="w-5 h-5 text-acr-warn" aria-label="Pending" />
                               )}
                               <div>
                                 <p className="font-medium">
@@ -675,7 +675,7 @@ export default function AutomationPage() {
                             </div>
                           </div>
                           {exec.error && (
-                            <p className="text-sm text-red-500 mt-2" role="alert">{exec.error}</p>
+                            <p className="text-sm text-acr-neg mt-2" role="alert">{exec.error}</p>
                           )}
                         </CardContent>
                       </Card>

@@ -56,13 +56,14 @@ const ENTITY_ICONS: Record<string, React.ElementType> = {
   document: FileText,
 };
 
+// Action → semantic --acr-* tone (Tier 1 pattern).
 const ACTION_COLORS: Record<string, string> = {
-  created: "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300",
-  updated: "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300",
-  deleted: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300",
-  sent: "bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300",
-  completed: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300",
-  logged: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
+  created: "bg-acr-pos-soft text-acr-pos border-transparent",
+  updated: "bg-acr-brand-soft text-acr-brand border-transparent",
+  deleted: "bg-acr-neg-soft text-acr-neg border-transparent",
+  sent: "bg-acr-accent/10 text-acr-accent border-transparent",
+  completed: "bg-acr-pos-soft text-acr-pos border-transparent",
+  logged: "bg-acr-warn-soft text-acr-warn border-transparent",
 };
 
 function getActionColor(action: string): string {
