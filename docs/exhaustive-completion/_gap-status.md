@@ -99,14 +99,19 @@ design export at `~/Desktop/acreos-design-export/`.
 - [x] Output: `docs/exhaustive-completion/prototype-design-system.md`
 - [x] Phase B resume doc: `_RESUME-PORT-PHASE-B.md`
 
-**Phase B — Theme + font + appearance settings — pending**
-- [ ] All 5 themes implemented in production CSS (light + dark)
-- [ ] Theme switching works live (no reload) across every surface
-- [ ] All 4–5 font pairings load efficiently (lazy on demand)
-- [ ] Settings → Appearance surface built per `acreos/settings.jsx`
-- [ ] User preferences persist server-side (theme, mode, font, density, motion)
-- [ ] No type-check or test regressions
-- [ ] PORT-AUDIT-PHASE-B.md complete with verification screenshots
+**Phase B — Theme + font + appearance settings — partway**
+- [x] All 5 themes implemented in production CSS (light + dark) — B.1
+- [x] `--acr-*` and HSL parallel tokens kept adjacent per theme block — B.1
+- [x] Legacy `[data-theme="midnight|forest|ocean|sunset|monochrome"]` + `[data-accent="..."]` blocks deleted — B.1
+- [x] `rounded-card: 14px` added to tailwind config — B.1
+- [x] Theme runtime updated (`theme-context.tsx`): new IDs, Apple-native auto, font-pairing data attribute — B.2
+- [x] Top-bar quick theme picker rewritten with 5 prototype themes — B.2
+- [x] Type-check + Tailwind build clean — B.1+B.2
+- [ ] All 5 font pairings self-hosted from free sources (Inter Tight, Charter, Newsreader, JetBrains Mono) — B.3
+- [ ] Full Settings → Appearance panel built per `acreos/settings.jsx` — B.4
+- [ ] User preferences persist server-side (theme, mode, font, density, motion) — B.5
+- [ ] PORT-AUDIT-PHASE-B.md complete with verification screenshots — B.6
+- [ ] Phase C resume doc written — B.7
 
 **Phase C — Personalization infrastructure — pending**
 - [ ] Sidebar config (show/hide/reorder) with drag UI

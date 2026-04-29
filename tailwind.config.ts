@@ -12,6 +12,10 @@ export default {
         xl:    "1.25rem",  /* 20px */
         "2xl": "1.5rem",   /* 24px */
         full:  "9999px",   /* capsule */
+        // Prototype's .acr-card radius — locked at 14px per design-system §0.2.
+        // Sits between Tailwind `md` (8) and `lg` (16). Use `rounded-card`
+        // explicitly on cardish surfaces; do not approximate with `lg`.
+        card:  ".875rem",  /* 14px */
       },
       boxShadow: {
         "level-1": "var(--shadow-1)",

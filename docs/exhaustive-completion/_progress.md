@@ -1,6 +1,6 @@
 # Exhaustive Completion Progress
 
-Last updated: 2026-04-29 (Port Phase A complete — design-system extraction document landed)
+Last updated: 2026-04-29 (Port Phase B.1 + B.2 complete — 5 themes × light/dark live in CSS, theme runtime updated, type-check clean)
 
 **Active directive:** Production port from prototype (replaces Gap 1.1.E/F).
 Phases A–H: A) extraction, B) theme + font + appearance, C) personalization
@@ -14,7 +14,16 @@ token inventory (5 themes × light/dark), font pairings, component mapping,
 density rules, motion specs, voice exemplar (founder letter), full design
 brief embedded.
 
-**Next session entry point:** `_RESUME-PORT-PHASE-B.md`
+**Phase B progress (in flight):**
+- **B.1 ✅** — `client/src/index.css` head replaced (lines 1–784): theme-agnostic globals (fonts/motion/z/radius), mode-only glass + 4-level shadow tokens, then 10 theme blocks (5 themes × light/dark) with `--acr-*` hex AND derived HSL parallel kept visually adjacent. Legacy `[data-theme="midnight|forest|ocean|sunset|monochrome"]` + `[data-accent="..."]` system deleted.
+- **B.1 ✅** — `tailwind.config.ts`: `rounded-card: ".875rem"` (14px) added per design-system §0.2.
+- **B.2 ✅** — `theme-context.tsx` rewritten: new types (`ThemeId`, `ThemeMode` with `auto`, `FontPairing`), `THEME_IDS`/`FONT_PAIRINGS` exports, Apple-native auto semantics (system listener only fires under `mode === "auto"`), `[data-theme]` and `[data-font-pairing]` applied to `<html>`, legacy storage migration, legacy compat exports preserved.
+- **B.2 ✅** — `theme-settings.tsx` quick-picker rewritten: 5 prototype themes with 4-cell swatch grid + tagline; modes use `light|dark|auto`; reset targets Homestead.
+- **B.3–B.7 ⏳** — fonts, full Settings → Appearance UI, server persistence, capture/audit, handoff. Remaining work specced in `_RESUME-PORT-PHASE-B.md`.
+
+**Phase B verification so far:** `npm run check` clean, `npx tailwindcss build` produces clean CSS.
+
+**Next session entry point:** `_RESUME-PORT-PHASE-B.md` (continuation: B.3 onward)
 
 Predecessor: `docs/unified-build/COMPLETE.md` (unified build shipped through Phase 10).
 Companion docs: `docs/unified-build/DESIGN-SYSTEM.md`, `docs/unified-build/phase-9-audit.md`.
@@ -54,8 +63,8 @@ Companion docs: `docs/unified-build/DESIGN-SYSTEM.md`, `docs/unified-build/phase
 
 ## Current State
 
-**Phase:** Port Phase B — Theme system + font system + appearance settings (next)
-**Status:** Phase A complete. Design-system documentation landed at `prototype-design-system.md` (~870 lines): five themes × light/dark token tables, four-to-five curated font pairings spec, component mapping (prototype primitives → production), density rules per surface, motion tokens, voice exemplar (founder letter), expert-designer permissions, accessibility floor, state-coverage requirements. Picker remains live at https://acreos.io/__dev/picker/ as a refinement tool.
+**Phase:** Port Phase B partway — B.3 (font self-hosting) is next
+**Status:** B.1 + B.2 complete — five themes × light/dark live in CSS with `--acr-*` and HSL parallel kept adjacent per founder requirement. Theme runtime updated to new IDs with Apple-native auto. `rounded-card: 14px` added. Type-check + Tailwind build both clean. Top-bar quick theme picker (`theme-settings.tsx`) functional with 5-theme grid. B.3 (fonts) → B.4 (full Appearance panel) → B.5 (server persistence) → B.6 (audit) → B.7 (handoff) remaining; spec in `_RESUME-PORT-PHASE-B.md`.
 
 **1.1.D summary (all 9 sub-phases shipped + verified):**
 - D.1 — variant-inventory.md (36 decisions across visual-review/platform-tweak/build-defer)

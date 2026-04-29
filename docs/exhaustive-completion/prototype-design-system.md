@@ -26,6 +26,59 @@ Read alongside `~/Desktop/acreos-design-export/handoff/HANDOFF.md` (canonical
 component table, globals replacement guide). The directive in
 `docs/exhaustive-completion/_progress.md` is the operational plan.
 
+### 0.1 Standing constraint — no paid design assets
+
+AcreOS uses **no paid design assets** anywhere on the platform. This rule is
+absolute and applies forward through every phase, every surface, every
+release:
+
+- **No commercial fonts.** Every typeface is free / open-source / self-hostable.
+  Söhne, New Spirit, Klim foundry, Hoefler, Commercial Type, Lineto — all
+  forbidden. Even if the founder briefly considers one, the answer is no.
+- **No paid icon sets.** No Streamline, no Iconscout subscriptions, no Noun
+  Project paid SKUs. Lucide React (MIT) is the platform-wide icon family.
+- **No licensed illustrations.** No undraw paid tier, no IconScout
+  illustrations, no Storyset Pro. If a surface needs illustration, build it
+  in CSS / SVG or skip it.
+- **No premium UI kits.** Tailwind UI, premium shadcn extensions, Untitled
+  UI, etc. are off-limits. shadcn (MIT) is the floor.
+
+The platform must be self-hostable end-to-end with no dependency on a
+third-party CDN, license server, or paid asset vendor staying online. If a
+free asset fits a surface better than a paid alternative, prefer the free
+one. If you find a *better* free asset than what is currently specced, flag
+it in the relevant Phase audit and recommend the swap — but never substitute
+a paid asset. New phases inherit this constraint without re-asking.
+
+### 0.2 Phase B decisions (locked)
+
+These decisions came up in Phase A and were resolved by the founder before
+Phase B started. Future phases inherit them:
+
+- **HSL parallel system.** Derive shadcn HSL tokens (`--primary`,
+  `--background`, etc.) per theme. Five themes × two modes × ~22 HSL tokens
+  ship alongside the `--acr-*` hex tokens. Every shadcn primitive
+  (button.tsx, card.tsx, all 62 in `client/src/components/ui/`) switches
+  with theme automatically. Cleaner-but-bigger refactor (rip out shadcn HSL,
+  retrofit components to read `--acr-*` directly) is deferred and may never
+  happen.
+- **Card border radius.** Add `rounded-card: 14px` to `tailwind.config.ts`
+  (lifts prototype's `.acr-card` 14 px exactly). Do **not** override
+  `rounded-lg = 16px`; do **not** accept 2 px drift; do **not** rely on
+  inline `rounded-[14px]`. Surfaces opt in by name. Explicit intent beats
+  implicit drift.
+- **Auto mode.** Apple-native semantics. When the user explicitly picks
+  Light or Dark, manual selection wins until they explicitly choose Auto.
+  OS `prefers-color-scheme` changes do not flip the app under a manual pick.
+  Track-OS-always behavior is rejected — it violates the calm register and
+  surprises users coming from macOS/iOS.
+- **Code adjacency for tokens.** When writing CSS for theme blocks, keep the
+  `--acr-*` and HSL token sets visually adjacent (same file, same theme
+  block, in the same `:root` / `.dark` selector or directly contiguous
+  selectors). Drift between the two systems is the largest debugging risk;
+  adjacency makes it visible at a glance. Comment `/* HSL parallel — keep
+  in sync with --acr-* above */` above each HSL block within a theme.
+
 ---
 
 ## 1. North star — voice exemplar
@@ -490,21 +543,29 @@ Two-font system per surface. **One curated pairing per user**, picked in
 Settings → Appearance. Never let users pick fonts à-la-carte (high risk of
 broken combinations).
 
-### 4.1 Pairings to ship
+### 4.1 Pairings to ship — five locked, all free
 
-| Pairing ID | Display | Body | Mono | Notes |
+Per §0.1 — no paid fonts, ever. Every face below is free / open-source /
+self-hostable. Pairing IDs are locked; a future audit may swap the underlying
+face if a *better free* option appears, but the user-visible pairing name and
+ID never change.
+
+| Pairing ID | Display | Body | Mono | Source / license |
 |---|---|---|---|---|
-| `editorial` (default) | **Fraunces** (variable, opt 9–144) | **Inter** (variable, weight 100–900) | **JetBrains Mono** | Already in production. House default. |
-| `modern` | **Söhne Headline** (or Inter Tight as drop-in) | **Inter** | **JetBrains Mono** | Crisp, neutral, tech-forward |
-| `classic` | **Charter** (or Iowan Old Style fallback) | **Inter** | **JetBrains Mono** | Editorial, warm, less serif-display |
-| `native` | **SF Pro Display** (system) | **SF Pro Text** (system) | **SF Mono** (system) | Apple-native; zero font load |
-| `refined` | **New Spirit** (or Fraunces Extra Soft fallback) | **Söhne** (or Inter as drop-in) | **JetBrains Mono** | Premium editorial, softer than Editorial |
+| `editorial` (default) | **Fraunces** (variable, opt 9–144) | **Inter** (variable, 100–900) | **JetBrains Mono** | All OFL. House default. Already in production. |
+| `modern` | **Inter Tight** (variable display cut) | **Inter** (variable) | **JetBrains Mono** | All OFL. Two Inter cuts — Tight is meaningfully different at display sizes. |
+| `classic` | **Charter** (Bitstream / Matthew Butterick redistribution) | **Inter** | **JetBrains Mono** | Charter via Butterick is free; if licensing is at all unclear in Phase B audit, swap to **Source Serif Pro** or **EB Garamond** without changing the pairing name. |
+| `native` | **SF Pro Display** (system) | **SF Pro Text** (system) | **SF Mono** (system) | System fonts on Apple platforms; Inter fallback elsewhere. Zero font load. |
+| `refined` | **Newsreader** (Production Type via Google Fonts) | **Inter** | **JetBrains Mono** | Newsreader is OFL; soft editorial register. |
 
-**Self-host requirement.** Phase B will only ship pairings whose fonts can be
-self-hosted (latin-subset variable woff2). Söhne and New Spirit are licensed
-faces — if licensing isn't in place at port time, fall back to the parenthetical
-substitute without renaming the pairing. Document substitutions in
-PORT-AUDIT.md.
+**Self-host requirement.** Every pairing self-hosts its files in
+`client/public/fonts/`. The platform must not depend on a Google Fonts CDN or
+any third-party font server staying online (per §0.1). Latin subset only,
+variable woff2.
+
+**Substitution rule.** If a free face fits a pairing better than what's
+specced above, flag it in PORT-AUDIT-PHASE-B.md and recommend the swap. Never
+substitute a paid face under any pretext.
 
 ### 4.2 Loading strategy
 
