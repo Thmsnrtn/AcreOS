@@ -486,8 +486,21 @@ export async function registerRoutes(
     app.post("/api/__dev/founder-selections", async (req, res) => {
       const os = await import("os");
       const founderUserId = process.env.DEV_FOUNDER_USER_ID;
-      const reqAuth = (req as Request & { auth?: { userId?: string } }).auth;
-      if (!founderUserId || !reqAuth?.userId || reqAuth.userId !== founderUserId) {
+      // @clerk/express 2.x exposes req.auth as a function: `req.auth() => { userId }`.
+      // The dev bypass injects req.auth as a plain `{ userId }` object. Handle both.
+      const rawAuth = (req as Request & { auth?: unknown }).auth;
+      let userId: string | undefined;
+      if (typeof rawAuth === "function") {
+        try {
+          const fnAuth = (rawAuth as () => { userId?: string })();
+          userId = fnAuth?.userId;
+        } catch {
+          userId = undefined;
+        }
+      } else if (rawAuth && typeof rawAuth === "object") {
+        userId = (rawAuth as { userId?: string }).userId;
+      }
+      if (!founderUserId || !userId || userId !== founderUserId) {
         return res.status(403).json({ error: "forbidden" });
       }
       if (!req.body || typeof req.body !== "object") {
