@@ -11,6 +11,7 @@ import { useFeatureFlags } from "@/hooks/use-feature-flags";
 import { Loader2 } from "lucide-react";
 import { telemetry } from "@/lib/telemetry";
 import { ThemeProvider } from "@/contexts/theme-context";
+import { FeatureFlagsProvider } from "@/contexts/feature-flags-context";
 import { PaxRailProvider } from "@/contexts/pax-rail-context";
 import { AnimatePresence, motion, MotionConfig } from "framer-motion";
 import { pageTransition } from "@/lib/animations";
@@ -175,6 +176,7 @@ const FounderDashboard = React.lazy(() => import("@/pages/founder-dashboard"));
 const FounderHomePage = React.lazy(() => import("@/pages/founder-home"));
 const FounderAiObservatory = React.lazy(() => import("@/pages/founder-ai-observatory"));
 const FounderFeatureFlags = React.lazy(() => import("@/pages/founder/feature-flags"));
+const FounderFeatures = React.lazy(() => import("@/pages/founder/features"));
 const FounderIntegrationsPage = React.lazy(() => import("@/pages/founder/integrations"));
 const DealUnderwritingPage = React.lazy(() => import("@/pages/deal-underwriting"));
 const TeamKPIPage = React.lazy(() => import("@/pages/team-kpi"));
@@ -511,6 +513,9 @@ function Router() {
       </Route>
       <Route path="/founder/feature-flags">
         {() => <FounderProtectedRoute component={FounderFeatureFlags} />}
+      </Route>
+      <Route path="/founder/features">
+        {() => <FounderProtectedRoute component={FounderFeatures} />}
       </Route>
       <Route path="/founder/integrations">
         {() => <FounderProtectedRoute component={FounderIntegrationsPage} />}
@@ -1001,6 +1006,7 @@ function App() {
           <PaxRailProvider>
           <DynamicIslandProvider>
           <QueryClientProvider client={queryClient}>
+            <FeatureFlagsProvider>
             <TooltipProvider>
               <HintsProvider>
                 <KeyboardShortcutsProvider>
@@ -1013,6 +1019,7 @@ function App() {
                 </KeyboardShortcutsProvider>
               </HintsProvider>
             </TooltipProvider>
+            </FeatureFlagsProvider>
           </QueryClientProvider>
           </DynamicIslandProvider>
           </PaxRailProvider>

@@ -128,11 +128,15 @@ design export at `~/Desktop/acreos-design-export/`.
 - [ ] Autonomy tab to be gated behind `feature.autonomy-matrix` flag in Phase D (JUDGMENT-CALLS C.4.2)
 - [ ] Audit log captures every autonomous action (server-side, ships with Phase E surface ports)
 
-**Phase D — Feature flag system — pending**
-- [ ] Flag infrastructure (off / founder-only / beta / tier / on)
-- [ ] `/founder/features` UI
-- [ ] Underlying features inert when off (404 routes, hidden nav, rejecting APIs)
-- [ ] Initial flags wired (`module.land-academy`, `module.marketplace`, etc.)
+**Phase D — Feature flag system — ✅ COMPLETE**
+- [x] Flag 5-state machine extending platform_feature_flags table — D.1 (migration 0029)
+- [x] Initial seeds: module.land-academy / module.marketplace / surface.command-palette-v2 / feature.atlas-async-jobs / feature.autonomy-matrix — D.1
+- [x] featureFlagService + requireFlag middleware + /api/feature-flags endpoints — D.2
+- [x] Client FeatureFlagsProvider + useFlag + RequireFlag mounted in App.tsx — D.3
+- [x] /founder/features calm-table UI with 5-state Select + beta audience editor — D.4
+- [x] feature.autonomy-matrix flag gates Settings → Autonomy tab — D.5
+- [x] PORT-AUDIT-PHASE-D.md + _RESUME-PORT-PHASE-E.md — D.6
+- [ ] Apply additional flags as Phase E surfaces port (academy, marketplace already seeded; routes 404 via existing featureGate when off)
 
 **Phase E — Surface-by-surface design port — pending**
 - [ ] All 28+ customer surfaces re-skinned per design brief

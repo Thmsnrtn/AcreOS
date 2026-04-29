@@ -1,54 +1,52 @@
 /**
  * Server-side feature flag gate middleware.
  *
- * Checks the `platform_feature_flags` table for a given flag key.
- * If the flag exists and is enabled, the request proceeds.
- * If the flag is disabled or missing, a 404 is returned.
- * If the table doesn't exist (e.g. fresh DB), access is allowed by default
- * so the app doesn't break during initial setup.
+ * Uses the 5-state feature flag system (design-system §8) via
+ * featureFlagService. Off / founder-only / beta / tier / on.
+ *
+ * Founders always bypass — they're operators provisioning flags. Enterprise
+ * tier gets a soft bypass for legacy reseller / white-label routes that
+ * existed before the port and are part of the enterprise contract.
  *
  * Usage:
- *   import { featureGate } from "./middleware/featureGate";
- *   app.use("/api/marketplace", featureGate("feature_marketplace"), marketplaceRouter);
+ *   import { featureGate, requireFlag } from "./middleware/featureGate";
+ *   app.use("/api/marketplace", featureGate("module.marketplace"), marketplaceRouter);
+ *
+ * `featureGate` is the legacy alias kept for back-compat; `requireFlag` is
+ * the post-port name. Both are identical.
  */
 
-import { db } from "../storage";
-import { platformFeatureFlags } from "@shared/schema";
-import { eq } from "drizzle-orm";
 import type { Request, Response, NextFunction } from "express";
+import { featureFlagService, buildFlagContext } from "../services/featureFlags";
 import { isFounderEmail } from "../services/founder";
 
-export function featureGate(flagKey: string) {
+export function requireFlag(flagKey: string) {
   return async (req: Request, res: Response, next: NextFunction) => {
-    // Founders bypass every feature gate — they're the operators for
-    // enterprise + white-label + admin tiers and need access while
-    // feature flags get provisioned. Without this, every
-    // founder-tier persona journey (Kim P02 reseller analytics,
-    // Dolores white-label, etc.) 404s.
+    // Founder bypass — provision-time access while flags are being set up.
     const email = (req.user as any)?.claims?.email || (req.user as any)?.email;
     if (isFounderEmail(email)) return next();
-    // Enterprise-tier orgs also pass — white-label and reseller features
-    // are part of the enterprise contract.
+
+    // Enterprise-tier orgs continue to bypass legacy reseller / white-label
+    // routes (kept for back-compat with the original featureGate). Future
+    // flags should not rely on this — set state to "tier:scale" or similar.
     const tier = (req.organization as any)?.subscriptionTier;
     if (tier === "enterprise") return next();
 
     try {
-      const [flag] = await db
-        .select()
-        .from(platformFeatureFlags)
-        .where(eq(platformFeatureFlags.key, flagKey))
-        .limit(1);
-
-      if (flag && flag.enabled) {
-        return next();
-      }
-
-      // Flag missing or disabled — treat route as unavailable
+      const ctx = buildFlagContext(req as any);
+      // Prime isFounder if email matched but the request lacks organization.
+      if (!ctx.isFounder && isFounderEmail(ctx.email)) ctx.isFounder = true;
+      const enabled = await featureFlagService.isEnabled(flagKey, ctx);
+      if (enabled) return next();
       return res.status(404).json({ message: "Feature not available" });
     } catch {
-      // If feature flags table doesn't exist or DB error, allow access
-      // so the app is usable during initial setup / migrations
+      // DB unavailable — fail open to avoid breaking the app during initial
+      // setup (mirrors the original behavior). Production should not hit
+      // this path.
       return next();
     }
   };
 }
+
+/** Legacy alias — pre-port code uses this name. */
+export const featureGate = requireFlag;

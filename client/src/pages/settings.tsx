@@ -52,6 +52,7 @@ import { TeamInviteCard } from "@/components/settings/TeamInviteCard";
 import { AppearancePanel } from "@/components/settings/appearance-panel";
 import { NotificationQuietHours } from "@/components/settings/notification-quiet-hours";
 import { AutonomyPanel } from "@/components/settings/autonomy-panel";
+import { useFlag } from "@/contexts/feature-flags-context";
 import { PreferencesCard } from "@/components/preferences-card";
 import { PlanComparisonModal, type TierKey } from "@/components/tier-upgrade-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -595,6 +596,10 @@ export default function Settings() {
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [showPlanComparison, setShowPlanComparison] = useState(false);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
+  // Feature flag — autonomy matrix is founder-only by default per
+  // design-system §8.4. Tab + content hidden when flag is off; founder
+  // toggles state via /founder/features.
+  const autonomyFlag = useFlag("feature.autonomy-matrix");
 
   const getTabFromHash = (): TabValue => {
     const hash = window.location.hash.replace("#", "");
@@ -818,10 +823,12 @@ export default function Settings() {
                   <SettingsIcon className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
                   Appearance
                 </TabsTrigger>
-                <TabsTrigger value="autonomy" data-testid="tab-autonomy" className="gap-1">
-                  <Bot className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
-                  Autonomy
-                </TabsTrigger>
+                {autonomyFlag && (
+                  <TabsTrigger value="autonomy" data-testid="tab-autonomy" className="gap-1">
+                    <Bot className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
+                    Autonomy
+                  </TabsTrigger>
+                )}
                 <TabsTrigger value="integrations" data-testid="tab-integrations" className="gap-1">
                   <Link2 className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
                   Integrations
@@ -1542,9 +1549,11 @@ export default function Settings() {
               </div>
             </TabsContent>
 
-            <TabsContent value="autonomy" className="space-y-8 mt-6" data-testid="tab-content-autonomy">
-              <AutonomyPanel />
-            </TabsContent>
+            {autonomyFlag && (
+              <TabsContent value="autonomy" className="space-y-8 mt-6" data-testid="tab-content-autonomy">
+                <AutonomyPanel />
+              </TabsContent>
+            )}
 
             <TabsContent value="developer" className="space-y-8 mt-6" data-testid="tab-content-developer">
               <div className="space-y-4">

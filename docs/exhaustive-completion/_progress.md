@@ -1,6 +1,6 @@
 # Exhaustive Completion Progress
 
-Last updated: 2026-04-29 (Port Phase C complete end-to-end across C.1 through C.5; chaining into Phase D autonomously)
+Last updated: 2026-04-29 (Port Phase D complete end-to-end across D.1 through D.6; chaining into Phase E autonomously)
 
 **Active directive:** Production port from prototype (replaces Gap 1.1.E/F).
 Phases A–H: A) extraction, B) theme + font + appearance, C) personalization
@@ -36,7 +36,17 @@ brief embedded.
 
 No new migrations in Phase C — JSONB schema flexes. `npm run check` clean. Five new files; seven modified.
 
-**Next session entry point:** `_RESUME-PORT-PHASE-D.md`
+**Phase D complete:**
+- D.1 — Migration 0029 extends `platform_feature_flags` with `state` (5-value), `audience` jsonb, `changed_by`, `changed_at`. Backfills state from `enabled`. Seeds 5 design-brief flags.
+- D.2 — `featureFlagService` (getAll / getByKey / isEnabled / setFlag / evaluateFlag) + `requireFlag` middleware (with `featureGate` legacy alias) + `/api/feature-flags` GET (per-user resolved view) + `/api/feature-flags/admin` GET/PATCH (founder admin).
+- D.3 — `FeatureFlagsProvider`, `useFlag`, `useAllFlags`, `useFeatureFlagsRefresh`, `<RequireFlag>` mounted in App.tsx provider tree.
+- D.4 — `/founder/features` page: calm 5-state Select per flag, audience editor when state=beta, controlled-routes display, search + state filter, optimistic updates with toast rollback.
+- D.5 — `feature.autonomy-matrix` flag gates Settings → Autonomy tab via `useFlag` conditional render.
+- D.6 — PORT-AUDIT-PHASE-D.md + _RESUME-PORT-PHASE-E.md written.
+
+Single migration (0029). `npm run check` clean. Existing `/founder/feature-flags` (binary) coexists with new `/founder/features` (5-state). Three judgment calls logged (D.1.1 extend not rebuild, D.4.1 two pages coexist, D.5.1 component-level gate not route-level).
+
+**Next session entry point:** `_RESUME-PORT-PHASE-E.md`
 
 Predecessor: `docs/unified-build/COMPLETE.md` (unified build shipped through Phase 10).
 Companion docs: `docs/unified-build/DESIGN-SYSTEM.md`, `docs/unified-build/phase-9-audit.md`.
@@ -76,8 +86,8 @@ Companion docs: `docs/unified-build/DESIGN-SYSTEM.md`, `docs/unified-build/phase
 
 ## Current State
 
-**Phase:** Port Phase C complete — Phase D (feature flag system) chaining now per founder directive
-**Status:** Personalization infrastructure landed in autonomous run — sidebar + mobile nav server-synced, notification quiet hours, list-view preferences, autonomy matrix UI on new Settings tab. PORT-AUDIT-PHASE-C.md and Phase D resume both written. Three deferred items documented in JUDGMENT-CALLS (desktop sidebar refactor → E, full notifications matrix redesign → E, autonomy server enforcement → E surface-by-surface). Phase D begins now; chaining straight through to Phase H per the new resume protocol.
+**Phase:** Port Phase D complete — Phase E (surface-by-surface port) chaining now
+**Status:** Feature flag 5-state machine extending existing platform_feature_flags table; founder UI at /founder/features; autonomy tab gated. PORT-AUDIT-PHASE-D.md + Phase E resume written. Phase E is the largest phase — ~30 surfaces, Tier 1 self-audit gate before Tier 2-5. Chaining straight through to Phase H autonomously per founder directive.
 
 **1.1.D summary (all 9 sub-phases shipped + verified):**
 - D.1 — variant-inventory.md (36 decisions across visual-review/platform-tweak/build-defer)

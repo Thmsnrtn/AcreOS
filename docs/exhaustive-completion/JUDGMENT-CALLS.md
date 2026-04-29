@@ -180,7 +180,51 @@ Format note: entries terse — 2-3 sentences each. Never expand into prose.
 
 ## Phase D — Feature flag system
 
-(reserved)
+### D.1.1 — Extend existing platform_feature_flags table, don't rebuild
+- **Surface/component:** `migrations/0029_feature_flag_state_machine.sql`,
+  `shared/schema.ts` platformFeatureFlags
+- **Question:** Existing table is binary (enabled boolean + controlled_routes).
+  Design-system §8 wants 5-state machine. Build a new feature_flags table
+  alongside, or extend?
+- **Default chosen:** Extended platform_feature_flags with state column
+  (5 states), audience jsonb, changed_by, changed_at. Backfilled state
+  from enabled. Existing call sites and binary endpoints continue to work.
+- **Reasoning:** Single source of truth; one less migration; back-compat
+  preserved (old `enabled` field auto-syncs with state). Existing
+  featureGate middleware migrated cleanly via featureFlagService wrapper.
+- **Where:** `migrations/0029_feature_flag_state_machine.sql`,
+  `shared/schema.ts` lines 11299+, `server/services/featureFlags.ts`,
+  `server/middleware/featureGate.ts` (rewritten).
+
+### D.4.1 — New /founder/features page coexists with /founder/feature-flags
+- **Surface/component:** `client/src/pages/founder/features.tsx` (new)
+- **Question:** Existing `/founder/feature-flags` page uses binary Switch
+  UI. Replace it, or build a new page at `/founder/features`?
+- **Default chosen:** Built new page at `/founder/features` with 5-state
+  Select + audience editor. Old `/founder/feature-flags` page left intact
+  for back-compat with the older endpoint.
+- **Reasoning:** Old page still serves the binary `feature_*` flag keys
+  that exist in production data; renaming would break founder muscle memory
+  mid-port. Both paths gated by `FounderProtectedRoute`. Phase G polish
+  can consolidate if helpful — spec doesn't require it.
+- **Where:** `client/src/pages/founder/features.tsx`,
+  `client/src/App.tsx` route registration.
+
+### D.5.1 — Autonomy tab gate is component-level, not route-level
+- **Surface/component:** `client/src/pages/settings.tsx` autonomy tab
+- **Question:** Hide the autonomy tab via `<RequireFlag>` route wrapper or
+  conditional render inside the settings page?
+- **Default chosen:** Conditional render inside the tabs component using
+  `useFlag("feature.autonomy-matrix")`. Tab trigger and content both
+  hidden when flag is off; direct `?tab=autonomy` URL hits land on the
+  default `general` tab silently.
+- **Reasoning:** `/settings` itself is always accessible (it has many
+  other tabs); only the autonomy sub-surface gates. A route wrapper
+  would 404 the entire settings page. Component-level gate is the
+  correct granularity. Server PATCH endpoint is open by design — autonomy
+  prefs persist regardless of UI visibility (the brief commits to
+  user data being theirs even when surfaces aren't built yet).
+- **Where:** `client/src/pages/settings.tsx` lines using `autonomyFlag`.
 
 ## Phase E — Surface-by-surface port
 

@@ -11296,12 +11296,44 @@ export type PlatformConfig = typeof platformConfig.$inferSelect;
 // PLATFORM FEATURE FLAGS (Founder-controlled feature visibility)
 // ============================================
 
+/**
+ * Feature flag state machine (design-system §8). 5 possible states:
+ *   off            — invisible everywhere; routes 404, sidebar hides, APIs reject
+ *   founder-only   — only the founder sees / hits
+ *   beta           — opted-in users (audience.betaUserIds)
+ *   tier:<X>       — subscription-gated (X = free | starter | pro | scale)
+ *   on             — live for everyone
+ *
+ * `enabled` boolean kept for back-compat with pre-port consumers; derive
+ * from `state IN ('on', ...)` at read time when migrating call sites.
+ */
+export const FEATURE_FLAG_STATES = [
+  "off",
+  "founder-only",
+  "beta",
+  "tier:free",
+  "tier:starter",
+  "tier:pro",
+  "tier:scale",
+  "on",
+] as const;
+export type FeatureFlagState = typeof FEATURE_FLAG_STATES[number];
+
+export interface FeatureFlagAudience {
+  betaUserIds?: string[];
+  // Future: orgIds, region, percent rollout, etc.
+}
+
 export const platformFeatureFlags = pgTable("platform_feature_flags", {
   id: serial("id").primaryKey(),
-  key: text("key").notNull().unique(),            // e.g. "feature_academy"
+  key: text("key").notNull().unique(),            // e.g. "feature.autonomy-matrix"
   label: text("label").notNull(),                  // human-readable name
   description: text("description").notNull(),
-  enabled: boolean("enabled").notNull().default(false),
+  enabled: boolean("enabled").notNull().default(false), // back-compat — derived from state
+  state: text("state").default("off"),             // FeatureFlagState — canonical post-port
+  audience: jsonb("audience").$type<FeatureFlagAudience>().default({}),
+  changedBy: text("changed_by"),                   // userId of last editor
+  changedAt: timestamp("changed_at"),
   // which nav items this flag controls (JSON array of hrefs like ["/academy"])
   controlledRoutes: jsonb("controlled_routes").$type<string[]>().notNull().default([]),
   createdAt: timestamp("created_at").defaultNow(),
