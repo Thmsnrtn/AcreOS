@@ -30,12 +30,13 @@ interface DirectMailCampaign {
   createdAt: string;
 }
 
+// Status → semantic --acr-* tone (Tier 1 pattern).
 const STATUS_COLORS: Record<string, string> = {
-  draft: "bg-gray-100 text-gray-700",
-  scheduled: "bg-blue-100 text-blue-700",
-  sending: "bg-yellow-100 text-yellow-700",
-  sent: "bg-green-100 text-green-700",
-  cancelled: "bg-red-100 text-red-700",
+  draft: "bg-acr-surface-2 text-acr-ink-3 border-transparent",
+  scheduled: "bg-acr-brand-soft text-acr-brand border-transparent",
+  sending: "bg-acr-warn-soft text-acr-warn border-transparent",
+  sent: "bg-acr-pos-soft text-acr-pos border-transparent",
+  cancelled: "bg-acr-neg-soft text-acr-neg border-transparent",
 };
 
 export default function DirectMailCampaignsPage() {

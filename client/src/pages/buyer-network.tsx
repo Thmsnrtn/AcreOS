@@ -36,7 +36,7 @@ function MatchScoreSection({ matches }: { matches: any[] }) {
             <CardContent className="p-4">
               <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
                 <p className="font-semibold text-sm">{m.listingTitle ?? `Listing #${m.listingId}`}</p>
-                <Badge className="bg-blue-100 text-blue-800 tabular-nums">{m.buyers?.length ?? 0} matches</Badge>
+                <Badge className="bg-acr-brand-soft text-acr-brand border-transparent tabular-nums">{m.buyers?.length ?? 0} matches</Badge>
               </div>
               <ul className="space-y-2" aria-label={`Top buyers for ${m.listingTitle ?? `listing ${m.listingId}`}`}>
                 {(m.buyers ?? []).slice(0, 5).map((b: any, i: number) => {
@@ -51,14 +51,14 @@ function MatchScoreSection({ matches }: { matches: any[] }) {
                       </div>
                       <div className="flex items-center gap-2">
                         <div
-                          className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden"
+                          className="w-24 h-2 bg-acr-surface-2 rounded-full overflow-hidden"
                           role="progressbar"
                           aria-valuenow={Math.round(score)}
                           aria-valuemin={0}
                           aria-valuemax={100}
                           aria-label={`${buyerName} match score ${Math.round(score)}%`}
                         >
-                          <div className="h-full bg-green-500 rounded-full" style={{ width: `${Math.min(100, score)}%` }} />
+                          <div className="h-full bg-acr-pos rounded-full" style={{ width: `${Math.min(100, score)}%` }} />
                         </div>
                         <span className="text-xs font-medium w-8 text-right tabular-nums">{score}%</span>
                       </div>
@@ -203,7 +203,7 @@ export default function BuyerNetwork() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
-              <Users className="h-8 w-8 text-blue-500" aria-hidden="true" />
+              <Users className="h-8 w-8 text-acr-brand" aria-hidden="true" />
               <div>
                 <dd className="text-2xl font-bold tabular-nums">{analytics.totalBuyers || 0}</dd>
                 <dt className="text-sm text-muted-foreground">Active buyers</dt>
@@ -214,7 +214,7 @@ export default function BuyerNetwork() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
-              <MapPin className="h-8 w-8 text-green-500" aria-hidden="true" />
+              <MapPin className="h-8 w-8 text-acr-pos" aria-hidden="true" />
               <div>
                 <dd className="text-2xl font-bold tabular-nums">{analytics.hotMarkets || 0}</dd>
                 <dt className="text-sm text-muted-foreground">Hot markets</dt>
@@ -225,7 +225,7 @@ export default function BuyerNetwork() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
-              <TrendingUp className="h-8 w-8 text-purple-500" aria-hidden="true" />
+              <TrendingUp className="h-8 w-8 text-acr-accent" aria-hidden="true" />
               <div>
                 <dd className="text-2xl font-bold tabular-nums">{analytics.avgMatchScore || 0}%</dd>
                 <dt className="text-sm text-muted-foreground">Avg match score</dt>
@@ -236,7 +236,7 @@ export default function BuyerNetwork() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
-              <Bell className="h-8 w-8 text-orange-500" aria-hidden="true" />
+              <Bell className="h-8 w-8 text-acr-warn" aria-hidden="true" />
               <div>
                 <dd className="text-2xl font-bold tabular-nums">{analytics.activeAlerts || 0}</dd>
                 <dt className="text-sm text-muted-foreground">Active alerts</dt>

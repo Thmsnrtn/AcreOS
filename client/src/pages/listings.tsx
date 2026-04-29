@@ -58,12 +58,14 @@ const listingFormSchema = z.object({
 
 type ListingFormValues = z.infer<typeof listingFormSchema>;
 
+// Status → semantic --acr-* tone (Tier 1 pattern). Re-skins automatically
+// across all five themes; replaces raw green/yellow/blue/red hardcodes.
 const STATUS_COLORS: Record<string, string> = {
-  draft: "bg-muted text-muted-foreground",
-  active: "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300",
-  pending_sale: "bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300",
-  sold: "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300",
-  withdrawn: "bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300",
+  draft: "bg-acr-surface-2 text-acr-ink-3 border-transparent",
+  active: "bg-acr-pos-soft text-acr-pos border-transparent",
+  pending_sale: "bg-acr-warn-soft text-acr-warn border-transparent",
+  sold: "bg-acr-brand-soft text-acr-brand border-transparent",
+  withdrawn: "bg-acr-neg-soft text-acr-neg border-transparent",
 };
 
 export default function ListingsPage() {

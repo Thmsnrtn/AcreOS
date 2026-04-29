@@ -93,10 +93,11 @@ const ALERT_TYPE_ICONS: Record<string, React.ComponentType<{ className?: string 
   opportunity: BellRing,
 };
 
+// Severity → semantic --acr-* tone (Tier 1 pattern).
 const SEVERITY_COLORS = {
-  low: "border-blue-200 bg-blue-50/50 dark:bg-blue-900/10",
-  medium: "border-yellow-200 bg-yellow-50/50 dark:bg-yellow-900/10",
-  high: "border-red-200 bg-red-50/50 dark:bg-red-900/10",
+  low: "border-acr-line bg-acr-surface-2",
+  medium: "border-[color:var(--acr-warn)]/30 bg-acr-warn-soft",
+  high: "border-[color:var(--acr-neg)]/30 bg-acr-neg-soft",
 };
 
 const US_STATES = [
