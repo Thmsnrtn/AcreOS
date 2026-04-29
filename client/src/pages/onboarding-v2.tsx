@@ -240,17 +240,18 @@ function InstantDealHunt({
             <div
               key={i}
               className={cn(
-                "rounded-xl border p-4 relative overflow-hidden",
+                "rounded-card border p-4 relative overflow-hidden",
                 i === 0
-                  ? "border-red-500/50 bg-red-950/20"
+                  ? "border-[color:var(--acr-neg)]/50 bg-acr-neg-soft"
                   : i === 1
-                  ? "border-yellow-500/30 bg-yellow-950/10"
-                  : "border-gray-700 bg-gray-900/50"
+                  ? "border-[color:var(--acr-warn)]/30 bg-acr-warn-soft"
+                  : "border-acr-line bg-acr-surface-2"
               )}
             >
               {i === 0 && (
                 <div className="absolute top-2 right-2">
-                  <Badge className="bg-red-600 text-white text-xs">🔥 Hot deal</Badge>
+                  {/* Per design-system §1.2: no emoji in copy. Plain "Hot deal" pill. */}
+                  <Badge className="bg-acr-neg text-acr-brand-ink text-xs">Hot deal</Badge>
                 </div>
               )}
               <div className="flex items-start justify-between mb-2">
@@ -265,10 +266,10 @@ function InstantDealHunt({
                     className={cn(
                       "text-lg font-bold",
                       opp.motivationScore >= 80
-                        ? "text-red-400"
+                        ? "text-acr-neg"
                         : opp.motivationScore >= 65
-                        ? "text-yellow-400"
-                        : "text-gray-400"
+                        ? "text-acr-warn"
+                        : "text-acr-ink-3"
                     )}
                   >
                     {opp.motivationGrade} · {opp.motivationScore}

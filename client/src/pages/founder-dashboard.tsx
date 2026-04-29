@@ -5434,11 +5434,15 @@ function GrowthSection() {
     setEditDraft({});
   }
 
+  // Status → semantic --acr-* tone (Tier 1 platform pattern). Phase G.3
+  // partial polish — full founder-dashboard re-skin scoped per JUDGMENT-CALLS
+  // E.6.1; this swaps the centralized status map without touching the
+  // 200+ inline color usages elsewhere in the file.
   const statusColors: Record<string, string> = {
-    active: "bg-green-500/10 text-green-700 border-green-500/20",
-    paused: "bg-yellow-500/10 text-yellow-700 border-yellow-500/20",
-    draft: "bg-muted text-muted-foreground",
-    completed: "bg-blue-500/10 text-blue-700 border-blue-500/20",
+    active: "bg-acr-pos-soft text-acr-pos border-[color:var(--acr-pos)]/20",
+    paused: "bg-acr-warn-soft text-acr-warn border-[color:var(--acr-warn)]/20",
+    draft: "bg-acr-surface-2 text-acr-ink-3 border-transparent",
+    completed: "bg-acr-brand-soft text-acr-brand border-[color:var(--acr-brand)]/20",
   };
 
   const TEMPLATE_META: Record<string, { icon: React.ComponentType<{ className?: string }>; color: string; tagline: string }> = {
