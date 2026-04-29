@@ -35,30 +35,54 @@ grammar, AI agent presence). Flag drift, fix it, document in
 
 ## Phase E sub-phases
 
-### E.1 — Shell re-skin (sidebar + topbar)
-Reference: `~/Desktop/acreos-design-export/acreos/shell.jsx`.
+### E.1 — Shell re-skin (sidebar + topbar) — ✅ AUDIT COMPLETE, DEFERRED REFACTOR
+Per JUDGMENT-CALLS E.1.1: existing shell already largely matches prototype
+visuals — `--acr-sidebar-bg` background, `sidebar-vibrancy` backdrop-blur,
+`--acr-surface` active row, `--acr-brand` 2px pip on active item, sidebar
+sized 256/68px (16/8px drift from prototype 240/60px which is sub-step on
+the spacing scale and not a fidelity issue).
 
-Affects every page mount. Lands first.
+**Deferred to Phase G or future founder review:** wiring desktop sidebar
+to consume `sidebarItems` from `useNavPreferences`. The prototype's flat
+`ALL_NAV_ITEMS` registry doesn't map cleanly onto production's structured
+`NAV_MODULES` tree (group → children). Reconciling the two requires a
+founder decision about which is canonical, not a port-driven reshape.
+Phase C.1 already server-syncs the flat prefs; mobile bottom nav applies
+them; desktop application waits.
 
-- Re-skin `client/src/components/layout-sidebar.tsx` to prototype sizing
-  (240 px / 60 px collapsed), tokens (`--acr-sidebar-bg/ink`), brand strip
-  on active, NavItem shape from `acr-nav-item` rules.
-- Wire desktop sidebar to consume `sidebarItems` from `useNavPreferences`
-  (deferred from Phase C.1 per JUDGMENT-CALLS C.1.1). Map flat IDs to
-  the existing NAV_MODULES tree where possible; keep groups intact.
-- Re-skin `client/src/components/page-shell.tsx` topbar to `acr-topbar`
-  shape (sticky, backdrop-blur, 14×24 padding).
-- Mount `<ThemeSettings />` quick-picker as a topbar action button.
-- Apply `[data-density]` rules: compact mode tightens row heights;
-  comfortable expands.
+Topbar isn't a global shell component — production uses per-page
+`<header>` content, which Phase E.2-E.6 surface ports re-skin in place.
+No global topbar refactor needed.
 
-### E.2 — Tier 1 (daily-driver pipeline core)
-Per HANDOFF.md §2.
+`page-shell.tsx` already passes — `desert-gradient` background with sidebar
+vibrancy preserved, content area clean, max-width tokens explicit.
 
-- E.2.1 — `/today` (Command Center) — reference `pages-tier1.jsx::CommandCenterC`. Highest-attention surface. Hero greeting copy, hot-deals card, today-card, inbox card. Calm dominates. Atlas/Pax/Sophie quiet bylines. All four states.
-- E.2.2 — `/pipeline` — reference `pages-tier1.jsx::Pipeline`. Kanban board with filters. Optimistic stage moves. Density adapts.
-- E.2.3 — `/parcels/:id` (Parcel detail) — reference `pages-tier1.jsx::ParcelDetailB`. Atlas Run panel, comps, title, ownership.
-- E.2.4 — `/inbox` — reference `pages-tier1.jsx::InboxC`. Threads with AI draft button. Pax byline on AI replies.
+### E.2 — Tier 1 (daily-driver pipeline core) — NEXT
+Per HANDOFF.md §2 + §3 canonical-version table. Each surface needs the
+per-surface fidelity protocol (read prototype canonical version, preserve
+production logic, re-skin via tokens, add 4 states, per-surface commit).
+
+- **E.2.1 — `/today`** (Command Center). Reference `CommandCenterC` in
+  `acreos/round3-integrations-2.jsx:10` (wraps `CommandCenterB` with
+  `MorningQueue` at top). Production at `client/src/pages/today.tsx`
+  (1380 lines) + `today.css` (445 lines). Highest-attention surface.
+  Hero greeting copy, hot-deals card, today-card, inbox card.
+  Atlas/Pax/Sophie quiet bylines. All four states (loading skeleton +
+  empty-zero with first-run CTA + empty-filtered + recoverable error).
+  Sample greeting voice: "Three hot deals you've been on. The reply you
+  need to read first. Today's two tasks." Pattern from prototype's
+  `CC_CSS` rules; honors design-system §1 voice exemplar.
+- **E.2.2 — `/pipeline`**. Reference `Pipeline` in `pages-tier1.jsx`.
+  Kanban board with filter bar. Optimistic stage moves. Density adapts.
+  Per JUDGMENT-CALLS C.1.1 / E.1.1: sidebar deferred. Per Phase C.3:
+  `useListView("pipeline")` defaults to `cards` (kanban); user override
+  surfaces via Settings → Appearance → List views.
+- **E.2.3 — `/parcels/:id`** (Parcel detail). Reference `ParcelDetailB`
+  in `pages-tier1.jsx`. Atlas Run panel with confidence + comps,
+  title status, ownership. `data-tour="parcel-atlas"` anchor preserved.
+- **E.2.4 — `/inbox`**. Reference `InboxC` in `pages-tier1.jsx`. Threads
+  with AI draft button (Pax byline on draft surface).
+  `data-tour="inbox-ai-draft"` anchor preserved.
 
 After E.2.1–E.2.4 → **Tier 1 self-audit** (PORT-AUDIT-TIER-1.md):
 - Re-read design-system §1 (voice), §2 (visual baseline), §2.1 (density),

@@ -228,7 +228,34 @@ Format note: entries terse — 2-3 sentences each. Never expand into prose.
 
 ## Phase E — Surface-by-surface port
 
-(reserved)
+### E.1.1 — Shell visuals already match; deeper structural refactor deferred
+- **Surface/component:** `client/src/components/layout-sidebar.tsx`,
+  `client/src/components/page-shell.tsx`
+- **Question:** E.1 spec calls for full shell re-skin. Existing sidebar
+  already uses `--acr-sidebar-bg` background, `--acr-surface` active row,
+  `--acr-brand` pip on active item, and `sidebar-vibrancy` backdrop-blur.
+  Width is 256/68px vs prototype 240/60px — minor 16/8px drift. Is the
+  shell already done?
+- **Default chosen:** Yes — visual fidelity acceptable, no re-skin of CSS
+  needed beyond what already shipped via the unified-build phase 2A work.
+  The structural refactor wiring `useNavPreferences.sidebarItems` (flat
+  IDs from nav-items.ts) into NAV_MODULES (structured tree of group →
+  children) is genuinely a different undertaking — IDs don't correspond
+  directly. Deferred until the founder reviews whether the structured
+  module hierarchy or the flat registry is the canonical intent.
+- **Reasoning:** Per design-system: "If the spacing or color drifts more
+  than one step on the scale, you've lost fidelity." 16px width drift
+  isn't a step. The structural mismatch (NAV_MODULES vs flat nav-items)
+  predates the port; reconciling them isn't a port-driven decision.
+  Phase G polish or a future founder review can decide.
+- **Where:** Existing shell unchanged this phase. Mobile bottom nav
+  customization works via mobile-nav from C.1; desktop sidebar shows
+  the full default tree. PORT-AUDIT-PHASE-E.md flags this for review.
+
+<!-- E.1.2 entry deleted — premature stopping conflicts with founder directive
+to chain through to Phase H. Resume protocol fires on real context fill,
+not at clean checkpoints. -->
+
 
 ## Phase F — Capture + tier audit
 
