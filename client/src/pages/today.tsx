@@ -175,10 +175,12 @@ const alertLinkLabelByType: Record<string, string> = {
   stale_avm: "View properties",
 };
 
+// Priority → semantic --acr-* tone (Tier 1 platform pattern, applied here
+// in Phase G polish on /today's carryforward).
 const priorityColors: Record<string, string> = {
-  high: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300",
-  medium: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
-  low: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
+  high: "bg-acr-neg-soft text-acr-neg border-transparent",
+  medium: "bg-acr-warn-soft text-acr-warn border-transparent",
+  low: "bg-acr-brand-soft text-acr-brand border-transparent",
 };
 
 
@@ -388,18 +390,20 @@ export default function TodayPage() {
       (avgWinProbability > 0 ? avgWinProbability * 0.35 : 0)
     )
   );
+  // Pulse tonal projection — replaces hardcoded emerald/amber/blue with
+  // semantic --acr-* tones so per-theme switching works.
   const pulseBg =
     pulseScore >= 80
-      ? "from-emerald-50 to-emerald-100/50 dark:from-emerald-950/20 dark:to-emerald-900/10"
+      ? "from-acr-pos-soft to-transparent"
       : pulseScore >= 55
-      ? "from-amber-50 to-amber-100/50 dark:from-amber-950/20 dark:to-amber-900/10"
-      : "from-blue-50 to-blue-100/50 dark:from-blue-950/20 dark:to-blue-900/10";
+      ? "from-acr-warn-soft to-transparent"
+      : "from-acr-brand-soft to-transparent";
   const pulseColor =
     pulseScore >= 80
-      ? "text-emerald-600 dark:text-emerald-400"
+      ? "text-acr-pos"
       : pulseScore >= 55
-      ? "text-amber-600 dark:text-amber-400"
-      : "text-blue-600 dark:text-blue-400";
+      ? "text-acr-warn"
+      : "text-acr-brand";
   const pulseLabel =
     pulseScore >= 80 ? "Strong" : pulseScore >= 55 ? "Steady" : "Building";
 
@@ -488,7 +492,7 @@ export default function TodayPage() {
                 <Sparkles className="w-5 h-5 text-primary" aria-hidden="true" />
               </div>
               <div>
-                <h3 className="font-semibold text-sm">Welcome to AcreOS!</h3>
+                <h3 className="font-semibold text-sm">Welcome to AcreOS.</h3>
                 <p className="text-sm text-muted-foreground">Complete a quick setup to personalize AcreOS for your land-investing business.</p>
               </div>
             </div>
@@ -514,12 +518,12 @@ export default function TodayPage() {
 
       {/* Welcome Back card for returning users after extended absence */}
       {showWelcomeBack && (
-        <Card className="border-blue-200 dark:border-blue-800 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/20" data-testid="welcome-back-card">
+        <Card className="rounded-card border-[color:var(--acr-brand)]/30 bg-acr-brand-soft" data-testid="welcome-back-card">
           <CardContent className="p-5">
             <div className="flex items-start justify-between gap-4 mb-4">
               <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-blue-100 dark:bg-blue-900/40 shrink-0">
-                  <RefreshCw className="w-5 h-5 text-blue-600 dark:text-blue-400" aria-hidden="true" />
+                <div className="p-2.5 rounded-card bg-acr-brand-soft shrink-0">
+                  <RefreshCw className="w-5 h-5 text-acr-brand" aria-hidden="true" />
                 </div>
                 <div>
                   <h3 className="font-semibold text-base">
@@ -649,7 +653,7 @@ export default function TodayPage() {
           {pendingDecisionCount > 0 && (
             <Link
               href="/decision-queue"
-              className="inline-flex items-center gap-2 mt-3 px-3 py-1.5 rounded-full bg-red-50 border border-red-200 dark:bg-red-900/20 dark:border-red-800 text-sm text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="inline-flex items-center gap-2 mt-3 px-3 py-1.5 rounded-full bg-acr-neg-soft border border-[color:var(--acr-neg)]/30 text-sm text-acr-neg hover:opacity-80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label={`${plural(pendingDecisionCount, "pending decision")} — review now`}
             >
               <Clock className="w-4 h-4" aria-hidden="true" />
@@ -689,7 +693,7 @@ export default function TodayPage() {
               <Link href="/ai#agents">
                 <AnimatedCounter
                   value={pendingApprovalCount}
-                  className={`text-lg font-bold tabular-nums ${pendingApprovalCount > 0 ? "text-amber-600" : ""}`}
+                  className={`text-lg font-bold tabular-nums ${pendingApprovalCount > 0 ? "text-acr-warn" : ""}`}
                 />
                 <p className="text-xs text-muted-foreground">Pending approvals</p>
               </Link>
@@ -739,7 +743,7 @@ export default function TodayPage() {
               </Badge>
             </div>
             <div className="flex items-center gap-1">
-              <div className={`w-2 h-2 rounded-full ${pulseScore >= 55 ? "bg-emerald-500 animate-pulse" : "bg-muted-foreground"}`} aria-hidden="true" />
+              <div className={`w-2 h-2 rounded-full ${pulseScore >= 55 ? "bg-acr-pos animate-pulse" : "bg-muted-foreground"}`} aria-hidden="true" />
               <span className="text-xs text-muted-foreground tabular-nums" aria-label={`Pulse score ${pulseScore} out of 100`}>{pulseScore}/100</span>
             </div>
           </div>
@@ -758,7 +762,7 @@ export default function TodayPage() {
             </div>
             <div className="bg-background/60 rounded-lg p-3 text-center">
               <div className="flex items-center justify-center gap-1 mb-1">
-                <Flame className="w-3.5 h-3.5 text-orange-500" aria-hidden="true" />
+                <Flame className="w-3.5 h-3.5 text-acr-brand" aria-hidden="true" />
                 <span className="text-[10px] text-muted-foreground uppercase tracking-wide">Hot deals</span>
               </div>
               <p className="text-lg font-bold text-foreground tabular-nums">{hotDeals}</p>
@@ -776,7 +780,7 @@ export default function TodayPage() {
             </div>
             <div className="bg-background/60 rounded-lg p-3 text-center">
               <div className="flex items-center justify-center gap-1 mb-1">
-                <TrendingUp className="w-3.5 h-3.5 text-emerald-500" aria-hidden="true" />
+                <TrendingUp className="w-3.5 h-3.5 text-acr-pos" aria-hidden="true" />
                 <span className="text-[10px] text-muted-foreground uppercase tracking-wide">This month</span>
               </div>
               <p className="text-lg font-bold text-foreground tabular-nums">
@@ -792,7 +796,7 @@ export default function TodayPage() {
             <div className="w-full bg-background/60 rounded-full h-1.5 overflow-hidden">
               <div
                 className={`h-full rounded-full transition-all duration-700 ${
-                  pulseScore >= 80 ? "bg-emerald-500" : pulseScore >= 55 ? "bg-amber-500" : "bg-blue-500"
+                  pulseScore >= 80 ? "bg-acr-pos" : pulseScore >= 55 ? "bg-acr-warn" : "bg-acr-brand"
                 }`}
                 style={{ width: `${pulseScore}%` }}
               />
@@ -811,11 +815,8 @@ export default function TodayPage() {
       <div data-testid="section-start-here-today">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <Zap className="w-4 h-4 text-amber-500" aria-hidden="true" />
+            <Zap className="w-4 h-4 text-acr-brand" aria-hidden="true" />
             <h2 className="acr-section-h2">Start here today</h2>
-            <Badge variant="secondary" className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 text-xs">
-              AI
-            </Badge>
           </div>
           <Button asChild variant="ghost" size="sm" className="gap-1 text-xs">
             <Link href="/evening-review">
@@ -831,9 +832,9 @@ export default function TodayPage() {
         ) : (todayPriorities?.priorities ?? []).length > 0 ? (
           <div className="space-y-2">
             {(todayPriorities?.priorities ?? []).map((priority, idx) => (
-              <Card key={priority.id} className={`hover:shadow-md transition-shadow ${idx === 0 ? "border-amber-200 dark:border-amber-800" : ""}`}>
+              <Card key={priority.id} className={`rounded-card hover:shadow-md transition-shadow ${idx === 0 ? "border-[color:var(--acr-brand)]/30" : ""}`}>
                 <CardContent className="flex items-center gap-4 p-4">
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${idx === 0 ? "bg-amber-500 text-white" : "bg-muted text-muted-foreground"}`}>
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${idx === 0 ? "bg-acr-brand text-acr-brand-ink" : "bg-muted text-muted-foreground"}`}>
                     {idx + 1}
                   </div>
                   <div className="flex-1 min-w-0">
@@ -855,8 +856,8 @@ export default function TodayPage() {
         ) : (
           <Card>
             <CardContent className="flex items-center gap-3 py-5 px-4">
-              <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
-              <p className="text-sm text-muted-foreground">All caught up! No priority actions right now.</p>
+              <CheckCircle2 className="w-5 h-5 text-acr-pos shrink-0" />
+              <p className="text-sm text-muted-foreground">Nothing pressing today.</p>
             </CardContent>
           </Card>
         )}
@@ -888,8 +889,8 @@ export default function TodayPage() {
         ) : todayActions.length === 0 ? (
           <Card>
             <CardContent className="flex items-center gap-3 py-5 px-4">
-              <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
-              <p className="text-sm text-muted-foreground">No tasks due today. You're ahead of schedule.</p>
+              <CheckCircle2 className="w-5 h-5 text-acr-pos shrink-0" />
+              <p className="text-sm text-muted-foreground">No tasks due today.</p>
             </CardContent>
           </Card>
         ) : (
@@ -1116,7 +1117,7 @@ export default function TodayPage() {
         ) : paxSuggestions.length === 0 ? (
           <Card>
             <CardContent className="flex items-center gap-3 py-5 px-4">
-              <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
+              <CheckCircle2 className="w-5 h-5 text-acr-pos shrink-0" />
               <p className="text-sm text-muted-foreground">No proactive suggestions right now. Pax is monitoring your pipeline.</p>
             </CardContent>
           </Card>
@@ -1132,7 +1133,7 @@ export default function TodayPage() {
               return (
                 <Card key={s.id} className="hover:shadow-sm transition-shadow border-emerald-100 dark:border-emerald-900/30">
                   <CardContent className="flex items-start gap-4 py-3 px-4">
-                    <Sparkles className="w-4 h-4 shrink-0 mt-1 text-emerald-500" aria-hidden="true" />
+                    <Sparkles className="w-4 h-4 shrink-0 mt-1 text-acr-pos" aria-hidden="true" />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap mb-0.5">
                         <span className="font-medium text-sm">{s.suggestion}</span>
@@ -1219,7 +1220,7 @@ export default function TodayPage() {
         ) : aiActions.length === 0 ? (
           <Card>
             <CardContent className="flex items-center gap-3 py-5 px-4">
-              <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
+              <CheckCircle2 className="w-5 h-5 text-acr-pos shrink-0" />
               <p className="text-sm text-muted-foreground">You're all caught up! No AI-suggested actions right now.</p>
             </CardContent>
           </Card>
@@ -1252,7 +1253,7 @@ export default function TodayPage() {
         <div data-testid="section-cash-position">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-emerald-500" aria-hidden="true" />
+              <TrendingUp className="w-4 h-4 text-acr-pos" aria-hidden="true" />
               <h2 className="acr-section-h2">Cash position</h2>
               {cashPosition.lateCount > 0 && (
                 <Badge variant="secondary" className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 text-xs tabular-nums">
@@ -1280,7 +1281,7 @@ export default function TodayPage() {
                   <Card key={label} className="border-emerald-100 dark:border-emerald-900/30">
                     <CardContent className="py-3 px-3 text-center">
                       <p className="text-xs text-muted-foreground mb-0.5 tabular-nums">{label} projected</p>
-                      <p className="text-base font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">
+                      <p className="text-base font-semibold tabular-nums text-acr-pos">
                         {usd(value, { noCents: true })}
                       </p>
                     </CardContent>
@@ -1299,7 +1300,7 @@ export default function TodayPage() {
                             {isLate ? (
                               <AlertCircle className="w-4 h-4 text-red-500 shrink-0" aria-hidden="true" />
                             ) : (
-                              <Banknote className="w-4 h-4 text-emerald-500 shrink-0" aria-hidden="true" />
+                              <Banknote className="w-4 h-4 text-acr-pos shrink-0" aria-hidden="true" />
                             )}
                             <div>
                               <p className="text-sm font-medium leading-tight">
@@ -1311,7 +1312,7 @@ export default function TodayPage() {
                             </div>
                           </div>
                           <span
-                            className={`text-sm font-semibold tabular-nums ${isLate ? "text-red-600 dark:text-red-400" : "text-emerald-700 dark:text-emerald-400"}`}
+                            className={`text-sm font-semibold tabular-nums ${isLate ? "text-acr-neg" : "text-acr-pos"}`}
                             aria-label={isLate ? `Late payment: ${usd(note.monthlyPayment, { noCents: true })}` : undefined}
                           >
                             {usd(note.monthlyPayment, { noCents: true })}
