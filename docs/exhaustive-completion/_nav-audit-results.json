@@ -1,0 +1,5196 @@
+[
+  {
+    "path": "/auth",
+    "concretePath": "/auth",
+    "kind": "PUBLIC",
+    "slug": "auth",
+    "category": "DEGRADED",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5754,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-auth.png"
+  },
+  {
+    "path": "/terms",
+    "concretePath": "/terms",
+    "kind": "PUBLIC",
+    "slug": "terms",
+    "category": "DEGRADED",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/terms",
+    "tti": 5373,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 6344,
+      "mainTextLen": 6172,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-terms.png"
+  },
+  {
+    "path": "/privacy",
+    "concretePath": "/privacy",
+    "kind": "PUBLIC",
+    "slug": "privacy",
+    "category": "DEGRADED",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/privacy",
+    "tti": 5288,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 7452,
+      "mainTextLen": 7280,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-privacy.png"
+  },
+  {
+    "path": "/pricing",
+    "concretePath": "/pricing",
+    "kind": "PUBLIC",
+    "slug": "pricing",
+    "category": "DEGRADED",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/pricing",
+    "tti": 5352,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 1569,
+      "mainTextLen": 1397,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-pricing.png"
+  },
+  {
+    "path": "/status",
+    "concretePath": "/status",
+    "kind": "PUBLIC",
+    "slug": "status",
+    "category": "DEGRADED",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/status",
+    "tti": 5292,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 438,
+      "mainTextLen": 266,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-status.png"
+  },
+  {
+    "path": "/changelog",
+    "concretePath": "/changelog",
+    "kind": "PROTECTED",
+    "slug": "changelog",
+    "category": "DEGRADED",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/changelog",
+    "tti": 5293,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 5164,
+      "mainTextLen": 4992,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-changelog.png"
+  },
+  {
+    "path": "/portal",
+    "concretePath": "/portal",
+    "kind": "PROTECTED",
+    "slug": "portal",
+    "category": "DEGRADED",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/portal",
+    "tti": 5293,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 546,
+      "mainTextLen": 374,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-portal.png"
+  },
+  {
+    "path": "/sign/:docId",
+    "concretePath": "/sign/demo-doc",
+    "kind": "PROTECTED",
+    "slug": "sign-docid",
+    "category": "DEGRADED",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/sign/demo-doc",
+    "tti": 5282,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 462,
+      "mainTextLen": 290,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-sign-docid.png"
+  },
+  {
+    "path": "/portal/:accessToken",
+    "concretePath": "/portal/demo-token",
+    "kind": "PROTECTED",
+    "slug": "portal-accesstoken",
+    "category": "DEGRADED",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/portal/demo-token",
+    "tti": 5288,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 361,
+      "mainTextLen": 189,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-portal-accesstoken.png"
+  },
+  {
+    "path": "/onboarding-v2",
+    "concretePath": "/onboarding-v2",
+    "kind": "PROTECTED",
+    "slug": "onboarding-v2",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5292,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-onboarding-v2.png"
+  },
+  {
+    "path": "/",
+    "concretePath": "/",
+    "kind": "PROTECTED",
+    "slug": "root",
+    "category": "DEGRADED",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/",
+    "tti": 5301,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 9108,
+      "mainTextLen": 8936,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-root.png"
+  },
+  {
+    "path": "/today",
+    "concretePath": "/today",
+    "kind": "PROTECTED",
+    "slug": "today",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5710,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-today.png"
+  },
+  {
+    "path": "/dashboard",
+    "concretePath": "/dashboard",
+    "kind": "PROTECTED",
+    "slug": "dashboard",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5294,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-dashboard.png"
+  },
+  {
+    "path": "/pipeline",
+    "concretePath": "/pipeline",
+    "kind": "PROTECTED",
+    "slug": "pipeline",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5293,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-pipeline.png"
+  },
+  {
+    "path": "/money",
+    "concretePath": "/money",
+    "kind": "PROTECTED",
+    "slug": "money",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5370,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-money.png"
+  },
+  {
+    "path": "/ai",
+    "concretePath": "/ai",
+    "kind": "PROTECTED",
+    "slug": "ai",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5290,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-ai.png"
+  },
+  {
+    "path": "/pax",
+    "concretePath": "/pax",
+    "kind": "PROTECTED",
+    "slug": "pax",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5293,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-pax.png"
+  },
+  {
+    "path": "/leads",
+    "concretePath": "/leads",
+    "kind": "PROTECTED",
+    "slug": "leads",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5355,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-leads.png"
+  },
+  {
+    "path": "/leads/dedupe",
+    "concretePath": "/leads/dedupe",
+    "kind": "PROTECTED",
+    "slug": "leads-dedupe",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5295,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-leads-dedupe.png"
+  },
+  {
+    "path": "/properties",
+    "concretePath": "/properties",
+    "kind": "PROTECTED",
+    "slug": "properties",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5325,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-properties.png"
+  },
+  {
+    "path": "/deals",
+    "concretePath": "/deals",
+    "kind": "PROTECTED",
+    "slug": "deals",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5353,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-deals.png"
+  },
+  {
+    "path": "/tasks",
+    "concretePath": "/tasks",
+    "kind": "PROTECTED",
+    "slug": "tasks",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5293,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-tasks.png"
+  },
+  {
+    "path": "/team-dashboard",
+    "concretePath": "/team-dashboard",
+    "kind": "PROTECTED",
+    "slug": "team-dashboard",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5381,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-team-dashboard.png"
+  },
+  {
+    "path": "/team",
+    "concretePath": "/team",
+    "kind": "PROTECTED",
+    "slug": "team",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5308,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-team.png"
+  },
+  {
+    "path": "/team-inbox",
+    "concretePath": "/team-inbox",
+    "kind": "PROTECTED",
+    "slug": "team-inbox",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5340,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-team-inbox.png"
+  },
+  {
+    "path": "/automation",
+    "concretePath": "/automation",
+    "kind": "PROTECTED",
+    "slug": "automation",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5289,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-automation.png"
+  },
+  {
+    "path": "/workflows",
+    "concretePath": "/workflows",
+    "kind": "PROTECTED",
+    "slug": "workflows",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5306,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-workflows.png"
+  },
+  {
+    "path": "/activity",
+    "concretePath": "/activity",
+    "kind": "PROTECTED",
+    "slug": "activity",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5286,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-activity.png"
+  },
+  {
+    "path": "/analytics",
+    "concretePath": "/analytics",
+    "kind": "PROTECTED",
+    "slug": "analytics",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5369,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-analytics.png"
+  },
+  {
+    "path": "/finance",
+    "concretePath": "/finance",
+    "kind": "PROTECTED",
+    "slug": "finance",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5305,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-finance.png"
+  },
+  {
+    "path": "/portfolio",
+    "concretePath": "/portfolio",
+    "kind": "PROTECTED",
+    "slug": "portfolio",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5291,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-portfolio.png"
+  },
+  {
+    "path": "/campaigns",
+    "concretePath": "/campaigns",
+    "kind": "PROTECTED",
+    "slug": "campaigns",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5287,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-campaigns.png"
+  },
+  {
+    "path": "/ab-tests",
+    "concretePath": "/ab-tests",
+    "kind": "PROTECTED",
+    "slug": "ab-tests",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5369,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-ab-tests.png"
+  },
+  {
+    "path": "/sequences",
+    "concretePath": "/sequences",
+    "kind": "PROTECTED",
+    "slug": "sequences",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5294,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-sequences.png"
+  },
+  {
+    "path": "/counties",
+    "concretePath": "/counties",
+    "kind": "PROTECTED",
+    "slug": "counties",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5342,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-counties.png"
+  },
+  {
+    "path": "/offers",
+    "concretePath": "/offers",
+    "kind": "PROTECTED",
+    "slug": "offers",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5317,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-offers.png"
+  },
+  {
+    "path": "/offers/batches",
+    "concretePath": "/offers/batches",
+    "kind": "PROTECTED",
+    "slug": "offers-batches",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5293,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-offers-batches.png"
+  },
+  {
+    "path": "/listings",
+    "concretePath": "/listings",
+    "kind": "PROTECTED",
+    "slug": "listings",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5283,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-listings.png"
+  },
+  {
+    "path": "/documents",
+    "concretePath": "/documents",
+    "kind": "PROTECTED",
+    "slug": "documents",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5378,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-documents.png"
+  },
+  {
+    "path": "/tools",
+    "concretePath": "/tools",
+    "kind": "PROTECTED",
+    "slug": "tools",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5303,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-tools.png"
+  },
+  {
+    "path": "/command-center",
+    "concretePath": "/command-center",
+    "kind": "PROTECTED",
+    "slug": "command-center",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5367,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-command-center.png"
+  },
+  {
+    "path": "/agents",
+    "concretePath": "/agents",
+    "kind": "PROTECTED",
+    "slug": "agents",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5280,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-agents.png"
+  },
+  {
+    "path": "/ai-team",
+    "concretePath": "/ai-team",
+    "kind": "PROTECTED",
+    "slug": "ai-team",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5297,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-ai-team.png"
+  },
+  {
+    "path": "/support",
+    "concretePath": "/support",
+    "kind": "PROTECTED",
+    "slug": "support",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5291,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-support.png"
+  },
+  {
+    "path": "/settings",
+    "concretePath": "/settings",
+    "kind": "PROTECTED",
+    "slug": "settings",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5329,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-settings.png"
+  },
+  {
+    "path": "/my-letter",
+    "concretePath": "/my-letter",
+    "kind": "PROTECTED",
+    "slug": "my-letter",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5286,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-my-letter.png"
+  },
+  {
+    "path": "/settings/email",
+    "concretePath": "/settings/email",
+    "kind": "PROTECTED",
+    "slug": "settings-email",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5360,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-settings-email.png"
+  },
+  {
+    "path": "/settings/mail",
+    "concretePath": "/settings/mail",
+    "kind": "FOUNDER",
+    "slug": "settings-mail",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5297,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-settings-mail.png"
+  },
+  {
+    "path": "/inbox",
+    "concretePath": "/inbox",
+    "kind": "FOUNDER",
+    "slug": "inbox",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5292,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-inbox.png"
+  },
+  {
+    "path": "/help",
+    "concretePath": "/help",
+    "kind": "FOUNDER",
+    "slug": "help",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5410,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-help.png"
+  },
+  {
+    "path": "/admin/support",
+    "concretePath": "/admin/support",
+    "kind": "FOUNDER",
+    "slug": "admin-support",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5287,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-admin-support.png"
+  },
+  {
+    "path": "/founder-dashboard",
+    "concretePath": "/founder-dashboard",
+    "kind": "FOUNDER",
+    "slug": "founder-dashboard",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5293,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-founder-dashboard.png"
+  },
+  {
+    "path": "/founder-home",
+    "concretePath": "/founder-home",
+    "kind": "FOUNDER",
+    "slug": "founder-home",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5296,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-founder-home.png"
+  },
+  {
+    "path": "/founder",
+    "concretePath": "/founder",
+    "kind": "FOUNDER",
+    "slug": "founder",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5289,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-founder.png"
+  },
+  {
+    "path": "/founder/ai-observatory",
+    "concretePath": "/founder/ai-observatory",
+    "kind": "FOUNDER",
+    "slug": "founder-ai-observatory",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5313,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-founder-ai-observatory.png"
+  },
+  {
+    "path": "/founder/feature-flags",
+    "concretePath": "/founder/feature-flags",
+    "kind": "FOUNDER",
+    "slug": "founder-feature-flags",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5289,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-founder-feature-flags.png"
+  },
+  {
+    "path": "/founder/features",
+    "concretePath": "/founder/features",
+    "kind": "FOUNDER",
+    "slug": "founder-features",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5302,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-founder-features.png"
+  },
+  {
+    "path": "/founder/integrations",
+    "concretePath": "/founder/integrations",
+    "kind": "FOUNDER",
+    "slug": "founder-integrations",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5283,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-founder-integrations.png"
+  },
+  {
+    "path": "/marketplace",
+    "concretePath": "/marketplace",
+    "kind": "FLAGGED",
+    "slug": "marketplace",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5287,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-marketplace.png"
+  },
+  {
+    "path": "/land-credit",
+    "concretePath": "/land-credit",
+    "kind": "PROTECTED",
+    "slug": "land-credit",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5295,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-land-credit.png"
+  },
+  {
+    "path": "/radar",
+    "concretePath": "/radar",
+    "kind": "PROTECTED",
+    "slug": "radar",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5298,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-radar.png"
+  },
+  {
+    "path": "/portfolio-optimizer",
+    "concretePath": "/portfolio-optimizer",
+    "kind": "PROTECTED",
+    "slug": "portfolio-optimizer",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5286,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-portfolio-optimizer.png"
+  },
+  {
+    "path": "/avm",
+    "concretePath": "/avm",
+    "kind": "PROTECTED",
+    "slug": "avm",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5296,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-avm.png"
+  },
+  {
+    "path": "/maps",
+    "concretePath": "/maps",
+    "kind": "PROTECTED",
+    "slug": "maps",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5292,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-maps.png"
+  },
+  {
+    "path": "/negotiation",
+    "concretePath": "/negotiation",
+    "kind": "PROTECTED",
+    "slug": "negotiation",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5299,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-negotiation.png"
+  },
+  {
+    "path": "/cash-flow",
+    "concretePath": "/cash-flow",
+    "kind": "PROTECTED",
+    "slug": "cash-flow",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5358,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-cash-flow.png"
+  },
+  {
+    "path": "/deal-hunter",
+    "concretePath": "/deal-hunter",
+    "kind": "FLAGGED",
+    "slug": "deal-hunter",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5296,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-deal-hunter.png"
+  },
+  {
+    "path": "/vision-ai",
+    "concretePath": "/vision-ai",
+    "kind": "FLAGGED",
+    "slug": "vision-ai",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5298,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-vision-ai.png"
+  },
+  {
+    "path": "/capital-markets",
+    "concretePath": "/capital-markets",
+    "kind": "FLAGGED",
+    "slug": "capital-markets",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5281,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-capital-markets.png"
+  },
+  {
+    "path": "/market-intelligence",
+    "concretePath": "/market-intelligence",
+    "kind": "FLAGGED",
+    "slug": "market-intelligence",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5290,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-market-intelligence.png"
+  },
+  {
+    "path": "/compliance",
+    "concretePath": "/compliance",
+    "kind": "FOUNDER",
+    "slug": "compliance",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5285,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-compliance.png"
+  },
+  {
+    "path": "/tax-researcher",
+    "concretePath": "/tax-researcher",
+    "kind": "FOUNDER",
+    "slug": "tax-researcher",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5291,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-tax-researcher.png"
+  },
+  {
+    "path": "/document-intelligence",
+    "concretePath": "/document-intelligence",
+    "kind": "FOUNDER",
+    "slug": "document-intelligence",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5287,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-document-intelligence.png"
+  },
+  {
+    "path": "/admin/beta",
+    "concretePath": "/admin/beta",
+    "kind": "FOUNDER",
+    "slug": "admin-beta",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5285,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-admin-beta.png"
+  },
+  {
+    "path": "/admin/safety-gates",
+    "concretePath": "/admin/safety-gates",
+    "kind": "FOUNDER",
+    "slug": "admin-safety-gates",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5301,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-admin-safety-gates.png"
+  },
+  {
+    "path": "/admin/decisions",
+    "concretePath": "/admin/decisions",
+    "kind": "PROTECTED",
+    "slug": "admin-decisions",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5294,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-admin-decisions.png"
+  },
+  {
+    "path": "/decision-queue",
+    "concretePath": "/decision-queue",
+    "kind": "FOUNDER",
+    "slug": "decision-queue",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5300,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-decision-queue.png"
+  },
+  {
+    "path": "/admin/ops",
+    "concretePath": "/admin/ops",
+    "kind": "FOUNDER",
+    "slug": "admin-ops",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5411,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-admin-ops.png"
+  },
+  {
+    "path": "/admin/beta-intake",
+    "concretePath": "/admin/beta-intake",
+    "kind": "FOUNDER",
+    "slug": "admin-beta-intake",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5288,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-admin-beta-intake.png"
+  },
+  {
+    "path": "/founder/beta-analytics",
+    "concretePath": "/founder/beta-analytics",
+    "kind": "FOUNDER",
+    "slug": "founder-beta-analytics",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5292,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-founder-beta-analytics.png"
+  },
+  {
+    "path": "/founder/agents",
+    "concretePath": "/founder/agents",
+    "kind": "FOUNDER",
+    "slug": "founder-agents",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5285,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-founder-agents.png"
+  },
+  {
+    "path": "/founder/daily-digest",
+    "concretePath": "/founder/daily-digest",
+    "kind": "FOUNDER",
+    "slug": "founder-daily-digest",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5290,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-founder-daily-digest.png"
+  },
+  {
+    "path": "/founder/decisions",
+    "concretePath": "/founder/decisions",
+    "kind": "FOUNDER",
+    "slug": "founder-decisions",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5296,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-founder-decisions.png"
+  },
+  {
+    "path": "/founder/letter",
+    "concretePath": "/founder/letter",
+    "kind": "FOUNDER",
+    "slug": "founder-letter",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5366,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-founder-letter.png"
+  },
+  {
+    "path": "/founder/settings",
+    "concretePath": "/founder/settings",
+    "kind": "FOUNDER",
+    "slug": "founder-settings",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5290,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-founder-settings.png"
+  },
+  {
+    "path": "/founder/preview",
+    "concretePath": "/founder/preview",
+    "kind": "FOUNDER",
+    "slug": "founder-preview",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5315,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-founder-preview.png"
+  },
+  {
+    "path": "/founder/tools",
+    "concretePath": "/founder/tools",
+    "kind": "FOUNDER",
+    "slug": "founder-tools",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5294,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-founder-tools.png"
+  },
+  {
+    "path": "/founder/prompt-evolutions",
+    "concretePath": "/founder/prompt-evolutions",
+    "kind": "FOUNDER",
+    "slug": "founder-prompt-evolutions",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5301,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-founder-prompt-evolutions.png"
+  },
+  {
+    "path": "/founder/prompt-history",
+    "concretePath": "/founder/prompt-history",
+    "kind": "FOUNDER",
+    "slug": "founder-prompt-history",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5299,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-founder-prompt-history.png"
+  },
+  {
+    "path": "/founder/traces",
+    "concretePath": "/founder/traces",
+    "kind": "FOUNDER",
+    "slug": "founder-traces",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5296,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-founder-traces.png"
+  },
+  {
+    "path": "/founder/strategy",
+    "concretePath": "/founder/strategy",
+    "kind": "FOUNDER",
+    "slug": "founder-strategy",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5297,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-founder-strategy.png"
+  },
+  {
+    "path": "/founder/trends",
+    "concretePath": "/founder/trends",
+    "kind": "FOUNDER",
+    "slug": "founder-trends",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5295,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-founder-trends.png"
+  },
+  {
+    "path": "/founder/onboarding",
+    "concretePath": "/founder/onboarding",
+    "kind": "FOUNDER",
+    "slug": "founder-onboarding",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5282,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-founder-onboarding.png"
+  },
+  {
+    "path": "/founder/expansion",
+    "concretePath": "/founder/expansion",
+    "kind": "FOUNDER",
+    "slug": "founder-expansion",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5297,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-founder-expansion.png"
+  },
+  {
+    "path": "/founder/experiments",
+    "concretePath": "/founder/experiments",
+    "kind": "FOUNDER",
+    "slug": "founder-experiments",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5304,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-founder-experiments.png"
+  },
+  {
+    "path": "/founder/providers",
+    "concretePath": "/founder/providers",
+    "kind": "FOUNDER",
+    "slug": "founder-providers",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5292,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-founder-providers.png"
+  },
+  {
+    "path": "/founder/todo",
+    "concretePath": "/founder/todo",
+    "kind": "FOUNDER",
+    "slug": "founder-todo",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5293,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-founder-todo.png"
+  },
+  {
+    "path": "/executive-dashboard",
+    "concretePath": "/executive-dashboard",
+    "kind": "FOUNDER",
+    "slug": "executive-dashboard",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5287,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-executive-dashboard.png"
+  },
+  {
+    "path": "/deal-underwriting",
+    "concretePath": "/deal-underwriting",
+    "kind": "PROTECTED",
+    "slug": "deal-underwriting",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5314,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-deal-underwriting.png"
+  },
+  {
+    "path": "/deal-feed",
+    "concretePath": "/deal-feed",
+    "kind": "PROTECTED",
+    "slug": "deal-feed",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5336,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-deal-feed.png"
+  },
+  {
+    "path": "/market-data",
+    "concretePath": "/market-data",
+    "kind": "PROTECTED",
+    "slug": "market-data",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5289,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-market-data.png"
+  },
+  {
+    "path": "/team-kpi",
+    "concretePath": "/team-kpi",
+    "kind": "PROTECTED",
+    "slug": "team-kpi",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5278,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-team-kpi.png"
+  },
+  {
+    "path": "/forecasting",
+    "concretePath": "/forecasting",
+    "kind": "PROTECTED",
+    "slug": "forecasting",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5348,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-forecasting.png"
+  },
+  {
+    "path": "/portfolio-health",
+    "concretePath": "/portfolio-health",
+    "kind": "PROTECTED",
+    "slug": "portfolio-health",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5273,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-portfolio-health.png"
+  },
+  {
+    "path": "/portfolio-pnl",
+    "concretePath": "/portfolio-pnl",
+    "kind": "PROTECTED",
+    "slug": "portfolio-pnl",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5294,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-portfolio-pnl.png"
+  },
+  {
+    "path": "/exchange-1031",
+    "concretePath": "/exchange-1031",
+    "kind": "PROTECTED",
+    "slug": "exchange-1031",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5292,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-exchange-1031.png"
+  },
+  {
+    "path": "/tax-optimizer",
+    "concretePath": "/tax-optimizer",
+    "kind": "PROTECTED",
+    "slug": "tax-optimizer",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5288,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-tax-optimizer.png"
+  },
+  {
+    "path": "/tax-delinquent",
+    "concretePath": "/tax-delinquent",
+    "kind": "PROTECTED",
+    "slug": "tax-delinquent",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5292,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-tax-delinquent.png"
+  },
+  {
+    "path": "/bookkeeping",
+    "concretePath": "/bookkeeping",
+    "kind": "FOUNDER",
+    "slug": "bookkeeping",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5294,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-bookkeeping.png"
+  },
+  {
+    "path": "/depreciation",
+    "concretePath": "/depreciation",
+    "kind": "FOUNDER",
+    "slug": "depreciation",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5292,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-depreciation.png"
+  },
+  {
+    "path": "/closing-costs",
+    "concretePath": "/closing-costs",
+    "kind": "FOUNDER",
+    "slug": "closing-costs",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5499,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-closing-costs.png"
+  },
+  {
+    "path": "/property-tax",
+    "concretePath": "/property-tax",
+    "kind": "FOUNDER",
+    "slug": "property-tax",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5305,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-property-tax.png"
+  },
+  {
+    "path": "/fee-dashboard",
+    "concretePath": "/fee-dashboard",
+    "kind": "FOUNDER",
+    "slug": "fee-dashboard",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5301,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-fee-dashboard.png"
+  },
+  {
+    "path": "/avm-bulk",
+    "concretePath": "/avm-bulk",
+    "kind": "FLAGGED",
+    "slug": "avm-bulk",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5285,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-avm-bulk.png"
+  },
+  {
+    "path": "/market-watchlist",
+    "concretePath": "/market-watchlist",
+    "kind": "FLAGGED",
+    "slug": "market-watchlist",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5296,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-market-watchlist.png"
+  },
+  {
+    "path": "/price-optimizer",
+    "concretePath": "/price-optimizer",
+    "kind": "PROTECTED",
+    "slug": "price-optimizer",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5283,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-price-optimizer.png"
+  },
+  {
+    "path": "/seller-intent",
+    "concretePath": "/seller-intent",
+    "kind": "PROTECTED",
+    "slug": "seller-intent",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5290,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-seller-intent.png"
+  },
+  {
+    "path": "/deal-patterns",
+    "concretePath": "/deal-patterns",
+    "kind": "PROTECTED",
+    "slug": "deal-patterns",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5289,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-deal-patterns.png"
+  },
+  {
+    "path": "/conscious-organization",
+    "concretePath": "/conscious-organization",
+    "kind": "FOUNDER",
+    "slug": "conscious-organization",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5291,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-conscious-organization.png"
+  },
+  {
+    "path": "/anticipatory-enterprise",
+    "concretePath": "/anticipatory-enterprise",
+    "kind": "FOUNDER",
+    "slug": "anticipatory-enterprise",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5301,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-anticipatory-enterprise.png"
+  },
+  {
+    "path": "/real-runtime",
+    "concretePath": "/real-runtime",
+    "kind": "PROTECTED",
+    "slug": "real-runtime",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5286,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-real-runtime.png"
+  },
+  {
+    "path": "/agent-command-center",
+    "concretePath": "/agent-command-center",
+    "kind": "PROTECTED",
+    "slug": "agent-command-center",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5284,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-agent-command-center.png"
+  },
+  {
+    "path": "/zoning",
+    "concretePath": "/zoning",
+    "kind": "PROTECTED",
+    "slug": "zoning",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5295,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-zoning.png"
+  },
+  {
+    "path": "/title-search",
+    "concretePath": "/title-search",
+    "kind": "PROTECTED",
+    "slug": "title-search",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5282,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-title-search.png"
+  },
+  {
+    "path": "/property-enrichment",
+    "concretePath": "/property-enrichment",
+    "kind": "PROTECTED",
+    "slug": "property-enrichment",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5297,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-property-enrichment.png"
+  },
+  {
+    "path": "/skip-tracing",
+    "concretePath": "/skip-tracing",
+    "kind": "PROTECTED",
+    "slug": "skip-tracing",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5290,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-skip-tracing.png"
+  },
+  {
+    "path": "/direct-mail",
+    "concretePath": "/direct-mail",
+    "kind": "PROTECTED",
+    "slug": "direct-mail",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5287,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-direct-mail.png"
+  },
+  {
+    "path": "/syndication",
+    "concretePath": "/syndication",
+    "kind": "PROTECTED",
+    "slug": "syndication",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5279,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-syndication.png"
+  },
+  {
+    "path": "/syndication-status",
+    "concretePath": "/syndication-status",
+    "kind": "PROTECTED",
+    "slug": "syndication-status",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5504,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-syndication-status.png"
+  },
+  {
+    "path": "/commissions",
+    "concretePath": "/commissions",
+    "kind": "PROTECTED",
+    "slug": "commissions",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5280,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-commissions.png"
+  },
+  {
+    "path": "/team-leaderboard",
+    "concretePath": "/team-leaderboard",
+    "kind": "PROTECTED",
+    "slug": "team-leaderboard",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5369,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-team-leaderboard.png"
+  },
+  {
+    "path": "/kpis",
+    "concretePath": "/kpis",
+    "kind": "PROTECTED",
+    "slug": "kpis",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5301,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-kpis.png"
+  },
+  {
+    "path": "/cohort-analysis",
+    "concretePath": "/cohort-analysis",
+    "kind": "PROTECTED",
+    "slug": "cohort-analysis",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5285,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-cohort-analysis.png"
+  },
+  {
+    "path": "/audit-log",
+    "concretePath": "/audit-log",
+    "kind": "PROTECTED",
+    "slug": "audit-log",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5281,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-audit-log.png"
+  },
+  {
+    "path": "/data-export",
+    "concretePath": "/data-export",
+    "kind": "PROTECTED",
+    "slug": "data-export",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5277,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-data-export.png"
+  },
+  {
+    "path": "/model-training",
+    "concretePath": "/model-training",
+    "kind": "PROTECTED",
+    "slug": "model-training",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5330,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-model-training.png"
+  },
+  {
+    "path": "/investor-network",
+    "concretePath": "/investor-network",
+    "kind": "PROTECTED",
+    "slug": "investor-network",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5303,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-investor-network.png"
+  },
+  {
+    "path": "/regulatory-intel",
+    "concretePath": "/regulatory-intel",
+    "kind": "PROTECTED",
+    "slug": "regulatory-intel",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5295,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-regulatory-intel.png"
+  },
+  {
+    "path": "/settings/privacy",
+    "concretePath": "/settings/privacy",
+    "kind": "PROTECTED",
+    "slug": "settings-privacy",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5304,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-settings-privacy.png"
+  },
+  {
+    "path": "/usage",
+    "concretePath": "/usage",
+    "kind": "PROTECTED",
+    "slug": "usage",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5279,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-usage.png"
+  },
+  {
+    "path": "/goals",
+    "concretePath": "/goals",
+    "kind": "PROTECTED",
+    "slug": "goals",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5384,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-goals.png"
+  },
+  {
+    "path": "/webhooks",
+    "concretePath": "/webhooks",
+    "kind": "PROTECTED",
+    "slug": "webhooks",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5286,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-webhooks.png"
+  },
+  {
+    "path": "/dodd-frank",
+    "concretePath": "/dodd-frank",
+    "kind": "PROTECTED",
+    "slug": "dodd-frank",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5281,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-dodd-frank.png"
+  },
+  {
+    "path": "/state-documents",
+    "concretePath": "/state-documents",
+    "kind": "PROTECTED",
+    "slug": "state-documents",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5283,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-state-documents.png"
+  },
+  {
+    "path": "/dunning",
+    "concretePath": "/dunning",
+    "kind": "PROTECTED",
+    "slug": "dunning",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5291,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-dunning.png"
+  },
+  {
+    "path": "/freedom-meter",
+    "concretePath": "/freedom-meter",
+    "kind": "FOUNDER",
+    "slug": "freedom-meter",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5288,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-freedom-meter.png"
+  },
+  {
+    "path": "/blind-offer-wizard",
+    "concretePath": "/blind-offer-wizard",
+    "kind": "FOUNDER",
+    "slug": "blind-offer-wizard",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5300,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-blind-offer-wizard.png"
+  },
+  {
+    "path": "/night-cap",
+    "concretePath": "/night-cap",
+    "kind": "FOUNDER",
+    "slug": "night-cap",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5287,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-night-cap.png"
+  },
+  {
+    "path": "/evening-review",
+    "concretePath": "/evening-review",
+    "kind": "FOUNDER",
+    "slug": "evening-review",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5288,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-evening-review.png"
+  },
+  {
+    "path": "/founder/v13",
+    "concretePath": "/founder/v13",
+    "kind": "FOUNDER",
+    "slug": "founder-v13",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5290,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-founder-v13.png"
+  },
+  {
+    "path": "/founder/agents/:codename",
+    "concretePath": "/founder/agents/atlas",
+    "kind": "FOUNDER",
+    "slug": "founder-agents-codename",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5289,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-founder-agents-codename.png"
+  },
+  {
+    "path": "/admin/beta-analytics",
+    "concretePath": "/admin/beta-analytics",
+    "kind": "FOUNDER",
+    "slug": "admin-beta-analytics",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5289,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-admin-beta-analytics.png"
+  },
+  {
+    "path": "/admin/queues",
+    "concretePath": "/admin/queues",
+    "kind": "FOUNDER",
+    "slug": "admin-queues",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5278,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-admin-queues.png"
+  },
+  {
+    "path": "/admin/integrations-health",
+    "concretePath": "/admin/integrations-health",
+    "kind": "FOUNDER",
+    "slug": "admin-integrations-health",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5276,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-admin-integrations-health.png"
+  },
+  {
+    "path": "/admin/monitor",
+    "concretePath": "/admin/monitor",
+    "kind": "FOUNDER",
+    "slug": "admin-monitor",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5275,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-admin-monitor.png"
+  },
+  {
+    "path": "/reseller",
+    "concretePath": "/reseller",
+    "kind": "FOUNDER",
+    "slug": "reseller",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5270,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-reseller.png"
+  },
+  {
+    "path": "/data-moat",
+    "concretePath": "/data-moat",
+    "kind": "FOUNDER",
+    "slug": "data-moat",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5276,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-data-moat.png"
+  },
+  {
+    "path": "/sovereign",
+    "concretePath": "/sovereign",
+    "kind": "FOUNDER",
+    "slug": "sovereign",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5276,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-sovereign.png"
+  },
+  {
+    "path": "/board-of-directors",
+    "concretePath": "/board-of-directors",
+    "kind": "FOUNDER",
+    "slug": "board-of-directors",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5282,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-board-of-directors.png"
+  },
+  {
+    "path": "/agent-performance",
+    "concretePath": "/agent-performance",
+    "kind": "FOUNDER",
+    "slug": "agent-performance",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5266,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-agent-performance.png"
+  },
+  {
+    "path": "/memory-browser",
+    "concretePath": "/memory-browser",
+    "kind": "FOUNDER",
+    "slug": "memory-browser",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5285,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-memory-browser.png"
+  },
+  {
+    "path": "/event-log",
+    "concretePath": "/event-log",
+    "kind": "FOUNDER",
+    "slug": "event-log",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5278,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-event-log.png"
+  },
+  {
+    "path": "/job-health",
+    "concretePath": "/job-health",
+    "kind": "FOUNDER",
+    "slug": "job-health",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5279,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-job-health.png"
+  },
+  {
+    "path": "/agent-collaboration",
+    "concretePath": "/agent-collaboration",
+    "kind": "FOUNDER",
+    "slug": "agent-collaboration",
+    "category": "AUTH_REDIRECT",
+    "httpStatus": 200,
+    "finalUrl": "https://acreos.io/auth",
+    "tti": 5296,
+    "navError": null,
+    "renderInfo": {
+      "bodyTextLen": 411,
+      "mainTextLen": 239,
+      "hasMain": true,
+      "hasLoadingSpinner": false,
+      "stillLoadingText": false
+    },
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: the server responded with a status of 401 ()",
+      "Failed to load resource: net::ERR_FAILED"
+    ],
+    "consoleWarnings": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "https://img.clerk.com/static/google.svg",
+        "reason": "net::ERR_FAILED"
+      }
+    ],
+    "screenshot": "docs/exhaustive-completion/auth-screenshots/_nav-audit-agent-collaboration.png"
+  }
+]

@@ -84,6 +84,38 @@ Companion docs: `docs/unified-build/DESIGN-SYSTEM.md`, `docs/unified-build/phase
 - [ ] Gap 12 — AI output quality review (Atlas / Pax / Sophie)
 - [ ] Gap 13 — Final coherence verification
 
+## Overnight 2026-04-29 — post-walkthrough debug + audit
+
+**Context:** Founder did first authenticated walkthrough of the closed
+production port; surfaced 6 console errors. Three were fixable mechanically;
+two need live data; one is shared infrastructure (CSP). Also commissioned
+overnight: navigation audit, judgment-call recommendations, remaining-work
+inventory.
+
+**Shipped (3 of 6 console fixes, individual commits + verifications):**
+- Fix #5 — CSRF exempt-list path-prefix mismatch (`a5a9bea`)
+- Fix #6 — sendBeacon Blob content-type for `/api/analytics/session/end` (`099af7e`)
+- Fix #3 — built missing `/api/founder/v14/autonomy/score` endpoint (`fd60c93`)
+
+**Audit shipped (164 routes, unauth):**
+- `scripts/navigation-health-audit.mjs` — Playwright walk extracting routes from `client/src/App.tsx`
+- `docs/exhaustive-completion/NAVIGATION-HEALTH-AUDIT.md` — findings doc
+- `docs/exhaustive-completion/_nav-audit-results.json` — raw data
+- 154 AUTH_REDIRECT (expected unauth), 10 DEGRADED, 0 BLANK, 0 ERROR
+- Two structural patterns identified: (a) auth-bootstrap 401s on every page (intentional behavior); (b) CSP blocks `img.clerk.com/static/google.svg` on /auth (CSP modification not authorized overnight)
+- **No mechanical fixes shipped from the audit** — all findings either intentional or out-of-scope per directive
+
+**Recommendations + inventory written for tomorrow morning:**
+- `docs/exhaustive-completion/JUDGMENT-CALL-RECOMMENDATIONS.md` — 11 items each w/ recommendation + brief mapping + alternative + tradeoff + S/M/L effort
+- `docs/exhaustive-completion/REMAINING-WORK-INVENTORY.md` — sections A (live-data bugs) / B (auto-fixed) / C (audit-flagged-not-fixed) / D (audit×judgment overlap) / E (open architecture) / F (suggested triage order)
+
+**Outstanding for founder:**
+- Fix #4 (`/api/nps/pending` 500) — needs live trigger + stack trace from `fly logs`
+- Fix #2 (`/api/agents/status`) — needs founder session response inspection
+- Fix #1 (CSP frame-src) — cosmetic; likely browser extension noise
+
+---
+
 ## Current State
 
 **Phase:** Production port closed. Vertical expansion is next.
