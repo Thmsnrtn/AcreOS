@@ -29,10 +29,14 @@ export function BetaActivationDetector() {
 
     return () => {
       if (sessionId) {
-        // End session on unmount (page close)
+        // End session on unmount (page close). Wrap the body in a Blob with
+        // explicit application/json type — sendBeacon with a raw string
+        // sends Content-Type: text/plain by default, which the server's
+        // validateContentType middleware rejects with 415. Matches the
+        // pattern in lib/telemetry.ts.
         navigator.sendBeacon?.(
           "/api/analytics/session/end",
-          JSON.stringify({ sessionId })
+          new Blob([JSON.stringify({ sessionId })], { type: "application/json" })
         );
       }
     };
