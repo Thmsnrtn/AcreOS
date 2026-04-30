@@ -1,4 +1,9 @@
-const CACHE_NAME = 'acreos-v4';
+// Bumped to v5 post-port to invalidate any v4 caches holding pre-port assets.
+// Hashed asset URLs (index-<hash>.css/js) already cache-bust naturally, but
+// the cache name version bump forces the activate handler's cleanup logic
+// (line ~145) to delete the v4 cache entirely on next visit so users with
+// stale SW state get a clean slate. Preventive hygiene; not a confirmed fix.
+const CACHE_NAME = 'acreos-v5';
 const STATIC_CACHE = `${CACHE_NAME}-static`;
 const API_CACHE = `${CACHE_NAME}-api`;
 
