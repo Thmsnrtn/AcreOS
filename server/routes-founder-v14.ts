@@ -11,12 +11,15 @@
  * 5. Autonomy Score — Track and minimize founder dependency
  */
 
-import { type Express } from "express";
+import { type Express, type Response } from "express";
 import { reactiveOrchestrationService } from "./services/reactiveOrchestrationV14";
 import { feedbackLoopService } from "./services/feedbackLoopV14";
 import { confidenceCascadeService } from "./services/confidenceCascadeV14";
 import { founderIntentService } from "./services/founderIntentV14";
 import { autonomyScoreService } from "./services/autonomyScoreV14";
+import { isAuthenticated } from "./auth";
+import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
+import { getOrganizationId, type AuthenticatedRequest } from "./types/request";
 
 export function registerFounderV14Routes(app: Express) {
 
@@ -269,6 +272,25 @@ export function registerFounderV14Routes(app: Express) {
   // ═══════════════════════════════════════════════════════════════════════════
   // 5. AUTONOMY SCORE — Track and minimize founder dependency
   // ═══════════════════════════════════════════════════════════════════════════
+
+  // Session-scoped score for the current org. Resolves orgId from the
+  // authenticated session so today.tsx and sovereign-dashboard.tsx don't have
+  // to know it. Returns latest daily snapshot as `score` and rolling 7d as
+  // `overallScore` to match the client's `autonomy?.score ?? autonomy?.overallScore ?? 0`
+  // fallback chain. Falls back to 0 honestly when no snapshots exist.
+  app.get("/api/founder/v14/autonomy/score", isAuthenticated, getOrCreateOrg, async (req, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req as AuthenticatedRequest);
+      const stats = await autonomyScoreService.getStats(orgId);
+      res.json({
+        score: stats.latestScore,
+        overallScore: stats.weeklyAvg,
+        ...stats,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
 
   // Dependency tracking
   app.post("/api/founder/v14/autonomy/dependency-events", async (req, res) => {
