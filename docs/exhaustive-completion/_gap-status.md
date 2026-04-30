@@ -189,23 +189,25 @@ design export at `~/Desktop/acreos-design-export/`.
 - [x] FINAL-PORT-AUDIT.md complete
 - [ ] Founder reviews FINAL-PORT-AUDIT.md
 - [ ] Live-eye verification post-deploy (10 theme combos × 5 pairings × responsive)
-- [ ] Founder authorizes Gap 1.1.G bypass cleanup (after review)
+- [x] Founder authorizes Gap 1.1.G bypass cleanup (authorized 2026-04-30 after live verification)
 
-#### Gap 1.1.G — Bypass cleanup (mandatory before Gap 1 closes)
-- [ ] `server/auth/__DEV_BYPASS_REMOVE_BEFORE_LAUNCH.ts` deleted
-- [ ] `devFounderBypass` middleware registration removed from `server/routes.ts`
-- [ ] Fly secrets unset: `DEV_FOUNDER_BYPASS`, `DEV_FOUNDER_BYPASS_SECRET`, `DEV_FOUNDER_USER_ID`
-- [ ] `.dev-bypass-secret` deleted locally
-- [ ] `dev-bypass-audit.log` deleted
-- [ ] `DEV_FOUNDER_BYPASS_*` lines removed from `.env.local`
-- [ ] Codebase grep for `DEV_FOUNDER_BYPASS` returns 0 references
-- [ ] Codebase grep for `REMOVE_BEFORE_LAUNCH` returns 0 references
-- [ ] Verified: request with `X-Dev-Founder-Bypass` header returns 401 (clerkAuth catches normally)
-- [ ] Verified: `?dev_bypass=...` query param has no effect
-- [ ] Verified: founder routes still return 404 to non-founders (existing security intact)
-- [ ] Verified: founder can sign in normally via Clerk
-- [ ] Clean deploy: `fly deploy -a acreos` successful
-- [ ] Final commit: `chore(cleanup): remove dev founder bypass [exhaustive] [post-gap-1]`
+#### Gap 1.1.G — Bypass cleanup — ✅ COMPLETE (commit `d9ad384`)
+- [x] `server/auth/__DEV_BYPASS_REMOVE_BEFORE_LAUNCH.ts` deleted
+- [x] `devFounderBypass` middleware registration removed from `server/routes.ts`
+- [x] Fly secrets unset: `DEV_FOUNDER_BYPASS`, `DEV_FOUNDER_BYPASS_SECRET`, `DEV_FOUNDER_USER_ID` (verified `fly secrets list` shows clean)
+- [x] `.dev-bypass-secret` deleted locally
+- [x] `dev-bypass-audit.log` deleted from Fly machine /tmp
+- [x] Codebase grep for `DEV_FOUNDER_BYPASS` in `*.ts/tsx/mjs/json/toml` returns 0 references
+- [x] Codebase grep for `REMOVE_BEFORE_LAUNCH` in `*.ts/tsx` returns 0 references
+- [x] Codebase grep for `devFounderBypass` / `__DEV_BYPASS` / `/__dev/` / `X-Dev-Founder-Bypass` in source returns 0
+- [x] Verified: request with `X-Dev-Founder-Bypass` header returns 401 (clerk catches normally)
+- [x] Verified: `?dev_bypass=...` query param has no effect (no Set-Cookie for `__dev_founder_bypass`)
+- [x] Verified: `/api/__dev/signin-token` returns 401 (route deleted)
+- [x] Additional cleanup: picker (`acreos-picker/`), prototype vendor bundles (`acreos/vendor/{babel,react,react-dom}.*.js`), bypass-dependent E2E tests (`tests/e2e/{capture-auth-surfaces,_picker-smoke,build-auth-comparisons,verify-mechanical-fixes}.ts`)
+- [x] CSP tightened: removed /__dev/* exemption + conditional `frame-ancestors 'self'`; CSP is now strict by default
+- [x] Clean deploy via GitHub Actions → Fly (run 25141435734)
+- [x] Final commit: `chore(cleanup): remove dev founder bypass [exhaustive] [post-gap-1]` (`d9ad384`)
+- [x] Post-deploy `/api/health` green, machines rolled, no `[DEV BYPASS]` startup warning expected (module deleted entirely)
 
 ---
 

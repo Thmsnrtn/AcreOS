@@ -1,6 +1,6 @@
 # Exhaustive Completion Progress
 
-Last updated: 2026-04-29 (Port Phase H complete — autonomous run finished. FINAL-PORT-AUDIT.md ready for founder review.)
+Last updated: 2026-04-30 (Production port closed: Phase H complete + Gap 1.1.G bypass cleanup shipped. Vertical expansion is the next phase in a separate prompt.)
 
 **Active directive:** Production port from prototype (replaces Gap 1.1.E/F).
 Phases A–H: A) extraction, B) theme + font + appearance, C) personalization
@@ -69,7 +69,7 @@ Companion docs: `docs/unified-build/DESIGN-SYSTEM.md`, `docs/unified-build/phase
       - [ ] Phase F — Capture + audit per tier
       - [ ] Phase G — Polish pass (today, onboarding, founder mode, settings, landing, pricing)
       - [ ] Phase H — End-to-end verification + FINAL-PORT-AUDIT.md
-    - [ ] 1.1.G — Bypass cleanup (delete bypass code/secrets/logs after Phase H approval — NOT deferred to launch)
+    - [x] 1.1.G — Bypass cleanup ✅ (commit `d9ad384`) — bypass module deleted, Fly secrets unset, picker + prototype vendor bundles removed, bypass-dependent E2E tests deleted, CSP tightened, post-deploy verified live
   - [x] Gap 1.2 — Reconciliation rolled into 1.1.F audit report (no longer a separate phase)
 - [ ] Gap 2 — Tier 1 body deep-pass (today / pipeline / parcels / inbox)
 - [ ] Gap 3 — Mobile sweep on Tier 1 (24 screenshots × 6 breakpoints)
@@ -86,8 +86,8 @@ Companion docs: `docs/unified-build/DESIGN-SYSTEM.md`, `docs/unified-build/phase
 
 ## Current State
 
-**Phase:** All phases A-H complete — autonomous run done.
-**Status:** 22 port commits (`d530396` → `fa90e50` + this Phase H commit). 17 judgment calls logged for founder review (6 resolved, 11 open deferrals). 2 migrations ready to deploy (0028 user appearance preferences, 0029 feature flag state machine). FINAL-PORT-AUDIT.md is the founder review deliverable. Bypass cleanup (Gap 1.1.G) waits for founder approval after review.
+**Phase:** Production port closed. Vertical expansion is next.
+**Status:** Phases A-H complete (24 port commits + post-port white-label clear `8fcdc89` + Gap 1.1.G cleanup `d9ad384`). 17 judgment calls logged in `JUDGMENT-CALLS.md` (6 resolved, 11 deferrals tracked). Migrations 0028 + 0029 deployed. Bypass + picker + prototype vendor bundles removed; CSP tightened. White-label override on org #1 cleared with backup at `_org-1-whitelabel-backup.json` for restore. Open architecture question logged at `_OPEN-ARCHITECTURE-QUESTIONS.md` (white-label vs theme system).
 
 **1.1.D summary (all 9 sub-phases shipped + verified):**
 - D.1 — variant-inventory.md (36 decisions across visual-review/platform-tweak/build-defer)
