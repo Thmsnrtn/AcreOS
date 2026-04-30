@@ -7,8 +7,6 @@ import { storage, db } from "./storage";
 
 // Auth imports
 import { clerkMiddleware, isAuthenticated, registerAuthRoutes } from "./auth";
-// REMOVE_BEFORE_LAUNCH (or at Gap 1.1.G — whichever first):
-import { devFounderBypass } from "./auth/__DEV_BYPASS_REMOVE_BEFORE_LAUNCH";
 
 // Feature routes (Router-based)
 import { registerAIOperationsRoutes } from "./routes-ai-operations";
@@ -450,88 +448,6 @@ export async function registerRoutes(
     jwtKey: process.env.CLERK_JWT_KEY,
     proxyUrl: process.env.APP_URL ? `${process.env.APP_URL}/__clerk` : undefined,
   }));
-
-  // REMOVE_BEFORE_LAUNCH (Gap 1.1.G) — dev-mode founder identity bypass.
-  // Runs after clerkMiddleware so it can override req.auth for bypass-marked
-  // requests. Inert unless DEV_FOUNDER_BYPASS env vars are set + correct secret.
-  app.use(devFounderBypass);
-
-  // REMOVE_BEFORE_LAUNCH (Gap 1.1.G) — variant picker + prototype static bundles.
-  // Both hosted same-origin so picker iframes can load /<surface> with Clerk
-  // session cookies intact. Gated on DEV_FOUNDER_BYPASS env var.
-  if (process.env.DEV_FOUNDER_BYPASS === "true") {
-    const path = await import("path");
-    const fs = await import("fs");
-    // Picker
-    const pickerDist = path.resolve(process.cwd(), "acreos-picker/dist");
-    if (fs.existsSync(pickerDist)) {
-      app.use("/__dev/picker", express.static(pickerDist, { fallthrough: false }));
-      app.get("/__dev/picker", (_req, res) => {
-        res.sendFile(path.join(pickerDist, "index.html"));
-      });
-    }
-    // Prototype source (HTML + JSX served raw — Babel compiles in browser)
-    const prototypeDir = path.resolve(process.cwd(), "acreos");
-    if (fs.existsSync(prototypeDir)) {
-      app.use(
-        "/__dev/prototype",
-        express.static(prototypeDir, { index: "acreos.html", fallthrough: false })
-      );
-    }
-
-    // Server-side founder-selections export (Gap 1.1.D D.6.8). On Fly, /app
-    // is read-only for the node user (image is built as root, runs as 1000),
-    // so we write to os.tmpdir() — same writable path used by the bypass
-    // audit log. The response carries both the saved path and a retrieval
-    // command so the founder (or 1.1.F Claude Code) can pull the file back
-    // into the repo.
-    app.post("/api/__dev/founder-selections", async (req, res) => {
-      const os = await import("os");
-      const founderUserId = process.env.DEV_FOUNDER_USER_ID;
-      // @clerk/express 2.x exposes req.auth as a function: `req.auth() => { userId }`.
-      // The dev bypass injects req.auth as a plain `{ userId }` object. Handle both.
-      const rawAuth = (req as Request & { auth?: unknown }).auth;
-      let userId: string | undefined;
-      if (typeof rawAuth === "function") {
-        try {
-          const fnAuth = (rawAuth as () => { userId?: string })();
-          userId = fnAuth?.userId;
-        } catch {
-          userId = undefined;
-        }
-      } else if (rawAuth && typeof rawAuth === "object") {
-        userId = (rawAuth as { userId?: string }).userId;
-      }
-      if (!founderUserId || !userId || userId !== founderUserId) {
-        return res.status(403).json({ error: "forbidden" });
-      }
-      if (!req.body || typeof req.body !== "object") {
-        return res.status(400).json({ error: "invalid-payload" });
-      }
-      const tmpDir = os.tmpdir();
-      const target = path.join(tmpDir, "founder-selections.json");
-      try {
-        if (fs.existsSync(target)) {
-          const ts = new Date().toISOString().replace(/[:.]/g, "-");
-          fs.copyFileSync(target, path.join(tmpDir, `founder-selections-${ts}.json`));
-        }
-        fs.writeFileSync(target, JSON.stringify(req.body, null, 2) + "\n", "utf8");
-        res.json({
-          ok: true,
-          target,
-          writtenAt: new Date().toISOString(),
-          retrieval: {
-            command: `fly ssh console -a acreos -C 'cat ${target}'`,
-            note: "On Fly the container's /app is read-only; export writes to /tmp. " +
-                  "Use the command above to copy the file into the repo at " +
-                  "docs/exhaustive-completion/founder-selections.json before committing.",
-          },
-        });
-      } catch (err) {
-        res.status(500).json({ error: "write-failed", message: (err as Error).message });
-      }
-    });
-  }
 
   // Register auth routes (/api/auth/user, /api/auth/attribution)
   registerAuthRoutes(app);

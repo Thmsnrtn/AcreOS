@@ -1,5 +1,8 @@
 # Pre-Launch Removal Checklist — Dev Founder Bypass
 
+**Status: ✅ COMPLETE — bypass cleanup ran 2026-04-30 after founder approved
+the production port. Document retained as historical record.**
+
 This document tracks the development-mode founder authentication bypass added
 in Gap 1.1.A. It MUST be removed at Gap 1.1.G (immediately after
 audit-after-fix is approved by founder), or at the absolute latest before
@@ -20,21 +23,21 @@ below is fully verified.
 
 ## Files to delete
 
-- [ ] `server/auth/__DEV_BYPASS_REMOVE_BEFORE_LAUNCH.ts`
-- [ ] `dev-bypass-audit.log` (in `os.tmpdir()` — `/tmp/dev-bypass-audit.log` on Linux/macOS; ephemeral, but inspect via `fly ssh console -a acreos -C 'cat /tmp/dev-bypass-audit.log'`)
-- [ ] `.dev-bypass-secret` (gitignored — local artifact)
+- [x] `server/auth/__DEV_BYPASS_REMOVE_BEFORE_LAUNCH.ts`
+- [x] `dev-bypass-audit.log` (in `os.tmpdir()` — `/tmp/dev-bypass-audit.log` on Linux/macOS; ephemeral, but inspect via `fly ssh console -a acreos -C 'cat /tmp/dev-bypass-audit.log'`)
+- [x] `.dev-bypass-secret` (gitignored — local artifact)
 
 ## Code to remove
 
-- [ ] Import of `devFounderBypass` in `server/routes.ts`
-- [ ] `app.use(devFounderBypass)` middleware registration in `server/routes.ts`
-- [ ] Any other reference to the bypass module (search verifies)
+- [x] Import of `devFounderBypass` in `server/routes.ts`
+- [x] `app.use(devFounderBypass)` middleware registration in `server/routes.ts`
+- [x] Any other reference to the bypass module (search verifies)
 
 ## Environment variables to unset
 
-- [ ] `DEV_FOUNDER_BYPASS` — Fly secrets (`-a acreos`) and `.env.local`
-- [ ] `DEV_FOUNDER_BYPASS_SECRET` — Fly secrets and `.env.local`
-- [ ] `DEV_FOUNDER_USER_ID` — Fly secrets and `.env.local`
+- [x] `DEV_FOUNDER_BYPASS` — Fly secrets (`-a acreos`) and `.env.local`
+- [x] `DEV_FOUNDER_BYPASS_SECRET` — Fly secrets and `.env.local`
+- [x] `DEV_FOUNDER_USER_ID` — Fly secrets and `.env.local`
 
 Fly: `fly secrets unset DEV_FOUNDER_BYPASS DEV_FOUNDER_BYPASS_SECRET DEV_FOUNDER_USER_ID -a acreos`
 
@@ -46,25 +49,25 @@ filenames are not to be committed).
 
 ## Verification
 
-- [ ] `grep -r "DEV_FOUNDER_BYPASS" .` returns 0 references (excluding
+- [x] `grep -r "DEV_FOUNDER_BYPASS" .` returns 0 references (excluding
       this checklist file and any commit-message search hits)
-- [ ] `grep -r "REMOVE_BEFORE_LAUNCH" --include="*.ts" --include="*.tsx" .`
+- [x] `grep -r "REMOVE_BEFORE_LAUNCH" --include="*.ts" --include="*.tsx" .`
       returns 0 references
-- [ ] `grep -r "devFounderBypass" --include="*.ts" .` returns 0 references
-- [ ] `grep -r "__DEV_BYPASS" .` returns 0 references
-- [ ] `fly secrets list -a acreos | grep -i bypass` returns nothing
+- [x] `grep -r "devFounderBypass" --include="*.ts" .` returns 0 references
+- [x] `grep -r "__DEV_BYPASS" .` returns 0 references
+- [x] `fly secrets list -a acreos | grep -i bypass` returns nothing
 
 ## Functional verification (after clean deploy)
 
-- [ ] Request with `X-Dev-Founder-Bypass: <any-value>` header to
+- [x] Request with `X-Dev-Founder-Bypass: <any-value>` header to
       `https://acreos.fly.dev/api/auth/user` returns 401 (Clerk catches
       the unauthenticated request normally)
-- [ ] `https://acreos.fly.dev/today?dev_bypass=anything` returns the
+- [x] `https://acreos.fly.dev/today?dev_bypass=anything` returns the
       normal redirect-to-sign-in flow (no Set-Cookie for `__dev_founder_bypass`)
-- [ ] `__dev_founder_bypass` cookie has no effect on auth (server doesn't
+- [x] `__dev_founder_bypass` cookie has no effect on auth (server doesn't
       read it anymore)
-- [ ] Founder routes return 404 to non-founders (existing security intact)
-- [ ] Founder can sign in normally via Clerk on acreos.fly.dev
+- [x] Founder routes return 404 to non-founders (existing security intact)
+- [x] Founder can sign in normally via Clerk on acreos.fly.dev
 
 ## Launch-marker tripwire
 
