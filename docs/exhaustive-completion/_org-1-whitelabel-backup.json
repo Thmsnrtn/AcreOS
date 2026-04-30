@@ -1,0 +1,43 @@
+{
+  "capturedAt": "2026-04-30T00:33:20.662Z",
+  "organizationId": 1,
+  "tenantId": "017cfc59-612e-4e62-85b4-91606d057ba1",
+  "reason": "Cleared post-port to verify Homestead theme renders without white-label override; restore after founder review.",
+  "config": {
+    "tenantId": "017cfc59-612e-4e62-85b4-91606d057ba1",
+    "organizationId": 1,
+    "parentOrganizationId": 2,
+    "brandName": "Cycle 14 Kim Demo",
+    "primaryColor": "#6f2da8",
+    "accentColor": "#16a34a",
+    "supportEmail": "support@acreos.com",
+    "footerText": "Powered by AcreOS",
+    "features": {
+      "academy": true,
+      "voiceAI": false,
+      "visionAI": true,
+      "dealHunter": true,
+      "marketplace": true,
+      "complianceAI": false,
+      "taxResearcher": false,
+      "capitalMarkets": false,
+      "negotiationCopilot": true,
+      "portfolioOptimizer": true
+    },
+    "revenueShare": {
+      "platformFeePercent": 70,
+      "resellerFeePercent": 30
+    },
+    "limits": {
+      "maxLeads": 1000,
+      "maxUsers": 5,
+      "maxCampaigns": 10,
+      "maxProperties": 500
+    },
+    "plan": "starter",
+    "billingEmail": "",
+    "status": "active",
+    "createdAt": "2026-04-21T01:39:51.977Z",
+    "updatedAt": "2026-04-21T01:39:51.977Z"
+  }
+}
