@@ -8,28 +8,39 @@ const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
  * callbacks from external services which cannot supply our CSRF token.
  * Only exact webhook callback paths are listed — authenticated endpoints
  * like PUT /api/webhooks are NOT exempt.
+ *
+ * IMPORTANT — path-prefix gotcha. This middleware is mounted at /api in
+ * server/routes.ts (`app.use("/api", csrfProtection)`). Express strips the
+ * mount prefix from `req.path` inside the middleware, so for a request to
+ * `/api/stripe/webhook` we see `req.path === "/stripe/webhook"`. Entries
+ * for routes that go through the /api mount must be written WITHOUT the
+ * /api prefix; entries for non-/api roots (like the Twilio recording-
+ * complete webhook mounted at `/webhook/...`) keep their full path.
  */
 const CSRF_EXEMPT_PATHS = new Set([
-  "/api/stripe/webhook",
-  "/api/stripe/connect/webhook",
-  "/api/twilio/webhook",
-  "/api/sns/webhook",
-  "/api/webhooks/inbound-email",
-  "/api/webhooks/twilio/sms",
-  "/api/webhooks/twilio/sms-status",
-  "/api/webhooks/twilio/recording-status",
-  "/api/webhooks/dropbox-sign",
-  "/api/webhooks/meta-lead-ads",
-  "/api/webhooks/actum",
-  "/webhook/twilio/recording-complete",
-  "/webhook/disclosure",
+  // Routes mounted under /api — exempt list sees these without the /api prefix
+  "/stripe/webhook",
+  "/stripe/connect/webhook",
+  "/twilio/webhook",
+  "/sns/webhook",
+  "/webhooks/inbound-email",
+  "/webhooks/twilio/sms",
+  "/webhooks/twilio/sms-status",
+  "/webhooks/twilio/recording-status",
+  "/webhooks/dropbox-sign",
+  "/webhooks/meta-lead-ads",
+  "/webhooks/actum",
   // STR-009: analytics/telemetry are fire-and-forget beacons that can't
   // set a CSRF cookie before the first page load, and sendBeacon() can't
   // attach custom headers. They're auth-gated and don't mutate user data,
   // so CSRF exemption is safe.
-  "/api/analytics/session/start",
-  "/api/analytics/session/end",
-  "/api/telemetry",
+  "/analytics/session/start",
+  "/analytics/session/end",
+  "/telemetry",
+  // Routes NOT mounted under /api — these never reach this middleware
+  // because the mount is /api-only; kept for documentation only.
+  "/webhook/twilio/recording-complete",
+  "/webhook/disclosure",
 ]);
 
 const CSRF_COOKIE = "csrf_token";
