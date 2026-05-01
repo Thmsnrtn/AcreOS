@@ -384,10 +384,10 @@ const NAV_MODULES: NavModule[] = [
   // ── Intelligence ──────────────────────────────────────────────────
   {
     id: "ai-hub",
-    label: "AI Hub",
+    label: "Pax",
     icon: Bot,
     href: "/ai",
-    description: "AI assistant, agents, and automation",
+    description: "Your AcreOS assistant — chat, activity, automation",
   },
   {
     id: "intelligence",
