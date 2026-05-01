@@ -138,6 +138,7 @@ import { registerFinanceRoutes } from "./routes-finance";
 import { registerDocumentRoutes } from "./routes-documents";
 import { registerCampaignRoutes } from "./routes-campaigns";
 import { registerAIRoutes } from "./routes-ai";
+import aiDraftRouter from "./routes-ai-draft";
 import { registerBillingRoutes } from "./routes-billing";
 import { registerBorrowerRoutes } from "./routes-borrower";
 import { registerAdminRoutes } from "./routes-admin";
@@ -1609,6 +1610,11 @@ export async function registerRoutes(
   registerDocumentRoutes(app);
   registerCampaignRoutes(app);
   registerAIRoutes(app);
+  // Pax inbox drafted-reply (product-call #10) — uses the standard AI
+  // router under /api/ai. Mounted after registerAIRoutes so its routes
+  // take precedence on the same prefix; isAuthenticated + getOrCreateOrg
+  // gate access.
+  app.use('/api/ai', isAuthenticated, getOrCreateOrg, aiDraftRouter);
   registerBillingRoutes(app);
   registerBorrowerRoutes(app);
   // F-A07-1: Require 2FA verification before any admin operation for users who have it enabled

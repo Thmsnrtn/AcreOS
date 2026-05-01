@@ -21,11 +21,11 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Textarea } from "@/components/ui/textarea";
 import { EmptyState } from "@/components/empty-state";
 import { ListSkeleton } from "@/components/list-skeleton";
-import { 
-  Search, 
-  Mail, 
-  Star, 
-  Archive, 
+import {
+  Search,
+  Mail,
+  Star,
+  Archive,
   ArrowLeft,
   Send,
   MailOpen,
@@ -33,7 +33,9 @@ import {
   User,
   ExternalLink,
   MessageSquare,
-  Phone
+  Phone,
+  Sparkles,
+  RefreshCw,
 } from "lucide-react";
 import { Link } from "wouter";
 
@@ -276,6 +278,43 @@ function EmailMessageDetail({
   const [replyText, setReplyText] = useState("");
   const [showReply, setShowReply] = useState(false);
   const [pendingArchive, setPendingArchive] = useState(false);
+  // Pax draft state (product-call #10). attribution shown above the
+  // textarea once a draft lands; null when the user is composing manually.
+  const [paxAttribution, setPaxAttribution] = useState<string | null>(null);
+  const [draftError, setDraftError] = useState<string | null>(null);
+
+  const draftReplyMutation = useMutation({
+    mutationFn: async (priorDraft?: string) => {
+      const res = await apiRequest("POST", "/api/ai/draft-reply", {
+        messageId: message.id,
+        priorDraft,
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.message || "Couldn't draft a reply");
+      }
+      return res.json() as Promise<{ draft: string; attribution: string; model: string }>;
+    },
+    onSuccess: (data) => {
+      setReplyText(data.draft);
+      setPaxAttribution(data.attribution);
+      setDraftError(null);
+    },
+    onError: (err) => {
+      setDraftError(err instanceof Error ? err.message : "Couldn't draft a reply");
+    },
+  });
+
+  // Auto-trigger a draft the first time the user opens the reply panel.
+  // Subsequent opens (e.g. after Cancel + Reply) don't re-trigger so the
+  // user's prior draft is preserved.
+  const [hasAutoDrafted, setHasAutoDrafted] = useState(false);
+  useEffect(() => {
+    if (showReply && !hasAutoDrafted && !replyText) {
+      setHasAutoDrafted(true);
+      draftReplyMutation.mutate(undefined);
+    }
+  }, [showReply, hasAutoDrafted, replyText, draftReplyMutation]);
 
   const markReadMutation = useMutation({
     mutationFn: async () => {
@@ -524,12 +563,6 @@ function EmailMessageDetail({
           </div>
 
           {showReply && (
-            // TODO (Phase E.2.4 follow-up — feature add, not visual port):
-            // wire Pax draft integration here per prototype's Inbox AI
-            // attribution pattern ("Pax drafted a reply · ready to review").
-            // The prototype pre-fills suggested copy with the Pax byline;
-            // production currently shows a blank textarea. Adding the
-            // server-side draft + UI surface is JUDGMENT-CALLS.md follow-up.
             <Card className="mt-4 rounded-card" id="inbox-reply-panel">
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between gap-2">
@@ -539,11 +572,55 @@ function EmailMessageDetail({
               </CardHeader>
               <CardContent className="space-y-3">
                 <ProviderReadinessBanner channel="email" compact />
+
+                {/* Pax draft attribution — only shown after the autodraft
+                    lands. User can keep the draft, edit it, or regenerate. */}
+                {paxAttribution && !draftReplyMutation.isPending && (
+                  <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-md bg-acr-brand-soft text-acr-brand text-xs">
+                    <span className="flex items-center gap-1.5 font-medium">
+                      <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+                      {paxAttribution}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs hover:bg-acr-brand/15"
+                      onClick={() => draftReplyMutation.mutate(replyText || undefined)}
+                      disabled={draftReplyMutation.isPending}
+                      data-testid="button-regenerate-draft"
+                      aria-label="Regenerate Pax draft"
+                    >
+                      <RefreshCw className="h-3.5 w-3.5 mr-1" aria-hidden="true" />
+                      Regenerate
+                    </Button>
+                  </div>
+                )}
+
+                {draftReplyMutation.isPending && !replyText && (
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-muted text-muted-foreground text-xs">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                    Pax is drafting a reply…
+                  </div>
+                )}
+
+                {draftError && !replyText && (
+                  <p className="text-xs text-acr-warn">
+                    {draftError}. You can still write a reply manually below.
+                  </p>
+                )}
+
                 <Textarea
                   placeholder="Type your reply…"
                   aria-label="Reply message"
                   value={replyText}
-                  onChange={(e) => setReplyText(e.target.value)}
+                  onChange={(e) => {
+                    setReplyText(e.target.value);
+                    // Once the user edits, the draft is theirs — drop the Pax
+                    // attribution so they don't feel like they're sending an
+                    // AI reply when in fact they reshaped it.
+                    if (paxAttribution) setPaxAttribution(null);
+                  }}
                   rows={5}
                   autoCapitalize="sentences"
                   data-testid="input-reply-text"
@@ -551,7 +628,12 @@ function EmailMessageDetail({
                 <div className="flex justify-end gap-2">
                   <Button
                     variant="outline"
-                    onClick={() => setShowReply(false)}
+                    onClick={() => {
+                      setShowReply(false);
+                      setPaxAttribution(null);
+                      setHasAutoDrafted(false);
+                      setReplyText("");
+                    }}
                     data-testid="button-cancel-reply"
                   >
                     Cancel

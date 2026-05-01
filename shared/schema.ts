@@ -72,6 +72,10 @@ export const organizations = pgTable("organizations", {
       defaultAgent?: string;
       autoSuggestions?: boolean;
       rememberContext?: boolean;
+      // Pax inbox drafted-reply gate (product-call #10). Defaulted on; set
+      // to false from Settings → Notifications when an org wants their
+      // inbox replies fully manual.
+      paxDraftEnabled?: boolean;
     };
     // Dashboard Widget Settings
     dashboardWidgets?: {
