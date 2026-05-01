@@ -345,17 +345,18 @@ const NAV_MODULES: NavModule[] = [
     href: "/leads",
     description: "Contacts, deals, and property management",
     children: [
-      { label: "Leads", icon: Users, href: "/leads", description: "Manage your leads and sellers" },
-      { label: "Dedupe", icon: GitMerge, href: "/leads/dedupe", description: "Find and merge duplicate leads" },
-      { label: "Skip Tracing", icon: Search, href: "/skip-tracing", description: "Find owner contact info" },
+      // Removed redundant "Leads" child — parent href already goes to /leads.
+      // Discoverability via parent click + breadcrumb in URL.
       { label: "Properties", icon: Map, href: "/properties", description: "Properties you own or evaluate" },
-      { label: "Portfolio Map", icon: MapPin, href: "/maps", description: "Interactive portfolio mapping" },
-      { label: "Deal Pipeline", icon: GitBranch, href: "/deals", description: "Visualize your deal flow" },
+      { label: "Pipeline", icon: GitBranch, href: "/deals", description: "Visualize your deal flow" },
+      { label: "Skip Tracing", icon: Search, href: "/skip-tracing", description: "Find owner contact info" },
+      { label: "Dedupe", icon: GitMerge, href: "/leads/dedupe", description: "Find and merge duplicate leads" },
+      { label: "Map", icon: MapPin, href: "/maps", description: "Interactive portfolio mapping" },
+      { label: "Documents", icon: FileText, href: "/documents", description: "Property documents" },
+      { label: "Blind Offers", icon: Wand2, href: "/blind-offer-wizard", description: "Calculate blind offers step-by-step" },
+      { label: "Offer Batches", icon: Layers, href: "/offers/batches", description: "Bulk-generated offers" },
       { label: "Marketplace", icon: Store, href: "/marketplace", description: "Buy and sell deals" },
       { label: "Listings", icon: FileText, href: "/listings", description: "Properties for sale" },
-      { label: "Documents", icon: FileText, href: "/documents", description: "Property documents" },
-      { label: "Blind Offer Wizard", icon: Wand2, href: "/blind-offer-wizard", description: "Calculate blind offers step-by-step" },
-      { label: "Offer Batches", icon: Layers, href: "/offers/batches", description: "Bulk-generated offers by pricing matrix" },
     ],
   },
 
@@ -367,7 +368,7 @@ const NAV_MODULES: NavModule[] = [
     href: "/campaigns",
     description: "Email, SMS, and direct mail campaigns",
     children: [
-      { label: "Campaigns", icon: Mail, href: "/campaigns", description: "Email, SMS, and direct mail campaigns" },
+      // Removed redundant "Campaigns" child — parent already routes to /campaigns.
       { label: "Direct Mail", icon: Newspaper, href: "/direct-mail", description: "Direct mail campaign automation" },
       { label: "Sequences", icon: Zap, href: "/sequences", description: "Automated follow-up sequences" },
     ],
@@ -391,20 +392,20 @@ const NAV_MODULES: NavModule[] = [
   },
   {
     id: "intelligence",
-    label: "Intelligence",
+    label: "Insights",
     icon: Brain,
     href: "/analytics",
-    description: "Insights and analysis",
+    description: "Analysis and market signals",
     children: [
-      { label: "Insights", icon: TrendingUp, href: "/analytics", description: "Analytics and market insights" },
-      { label: "Cohort Retention", icon: TrendingUp, href: "/analytics#retention", description: "Cohort retention curves and revenue" },
+      // Removed redundant "Insights" child — parent href already goes to /analytics.
       { label: "Valuations", icon: TrendingUp, href: "/avm", description: "Automated property valuations" },
       { label: "Land Credit", icon: Shield, href: "/land-credit", description: "Proprietary 300-850 land scoring" },
       { label: "Markets", icon: Globe, href: "/market-intelligence", description: "Market analysis and price trends" },
       { label: "Counties", icon: Landmark, href: "/counties", description: "USDA + Census county intelligence" },
-      { label: "Acq. Radar", icon: Target, href: "/radar", description: "AI-scored deal opportunities" },
-      { label: "Document Intel", icon: FileSearch, href: "/document-intelligence", description: "AI document analysis and parsing" },
+      { label: "Acquisition Radar", icon: Target, href: "/radar", description: "Scored deal opportunities" },
       { label: "Compliance", icon: ShieldCheck, href: "/compliance", description: "Regulatory monitoring" },
+      // Niche surfaces (Cohort Retention, Document Intel) reachable via /analytics
+      // tabs + command palette ⌘K — kept off the primary nav for legibility.
     ],
   },
 
@@ -416,10 +417,10 @@ const NAV_MODULES: NavModule[] = [
     href: "/finance",
     description: "Seller financing and portfolio",
     children: [
-      { label: "Finance", icon: Banknote, href: "/finance", description: "Seller-financed notes" },
-      { label: "Cash Flow", icon: Activity, href: "/cash-flow", description: "12-month cash flow forecasting" },
+      // Removed redundant "Finance" child — parent href already goes to /finance.
       { label: "Portfolio", icon: PieChart, href: "/portfolio", description: "Investment portfolio view" },
-      { label: "Capital Mkts", icon: DollarSign, href: "/capital-markets", description: "Note securitization and lenders" },
+      { label: "Cash Flow", icon: Activity, href: "/cash-flow", description: "12-month forecasting" },
+      { label: "Capital Markets", icon: DollarSign, href: "/capital-markets", description: "Note securitization and lenders" },
     ],
   },
 
@@ -429,7 +430,7 @@ const NAV_MODULES: NavModule[] = [
   // → trends (trust gauge) → individual approval surfaces.
   {
     id: "founder-business",
-    label: "Founder business",
+    label: "Founder",
     icon: Crown,
     href: "/founder/todo",
     description: "Autonomous-operation command center",
@@ -461,7 +462,7 @@ const NAV_MODULES: NavModule[] = [
     href: "/settings",
     description: "Account settings and preferences",
     children: [
-      { label: "Settings", icon: Settings, href: "/settings", description: "Account and preferences" },
+      // Removed redundant "Settings" child — parent href already goes to /settings.
       { label: "Tools", icon: Calculator, href: "/tools", description: "Calculators and utilities" },
       { label: "Data Export", icon: Package, href: "/data-export", description: "Export your data as CSV or JSON" },
       { label: "Help & Support", icon: HelpCircle, href: "/help", description: "Help topics and support" },
