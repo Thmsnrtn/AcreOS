@@ -271,7 +271,7 @@ export default function FinancePage() {
               <CardContent className="p-6">
                 <div className="flex items-center gap-3">
                   <div className="p-3 rounded-xl bg-emerald-500/10">
-                    <DollarSign className="w-5 h-5 text-emerald-600" />
+                    <DollarSign className="w-5 h-5 text-acr-pos" />
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Portfolio value</p>
@@ -291,7 +291,7 @@ export default function FinancePage() {
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Monthly income</p>
-                    <p className="text-2xl font-bold font-mono tabular-nums text-emerald-600" data-testid="text-monthly-income">
+                    <p className="text-2xl font-bold font-mono tabular-nums text-acr-pos" data-testid="text-monthly-income">
                       {usd(monthlyIncome)}
                     </p>
                   </div>
@@ -396,7 +396,7 @@ export default function FinancePage() {
                           <TableCell className="text-right font-mono font-medium tabular-nums">
                             {usd(note.currentBalance)}
                           </TableCell>
-                          <TableCell className="text-right font-mono font-bold tabular-nums text-emerald-600">
+                          <TableCell className="text-right font-mono font-bold tabular-nums text-acr-pos">
                             {usd(note.monthlyPayment)}
                           </TableCell>
                           <TableCell className="text-muted-foreground">
@@ -685,7 +685,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
             <Card className="glass-panel">
               <CardContent className="p-4">
                 <p className="text-sm text-muted-foreground">Monthly payment</p>
-                <p className="text-2xl font-bold font-mono tabular-nums text-emerald-600" data-testid="text-monthly-payment">
+                <p className="text-2xl font-bold font-mono tabular-nums text-acr-pos" data-testid="text-monthly-payment">
                   {usd(note.monthlyPayment)}
                 </p>
               </CardContent>
@@ -758,7 +758,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                   <div className="bg-muted/50 rounded-lg p-3">
                     <div className="flex justify-between items-center">
                       <span className="text-sm text-muted-foreground">Monthly payment</span>
-                      <span className="font-bold font-mono tabular-nums text-emerald-600">
+                      <span className="font-bold font-mono tabular-nums text-acr-pos">
                         {usd(note.monthlyPayment)}
                       </span>
                     </div>
@@ -902,7 +902,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="bg-muted/50 rounded-lg p-3 text-center">
                   <p className="text-xs text-muted-foreground">Total interest</p>
-                  <p className="font-bold font-mono tabular-nums text-amber-600" data-testid="text-total-interest">
+                  <p className="font-bold font-mono tabular-nums text-acr-warn" data-testid="text-total-interest">
                     {usd(schedule.reduce((sum, s) => sum + (s.interest || 0), 0))}
                   </p>
                 </div>
@@ -982,9 +982,9 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                               <TableCell className="text-right font-mono tabular-nums">{usd(row.balance)}</TableCell>
                               <TableCell>
                                 {row.status === 'paid' ? (
-                                  <CheckCircle className="w-4 h-4 text-emerald-600" aria-label="Paid" role="img" />
+                                  <CheckCircle className="w-4 h-4 text-acr-pos" aria-label="Paid" role="img" />
                                 ) : row.status === 'late' ? (
-                                  <AlertTriangle className="w-4 h-4 text-red-600" aria-label="Late" role="img" />
+                                  <AlertTriangle className="w-4 h-4 text-acr-neg" aria-label="Late" role="img" />
                                 ) : (
                                   <Clock className="w-4 h-4 text-muted-foreground" aria-label="Pending" role="img" />
                                 )}
@@ -1017,7 +1017,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                           {dunningData.daysDelinquent > 0 ? (
                             <AlertTriangle className="w-5 h-5 text-red-500" aria-hidden="true" />
                           ) : (
-                            <CheckCircle className="w-5 h-5 text-emerald-500" aria-hidden="true" />
+                            <CheckCircle className="w-5 h-5 text-acr-pos" aria-hidden="true" />
                           )}
                           <span className="font-bold tabular-nums" data-testid="text-dunning-status">
                             {dunningData.daysDelinquent > 0 ? `${dunningData.daysDelinquent} days past due` : 'Current'}
@@ -1047,7 +1047,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                     <Card className="glass-panel">
                       <CardContent className="p-4">
                         <dt className="text-xs text-muted-foreground mb-1">Past due amount</dt>
-                        <dd className="font-bold font-mono tabular-nums text-red-600" data-testid="text-past-due-amount">
+                        <dd className="font-bold font-mono tabular-nums text-acr-neg" data-testid="text-past-due-amount">
                           {usd(dunningData.pastDueAmount ?? 0)}
                         </dd>
                       </CardContent>
@@ -1340,7 +1340,7 @@ function AcceptPaymentModal({ note, onClose }: { note: NoteWithDetails; onClose:
                   aria-live="polite"
                 >
                   <div className="flex items-center gap-2 mb-2">
-                    <CheckCircle className="w-5 h-5 text-emerald-600" aria-hidden="true" />
+                    <CheckCircle className="w-5 h-5 text-acr-pos" aria-hidden="true" />
                     <span className="font-medium text-emerald-800 dark:text-emerald-200">Payment intent created</span>
                   </div>
                   <p className="text-sm text-muted-foreground mb-2">
@@ -1748,7 +1748,7 @@ function NoteForm({ onSuccess }: { onSuccess: () => void }) {
           >
             <div className="flex justify-between items-center">
               <span className="text-sm text-muted-foreground">Calculated monthly payment</span>
-              <span className="text-lg font-bold font-mono tabular-nums text-emerald-600">
+              <span className="text-lg font-bold font-mono tabular-nums text-acr-pos">
                 {usd(suggestedPayment)}
               </span>
             </div>
