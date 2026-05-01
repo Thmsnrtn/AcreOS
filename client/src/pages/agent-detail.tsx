@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { agentTextClass, agentBgClass, getAgentIdentity } from "@/lib/agent-identity";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useRoute } from "wouter";
@@ -27,16 +28,13 @@ const AGENT_ICONS: Record<string, React.ElementType> = {
   compass_pm: Navigation, crucible_qa: ScrollText,
 };
 
-const AGENT_COLORS: Record<string, string> = {
-  atlas_cto: "text-blue-600", sophie_csm: "text-pink-500", forge_revenue: "text-green-600",
-  beacon_marketing: "text-orange-500", sentinel_devops: "text-slate-600", ledger_finance: "text-emerald-600",
-  shield_legal: "text-red-500", oracle_analytics: "text-purple-600",
-  compass_pm: "text-cyan-600", crucible_qa: "text-amber-600",
-};
+// Per-agent text color now sourced from the consolidated registry at
+// client/src/lib/agent-identity.ts — see agentTextClass(). Migration of
+// the remaining AGENT_COLORS literals across founder-dashboard /
+// components/founder/* tracks the same registry.
 
-// Outcome → semantic --acr-* tone (Tier 1 pattern). AGENT_COLORS above
-// stays per-agent identity (Phase G polish opportunity to reconcile with
-// design-system §1.3 "simple letter mark beside it").
+// Outcome → semantic --acr-* tone (Tier 1 pattern). agentTextClass()
+// handles the per-agent identity side; this remains outcome-only.
 const OUTCOME_STYLES: Record<string, { icon: React.ElementType; color: string; label: string }> = {
   success: { icon: CheckCircle2, color: "text-acr-pos", label: "Success" },
   failure: { icon: XCircle, color: "text-acr-neg", label: "Failure" },
@@ -112,7 +110,9 @@ export default function AgentDetailPage() {
 
   const { agent, liveData, recentActions, goals } = data;
   const Icon = AGENT_ICONS[codename] || Bot;
-  const color = AGENT_COLORS[codename] || "text-gray-500";
+  const color = agentTextClass(codename);
+  const identity = getAgentIdentity(codename);
+  const letterClass = agentBgClass(codename);
   const isPaused = agent.status === "paused";
   const trustPct = agent.trustScore || 50;
   const successCount = recentActions?.filter((a: any) => a.outcome === "success").length || 0;
@@ -124,8 +124,17 @@ export default function AgentDetailPage() {
       <div className="space-y-6">
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-4">
-            <div className="p-3 rounded-xl bg-muted">
+            <div className="relative p-3 rounded-xl bg-muted">
               <Icon className={`w-8 h-8 ${color}`} aria-hidden="true" />
+              {/* Letter mark — design-system §1.3. Soft tint matches the
+                  agent's tone so it reads as part of the identity, not as
+                  a separate badge. */}
+              <span
+                className={`absolute -top-1 -right-1 w-5 h-5 rounded-full text-[11px] font-semibold flex items-center justify-center ${letterClass}`}
+                aria-label={`${identity.friendlyName} letter mark`}
+              >
+                {identity.letter}
+              </span>
             </div>
             <div>
               <h1 className="text-2xl font-bold">{agent.title}</h1>

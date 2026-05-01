@@ -12,32 +12,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Clock, CheckCircle, XCircle, Undo2, ChevronDown, ChevronUp } from "lucide-react";
-
-const AGENT_COLORS: Record<string, string> = {
-  sophie_csm: "#E879A8",
-  forge_revenue: "#F59E0B",
-  sentinel_devops: "#3B82F6",
-  atlas_cto: "#8B5CF6",
-  beacon_marketing: "#10B981",
-  ledger_finance: "#6366F1",
-  oracle_analytics: "#EC4899",
-  compass_pm: "#14B8A6",
-  shield_legal: "#F97316",
-  crucible_qa: "#EF4444",
-};
-
-const AGENT_NAMES: Record<string, string> = {
-  sophie_csm: "Sophie",
-  forge_revenue: "Forge",
-  sentinel_devops: "Sentinel",
-  atlas_cto: "Atlas",
-  beacon_marketing: "Beacon",
-  ledger_finance: "Ledger",
-  oracle_analytics: "Oracle",
-  compass_pm: "Compass",
-  shield_legal: "Shield",
-  crucible_qa: "Crucible",
-};
+import { agentBgClass, getAgentIdentity } from "@/lib/agent-identity";
 
 function getTimeBlock(dateStr: string): string {
   const date = new Date(dateStr);
@@ -125,8 +100,9 @@ export default function ActivityTimeline() {
             <ul aria-labelledby={blockId} className="space-y-1 list-none p-0 m-0">
               {blockEntries.map((entry: any) => {
                 const isExpanded = expanded.has(entry.id);
-                const agentName = AGENT_NAMES[entry.agentCodename] || entry.agentCodename;
-                const agentColor = AGENT_COLORS[entry.agentCodename] || "#6B7280";
+                const identity = getAgentIdentity(entry.agentCodename);
+                const agentName = identity.friendlyName !== "Unknown" ? identity.friendlyName : entry.agentCodename;
+                const agentDotClass = agentBgClass(entry.agentCodename);
                 const action = entry.humanReadable || entry.actionName.replace(/_/g, " ");
                 const outcomeText = entry.outcome === "success" ? "succeeded" : entry.outcome === "failure" ? "failed" : "pending";
 
@@ -147,12 +123,15 @@ export default function ActivityTimeline() {
                       aria-label={`${agentName}: ${action}, ${outcomeText} at ${formatTime(entry.createdAt)}`}
                       className="w-full flex items-center gap-3 p-3 text-left hover:bg-gray-700/30 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
-                      {/* Agent dot */}
+                      {/* Agent letter mark — design-system §1.3. Soft tint
+                          matches the agent's tone via the consolidated
+                          identity registry. */}
                       <div
                         aria-hidden="true"
-                        className="w-2 h-2 rounded-full flex-shrink-0"
-                        style={{ backgroundColor: agentColor }}
-                      />
+                        className={`w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center text-[10px] font-semibold ${agentDotClass}`}
+                      >
+                        {identity.letter}
+                      </div>
 
                       {/* Content */}
                       <div className="flex-1 min-w-0">

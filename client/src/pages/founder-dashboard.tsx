@@ -694,21 +694,14 @@ function SophieActivityPreview() {
 // AUTONOMOUS OBSERVATORY COMPONENTS
 // ─────────────────────────────────────────────
 
-const JOB_COLORS: Record<string, string> = {
-  finance_agent:       "bg-blue-500",
-  campaign_optimizer:  "bg-purple-500",
-  lead_nurturing:      "bg-acr-pos",
-  support_brain:       "bg-cyan-500",
-  dunning:             "bg-acr-neg",
-  external_monitor:    "bg-acr-warn",
-  pax:              "bg-violet-500",
-  churn_engine:        "bg-rose-500",
-  founder_briefing:    "bg-acr-pos",
-  default:             "bg-zinc-400",
-};
+// Per-job display tone is sourced from the consolidated identity registry —
+// see client/src/lib/agent-identity.ts. One semantic palette for both
+// agents and jobs prevents the dashboard from drifting back to hardcoded
+// hexes every time a new job lands.
+import { jobBgClass, agentTextClass } from "@/lib/agent-identity";
 
 function jobColor(jobName: string) {
-  return JOB_COLORS[jobName] ?? JOB_COLORS.default;
+  return jobBgClass(jobName);
 }
 
 function JobStatusDot({ status }: { status: string }) {
@@ -6881,18 +6874,13 @@ const AGENT_ICONS: Record<string, React.ElementType> = {
   crucible_qa: ScrollText,
 };
 
-const AGENT_COLORS: Record<string, string> = {
-  atlas_cto: "text-blue-600 dark:text-blue-400",
-  sophie_csm: "text-pink-500 dark:text-pink-400",
-  forge_revenue: "text-acr-pos dark:text-acr-pos",
-  beacon_marketing: "text-acr-warn dark:text-acr-warn",
-  sentinel_devops: "text-slate-600 dark:text-slate-400",
-  ledger_finance: "text-acr-pos dark:text-acr-pos",
-  shield_legal: "text-acr-neg dark:text-acr-neg",
-  oracle_analytics: "text-purple-600 dark:text-purple-400",
-  compass_pm: "text-cyan-600 dark:text-cyan-400",
-  crucible_qa: "text-acr-warn dark:text-acr-warn",
-};
+// Per-agent text color sourced from the consolidated identity registry
+// — see client/src/lib/agent-identity.ts (agentTextClass). Direct lookup
+// kept as a Record so existing call-sites (`AGENT_COLORS[codename]`) keep
+// working without further refactoring.
+const AGENT_COLORS: Record<string, string> = new Proxy({}, {
+  get: (_, codename: string) => agentTextClass(codename),
+}) as Record<string, string>;
 
 const WING_BADGES: Record<string, { label: string; className: string }> = {
   product: { label: "Product", className: "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/20" },

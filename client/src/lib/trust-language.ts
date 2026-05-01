@@ -49,18 +49,29 @@ export const AGENT_AVATARS: Record<string, string> = {
   crucible_qa: "🔬",
 };
 
-/** Map agent codenames to theme-consistent colors */
+/**
+ * Map agent codenames to a tailwind color name (used by older consumers
+ * that build dynamic class strings like `bg-${color}-100`). Sourced from
+ * the consolidated identity registry so future agents only need to be
+ * added in one place. Tailwind's safelist must include any colors here
+ * for dynamic class generation to work — current consumers fall back to
+ * "slate" for unknown codenames.
+ *
+ * New consumers should prefer agentBgClass / agentTextClass from
+ * client/src/lib/agent-identity.ts — those return token-driven classes
+ * that respond to theme switches.
+ */
 export const AGENT_COLORS: Record<string, string> = {
-  atlas_cto: "blue",
-  sophie_csm: "emerald",
-  forge_revenue: "amber",
-  beacon_marketing: "purple",
+  atlas_cto: "amber",
+  sophie_csm: "amber",
+  forge_revenue: "emerald",
+  beacon_marketing: "amber",
   sentinel_devops: "red",
-  ledger_finance: "slate",
-  shield_legal: "indigo",
-  oracle_analytics: "cyan",
-  compass_pm: "orange",
-  crucible_qa: "pink",
+  ledger_finance: "emerald",
+  shield_legal: "red",
+  oracle_analytics: "amber",
+  compass_pm: "amber",
+  crucible_qa: "amber",
 };
 
 /**
