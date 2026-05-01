@@ -33,6 +33,9 @@ import {
   companyAgents,
 } from "@shared/schema";
 import { and, desc, eq, isNotNull, or, sql } from "drizzle-orm";
+import { feedbackLoopService } from "./feedbackLoopV14";
+import { confidenceCascadeService } from "./confidenceCascadeV14";
+import { logger } from "../utils/logger";
 
 export type TodoType =
   | "decision"                 // operational decision awaiting approval
@@ -53,16 +56,42 @@ export interface TodoItem {
   actionUrl: string;           // where to go to resolve it
   createdAt: string;           // ISO
   badge?: string;              // small label (e.g. agent codename)
+  // Cascade-aware annotations (Wave 2.4 — non-destructive observability).
+  // Computed from feedbackLoopV14 override analytics + cascade efficiency
+  // for the item's owning agent. Founder UI can use these to surface a
+  // "X items could auto-resolve" hint without actually cutting items
+  // from the queue. Filtering on autoResolveCandidate is a separate
+  // product decision; this just exposes the data.
+  autoResolveCandidate?: boolean;
+  agentEscalationRate?: number; // percent 0-100, null if unknown
 }
 
 export interface FounderTodoResponse {
   generatedAt: string;
   total: number;
   byType: Record<TodoType, number>;
+  autoResolveCandidates: number;
   items: TodoItem[];
+  // Diagnostic metadata so the founder UI can show how the cascade
+  // hint was computed without exposing internals.
+  cascadeHints: {
+    overrideRateLast7d: number | null;
+    overrideRateLast30d: number | null;
+    enabled: boolean;
+  };
 }
 
+// Heuristic: an item is an auto-resolve candidate when (a) its owning
+// agent has a low escalation rate (system handles similar items reliably
+// without founder intervention) and (b) its urgency is below the high-
+// risk threshold. The exact thresholds (5% escalation, urgency < 60) are
+// conservative defaults — should be calibrated after 14 days of telemetry
+// before any actual filtering kicks in.
+const AUTO_RESOLVE_ESCALATION_THRESHOLD = 5; // percent
+const AUTO_RESOLVE_URGENCY_CEILING = 60;
+
 export async function getFounderTodos(
+  orgId?: number,
   limit: number = 100,
 ): Promise<FounderTodoResponse> {
   const [
@@ -73,6 +102,7 @@ export async function getFounderTodos(
     expansionItems,
     onboardingItems,
     experimentPromotions,
+    cascadeHints,
   ] = await Promise.all([
     fetchDecisions(),
     fetchPromptEvolutions(),
@@ -81,6 +111,7 @@ export async function getFounderTodos(
     fetchExpansionCandidates(),
     fetchOnboardingFlagged(),
     fetchExperimentPromotions(),
+    computeCascadeHints(orgId),
   ]);
 
   const all: TodoItem[] = [
@@ -93,8 +124,12 @@ export async function getFounderTodos(
     ...experimentPromotions,
   ];
 
+  // Annotate each item with cascade-aware fields (non-destructive — items
+  // are NOT filtered out, only flagged so the UI can offer auto-resolve UX).
+  const annotated = annotateWithCascadeHints(all, cascadeHints.byAgent);
+
   // Sort: urgency desc, then $impact desc, then newest first
-  all.sort((a, b) => {
+  annotated.sort((a, b) => {
     if (a.urgency !== b.urgency) return b.urgency - a.urgency;
     const aImpact = Math.abs(a.estimatedImpactCents ?? 0);
     const bImpact = Math.abs(b.estimatedImpactCents ?? 0);
@@ -111,14 +146,91 @@ export async function getFounderTodos(
     onboarding_rescue: 0,
     experiment_promotion: 0,
   };
-  for (const it of all) byType[it.type]++;
+  for (const it of annotated) byType[it.type]++;
+
+  const autoResolveCandidates = annotated.filter((it) => it.autoResolveCandidate).length;
 
   return {
     generatedAt: new Date().toISOString(),
-    total: all.length,
+    total: annotated.length,
     byType,
-    items: all.slice(0, limit),
+    autoResolveCandidates,
+    items: annotated.slice(0, limit),
+    cascadeHints: {
+      overrideRateLast7d: cascadeHints.overrideRateLast7d,
+      overrideRateLast30d: cascadeHints.overrideRateLast30d,
+      enabled: cascadeHints.enabled,
+    },
   };
+}
+
+interface CascadeHintsBundle {
+  byAgent: Map<string, number>; // agent codename → escalation rate %
+  overrideRateLast7d: number | null;
+  overrideRateLast30d: number | null;
+  enabled: boolean;
+}
+
+async function computeCascadeHints(orgId?: number): Promise<CascadeHintsBundle> {
+  const fallback: CascadeHintsBundle = {
+    byAgent: new Map(),
+    overrideRateLast7d: null,
+    overrideRateLast30d: null,
+    enabled: false,
+  };
+  if (!orgId) return fallback;
+
+  try {
+    // Pull both signals in parallel. If either errors, we degrade
+    // gracefully — the todo feed must always render even if cascade
+    // services hiccup.
+    const [overrideAnalytics, cascadeStats] = await Promise.all([
+      feedbackLoopService.getOverrideAnalytics(orgId).catch(() => null),
+      confidenceCascadeService.getCascadeStats(orgId).catch(() => null),
+    ]);
+
+    const byAgent = new Map<string, number>();
+    if (cascadeStats && Array.isArray(cascadeStats.agentEscalationRates)) {
+      for (const p of cascadeStats.agentEscalationRates) {
+        if (p?.agentCodename) byAgent.set(p.agentCodename, p.escalationRate ?? 100);
+      }
+    }
+
+    const last7d = overrideAnalytics?.last7Days ?? null;
+    const last30d = overrideAnalytics?.last30Days ?? null;
+    // Guess weekly base = total / 4 — only used as denominator hint
+    const total = overrideAnalytics?.totalOverrides ?? 0;
+    const weeklyAvg = total > 0 ? Math.round(total / 4) : null;
+
+    return {
+      byAgent,
+      overrideRateLast7d: last7d != null && weeklyAvg ? Math.round((last7d / Math.max(weeklyAvg, 1)) * 100) : null,
+      overrideRateLast30d: last30d != null && total ? Math.round((last30d / Math.max(total, 1)) * 100) : null,
+      enabled: true,
+    };
+  } catch (err) {
+    logger.warn("[founder-todo] cascade hints unavailable, degrading to plain feed", { metadata: { err: String(err) } });
+    return fallback;
+  }
+}
+
+function annotateWithCascadeHints(
+  items: TodoItem[],
+  byAgent: Map<string, number>,
+): TodoItem[] {
+  if (byAgent.size === 0) return items;
+  return items.map((it) => {
+    const agentEscalationRate = it.badge ? byAgent.get(it.badge) ?? null : null;
+    const autoResolveCandidate =
+      agentEscalationRate != null &&
+      agentEscalationRate < AUTO_RESOLVE_ESCALATION_THRESHOLD &&
+      it.urgency < AUTO_RESOLVE_URGENCY_CEILING;
+    return {
+      ...it,
+      autoResolveCandidate,
+      agentEscalationRate: agentEscalationRate ?? undefined,
+    };
+  });
 }
 
 // ── Per-source fetchers ─────────────────────────────────────────────

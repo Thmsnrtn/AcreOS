@@ -1923,10 +1923,15 @@ router.post("/expansion/:id/resolve", requireFounder, async (req: any, res: Resp
 
 // ── Unified founder todo ────────────────────────────────────────────
 
-router.get("/todo", requireFounder, async (_req: Request, res: Response) => {
+router.get("/todo", requireFounder, async (req: Request, res: Response) => {
   try {
     const { getFounderTodos } = await import("./services/founderTodo");
-    const report = await getFounderTodos();
+    // Cascade-aware annotations need an orgId. Founder is org-scoped via
+    // their session — use it if present so the feed surfaces autoResolveCandidate
+    // hints; falls back gracefully to plain feed if missing.
+    const orgId = (req as any).organization?.id ?? (req as any).organizationId;
+    const limit = req.query.limit ? Math.min(200, Number(req.query.limit)) : 100;
+    const report = await getFounderTodos(orgId, limit);
     res.json(report);
   } catch (err: any) {
     logger.error("[founder-todo] Error", undefined, { metadata: { detail: err.message } });
