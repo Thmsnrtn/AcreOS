@@ -54,6 +54,23 @@ export interface AgentAutonomy {
 }
 
 /**
+ * Investor archetype. Drives onboarding path, default surfaces, and
+ * vocabulary substitutions per VERTICAL-EXPANSION-PLAN.md. Default for
+ * existing users is "land_investor" — the v6 product positioning.
+ *
+ * Add new personas to the registry in client/src/lib/personaVocabulary.ts;
+ * the column is plain text so persona expansion doesn't require a migration.
+ */
+export type Persona =
+  | "land_investor"
+  | "note_investor"
+  | "tax_delinquent"
+  | "wholesaler"
+  | "subdivider"
+  | "fix_flipper"
+  | "landlord";
+
+/**
  * Per-agent autonomy matrix (design-system §7). 4-level scale
  * (0 Observe / 1 Draft / 2 Execute / 3 Autonomous) per agent, with
  * per-action overrides and monetary thresholds where applicable.
@@ -104,6 +121,11 @@ export const users = pgTable("users", {
   // Per-agent autonomy matrix — split off from appearance_preferences in
   // migration 0030 so theme writes can't trample agent policy.
   autonomyPreferences: jsonb("autonomy_preferences").$type<AutonomyPreferences>(),
+  // Investor archetype — drives onboarding path, default surfaces, and
+  // vocabulary substitutions (JC#7 + VERTICAL-EXPANSION-PLAN.md). Validated
+  // against the registry in client/src/lib/personaVocabulary.ts; stored as
+  // free text so adding personas doesn't need a column migration.
+  persona: text("persona").notNull().default("land_investor").$type<Persona>(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

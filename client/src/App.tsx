@@ -332,6 +332,36 @@ function FlaggedRoute({ route, component: Component }: { route: string; componen
   return <Component />;
 }
 
+// Persona-gated protected route — JC#7 / VERTICAL-EXPANSION-PLAN.md primitive #3.
+// Renders the page only when the signed-in user's persona is in the allow-list;
+// other personas get NotFound. Defaults treat unauthenticated users as
+// land_investor so server-driven redirects still work.
+function PersonaRoute({
+  personas,
+  component: Component,
+}: {
+  personas: readonly import("@shared/models/auth").Persona[];
+  component: React.ComponentType;
+}) {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!user) return <Redirect to="/auth" />;
+  const persona = (user.persona as import("@shared/models/auth").Persona | undefined) ?? "land_investor";
+  if (!personas.includes(persona)) return <NotFound />;
+  return <Component />;
+}
+// Re-export so persona-gated routes can be added incrementally without
+// touching this file each time the type signature evolves.
+export { PersonaRoute };
+
 
 
 function HomeRoute() {
