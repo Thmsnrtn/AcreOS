@@ -173,7 +173,7 @@ export default function BuyerQualificationPage() {
           Buyer qualification
         </h1>
         <p className="text-muted-foreground text-sm md:text-base">
-          AI-powered buyer assessment for financial, background, and financing readiness.
+          Buyer assessment for financial, background, and financing readiness.
         </p>
       </div>
 

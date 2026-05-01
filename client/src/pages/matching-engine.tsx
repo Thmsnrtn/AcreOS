@@ -78,7 +78,7 @@ export default function MatchingEnginePage() {
           Buyer matching engine
         </h1>
         <p className="text-muted-foreground text-sm md:text-base">
-          AI-powered matching between properties and qualified buyers based on criteria fit.
+          Matches properties with qualified buyers based on criteria fit.
         </p>
       </div>
 

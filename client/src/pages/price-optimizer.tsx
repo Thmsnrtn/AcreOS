@@ -308,7 +308,7 @@ export default function PriceOptimizerPage() {
           Price optimizer
         </h1>
         <p className="text-muted-foreground text-sm md:text-base">
-          AI-powered pricing for acquisitions, dispositions, and counter-offers.
+          Pricing for acquisitions, dispositions, and counter-offers.
         </p>
       </div>
 
@@ -336,7 +336,7 @@ export default function PriceOptimizerPage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Get price recommendation</CardTitle>
-          <CardDescription>Enter a property ID to generate an AI-powered price recommendation.</CardDescription>
+          <CardDescription>Enter a property ID to generate a price recommendation.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex gap-2">

@@ -10,7 +10,7 @@ import { usePageMeta } from "@/hooks/use-document-title";
 export default function AuthPage() {
   usePageMeta(
     "Sign in",
-    "Sign in to AcreOS — the AI-powered platform land investors use to manage leads, properties, deals, and seller financing in one place."
+    "Sign in to AcreOS — the operating system Land Investors use to manage leads, properties, deals, and seller financing in one place."
   );
   const { user, isLoading } = useAuth();
   const brandName = useBrandName();
@@ -132,7 +132,7 @@ export default function AuthPage() {
             <span className="text-2xl font-bold tracking-tight" aria-hidden="true">{brandName}</span>
           </div>
           <p className="text-sm text-muted-foreground text-center">
-            The AI-powered platform for Land Investors
+            The operating system for Land Investors
           </p>
         </div>
 

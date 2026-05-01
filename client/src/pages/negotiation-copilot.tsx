@@ -571,7 +571,7 @@ export default function NegotiationCopilotPage() {
           Negotiation copilot
         </h1>
         <p className="text-muted-foreground mt-1">
-          AI-powered objection detection, counter-offer suggestions, and strategy recommendations for every deal.
+          Objection detection, counter-offer suggestions, and strategy recommendations for every deal.
         </p>
       </div>
 

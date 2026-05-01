@@ -353,7 +353,7 @@ export default function PortfolioOptimizerPage() {
             Portfolio optimizer
           </h1>
           <p className="text-muted-foreground mt-1">
-            Monte Carlo simulation, diversification analysis, and AI-powered optimization recommendations.
+            Monte Carlo simulation, diversification analysis, and optimization recommendations.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -827,7 +827,7 @@ export default function PortfolioOptimizerPage() {
             {!recsLoading && recommendations.length === 0 && (
               <div className="text-center py-16 text-muted-foreground">
                 <CheckCircle className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                <p>No pending recommendations. Run the full analysis to generate AI-powered suggestions.</p>
+                <p>No pending recommendations. Run the full analysis to generate suggestions.</p>
                 <Button
                   className="mt-4"
                   onClick={() => analyzeAllMutation.mutate()}

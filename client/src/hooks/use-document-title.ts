@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 
-const BASE_TITLE = "AcreOS — The AI-Powered Platform for Land Investors";
+const BASE_TITLE = "AcreOS — The Operating System for Land Investors";
 
 /**
  * Set document.title for the lifetime of a page component.

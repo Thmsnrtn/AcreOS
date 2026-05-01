@@ -674,7 +674,7 @@ export default function SovereignV13Page() {
                     Founder intelligence center
                   </CardTitle>
                   <CardDescription>
-                    Your AI-powered executive briefing, what-if simulator, and strategic advisor
+                    Your executive briefing, what-if simulator, and strategic advisor
                   </CardDescription>
                 </CardHeader>
                 <CardContent>

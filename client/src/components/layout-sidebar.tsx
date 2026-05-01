@@ -394,11 +394,11 @@ const NAV_MODULES: NavModule[] = [
     label: "Intelligence",
     icon: Brain,
     href: "/analytics",
-    description: "AI-powered insights and analysis",
+    description: "Insights and analysis",
     children: [
       { label: "Insights", icon: TrendingUp, href: "/analytics", description: "Analytics and market insights" },
       { label: "Cohort Retention", icon: TrendingUp, href: "/analytics#retention", description: "Cohort retention curves and revenue" },
-      { label: "AI Valuations", icon: TrendingUp, href: "/avm", description: "AI-powered property valuations" },
+      { label: "Valuations", icon: TrendingUp, href: "/avm", description: "Automated property valuations" },
       { label: "Land Credit", icon: Shield, href: "/land-credit", description: "Proprietary 300-850 land scoring" },
       { label: "Markets", icon: Globe, href: "/market-intelligence", description: "Market analysis and price trends" },
       { label: "Counties", icon: Landmark, href: "/counties", description: "USDA + Census county intelligence" },

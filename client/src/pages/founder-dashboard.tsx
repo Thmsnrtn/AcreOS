@@ -2870,7 +2870,7 @@ export default function FounderDashboard() {
                 <MessageSquare className="w-5 h-5 text-purple-500" />
                 Support Analytics (Pax AI)
               </CardTitle>
-              <CardDescription>AI-powered customer support metrics</CardDescription>
+              <CardDescription>Pax-handled support metrics</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -5882,7 +5882,7 @@ function GrowthSection() {
           <div className="text-center py-8 border border-dashed rounded-lg">
             <Megaphone className="w-8 h-8 text-muted-foreground/40 mx-auto mb-2" />
             <p className="text-sm text-muted-foreground">No campaigns yet.</p>
-            <p className="text-xs text-muted-foreground mt-1">Click "Generate Campaign" to create your first AI-powered campaign.</p>
+            <p className="text-xs text-muted-foreground mt-1">Click "Generate Campaign" to create your first one.</p>
           </div>
         ) : (
           <div className="space-y-2">

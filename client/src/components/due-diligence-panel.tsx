@@ -351,7 +351,7 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
               AI dossier
             </CardTitle>
             <CardDescription>
-              AI-powered comprehensive due diligence report that analyzes title, tax, environmental, zoning, access, market comps, and owner research.
+              Comprehensive due-diligence report — title, tax, environmental, zoning, access, market comps, and owner research, in one pass.
             </CardDescription>
           </CardHeader>
           <CardContent>

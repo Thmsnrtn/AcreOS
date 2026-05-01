@@ -319,7 +319,7 @@ export function SupportContent() {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <p className="text-muted-foreground">Get help from our AI-powered support system.</p>
+          <p className="text-muted-foreground">Get help from Pax, or open a case for our team.</p>
         </div>
         <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
           <DialogTrigger asChild>

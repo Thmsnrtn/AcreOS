@@ -86,7 +86,7 @@ const featureGuides = [
   {
     icon: Bot,
     title: "AI Agents",
-    description: "Leverage AI-powered assistants to automate tasks and gain insights.",
+    description: "Pax handles routine work — drafting replies, scoring leads, suggesting follow-ups — so you focus on deals.",
     details: [
       "Virtual assistant for answering questions about your data",
       "Automated lead scoring and prioritization",

@@ -98,7 +98,7 @@ export default function PricingPage() {
   const [annual, setAnnual] = useState(false);
   usePageMeta(
     "Pricing",
-    "Transparent plans for land investors — from the free tier to full-team tooling. CRM, direct mail, AI-powered due diligence, and seller financing in one platform."
+    "Transparent plans for Land Investors — from the free tier to full-team tooling. CRM, direct mail, automated due diligence, and seller financing in one platform."
   );
 
   return (

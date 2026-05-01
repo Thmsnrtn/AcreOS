@@ -111,7 +111,7 @@ export default function PrivacyPolicy() {
               <ul className="list-disc list-inside text-muted-foreground space-y-2 ml-4">
                 <li><strong>Stripe:</strong> Payment processing and subscription management. Stripe's privacy policy
                     governs payment data handling.</li>
-                <li><strong>OpenAI:</strong> AI-powered features including offer generation and document analysis.
+                <li><strong>OpenAI:</strong> Powers select features including offer generation and document analysis.
                     Data sent to OpenAI is used only to process your requests and is not used to train their models.</li>
                 <li><strong>Lob:</strong> Direct mail services for campaign delivery. Recipient addresses and mail
                     content are shared with Lob for fulfillment purposes.</li>

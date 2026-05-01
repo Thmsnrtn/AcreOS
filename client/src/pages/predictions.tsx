@@ -209,7 +209,7 @@ export default function PredictionsPage() {
           <TrendingUp className="w-7 h-7 text-primary" aria-hidden="true" /> Market predictions
         </h1>
         <p className="text-muted-foreground mt-1">
-          AI-powered price trajectory forecasts with buy/sell window indicators per county.
+          Price-trajectory forecasts with buy/sell window indicators per county.
         </p>
       </div>
 

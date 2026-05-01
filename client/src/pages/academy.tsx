@@ -474,7 +474,7 @@ export default function AcademyPage() {
           <h1 className="text-3xl font-bold">AcreOS Academy</h1>
         </div>
         <p className="text-muted-foreground text-sm">
-          Master land investing with AI-powered learning
+          Master land investing — guided, with the platform alongside you
         </p>
         <p className="text-xs text-muted-foreground tabular-nums" aria-live="polite">
           {completedCount} of {COURSES.length} courses completed

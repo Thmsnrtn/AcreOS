@@ -209,7 +209,7 @@ export default function VisionAIPage() {
           <Eye className="w-7 h-7 text-primary" aria-hidden="true" /> Vision AI
         </h1>
         <p className="text-muted-foreground mt-1">
-          AI-powered photo analysis, satellite imagery, and visual change detection for land properties
+          Photo analysis, satellite imagery, and visual change detection for land properties.
         </p>
       </div>
 

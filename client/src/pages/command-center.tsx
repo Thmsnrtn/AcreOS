@@ -1136,7 +1136,7 @@ interface PortfolioAlert {
 const aiServices: AIService[] = [
   { id: "due-diligence", name: "Due Diligence", description: "Automated property research and analysis", phase: 3, icon: Search, endpoint: "/api/ai/due-diligence/request" },
   { id: "seller-intent", name: "Seller Intent", description: "Predict seller motivation and timing", phase: 3, icon: Target, endpoint: "/api/ai/intent/predict" },
-  { id: "price-optimizer", name: "Price Optimizer", description: "AI-powered pricing recommendations", phase: 3, icon: Calculator, endpoint: "/api/ai/pricing/acquisition" },
+  { id: "price-optimizer", name: "Price Optimizer", description: "Automated pricing recommendations", phase: 3, icon: Calculator, endpoint: "/api/ai/pricing/acquisition" },
   { id: "deal-patterns", name: "Deal Patterns", description: "Clone successful deal strategies", phase: 3, icon: GitBranch, endpoint: "/api/ai/patterns/analyze" },
   { id: "negotiation", name: "Negotiation", description: "Real-time negotiation assistance", phase: 4, icon: Handshake, endpoint: "/api/ai/negotiation/session" },
   { id: "sequences", name: "Sequences", description: "AI-optimized outreach sequences", phase: 4, icon: Mail, endpoint: "/api/ai/sequences/performance" },
@@ -1270,7 +1270,7 @@ function AIOperationsTabContent() {
         <div>
           <h2 className="text-lg font-semibold mb-1">AI Operations Dashboard</h2>
           <p className="text-sm text-muted-foreground">
-            Manage and monitor your AI-powered services across all phases
+            Manage and monitor your AI services across all phases
           </p>
         </div>
       </div>
@@ -1332,7 +1332,7 @@ function AIOperationsTabContent() {
                     <DialogHeader>
                       <DialogTitle>Get Price Recommendation</DialogTitle>
                       <DialogDescription>
-                        Enter a property ID to get AI-powered pricing analysis
+                        Enter a property ID to get pricing analysis
                       </DialogDescription>
                     </DialogHeader>
                     <div className="py-4">

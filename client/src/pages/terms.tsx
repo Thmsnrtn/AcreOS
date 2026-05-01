@@ -60,7 +60,7 @@ export default function TermsOfService() {
                 <li>Offer generation and document management</li>
                 <li>Campaign management for direct mail and communications</li>
                 <li>Seller financing portfolio management</li>
-                <li>AI-powered assistance for investment analysis</li>
+                <li>Automated assistance for investment analysis</li>
                 <li>Integration with third-party services (Stripe, Lob, Regrid, OpenAI)</li>
               </ul>
               <p className="text-muted-foreground leading-relaxed">

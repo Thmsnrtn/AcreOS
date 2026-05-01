@@ -150,7 +150,7 @@ export default function DocumentIntelligencePage() {
           <FileSearch className="w-7 h-7 text-primary" aria-hidden="true" /> Document intelligence
         </h1>
         <p className="text-muted-foreground mt-1">
-          AI-powered contract parsing, clause extraction, risk analysis, and semantic search.
+          Contract parsing, clause extraction, risk analysis, and semantic search.
         </p>
       </div>
 

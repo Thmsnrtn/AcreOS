@@ -18,7 +18,7 @@ function buildOnboardingSteps(brandName: string) {
   {
     icon: Sparkles,
     title: `Welcome to ${brandName}`,
-    description: "The AI-powered platform for Land Investors. Let's get you set up for success.",
+    description: "The operating system for Land Investors. Let's get you set up.",
     highlight: "We'll guide you through the key features to help you get started quickly.",
   },
   {
