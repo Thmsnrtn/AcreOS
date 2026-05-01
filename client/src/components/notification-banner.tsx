@@ -133,33 +133,15 @@ export function NotificationBanner() {
         </div>
       )}
 
-      {/* Notification Bell — top-right, consistent with the banner.
-          Previously was at bottom-right colliding with the dock; now
-          lives in the top-right (alongside the transient banner) where
-          notifications conventionally live in macOS/iOS. */}
-      <div className="fixed top-4 right-4 md:right-16 z-40">
-        <Button
-          variant="outline"
-          size="sm"
-          className="relative rounded-full w-10 h-10 p-0 shadow-md bg-background"
-          onClick={() => setShowTray(!showTray)}
-          aria-label={unreadCount > 0 ? `Notifications (${unreadCount} unread)` : "Notifications"}
-          aria-expanded={showTray}
-          aria-haspopup="dialog"
-        >
-          <Bell className="w-4 h-4" aria-hidden="true" />
-          {unreadCount > 0 && (
-            <span
-              aria-hidden="true"
-              className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full min-w-5 h-5 px-1 flex items-center justify-center tabular-nums"
-            >
-              {unreadCount > 9 ? "9+" : unreadCount}
-            </span>
-          )}
-        </Button>
-      </div>
+      {/* Notification bell removed 2026-05-01 — PageTopbar (mounted in
+          PageShell) already renders a sticky bell + tray. Two bells
+          ~50px apart on desktop was the duplicate the audit flagged.
+          The transient announcement banner above remains; the bell
+          surface is now single-source. */}
 
-      {/* Notification Tray — drops down from the bell */}
+      {/* Notification Tray — kept available via the existing showTray
+          state for the (rare) places that still call it programmatically.
+          Anchored to top-right to avoid colliding with the topbar. */}
       {showTray && (
         <div
           role="dialog"

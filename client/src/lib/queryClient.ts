@@ -4,6 +4,12 @@ import React from "react";
 import { ToastAction } from "@/components/ui/toast";
 import { getErrorMessage, getErrorTitle, shouldRetry, isAuthError } from "@/lib/error-utils";
 
+// Per-request timeout (ms). Short enough that a stalled endpoint
+// surfaces as a retry-able error rather than a perpetual spinner; long
+// enough that genuinely slow but successful requests (PDF generation,
+// AI drafts, exports) still complete. Tune via env if needed.
+const REQUEST_TIMEOUT_MS = 30_000;
+
 /**
  * Standardized API error shape returned by the server.
  */
@@ -220,6 +226,12 @@ async function doApiFetch(
     headers,
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
+    // 30s ceiling on every API request — without this every fetch can
+    // hang forever on a stalled server / network drop, which was the
+    // single biggest cause of the "indefinite spinner" UX symptom in
+    // the 2026-05-01 audit. AbortSignal.timeout throws a TimeoutError
+    // which the existing retry logic + error toasts handle cleanly.
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
 }
 
@@ -250,13 +262,19 @@ export const getQueryFn: <T>(options: {
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
     const url = queryKey.join("/") as string;
-    let res = await fetch(url, { credentials: "include" });
+    let res = await fetch(url, {
+      credentials: "include",
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
 
     // Same 401 recovery as apiRequest: refresh Clerk session cookie,
     // retry once. See apiRequest for rationale.
     if (res.status === 401 && url.startsWith("/api/")) {
       await refreshSessionCookie();
-      res = await fetch(url, { credentials: "include" });
+      res = await fetch(url, {
+        credentials: "include",
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
     }
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {
@@ -270,8 +288,12 @@ export const getQueryFn: <T>(options: {
 export const CACHE_TIMES = {
   static: 1000 * 60 * 60,
   short: 1000 * 60 * 2,
-  medium: 1000 * 60 * 5,
-  long: 1000 * 60 * 15,
+  // gcTime default bumped from 5min → 30min — keeping query data warm
+  // through tab switches makes nav feel instant. The audit found
+  // tab-back round-trips were re-fetching everything because the data
+  // was already garbage-collected at 5min.
+  medium: 1000 * 60 * 30,
+  long: 1000 * 60 * 60,
 };
 
 export const STALE_TIMES = {

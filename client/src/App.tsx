@@ -20,30 +20,33 @@ import { useToast } from "@/hooks/use-toast";
 import { SidebarProvider } from "@/components/layout-sidebar";
 import { HintsProvider } from "@/components/feature-hints";
 import { KeyboardShortcutsProvider } from "@/hooks/use-keyboard-shortcuts";
-import { KeyboardShortcutsModal } from "@/components/keyboard-shortcuts";
-import { NewItemMenu } from "@/components/new-item-menu";
-import { OnboardingWizard } from "@/components/onboarding-wizard";
+// Heavy components that mount on every authenticated page but the user
+// rarely interacts with on first paint (NpsDialog appears intermittently;
+// modals open on click; rails open on click). Lazy-loading reclaims
+// ~5,000 LOC from the entry chunk per the 2026-05-01 perf audit.
+const KeyboardShortcutsModal = React.lazy(() => import("@/components/keyboard-shortcuts").then(m => ({ default: m.KeyboardShortcutsModal })));
+const NewItemMenu = React.lazy(() => import("@/components/new-item-menu").then(m => ({ default: m.NewItemMenu })));
+const OnboardingWizard = React.lazy(() => import("@/components/onboarding-wizard").then(m => ({ default: m.OnboardingWizard })));
 import { PWAInstallPrompt } from "@/components/pwa-install-prompt";
 import { ConversationTray } from "@/components/conversation-tray";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { OfflineIndicator } from "@/components/offline-indicator";
 import { DealModalsHost } from "@/components/modals";
 import { FloatingActionButton } from "@/components/floating-action-button";
-import { FloatingHelpButton } from "@/components/floating-help-button";
 import { EarlyAccessBanner } from "@/components/early-access-banner";
-import { CommandPalette } from "@/components/command-palette";
+const CommandPalette = React.lazy(() => import("@/components/command-palette").then(m => ({ default: m.CommandPalette })));
 import { FounderCommandPaletteProvider } from "@/components/founder-command-palette";
 import { useSwipeNavigation } from "@/hooks/use-swipe-gesture";
 import { useNextRoutePrefetch } from "@/hooks/use-next-route-prefetch";
 import { MobileBottomNav } from "@/components/mobile";
 import { BetaActivationDetector } from "@/components/beta-activation-detector";
-import { PaxCopilotRail } from "@/components/pax-copilot-rail";
+const PaxCopilotRail = React.lazy(() => import("@/components/pax-copilot-rail").then(m => ({ default: m.PaxCopilotRail })));
 import { DynamicIsland } from "@/components/dynamic-island";
 import { DynamicIslandProvider } from "@/contexts/dynamic-island-context";
 import { useCursorGlass } from "@/hooks/use-cursor-glass";
 import { TrialBanner } from "@/components/trial-banner";
 import { NotificationBanner } from "@/components/notification-banner";
-import { NpsDialog } from "@/components/nps-dialog";
+const NpsDialog = React.lazy(() => import("@/components/nps-dialog").then(m => ({ default: m.NpsDialog })));
 
 // Eagerly loaded: must be available immediately with no delay
 import AuthPage from "@/pages/auth-page";
@@ -1011,29 +1014,57 @@ function AppContent() {
           slot 2 (bottom-176):  help (also hosts feedback)
           Feedback was slot 3 until the consolidation pass — now it
           lives inside the help sheet + settings + command palette. */}
-      {user && <FloatingActionButton />}
+      {/* FloatingActionButton hidden on desktop — desktop has ⌘K + sidebar
+          New-Item menu; mobile keeps the FAB as a tap target. */}
+      {user && <div className="md:hidden"><FloatingActionButton /></div>}
       {user && <ConversationTray />}
-      {user && <FloatingHelpButton />}
-      {user && <CommandPalette />}
+      {/* FloatingHelpButton removed 2026-05-01 — folded into ⌘K command
+          palette (already shipped). The help search lives there now;
+          one fewer FAB on every page. */}
+      {/* Lazy-loaded floating components — wrapped in Suspense with null
+          fallback so the entry chunk doesn't ship them. They appear after
+          first paint with no visible delay (small JS, fetched in parallel
+          with main render). */}
+      {user && (
+        <Suspense fallback={null}>
+          <CommandPalette />
+        </Suspense>
+      )}
       {/* Founder-specific ⌘⇧K palette — searches decisions, agents, letters, proposals */}
       <FounderCommandPaletteProvider>{null}</FounderCommandPaletteProvider>
-      {user && <NewItemMenu />}
-      {user && <MobileBottomNav />}
-      {user && <OnboardingWizard />}
+      {user && (
+        <Suspense fallback={null}>
+          <NewItemMenu />
+        </Suspense>
+      )}
+      {/* Suppress MobileBottomNav on founder routes — customer-side nav
+          items don't apply to founder mode (#9 audit finding). */}
+      {user && !location.startsWith("/founder") && <MobileBottomNav />}
+      {user && (
+        <Suspense fallback={null}>
+          <OnboardingWizard />
+        </Suspense>
+      )}
       {user && <BetaActivationDetector />}
       {/* Hide the global PaxCopilotRail on /ai because that page has
           its own main-area chat UI ("AcreOS Assistant"). r3 Gabriel
           caught the dual-chat-UI confusion (UX-R3-001). Elsewhere
           the rail remains the primary conversational entry point. */}
-      {user && !location.startsWith("/ai") && <PaxCopilotRail />}
+      {user && !location.startsWith("/ai") && (
+        <Suspense fallback={null}>
+          <PaxCopilotRail />
+        </Suspense>
+      )}
       {user && <DynamicIsland />}
       {user && <NotificationBanner />}
       {user && npsData?.shouldShow && npsData.trigger && (
-        <NpsDialog
-          open={npsOpen}
-          trigger={npsData.trigger}
-          onClose={() => setNpsOpen(false)}
-        />
+        <Suspense fallback={null}>
+          <NpsDialog
+            open={npsOpen}
+            trigger={npsData.trigger}
+            onClose={() => setNpsOpen(false)}
+          />
+        </Suspense>
       )}
       <PWAInstallPrompt />
     </>
@@ -1057,7 +1088,9 @@ function App() {
                   <Toaster />
                   <CookieConsentBanner />
                   <AppContent />
-                  <KeyboardShortcutsModal />
+                  <Suspense fallback={null}>
+                    <KeyboardShortcutsModal />
+                  </Suspense>
                   <DealModalsHost />
                 </KeyboardShortcutsProvider>
               </HintsProvider>
