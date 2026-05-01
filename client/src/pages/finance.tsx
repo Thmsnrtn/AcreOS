@@ -194,7 +194,7 @@ export default function FinancePage() {
                 <h1 className="acr-cc-greeting" data-testid="text-page-title">
                   The paper side.
                   <span className="acr-cc-greeting-soft">
-                    {" "}Sophie keeps the notes, payments, and statements straight.
+                    {" "}Notes, payments, and statements — kept straight.
                   </span>
                 </h1>
               </div>

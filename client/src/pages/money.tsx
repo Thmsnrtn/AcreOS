@@ -84,13 +84,18 @@ export default function MoneyPage() {
             <Banknote className="h-4 w-4" aria-hidden="true" />
             <span>Notes</span>
           </TabsTrigger>
+          {/* Tab labels were swapped against their mounted content — the
+              "Finance" tab actually mounted PortfolioPage, and "Portfolio"
+              mounted PortfolioOptimizerPage. Tab values stay (URL persistence
+              + localStorage compat) but labels now match the actual
+              surface that appears. */}
           <TabsTrigger value="finance" className="flex items-center gap-2 min-w-max" data-testid="tab-finance">
-            <BarChart3 className="h-4 w-4" aria-hidden="true" />
-            <span>Finance</span>
-          </TabsTrigger>
-          <TabsTrigger value="portfolio" className="flex items-center gap-2 min-w-max" data-testid="tab-portfolio">
             <PieChart className="h-4 w-4" aria-hidden="true" />
             <span>Portfolio</span>
+          </TabsTrigger>
+          <TabsTrigger value="portfolio" className="flex items-center gap-2 min-w-max" data-testid="tab-portfolio">
+            <BarChart3 className="h-4 w-4" aria-hidden="true" />
+            <span>Optimizer</span>
           </TabsTrigger>
           <TabsTrigger value="forecast" className="flex items-center gap-2 min-w-max" data-testid="tab-forecast">
             <TrendingUp className="h-4 w-4" aria-hidden="true" />

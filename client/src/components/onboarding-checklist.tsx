@@ -50,10 +50,15 @@ const STEPS: ChecklistStep[] = [
     checkFn: (data) => (data?.totalProperties ?? 0) >= 1,
   },
   {
-    id: "explore_atlas",
-    label: "Chat with Atlas AI",
-    description: "Your AI assistant for deal analysis and research",
-    href: "/atlas",
+    // Persona-architecture (memory rule): customers see Pax only;
+    // Atlas/Sophie/Forge are founder-mode codenames. This entry was
+    // pointing customers at /atlas (founder-mode CTO surface) and
+    // labeling the assistant "Atlas" — fixed to Pax + the customer-side
+    // /pax route.
+    id: "explore_pax",
+    label: "Chat with Pax",
+    description: "Your AcreOS assistant — deal analysis, research, drafts",
+    href: "/pax",
   },
   {
     id: "setup_integrations",

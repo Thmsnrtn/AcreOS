@@ -69,13 +69,15 @@ const DEFAULT_STEPS: TourStep[] = [
     action: { label: "View Deals", href: "/deals" },
   },
   {
-    id: "atlas",
-    title: "Ask Atlas Anything",
+    // Persona-architecture (memory rule): customers see Pax only;
+    // Atlas is the founder-mode CTO codename. Tour now references Pax.
+    id: "pax",
+    title: "Ask Pax anything",
     description:
-      "Atlas is your AI deal partner. Ask it to analyze comps, draft an offer letter, calculate seller financing, or summarize your portfolio. It knows your active deals.",
-    targetSelector: "[data-tour='atlas-btn']",
+      "Pax is your AcreOS assistant. Ask it to analyze comps, draft an offer letter, calculate seller financing, or summarize your portfolio. It knows your active deals.",
+    targetSelector: "[data-tour='pax-btn']",
     placement: "top",
-    action: { label: "Open Atlas", href: "/atlas" },
+    action: { label: "Open Pax", href: "/pax" },
   },
   {
     id: "pipeline",
