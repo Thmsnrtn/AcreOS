@@ -65,10 +65,10 @@ type DealWithProperty = Deal & { property?: Property };
 const dealStages = [
   { value: 'negotiating', label: 'Negotiating', color: 'bg-muted' },
   { value: 'offer_sent', label: 'Offer Sent', color: 'bg-blue-100 dark:bg-blue-900/30' },
-  { value: 'countered', label: 'Countered', color: 'bg-amber-100 dark:bg-amber-900/30' },
-  { value: 'accepted', label: 'Accepted', color: 'bg-emerald-100 dark:bg-emerald-900/30' },
+  { value: 'countered', label: 'Countered', color: 'bg-acr-warn-soft dark:bg-acr-warn-soft' },
+  { value: 'accepted', label: 'Accepted', color: 'bg-acr-pos-soft dark:bg-acr-pos-soft' },
   { value: 'in_escrow', label: 'In Escrow', color: 'bg-purple-100 dark:bg-purple-900/30' },
-  { value: 'closed', label: 'Closed', color: 'bg-green-100 dark:bg-green-900/30' },
+  { value: 'closed', label: 'Closed', color: 'bg-acr-pos-soft dark:bg-acr-pos-soft' },
 ];
 
 // Benchmark days per stage before a deal is considered stalled
@@ -92,19 +92,19 @@ function getDealHealth(deal: DealWithProperty): { status: 'healthy' | 'warning' 
 }
 
 const HEALTH_DOT: Record<string, string> = {
-  healthy: 'bg-emerald-500',
+  healthy: 'bg-acr-pos',
   warning: 'bg-amber-400',
-  stalled: 'bg-red-500',
+  stalled: 'bg-acr-neg',
 };
 
 const statusColors: Record<string, string> = {
   negotiating: 'bg-muted text-muted-foreground',
   offer_sent: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
-  countered: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400',
-  accepted: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400',
-  in_escrow: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400',
-  closed: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
-  cancelled: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
+  countered: 'bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft dark:text-acr-warn',
+  accepted: 'bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft dark:text-acr-pos',
+  in_escrow: 'bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft dark:text-acr-warn',
+  closed: 'bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft dark:text-acr-pos',
+  cancelled: 'bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft dark:text-acr-neg',
 };
 
 export default function DealsPage() {
@@ -514,8 +514,8 @@ export default function DealsPage() {
             <Card className="glass-panel">
               <CardContent className="p-4 md:p-6">
                 <div className="flex items-center gap-2 md:gap-3">
-                  <div className="p-2 md:p-3 rounded-xl bg-emerald-500/10 flex-shrink-0">
-                    <TrendingUp className="w-4 h-4 md:w-5 md:h-5 text-emerald-600" aria-hidden="true" />
+                  <div className="p-2 md:p-3 rounded-xl bg-acr-pos/10 flex-shrink-0">
+                    <TrendingUp className="w-4 h-4 md:w-5 md:h-5 text-acr-pos" aria-hidden="true" />
                   </div>
                   <div className="min-w-0">
                     <p className="text-xs md:text-sm text-muted-foreground truncate">Dispositions</p>
@@ -544,12 +544,12 @@ export default function DealsPage() {
             <Card className="glass-panel">
               <CardContent className="p-4 md:p-6">
                 <div className="flex items-center gap-2 md:gap-3">
-                  <div className="p-2 md:p-3 rounded-xl bg-green-500/10 flex-shrink-0">
-                    <CheckCircle className="w-4 h-4 md:w-5 md:h-5 text-green-600" aria-hidden="true" />
+                  <div className="p-2 md:p-3 rounded-xl bg-acr-pos/10 flex-shrink-0">
+                    <CheckCircle className="w-4 h-4 md:w-5 md:h-5 text-acr-pos" aria-hidden="true" />
                   </div>
                   <div className="min-w-0">
                     <p className="text-xs md:text-sm text-muted-foreground truncate">Closed</p>
-                    <p className="text-lg md:text-2xl font-bold font-mono tabular-nums text-green-600 truncate" data-testid="text-closed-value">
+                    <p className="text-lg md:text-2xl font-bold font-mono tabular-nums text-acr-pos truncate" data-testid="text-closed-value">
                       {usd(closedValue, { noCents: true })}
                     </p>
                   </div>
@@ -567,17 +567,17 @@ export default function DealsPage() {
                 </span>
                 <div className="flex items-center gap-3">
                   {stalledCount > 0 && (
-                    <span className="flex items-center gap-1 text-red-500 font-medium" role="status">
+                    <span className="flex items-center gap-1 text-acr-neg font-medium" role="status">
                       <AlertTriangle className="w-3 h-3" aria-hidden="true" /> {stalledCount} stalled
                     </span>
                   )}
                   {warningCount > 0 && (
-                    <span className="flex items-center gap-1 text-amber-500 font-medium" role="status">
+                    <span className="flex items-center gap-1 text-acr-warn font-medium" role="status">
                       <Clock className="w-3 h-3" aria-hidden="true" /> {warningCount} slow
                     </span>
                   )}
                   {stalledCount === 0 && warningCount === 0 && enrichedDeals.length > 0 && (
-                    <span className="text-emerald-600 font-medium">All deals on track</span>
+                    <span className="text-acr-pos font-medium">All deals on track</span>
                   )}
                 </div>
               </div>
@@ -602,7 +602,7 @@ export default function DealsPage() {
                     countered: 'bg-amber-400',
                     accepted: 'bg-emerald-400',
                     in_escrow: 'bg-purple-400',
-                    closed: 'bg-green-500',
+                    closed: 'bg-acr-pos',
                   };
                   return (
                     <div
@@ -1140,8 +1140,8 @@ function DealCard({ deal, onSelect, isDragging = false, isSelected, onToggleSele
             </div>
             {(deal.offerAmount || deal.acceptedAmount) && (
               <div className="mt-2 flex items-center gap-1.5">
-                <DollarSign className="w-4 h-4 text-emerald-600" aria-hidden="true" />
-                <span className="text-base font-mono font-medium tabular-nums text-emerald-600">
+                <DollarSign className="w-4 h-4 text-acr-pos" aria-hidden="true" />
+                <span className="text-base font-mono font-medium tabular-nums text-acr-pos">
                   {usd(deal.acceptedAmount || deal.offerAmount, { noCents: true })}
                 </span>
               </div>
@@ -1268,14 +1268,14 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
   };
   
   const getConfidenceBadgeColor = (confidence: number) => {
-    if (confidence >= 80) return "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400";
-    if (confidence >= 50) return "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400";
-    return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400";
+    if (confidence >= 80) return "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft dark:text-acr-pos";
+    if (confidence >= 50) return "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft dark:text-acr-warn";
+    return "bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft dark:text-acr-neg";
   };
   
   const getMarketConditionIcon = (condition: 'hot' | 'neutral' | 'cold') => {
     switch (condition) {
-      case 'hot': return <Flame className="w-4 h-4 text-orange-500" />;
+      case 'hot': return <Flame className="w-4 h-4 text-acr-warn" />;
       case 'cold': return <Snowflake className="w-4 h-4 text-blue-500" />;
       default: return <Minus className="w-4 h-4 text-muted-foreground" />;
     }
@@ -1611,7 +1611,7 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                 <Card className="glass-panel">
                   <CardContent className="p-4">
                     <p className="text-sm text-muted-foreground">Accepted amount</p>
-                    <p className="text-xl font-bold font-mono tabular-nums text-emerald-600">
+                    <p className="text-xl font-bold font-mono tabular-nums text-acr-pos">
                       {deal.acceptedAmount != null && deal.acceptedAmount !== ''
                         ? usd(deal.acceptedAmount, { noCents: true })
                         : <span className="text-muted-foreground">—</span>}
@@ -1765,8 +1765,8 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                     const pkgStatusColors: Record<string, string> = {
                       draft: "bg-muted text-muted-foreground",
                       complete: "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300",
-                      sent: "bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300",
-                      signed: "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300",
+                      sent: "bg-acr-warn-soft dark:bg-yellow-900 text-yellow-700 dark:text-acr-warn",
+                      signed: "bg-acr-pos-soft dark:bg-green-900 text-acr-pos dark:text-acr-pos",
                     };
 
                     return (
@@ -1831,11 +1831,11 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
 
             <TabsContent value="checklist" className="space-y-6">
               {stageGate && !stageGate.canAdvance && (
-                <Card role="status" className="border-amber-500/50 bg-amber-500/10">
+                <Card role="status" className="border-amber-500/50 bg-acr-warn/10">
                   <CardContent className="p-4 flex items-center gap-3">
-                    <AlertTriangle className="w-5 h-5 text-amber-500" aria-hidden="true" />
+                    <AlertTriangle className="w-5 h-5 text-acr-warn" aria-hidden="true" />
                     <div>
-                      <p className="font-medium text-amber-700 dark:text-amber-400" data-testid="text-stage-gate-warning">
+                      <p className="font-medium text-acr-warn dark:text-acr-warn" data-testid="text-stage-gate-warning">
                         Stage advancement blocked
                       </p>
                       <p className="text-sm text-muted-foreground">
@@ -1908,7 +1908,7 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                     {checklist.items.map((item: DealChecklistItem) => (
                       <Card 
                         key={item.id} 
-                        className={`glass-panel transition-colors ${item.checkedAt ? 'bg-emerald-500/5' : ''}`}
+                        className={`glass-panel transition-colors ${item.checkedAt ? 'bg-acr-pos/5' : ''}`}
                         data-testid={`checklist-item-${item.id}`}
                       >
                         <CardContent className="p-3 md:p-4">
@@ -1927,7 +1927,7 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                               data-testid={`checkbox-item-${item.id}`}
                             >
                               {item.checkedAt ? (
-                                <CheckSquare className="w-6 h-6 text-emerald-500" aria-hidden="true" />
+                                <CheckSquare className="w-6 h-6 text-acr-pos" aria-hidden="true" />
                               ) : (
                                 <Square className="w-6 h-6 text-muted-foreground" aria-hidden="true" />
                               )}

@@ -195,14 +195,14 @@ function StripeConnectSettings() {
     }
 
     if (!connectStatus.detailsSubmitted) {
-      return { label: "Onboarding required", icon: Clock, color: "text-amber-500" };
+      return { label: "Onboarding required", icon: Clock, color: "text-acr-warn" };
     }
 
     if (!connectStatus.chargesEnabled) {
-      return { label: "Pending verification", icon: Clock, color: "text-amber-500" };
+      return { label: "Pending verification", icon: Clock, color: "text-acr-warn" };
     }
 
-    return { label: "Active", icon: CheckCircle2, color: "text-green-500" };
+    return { label: "Active", icon: CheckCircle2, color: "text-acr-pos" };
   };
   
   const status = getStatusDisplay();
@@ -263,9 +263,9 @@ function StripeConnectSettings() {
               <dt className="text-sm text-muted-foreground">Charges</dt>
               <dd className="flex items-center gap-1">
                 {connectStatus.chargesEnabled ? (
-                  <CheckCircle2 className="w-4 h-4 text-green-500" aria-hidden="true" />
+                  <CheckCircle2 className="w-4 h-4 text-acr-pos" aria-hidden="true" />
                 ) : (
-                  <AlertCircle className="w-4 h-4 text-amber-500" aria-hidden="true" />
+                  <AlertCircle className="w-4 h-4 text-acr-warn" aria-hidden="true" />
                 )}
                 <span className="text-sm font-medium">
                   {connectStatus.chargesEnabled ? "Enabled" : "Pending"}
@@ -276,9 +276,9 @@ function StripeConnectSettings() {
               <dt className="text-sm text-muted-foreground">Payouts</dt>
               <dd className="flex items-center gap-1">
                 {connectStatus.payoutsEnabled ? (
-                  <CheckCircle2 className="w-4 h-4 text-green-500" aria-hidden="true" />
+                  <CheckCircle2 className="w-4 h-4 text-acr-pos" aria-hidden="true" />
                 ) : (
-                  <AlertCircle className="w-4 h-4 text-amber-500" aria-hidden="true" />
+                  <AlertCircle className="w-4 h-4 text-acr-warn" aria-hidden="true" />
                 )}
                 <span className="text-sm font-medium">
                   {connectStatus.payoutsEnabled ? "Enabled" : "Pending"}
@@ -289,9 +289,9 @@ function StripeConnectSettings() {
               <dt className="text-sm text-muted-foreground">Onboarding</dt>
               <dd className="flex items-center gap-1">
                 {connectStatus.detailsSubmitted ? (
-                  <CheckCircle2 className="w-4 h-4 text-green-500" aria-hidden="true" />
+                  <CheckCircle2 className="w-4 h-4 text-acr-pos" aria-hidden="true" />
                 ) : (
-                  <AlertCircle className="w-4 h-4 text-amber-500" aria-hidden="true" />
+                  <AlertCircle className="w-4 h-4 text-acr-warn" aria-hidden="true" />
                 )}
                 <span className="text-sm font-medium">
                   {connectStatus.detailsSubmitted ? "Complete" : "Incomplete"}
@@ -303,11 +303,11 @@ function StripeConnectSettings() {
 
         {connectStatus?.requirements && connectStatus.requirements.currentlyDue.length > 0 && (
           <div
-            className="p-4 rounded-md bg-amber-500/10 border border-amber-500/20"
+            className="p-4 rounded-md bg-acr-warn/10 border border-amber-500/20"
             role="status"
             aria-live="polite"
           >
-            <p className="font-medium text-amber-500 flex items-center gap-2">
+            <p className="font-medium text-acr-warn flex items-center gap-2">
               <AlertCircle className="w-4 h-4" aria-hidden="true" />
               Action required
             </p>
@@ -499,7 +499,7 @@ function SeatManagement() {
           </div>
           <div className="space-y-1">
             <dt className="text-sm text-muted-foreground">Available</dt>
-            <dd className="text-2xl font-semibold tabular-nums text-green-600" data-testid="text-available-seats">
+            <dd className="text-2xl font-semibold tabular-nums text-acr-pos" data-testid="text-available-seats">
               {seatInfo?.availableSeats ?? 0}
             </dd>
           </div>
@@ -515,7 +515,7 @@ function SeatManagement() {
 
         {seatInfo?.hasTeamMessaging && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Check className="w-4 h-4 text-green-500" aria-hidden="true" />
+            <Check className="w-4 h-4 text-acr-pos" aria-hidden="true" />
             Team messaging enabled (2+ seats)
           </div>
         )}
@@ -755,7 +755,7 @@ export default function Settings() {
       // Pro is the recommended tier — use the theme primary so "Pro"
       // reads as on-brand rather than an off-theme lavender accent.
       case "pro":     return "bg-primary/10 text-primary border-primary/20";
-      case "scale":   return "bg-amber-500/10 text-amber-500 border-amber-500/20";
+      case "scale":   return "bg-acr-warn/10 text-acr-warn border-amber-500/20";
       case "starter": return "bg-blue-500/10 text-blue-500 border-blue-500/20";
       default:        return "bg-muted text-muted-foreground border-border";
     }
@@ -985,10 +985,10 @@ export default function Settings() {
                       ) : organization.subscriptionTier === "free" && (
                         <div className="space-y-3">
                           {!organization.trialUsed && (
-                            <div className="flex items-start gap-3 p-4 rounded-md bg-emerald-500/10 border border-emerald-500/20">
-                              <Gift className="w-5 h-5 text-emerald-500 mt-0.5 flex-shrink-0" aria-hidden="true" />
+                            <div className="flex items-start gap-3 p-4 rounded-md bg-acr-pos/10 border border-emerald-500/20">
+                              <Gift className="w-5 h-5 text-acr-pos mt-0.5 flex-shrink-0" aria-hidden="true" />
                               <div>
-                                <p className="font-medium text-emerald-500" data-testid="text-trial-available">
+                                <p className="font-medium text-acr-pos" data-testid="text-trial-available">
                                   7-day free trial available
                                 </p>
                                 <p className="text-sm text-muted-foreground mt-1">
@@ -1048,13 +1048,13 @@ export default function Settings() {
                           <>
                             {nearLimitItems.length > 0 && usageData.tier !== "enterprise" && (
                               <div
-                                className="flex items-start gap-3 p-4 rounded-md bg-amber-500/10 border border-amber-500/20 mb-4"
+                                className="flex items-start gap-3 p-4 rounded-md bg-acr-warn/10 border border-amber-500/20 mb-4"
                                 role="status"
                                 aria-live="polite"
                               >
-                                <TrendingUp className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" aria-hidden="true" />
+                                <TrendingUp className="w-5 h-5 text-acr-warn mt-0.5 flex-shrink-0" aria-hidden="true" />
                                 <div>
-                                  <p className="font-medium text-amber-500">
+                                  <p className="font-medium text-acr-warn">
                                     You're approaching your limits
                                   </p>
                                   <p className="text-sm text-muted-foreground mt-1">
@@ -1103,7 +1103,7 @@ export default function Settings() {
                                     {!isUnlimited && (
                                       <Progress
                                         value={Math.min(percentage, 100)}
-                                        className={`h-2 ${isAtLimit ? "[&>div]:bg-red-500" : isNearLimit ? "[&>div]:bg-amber-500" : ""}`}
+                                        className={`h-2 ${isAtLimit ? "[&>div]:bg-acr-neg" : isNearLimit ? "[&>div]:bg-acr-warn" : ""}`}
                                         aria-label={`${item.label} usage: ${usage.current} of ${usage.limit} (${Math.round(percentage)}%)`}
                                       />
                                     )}
@@ -1285,7 +1285,7 @@ export default function Settings() {
                                     .filter(([key]) => key.startsWith("feature_"))
                                     .map(([key, value]) => (
                                       <li key={key} className="flex items-center gap-2 text-sm">
-                                        <Check className="w-4 h-4 text-green-500 flex-shrink-0" />
+                                        <Check className="w-4 h-4 text-acr-pos flex-shrink-0" />
                                         <span>{value}</span>
                                       </li>
                                     ))}
@@ -1769,7 +1769,7 @@ function TwoFactorAuthSettings() {
       <CardContent className="space-y-4">
         {status?.enabled ? (
           <div className="space-y-3">
-            <div className="flex items-center gap-2 text-green-600" role="status">
+            <div className="flex items-center gap-2 text-acr-pos" role="status">
               <CheckCircle2 className="w-4 h-4" aria-hidden="true" />
               <span className="text-sm font-medium">2FA is enabled</span>
             </div>
@@ -2347,7 +2347,7 @@ function GoalsSettings() {
                       />
                       <div className="flex justify-between text-xs text-muted-foreground tabular-nums">
                         <span>{valueFormat(current)} / {valueFormat(target)}</span>
-                        <span className={isComplete ? "text-green-600 font-semibold" : ""}>{pct}%</span>
+                        <span className={isComplete ? "text-acr-pos font-semibold" : ""}>{pct}%</span>
                       </div>
                     </div>
                   </div>
@@ -2459,12 +2459,12 @@ function ApiKeyManager() {
       {/* Newly created key — show once */}
       {createdKey && (
         <Card
-          className="border-emerald-500 bg-emerald-50 dark:bg-emerald-950/30"
+          className="border-emerald-500 bg-acr-pos-soft dark:bg-emerald-950/30"
           role="alert"
           aria-live="assertive"
         >
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-emerald-700 dark:text-emerald-400 flex items-center gap-2">
+            <CardTitle className="text-sm text-acr-pos dark:text-acr-pos flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4" aria-hidden="true" /> API key created — copy it now, it won't be shown again
             </CardTitle>
           </CardHeader>
@@ -2845,7 +2845,7 @@ function PrivacyDataSettings() {
   if (privacyStatus?.deleted) {
     return (
       <div className="flex flex-col items-center gap-4 py-16 text-center" role="status" aria-live="polite">
-        <CheckCircle2 className="w-12 h-12 text-green-500" aria-hidden="true" />
+        <CheckCircle2 className="w-12 h-12 text-acr-pos" aria-hidden="true" />
         <h2 className="text-xl font-semibold">Data deletion complete</h2>
         <p className="text-muted-foreground text-sm">Your personal data has already been anonymized.</p>
       </div>
@@ -2903,11 +2903,11 @@ function PrivacyDataSettings() {
         </Card>
 
         {/* Data Deletion */}
-        <Card className="border-red-200 dark:border-red-800">
+        <Card className="border-acr-neg/30 dark:border-acr-neg/30">
           <CardHeader>
             <div className="flex items-center gap-2">
-              <Trash2 className="w-5 h-5 text-red-600" aria-hidden="true" />
-              <CardTitle className="text-base text-red-700 dark:text-red-400">Delete personal data</CardTitle>
+              <Trash2 className="w-5 h-5 text-acr-neg" aria-hidden="true" />
+              <CardTitle className="text-base text-acr-neg dark:text-acr-neg">Delete personal data</CardTitle>
             </div>
             <CardDescription>
               Permanently anonymize your personal data (GDPR Article 17 — right to erasure).
@@ -2916,11 +2916,11 @@ function PrivacyDataSettings() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div
-              className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800"
+              className="flex items-start gap-2 p-3 rounded-lg bg-acr-warn-soft dark:bg-amber-950/20 border border-acr-warn/30 dark:border-acr-warn/30"
               role="alert"
             >
-              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" aria-hidden="true" />
-              <div className="text-xs text-amber-700 dark:text-amber-400 space-y-1">
+              <AlertTriangle className="w-4 h-4 text-acr-warn shrink-0 mt-0.5" aria-hidden="true" />
+              <div className="text-xs text-acr-warn dark:text-acr-warn space-y-1">
                 <p className="font-medium">This action can't be undone.</p>
                 <p>Your email, name, and contact details will be replaced with anonymized values. Deals and business records are retained for legal compliance.</p>
               </div>

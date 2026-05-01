@@ -270,7 +270,7 @@ export default function FinancePage() {
             <Card className="glass-panel">
               <CardContent className="p-6">
                 <div className="flex items-center gap-3">
-                  <div className="p-3 rounded-xl bg-emerald-500/10">
+                  <div className="p-3 rounded-xl bg-acr-pos/10">
                     <DollarSign className="w-5 h-5 text-acr-pos" />
                   </div>
                   <div>
@@ -1015,7 +1015,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                         <dt className="text-xs text-muted-foreground mb-1">Delinquency status</dt>
                         <dd className="flex items-center gap-2">
                           {dunningData.daysDelinquent > 0 ? (
-                            <AlertTriangle className="w-5 h-5 text-red-500" aria-hidden="true" />
+                            <AlertTriangle className="w-5 h-5 text-acr-neg" aria-hidden="true" />
                           ) : (
                             <CheckCircle className="w-5 h-5 text-acr-pos" aria-hidden="true" />
                           )}
@@ -1031,11 +1031,11 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                         <dd>
                           <Badge
                             className={
-                              dunningData.dunningStage === 'current' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 capitalize' :
-                              dunningData.dunningStage === 'friendly_reminder' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 capitalize' :
-                              dunningData.dunningStage === 'formal_notice' ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400 capitalize' :
-                              dunningData.dunningStage === 'final_warning' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 capitalize' :
-                              'bg-red-200 text-red-900 dark:bg-red-900/50 dark:text-red-300 capitalize'
+                              dunningData.dunningStage === 'current' ? 'bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft dark:text-acr-pos capitalize' :
+                              dunningData.dunningStage === 'friendly_reminder' ? 'bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft dark:text-acr-warn capitalize' :
+                              dunningData.dunningStage === 'formal_notice' ? 'bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft dark:text-acr-warn capitalize' :
+                              dunningData.dunningStage === 'final_warning' ? 'bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft dark:text-acr-neg capitalize' :
+                              'bg-red-200 text-red-900 dark:bg-red-900/50 dark:text-acr-neg capitalize'
                             }
                             data-testid="badge-dunning-stage"
                           >
@@ -1335,13 +1335,13 @@ function AcceptPaymentModal({ note, onClose }: { note: NoteWithDetails; onClose:
             {clientSecret ? (
               <div className="space-y-3">
                 <div
-                  className="bg-emerald-50 dark:bg-emerald-900/30 rounded-lg p-4 border border-emerald-200 dark:border-emerald-800"
+                  className="bg-acr-pos-soft dark:bg-acr-pos-soft rounded-lg p-4 border border-acr-pos/30 dark:border-acr-pos/30"
                   role="status"
                   aria-live="polite"
                 >
                   <div className="flex items-center gap-2 mb-2">
                     <CheckCircle className="w-5 h-5 text-acr-pos" aria-hidden="true" />
-                    <span className="font-medium text-emerald-800 dark:text-emerald-200">Payment intent created</span>
+                    <span className="font-medium text-acr-pos dark:text-emerald-200">Payment intent created</span>
                   </div>
                   <p className="text-sm text-muted-foreground mb-2">
                     Amount: <span className="font-mono font-bold tabular-nums">{usd(Number(amount) || 0)}</span>

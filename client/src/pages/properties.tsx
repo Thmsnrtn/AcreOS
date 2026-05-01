@@ -789,7 +789,7 @@ export default function PropertiesPage() {
           {importPreview && (
             <div className="space-y-4 py-4">
               <div className="flex items-center gap-2 text-sm">
-                <CheckCircle className="w-4 h-4 text-green-600" />
+                <CheckCircle className="w-4 h-4 text-acr-pos" />
                 <span>Found {importPreview.totalRows} rows to import</span>
               </div>
               
@@ -838,19 +838,19 @@ export default function PropertiesPage() {
                   <p className="text-2xl font-bold">{importResult.totalRows}</p>
                   <p className="text-xs text-muted-foreground">Total Rows</p>
                 </div>
-                <div className="bg-green-100 dark:bg-green-900/30 rounded-lg p-4">
-                  <p className="text-2xl font-bold text-green-700 dark:text-green-300">{importResult.successCount}</p>
-                  <p className="text-xs text-green-600 dark:text-green-400">Imported</p>
+                <div className="bg-acr-pos-soft dark:bg-acr-pos-soft rounded-lg p-4">
+                  <p className="text-2xl font-bold text-acr-pos dark:text-acr-pos">{importResult.successCount}</p>
+                  <p className="text-xs text-acr-pos dark:text-acr-pos">Imported</p>
                 </div>
-                <div className="bg-red-100 dark:bg-red-900/30 rounded-lg p-4">
-                  <p className="text-2xl font-bold text-red-700 dark:text-red-300">{importResult.errorCount}</p>
-                  <p className="text-xs text-red-600 dark:text-red-400">Failed</p>
+                <div className="bg-acr-neg-soft dark:bg-acr-neg-soft rounded-lg p-4">
+                  <p className="text-2xl font-bold text-acr-neg dark:text-acr-neg">{importResult.errorCount}</p>
+                  <p className="text-xs text-acr-neg dark:text-acr-neg">Failed</p>
                 </div>
               </div>
 
               {importResult.errors.length > 0 && (
-                <div className="border border-red-200 dark:border-red-800 rounded-lg overflow-hidden">
-                  <div className="bg-red-50 dark:bg-red-900/30 p-2 text-sm font-medium text-red-700 dark:text-red-300 flex items-center gap-2">
+                <div className="border border-acr-neg/30 dark:border-acr-neg/30 rounded-lg overflow-hidden">
+                  <div className="bg-acr-neg-soft dark:bg-acr-neg-soft p-2 text-sm font-medium text-acr-neg dark:text-acr-neg flex items-center gap-2">
                     <AlertCircle className="w-4 h-4" />
                     Errors ({importResult.errors.length})
                   </div>
@@ -858,7 +858,7 @@ export default function PropertiesPage() {
                     {importResult.errors.slice(0, 10).map((err, idx) => (
                       <div key={idx} className="p-2 border-b last:border-0 text-xs">
                         <span className="font-medium">Row {err.row}:</span>{" "}
-                        <span className="text-red-600 dark:text-red-400">{err.error}</span>
+                        <span className="text-acr-neg dark:text-acr-neg">{err.error}</span>
                       </div>
                     ))}
                     {importResult.errors.length > 10 && (
@@ -1063,8 +1063,8 @@ function PropertyCard({ property, onDelete }: {
           </div>
           {Number(property.marketValue) > 0 && Number(property.sizeAcres) > 0 && (
             <div className="flex items-center gap-1.5 col-span-2 pt-1 border-t border-border/50">
-              <TrendingUp className="w-3.5 h-3.5 text-emerald-600" aria-hidden="true" />
-              <span className="text-emerald-700 dark:text-emerald-400 font-medium tabular-nums">
+              <TrendingUp className="w-3.5 h-3.5 text-acr-pos" aria-hidden="true" />
+              <span className="text-acr-pos dark:text-acr-pos font-medium tabular-nums">
                 {usd(Math.round(Number(property.marketValue) / Number(property.sizeAcres)), { noCents: true })}/acre
               </span>
               {property.createdAt && (
@@ -1080,10 +1080,10 @@ function PropertyCard({ property, onDelete }: {
           const score = enrichment?.scores?.overallScore ?? enrichment?.scores?.investmentScore;
           if (score == null) return null;
           const color = score >= 70
-            ? "bg-red-100 text-red-700 border-red-200"
+            ? "bg-acr-neg-soft text-acr-neg border-acr-neg/30"
             : score >= 40
-            ? "bg-yellow-100 text-yellow-700 border-yellow-200"
-            : "bg-green-100 text-green-700 border-green-200";
+            ? "bg-acr-warn-soft text-yellow-700 border-acr-warn/30"
+            : "bg-acr-pos-soft text-acr-pos border-green-200";
           const label = score >= 70 ? "High" : score >= 40 ? "Medium" : "Low";
           return (
             <div className="mt-2">
@@ -1517,9 +1517,9 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
   });
 
   const signalColors: Record<string, { bg: string; text: string; border: string; dot: string }> = {
-    green: { bg: "bg-green-50 dark:bg-green-950/30", text: "text-green-700 dark:text-green-400", border: "border-green-200 dark:border-green-800", dot: "bg-green-500" },
-    yellow: { bg: "bg-yellow-50 dark:bg-yellow-950/30", text: "text-yellow-700 dark:text-yellow-400", border: "border-yellow-200 dark:border-yellow-800", dot: "bg-yellow-500" },
-    red: { bg: "bg-red-50 dark:bg-red-950/30", text: "text-red-700 dark:text-red-400", border: "border-red-200 dark:border-red-800", dot: "bg-red-500" },
+    green: { bg: "bg-acr-pos-soft dark:bg-green-950/30", text: "text-acr-pos dark:text-acr-pos", border: "border-green-200 dark:border-green-800", dot: "bg-acr-pos" },
+    yellow: { bg: "bg-acr-warn-soft dark:bg-yellow-950/30", text: "text-yellow-700 dark:text-acr-warn", border: "border-acr-warn/30 dark:border-acr-warn/30", dot: "bg-acr-warn" },
+    red: { bg: "bg-acr-neg-soft dark:bg-red-950/30", text: "text-acr-neg dark:text-acr-neg", border: "border-acr-neg/30 dark:border-acr-neg/30", dot: "bg-acr-neg" },
     gray: { bg: "bg-muted/50", text: "text-muted-foreground", border: "border-muted", dot: "bg-muted-foreground" },
   };
   const sc = signalColors[verdictData.signal];
@@ -1701,7 +1701,7 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
               {verdictData.factors.map((f) => (
                 <span key={f.label} className={`flex items-center gap-1 ${f.met ? "text-foreground" : "text-muted-foreground"}`}>
                   {f.met ? (
-                    <CheckCircle className="w-3 h-3 text-green-500" aria-hidden="true" />
+                    <CheckCircle className="w-3 h-3 text-acr-pos" aria-hidden="true" />
                   ) : (
                     <AlertCircle className="w-3 h-3 text-muted-foreground/50" aria-hidden="true" />
                   )}
@@ -1997,7 +1997,7 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                 const totalPayoffCents = (distress!.taxPrincipalCents ?? 0) + (distress!.taxPenaltyCents ?? 0) + (distress!.taxInterestCents ?? 0);
                 return (
                   <div className="border-t pt-4" data-testid="section-distress-indicators">
-                    <h4 className="text-sm font-semibold mb-3 flex items-center gap-2 text-amber-700 dark:text-amber-400">
+                    <h4 className="text-sm font-semibold mb-3 flex items-center gap-2 text-acr-warn dark:text-acr-warn">
                       <AlertTriangle className="w-4 h-4" aria-hidden="true" />
                       Distress Indicators
                     </h4>
@@ -2005,7 +2005,7 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                       {distress!.taxDelinquent && (
                         <div className="space-y-1">
                           <span className="text-muted-foreground text-xs">Tax Status</span>
-                          <p className="font-medium text-amber-700 dark:text-amber-400">
+                          <p className="font-medium text-acr-warn dark:text-acr-warn">
                             Delinquent
                             {distress!.taxDelinquentYears ? ` (${distress!.taxDelinquentYears} years)` : ""}
                           </p>
@@ -2045,13 +2045,13 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                       {distress!.probate && (
                         <div className="space-y-1">
                           <span className="text-muted-foreground text-xs">Probate</span>
-                          <p className="font-medium text-amber-700 dark:text-amber-400">Yes</p>
+                          <p className="font-medium text-acr-warn dark:text-acr-warn">Yes</p>
                         </div>
                       )}
                       {distress!.codeViolation && (
                         <div className="space-y-1">
                           <span className="text-muted-foreground text-xs">Code Violation</span>
-                          <p className="font-medium text-amber-700 dark:text-amber-400">Yes</p>
+                          <p className="font-medium text-acr-warn dark:text-acr-warn">Yes</p>
                         </div>
                       )}
                       {/* Cycle 5 r2 Priya: tax-lien / tax-deed lifecycle
@@ -2078,13 +2078,13 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                       {distress!.redemptionDeadline && (
                         <div className="space-y-1">
                           <span className="text-muted-foreground text-xs">Redemption Deadline</span>
-                          <p className="font-medium text-amber-700 dark:text-amber-400">{formatDate(distress!.redemptionDeadline)}</p>
+                          <p className="font-medium text-acr-warn dark:text-acr-warn">{formatDate(distress!.redemptionDeadline)}</p>
                         </div>
                       )}
                       {distress!.auctionDate && (
                         <div className="space-y-1">
                           <span className="text-muted-foreground text-xs">Auction Date</span>
-                          <p className="font-medium text-amber-700 dark:text-amber-400">{formatDate(distress!.auctionDate)}</p>
+                          <p className="font-medium text-acr-warn dark:text-acr-warn">{formatDate(distress!.auctionDate)}</p>
                         </div>
                       )}
                       {distress!.openingBid !== undefined && distress!.openingBid > 0 && (
@@ -2353,9 +2353,9 @@ function getRiskBadgeVariant(risk?: "low" | "medium" | "high"): "default" | "sec
 
 function getRiskColor(risk?: "low" | "medium" | "high"): string {
   switch (risk) {
-    case "low": return "text-green-600";
-    case "medium": return "text-yellow-600";
-    case "high": return "text-red-600";
+    case "low": return "text-acr-pos";
+    case "medium": return "text-acr-warn";
+    case "high": return "text-acr-neg";
     default: return "text-muted-foreground";
   }
 }
@@ -2456,10 +2456,10 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
               <div
                 className={`h-2 rounded-full transition-all ${
                   (enrichmentData as any).completenessScore >= 80
-                    ? "bg-green-500"
+                    ? "bg-acr-pos"
                     : (enrichmentData as any).completenessScore >= 50
-                    ? "bg-yellow-500"
-                    : "bg-red-500"
+                    ? "bg-acr-warn"
+                    : "bg-acr-neg"
                 }`}
                 style={{ width: `${(enrichmentData as any).completenessScore}%` }}
               />
@@ -2471,7 +2471,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
                     <div
                       key={key}
                       className={`text-xs px-1.5 py-0.5 rounded text-center truncate ${
-                        value ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-muted text-muted-foreground"
+                        value ? "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft dark:text-acr-pos" : "bg-muted text-muted-foreground"
                       }`}
                       title={key}
                     >
@@ -2542,7 +2542,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
                   </div>
                   <div className="space-y-1" data-testid="score-risk">
                     <span className="text-muted-foreground text-xs">Risk Score</span>
-                    <p className={`font-medium ${(enrichmentData.scores.riskScore ?? 0) > 50 ? "text-red-600" : (enrichmentData.scores.riskScore ?? 0) > 25 ? "text-yellow-600" : "text-green-600"}`}>
+                    <p className={`font-medium ${(enrichmentData.scores.riskScore ?? 0) > 50 ? "text-acr-neg" : (enrichmentData.scores.riskScore ?? 0) > 25 ? "text-acr-warn" : "text-acr-pos"}`}>
                       {enrichmentData.scores.riskScore ?? "N/A"}
                     </p>
                   </div>
@@ -2574,7 +2574,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
                   </div>
                   <div className="flex items-center justify-between" data-testid="wetlands-present">
                     <span className="text-muted-foreground">Wetlands Present</span>
-                    <span className={enrichmentData.hazards.wetlandsPresent ? "text-yellow-600" : "text-green-600"}>
+                    <span className={enrichmentData.hazards.wetlandsPresent ? "text-acr-warn" : "text-acr-pos"}>
                       {enrichmentData.hazards.wetlandsPresent ? `Yes (${enrichmentData.hazards.wetlandsPercentage}%)` : "No"}
                     </span>
                   </div>
@@ -2588,7 +2588,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
             <Card data-testid="card-natural-hazards">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Flame className="w-4 h-4 text-orange-500" aria-hidden="true" />
+                  <Flame className="w-4 h-4 text-acr-warn" aria-hidden="true" />
                   <h4 className="font-semibold">Natural Hazards</h4>
                 </div>
                 <div className="space-y-2 text-sm">
@@ -2625,13 +2625,13 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
             <Card data-testid="card-environmental">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Leaf className="w-4 h-4 text-green-600" aria-hidden="true" />
+                  <Leaf className="w-4 h-4 text-acr-pos" aria-hidden="true" />
                   <h4 className="font-semibold">Environmental Factors</h4>
                 </div>
                 <div className="space-y-2 text-sm">
                   <div className="flex items-center justify-between" data-testid="superfund-sites">
                     <span className="text-muted-foreground">EPA Sites Nearby</span>
-                    <span className={enrichmentData.environment.epaFacilitiesNearby && enrichmentData.environment.epaFacilitiesNearby > 0 ? "text-yellow-600" : "text-green-600"}>
+                    <span className={enrichmentData.environment.epaFacilitiesNearby && enrichmentData.environment.epaFacilitiesNearby > 0 ? "text-acr-warn" : "text-acr-pos"}>
                       {enrichmentData.environment.epaFacilitiesNearby ?? 0}
                     </span>
                   </div>
@@ -2658,7 +2658,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
                   {enrichmentData.environment.primeFarmland !== undefined && (
                     <div className="flex items-center justify-between" data-testid="prime-farmland">
                       <span className="text-muted-foreground">Prime Farmland</span>
-                      <span className={enrichmentData.environment.primeFarmland ? "text-green-600" : "text-muted-foreground"}>
+                      <span className={enrichmentData.environment.primeFarmland ? "text-acr-pos" : "text-muted-foreground"}>
                         {enrichmentData.environment.primeFarmland ? "Yes" : "No"}
                       </span>
                     </div>
@@ -2783,7 +2783,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
                     enrichmentData.transportation.hasPavedRoad !== undefined && (
                       <div className="flex items-center justify-between" data-testid="paved-road">
                         <span className="text-muted-foreground">Paved Road Access</span>
-                        <span className={enrichmentData.transportation.hasPavedRoad ? "text-green-600" : "text-yellow-600"}>
+                        <span className={enrichmentData.transportation.hasPavedRoad ? "text-acr-pos" : "text-acr-warn"}>
                           {enrichmentData.transportation.hasPavedRoad ? "Yes" : "No"}
                         </span>
                       </div>
@@ -2803,7 +2803,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
             <Card data-testid="card-public-lands">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <TreePine className="w-4 h-4 text-green-700" aria-hidden="true" />
+                  <TreePine className="w-4 h-4 text-acr-pos" aria-hidden="true" />
                   <h4 className="font-semibold">Public Lands</h4>
                 </div>
                 <div className="space-y-2 text-sm">
@@ -2886,7 +2886,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
             <Card data-testid="card-climate">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Thermometer className="w-4 h-4 text-orange-400" aria-hidden="true" />
+                  <Thermometer className="w-4 h-4 text-acr-warn" aria-hidden="true" />
                   <h4 className="font-semibold">Climate & Growing</h4>
                 </div>
                 <div className="space-y-2 text-sm">
@@ -2923,7 +2923,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
             <Card data-testid="card-agricultural-values">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Wheat className="w-4 h-4 text-yellow-600" aria-hidden="true" />
+                  <Wheat className="w-4 h-4 text-acr-warn" aria-hidden="true" />
                   <h4 className="font-semibold">Agricultural values</h4>
                 </div>
                 <div className="space-y-2 text-sm">
@@ -2960,7 +2960,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
             <Card data-testid="card-land-cover">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Leaf className="w-4 h-4 text-emerald-500" aria-hidden="true" />
+                  <Leaf className="w-4 h-4 text-acr-pos" aria-hidden="true" />
                   <h4 className="font-semibold">Land Cover</h4>
                 </div>
                 <div className="space-y-2 text-sm">
@@ -2991,7 +2991,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
             <Card data-testid="card-cropland">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Wheat className="w-4 h-4 text-amber-500" aria-hidden="true" />
+                  <Wheat className="w-4 h-4 text-acr-warn" aria-hidden="true" />
                   <h4 className="font-semibold">Cropland Data</h4>
                 </div>
                 <div className="space-y-2 text-sm">
@@ -3028,24 +3028,24 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
                 <div className="space-y-2 text-sm">
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">Total Facilities</span>
-                    <span className={enrichmentData.epaFacilities.totalCount && enrichmentData.epaFacilities.totalCount > 0 ? "text-yellow-600 font-medium" : "text-green-600"}>{enrichmentData.epaFacilities.totalCount ?? 0}</span>
+                    <span className={enrichmentData.epaFacilities.totalCount && enrichmentData.epaFacilities.totalCount > 0 ? "text-acr-warn font-medium" : "text-acr-pos"}>{enrichmentData.epaFacilities.totalCount ?? 0}</span>
                   </div>
                   {(enrichmentData.epaFacilities.superfundCount ?? 0) > 0 && (
                     <div className="flex items-center justify-between">
                       <span className="text-muted-foreground">Superfund Sites</span>
-                      <span className="text-red-600 font-medium">{enrichmentData.epaFacilities.superfundCount}</span>
+                      <span className="text-acr-neg font-medium">{enrichmentData.epaFacilities.superfundCount}</span>
                     </div>
                   )}
                   {(enrichmentData.epaFacilities.airViolationCount ?? 0) > 0 && (
                     <div className="flex items-center justify-between">
                       <span className="text-muted-foreground">Air Violations</span>
-                      <span className="text-orange-500">{enrichmentData.epaFacilities.airViolationCount}</span>
+                      <span className="text-acr-warn">{enrichmentData.epaFacilities.airViolationCount}</span>
                     </div>
                   )}
                   {(enrichmentData.epaFacilities.hazWasteCount ?? 0) > 0 && (
                     <div className="flex items-center justify-between">
                       <span className="text-muted-foreground">Hazardous Waste</span>
-                      <span className="text-orange-500">{enrichmentData.epaFacilities.hazWasteCount}</span>
+                      <span className="text-acr-warn">{enrichmentData.epaFacilities.hazWasteCount}</span>
                     </div>
                   )}
                   <div className="flex items-center justify-between">
@@ -3164,14 +3164,14 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
             <Card data-testid="card-fema-nri">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Shield className="w-4 h-4 text-red-500" aria-hidden="true" />
+                  <Shield className="w-4 h-4 text-acr-neg" aria-hidden="true" />
                   <h4 className="font-semibold">FEMA National Risk Index</h4>
                 </div>
                 <div className="space-y-2 text-sm">
                   {enrichmentData.femaNri.compositeScore !== undefined && (
                     <div className="flex items-center justify-between">
                       <span className="text-muted-foreground">Composite Risk Score</span>
-                      <span className={`font-bold text-lg ${enrichmentData.femaNri.compositeScore > 70 ? "text-red-600" : enrichmentData.femaNri.compositeScore > 40 ? "text-yellow-600" : "text-green-600"}`}>
+                      <span className={`font-bold text-lg ${enrichmentData.femaNri.compositeScore > 70 ? "text-acr-neg" : enrichmentData.femaNri.compositeScore > 40 ? "text-acr-warn" : "text-acr-pos"}`}>
                         {enrichmentData.femaNri.compositeScore.toFixed(1)}
                       </span>
                     </div>
@@ -3210,7 +3210,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
             <Card data-testid="card-usda-clu">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Wheat className="w-4 h-4 text-green-600" aria-hidden="true" />
+                  <Wheat className="w-4 h-4 text-acr-pos" aria-hidden="true" />
                   <h4 className="font-semibold">USDA Farm Records (CLU)</h4>
                 </div>
                 <div className="space-y-2 text-sm">
@@ -3247,11 +3247,11 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
       )}
 
       {enrichmentData?.errors && Object.keys(enrichmentData.errors).length > 0 && (
-        <Card className="border-yellow-200 dark:border-yellow-800" data-testid="card-errors" role="status">
+        <Card className="border-acr-warn/30 dark:border-acr-warn/30" data-testid="card-errors" role="status">
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-2">
-              <AlertCircle className="w-4 h-4 text-yellow-600" aria-hidden="true" />
-              <h4 className="font-semibold text-yellow-700 dark:text-yellow-400">Some data couldn't be fetched</h4>
+              <AlertCircle className="w-4 h-4 text-acr-warn" aria-hidden="true" />
+              <h4 className="font-semibold text-yellow-700 dark:text-acr-warn">Some data couldn't be fetched</h4>
             </div>
             <ul className="text-sm text-muted-foreground space-y-1">
               {Object.entries(enrichmentData.errors).map(([category, error]) => (
