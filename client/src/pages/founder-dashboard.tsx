@@ -418,18 +418,18 @@ function getStatusBadgeColor(status: string | null) {
     case 'submitted': return 'bg-muted text-muted-foreground border-border';
     case 'under_review': return 'bg-blue-500/10 text-blue-600 border-blue-500/20';
     case 'planned': return 'bg-purple-500/10 text-purple-600 border-purple-500/20';
-    case 'in_progress': return 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20';
-    case 'completed': return 'bg-green-500/10 text-green-600 border-green-500/20';
-    case 'declined': return 'bg-red-500/10 text-red-600 border-red-500/20';
+    case 'in_progress': return 'bg-acr-warn/10 text-acr-warn border-yellow-500/20';
+    case 'completed': return 'bg-acr-pos/10 text-acr-pos border-green-500/20';
+    case 'declined': return 'bg-acr-neg/10 text-acr-neg border-red-500/20';
     default: return 'bg-muted text-muted-foreground border-border';
   }
 }
 
 function getPriorityBadgeColor(priority: string | null) {
   switch (priority) {
-    case 'high': return 'bg-red-500/10 text-red-600 border-red-500/20';
-    case 'medium': return 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20';
-    case 'low': return 'bg-green-500/10 text-green-600 border-green-500/20';
+    case 'high': return 'bg-acr-neg/10 text-acr-neg border-red-500/20';
+    case 'medium': return 'bg-acr-warn/10 text-acr-warn border-yellow-500/20';
+    case 'low': return 'bg-acr-pos/10 text-acr-pos border-green-500/20';
     default: return 'bg-muted text-muted-foreground border-border';
   }
 }
@@ -510,10 +510,10 @@ function GreetingHeader({ onRefresh, onGenerateDigest, digestPending, onShowShor
   const healthColor = !pulse
     ? "text-muted-foreground"
     : allSystemsGreen
-    ? "text-green-600"
+    ? "text-acr-pos"
     : hasIssues
-    ? "text-amber-500"
-    : "text-green-600";
+    ? "text-acr-warn"
+    : "text-acr-pos";
 
   const healthLabel = !pulse
     ? "Checking..."
@@ -524,8 +524,8 @@ function GreetingHeader({ onRefresh, onGenerateDigest, digestPending, onShowShor
   const healthDot = !pulse
     ? "bg-muted-foreground"
     : allSystemsGreen
-    ? "bg-green-500 animate-pulse"
-    : "bg-amber-500 animate-pulse";
+    ? "bg-acr-pos animate-pulse"
+    : "bg-acr-warn animate-pulse";
 
   return (
     <div className="rounded-xl border bg-gradient-to-r from-card to-card/80 px-5 py-4 shadow-sm">
@@ -533,7 +533,7 @@ function GreetingHeader({ onRefresh, onGenerateDigest, digestPending, onShowShor
         {/* Left: Greeting + Status */}
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
-            <Crown className="h-5 w-5 text-amber-500" />
+            <Crown className="h-5 w-5 text-acr-warn" />
             <h1 className="text-xl font-bold tracking-tight text-foreground" data-testid="text-founder-dashboard-title">
               {greeting}, {founderName}
             </h1>
@@ -640,7 +640,7 @@ function SophieActivityPreview() {
             {data?.count ?? 0} resolved today
           </Badge>
           {resolutionRate > 0 && (
-            <Badge variant="outline" className={`text-xs ${resolutionRate >= 70 ? 'bg-green-500/10 text-green-600 border-green-500/20' : 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20'}`}>
+            <Badge variant="outline" className={`text-xs ${resolutionRate >= 70 ? 'bg-acr-pos/10 text-acr-pos border-green-500/20' : 'bg-acr-warn/10 text-acr-warn border-yellow-500/20'}`}>
               {resolutionRate.toFixed(0)}% auto-rate
             </Badge>
           )}
@@ -655,11 +655,11 @@ function SophieActivityPreview() {
             <p className="text-xs text-muted-foreground">Total tickets</p>
           </div>
           <div className="text-center">
-            <p className="text-lg font-bold text-green-600">{supportAnalyticsData.aiResolvedTickets}</p>
+            <p className="text-lg font-bold text-acr-pos">{supportAnalyticsData.aiResolvedTickets}</p>
             <p className="text-xs text-muted-foreground">AI resolved</p>
           </div>
           <div className="text-center">
-            <p className="text-lg font-bold text-amber-600">{supportAnalyticsData.openTickets}</p>
+            <p className="text-lg font-bold text-acr-warn">{supportAnalyticsData.openTickets}</p>
             <p className="text-xs text-muted-foreground">Still open</p>
           </div>
         </div>
@@ -677,7 +677,7 @@ function SophieActivityPreview() {
           <p className="text-xs font-medium text-muted-foreground mb-2">Recent auto-resolutions</p>
           {recent.map((t: any) => (
             <div key={t.id} className="flex items-center gap-2 text-xs py-0.5">
-              <CheckCircle2 className="h-3 w-3 text-green-500 shrink-0" />
+              <CheckCircle2 className="h-3 w-3 text-acr-pos shrink-0" />
               <span className="text-foreground truncate flex-1">{t.subject ?? `Ticket #${t.id}`}</span>
               <span className="text-muted-foreground shrink-0 text-[11px]">
                 {t.resolvedAt ? relative(t.resolvedAt) : ""}
@@ -697,13 +697,13 @@ function SophieActivityPreview() {
 const JOB_COLORS: Record<string, string> = {
   finance_agent:       "bg-blue-500",
   campaign_optimizer:  "bg-purple-500",
-  lead_nurturing:      "bg-green-500",
+  lead_nurturing:      "bg-acr-pos",
   support_brain:       "bg-cyan-500",
-  dunning:             "bg-red-500",
-  external_monitor:    "bg-orange-500",
+  dunning:             "bg-acr-neg",
+  external_monitor:    "bg-acr-warn",
   pax:              "bg-violet-500",
   churn_engine:        "bg-rose-500",
-  founder_briefing:    "bg-emerald-500",
+  founder_briefing:    "bg-acr-pos",
   default:             "bg-zinc-400",
 };
 
@@ -712,9 +712,9 @@ function jobColor(jobName: string) {
 }
 
 function JobStatusDot({ status }: { status: string }) {
-  if (status === "healthy")  return <CircleCheck className="w-4 h-4 text-green-500 shrink-0" />;
-  if (status === "degraded") return <CircleDotIcon className="w-4 h-4 text-yellow-500 shrink-0" />;
-  if (status === "failed")   return <CircleX className="w-4 h-4 text-red-500 shrink-0" />;
+  if (status === "healthy")  return <CircleCheck className="w-4 h-4 text-acr-pos shrink-0" />;
+  if (status === "degraded") return <CircleDotIcon className="w-4 h-4 text-acr-warn shrink-0" />;
+  if (status === "failed")   return <CircleX className="w-4 h-4 text-acr-neg shrink-0" />;
   return <Minus className="w-4 h-4 text-zinc-400 shrink-0" />;
 }
 
@@ -733,7 +733,7 @@ function SystemActivityPanel() {
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-base font-semibold flex items-center gap-2">
-            <ScrollText className="w-4 h-4 text-emerald-500" />
+            <ScrollText className="w-4 h-4 text-acr-pos" />
             System Activity Stream
           </CardTitle>
           <div className="flex items-center gap-2">
@@ -790,7 +790,7 @@ function JobHealthPanel() {
   const hasIssues = summary.failed > 0 || summary.degraded > 0;
 
   return (
-    <Card className={hasIssues ? "border-red-300 dark:border-red-800" : ""}>
+    <Card className={hasIssues ? "border-red-300 dark:border-acr-neg/30" : ""}>
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-base font-semibold flex items-center gap-2">
@@ -805,9 +805,9 @@ function JobHealthPanel() {
           </div>
         </div>
         <div className="flex gap-3 text-xs text-muted-foreground">
-          <span className="text-green-600 font-medium">{summary.healthy} healthy</span>
-          {summary.degraded > 0 && <span className="text-yellow-600 font-medium">{summary.degraded} degraded</span>}
-          {summary.failed > 0 && <span className="text-red-600 font-medium">{summary.failed} failed</span>}
+          <span className="text-acr-pos font-medium">{summary.healthy} healthy</span>
+          {summary.degraded > 0 && <span className="text-acr-warn font-medium">{summary.degraded} degraded</span>}
+          {summary.failed > 0 && <span className="text-acr-neg font-medium">{summary.failed} failed</span>}
           {summary.unknown > 0 && <span>{summary.unknown} not yet run</span>}
         </div>
       </CardHeader>
@@ -830,7 +830,7 @@ function JobHealthPanel() {
                     <span className="italic">not yet run</span>
                   )}
                   {job.consecutiveFailures > 0 && (
-                    <span className="ml-2 text-red-500 font-medium">{job.consecutiveFailures} fails</span>
+                    <span className="ml-2 text-acr-neg font-medium">{job.consecutiveFailures} fails</span>
                   )}
                 </div>
               </div>
@@ -864,8 +864,8 @@ function ChurnRiskPanel() {
   };
 
   const riskColor = (score: number) =>
-    score >= 80 ? "text-red-600 font-bold" :
-    score >= 60 ? "text-yellow-600 font-semibold" :
+    score >= 80 ? "text-acr-neg font-bold" :
+    score >= 60 ? "text-acr-warn font-semibold" :
     "text-muted-foreground";
 
   return (
@@ -882,7 +882,7 @@ function ChurnRiskPanel() {
           <div className="space-y-2">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}</div>
         ) : orgs.length === 0 ? (
           <div className="flex flex-col items-center py-6 gap-1">
-            <CircleCheck className="w-8 h-8 text-green-500" />
+            <CircleCheck className="w-8 h-8 text-acr-pos" />
             <p className="text-sm text-muted-foreground">No orgs at elevated churn risk</p>
           </div>
         ) : (
@@ -959,14 +959,14 @@ function PaxEyesPanel() {
 
   const confidenceBadge = (score: number) => {
     const pct = score > 1 ? score : score * 100;
-    if (pct >= 80) return <Badge className="text-xs bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20">High</Badge>;
-    if (pct >= 50) return <Badge className="text-xs bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 border-yellow-500/20">Medium</Badge>;
+    if (pct >= 80) return <Badge className="text-xs bg-acr-pos/10 text-acr-pos dark:text-acr-pos border-green-500/20">High</Badge>;
+    if (pct >= 50) return <Badge className="text-xs bg-acr-warn/10 text-yellow-700 dark:text-acr-warn border-yellow-500/20">Medium</Badge>;
     return <Badge className="text-xs bg-muted text-muted-foreground border-border">Low</Badge>;
   };
 
   const severityColor = (s: string) => {
-    if (s === "high") return "text-red-600 dark:text-red-400";
-    if (s === "medium") return "text-amber-600 dark:text-amber-400";
+    if (s === "high") return "text-acr-neg dark:text-acr-neg";
+    if (s === "medium") return "text-acr-warn dark:text-acr-warn";
     return "text-violet-400";
   };
 
@@ -1038,7 +1038,7 @@ function PaxEyesPanel() {
             <div className="space-y-1.5">
               {learnings.slice(0, 4).map((l: any) => (
                 <div key={l.id} className="flex items-start gap-2 py-1.5 border-b border-border/40 last:border-0">
-                  <Sparkles className="w-3.5 h-3.5 mt-1 text-amber-400 shrink-0" />
+                  <Sparkles className="w-3.5 h-3.5 mt-1 text-acr-warn shrink-0" />
                   <p className="text-sm leading-snug">{l.insight ?? l.pattern ?? l.title ?? JSON.stringify(l).slice(0, 100)}</p>
                 </div>
               ))}
@@ -1860,28 +1860,28 @@ export default function FounderDashboard() {
 
   const getAgentStatusColor = (status: string) => {
     switch (status) {
-      case 'healthy': return 'bg-green-500/10 text-green-600 border-green-500/20';
-      case 'busy': return 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20';
-      case 'warning': return 'bg-orange-500/10 text-orange-600 border-orange-500/20';
+      case 'healthy': return 'bg-acr-pos/10 text-acr-pos border-green-500/20';
+      case 'busy': return 'bg-acr-warn/10 text-acr-warn border-yellow-500/20';
+      case 'warning': return 'bg-acr-warn/10 text-acr-warn border-orange-500/20';
       default: return 'bg-muted text-muted-foreground border-border';
     }
   };
 
   const getSeverityColor = (severity: string) => {
     switch (severity) {
-      case 'critical': return 'bg-red-500/10 text-red-600 border-red-500/20';
-      case 'warning': return 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20';
+      case 'critical': return 'bg-acr-neg/10 text-acr-neg border-red-500/20';
+      case 'warning': return 'bg-acr-warn/10 text-acr-warn border-yellow-500/20';
       default: return 'bg-blue-500/10 text-blue-600 border-blue-500/20';
     }
   };
 
   const getEventTypeIcon = (eventType: string) => {
     switch (eventType) {
-      case 'upgrade': return <TrendingUp className="w-4 h-4 text-green-600" />;
-      case 'downgrade': return <TrendingDown className="w-4 h-4 text-orange-600" />;
-      case 'cancel': return <AlertCircle className="w-4 h-4 text-red-600" />;
+      case 'upgrade': return <TrendingUp className="w-4 h-4 text-acr-pos" />;
+      case 'downgrade': return <TrendingDown className="w-4 h-4 text-acr-warn" />;
+      case 'cancel': return <AlertCircle className="w-4 h-4 text-acr-neg" />;
       case 'reactivate': return <RefreshCw className="w-4 h-4 text-blue-600" />;
-      case 'signup': return <UserPlus className="w-4 h-4 text-green-600" />;
+      case 'signup': return <UserPlus className="w-4 h-4 text-acr-pos" />;
       default: return <Activity className="w-4 h-4 text-muted-foreground" />;
     }
   };
@@ -1952,7 +1952,7 @@ export default function FounderDashboard() {
             <DialogContent className="max-w-xs">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
-                  <Target className="h-4 w-4 text-amber-500" />
+                  <Target className="h-4 w-4 text-acr-warn" />
                   Set MRR Goal
                 </DialogTitle>
                 <DialogDescription>
@@ -2018,13 +2018,13 @@ export default function FounderDashboard() {
 
           {/* ── Focus Mode Banner ────────────────────────────────────── */}
           {focusMode && (
-            <div className="flex items-center justify-between rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-2">
-              <div className="flex items-center gap-2 text-sm text-amber-600">
+            <div className="flex items-center justify-between rounded-lg border border-amber-500/30 bg-acr-warn/5 px-4 py-2">
+              <div className="flex items-center gap-2 text-sm text-acr-warn">
                 <Flame className="h-4 w-4" />
                 <span className="font-medium">Focus mode — showing critical sections only</span>
               </div>
-              <Button size="sm" variant="ghost" className="h-7 text-xs text-amber-600 hover:text-amber-700" onClick={() => setFocusMode(false)}>
-                Exit <kbd className="ml-1 rounded bg-amber-500/20 px-1 py-0.5 text-[10px] font-mono">F</kbd>
+              <Button size="sm" variant="ghost" className="h-7 text-xs text-acr-warn hover:text-acr-warn" onClick={() => setFocusMode(false)}>
+                Exit <kbd className="ml-1 rounded bg-acr-warn/20 px-1 py-0.5 text-[10px] font-mono">F</kbd>
               </Button>
             </div>
           )}
@@ -2060,7 +2060,7 @@ export default function FounderDashboard() {
             <div className="rounded-lg border bg-card px-4 py-3">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <Target className="h-4 w-4 text-amber-500" />
+                  <Target className="h-4 w-4 text-acr-warn" />
                   <span className="text-sm font-medium">MRR Goal Progress</span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -2076,9 +2076,9 @@ export default function FounderDashboard() {
                 <div
                   className={`h-full rounded-full transition-all ${
                     dashboardData.revenue.mrr >= goalCents
-                      ? "bg-green-500"
+                      ? "bg-acr-pos"
                       : dashboardData.revenue.mrr >= goalCents * 0.75
-                      ? "bg-amber-500"
+                      ? "bg-acr-warn"
                       : "bg-blue-500"
                   }`}
                   style={{ width: `${Math.min(100, (dashboardData.revenue.mrr / goalCents) * 100).toFixed(1)}%` }}
@@ -2267,15 +2267,15 @@ export default function FounderDashboard() {
                   onClick={() => setExpandedTile('revenue')}
                   data-testid="title-revenue-analytics"
                 >
-                  <DollarSign className="w-5 h-5 text-green-500" />
+                  <DollarSign className="w-5 h-5 text-acr-pos" />
                   Revenue Analytics
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 {/* MRR Hero Number */}
-                <div className="rounded-lg bg-green-500/5 border border-green-500/20 px-4 py-3">
+                <div className="rounded-lg bg-acr-pos/5 border border-green-500/20 px-4 py-3">
                   <p className="text-xs text-muted-foreground mb-0.5">Monthly Recurring Revenue</p>
-                  <p className="text-3xl font-bold text-green-600 tracking-tight" data-testid="text-mrr">
+                  <p className="text-3xl font-bold text-acr-pos tracking-tight" data-testid="text-mrr">
                     {formatCurrency(dashboardData?.revenue.mrr || 0)}
                   </p>
                   <p className="text-xs text-muted-foreground mt-0.5">
@@ -2300,11 +2300,11 @@ export default function FounderDashboard() {
                 {(dashboardData?.revenue.mrrAtRisk || 0) > 0 && (
                   <div className="pt-2 border-t">
                     <div className="flex items-center justify-between text-sm">
-                      <div className="flex items-center gap-1.5 text-amber-600">
+                      <div className="flex items-center gap-1.5 text-acr-warn">
                         <AlertTriangle className="w-3.5 h-3.5" />
                         <span className="text-xs font-medium">MRR at risk</span>
                       </div>
-                      <span className="text-xs font-semibold text-amber-600">
+                      <span className="text-xs font-semibold text-acr-warn">
                         {formatCurrency(dashboardData?.revenue.mrrAtRisk || 0)}
                         {dashboardData?.revenue.mrr ? (
                           <span className="text-muted-foreground font-normal ml-1">
@@ -2317,7 +2317,7 @@ export default function FounderDashboard() {
                 )}
                 {(dashboardData?.revenue.mrrAtRisk || 0) === 0 && (
                   <div className="pt-2 border-t">
-                    <div className="flex items-center gap-1.5 text-green-600 text-xs">
+                    <div className="flex items-center gap-1.5 text-acr-pos text-xs">
                       <CheckCircle2 className="w-3.5 h-3.5" />
                       <span>No MRR at risk — all accounts in good standing</span>
                     </div>
@@ -2336,7 +2336,7 @@ export default function FounderDashboard() {
                   <Server className="w-5 h-5 text-blue-500" />
                   System Health
                 </CardTitle>
-                <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">
+                <Badge variant="outline" className="bg-acr-pos/10 text-acr-pos border-green-500/20">
                   <CheckCircle2 className="w-3 h-3 mr-1" />
                   Online
                 </Badge>
@@ -2358,7 +2358,7 @@ export default function FounderDashboard() {
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-muted-foreground">Uptime</span>
-                  <span className="font-medium text-green-600" data-testid="text-uptime">
+                  <span className="font-medium text-acr-pos" data-testid="text-uptime">
                     {dashboardData?.systemHealth.uptime || 99.9}%
                   </span>
                 </div>
@@ -2419,12 +2419,12 @@ export default function FounderDashboard() {
                 <div className="pt-2 border-t flex justify-between items-center">
                   <span className="text-sm text-muted-foreground">API Queue</span>
                   <div className="flex gap-2">
-                    <Badge variant="outline" className="bg-yellow-500/10 text-yellow-600 border-yellow-500/20">
+                    <Badge variant="outline" className="bg-acr-warn/10 text-acr-warn border-yellow-500/20">
                       <Clock className="w-3 h-3 mr-1" />
                       {dashboardData?.agents.apiQueue.pending || 0} pending
                     </Badge>
                     {(dashboardData?.agents.apiQueue.failed || 0) > 0 && (
-                      <Badge variant="outline" className="bg-red-500/10 text-red-600 border-red-500/20">
+                      <Badge variant="outline" className="bg-acr-neg/10 text-acr-neg border-red-500/20">
                         {dashboardData?.agents.apiQueue.failed} failed
                       </Badge>
                     )}
@@ -2440,7 +2440,7 @@ export default function FounderDashboard() {
                   onClick={() => setExpandedTile('alerts')}
                   data-testid="title-alerts-overview"
                 >
-                  <AlertTriangle className="w-5 h-5 text-amber-500" />
+                  <AlertTriangle className="w-5 h-5 text-acr-warn" />
                   Alerts Overview
                 </CardTitle>
                 <div className="flex items-center gap-2">
@@ -2482,8 +2482,8 @@ export default function FounderDashboard() {
                 </div>
                 <div className="space-y-2 max-h-32 overflow-y-auto">
                   {dashboardData?.alerts.critical.map((alert) => (
-                    <div key={alert.id} className="flex items-start gap-2 p-2 rounded-md bg-red-500/5 border border-red-500/20">
-                      <AlertCircle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
+                    <div key={alert.id} className="flex items-start gap-2 p-2 rounded-md bg-acr-neg/5 border border-red-500/20">
+                      <AlertCircle className="w-4 h-4 text-acr-neg mt-0.5 flex-shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">{alert.title}</p>
                         <p className="text-xs text-muted-foreground truncate">{alert.message}</p>
@@ -2523,14 +2523,14 @@ export default function FounderDashboard() {
                   onClick={() => setExpandedTile('revenueAtRisk')}
                   data-testid="title-revenue-at-risk"
                 >
-                  <TrendingDown className="w-5 h-5 text-red-500" />
+                  <TrendingDown className="w-5 h-5 text-acr-neg" />
                   Revenue At Risk
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-muted-foreground">Total MRR At Risk</span>
-                  <span className="text-lg font-bold text-red-600" data-testid="text-mrr-at-risk">
+                  <span className="text-lg font-bold text-acr-neg" data-testid="text-mrr-at-risk">
                     {formatCurrency(dashboardData?.revenueAtRisk.totalMrrAtRisk || 0)}
                   </span>
                 </div>
@@ -2538,7 +2538,7 @@ export default function FounderDashboard() {
                   <span className="text-sm font-medium">Organizations in Dunning</span>
                   <div className="flex gap-2 flex-wrap">
                     {Object.entries(dashboardData?.revenueAtRisk.dunningByStage || {}).map(([stage, count]) => (
-                      <Badge key={stage} variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/20">
+                      <Badge key={stage} variant="outline" className="bg-acr-warn/10 text-acr-warn border-amber-500/20">
                         {stage.replace(/_/g, ' ')}: {count}
                       </Badge>
                     ))}
@@ -2549,7 +2549,7 @@ export default function FounderDashboard() {
                 </div>
                 <div className="flex justify-between items-center pt-2 border-t">
                   <span className="text-sm text-muted-foreground">Low Credit Balance</span>
-                  <Badge variant="outline" className="bg-orange-500/10 text-orange-600 border-orange-500/20">
+                  <Badge variant="outline" className="bg-acr-warn/10 text-acr-warn border-orange-500/20">
                     <CreditCard className="w-3 h-3 mr-1" />
                     {dashboardData?.revenueAtRisk.orgsApproachingCreditExhaustion || 0} orgs
                   </Badge>
@@ -2577,7 +2577,7 @@ export default function FounderDashboard() {
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-muted-foreground">New Signups (This Week)</span>
-                  <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">
+                  <Badge variant="outline" className="bg-acr-pos/10 text-acr-pos border-green-500/20">
                     <UserPlus className="w-3 h-3 mr-1" />
                     {dashboardData?.userActivity.newSignupsThisWeek || 0}
                   </Badge>
@@ -2599,15 +2599,15 @@ export default function FounderDashboard() {
             <Card data-testid="card-customer-momentum">
               <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
                 <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                  <Flame className="w-5 h-5 text-orange-500" />
+                  <Flame className="w-5 h-5 text-acr-warn" />
                   Customer Momentum
                 </CardTitle>
                 {subscriptionStats && (
                   <Badge
                     variant="outline"
                     className={subscriptionStats.upgrades30d > subscriptionStats.downgrades30d
-                      ? 'bg-green-500/10 text-green-600 border-green-500/20'
-                      : 'bg-red-500/10 text-red-600 border-red-500/20'
+                      ? 'bg-acr-pos/10 text-acr-pos border-green-500/20'
+                      : 'bg-acr-neg/10 text-acr-neg border-red-500/20'
                     }
                   >
                     {subscriptionStats.upgrades30d > subscriptionStats.downgrades30d ? (
@@ -2624,12 +2624,12 @@ export default function FounderDashboard() {
                   <>
                     {/* 30-day momentum grid */}
                     <div className="grid grid-cols-3 gap-2 text-center">
-                      <div className="rounded-lg bg-green-500/5 border border-green-500/10 px-2 py-2">
-                        <p className="text-lg font-bold text-green-600">{subscriptionStats.upgrades30d}</p>
+                      <div className="rounded-lg bg-acr-pos/5 border border-green-500/10 px-2 py-2">
+                        <p className="text-lg font-bold text-acr-pos">{subscriptionStats.upgrades30d}</p>
                         <p className="text-[10px] text-muted-foreground leading-tight">upgrades</p>
                       </div>
-                      <div className="rounded-lg bg-red-500/5 border border-red-500/10 px-2 py-2">
-                        <p className="text-lg font-bold text-red-500">{subscriptionStats.cancellations30d}</p>
+                      <div className="rounded-lg bg-acr-neg/5 border border-red-500/10 px-2 py-2">
+                        <p className="text-lg font-bold text-acr-neg">{subscriptionStats.cancellations30d}</p>
                         <p className="text-[10px] text-muted-foreground leading-tight">cancels</p>
                       </div>
                       <div className="rounded-lg bg-blue-500/5 border border-blue-500/10 px-2 py-2">
@@ -2640,15 +2640,15 @@ export default function FounderDashboard() {
                     <div className="pt-1 border-t space-y-1.5">
                       <div className="flex justify-between text-xs">
                         <span className="text-muted-foreground">Downgrades (30d)</span>
-                        <span className="font-medium text-amber-600">{subscriptionStats.downgrades30d}</span>
+                        <span className="font-medium text-acr-warn">{subscriptionStats.downgrades30d}</span>
                       </div>
                       <div className="flex justify-between text-xs">
                         <span className="text-muted-foreground">Reactivations (30d)</span>
-                        <span className="font-medium text-green-600">{subscriptionStats.reactivations30d}</span>
+                        <span className="font-medium text-acr-pos">{subscriptionStats.reactivations30d}</span>
                       </div>
                       <div className="flex justify-between text-xs">
                         <span className="text-muted-foreground">Net growth (30d)</span>
-                        <span className={`font-semibold ${(subscriptionStats.signups30d + subscriptionStats.reactivations30d) - (subscriptionStats.cancellations30d + subscriptionStats.downgrades30d) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                        <span className={`font-semibold ${(subscriptionStats.signups30d + subscriptionStats.reactivations30d) - (subscriptionStats.cancellations30d + subscriptionStats.downgrades30d) >= 0 ? 'text-acr-pos' : 'text-acr-neg'}`}>
                           {(() => {
                             const net = (subscriptionStats.signups30d + subscriptionStats.reactivations30d) - (subscriptionStats.cancellations30d + subscriptionStats.downgrades30d);
                             return net >= 0 ? `+${net}` : `${net}`;
@@ -2668,7 +2668,7 @@ export default function FounderDashboard() {
             <Card data-testid="card-api-usage">
               <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
                 <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                  <Zap className="w-5 h-5 text-orange-500" />
+                  <Zap className="w-5 h-5 text-acr-warn" />
                   API Usage & Costs
                 </CardTitle>
                 <Badge variant="outline" data-testid="text-api-total-cost">
@@ -2693,7 +2693,7 @@ export default function FounderDashboard() {
                   </div>
                   <div className="flex justify-between items-center">
                     <div className="flex items-center gap-2">
-                      <MapIcon className="w-4 h-4 text-green-500" />
+                      <MapIcon className="w-4 h-4 text-acr-pos" />
                       <span className="text-sm">Regrid (Parcel Data)</span>
                     </div>
                     <div className="flex items-center gap-2">
@@ -2729,7 +2729,7 @@ export default function FounderDashboard() {
                       return (
                         <div
                           key={i}
-                          className="flex-1 bg-orange-500/20 rounded-t-sm hover:bg-orange-500/40 transition-colors"
+                          className="flex-1 bg-acr-warn/20 rounded-t-sm hover:bg-acr-warn/40 transition-colors"
                           style={{ height: `${Math.max(height, 4)}%` }}
                           title={`${day.date}: ${formatCurrency(day.costCents)}`}
                           data-testid={`bar-usage-${i}`}
@@ -2750,7 +2750,7 @@ export default function FounderDashboard() {
           <Card data-testid="card-feature-requests" className={activeTab !== "operations" ? "hidden" : ""}>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Lightbulb className="w-5 h-5 text-amber-500" />
+                <Lightbulb className="w-5 h-5 text-acr-warn" />
                 Feature Requests
               </CardTitle>
               <CardDescription>Review and manage feature requests from users</CardDescription>
@@ -2899,10 +2899,10 @@ export default function FounderDashboard() {
             <CardHeader className="flex flex-row items-start justify-between gap-2 space-y-0">
               <div>
                 <CardTitle className="flex items-center gap-2">
-                  <HandHelping className="w-5 h-5 text-orange-500" />
+                  <HandHelping className="w-5 h-5 text-acr-warn" />
                   Escalation Queue
                   {escalations && escalations.length > 0 && (
-                    <Badge variant="secondary" className="bg-orange-500/10 text-orange-600 border-orange-500/20">
+                    <Badge variant="secondary" className="bg-acr-warn/10 text-acr-warn border-orange-500/20">
                       {escalations.length} needs attention
                     </Badge>
                   )}
@@ -2937,8 +2937,8 @@ export default function FounderDashboard() {
                     <div 
                       key={ticket.id} 
                       className={`flex items-start gap-3 p-4 rounded-lg border ${
-                        ticket.priority === 'urgent' ? 'bg-red-500/5 border-red-500/20' :
-                        ticket.priority === 'high' ? 'bg-orange-500/5 border-orange-500/20' :
+                        ticket.priority === 'urgent' ? 'bg-acr-neg/5 border-red-500/20' :
+                        ticket.priority === 'high' ? 'bg-acr-warn/5 border-orange-500/20' :
                         'bg-muted/50 border-border'
                       }`}
                       data-testid={`escalation-item-${ticket.id}`}
@@ -2997,7 +2997,7 @@ export default function FounderDashboard() {
                             <span className="font-medium">Root Cause: </span>
                             {ticket.rootCauseAnalysis.rootCause || 'Analysis inconclusive'}
                             {ticket.rootCauseAnalysis.confidence && (
-                              <span className="ml-2 text-orange-600">
+                              <span className="ml-2 text-acr-warn">
                                 ({Math.round(ticket.rootCauseAnalysis.confidence * 100)}% confidence)
                               </span>
                             )}
@@ -3011,8 +3011,8 @@ export default function FounderDashboard() {
                         )}
                         {ticket.relatedAlerts.length > 0 && (
                           <div className="flex items-center gap-1 mt-1">
-                            <AlertTriangle className="w-3 h-3 text-yellow-500" />
-                            <span className="text-xs text-yellow-600">
+                            <AlertTriangle className="w-3 h-3 text-acr-warn" />
+                            <span className="text-xs text-acr-warn">
                               {ticket.relatedAlerts.length} related alert(s)
                             </span>
                           </div>
@@ -3023,7 +3023,7 @@ export default function FounderDashboard() {
                 </div>
               ) : (
                 <div className="text-center py-8 text-muted-foreground">
-                  <CheckCircle2 className="w-10 h-10 mx-auto mb-2 text-green-500" />
+                  <CheckCircle2 className="w-10 h-10 mx-auto mb-2 text-acr-pos" />
                   <p className="text-sm">No escalations pending</p>
                   <p className="text-xs">Pax is handling all support requests</p>
                 </div>
@@ -3072,16 +3072,16 @@ export default function FounderDashboard() {
                       className={`flex items-start gap-3 p-3 rounded-lg border ${
                         alert.status === 'resolved' ? 'opacity-50' : ''
                       } ${
-                        alert.severity === 'critical' ? 'bg-red-500/5 border-red-500/20' :
-                        alert.severity === 'warning' ? 'bg-yellow-500/5 border-yellow-500/20' :
+                        alert.severity === 'critical' ? 'bg-acr-neg/5 border-red-500/20' :
+                        alert.severity === 'warning' ? 'bg-acr-warn/5 border-yellow-500/20' :
                         'bg-blue-500/5 border-blue-500/20'
                       }`}
                       data-testid={`alert-item-${alert.id}`}
                     >
                       {alert.severity === 'critical' ? (
-                        <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
+                        <AlertCircle className="w-5 h-5 text-acr-neg flex-shrink-0" />
                       ) : alert.severity === 'warning' ? (
-                        <AlertTriangle className="w-5 h-5 text-yellow-500 flex-shrink-0" />
+                        <AlertTriangle className="w-5 h-5 text-acr-warn flex-shrink-0" />
                       ) : (
                         <Activity className="w-5 h-5 text-blue-500 flex-shrink-0" />
                       )}
@@ -3223,23 +3223,23 @@ export default function FounderDashboard() {
                           </Badge>
                         ) : endpointTestResults.has(endpoint.id) ? (
                           endpointTestResults.get(endpoint.id)?.success ? (
-                            <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">
+                            <Badge variant="outline" className="bg-acr-pos/10 text-acr-pos border-green-500/20">
                               <CheckCircle2 className="w-3 h-3 mr-1" />
                               Passed
                             </Badge>
                           ) : (
-                            <Badge variant="outline" className="bg-red-500/10 text-red-600 border-red-500/20" title={endpointTestResults.get(endpoint.id)?.message}>
+                            <Badge variant="outline" className="bg-acr-neg/10 text-acr-neg border-red-500/20" title={endpointTestResults.get(endpoint.id)?.message}>
                               <AlertCircle className="w-3 h-3 mr-1" />
                               Failed
                             </Badge>
                           )
                         ) : endpoint.isVerified ? (
-                          <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">
+                          <Badge variant="outline" className="bg-acr-pos/10 text-acr-pos border-green-500/20">
                             <CheckCircle2 className="w-3 h-3 mr-1" />
                             Verified
                           </Badge>
                         ) : endpoint.errorCount > 0 ? (
-                          <Badge variant="outline" className="bg-red-500/10 text-red-600 border-red-500/20">
+                          <Badge variant="outline" className="bg-acr-neg/10 text-acr-neg border-red-500/20">
                             <AlertCircle className="w-3 h-3 mr-1" />
                             {endpoint.errorCount} errors
                           </Badge>
@@ -3328,7 +3328,7 @@ export default function FounderDashboard() {
               <div className="flex items-center gap-2 flex-wrap">
                 {dataSourceStats && (
                   <div className="flex gap-2 text-xs">
-                    <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">
+                    <Badge variant="outline" className="bg-acr-pos/10 text-acr-pos border-green-500/20">
                       {dataSourceStats.enabled} enabled
                     </Badge>
                     <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/20">
@@ -3484,8 +3484,8 @@ export default function FounderDashboard() {
                         <span className="col-span-2">
                           <Badge 
                             variant="outline" 
-                            className={source.accessLevel === 'free' ? 'bg-green-500/10 text-green-600 border-green-500/20' : 
-                                       source.accessLevel === 'limited_free' ? 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20' : 
+                            className={source.accessLevel === 'free' ? 'bg-acr-pos/10 text-acr-pos border-green-500/20' : 
+                                       source.accessLevel === 'limited_free' ? 'bg-acr-warn/10 text-acr-warn border-yellow-500/20' : 
                                        'bg-muted text-muted-foreground border-border'}
                           >
                             {source.accessLevel}
@@ -3499,12 +3499,12 @@ export default function FounderDashboard() {
                             <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />
                           ) : dataSourceTestResults.has(source.id) ? (
                             dataSourceTestResults.get(source.id)?.success ? (
-                              <span title="Test passed"><CheckCircle2 className="w-4 h-4 text-green-600" /></span>
+                              <span title="Test passed"><CheckCircle2 className="w-4 h-4 text-acr-pos" /></span>
                             ) : (
-                              <span title={dataSourceTestResults.get(source.id)?.message}><AlertCircle className="w-4 h-4 text-red-600" /></span>
+                              <span title={dataSourceTestResults.get(source.id)?.message}><AlertCircle className="w-4 h-4 text-acr-neg" /></span>
                             )
                           ) : source.isVerified ? (
-                            <CheckCircle2 className="w-4 h-4 text-green-600" />
+                            <CheckCircle2 className="w-4 h-4 text-acr-pos" />
                           ) : source.isEnabled ? (
                             <Clock className="w-4 h-4 text-muted-foreground" />
                           ) : (
@@ -3639,7 +3639,7 @@ export default function FounderDashboard() {
                           className={
                             org.tier === 'scale' ? 'bg-purple-500/10 text-purple-600 border-purple-500/20' :
                             org.tier === 'pro' ? 'bg-blue-500/10 text-blue-600 border-blue-500/20' :
-                            org.tier === 'starter' ? 'bg-green-500/10 text-green-600 border-green-500/20' :
+                            org.tier === 'starter' ? 'bg-acr-pos/10 text-acr-pos border-green-500/20' :
                             'bg-muted text-muted-foreground border-border'
                           }
                         >
@@ -3650,8 +3650,8 @@ export default function FounderDashboard() {
                         <Badge 
                           variant="outline" 
                           className={
-                            org.subscriptionStatus === 'active' ? 'bg-green-500/10 text-green-600 border-green-500/20' :
-                            org.subscriptionStatus === 'cancelled' ? 'bg-red-500/10 text-red-600 border-red-500/20' :
+                            org.subscriptionStatus === 'active' ? 'bg-acr-pos/10 text-acr-pos border-green-500/20' :
+                            org.subscriptionStatus === 'cancelled' ? 'bg-acr-neg/10 text-acr-neg border-red-500/20' :
                             org.subscriptionStatus === 'trialing' ? 'bg-blue-500/10 text-blue-600 border-blue-500/20' :
                             'bg-muted text-muted-foreground border-border'
                           }
@@ -3687,7 +3687,7 @@ export default function FounderDashboard() {
           <Card data-testid="card-subscription-lifecycle" className="col-span-full">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-green-500" />
+                <TrendingUp className="w-5 h-5 text-acr-pos" />
                 Subscription Lifecycle
               </CardTitle>
               <CardDescription>Track subscription changes over time</CardDescription>
@@ -3697,22 +3697,22 @@ export default function FounderDashboard() {
               <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
                 <div className="p-4 border rounded-lg text-center">
                   <div className="flex items-center justify-center gap-1 mb-1">
-                    <TrendingUp className="w-4 h-4 text-green-600" />
-                    <span className="text-2xl font-bold text-green-600">{subscriptionStats?.upgrades30d || 0}</span>
+                    <TrendingUp className="w-4 h-4 text-acr-pos" />
+                    <span className="text-2xl font-bold text-acr-pos">{subscriptionStats?.upgrades30d || 0}</span>
                   </div>
                   <p className="text-xs text-muted-foreground">Upgrades (30d)</p>
                 </div>
                 <div className="p-4 border rounded-lg text-center">
                   <div className="flex items-center justify-center gap-1 mb-1">
-                    <TrendingDown className="w-4 h-4 text-orange-600" />
-                    <span className="text-2xl font-bold text-orange-600">{subscriptionStats?.downgrades30d || 0}</span>
+                    <TrendingDown className="w-4 h-4 text-acr-warn" />
+                    <span className="text-2xl font-bold text-acr-warn">{subscriptionStats?.downgrades30d || 0}</span>
                   </div>
                   <p className="text-xs text-muted-foreground">Downgrades (30d)</p>
                 </div>
                 <div className="p-4 border rounded-lg text-center">
                   <div className="flex items-center justify-center gap-1 mb-1">
-                    <AlertCircle className="w-4 h-4 text-red-600" />
-                    <span className="text-2xl font-bold text-red-600">{subscriptionStats?.cancellations30d || 0}</span>
+                    <AlertCircle className="w-4 h-4 text-acr-neg" />
+                    <span className="text-2xl font-bold text-acr-neg">{subscriptionStats?.cancellations30d || 0}</span>
                   </div>
                   <p className="text-xs text-muted-foreground">Cancellations (30d)</p>
                 </div>
@@ -3870,7 +3870,7 @@ export default function FounderDashboard() {
                       <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/20">
                         {scanResult?.totalKnown || 0} known patterns
                       </Badge>
-                      <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">
+                      <Badge variant="outline" className="bg-acr-pos/10 text-acr-pos border-green-500/20">
                         {scanResult?.totalExisting || 0} already added
                       </Badge>
                     </div>
@@ -3910,7 +3910,7 @@ export default function FounderDashboard() {
                                         {endpoint.confidenceScore && (
                                           <Badge 
                                             variant="outline" 
-                                            className={`text-xs ${endpoint.confidenceScore >= 85 ? 'bg-green-500/10 text-green-600 border-green-500/20' : endpoint.confidenceScore >= 70 ? 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20' : 'bg-muted text-muted-foreground border-border'}`}
+                                            className={`text-xs ${endpoint.confidenceScore >= 85 ? 'bg-acr-pos/10 text-acr-pos border-green-500/20' : endpoint.confidenceScore >= 70 ? 'bg-acr-warn/10 text-acr-warn border-yellow-500/20' : 'bg-muted text-muted-foreground border-border'}`}
                                           >
                                             {endpoint.confidenceScore}% confidence
                                           </Badge>
@@ -4104,10 +4104,10 @@ export default function FounderDashboard() {
                             <Badge variant="outline" className="bg-muted text-muted-foreground border-border">Pending</Badge>
                           )}
                           {endpoint.status === "validated" && (
-                            <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">Validated</Badge>
+                            <Badge variant="outline" className="bg-acr-pos/10 text-acr-pos border-green-500/20">Validated</Badge>
                           )}
                           {endpoint.status === "rejected" && (
-                            <Badge variant="outline" className="bg-red-500/10 text-red-600 border-red-500/20">Rejected</Badge>
+                            <Badge variant="outline" className="bg-acr-neg/10 text-acr-neg border-red-500/20">Rejected</Badge>
                           )}
                           {endpoint.status === "added" && (
                             <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/20">Added</Badge>
@@ -4117,7 +4117,7 @@ export default function FounderDashboard() {
                           {endpoint.confidenceScore && (
                             <Badge 
                               variant="outline" 
-                              className={`text-xs ${endpoint.confidenceScore >= 80 ? 'bg-green-500/10 text-green-600 border-green-500/20' : endpoint.confidenceScore >= 60 ? 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20' : 'bg-muted text-muted-foreground border-border'}`}
+                              className={`text-xs ${endpoint.confidenceScore >= 80 ? 'bg-acr-pos/10 text-acr-pos border-green-500/20' : endpoint.confidenceScore >= 60 ? 'bg-acr-warn/10 text-acr-warn border-yellow-500/20' : 'bg-muted text-muted-foreground border-border'}`}
                             >
                               {endpoint.confidenceScore}%
                             </Badge>
@@ -4144,7 +4144,7 @@ export default function FounderDashboard() {
                             data-testid={`button-approve-live-${endpoint.id}`}
                             title="Approve and add to database"
                           >
-                            <Check className="w-4 h-4 text-green-600" />
+                            <Check className="w-4 h-4 text-acr-pos" />
                           </Button>
                           <Button
                             size="icon"
@@ -4155,7 +4155,7 @@ export default function FounderDashboard() {
                             data-testid={`button-reject-live-${endpoint.id}`}
                             title="Reject endpoint"
                           >
-                            <X className="w-4 h-4 text-red-600" />
+                            <X className="w-4 h-4 text-acr-neg" />
                           </Button>
                         </span>
                       </div>
@@ -4189,11 +4189,11 @@ export default function FounderDashboard() {
         <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto" data-testid="dialog-expanded-tile">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              {expandedTile === 'revenue' && <><DollarSign className="w-5 h-5 text-green-500" /> Revenue Analytics - Detailed View</>}
+              {expandedTile === 'revenue' && <><DollarSign className="w-5 h-5 text-acr-pos" /> Revenue Analytics - Detailed View</>}
               {expandedTile === 'health' && <><Server className="w-5 h-5 text-blue-500" /> System Health - Detailed View</>}
               {expandedTile === 'agents' && <><Bot className="w-5 h-5 text-purple-500" /> Agent Status - Detailed View</>}
-              {expandedTile === 'alerts' && <><AlertTriangle className="w-5 h-5 text-amber-500" /> Alerts - Detailed View</>}
-              {expandedTile === 'revenueAtRisk' && <><TrendingDown className="w-5 h-5 text-red-500" /> Revenue At Risk - Detailed View</>}
+              {expandedTile === 'alerts' && <><AlertTriangle className="w-5 h-5 text-acr-warn" /> Alerts - Detailed View</>}
+              {expandedTile === 'revenueAtRisk' && <><TrendingDown className="w-5 h-5 text-acr-neg" /> Revenue At Risk - Detailed View</>}
               {expandedTile === 'userActivity' && <><Users className="w-5 h-5 text-indigo-500" /> User Activity - Detailed View</>}
             </DialogTitle>
             <DialogDescription>
@@ -4226,10 +4226,10 @@ export default function FounderDashboard() {
                   <div className="p-4 border rounded-lg">
                     <h4 className="font-medium mb-2">Revenue Summary</h4>
                     <div className="space-y-2">
-                      <div className="flex justify-between"><span>Total MRR:</span><span className="font-bold text-green-600">{formatCurrency(dashboardData?.revenue.mrr || 0)}</span></div>
+                      <div className="flex justify-between"><span>Total MRR:</span><span className="font-bold text-acr-pos">{formatCurrency(dashboardData?.revenue.mrr || 0)}</span></div>
                       <div className="flex justify-between"><span>Credit Sales (Month):</span><span>{formatCurrency(dashboardData?.revenue.creditSalesThisMonth || 0)}</span></div>
                       <div className="flex justify-between"><span>Total (Month):</span><span>{formatCurrency(dashboardData?.revenue.totalRevenueThisMonth || 0)}</span></div>
-                      <div className="flex justify-between"><span>MRR at Risk:</span><span className="text-red-600">{formatCurrency(dashboardData?.revenue.mrrAtRisk || 0)}</span></div>
+                      <div className="flex justify-between"><span>MRR at Risk:</span><span className="text-acr-neg">{formatCurrency(dashboardData?.revenue.mrrAtRisk || 0)}</span></div>
                     </div>
                   </div>
                 </div>
@@ -4244,9 +4244,9 @@ export default function FounderDashboard() {
                       </tr>
                     </thead>
                     <tbody>
-                      <tr><td className="py-1">This Month</td><td className="text-right">{formatCurrency(dashboardData?.revenue.mrr || 0)}</td><td className="text-right text-green-600">-</td></tr>
-                      <tr><td className="py-1">Next Month</td><td className="text-right">{formatCurrency((dashboardData?.revenue.mrr || 0) * 1.05)}</td><td className="text-right text-green-600">+5%</td></tr>
-                      <tr><td className="py-1">+2 Months</td><td className="text-right">{formatCurrency((dashboardData?.revenue.mrr || 0) * 1.1)}</td><td className="text-right text-green-600">+10%</td></tr>
+                      <tr><td className="py-1">This Month</td><td className="text-right">{formatCurrency(dashboardData?.revenue.mrr || 0)}</td><td className="text-right text-acr-pos">-</td></tr>
+                      <tr><td className="py-1">Next Month</td><td className="text-right">{formatCurrency((dashboardData?.revenue.mrr || 0) * 1.05)}</td><td className="text-right text-acr-pos">+5%</td></tr>
+                      <tr><td className="py-1">+2 Months</td><td className="text-right">{formatCurrency((dashboardData?.revenue.mrr || 0) * 1.1)}</td><td className="text-right text-acr-pos">+10%</td></tr>
                     </tbody>
                   </table>
                 </div>
@@ -4262,7 +4262,7 @@ export default function FounderDashboard() {
                       <div className="flex justify-between"><span>Active Organizations:</span><span className="font-medium">{dashboardData?.systemHealth.activeOrganizations || 0}</span></div>
                       <div className="flex justify-between"><span>Total Users:</span><span className="font-medium">{dashboardData?.systemHealth.totalUsers || 0}</span></div>
                       <div className="flex justify-between"><span>Active Users:</span><span className="font-medium">{dashboardData?.systemHealth.activeUsers || 0}</span></div>
-                      <div className="flex justify-between"><span>System Uptime:</span><span className="font-medium text-green-600">{dashboardData?.systemHealth.uptime || 99.9}%</span></div>
+                      <div className="flex justify-between"><span>System Uptime:</span><span className="font-medium text-acr-pos">{dashboardData?.systemHealth.uptime || 99.9}%</span></div>
                     </div>
                   </div>
                   <div className="p-4 border rounded-lg">
@@ -4293,9 +4293,9 @@ export default function FounderDashboard() {
                       </tr>
                     </thead>
                     <tbody>
-                      <tr><td className="py-1">Today</td><td className="text-right">100%</td><td><Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">Healthy</Badge></td></tr>
-                      <tr><td className="py-1">Yesterday</td><td className="text-right">100%</td><td><Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">Healthy</Badge></td></tr>
-                      <tr><td className="py-1">2 Days Ago</td><td className="text-right">99.9%</td><td><Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">Healthy</Badge></td></tr>
+                      <tr><td className="py-1">Today</td><td className="text-right">100%</td><td><Badge variant="outline" className="bg-acr-pos/10 text-acr-pos border-green-500/20">Healthy</Badge></td></tr>
+                      <tr><td className="py-1">Yesterday</td><td className="text-right">100%</td><td><Badge variant="outline" className="bg-acr-pos/10 text-acr-pos border-green-500/20">Healthy</Badge></td></tr>
+                      <tr><td className="py-1">2 Days Ago</td><td className="text-right">99.9%</td><td><Badge variant="outline" className="bg-acr-pos/10 text-acr-pos border-green-500/20">Healthy</Badge></td></tr>
                     </tbody>
                   </table>
                 </div>
@@ -4316,7 +4316,7 @@ export default function FounderDashboard() {
                           <div><span className="text-muted-foreground">Status:</span><br/><Badge variant="outline" className={getAgentStatusColor(agent.status)}>{agent.status}</Badge></div>
                           <div><span className="text-muted-foreground">Last Run:</span><br/>{agent.lastRun ? relative(agent.lastRun) : 'Never'}</div>
                           <div><span className="text-muted-foreground">Processed:</span><br/><span className="font-medium">{agent.processed}</span></div>
-                          <div><span className="text-muted-foreground">Failed:</span><br/><span className={agent.failed > 0 ? 'text-red-600 font-medium' : ''}>{agent.failed}</span></div>
+                          <div><span className="text-muted-foreground">Failed:</span><br/><span className={agent.failed > 0 ? 'text-acr-neg font-medium' : ''}>{agent.failed}</span></div>
                         </div>
                       </div>
                     );
@@ -4325,7 +4325,7 @@ export default function FounderDashboard() {
                     <h4 className="font-medium mb-2">API Queue</h4>
                     <div className="flex gap-4">
                       <div><span className="text-muted-foreground">Pending:</span> <span className="font-medium">{dashboardData?.agents.apiQueue.pending || 0}</span></div>
-                      <div><span className="text-muted-foreground">Failed:</span> <span className={`${(dashboardData?.agents.apiQueue.failed || 0) > 0 ? 'text-red-600' : ''} font-medium`}>{dashboardData?.agents.apiQueue.failed || 0}</span></div>
+                      <div><span className="text-muted-foreground">Failed:</span> <span className={`${(dashboardData?.agents.apiQueue.failed || 0) > 0 ? 'text-acr-neg' : ''} font-medium`}>{dashboardData?.agents.apiQueue.failed || 0}</span></div>
                     </div>
                   </div>
                 </div>
@@ -4341,9 +4341,9 @@ export default function FounderDashboard() {
                       </tr>
                     </thead>
                     <tbody>
-                      <tr><td className="py-1">Lead Nurturer</td><td>Process follow-ups</td><td className="text-right">2.3s</td><td><Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">Success</Badge></td></tr>
-                      <tr><td className="py-1">Campaign Optimizer</td><td>Analyze A/B tests</td><td className="text-right">1.5s</td><td><Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">Success</Badge></td></tr>
-                      <tr><td className="py-1">Finance Agent</td><td>Process dunning</td><td className="text-right">0.8s</td><td><Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">Success</Badge></td></tr>
+                      <tr><td className="py-1">Lead Nurturer</td><td>Process follow-ups</td><td className="text-right">2.3s</td><td><Badge variant="outline" className="bg-acr-pos/10 text-acr-pos border-green-500/20">Success</Badge></td></tr>
+                      <tr><td className="py-1">Campaign Optimizer</td><td>Analyze A/B tests</td><td className="text-right">1.5s</td><td><Badge variant="outline" className="bg-acr-pos/10 text-acr-pos border-green-500/20">Success</Badge></td></tr>
+                      <tr><td className="py-1">Finance Agent</td><td>Process dunning</td><td className="text-right">0.8s</td><td><Badge variant="outline" className="bg-acr-pos/10 text-acr-pos border-green-500/20">Success</Badge></td></tr>
                     </tbody>
                   </table>
                 </div>
@@ -4390,15 +4390,15 @@ export default function FounderDashboard() {
                       className={`flex items-start gap-3 p-3 rounded-lg border ${
                         alert.status === 'resolved' ? 'opacity-50' : ''
                       } ${
-                        alert.severity === 'critical' ? 'bg-red-500/5 border-red-500/20' :
-                        alert.severity === 'warning' ? 'bg-yellow-500/5 border-yellow-500/20' :
+                        alert.severity === 'critical' ? 'bg-acr-neg/5 border-red-500/20' :
+                        alert.severity === 'warning' ? 'bg-acr-warn/5 border-yellow-500/20' :
                         'bg-blue-500/5 border-blue-500/20'
                       }`}
                     >
                       {alert.severity === 'critical' ? (
-                        <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
+                        <AlertCircle className="w-5 h-5 text-acr-neg flex-shrink-0" />
                       ) : alert.severity === 'warning' ? (
-                        <AlertTriangle className="w-5 h-5 text-yellow-500 flex-shrink-0" />
+                        <AlertTriangle className="w-5 h-5 text-acr-warn flex-shrink-0" />
                       ) : (
                         <Activity className="w-5 h-5 text-blue-500 flex-shrink-0" />
                       )}
@@ -4440,7 +4440,7 @@ export default function FounderDashboard() {
                   <div className="p-4 border rounded-lg">
                     <h4 className="font-medium mb-2">At Risk Summary</h4>
                     <div className="space-y-2">
-                      <div className="flex justify-between"><span>Total MRR at Risk:</span><span className="font-bold text-red-600">{formatCurrency(dashboardData?.revenueAtRisk.totalMrrAtRisk || 0)}</span></div>
+                      <div className="flex justify-between"><span>Total MRR at Risk:</span><span className="font-bold text-acr-neg">{formatCurrency(dashboardData?.revenueAtRisk.totalMrrAtRisk || 0)}</span></div>
                       <div className="flex justify-between"><span>Orgs in Dunning:</span><span>{Object.values(dashboardData?.revenueAtRisk.dunningByStage || {}).reduce((a, b) => a + b, 0)}</span></div>
                       <div className="flex justify-between"><span>Low Credit Balance:</span><span>{dashboardData?.revenueAtRisk.orgsApproachingCreditExhaustion || 0}</span></div>
                     </div>
@@ -4477,8 +4477,8 @@ export default function FounderDashboard() {
                       </tr>
                     </thead>
                     <tbody>
-                      <tr><td className="py-1">Acme Corp</td><td>Pro</td><td><Badge variant="outline" className="bg-yellow-500/10 text-yellow-600 border-yellow-500/20">Payment Overdue</Badge></td><td className="text-right">$99</td></tr>
-                      <tr><td className="py-1">Beta Inc</td><td>Starter</td><td><Badge variant="outline" className="bg-orange-500/10 text-orange-600 border-orange-500/20">Low Credits</Badge></td><td className="text-right">$49</td></tr>
+                      <tr><td className="py-1">Acme Corp</td><td>Pro</td><td><Badge variant="outline" className="bg-acr-warn/10 text-acr-warn border-yellow-500/20">Payment Overdue</Badge></td><td className="text-right">$99</td></tr>
+                      <tr><td className="py-1">Beta Inc</td><td>Starter</td><td><Badge variant="outline" className="bg-acr-warn/10 text-acr-warn border-orange-500/20">Low Credits</Badge></td><td className="text-right">$49</td></tr>
                     </tbody>
                   </table>
                 </div>
@@ -4492,7 +4492,7 @@ export default function FounderDashboard() {
                     <h4 className="font-medium mb-2">Activity Summary</h4>
                     <div className="space-y-2">
                       <div className="flex justify-between"><span>Active Users (7 days):</span><span className="font-medium">{dashboardData?.userActivity.activeUsers || 0}</span></div>
-                      <div className="flex justify-between"><span>New Signups (Week):</span><span className="font-medium text-green-600">{dashboardData?.userActivity.newSignupsThisWeek || 0}</span></div>
+                      <div className="flex justify-between"><span>New Signups (Week):</span><span className="font-medium text-acr-pos">{dashboardData?.userActivity.newSignupsThisWeek || 0}</span></div>
                     </div>
                   </div>
                   <div className="p-4 border rounded-lg">
@@ -4541,10 +4541,10 @@ export default function FounderDashboard() {
                         <div 
                           key={i} 
                           className={`h-6 rounded ${
-                            intensity > 0.75 ? 'bg-green-500' :
+                            intensity > 0.75 ? 'bg-acr-pos' :
                             intensity > 0.5 ? 'bg-green-400' :
                             intensity > 0.25 ? 'bg-green-300' :
-                            'bg-green-100 dark:bg-green-900'
+                            'bg-acr-pos-soft dark:bg-green-900'
                           }`}
                           title={`Activity: ${Math.round(intensity * 100)}%`}
                         />
@@ -4582,7 +4582,7 @@ export default function FounderDashboard() {
             <div className="space-y-4">
               <div>
                 <h4 className="font-medium text-sm mb-2 flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 text-red-500" />
+                  <AlertCircle className="w-4 h-4 text-acr-neg" />
                   Issues Found
                 </h4>
                 <ul className="space-y-1">
@@ -4594,7 +4594,7 @@ export default function FounderDashboard() {
               {diagnosisResult.suggestions.length > 0 && (
                 <div>
                   <h4 className="font-medium text-sm mb-2 flex items-center gap-2">
-                    <Lightbulb className="w-4 h-4 text-yellow-500" />
+                    <Lightbulb className="w-4 h-4 text-acr-warn" />
                     Suggestions
                   </h4>
                   <ul className="space-y-1">
@@ -4883,7 +4883,7 @@ function SystemApiKeysSection() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="font-medium text-sm">{key.displayName}</span>
-                  <Badge variant={key.hasKey ? "default" : "outline"} className={`text-xs ${key.hasKey ? "bg-green-500/10 text-green-600 border-green-500/20" : ""}`}>
+                  <Badge variant={key.hasKey ? "default" : "outline"} className={`text-xs ${key.hasKey ? "bg-acr-pos/10 text-acr-pos border-green-500/20" : ""}`}>
                     {key.hasKey ? "Configured" : "Not set"}
                   </Badge>
                 </div>
@@ -5101,7 +5101,7 @@ function PricingSection() {
                   <div>
                     <span className="font-medium">{tierLabels[cfg.tier] || cfg.tier}</span>
                     {hasActivePromo && (
-                      <Badge className="ml-2 bg-green-500/10 text-green-700 border-green-500/20">
+                      <Badge className="ml-2 bg-acr-pos/10 text-acr-pos border-green-500/20">
                         <Percent className="w-3 h-3 mr-1" />
                         {cfg.promoDiscountPercent}% off — {cfg.promoLabel}
                       </Badge>
@@ -5285,10 +5285,10 @@ const ANGLE_ICONS: Record<string, React.ComponentType<{ className?: string }>> =
 };
 
 const ANGLE_COLORS: Record<string, string> = {
-  pain_point: "border-red-200 bg-red-50/50 dark:border-red-900/40 dark:bg-red-950/20",
+  pain_point: "border-acr-neg/30 bg-acr-neg-soft/50 dark:border-red-900/40 dark:bg-red-950/20",
   aspiration: "border-purple-200 bg-purple-50/50 dark:border-purple-900/40 dark:bg-purple-950/20",
   social_proof: "border-blue-200 bg-blue-50/50 dark:border-blue-900/40 dark:bg-blue-950/20",
-  curiosity: "border-amber-200 bg-amber-50/50 dark:border-amber-900/40 dark:bg-amber-950/20",
+  curiosity: "border-acr-warn/30 bg-acr-warn-soft/50 dark:border-amber-900/40 dark:bg-amber-950/20",
 };
 
 function GrowthSection() {
@@ -5446,8 +5446,8 @@ function GrowthSection() {
   };
 
   const TEMPLATE_META: Record<string, { icon: React.ComponentType<{ className?: string }>; color: string; tagline: string }> = {
-    land_investors_signup: { icon: Target, color: "text-green-600", tagline: "Cold audience — land investors & buyers" },
-    retargeting_visitors: { icon: RotateCcw, color: "text-orange-600", tagline: "Warm audience — website visitors who didn't convert" },
+    land_investors_signup: { icon: Target, color: "text-acr-pos", tagline: "Cold audience — land investors & buyers" },
+    retargeting_visitors: { icon: RotateCcw, color: "text-acr-warn", tagline: "Warm audience — website visitors who didn't convert" },
     lookalike_subscribers: { icon: Users2, color: "text-purple-600", tagline: "Lookalike — similar to your current subscribers" },
   };
 
@@ -5531,9 +5531,9 @@ function GrowthSection() {
       )}
 
       {adAccount && (
-        <div className="flex items-center gap-2 p-2.5 bg-green-500/5 border border-green-500/20 rounded-lg">
-          <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />
-          <span className="text-sm text-green-700 font-medium">Meta ad account connected</span>
+        <div className="flex items-center gap-2 p-2.5 bg-acr-pos/5 border border-green-500/20 rounded-lg">
+          <CheckCircle2 className="w-4 h-4 text-acr-pos shrink-0" />
+          <span className="text-sm text-acr-pos font-medium">Meta ad account connected</span>
           <span className="text-sm text-muted-foreground ml-1">{adAccount.adAccountId}</span>
           {adAccount.pixelId && <Badge className="text-xs ml-auto">Pixel active</Badge>}
         </div>
@@ -5769,7 +5769,7 @@ function GrowthSection() {
                               }}
                               className="p-1 rounded hover:bg-black/5"
                             >
-                              {isEditing ? <Check className="w-3 h-3 text-green-600" /> : <PencilLine className="w-3 h-3" />}
+                              {isEditing ? <Check className="w-3 h-3 text-acr-pos" /> : <PencilLine className="w-3 h-3" />}
                             </button>
                           </div>
                         </div>
@@ -6031,12 +6031,12 @@ function TodaysBriefing() {
       {data?.highlights && (
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 mt-4">
           {[
-            { label: "MRR", value: usd(data.highlights.totalMrr, { noCents: Number.isInteger(data.highlights.totalMrr) }), color: "text-green-600", icon: DollarSign },
+            { label: "MRR", value: usd(data.highlights.totalMrr, { noCents: Number.isInteger(data.highlights.totalMrr) }), color: "text-acr-pos", icon: DollarSign },
             { label: "Paying Orgs", value: data.highlights.totalOrgs, color: "text-primary", icon: Building2 },
-            { label: "New (24h)", value: data.highlights.newSignups24h, color: data.highlights.newSignups24h > 0 ? "text-green-600" : "text-muted-foreground", icon: UserPlus },
-            { label: "At Risk", value: data.highlights.atRiskOrgs, color: data.highlights.atRiskOrgs > 0 ? "text-red-600" : "text-muted-foreground", icon: AlertTriangle },
-            { label: "Alerts", value: data.highlights.unresolvedAlerts, color: data.highlights.unresolvedAlerts > 0 ? "text-amber-600" : "text-muted-foreground", icon: Bell },
-            { label: "Escalations", value: data.highlights.escalatedTickets, color: data.highlights.escalatedTickets > 0 ? "text-red-600" : "text-muted-foreground", icon: AlertOctagon },
+            { label: "New (24h)", value: data.highlights.newSignups24h, color: data.highlights.newSignups24h > 0 ? "text-acr-pos" : "text-muted-foreground", icon: UserPlus },
+            { label: "At Risk", value: data.highlights.atRiskOrgs, color: data.highlights.atRiskOrgs > 0 ? "text-acr-neg" : "text-muted-foreground", icon: AlertTriangle },
+            { label: "Alerts", value: data.highlights.unresolvedAlerts, color: data.highlights.unresolvedAlerts > 0 ? "text-acr-warn" : "text-muted-foreground", icon: Bell },
+            { label: "Escalations", value: data.highlights.escalatedTickets, color: data.highlights.escalatedTickets > 0 ? "text-acr-neg" : "text-muted-foreground", icon: AlertOctagon },
             { label: "Active Ads", value: data.highlights.activeCampaigns, color: "text-primary", icon: Megaphone },
           ].map(({ label, value, color, icon: Icon }) => (
             <div key={label} className="p-2 rounded-lg bg-background/60 border border-border/50 text-center">
@@ -6076,9 +6076,9 @@ interface ActionQueueData {
 }
 
 const ACTION_PRIORITY_CONFIG = {
-  critical: { label: "Critical", bg: "bg-red-500/10", text: "text-red-700", border: "border-red-200", dot: "bg-red-500" },
-  high: { label: "High", bg: "bg-orange-500/10", text: "text-orange-700", border: "border-orange-200", dot: "bg-orange-500" },
-  medium: { label: "Medium", bg: "bg-amber-500/10", text: "text-amber-700", border: "border-amber-200", dot: "bg-amber-400" },
+  critical: { label: "Critical", bg: "bg-acr-neg/10", text: "text-acr-neg", border: "border-acr-neg/30", dot: "bg-acr-neg" },
+  high: { label: "High", bg: "bg-acr-warn/10", text: "text-orange-700", border: "border-acr-warn/30", dot: "bg-acr-warn" },
+  medium: { label: "Medium", bg: "bg-acr-warn/10", text: "text-acr-warn", border: "border-acr-warn/30", dot: "bg-amber-400" },
   low: { label: "Low", bg: "bg-muted", text: "text-muted-foreground", border: "border-border", dot: "bg-muted-foreground" },
 };
 
@@ -6138,10 +6138,10 @@ function ActionQueuePanel() {
         <div className="flex items-center gap-2 mb-3">
           <ListChecks className="w-5 h-5 text-primary" />
           <h2 className="font-semibold text-lg">Action Queue</h2>
-          <Badge className="bg-green-500/10 text-green-700 border-green-200 text-xs ml-1">All clear</Badge>
+          <Badge className="bg-acr-pos/10 text-acr-pos border-green-200 text-xs ml-1">All clear</Badge>
         </div>
         <div className="flex items-center gap-3 py-4 text-sm text-muted-foreground">
-          <CheckCircle2 className="w-5 h-5 text-green-500" />
+          <CheckCircle2 className="w-5 h-5 text-acr-pos" />
           Nothing needs your attention right now. The system is running autonomously.
         </div>
       </div>
@@ -6168,17 +6168,17 @@ function ActionQueuePanel() {
       {(data?.counts?.critical || 0) + (data?.counts?.high || 0) > 0 && (
         <div className="flex gap-2 flex-wrap">
           {(data?.counts?.critical || 0) > 0 && (
-            <Badge className="bg-red-500/10 text-red-700 border-red-200 text-xs">
+            <Badge className="bg-acr-neg/10 text-acr-neg border-acr-neg/30 text-xs">
               {data!.counts.critical} critical
             </Badge>
           )}
           {(data?.counts?.high || 0) > 0 && (
-            <Badge className="bg-orange-500/10 text-orange-700 border-orange-200 text-xs">
+            <Badge className="bg-acr-warn/10 text-orange-700 border-acr-warn/30 text-xs">
               {data!.counts.high} high
             </Badge>
           )}
           {(data?.counts?.medium || 0) > 0 && (
-            <Badge className="bg-amber-500/10 text-amber-700 border-amber-200 text-xs">
+            <Badge className="bg-acr-warn/10 text-acr-warn border-acr-warn/30 text-xs">
               {data!.counts.medium} medium
             </Badge>
           )}
@@ -6323,10 +6323,10 @@ interface OrgHealthItem {
 }
 
 const HEALTH_CONFIG = {
-  critical: { label: "Critical", bg: "bg-red-500/10", text: "text-red-700", bar: "bg-red-500", dot: "bg-red-500" },
-  at_risk: { label: "At Risk", bg: "bg-orange-500/10", text: "text-orange-700", bar: "bg-orange-500", dot: "bg-orange-500" },
-  watch: { label: "Watch", bg: "bg-amber-500/10", text: "text-amber-700", bar: "bg-amber-400", dot: "bg-amber-400" },
-  healthy: { label: "Healthy", bg: "bg-green-500/10", text: "text-green-700", bar: "bg-green-500", dot: "bg-green-500" },
+  critical: { label: "Critical", bg: "bg-acr-neg/10", text: "text-acr-neg", bar: "bg-acr-neg", dot: "bg-acr-neg" },
+  at_risk: { label: "At Risk", bg: "bg-acr-warn/10", text: "text-orange-700", bar: "bg-acr-warn", dot: "bg-acr-warn" },
+  watch: { label: "Watch", bg: "bg-acr-warn/10", text: "text-acr-warn", bar: "bg-amber-400", dot: "bg-amber-400" },
+  healthy: { label: "Healthy", bg: "bg-acr-pos/10", text: "text-acr-pos", bar: "bg-acr-pos", dot: "bg-acr-pos" },
   founder: { label: "Founder", bg: "bg-primary/10", text: "text-primary", bar: "bg-primary", dot: "bg-primary" },
 };
 
@@ -6378,7 +6378,7 @@ function OrgHealthMonitor() {
           </h2>
           <p className="text-muted-foreground text-sm mt-0.5">
             {allOrgs.length} organizations · {usd(totalMrr, { noCents: Number.isInteger(totalMrr) })} MRR
-            {atRiskMrr > 0 && <span className="text-red-600 ml-2">· {usd(atRiskMrr, { noCents: Number.isInteger(atRiskMrr) })} at risk</span>}
+            {atRiskMrr > 0 && <span className="text-acr-neg ml-2">· {usd(atRiskMrr, { noCents: Number.isInteger(atRiskMrr) })} at risk</span>}
           </p>
         </div>
         <div className="flex gap-2 flex-wrap">
@@ -6411,7 +6411,7 @@ function OrgHealthMonitor() {
               <div className="text-lg font-bold text-primary mt-0.5 tabular-nums">{usd(t.mrr, { noCents: Number.isInteger(t.mrr) })}</div>
               <div className="text-xs text-muted-foreground">{t.activeCount} active</div>
               {t.atRiskCount > 0 && (
-                <div className="text-xs text-red-600 font-medium">{t.atRiskCount} at risk</div>
+                <div className="text-xs text-acr-neg font-medium">{t.atRiskCount} at risk</div>
               )}
             </div>
           ))}
@@ -6419,7 +6419,7 @@ function OrgHealthMonitor() {
       )}
 
       {atRiskCount > 0 && (
-        <div className="flex items-center gap-2 p-2.5 bg-red-500/5 border border-red-200 rounded-lg text-sm text-red-700">
+        <div className="flex items-center gap-2 p-2.5 bg-acr-neg/5 border border-acr-neg/30 rounded-lg text-sm text-acr-neg">
           <AlertTriangle className="w-4 h-4 shrink-0" />
           {atRiskCount} organization{atRiskCount > 1 ? 's' : ''} at risk — check Action Queue for recommended responses
         </div>
@@ -6503,8 +6503,8 @@ function AutopilotStatusBar() {
           aria-label={expanded ? "Collapse autopilot status" : "Expand autopilot status"}
         >
           <div className="flex items-center gap-1.5">
-            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-            <span className="text-xs font-medium text-green-700">Autopilot Active</span>
+            <div className="w-2 h-2 rounded-full bg-acr-pos animate-pulse" />
+            <span className="text-xs font-medium text-acr-pos">Autopilot Active</span>
           </div>
           <span className="text-xs text-muted-foreground">
             {KNOWN_JOBS.length} background jobs running autonomously
@@ -6516,8 +6516,8 @@ function AutopilotStatusBar() {
           <div className="mt-2 pb-1">
             <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-1.5">
               {KNOWN_JOBS.map((job) => (
-                <div key={job.name} className="flex items-center gap-1.5 p-1.5 rounded bg-green-500/5 border border-green-500/20">
-                  <div className="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" />
+                <div key={job.name} className="flex items-center gap-1.5 p-1.5 rounded bg-acr-pos/5 border border-green-500/20">
+                  <div className="w-1.5 h-1.5 rounded-full bg-acr-pos shrink-0" />
                   <div>
                     <div className="text-xs font-medium leading-none">{job.name}</div>
                     <div className="text-xs text-muted-foreground mt-0.5">{job.interval}</div>
@@ -6639,16 +6639,16 @@ interface LaunchReadiness {
 const PRIORITY_CONFIG = {
   critical: {
     label: "Critical",
-    color: "text-red-600",
-    bg: "bg-red-500/10 border-red-500/20",
-    badgeClass: "bg-red-500/10 text-red-600 border-red-500/20",
+    color: "text-acr-neg",
+    bg: "bg-acr-neg/10 border-red-500/20",
+    badgeClass: "bg-acr-neg/10 text-acr-neg border-red-500/20",
     icon: AlertOctagon,
   },
   core: {
     label: "Core Features",
-    color: "text-orange-600",
-    bg: "bg-orange-500/10 border-orange-500/20",
-    badgeClass: "bg-orange-500/10 text-orange-600 border-orange-500/20",
+    color: "text-acr-warn",
+    bg: "bg-acr-warn/10 border-orange-500/20",
+    badgeClass: "bg-acr-warn/10 text-acr-warn border-orange-500/20",
     icon: Zap,
   },
   launch: {
@@ -6708,22 +6708,22 @@ function LaunchReadinessSection() {
       <div
         className={`flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-all ${
           isLive
-            ? "bg-green-500/5 border-green-500/30"
+            ? "bg-acr-pos/5 border-green-500/30"
             : criticalIncomplete > 0
-            ? "bg-red-500/5 border-red-500/30"
-            : "bg-amber-500/5 border-amber-500/30"
+            ? "bg-acr-neg/5 border-red-500/30"
+            : "bg-acr-warn/5 border-amber-500/30"
         }`}
         onClick={() => setExpanded(e => !e)}
       >
         <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${
-          isLive ? "bg-green-500/20" : criticalIncomplete > 0 ? "bg-red-500/20" : "bg-amber-500/20"
+          isLive ? "bg-acr-pos/20" : criticalIncomplete > 0 ? "bg-acr-neg/20" : "bg-acr-warn/20"
         }`}>
           {isLoading ? (
             <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
           ) : isLive ? (
-            <Rocket className={`w-5 h-5 text-green-600`} />
+            <Rocket className={`w-5 h-5 text-acr-pos`} />
           ) : (
-            <ListChecks className={`w-5 h-5 ${criticalIncomplete > 0 ? "text-red-600" : "text-amber-600"}`} />
+            <ListChecks className={`w-5 h-5 ${criticalIncomplete > 0 ? "text-acr-neg" : "text-acr-warn"}`} />
           )}
         </div>
 
@@ -6736,10 +6736,10 @@ function LaunchReadinessSection() {
               <Badge
                 className={`text-xs ${
                   isLive
-                    ? "bg-green-500/10 text-green-700 border-green-500/20"
+                    ? "bg-acr-pos/10 text-acr-pos border-green-500/20"
                     : criticalIncomplete > 0
-                    ? "bg-red-500/10 text-red-700 border-red-500/20"
-                    : "bg-amber-500/10 text-amber-700 border-amber-500/20"
+                    ? "bg-acr-neg/10 text-acr-neg border-red-500/20"
+                    : "bg-acr-warn/10 text-acr-warn border-amber-500/20"
                 }`}
               >
                 {score}% ready
@@ -6755,7 +6755,7 @@ function LaunchReadinessSection() {
             <div className="mt-1.5 h-1.5 bg-muted rounded-full overflow-hidden w-full max-w-sm">
               <div
                 className={`h-full rounded-full transition-all duration-700 ${
-                  isLive ? "bg-green-500" : criticalIncomplete > 0 ? "bg-red-500" : "bg-amber-500"
+                  isLive ? "bg-acr-pos" : criticalIncomplete > 0 ? "bg-acr-neg" : "bg-acr-warn"
                 }`}
                 style={{ width: `${score}%` }}
               />
@@ -6801,12 +6801,12 @@ function LaunchReadinessSection() {
             return (
               <div key={priority} className={`p-4 rounded-xl border ${allDone ? "bg-muted/30 border-border/50" : cfg.bg}`}>
                 <div className="flex items-center gap-2 mb-3">
-                  <PriorityIcon className={`w-4 h-4 ${allDone ? "text-green-600" : cfg.color}`} />
-                  <span className={`text-xs font-semibold uppercase tracking-wide ${allDone ? "text-green-600" : cfg.color}`}>
+                  <PriorityIcon className={`w-4 h-4 ${allDone ? "text-acr-pos" : cfg.color}`} />
+                  <span className={`text-xs font-semibold uppercase tracking-wide ${allDone ? "text-acr-pos" : cfg.color}`}>
                     {cfg.label}
                   </span>
                   {allDone && (
-                    <Badge className="ml-auto text-xs bg-green-500/10 text-green-700 border-green-500/20">All done</Badge>
+                    <Badge className="ml-auto text-xs bg-acr-pos/10 text-acr-pos border-green-500/20">All done</Badge>
                   )}
                 </div>
 
@@ -6817,7 +6817,7 @@ function LaunchReadinessSection() {
                       <div key={item.key} className={`flex items-start gap-2.5 p-2.5 rounded-lg transition-colors ${done ? "" : "hover:bg-background/60 cursor-pointer"}`}
                         onClick={() => !done && scrollToSection(item.section)}>
                         <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
-                          done ? "bg-green-500" : item.status === "blocked" ? "bg-muted" : "bg-background border-2 border-muted-foreground/30"
+                          done ? "bg-acr-pos" : item.status === "blocked" ? "bg-muted" : "bg-background border-2 border-muted-foreground/30"
                         }`}>
                           {done ? (
                             <Check className="w-3 h-3 text-white" />
@@ -6884,26 +6884,26 @@ const AGENT_ICONS: Record<string, React.ElementType> = {
 const AGENT_COLORS: Record<string, string> = {
   atlas_cto: "text-blue-600 dark:text-blue-400",
   sophie_csm: "text-pink-500 dark:text-pink-400",
-  forge_revenue: "text-green-600 dark:text-green-400",
-  beacon_marketing: "text-orange-500 dark:text-orange-400",
+  forge_revenue: "text-acr-pos dark:text-acr-pos",
+  beacon_marketing: "text-acr-warn dark:text-acr-warn",
   sentinel_devops: "text-slate-600 dark:text-slate-400",
-  ledger_finance: "text-emerald-600 dark:text-emerald-400",
-  shield_legal: "text-red-500 dark:text-red-400",
+  ledger_finance: "text-acr-pos dark:text-acr-pos",
+  shield_legal: "text-acr-neg dark:text-acr-neg",
   oracle_analytics: "text-purple-600 dark:text-purple-400",
   compass_pm: "text-cyan-600 dark:text-cyan-400",
-  crucible_qa: "text-amber-600 dark:text-amber-400",
+  crucible_qa: "text-acr-warn dark:text-acr-warn",
 };
 
 const WING_BADGES: Record<string, { label: string; className: string }> = {
   product: { label: "Product", className: "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/20" },
-  growth: { label: "Growth", className: "bg-green-500/10 text-green-700 dark:text-green-300 border-green-500/20" },
+  growth: { label: "Growth", className: "bg-acr-pos/10 text-acr-pos dark:text-acr-pos border-green-500/20" },
   ops: { label: "Ops", className: "bg-slate-500/10 text-slate-700 dark:text-slate-300 border-slate-500/20" },
 };
 
 const MOOD_STYLES: Record<string, { bg: string; border: string; text: string; dot: string }> = {
-  green: { bg: "bg-green-500/5", border: "border-green-500/20", text: "text-green-700 dark:text-green-400", dot: "bg-green-500" },
-  yellow: { bg: "bg-amber-500/5", border: "border-amber-500/20", text: "text-amber-700 dark:text-amber-400", dot: "bg-amber-500" },
-  red: { bg: "bg-red-500/5", border: "border-red-500/20", text: "text-red-700 dark:text-red-400", dot: "bg-red-500" },
+  green: { bg: "bg-acr-pos/5", border: "border-green-500/20", text: "text-acr-pos dark:text-acr-pos", dot: "bg-acr-pos" },
+  yellow: { bg: "bg-acr-warn/5", border: "border-amber-500/20", text: "text-acr-warn dark:text-acr-warn", dot: "bg-acr-warn" },
+  red: { bg: "bg-acr-neg/5", border: "border-red-500/20", text: "text-acr-neg dark:text-acr-neg", dot: "bg-acr-neg" },
 };
 
 function CompanyBriefingPanel() {
@@ -7034,17 +7034,17 @@ function CompanyBriefingPanel() {
           <div className="space-y-3">
             {briefing.decisionsNeeded.map((decision: any, idx: number) => {
               const urgencyColors: Record<string, string> = {
-                critical: "border-red-500/30 bg-red-500/5",
-                high: "border-amber-500/30 bg-amber-500/5",
+                critical: "border-red-500/30 bg-acr-neg/5",
+                high: "border-amber-500/30 bg-acr-warn/5",
                 medium: "border-blue-500/30 bg-blue-500/5",
-                low: "border-green-500/30 bg-green-500/5",
+                low: "border-green-500/30 bg-acr-pos/5",
               };
 
               const urgencyDot: Record<string, string> = {
-                critical: "bg-red-500",
-                high: "bg-amber-500",
+                critical: "bg-acr-neg",
+                high: "bg-acr-warn",
                 medium: "bg-blue-500",
-                low: "bg-green-500",
+                low: "bg-acr-pos",
               };
 
               const fromAgent = decision.fromAgent?.split("_")[0] || "unknown";
@@ -7066,7 +7066,7 @@ function CompanyBriefingPanel() {
                       <Button
                         size="sm"
                         variant="outline"
-                        className="h-7 text-xs border-green-500/30 text-green-700 hover:bg-green-500/10"
+                        className="h-7 text-xs border-green-500/30 text-acr-pos hover:bg-acr-pos/10"
                         onClick={() => approveMutation.mutate(decision.id)}
                         disabled={approveMutation.isPending}
                       >
@@ -7075,7 +7075,7 @@ function CompanyBriefingPanel() {
                       <Button
                         size="sm"
                         variant="outline"
-                        className="h-7 text-xs border-red-500/30 text-red-700 hover:bg-red-500/10"
+                        className="h-7 text-xs border-red-500/30 text-acr-neg hover:bg-acr-neg/10"
                         onClick={() => rejectMutation.mutate(decision.id)}
                         disabled={rejectMutation.isPending}
                       >
@@ -7092,7 +7092,7 @@ function CompanyBriefingPanel() {
 
       {/* All Clear */}
       {(!briefing.decisionsNeeded || briefing.decisionsNeeded.length === 0) && (
-        <div className="flex items-center gap-2 text-sm font-medium text-green-700">
+        <div className="flex items-center gap-2 text-sm font-medium text-acr-pos">
           <CheckCircle2 className="w-4 h-4" />
           No escalations. Your company is running.
         </div>
@@ -7254,7 +7254,7 @@ function AgentTeamPanel() {
                   <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                     <div
                       className={`h-full rounded-full transition-all ${
-                        trustPct >= 75 ? "bg-green-500" : trustPct >= 50 ? "bg-amber-500" : "bg-red-500"
+                        trustPct >= 75 ? "bg-acr-pos" : trustPct >= 50 ? "bg-acr-warn" : "bg-acr-neg"
                       }`}
                       style={{ width: `${trustPct}%` }}
                     />
@@ -7283,7 +7283,7 @@ function AgentTeamPanel() {
                   <Button
                     size="sm"
                     variant="ghost"
-                    className={`h-7 text-xs ${isPaused ? "text-green-600" : "text-amber-600"}`}
+                    className={`h-7 text-xs ${isPaused ? "text-acr-pos" : "text-acr-warn"}`}
                     onClick={() => statusMutation.mutate({
                       codename: agent.codename,
                       status: isPaused ? "active" : "paused",
@@ -7296,7 +7296,7 @@ function AgentTeamPanel() {
 
                 {/* Status indicator */}
                 <div className="absolute top-2 right-2">
-                  <div className={`w-2 h-2 rounded-full ${isPaused ? "bg-amber-400" : "bg-green-500 animate-pulse"}`} />
+                  <div className={`w-2 h-2 rounded-full ${isPaused ? "bg-amber-400" : "bg-acr-pos animate-pulse"}`} />
                 </div>
               </CardContent>
             </Card>
@@ -7419,14 +7419,14 @@ export function NewSubscriberFeed({ alerts }: { alerts: SystemAlert[] | undefine
   return (
     <div className="p-4 border rounded-xl bg-gradient-to-br from-green-500/5 to-background border-green-500/20">
       <div className="flex items-center gap-2 mb-3">
-        <Bell className="w-4 h-4 text-green-600" />
-        <span className="font-medium text-sm text-green-700">Recent subscribers</span>
-        <Badge className="ml-auto text-xs bg-green-500/10 text-green-700 border-green-500/20">{newSubs.length} new</Badge>
+        <Bell className="w-4 h-4 text-acr-pos" />
+        <span className="font-medium text-sm text-acr-pos">Recent subscribers</span>
+        <Badge className="ml-auto text-xs bg-acr-pos/10 text-acr-pos border-green-500/20">{newSubs.length} new</Badge>
       </div>
       <div className="space-y-2">
         {newSubs.map(alert => (
           <div key={alert.id} className="flex items-center gap-2 text-sm">
-            <CheckCircle2 className="w-3.5 h-3.5 text-green-600 shrink-0" />
+            <CheckCircle2 className="w-3.5 h-3.5 text-acr-pos shrink-0" />
             <span className="flex-1 truncate">{alert.message}</span>
             <span className="text-xs text-muted-foreground shrink-0">
               {relative(alert.createdAt!)}
