@@ -2435,7 +2435,7 @@ function LeadDetailDrawer({ lead, onClose, onEdit }: { lead: Lead; onClose: () =
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className="fixed right-0 top-0 h-full w-full max-w-2xl bg-background shadow-2xl overflow-y-auto outline-none"
+        className="fixed right-0 top-0 h-full w-full max-w-2xl bg-background shadow-2xl overflow-y-auto outline-none pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-0"
         onClick={e => e.stopPropagation()}
         data-testid="drawer-lead-detail"
       >

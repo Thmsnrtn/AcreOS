@@ -1370,7 +1370,7 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
         role="dialog"
         aria-modal="true"
         aria-labelledby="deal-drawer-title"
-        className="fixed right-0 top-0 h-full w-full md:max-w-2xl bg-background shadow-2xl overflow-y-auto"
+        className="fixed right-0 top-0 h-full w-full md:max-w-2xl bg-background shadow-2xl overflow-y-auto pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-0"
         onClick={e => e.stopPropagation()}
       >
         <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b p-4 md:p-6">

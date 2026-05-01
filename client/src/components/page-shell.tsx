@@ -73,7 +73,10 @@ export function PageShell({ children, isLoading, loadingFallback, maxWidth = "7x
   const { isOpen: railOpen } = usePaxRail();
   const resolvedLabel = useDocumentTitleFallback(label);
   return (
-    <div className="flex min-h-screen desert-gradient isolate">
+    {/* min-h-[100dvh] (not min-h-screen / 100vh) so iOS Safari's dynamic
+        address bar doesn't cause content to overflow the visible viewport.
+        100dvh = "the *visible* viewport height," not the layout viewport. */}
+    <div className="flex min-h-[100dvh] desert-gradient isolate">
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:px-3 focus:py-2 focus:rounded-md focus:bg-background focus:text-foreground focus:shadow-md focus:ring-2 focus:ring-ring"

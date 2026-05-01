@@ -1017,10 +1017,14 @@ export default function InboxPage() {
   };
 
   return (
-    <div className="flex min-h-screen bg-background">
+    // min-h-dvh (not min-h-screen) so iOS Safari's dynamic address bar
+    // doesn't push content below the visible viewport. pb-[…] reserves
+    // space for MobileBottomNav (~72px + iOS safe-area) so the message
+    // list and reply panel don't sit under it on mobile.
+    <div className="flex min-h-[100dvh] bg-background">
       <Sidebar />
-      
-      <main className={`flex-1 pt-16 md:pt-0 flex flex-col h-screen transition-all duration-200 ${isCollapsed ? "md:ml-[76px]" : "md:ml-[17rem]"}`}>
+
+      <main className={`flex-1 pt-16 md:pt-0 flex flex-col h-[100dvh] pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-0 transition-all duration-200 ${isCollapsed ? "md:ml-[76px]" : "md:ml-[17rem]"}`}>
         <div className="flex items-center justify-between gap-4 p-4 border-b flex-wrap">
           {/* Homestead editorial inbox header (prototype: tier-c.jsx Inbox) */}
           <div>

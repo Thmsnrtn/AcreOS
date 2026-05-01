@@ -83,7 +83,7 @@ export default function MarketingHub() {
         </SidebarContent>
       </Sidebar>
 
-      <main className="flex-1 flex flex-col overflow-auto" data-testid="marketing-hub-main">
+      <main className="flex-1 flex flex-col overflow-auto pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-0" data-testid="marketing-hub-main">
         <LowBalanceAlert />
         <div className="max-w-7xl mx-auto space-y-6 p-6 flex-1">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
