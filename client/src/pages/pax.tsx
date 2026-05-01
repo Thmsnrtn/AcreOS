@@ -27,8 +27,10 @@ import {
   Settings,
 } from "lucide-react";
 import { QueryErrorState } from "@/components/query-error-state";
-import CommandCenterPage from "@/pages/command-center";
-
+// All embedded tab content is lazy. Opening /pax used to ship
+// CommandCenterPage (~2,264 LOC) in the parent's chunk; now loads on
+// click via Suspense fallback alongside the other tabs.
+const CommandCenterPage = lazy(() => import("@/pages/command-center"));
 const ActivityPage = lazy(() => import("@/pages/activity"));
 const AutomationPage = lazy(() => import("@/pages/automation"));
 const AgentCommandCenterPage = lazy(() => import("@/pages/agent-command-center"));
@@ -649,7 +651,9 @@ export default function PaxPage() {
         <TabsContent value="chat" data-testid="tab-content-chat">
           <AiChatGuard>
             <SuggestedPrompts />
-            <CommandCenterPage />
+            <Suspense fallback={<TabFallback />}>
+              <CommandCenterPage />
+            </Suspense>
           </AiChatGuard>
         </TabsContent>
 

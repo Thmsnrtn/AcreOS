@@ -10,10 +10,14 @@ import {
   Landmark,
   Upload,
 } from "lucide-react";
-import FinancePage from "@/pages/finance";
+// All embedded pages are lazy-loaded so opening /money doesn't ship the
+// entire FinancePage (1,824 LOC) + PortfolioPage / Optimizer / CashFlow /
+// CapitalMarkets bundle. The active tab loads on mount; siblings load on
+// click via Suspense fallback.
 import { NotesImportDialog } from "@/components/notes-import-dialog";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 
+const FinancePage = lazy(() => import("@/pages/finance"));
 const PortfolioOptimizerPage = lazy(() => import("@/pages/portfolio-optimizer"));
 const CashFlowPage = lazy(() => import("@/pages/cash-flow"));
 const CapitalMarketsPage = lazy(() => import("@/pages/capital-markets"));
@@ -108,7 +112,9 @@ export default function MoneyPage() {
         </TabsList>
 
         <TabsContent value="notes" data-testid="tab-content-notes">
-          <FinancePage />
+          <Suspense fallback={<TabFallback />}>
+            <FinancePage />
+          </Suspense>
         </TabsContent>
 
         <TabsContent value="finance" data-testid="tab-content-finance">

@@ -21,11 +21,14 @@ import {
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ConversionFunnel, type FunnelStage } from "@/components/ui/conversion-funnel";
-import DealsPage from "@/pages/deals";
 import { dollarsCompact, plural } from "@/lib/format";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import "./today.css";
 
+// All embedded tab content is lazy. Opening /pipeline used to ship
+// DealsPage (~2,234 LOC) + LeadsPage + PropertiesPage + CampaignsPage in
+// the parent's chunk. Each tab now loads on click via Suspense fallback.
+const DealsPage = lazy(() => import("@/pages/deals"));
 const LeadsPage = lazy(() => import("@/pages/leads"));
 const PropertiesPage = lazy(() => import("@/pages/properties"));
 const CampaignsPage = lazy(() => import("@/pages/campaigns"));
@@ -304,7 +307,9 @@ export default function PipelinePage() {
         </TabsList>
 
         <TabsContent value="board" data-testid="tab-content-board">
-          <DealsPage />
+          <Suspense fallback={<TabFallback />}>
+            <DealsPage />
+          </Suspense>
         </TabsContent>
 
         <TabsContent value="leads" data-testid="tab-content-leads">

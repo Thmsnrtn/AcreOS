@@ -267,7 +267,12 @@ function ChatView({
       if (!res.ok) throw new Error("Failed to fetch messages");
       return res.json();
     },
-    refetchInterval: 5000,
+    // Polling tightened per the 2026-05-01 perf audit. 5s was excessive
+    // for a chat thread that's already open (the user can see staleness);
+    // raised to 10s while visible. Background polling disabled entirely
+    // — when the tab isn't focused, a 5-10s refresh is wasted bandwidth.
+    refetchInterval: 10_000,
+    refetchIntervalInBackground: false,
   });
 
   const sendMessageMutation = useMutation({
