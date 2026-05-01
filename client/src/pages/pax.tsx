@@ -96,9 +96,9 @@ type InsightsData = {
 // ─── Severity helpers ─────────────────────────────────────────────────────────
 
 const SEVERITY_BORDER: Record<string, string> = {
-  high: "border-red-400",
-  medium: "border-amber-400",
-  low: "border-blue-400",
+  high: "border-acr-neg",
+  medium: "border-acr-warn",
+  low: "border-acr-brand",
   info: "border-gray-300",
 };
 
@@ -145,17 +145,17 @@ function GreetingBanner() {
 
   return (
     <div
-      className="relative flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/40 p-4 mb-4"
+      className="relative flex items-start gap-3 rounded-lg border border-acr-brand/30 bg-acr-brand-soft p-4 mb-4"
       role="region"
       aria-label="First-session greeting from Pax"
     >
-      <Sparkles className="h-5 w-5 text-blue-500 mt-0.5 shrink-0" aria-hidden="true" />
-      <p className="text-sm text-blue-800 dark:text-blue-200 flex-1">{data.message}</p>
+      <Sparkles className="h-5 w-5 text-acr-brand mt-0.5 shrink-0" aria-hidden="true" />
+      <p className="text-sm text-acr-brand flex-1">{data.message}</p>
       <button
         type="button"
         onClick={handleDismiss}
         aria-label="Dismiss greeting from Pax"
-        className="shrink-0 text-blue-400 hover:text-blue-600 dark:hover:text-blue-200 transition-colors"
+        className="shrink-0 text-acr-brand/60 hover:text-acr-brand transition-colors"
       >
         <X className="h-4 w-4" aria-hidden="true" />
       </button>
@@ -263,7 +263,7 @@ function InsightsTabContent() {
                         {impact && (
                           <Badge
                             variant="outline"
-                            className="text-xs text-emerald-700 border-emerald-300 bg-emerald-50 dark:bg-emerald-900/20"
+                            className="text-xs text-acr-pos border-acr-pos/30 bg-acr-pos-soft"
                             aria-label={`Estimated revenue impact: ${impact.replace(/–/g, " to ")}`}
                           >
                             <DollarSign className="w-2.5 h-2.5 mr-0.5" aria-hidden="true" />
@@ -291,7 +291,7 @@ function InsightsTabContent() {
       {staleLeads.length > 0 && (
         <section aria-labelledby="stale-leads-heading">
           <h2 id="stale-leads-heading" className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">
-            <Clock className="w-3.5 h-3.5 text-amber-500" aria-hidden="true" />
+            <Clock className="w-3.5 h-3.5 text-acr-warn" aria-hidden="true" />
             Stale leads
             <Badge variant="outline" className="text-[10px] tabular-nums" aria-label={`${staleLeads.length} stale lead${staleLeads.length === 1 ? "" : "s"}`}>{staleLeads.length}</Badge>
           </h2>
@@ -305,11 +305,11 @@ function InsightsTabContent() {
               return (
                 <li
                   key={lead.id}
-                  className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/10 px-4 py-3"
+                  className="flex items-center justify-between rounded-lg border border-acr-warn/30 bg-acr-warn-soft px-4 py-3"
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <div
-                      className={`w-2 h-2 rounded-full shrink-0 ${isAtRisk ? "bg-red-500" : "bg-amber-500"}`}
+                      className={`w-2 h-2 rounded-full shrink-0 ${isAtRisk ? "bg-acr-neg" : "bg-acr-warn"}`}
                       role="img"
                       aria-label={isAtRisk ? "At risk of going cold" : "Stale"}
                     />
@@ -318,7 +318,7 @@ function InsightsTabContent() {
                       <p className="text-xs text-muted-foreground">
                         <span className="tabular-nums">{sinceText}</span>
                         {isAtRisk && (
-                          <span className="ml-1 text-red-500 font-medium">· at risk of going cold</span>
+                          <span className="ml-1 text-acr-neg font-medium">· at risk of going cold</span>
                         )}
                       </p>
                     </div>
@@ -345,7 +345,7 @@ function InsightsTabContent() {
       {expiringOffers.length > 0 && (
         <section aria-labelledby="expiring-offers-heading">
           <h2 id="expiring-offers-heading" className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">
-            <AlertCircle className="w-3.5 h-3.5 text-red-500" aria-hidden="true" />
+            <AlertCircle className="w-3.5 h-3.5 text-acr-neg" aria-hidden="true" />
             Expiring offers
             <Badge variant="destructive" className="text-[10px] tabular-nums" aria-label={`${expiringOffers.length} expiring offer${expiringOffers.length === 1 ? "" : "s"}`}>{expiringOffers.length}</Badge>
           </h2>
@@ -364,11 +364,11 @@ function InsightsTabContent() {
               return (
                 <li
                   key={offer.id}
-                  className="flex items-center justify-between rounded-lg border border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/10 px-4 py-3"
+                  className="flex items-center justify-between rounded-lg border border-acr-neg/30 bg-acr-neg-soft px-4 py-3"
                   role="alert"
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    <AlertCircle className="h-4 w-4 text-red-500 shrink-0" aria-hidden="true" />
+                    <AlertCircle className="h-4 w-4 text-acr-neg shrink-0" aria-hidden="true" />
                     <div className="min-w-0">
                       <p className="text-sm font-medium truncate">{offer.title}</p>
                       <p className="text-xs text-muted-foreground">
@@ -397,22 +397,22 @@ function InsightsTabContent() {
       {motivatedCallers.length > 0 && (
         <section aria-labelledby="motivated-callers-heading">
           <h2 id="motivated-callers-heading" className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">
-            <Phone className="w-3.5 h-3.5 text-emerald-500" aria-hidden="true" />
+            <Phone className="w-3.5 h-3.5 text-acr-pos" aria-hidden="true" />
             Motivated callers
-            <Badge variant="outline" className="text-[10px] text-emerald-700 border-emerald-300 tabular-nums" aria-label={`${motivatedCallers.length} motivated caller${motivatedCallers.length === 1 ? "" : "s"}`}>{motivatedCallers.length}</Badge>
+            <Badge variant="outline" className="text-[10px] text-acr-pos border-acr-pos/30 tabular-nums" aria-label={`${motivatedCallers.length} motivated caller${motivatedCallers.length === 1 ? "" : "s"}`}>{motivatedCallers.length}</Badge>
           </h2>
           <ul className="space-y-2 list-none p-0 m-0" aria-label="Recently active leads who want to hear from you">
             {motivatedCallers.map((caller) => (
               <li
                 key={caller.id}
-                className="flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-900/10 px-4 py-3"
+                className="flex items-center justify-between rounded-lg border border-acr-pos/30 bg-acr-pos-soft px-4 py-3"
               >
                 <div className="flex items-center gap-3 min-w-0">
                   <div
-                    className="w-8 h-8 rounded-full bg-emerald-200 dark:bg-emerald-800 flex items-center justify-center shrink-0"
+                    className="w-8 h-8 rounded-full bg-acr-pos/20 flex items-center justify-center shrink-0"
                     aria-hidden="true"
                   >
-                    <span className="text-xs font-bold text-emerald-800 dark:text-emerald-200">
+                    <span className="text-xs font-bold text-acr-pos">
                       {caller.name?.charAt(0)?.toUpperCase() ?? "?"}
                     </span>
                   </div>
