@@ -75,6 +75,7 @@ import exchange1031Router from "./routes-exchange-1031";
 import dunningRouter from "./routes-dunning";
 import onboardingRouter from "./routes-onboarding";
 import preferencesRouter from "./routes-preferences";
+import autonomyRouter from "./routes-autonomy";
 import featureFlagsRouter from "./routes-feature-flags";
 import epicServicesRouter from "./routes-epic-services";
 import dataIntelligenceRouter from "./routes-data-intelligence";
@@ -1112,6 +1113,10 @@ export async function registerRoutes(
   // User-scoped appearance preferences (theme/mode/font/density/motion).
   // No org context needed — preferences are user-level.
   app.use('/api/me/preferences', isAuthenticated, preferencesRouter);
+  // Per-agent autonomy matrix — split off from /preferences in JC#14 so
+  // theme writes can't trample agent policy and agents have a narrow read
+  // surface at action time.
+  app.use('/api/me/autonomy', isAuthenticated, autonomyRouter);
   // Feature flags — read endpoint accessible to authenticated users (returns
   // their resolved view); admin endpoints inside the router enforce founder.
   app.use('/api/feature-flags', isAuthenticated, getOrCreateOrg, featureFlagsRouter);

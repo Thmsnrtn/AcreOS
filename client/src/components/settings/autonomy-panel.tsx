@@ -27,7 +27,7 @@ import { cn } from "@/lib/utils";
  * Phase E touches their action paths).
  */
 
-const PREFERENCES_ENDPOINT = "/api/me/preferences";
+const AUTONOMY_ENDPOINT = "/api/me/autonomy";
 const PATCH_DEBOUNCE_MS = 300;
 
 type Level = 0 | 1 | 2 | 3;
@@ -150,11 +150,11 @@ export function AutonomyPanel() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch(PREFERENCES_ENDPOINT, { credentials: "include" })
+    fetch(AUTONOMY_ENDPOINT, { credentials: "include" })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (cancelled || !data?.autonomy) return;
-        setConfig({ ...DEFAULTS, ...data.autonomy });
+        if (cancelled || !data || typeof data !== "object") return;
+        setConfig({ ...DEFAULTS, ...data });
       })
       .catch(() => { /* defaults stay */ });
     return () => { cancelled = true; };
@@ -167,11 +167,11 @@ export function AutonomyPanel() {
     }
     patchTimerRef.current = window.setTimeout(() => {
       patchTimerRef.current = undefined;
-      fetch(PREFERENCES_ENDPOINT, {
+      fetch(AUTONOMY_ENDPOINT, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ autonomy: next }),
+        body: JSON.stringify(next),
       }).catch((err) => {
         // eslint-disable-next-line no-console
         console.warn("[autonomy] PATCH failed; local state retained", err);

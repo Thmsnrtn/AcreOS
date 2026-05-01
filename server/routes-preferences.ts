@@ -39,16 +39,6 @@ const DEFAULT_PREFERENCES: Required<AppearancePreferences> = {
   motion: "full",
 };
 
-const autonomyLevelSchema = z.union([
-  z.literal(0), z.literal(1), z.literal(2), z.literal(3),
-]);
-
-const agentAutonomySchema = z.object({
-  level: autonomyLevelSchema.optional(),
-  perAction: z.record(z.string().max(64), autonomyLevelSchema).optional(),
-  thresholdsCents: z.record(z.string().max(64), z.number().int().min(0).max(1_000_000_000)).optional(),
-}).strict();
-
 const preferencesSchema = z.object({
   theme: z.enum(["homestead", "quarry", "nocturne", "meadow", "slate"]).optional(),
   mode: z.enum(["light", "dark", "auto"]).optional(),
@@ -75,20 +65,6 @@ const preferencesSchema = z.object({
     enabled: z.boolean().optional(),
     startHour: z.number().int().min(0).max(23).optional(),
     endHour: z.number().int().min(0).max(23).optional(),
-  }).strict().optional(),
-  // Phase C.4 — per-agent autonomy matrix. Levels 0-3 (Observe / Draft /
-  // Execute / Autonomous); per-action overrides; monetary thresholds in
-  // cents; time guards. Validated loosely (action keys are open) but
-  // levels and value bounds are strict.
-  autonomy: z.object({
-    atlas: agentAutonomySchema.optional(),
-    pax: agentAutonomySchema.optional(),
-    sophie: agentAutonomySchema.optional(),
-    timeGuards: z.object({
-      pauseStartHour: z.number().int().min(0).max(23).optional(),
-      pauseEndHour: z.number().int().min(0).max(23).optional(),
-      dailyActionLimit: z.number().int().min(0).max(10000).optional(),
-    }).strict().optional(),
   }).strict().optional(),
 }).strict();
 

@@ -40,29 +40,6 @@ export interface AppearancePreferences {
     startHour?: number;
     endHour?: number;
   };
-  /**
-   * Per-agent autonomy matrix (design-system §7). 4-level scale
-   * (0 Observe / 1 Draft / 2 Execute / 3 Autonomous) per agent, with
-   * per-action overrides and monetary thresholds where applicable.
-   * Time guards apply to all agents.
-   *
-   * Server-side enforcement is wired progressively as Phase E surfaces
-   * touch agent action paths — for now this stores the user's intent;
-   * agents read it at action time and gate / ask / log accordingly.
-   *
-   * Phase D will gate this UI behind feature.autonomy-matrix flag
-   * (founder-only) until UX polish complete (design-system §8.4).
-   */
-  autonomy?: {
-    atlas?: AgentAutonomy;
-    pax?: AgentAutonomy;
-    sophie?: AgentAutonomy;
-    timeGuards?: {
-      pauseStartHour?: number;
-      pauseEndHour?: number;
-      dailyActionLimit?: number;
-    };
-  };
 }
 
 export type AutonomyLevel = 0 | 1 | 2 | 3;
@@ -74,6 +51,34 @@ export interface AgentAutonomy {
   perAction?: Record<string, AutonomyLevel>;
   /** Monetary thresholds (cents) — keys are action IDs that gate on $$$. */
   thresholdsCents?: Record<string, number>;
+}
+
+/**
+ * Per-agent autonomy matrix (design-system §7). 4-level scale
+ * (0 Observe / 1 Draft / 2 Execute / 3 Autonomous) per agent, with
+ * per-action overrides and monetary thresholds where applicable.
+ * Time guards apply to all agents.
+ *
+ * Server-side enforcement is wired progressively as Phase E surfaces
+ * touch agent action paths — for now this stores the user's intent;
+ * agents read it at action time and gate / ask / log accordingly.
+ *
+ * Phase D gates this UI behind feature.autonomy-matrix (founder-only)
+ * until UX polish complete (design-system §8.4).
+ *
+ * Lives in its own column (JC#14) — see migrations/0030. Decoupled from
+ * AppearancePreferences so theme writes can't trample autonomy policy
+ * and agents read a narrow surface at action time.
+ */
+export interface AutonomyPreferences {
+  atlas?: AgentAutonomy;
+  pax?: AgentAutonomy;
+  sophie?: AgentAutonomy;
+  timeGuards?: {
+    pauseStartHour?: number;
+    pauseEndHour?: number;
+    dailyActionLimit?: number;
+  };
 }
 
 // User storage table.
@@ -96,6 +101,9 @@ export const users = pgTable("users", {
   // Defaults applied client-side via DEFAULT_CONFIG in theme-context.tsx; nulls in
   // any field fall back to those defaults.
   appearancePreferences: jsonb("appearance_preferences").$type<AppearancePreferences>(),
+  // Per-agent autonomy matrix — split off from appearance_preferences in
+  // migration 0030 so theme writes can't trample agent policy.
+  autonomyPreferences: jsonb("autonomy_preferences").$type<AutonomyPreferences>(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
