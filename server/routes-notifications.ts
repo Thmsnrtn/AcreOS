@@ -14,18 +14,18 @@ import { notificationPrefsService } from "./services/notificationPreferences";
 const router = Router();
 
 // Get user's notification preferences
-router.get("/preferences", isAuthenticated, getOrCreateOrg, (req, res) => {
+router.get("/preferences", isAuthenticated, getOrCreateOrg, async (req, res) => {
   const user = req.user;
   const org = req.organization;
-  const prefs = notificationPrefsService.getPreferences(String(user.id), org.id);
+  const prefs = await notificationPrefsService.getPreferences(String(user.id), org.id);
   res.json(prefs);
 });
 
 // Update preferences
-router.put("/preferences", isAuthenticated, getOrCreateOrg, (req, res) => {
+router.put("/preferences", isAuthenticated, getOrCreateOrg, async (req, res) => {
   const user = req.user;
   const org = req.organization;
-  const updated = notificationPrefsService.updatePreferences(String(user.id), org.id, req.body);
+  const updated = await notificationPrefsService.updatePreferences(String(user.id), org.id, req.body);
   res.json(updated);
 });
 

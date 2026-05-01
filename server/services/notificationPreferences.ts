@@ -18,7 +18,8 @@
  */
 
 import { db } from "../db";
-import { sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
+import { users } from "@shared/models/auth";
 
 export interface NotificationChannel {
   email: boolean;
@@ -190,60 +191,81 @@ export const NOTIFICATION_SCHEMA: NotificationCategory[] = [
   },
 ];
 
-// In-memory store (replace with DB table in production)
-const preferencesStore = new Map<string, UserNotificationPreferences>();
-
-function makeKey(userId: string, orgId: number) {
-  return `${orgId}:${userId}`;
-}
+// JC#11 — persist to users.notification_prefs (jsonb). Replaces the prior
+// in-memory store. orgId is no longer part of the storage key because the
+// matrix is per-user, not per-(user, org); the route layer still accepts
+// it for API stability.
+const DEFAULTS: Omit<UserNotificationPreferences, "userId" | "organizationId" | "updatedAt"> = {
+  overrides: {},
+  globalMute: false,
+  weeklyDigest: true,
+  digestDay: "monday",
+  digestHour: 9,
+};
 
 export const notificationPrefsService = {
   getSchema(): NotificationCategory[] {
     return NOTIFICATION_SCHEMA;
   },
 
-  getPreferences(userId: string, orgId: number): UserNotificationPreferences {
-    const key = makeKey(userId, orgId);
-    return preferencesStore.get(key) ?? {
+  async getPreferences(userId: string, orgId: number): Promise<UserNotificationPreferences> {
+    const [row] = await db
+      .select({ notificationPrefs: users.notificationPrefs, updatedAt: users.updatedAt })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    const stored = row?.notificationPrefs ?? {};
+    return {
       userId,
       organizationId: orgId,
-      overrides: {},
-      globalMute: false,
-      weeklyDigest: true,
-      digestDay: "monday",
-      digestHour: 9,
-      updatedAt: new Date(),
+      overrides: stored.overrides ?? DEFAULTS.overrides,
+      globalMute: stored.globalMute ?? DEFAULTS.globalMute,
+      weeklyDigest: stored.weeklyDigest ?? DEFAULTS.weeklyDigest,
+      digestDay: stored.digestDay ?? DEFAULTS.digestDay,
+      digestHour: stored.digestHour ?? DEFAULTS.digestHour,
+      updatedAt: row?.updatedAt ?? new Date(),
     };
   },
 
-  updatePreferences(
+  async updatePreferences(
     userId: string,
     orgId: number,
     updates: Partial<UserNotificationPreferences>
-  ): UserNotificationPreferences {
-    const key = makeKey(userId, orgId);
-    const current = this.getPreferences(userId, orgId);
-    const updated: UserNotificationPreferences = {
-      ...current,
-      ...updates,
+  ): Promise<UserNotificationPreferences> {
+    const current = await this.getPreferences(userId, orgId);
+    const merged = {
+      overrides: updates.overrides ?? current.overrides,
+      globalMute: updates.globalMute ?? current.globalMute,
+      weeklyDigest: updates.weeklyDigest ?? current.weeklyDigest,
+      digestDay: updates.digestDay ?? current.digestDay,
+      digestHour: updates.digestHour ?? current.digestHour,
+    };
+
+    await db
+      .update(users)
+      .set({ notificationPrefs: merged, updatedAt: new Date() })
+      .where(eq(users.id, userId));
+
+    return {
       userId,
       organizationId: orgId,
+      ...merged,
       updatedAt: new Date(),
     };
-    preferencesStore.set(key, updated);
-    return updated;
   },
 
   /**
    * Check if a specific event should trigger a channel for a user.
+   * Async because preferences live in the DB now.
    */
-  shouldNotify(
+  async shouldNotify(
     userId: string,
     orgId: number,
     eventId: string,
     channel: keyof NotificationChannel
-  ): boolean {
-    const prefs = this.getPreferences(userId, orgId);
+  ): Promise<boolean> {
+    const prefs = await this.getPreferences(userId, orgId);
     if (prefs.globalMute) return false;
 
     const override = prefs.overrides[eventId];
@@ -251,7 +273,6 @@ export const notificationPrefsService = {
       return override[channel] as boolean;
     }
 
-    // Find default
     for (const category of NOTIFICATION_SCHEMA) {
       for (const event of category.events) {
         if (event.id === eventId) {

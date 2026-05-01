@@ -54,6 +54,23 @@ export interface AgentAutonomy {
 }
 
 /**
+ * Per-user notification matrix (JC#11). Persisted at users.notification_prefs;
+ * read/written via server/services/notificationPreferences.ts.
+ *
+ * `overrides` is keyed by event ID (e.g. "deal.offer_sent"); each value is
+ * a partial channel toggle map. Missing channels fall back to the event's
+ * defaultChannels in NOTIFICATION_SCHEMA so the service has a single source
+ * of truth for "what arrives by default."
+ */
+export interface UserNotificationPrefsShape {
+  overrides?: Record<string, Partial<{ email: boolean; sms: boolean; push: boolean; inApp: boolean }>>;
+  globalMute?: boolean;
+  weeklyDigest?: boolean;
+  digestDay?: "monday" | "tuesday" | "wednesday" | "thursday" | "friday";
+  digestHour?: number;
+}
+
+/**
  * Investor archetype. Drives onboarding path, default surfaces, and
  * vocabulary substitutions per VERTICAL-EXPANSION-PLAN.md. Default for
  * existing users is "land_investor" — the v6 product positioning.
@@ -126,6 +143,11 @@ export const users = pgTable("users", {
   // against the registry in client/src/lib/personaVocabulary.ts; stored as
   // free text so adding personas doesn't need a column migration.
   persona: text("persona").notNull().default("land_investor").$type<Persona>(),
+  // Per-user notification matrix (JC#11) — overrides + global mute + digest.
+  // Null = user hasn't adjusted; service applies category-tree defaults.
+  // Shape matches UserNotificationPreferences in
+  // server/services/notificationPreferences.ts.
+  notificationPrefs: jsonb("notification_prefs").$type<UserNotificationPrefsShape>(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
