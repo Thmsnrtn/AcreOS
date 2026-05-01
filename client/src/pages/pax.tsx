@@ -1,6 +1,7 @@
 import { useEffect, useState, lazy, Suspense } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
+import { useAuth } from "@/hooks/use-auth";
 import { PageShell } from "@/components/page-shell";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -569,7 +570,22 @@ function SuggestedPrompts() {
 
 export default function PaxPage() {
   useDocumentTitle("Pax — AI hub");
+  // Founder-only tabs are gated behind isFounder. Customers see only Pax —
+  // the full agent roster (Atlas/Sophie/Forge/Shield) is internal-codename
+  // territory exposed via /api/autonomous/agents which the Agents tab
+  // surfaces. Per persona-architecture rule, customers see Pax, not the
+  // dozen-agent roster underneath.
+  const { isFounder } = useAuth();
   const [activeTab, setActiveTab] = useState<TabValue>(getTabFromHash);
+
+  // If a customer hash-lands on a founder-only tab (#agents), redirect to
+  // the default chat tab so they don't see a missing-tab gap.
+  useEffect(() => {
+    if (!isFounder && activeTab === "agents") {
+      setActiveTab("chat");
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+  }, [isFounder, activeTab]);
 
   useEffect(() => {
     const handleHashChange = () => setActiveTab(getTabFromHash());
@@ -614,10 +630,12 @@ export default function PaxPage() {
             <Activity className="h-4 w-4" aria-hidden="true" />
             <span>Activity</span>
           </TabsTrigger>
-          <TabsTrigger value="agents" className="flex items-center gap-2 min-w-max" data-testid="tab-agents">
-            <Bot className="h-4 w-4" aria-hidden="true" />
-            <span>Agents</span>
-          </TabsTrigger>
+          {isFounder && (
+            <TabsTrigger value="agents" className="flex items-center gap-2 min-w-max" data-testid="tab-agents">
+              <Bot className="h-4 w-4" aria-hidden="true" />
+              <span>Agents</span>
+            </TabsTrigger>
+          )}
           <TabsTrigger value="automation" className="flex items-center gap-2 min-w-max" data-testid="tab-automation">
             <Zap className="h-4 w-4" aria-hidden="true" />
             <span>Automation</span>
@@ -641,11 +659,13 @@ export default function PaxPage() {
           </Suspense>
         </TabsContent>
 
-        <TabsContent value="agents" data-testid="tab-content-agents">
-          <Suspense fallback={<TabFallback />}>
-            <AgentCommandCenterPage />
-          </Suspense>
-        </TabsContent>
+        {isFounder && (
+          <TabsContent value="agents" data-testid="tab-content-agents">
+            <Suspense fallback={<TabFallback />}>
+              <AgentCommandCenterPage />
+            </Suspense>
+          </TabsContent>
+        )}
 
         <TabsContent value="automation" data-testid="tab-content-automation">
           <Suspense fallback={<TabFallback />}>
