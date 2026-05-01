@@ -666,7 +666,7 @@ export function CampaignsContent() {
                 <DialogHeader>
                   <DialogTitle>Couldn't open campaign</DialogTitle>
                   <DialogDescription>
-                    Something went wrong loading this campaign's detail view. The campaigns list is still usable; please try again or pick a different campaign.
+                    Couldn't load this campaign's detail view. The campaigns list is still usable — pick a different campaign or try again.
                   </DialogDescription>
                 </DialogHeader>
                 <DialogFooter>

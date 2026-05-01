@@ -1197,7 +1197,7 @@ function PropertyForm({
       onError: (error: any) => {
         toast({
           title: "Couldn't add property",
-          description: error?.message || "Something went wrong saving this property. Your form values are still here — try again.",
+          description: error?.message || "Save failed. Your form values are still here — try again.",
           variant: "destructive",
         });
       },

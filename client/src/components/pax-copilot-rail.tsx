@@ -649,7 +649,7 @@ export function PaxCopilotRail() {
       if (!res.ok) {
         const err = res.status === 429 ? "Rate limit reached. Please try again shortly."
           : res.status === 402 ? "Insufficient credits."
-          : "Something went wrong. Please try again.";
+          : "Pax couldn't reach us. Try again, or reload the chat.";
         setMessages((prev) => prev.map((m) =>
           m.id === asstId ? { ...m, role: "error" as const, content: err, isStreaming: false } : m
         ));

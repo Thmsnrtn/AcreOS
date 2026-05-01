@@ -449,7 +449,7 @@ export default function FounderHome() {
           error={metrics.error || actions.error || agents.error}
           onRetry={() => { metrics.refetch(); actions.refetch(); agents.refetch(); }}
           title="Could not load your dashboard"
-          description="Something went wrong loading your data. Please try again."
+          description="Couldn't load your data. Try again, or reload the page."
         />
       </PageShell>
     );

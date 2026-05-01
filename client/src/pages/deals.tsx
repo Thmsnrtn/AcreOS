@@ -214,7 +214,7 @@ export default function DealsPage() {
     } catch (error: any) {
       toast({
         title: "Couldn't export deals",
-        description: error?.message || "Something went wrong while building the CSV. Try again.",
+        description: error?.message || "CSV build failed. Try again — your deals weren't changed.",
         variant: "destructive",
       });
     } finally {
@@ -237,7 +237,7 @@ export default function DealsPage() {
     } catch (err: any) {
       toast({
         title: "Couldn't delete deals",
-        description: err?.message || "Something went wrong. Your deals are unchanged.",
+        description: err?.message || "Delete failed. Your deals are unchanged.",
         variant: "destructive",
       });
     } finally {
@@ -281,7 +281,7 @@ export default function DealsPage() {
     } catch (err: any) {
       toast({
         title: "Couldn't export selection",
-        description: err?.message || "Something went wrong while building the CSV. Try again.",
+        description: err?.message || "CSV build failed. Try again — your deals weren't changed.",
         variant: "destructive",
       });
     }

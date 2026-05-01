@@ -502,7 +502,7 @@ export function FloatingAssistant() {
       });
 
       if (!response.ok) {
-        let errorMessage = "Something went wrong. Please try again.";
+        let errorMessage = "The assistant hit a snag. Try again in a moment.";
         
         if (response.status === 429) {
           const data = await response.json().catch(() => ({}));

@@ -89,7 +89,7 @@ export function useApiRetry<T>(
           if (showToast) {
             toast({
               title: "Couldn't complete request",
-              description: err.message || "Something went wrong. Please try again.",
+              description: err.message || "Couldn't complete that. Try again.",
               variant: "destructive",
               // Intentionally omit action in dev baseline to avoid strict type coupling
             });
@@ -193,7 +193,7 @@ export function handleApiError(error: unknown, fallbackMessage?: string): void {
   console.error("[API Error]", err);
   
   toast({
-    title: "Something went wrong",
+    title: "Request failed",
     description: fallbackMessage || message,
     variant: "destructive",
   });

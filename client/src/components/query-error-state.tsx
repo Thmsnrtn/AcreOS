@@ -74,8 +74,8 @@ function getErrorConfig(type: ErrorType, error: Error | null) {
     default:
       return {
         icon: AlertCircle,
-        title: "Something went wrong",
-        description: error?.message || "An unexpected error occurred. Try again.",
+        title: "We hit a snag",
+        description: error?.message || "An unexpected issue — your data is safe. Try again, or reload the page if this keeps happening.",
         iconColor: "text-destructive",
         bgColor: "from-destructive/20 to-destructive/5",
       };

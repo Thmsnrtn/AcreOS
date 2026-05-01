@@ -14,7 +14,7 @@ export function getErrorMessage(error: unknown): string {
       return 'The requested item could not be found.';
     }
     if (error.message.includes('500')) {
-      return 'Something went wrong on our end. Please try again in a moment.';
+      return 'We hit a snag on our end. Try again in a moment.';
     }
     if (error.message.includes('429')) {
       return 'Too many requests. Please wait a moment and try again.';
