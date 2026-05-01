@@ -30,10 +30,20 @@ import { useState } from "react";
 interface ExecutiveMetrics {
   mrr: number;
   activeOrganizations: number;
-  nps: { score: number };
+  nps: { score: number; responseCount: number };
   churnRate: number;
   churnedOrgsLast30Days: number;
   newOrgsLast30Days: number;
+  // Forward-looking risk — distribution of active orgs across bands plus
+  // a projected churn rate (% in critical+red). Lets the founder act
+  // before the backward-looking churnRate moves.
+  churnRisk: {
+    bands: { critical: number; red: number; yellow: number; green: number };
+    atRiskOrgs: number;
+    projectedChurnRate: number;
+    averageRiskScore: number;
+    scoredOrgs: number;
+  };
 }
 
 interface ActionQueueItem {
@@ -105,10 +115,19 @@ interface ExecutiveDashboardApiResponse {
   mrr?: number;
   activeOrganizations?: number;
   newOrgsLast30Days?: number;
-  nps?: { score: number };
+  nps?: { score: number; responseCount?: number };
   churnRate?: number;
   churnedOrgsLast30Days?: number;
+  churnRisk?: ExecutiveMetrics["churnRisk"];
 }
+
+const ZERO_RISK: ExecutiveMetrics["churnRisk"] = {
+  bands: { critical: 0, red: 0, yellow: 0, green: 0 },
+  atRiskOrgs: 0,
+  projectedChurnRate: 0,
+  averageRiskScore: 0,
+  scoredOrgs: 0,
+};
 
 const useMetrics = () =>
   useQuery<ExecutiveMetrics, Error, ExecutiveMetrics>({
@@ -119,10 +138,11 @@ const useMetrics = () =>
       return {
         mrr: r.mrr ?? 0,
         activeOrganizations: r.activeOrganizations ?? 0,
-        nps: r.nps ?? { score: 0 },
+        nps: { score: r.nps?.score ?? 0, responseCount: r.nps?.responseCount ?? 0 },
         churnRate: r.churnRate ?? 0,
         churnedOrgsLast30Days: r.churnedOrgsLast30Days ?? 0,
         newOrgsLast30Days: r.newOrgsLast30Days ?? 0,
+        churnRisk: r.churnRisk ?? ZERO_RISK,
       };
     },
   });
@@ -275,7 +295,13 @@ function HeroStatus({
   // greeting + identity now lives in FounderPageShell's editorial
   // header (eyebrow + title + soft clause). This is just the
   // operational health badge below.
-  const hasCritical = metrics && (metrics.churnRate > 10 || metrics.nps.score < 20);
+  // Critical when (a) backward churn rate is elevated, (b) NPS has enough
+  // responses and is poor, or (c) forward-looking risk says ≥20% of active
+  // orgs sit in critical+red bands. The (c) clause catches the case where
+  // backward churn is 0 only because the wave hasn't hit yet.
+  const npsCritical = metrics && metrics.nps.responseCount >= 5 && metrics.nps.score < 20;
+  const projectedCritical = metrics && metrics.churnRisk.scoredOrgs > 0 && metrics.churnRisk.projectedChurnRate >= 20;
+  const hasCritical = metrics && (metrics.churnRate > 10 || npsCritical || projectedCritical);
   let label: string;
   let tone: "pos" | "warn" | "neg";
   if (hasCritical) {
@@ -314,18 +340,55 @@ function HeroStatus({
 
 function MetricCards({ metrics }: { metrics: ExecutiveMetrics }) {
   const nps = metrics.nps.score;
-  const NpsIcon = nps > 50 ? Smile : nps >= 20 ? Meh : Frown;
-  const npsColor = nps > 50 ? "text-emerald-600" : nps >= 20 ? "text-amber-600" : "text-red-600";
+  const npsResponses = metrics.nps.responseCount;
+  const NpsIcon = npsResponses === 0 ? Meh : nps > 50 ? Smile : nps >= 20 ? Meh : Frown;
+  const npsColor =
+    npsResponses === 0
+      ? "text-muted-foreground"
+      : nps > 50
+        ? "text-acr-pos"
+        : nps >= 20
+          ? "text-acr-warn"
+          : "text-acr-neg";
+  // Forward-looking churn risk takes precedence when data is scored. Falls
+  // back to backward churnedOrgsLast30Days when no risk scores exist yet.
+  const risk = metrics.churnRisk;
+  const hasRiskData = risk.scoredOrgs > 0;
+  const churnPrimaryValue = hasRiskData
+    ? `${risk.atRiskOrgs} at risk · ${risk.projectedChurnRate}% projected`
+    : metrics.churnedOrgsLast30Days > 0
+      ? `${metrics.churnedOrgsLast30Days} churned (30d) · ${metrics.churnRate}% rate`
+      : "No churn signal yet";
+  const churnIconColor = hasRiskData
+    ? risk.projectedChurnRate >= 20
+      ? "text-acr-neg"
+      : risk.projectedChurnRate >= 10
+        ? "text-acr-warn"
+        : "text-acr-pos"
+    : metrics.churnedOrgsLast30Days > 0
+      ? "text-acr-neg"
+      : "text-acr-pos";
+  const churnTrend = hasRiskData
+    ? {
+        up: false,
+        text: `Bands: ${risk.bands.critical} critical · ${risk.bands.red} red · ${risk.bands.yellow} yellow · ${risk.bands.green} green`,
+      }
+    : metrics.churnRate > 0
+      ? { up: false, text: `${metrics.churnRate}% backward 30d` }
+      : null;
   const cards = [
-    { icon: DollarSign, label: "Monthly revenue", value: usd(metrics.mrr, { noCents: true }), iconColor: "text-emerald-600",
+    { icon: DollarSign, label: "Monthly revenue", value: usd(metrics.mrr, { noCents: true }), iconColor: "text-acr-pos",
       trend: null as { up: boolean; text: string } | null },
-    { icon: Users, label: "Active customers", value: metrics.activeOrganizations.toLocaleString(), iconColor: "text-blue-600",
+    { icon: Users, label: "Active customers", value: metrics.activeOrganizations.toLocaleString(), iconColor: "text-acr-info",
       trend: metrics.newOrgsLast30Days > 0 ? { up: true, text: `+${metrics.newOrgsLast30Days} this month` } : null },
-    { icon: NpsIcon, label: "Customer satisfaction", value: `${nps}`, iconColor: npsColor, trend: null },
-    { icon: AlertTriangle, label: "Churn risk",
-      value: `${metrics.churnedOrgsLast30Days} customer${metrics.churnedOrgsLast30Days !== 1 ? "s" : ""} at risk`,
-      iconColor: metrics.churnedOrgsLast30Days > 0 ? "text-red-600" : "text-emerald-600",
-      trend: metrics.churnRate > 0 ? { up: false, text: `${metrics.churnRate}% churn rate` } : null },
+    {
+      icon: NpsIcon,
+      label: "Customer satisfaction",
+      value: npsResponses === 0 ? "No responses yet" : `${nps}`,
+      iconColor: npsColor,
+      trend: npsResponses > 0 ? { up: nps >= 0, text: `${npsResponses} response${npsResponses === 1 ? "" : "s"} · last 90d` } : null,
+    },
+    { icon: AlertTriangle, label: "Churn risk", value: churnPrimaryValue, iconColor: churnIconColor, trend: churnTrend },
   ];
   return (
     <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -338,7 +401,7 @@ function MetricCards({ metrics }: { metrics: ExecutiveMetrics }) {
               <dd className="text-2xl font-bold text-foreground tabular-nums">{c.value}</dd>
               {c.trend && (
                 <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                  {c.trend.up ? <TrendingUp className="h-3 w-3 text-emerald-500" aria-hidden="true" /> : <TrendingDown className="h-3 w-3 text-red-500" aria-hidden="true" />}
+                  {c.trend.up ? <TrendingUp className="h-3 w-3 text-acr-pos" aria-hidden="true" /> : <TrendingDown className="h-3 w-3 text-acr-neg" aria-hidden="true" />}
                   <span className="tabular-nums">{c.trend.text}</span>
                 </p>
               )}

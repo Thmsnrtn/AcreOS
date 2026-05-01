@@ -163,7 +163,7 @@ import { registerMaintenanceRoutes } from "./routes-maintenance";
 
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
-import { organizations, leads, properties, deals, npsResponses, feedbackSubmissions } from "@shared/schema";
+import { organizations, leads, properties, deals, npsResponses, feedbackSubmissions, churnRiskScores } from "@shared/schema";
 import { eq, and, desc, sql, count, sum, gte, avg } from "drizzle-orm";
 
 // ============================================
@@ -1466,14 +1466,46 @@ export async function registerRoutes(
       const [propertyCount] = await db.select({ count: count() }).from(properties);
       const [dealCount] = await db.select({ count: count() }).from(deals);
 
-      // NPS metrics
+      // NPS metrics — last 90 days only so the score reflects recent
+      // sentiment, not all-time. Earlier this endpoint pulled all rows; the
+      // 90d window prevents one cohort from anchoring NPS forever.
+      const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
       const npsRows = await db.select().from(npsResponses).limit(50000);
-      const npsCount = npsRows.length;
-      const npsAvg = npsCount > 0 ? npsRows.reduce((sum, r) => sum + r.score, 0) / npsCount : 0;
-      const promoters = npsRows.filter(r => r.score >= 9).length;
-      const detractors = npsRows.filter(r => r.score <= 6).length;
+      const recentNps = npsRows.filter(r => r.createdAt && new Date(r.createdAt) >= ninetyDaysAgo);
+      const npsCount = recentNps.length;
+      const npsAvg = npsCount > 0 ? recentNps.reduce((sum, r) => sum + r.score, 0) / npsCount : 0;
+      const promoters = recentNps.filter(r => r.score >= 9).length;
+      const detractors = recentNps.filter(r => r.score <= 6).length;
       const passives = npsCount - promoters - detractors;
       const npsScore = npsCount > 0 ? Math.round(((promoters - detractors) / npsCount) * 100) : 0;
+
+      // Forward-looking churn risk — last scored row per active org.
+      // The 30-day backward churnRate above only catches orgs that already
+      // left; this surface gives the founder time to intervene before they
+      // do. Each active org's most recent churn_risk_scores row counts.
+      const allRiskRows = await db.select().from(churnRiskScores).limit(50000);
+      const latestByOrg = new Map<number, typeof allRiskRows[number]>();
+      for (const row of allRiskRows) {
+        const existing = latestByOrg.get(row.organizationId);
+        if (!existing || (row.scoredAt && existing.scoredAt && new Date(row.scoredAt) > new Date(existing.scoredAt))) {
+          latestByOrg.set(row.organizationId, row);
+        }
+      }
+      const activeOrgIds = new Set(activeOrgs.map(o => o.id));
+      const activeRiskRows = Array.from(latestByOrg.values()).filter(r => activeOrgIds.has(r.organizationId));
+      const riskBands = { critical: 0, red: 0, yellow: 0, green: 0 } as Record<string, number>;
+      for (const r of activeRiskRows) {
+        if (r.riskBand in riskBands) riskBands[r.riskBand]++;
+      }
+      const riskScoreSum = activeRiskRows.reduce((sum, r) => sum + (r.riskScore ?? 0), 0);
+      const riskScoreAvg = activeRiskRows.length > 0 ? Math.round(riskScoreSum / activeRiskRows.length) : 0;
+      // Project forward: orgs in critical+red bands are the at-risk cohort
+      // most likely to churn next. % of active orgs lets the founder read
+      // it as a forward analog to the 30-day backward churnRate.
+      const atRiskOrgs = riskBands.critical + riskBands.red;
+      const projectedChurnRate = activeOrgs.length > 0
+        ? Math.round((atRiskOrgs / activeOrgs.length) * 10000) / 100
+        : 0;
 
       const metrics = {
         mrr,
@@ -1496,6 +1528,16 @@ export async function registerRoutes(
           promoters,
           passives,
           detractors,
+        },
+        churnRisk: {
+          // Forward-looking: distribution of active orgs across risk bands +
+          // % at risk (critical+red). Founder uses this to decide when to
+          // intervene; the 30-day churnRate above is post-mortem.
+          bands: riskBands,
+          atRiskOrgs,
+          projectedChurnRate,
+          averageRiskScore: riskScoreAvg,
+          scoredOrgs: activeRiskRows.length,
         },
       };
 
