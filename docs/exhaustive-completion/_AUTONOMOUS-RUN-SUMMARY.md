@@ -1,13 +1,53 @@
 # Autonomous Refinement Run — Summary
 
-Session: 2026-04-30. Founder authorized continuous autonomous work on
-the platform with high judgment + high threshold for asking before
-destructive actions. This document is the single record of what shipped,
-what's deferred, and the resumption prompt for a fresh session.
+Sessions: 2026-04-30 (Wave 1+2+3 partial: 15 commits). Continuation:
+2026-04-30 (judgment-call execution: 13 commits). Founder authorized
+continuous autonomous work with high judgment + high threshold for
+destructive actions.
+
+This document is the single record of what shipped, what's deferred,
+and the resumption prompt for the next session.
 
 ---
 
-## Shipped (15 commits)
+## Continuation wave shipped (13 commits, 2026-04-30 evening)
+
+After founder approved my judgment calls on the 17 deferred items in
+JUDGMENT-CALL-RECOMMENDATIONS.md, shipped 13 of the call-yes items:
+
+| # | What | Commit |
+|---|------|--------|
+| JC#13 | /founder/feature-flags → /founder/features redirect (5-state machine consolidation) | `1651c11` |
+| JC#17 | /why route + landing-footer "From the founder" link (brief-required public letter accessibility) | `6f3359f` |
+| JC#16 | /finance inline emerald/amber/red callouts → semantic acr-tone tokens | `25d66f5` |
+| JC#8 | /founder-home zero NPS + churn — fixed client-side field-name mismatch | `514240d` |
+| JC#6a | /today theme-blind tone sweep | `352bc40` |
+| JC#6b | /finance + /settings + /portfolio + /deals + /properties tone sweep | `cae513b` |
+| JC#6c | /onboarding-v2 partial tone sweep | `f030549` |
+| JC#1 | Sidebar 58→14 trim (redundant children removed, "Intelligence" → "Insights", "Founder business" → "Founder") | `2ab5929` |
+| JC#3 | founder-dashboard.tsx codemod (~233 inline tones → tokens, 7,435-line file untouched structurally) | `b14330c` |
+| JC#15 | Agent identity registry — evaluated, no consolidation needed (registries serve distinct purposes) | (no commit) |
+| JC#9 | /parcels/:id thin v1 — composed parcel detail (overview + diligence + financial + cross-links) | `ced5144` |
+| JC#2 | PageTopbar — sticky breadcrumb + theme toggle + bell + ⌘K, mounted in PageShell | `e315df9` |
+| JC#4 | AutoResolveReviewPanel on /founder/todo — surfaces cascade candidates without filtering | `6120b37` |
+
+Reusable sed scripts at `/tmp/tone-sweep.sed` + `/tmp/tone-sweep-2.sed`
+for future tone migrations on remaining surfaces.
+
+---
+
+## Still deferred — needs next session
+
+| # | What | Why deferred | Effort |
+|---|------|--------------|--------|
+| JC#14 | autonomy column promotion (`users.appearance_preferences.autonomy` → `users.autonomy_preferences`) | DB migration; needs careful drizzle-kit run + zod schema split + 6+ call-site updates. Better as a focused commit. | S |
+| JC#7 | Persona primitives (users.persona column + personaVocabulary.ts + PersonaRoute wrapper) | DB migration + multi-piece foundation. Highest leverage for vertical expansion but needs care. | M |
+| JC#5 | ResponsiveModal migration of ~20 form Dialogs across 5 surfaces | Per-dialog judgment (form vs confirmation) — voluminous mechanical work. | M |
+| JC#11 | Notifications matrix migration to richer service + brief §6.3 calm-matrix re-skin | Schema-aware refactor; needs deeper investigation of `notificationPreferences.ts` service shape. | M |
+
+---
+
+## Original autonomous run shipped (15 commits)
 
 All commits passed `npm run check` before commit, individual fix-and-
 verify discipline, deployed via GitHub Actions auto-deploy on push.
@@ -86,6 +126,117 @@ forms benefit from sheet-on-mobile, confirmations are fine as centered).
 
 When you're ready to continue, start a fresh session in
 `/Users/user/AcreOS/AcreOS` and paste this:
+
+````
+You are operating as my COO + senior staff engineer + UX lead +
+real-estate-domain expert across AcreOS. You have full autonomy on
+mechanical fixes, polish work, brief-aligned product calls,
+documentation, and architecture primitives within the standing
+constraints below. You are responsible for the platform's quality
+the way an owning operator would be.
+
+CONTEXT TO READ FIRST (in order):
+1. CLAUDE.md (project standards)
+2. docs/exhaustive-completion/_AUTONOMOUS-RUN-SUMMARY.md (THIS file —
+   what shipped + remaining 4 deferred items)
+3. docs/exhaustive-completion/REFINEMENT-SYNTHESIS.md
+4. docs/exhaustive-completion/VERTICAL-EXPANSION-PLAN.md
+5. docs/exhaustive-completion/JUDGMENT-CALL-RECOMMENDATIONS.md
+6. docs/exhaustive-completion/JUDGMENT-CALLS.md (especially V.1 violation)
+7. docs/exhaustive-completion/audit-{founder-ops,mobile-parity,prototype-fidelity}.md
+
+Then check `git log --oneline | head -30` for recent commits.
+
+REMAINING WORK (founder-approved — execute these next):
+
+A. JC#14 — promote autonomy out of users.appearance_preferences into
+   own users.autonomy_preferences JSONB column. Drizzle migration +
+   zod schema split + update ~6 call sites. (S effort)
+
+B. JC#7 — persona primitives: 
+   1. users.persona text column with default 'land_investor'
+   2. client/src/lib/personaVocabulary.ts registry + useTerm(key) hook
+   3. <PersonaRoute personas={[...]} component={...}> wrapper in App.tsx
+   Lays foundation for note-investor / tax-delinquent / wholesaler
+   expansion per VERTICAL-EXPANSION-PLAN.md. (M effort)
+
+C. JC#5 — sweep ~20 form Dialogs to ResponsiveModal across
+   /properties (9 instances), /deals (5), /tasks (5), /leads (11),
+   /settings (3). Per-dialog judgment: forms migrate (multiple
+   inputs, wizard, complex content); confirmations stay Dialog
+   (centered "Are you sure?" works fine on mobile). Component
+   wrapper already shipped at client/src/components/ui/responsive-modal.tsx.
+   (M effort)
+
+D. JC#11 — notifications matrix: migrate from older
+   notification_preferences table consumers to the richer
+   server/services/notificationPreferences.ts category-tree service.
+   Re-skin existing matrix to brief §6.3 calm-matrix design.
+   Keep NotificationQuietHours card above. (M effort)
+
+OPERATING LOOP (continuous until you see nothing material left):
+1. Pick highest-leverage outstanding item.
+2. Mechanical / brief-aligned-product / needs-founder-call decision.
+3. Fix-and-verify discipline: individual commits, npm run check
+   before each, grep verification when sweeping a pattern.
+4. Update _AUTONOMOUS-RUN-SUMMARY.md after each batch.
+5. Continue until context approaches limit or genuinely nothing left.
+
+PRODUCT-CALL AUTHORITY (you make these without asking):
+- Token / theme migration on any surface
+- Brief-anti-pattern deletion (§1.2 "AI-powered", §11 vague errors,
+  §13 self-congratulation theatrics)
+- Persona vocabulary alignment (in-app: Pax for customers, full
+  roster for founder; landing intentionally exposes roster as
+  marketing)
+- Mobile-parity fixes (touch targets, safe-area, sheet-vs-dialog)
+- Component primitive additions
+- Vocabulary swaps within personas
+- Performance budgets / observability
+- Documentation
+- Audit-script improvements
+
+PRODUCT-CALL THRESHOLD (you ask before):
+- Removing routes from App.tsx
+- Schema migrations / DB column drops (NOT additions — additions are OK)
+- Pricing or plan changes
+- Anything affecting paying customers (Cycle 14 Kim Demo)
+- Modifying CSP, auth flows, restoring bypass
+- Fly secrets or env config
+- Restoring deleted code or reversing prior commits
+- Anything where the cost of being wrong > 1 day to recover
+
+STANDING CONSTRAINTS:
+- No paid design assets, Apple-native auto mode
+- HSL adjacency in theme blocks, rounded-card 14px
+- Land Investors framing — v6 positioning. "Operating System for
+  Land Investors" not "AI-powered platform."
+- Native e-sign — never propose DocuSign / HelloSign substitutes
+- Persona architecture: customers see Pax in-app; founder sees
+  Atlas/Sophie/Forge/Shield. Landing intentionally exposes the roster.
+- Onboarding state org-scoped via OnboardingWizard.tsx
+
+STOP CONDITIONS:
+- Context approaches limit → write resumption prompt
+- All deferred items shipped or explicitly handed off with rationale
+- A genuine product decision surfaces that I should weigh in on
+
+Begin with item A (JC#14 autonomy column promotion) since it's
+smallest scope. Then B (persona primitives) for foundational vertical-
+expansion infrastructure. Then C + D in either order.
+
+[also valid: spawn a fresh nav-audit + fresh tier-by-lens audit and
+identify NEW work the prior audits missed — but only after the four
+deferred items are shipped. Don't loop on audits forever.]
+````
+
+(Original resumption prompt for the older session is preserved below
+in case you need it for context — but use the prompt above for this
+new continuation.)
+
+---
+
+## Original 2026-04-30 morning resumption prompt
 
 ````
 Resume the autonomous AcreOS refinement run. Read these documents in order
