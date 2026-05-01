@@ -2,12 +2,75 @@
 
 Sessions: 2026-04-30 (Wave 1+2+3 partial: 15 commits). Continuation:
 2026-04-30 (judgment-call execution: 13 commits). Third wave 2026-05-01
-(remaining-deferred sweep: 4 commits — JC#14, JC#7, JC#5, JC#11). Founder
-authorized continuous autonomous work with high judgment + high threshold
-for destructive actions.
+(remaining-deferred sweep: 4 commits — JC#14, JC#7, JC#5, JC#11). Fourth
+wave 2026-05-01 (product-call execution: 9 commits — #6, #2, #1, #11,
+#7-batch1, #10, #9, #4, #5). Founder authorized continuous autonomous
+work with high judgment + high threshold for destructive actions.
 
 This document is the single record of what shipped, what's deferred,
 and the resumption prompt for the next session.
+
+---
+
+## Fourth wave shipped (9 commits, 2026-05-01)
+
+After the founder reviewed the product-call recommendations and approved
+all eleven, shipped meaningful structural progress on each. Two items
+(#3 + #8) were explicit recommendations to *defer* by 14 days for
+telemetry; those are documented below as scheduled-review followups.
+
+| # | What | Commit |
+|---|------|--------|
+| #6 | /founder-home forward-looking churn risk + 90d NPS window | `d255dfe` |
+| #2 | Settings 17 tabs regrouped into six clusters, mobile Select uses SelectGroup labels | `05bd418` |
+| #1 | Sidebar primary/overflow split — "More N" disclosure per module, daily list trims to ~14 visible | `6732afc` |
+| #11 | Consolidated agent-identity.ts registry — letter mark + 4 semantic tones, deletes 5 divergent maps | `81dccec` |
+| #7 (batch 1) | Tone sweep on /portfolio + /deals — semantic acr-* tokens | `6bbd531` |
+| #10 | Pax inbox drafted-reply with attribution + regenerate, edit-required-before-send | `2804a1f` |
+| #9 | First persona vertical — /api/me/persona setter + Settings PersonaPanel + useTerm() on /properties /deals /leads | `85bac80` |
+| #4 | Founder-dashboard legacy banner pointing at /founder-home — full rebuild stays as 2-week project | `e609316` |
+| #5 | Onboarding-v2 persona handoff — businessType selection now writes users.persona | `011b2c9` |
+
+Two items deliberately partial (foundation-only):
+
+- **#4 founder-dashboard rebuild**: 7,400-line legacy is stable; banner
+  redirects daily check to /founder-home (the clean v2 already shipped).
+  Full tab-by-tab extraction is a focused 2-week project against the
+  prototype reference, not a single-session task.
+- **#5 onboarding-v2 redesign**: persona handoff is the structural
+  primitive; full prototype-aligned "walk-into-a-workspace" flow needs a
+  focused 2-day session against acreos-onboarding/screens-1..4.jsx.
+
+---
+
+## Scheduled review — 2026-05-15 (cascade + autonomy cutover)
+
+Items #3 (autonomy auto-resolve thresholds) and #8 (founder/todo cascade
+filter cutover) both depend on 14 days of telemetry from the
+cascade-aware annotations shipped in JC#4 (`6120b37`). Run a /schedule
+agent on **2026-05-15** with this prompt:
+
+````
+Read docs/exhaustive-completion/_AUTONOMOUS-RUN-SUMMARY.md and
+JUDGMENT-CALL-RECOMMENDATIONS.md, then evaluate the cascade-aware
+annotations on /founder/todo:
+
+1. Query the most recent 14 days of cascadeHints + autoResolveCandidate
+   annotations. What % of items got tagged? What's the false-positive
+   rate (founder kept items the heuristic said could be auto-resolved)?
+
+2. Recommend calibrated thresholds for the 5%-escalation /
+   60-urgency cutover. If false-positive rate is < 5%, propose flipping
+   the filter on. If higher, recommend specific threshold adjustments.
+
+3. Same evaluation for the per-agent autonomy matrix (JC#14): pull
+   recent action-attempt logs, calculate how often agents asked vs acted
+   vs were blocked, and recommend whether the matrix is calibrated to
+   ship at level-2-Execute defaults or needs more telemetry.
+
+4. Open a single PR with the threshold update + before/after metrics.
+   Don't ship a flag flip without founder review.
+````
 
 ---
 
