@@ -41,8 +41,7 @@ export function Footer() {
           </div>
           <div className="lp-footer-col">
             <div className="lp-footer-h">Company</div>
-            <Link href="/about">About</Link>
-            <a href="#founder">Founder note</a>
+            <Link href="/why">From the founder</Link>
             <Link href="/careers">Careers</Link>
             <Link href="/press">Press</Link>
           </div>

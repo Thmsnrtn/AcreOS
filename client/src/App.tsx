@@ -209,6 +209,7 @@ const BorrowerPortal = React.lazy(() => import("@/pages/borrower-portal"));
 const TermsOfService = React.lazy(() => import("@/pages/terms"));
 const PrivacyPolicy = React.lazy(() => import("@/pages/privacy"));
 const PricingPage = React.lazy(() => import("@/pages/pricing"));
+const WhyPage = React.lazy(() => import("@/pages/why"));
 const FounderAgentsPage = React.lazy(() => import("@/pages/founder-agents"));
 const FounderDailyDigestPage = React.lazy(() => import("@/pages/founder-daily-digest"));
 const FounderDecisionsPage = React.lazy(() => import("@/pages/founder-decisions"));
@@ -358,6 +359,7 @@ function Router() {
         {/* Competitor comparison pages (public, SEO-targeted) */}
 
       <Route path="/pricing" component={PricingPage} />
+      <Route path="/why" component={WhyPage} />
       <Route path="/status" component={StatusPage} />
       <Route path="/changelog" component={ChangelogPage} />
 
