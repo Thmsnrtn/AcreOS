@@ -58,7 +58,15 @@ const leadFormSchema = insertLeadSchema.omit({ organizationId: true }).extend({
     ),
   status: z.string().min(1, "Status is required"),
 });
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import {
+  ResponsiveModal,
+  ResponsiveModalContent,
+  ResponsiveModalHeader,
+  ResponsiveModalTitle,
+  ResponsiveModalDescription,
+  ResponsiveModalFooter,
+  ResponsiveModalTrigger,
+} from "@/components/ui/responsive-modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -252,16 +260,16 @@ function ScoreDetailsDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px] max-h-[80vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+    <ResponsiveModal open={open} onOpenChange={onOpenChange}>
+      <ResponsiveModalContent className="sm:max-w-[500px] max-h-[80vh] overflow-y-auto">
+        <ResponsiveModalHeader>
+          <ResponsiveModalTitle className="flex items-center gap-2">
             Score Details: {lead.firstName} {lead.lastName}
-          </DialogTitle>
-          <DialogDescription>
+          </ResponsiveModalTitle>
+          <ResponsiveModalDescription>
             Betty-style lead scoring breakdown
-          </DialogDescription>
-        </DialogHeader>
+          </ResponsiveModalDescription>
+        </ResponsiveModalHeader>
 
         <div className="space-y-6">
           <div className="flex items-center justify-between gap-4 p-4 bg-muted/50 rounded-lg">
@@ -336,12 +344,12 @@ function ScoreDetailsDialog({
           )}
         </div>
 
-        <DialogFooter>
+        <ResponsiveModalFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Close
           </Button>
-          <Button 
-            onClick={() => rescoreMutation.mutate()} 
+          <Button
+            onClick={() => rescoreMutation.mutate()}
             disabled={rescoreMutation.isPending}
             data-testid={`button-rescore-${lead.id}`}
           >
@@ -351,9 +359,9 @@ function ScoreDetailsDialog({
               <><RefreshCw className="w-4 h-4 mr-2" /> Rescore</>
             )}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </ResponsiveModalFooter>
+      </ResponsiveModalContent>
+    </ResponsiveModal>
   );
 }
 
@@ -1132,7 +1140,7 @@ export default function LeadsPage() {
                 </DropdownMenuContent>
               </DropdownMenu>
               
-<Dialog open={isCreateOpen} onOpenChange={(open) => {
+<ResponsiveModal open={isCreateOpen} onOpenChange={(open) => {
                 // Confirm discard if form has any input. window.confirm()
                 // was banned in slice 5l (no focus trap, inconsistent with
                 // Radix dialogs, blocks main thread); route through
@@ -1147,18 +1155,18 @@ export default function LeadsPage() {
                 }
                 setIsCreateOpen(open);
               }}>
-                <DialogTrigger asChild>
+                <ResponsiveModalTrigger asChild>
                   <Button className="shadow-lg hover:shadow-primary/25 min-h-[44px]" data-testid="button-add-lead">
                     <Plus className="w-4 h-4 mr-2" aria-hidden="true" /> Add lead
                   </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-[425px]">
-                  <DialogHeader>
-                    <DialogTitle>Create lead</DialogTitle>
-                  </DialogHeader>
+                </ResponsiveModalTrigger>
+                <ResponsiveModalContent className="sm:max-w-[425px]">
+                  <ResponsiveModalHeader>
+                    <ResponsiveModalTitle>Create lead</ResponsiveModalTitle>
+                  </ResponsiveModalHeader>
                   <LeadForm onSuccess={() => setIsCreateOpen(false)} />
-                </DialogContent>
-              </Dialog>
+                </ResponsiveModalContent>
+              </ResponsiveModal>
               <ConfirmDialog
                 open={pendingDiscardClose}
                 onOpenChange={(v) => setPendingDiscardClose(v)}
@@ -1813,19 +1821,19 @@ export default function LeadsPage() {
         />
       )}
 
-      <Dialog open={!!editingLead} onOpenChange={(open) => !open && setEditingLead(null)}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>Edit Lead</DialogTitle>
-          </DialogHeader>
+      <ResponsiveModal open={!!editingLead} onOpenChange={(open) => !open && setEditingLead(null)}>
+        <ResponsiveModalContent className="sm:max-w-[425px]">
+          <ResponsiveModalHeader>
+            <ResponsiveModalTitle>Edit Lead</ResponsiveModalTitle>
+          </ResponsiveModalHeader>
           {editingLead && (
-            <LeadForm 
-              lead={editingLead} 
-              onSuccess={() => setEditingLead(null)} 
+            <LeadForm
+              lead={editingLead}
+              onSuccess={() => setEditingLead(null)}
             />
           )}
-        </DialogContent>
-      </Dialog>
+        </ResponsiveModalContent>
+      </ResponsiveModal>
 
       <ConfirmDialog
         open={!!deletingLead}
@@ -1845,14 +1853,14 @@ export default function LeadsPage() {
         onSuccess={handleBulkDeleteSuccess}
       />
 
-      <Dialog open={!!offerLetterLead} onOpenChange={(open) => !open && setOfferLetterLead(null)}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>Generate Offer Letter</DialogTitle>
-            <DialogDescription>
+      <ResponsiveModal open={!!offerLetterLead} onOpenChange={(open) => !open && setOfferLetterLead(null)}>
+        <ResponsiveModalContent className="sm:max-w-[425px]">
+          <ResponsiveModalHeader>
+            <ResponsiveModalTitle>Generate Offer Letter</ResponsiveModalTitle>
+            <ResponsiveModalDescription>
               Create an offer letter for {offerLetterLead?.firstName} {offerLetterLead?.lastName}
-            </DialogDescription>
-          </DialogHeader>
+            </ResponsiveModalDescription>
+          </ResponsiveModalHeader>
           <form
             id={offerFormId}
             className="space-y-4 py-4"
@@ -1890,7 +1898,7 @@ export default function LeadsPage() {
               <p className="text-xs text-muted-foreground">Leave blank to use 30% of assessed value</p>
             </div>
           </form>
-          <DialogFooter>
+          <ResponsiveModalFooter>
             <Button type="button" variant="outline" onClick={() => setOfferLetterLead(null)}>
               Cancel
             </Button>
@@ -1906,18 +1914,18 @@ export default function LeadsPage() {
                 <><FileText className="w-4 h-4 mr-2" /> Generate PDF</>
               )}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </ResponsiveModalFooter>
+        </ResponsiveModalContent>
+      </ResponsiveModal>
 
-      <Dialog open={isImportOpen} onOpenChange={(open) => !open && resetImportDialog()}>
-        <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Import leads from CSV</DialogTitle>
-            <DialogDescription>
+      <ResponsiveModal open={isImportOpen} onOpenChange={(open) => !open && resetImportDialog()}>
+        <ResponsiveModalContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
+          <ResponsiveModalHeader>
+            <ResponsiveModalTitle>Import leads from CSV</ResponsiveModalTitle>
+            <ResponsiveModalDescription>
               Upload a CSV file to bulk import leads. Required columns: firstName, lastName.
-            </DialogDescription>
-          </DialogHeader>
+            </ResponsiveModalDescription>
+          </ResponsiveModalHeader>
 
           {!importPreview && !importResult && (
             <div className="space-y-4 py-4">
@@ -2034,7 +2042,7 @@ export default function LeadsPage() {
             </div>
           )}
 
-          <DialogFooter>
+          <ResponsiveModalFooter>
             {!importResult ? (
               <>
                 <Button variant="outline" className="min-h-11" onClick={resetImportDialog}>
@@ -2058,9 +2066,9 @@ export default function LeadsPage() {
                 Done
               </Button>
             )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </ResponsiveModalFooter>
+        </ResponsiveModalContent>
+      </ResponsiveModal>
 
       <TaxDelinquentImporter 
         open={isTaxDelinquentImportOpen} 

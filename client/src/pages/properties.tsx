@@ -91,7 +91,15 @@ const propertyFormSchema = insertPropertySchema.omit({ organizationId: true }).e
     ),
   status: z.string().min(1, "Status is required"),
 });
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import {
+  ResponsiveModal,
+  ResponsiveModalContent,
+  ResponsiveModalHeader,
+  ResponsiveModalTitle,
+  ResponsiveModalDescription,
+  ResponsiveModalFooter,
+  ResponsiveModalTrigger,
+} from "@/components/ui/responsive-modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -511,19 +519,19 @@ export default function PropertiesPage() {
                 {isFetchingAllParcels ? <Loader2 className="w-4 h-4 md:mr-2 animate-spin" /> : <MapIcon className="w-4 h-4 md:mr-2" />}
                 <span className="hidden md:inline">{isFetchingAllParcels ? "Fetching..." : "Fetch Boundaries"}</span>
               </Button>
-              <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-                <DialogTrigger asChild>
+              <ResponsiveModal open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+                <ResponsiveModalTrigger asChild>
                   <Button className="shadow-lg hover:shadow-primary/25 min-h-[44px] md:min-h-9" data-testid="button-add-property">
                     <Plus className="w-4 h-4 mr-2" /> Add Property
                   </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-[500px]">
-                  <DialogHeader>
-                    <DialogTitle>Add New Property</DialogTitle>
-                    <DialogDescription>
+                </ResponsiveModalTrigger>
+                <ResponsiveModalContent className="sm:max-w-[500px]">
+                  <ResponsiveModalHeader>
+                    <ResponsiveModalTitle>Add New Property</ResponsiveModalTitle>
+                    <ResponsiveModalDescription>
                       Enter the property details including APN, location, and acreage.
-                    </DialogDescription>
-                  </DialogHeader>
+                    </ResponsiveModalDescription>
+                  </ResponsiveModalHeader>
                   <PropertyForm
                     onSuccess={() => setIsCreateOpen(false)}
                     prefill={addFromLocation ? {
@@ -533,8 +541,8 @@ export default function PropertiesPage() {
                       longitude: addAtLng || undefined,
                     } : undefined}
                   />
-                </DialogContent>
-              </Dialog>
+                </ResponsiveModalContent>
+              </ResponsiveModal>
             </div>
           </div>
 
@@ -748,14 +756,14 @@ export default function PropertiesPage() {
         variant="destructive"
       />
 
-      <Dialog open={isImportOpen} onOpenChange={(open) => !open && resetImportDialog()}>
-        <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Import Properties from CSV</DialogTitle>
-            <DialogDescription>
+      <ResponsiveModal open={isImportOpen} onOpenChange={(open) => !open && resetImportDialog()}>
+        <ResponsiveModalContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
+          <ResponsiveModalHeader>
+            <ResponsiveModalTitle>Import Properties from CSV</ResponsiveModalTitle>
+            <ResponsiveModalDescription>
               Upload a CSV file to bulk import properties. Required columns: apn, county, state, sizeAcres
-            </DialogDescription>
-          </DialogHeader>
+            </ResponsiveModalDescription>
+          </ResponsiveModalHeader>
           
           {!importPreview && !importResult && (
             <div className="space-y-4 py-4">
@@ -872,13 +880,13 @@ export default function PropertiesPage() {
             </div>
           )}
 
-          <DialogFooter>
+          <ResponsiveModalFooter>
             {!importResult ? (
               <>
                 <Button variant="outline" onClick={resetImportDialog}>
                   Cancel
                 </Button>
-                <Button 
+                <Button
                   onClick={handleImport}
                   disabled={!importPreview || isImporting}
                   data-testid="button-confirm-import-properties"
@@ -895,9 +903,9 @@ export default function PropertiesPage() {
                 Done
               </Button>
             )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </ResponsiveModalFooter>
+        </ResponsiveModalContent>
+      </ResponsiveModal>
     </PageShell>
   );
 }
@@ -1123,23 +1131,23 @@ function PropertyCard({ property, onDelete }: {
         onOpenChange={setIsDetailOpen} 
       />
       
-      <Dialog open={isCalculatorOpen} onOpenChange={setIsCalculatorOpen}>
-        <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
+      <ResponsiveModal open={isCalculatorOpen} onOpenChange={setIsCalculatorOpen}>
+        <ResponsiveModalContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
+          <ResponsiveModalHeader>
+            <ResponsiveModalTitle className="flex items-center gap-2">
               <Calculator className="w-5 h-5" />
               ROI Calculator - {property.county}, {property.state}
-            </DialogTitle>
-            <DialogDescription>
+            </ResponsiveModalTitle>
+            <ResponsiveModalDescription>
               Analyze potential returns for this property. APN: {property.apn}
-            </DialogDescription>
-          </DialogHeader>
-          <DealCalculator 
+            </ResponsiveModalDescription>
+          </ResponsiveModalHeader>
+          <DealCalculator
             property={property}
             showSaveButton={false}
           />
-        </DialogContent>
-      </Dialog>
+        </ResponsiveModalContent>
+      </ResponsiveModal>
     </Card>
   );
 }
@@ -1527,14 +1535,14 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
 
   return (
     <>
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto p-4 sm:p-6">
-        <DialogHeader>
+    <ResponsiveModal open={open} onOpenChange={onOpenChange}>
+      <ResponsiveModalContent className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto p-4 sm:p-6">
+        <ResponsiveModalHeader>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4">
-            <DialogTitle className="flex items-center gap-2 text-lg sm:text-xl">
+            <ResponsiveModalTitle className="flex items-center gap-2 text-lg sm:text-xl">
               <MapPin className="w-5 h-5 flex-shrink-0" aria-hidden="true" />
               <span className="truncate">{currentProperty.address || `${currentProperty.county}, ${currentProperty.state}`}</span>
-            </DialogTitle>
+            </ResponsiveModalTitle>
             <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
               {/* r7 Ingrid WF-R7-002: data-heavy personas need property-level
                   export to move data into their own analysis environment
@@ -1566,7 +1574,7 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
               </Button>
             </div>
           </div>
-          <DialogDescription className="flex items-center gap-2 sm:gap-4 flex-wrap text-xs sm:text-sm">
+          <ResponsiveModalDescription className="flex items-center gap-2 sm:gap-4 flex-wrap text-xs sm:text-sm">
             {/* r5 Eleanor WF-R5-002: glossary hints for abbreviations. APN
                 is inline-explained here; longer tooltips elsewhere. */}
             <span title="Assessor Parcel Number — the county's unique identifier for this parcel">
@@ -1586,8 +1594,8 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
             >
               {currentProperty.status.replace(/_/g, ' ')}
             </Badge>
-          </DialogDescription>
-        </DialogHeader>
+          </ResponsiveModalDescription>
+        </ResponsiveModalHeader>
 
         {/* FRICTION-0007: Quick Verdict — synthesized go/no-go recommendation */}
         <Card className={`${sc.bg} ${sc.border} border`} data-testid="quick-verdict-card">
@@ -2165,8 +2173,8 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
             <DueDiligencePanel propertyId={currentProperty.id} />
           </TabsContent>
         </Tabs>
-      </DialogContent>
-    </Dialog>
+      </ResponsiveModalContent>
+    </ResponsiveModal>
     
     <PropertyAnalysisChat 
       property={currentProperty} 

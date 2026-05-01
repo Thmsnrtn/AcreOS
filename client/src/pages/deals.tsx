@@ -37,7 +37,14 @@ import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 const dealFormSchema = insertDealSchema.omit({ organizationId: true });
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
+import {
+  ResponsiveModal,
+  ResponsiveModalContent,
+  ResponsiveModalHeader,
+  ResponsiveModalTitle,
+  ResponsiveModalDescription,
+  ResponsiveModalTrigger,
+} from "@/components/ui/responsive-modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -477,20 +484,20 @@ export default function DealsPage() {
                 {isExporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" /> : <Download className="w-4 h-4 mr-2" aria-hidden="true" />}
                 Export CSV
               </Button>
-              <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-                <DialogTrigger asChild>
+              <ResponsiveModal open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+                <ResponsiveModalTrigger asChild>
                   <Button data-testid="button-create-deal">
                     <Plus className="w-4 h-4 mr-2" aria-hidden="true" /> New deal
                   </Button>
-                </DialogTrigger>
-              <DialogContent className="sm:max-w-[500px] floating-window">
-                <DialogHeader>
-                  <DialogTitle>Create deal</DialogTitle>
-                  <DialogDescription>Start tracking a new acquisition or disposition.</DialogDescription>
-                </DialogHeader>
+                </ResponsiveModalTrigger>
+              <ResponsiveModalContent className="sm:max-w-[500px] floating-window">
+                <ResponsiveModalHeader>
+                  <ResponsiveModalTitle>Create deal</ResponsiveModalTitle>
+                  <ResponsiveModalDescription>Start tracking a new acquisition or disposition.</ResponsiveModalDescription>
+                </ResponsiveModalHeader>
                 <DealForm onSuccess={() => setIsCreateOpen(false)} />
-              </DialogContent>
-              </Dialog>
+              </ResponsiveModalContent>
+              </ResponsiveModal>
             </div>
           </div>
 
@@ -1574,16 +1581,16 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                       </Button>
                     </div>
 
-                    {/* Negotiation Script Dialog */}
-                    <Dialog open={isNegotiationOpen} onOpenChange={setIsNegotiationOpen}>
-                      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-                        <DialogHeader>
-                          <DialogTitle className="flex items-center gap-2">
+                    {/* Negotiation script dialog */}
+                    <ResponsiveModal open={isNegotiationOpen} onOpenChange={setIsNegotiationOpen}>
+                      <ResponsiveModalContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+                        <ResponsiveModalHeader>
+                          <ResponsiveModalTitle className="flex items-center gap-2">
                             <Sparkles className="w-5 h-5 text-primary" aria-hidden="true" />
-                            AI negotiation coaching
-                          </DialogTitle>
-                          <DialogDescription>AI-generated negotiation strategy and talking points for this deal.</DialogDescription>
-                        </DialogHeader>
+                            Negotiation coaching
+                          </ResponsiveModalTitle>
+                          <ResponsiveModalDescription>Negotiation strategy and talking points for this deal.</ResponsiveModalDescription>
+                        </ResponsiveModalHeader>
                         {negotiationScript && (
                           <div className="space-y-4">
                             <div className="bg-primary/5 dark:bg-primary/10 rounded-lg p-4 border border-primary/20">
@@ -1599,8 +1606,8 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                             </Button>
                           </div>
                         )}
-                      </DialogContent>
-                    </Dialog>
+                      </ResponsiveModalContent>
+                    </ResponsiveModal>
                     <p className="text-xl font-bold font-mono tabular-nums">
                       {deal.offerAmount != null && deal.offerAmount !== ''
                         ? usd(deal.offerAmount, { noCents: true })

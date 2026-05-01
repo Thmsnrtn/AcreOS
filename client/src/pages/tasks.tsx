@@ -9,7 +9,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import {
+  ResponsiveModal,
+  ResponsiveModalContent,
+  ResponsiveModalHeader,
+  ResponsiveModalTitle,
+  ResponsiveModalDescription,
+  ResponsiveModalFooter,
+  ResponsiveModalTrigger,
+} from "@/components/ui/responsive-modal";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
@@ -417,12 +425,12 @@ export default function TasksPage() {
           />
         )}
 
-        <DialogFooter>
+        <ResponsiveModalFooter>
           <Button type="submit" disabled={isPending} data-testid="button-submit-task">
             {isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />}
             Save task
           </Button>
-        </DialogFooter>
+        </ResponsiveModalFooter>
       </form>
     </Form>
   );
@@ -440,27 +448,27 @@ export default function TasksPage() {
               </div>
             </div>
 
-            <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-              <DialogTrigger asChild>
+            <ResponsiveModal open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+              <ResponsiveModalTrigger asChild>
                 <Button data-testid="button-create-task">
                   <Plus className="w-4 h-4 mr-2" aria-hidden="true" />
                   New task
                 </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-lg">
-                <DialogHeader>
-                  <DialogTitle>Create task</DialogTitle>
-                  <DialogDescription>
+              </ResponsiveModalTrigger>
+              <ResponsiveModalContent className="max-w-lg">
+                <ResponsiveModalHeader>
+                  <ResponsiveModalTitle>Create task</ResponsiveModalTitle>
+                  <ResponsiveModalDescription>
                     Add a new task with title, priority, and optional due date.
-                  </DialogDescription>
-                </DialogHeader>
+                  </ResponsiveModalDescription>
+                </ResponsiveModalHeader>
                 <TaskFormContent
                   form={createForm}
                   onSubmit={onCreateSubmit}
                   isPending={createMutation.isPending}
                 />
-              </DialogContent>
-            </Dialog>
+              </ResponsiveModalContent>
+            </ResponsiveModal>
           </div>
 
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as FilterTab)} className="w-full">
@@ -668,21 +676,21 @@ export default function TasksPage() {
             </CardContent>
           </Card>
 
-      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Edit task</DialogTitle>
-            <DialogDescription>
+      <ResponsiveModal open={isEditOpen} onOpenChange={setIsEditOpen}>
+        <ResponsiveModalContent className="max-w-lg">
+          <ResponsiveModalHeader>
+            <ResponsiveModalTitle>Edit task</ResponsiveModalTitle>
+            <ResponsiveModalDescription>
               Update the task details, status, or priority.
-            </DialogDescription>
-          </DialogHeader>
+            </ResponsiveModalDescription>
+          </ResponsiveModalHeader>
           <TaskFormContent
             form={editForm}
             onSubmit={onEditSubmit}
             isPending={updateMutation.isPending}
           />
-        </DialogContent>
-      </Dialog>
+        </ResponsiveModalContent>
+      </ResponsiveModal>
 
       <ConfirmDialog
         open={!!taskToDelete}
