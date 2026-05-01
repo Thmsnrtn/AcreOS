@@ -47,7 +47,7 @@ import { usd } from "@/lib/format";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 
 // ---------------------------------------------------------------------------
-// Onboarding flow — 3 paths, guided by Atlas
+// Onboarding flow — 3 paths, guided by Pax
 //
 // Expert land investing principle: The first 10 minutes determine whether
 // someone becomes a lifelong professional user or abandons the platform.
@@ -68,7 +68,7 @@ const STEPS_BY_PATH: Record<InvestorPath, OnboardingStep[]> = {
     { id: "target_county", title: "Where do you want to invest?", subtitle: "Pick a county to explore first." },
     { id: "instant_hunt", title: "AcreOS found real opportunities", subtitle: "Here's what's available in your target area right now." },
     { id: "strategy", title: "What's your strategy?", subtitle: "How do you plan to make money with land?" },
-    { id: "atlas_tour", title: "Meet Atlas, your AI deal partner", subtitle: "Atlas works 24/7 so you don't have to." },
+    { id: "pax_tour", title: "Meet Pax, your deal partner", subtitle: "Pax works 24/7 so you don't have to." },
     { id: "complete", title: "You're ready to find deals!", subtitle: "Your personalized dashboard is configured." },
   ],
   active: [
@@ -1045,7 +1045,7 @@ export default function OnboardingV2() {
                 icon: Home,
                 title: "Just getting started",
                 subtitle: "I'm new to land investing and want to learn the ropes",
-                benefits: ["Guided first deal walkthrough", "Expert strategy explanations", "Sample deal pre-loaded", "Daily Atlas coaching tips"],
+                benefits: ["Guided first deal walkthrough", "Expert strategy explanations", "Sample deal pre-loaded", "Daily Pax coaching tips"],
                 color: "emerald",
               },
               {
@@ -1151,7 +1151,7 @@ export default function OnboardingV2() {
               <div className="p-4 bg-emerald-900/20 border border-emerald-700/30 rounded-xl">
                 <div className="flex items-center gap-3 mb-3">
                   <Brain className="w-5 h-5 text-emerald-400" />
-                  <span className="font-medium text-white">Atlas AI is ready to help</span>
+                  <span className="font-medium text-white">Pax is ready to help</span>
                 </div>
                 <p className="text-sm text-gray-400">
                   {selectedPath === "beginner"
@@ -1299,7 +1299,7 @@ export default function OnboardingV2() {
             </div>
           )}
 
-          {currentStep.id === "atlas_tour" && (
+          {currentStep.id === "pax_tour" && (
             <div className="space-y-4">
               <div className="p-5 bg-purple-950/30 border border-purple-700/30 rounded-xl">
                 <div className="flex items-center gap-3 mb-4">
@@ -1307,7 +1307,7 @@ export default function OnboardingV2() {
                     <Brain className="w-5 h-5 text-purple-300" />
                   </div>
                   <div>
-                    <div className="font-bold text-white">Atlas AI</div>
+                    <div className="font-bold text-white">Pax</div>
                     <div className="text-xs text-gray-500">Your autonomous deal partner</div>
                   </div>
                 </div>
@@ -1329,7 +1329,7 @@ export default function OnboardingV2() {
                 onClick={() => advance()}
                 className="w-full bg-primary hover:bg-primary/90 py-3"
               >
-                Activate Atlas <Sparkles className="w-4 h-4 ml-2" aria-hidden="true" />
+                Activate Pax <Sparkles className="w-4 h-4 ml-2" aria-hidden="true" />
               </Button>
             </div>
           )}
@@ -1389,7 +1389,7 @@ export default function OnboardingV2() {
                     ? [
                         { label: "Review your deal opportunities", href: "/leads" },
                         { label: "Send your first mailer campaign", href: "/campaigns" },
-                        { label: "Ask Atlas a question about land investing", href: "/ai" },
+                        { label: "Ask Pax a question about land investing", href: "/ai" },
                       ]
                     : selectedPath === "active"
                     ? [
