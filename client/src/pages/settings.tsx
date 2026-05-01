@@ -788,8 +788,39 @@ export default function Settings() {
             </div>
           </div>
 
+          {/* Mobile jump-menu — 17 tabs are unreadable in a horizontal-scroll
+             strip at 375px. Privacy / Security / Automations are effectively
+             unreachable. Select component renders on mobile only and proxies
+             onValueChange to the existing Tabs handler. Desktop unchanged. */}
+          <div className="md:hidden mb-4">
+            <Select value={activeTab} onValueChange={handleTabChange}>
+              <SelectTrigger className="w-full" aria-label="Settings section">
+                <SelectValue placeholder="Choose a section" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="general">General</SelectItem>
+                <SelectItem value="team">Team</SelectItem>
+                <SelectItem value="payments">Payments</SelectItem>
+                <SelectItem value="communications">Communications</SelectItem>
+                <SelectItem value="notifications">Notifications</SelectItem>
+                <SelectItem value="ai">AI</SelectItem>
+                <SelectItem value="data">Data</SelectItem>
+                <SelectItem value="appearance">Appearance</SelectItem>
+                {autonomyFlag && <SelectItem value="autonomy">Autonomy</SelectItem>}
+                <SelectItem value="integrations">Integrations</SelectItem>
+                <SelectItem value="developer">Developer</SelectItem>
+                <SelectItem value="goals">Goals</SelectItem>
+                <SelectItem value="security">Security</SelectItem>
+                <SelectItem value="privacy">Privacy</SelectItem>
+                <SelectItem value="referral">Refer &amp; earn</SelectItem>
+                <SelectItem value="automations">Automations</SelectItem>
+                <SelectItem value="ai-tasks">AI tasks</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
           <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-            <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
+            <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0 hidden md:block">
               <TabsList className="inline-flex w-auto min-w-full md:min-w-0" data-testid="tabs-settings">
                 <TabsTrigger value="general" data-testid="tab-general" className="gap-1">
                   <SettingsIcon className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
