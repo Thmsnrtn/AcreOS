@@ -1912,6 +1912,31 @@ export default function FounderDashboard() {
 
   return (
     <PageShell label="Founder dashboard">
+          {/* Legacy operational dashboard banner — product-call #4. The
+              prototype's daily founder experience is /founder-home, which
+              ships a clean status pill + What-needs-you queue + autonomy
+              health card. This page (7,400+ lines) keeps every specialized
+              tab (data sources, endpoints, escalations, feature requests,
+              etc) and stays available for deep-dive operations work, but
+              is no longer the canonical entrypoint. The eventual rebuild
+              extracts each tab into its own focused route over time. */}
+          <div className="rounded-card border border-acr-warn/30 bg-acr-warn-soft px-4 py-3 mb-4 flex items-start justify-between gap-3 text-sm">
+            <div>
+              <p className="font-medium text-acr-warn">Operational dashboard (legacy)</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                For the daily founder check, use{" "}
+                <Link href="/founder-home" className="underline underline-offset-2 font-medium hover:text-acr-warn">
+                  /founder-home
+                </Link>
+                . This page keeps every specialized tab for operations
+                work; tabs migrate to focused routes over time.
+              </p>
+            </div>
+            <Button asChild size="sm" variant="outline" className="shrink-0">
+              <Link href="/founder-home">Go to founder home</Link>
+            </Button>
+          </div>
+
           {/* v4: Onboarding walkthrough (modal overlay) */}
           <OnboardingWalkthrough />
 
