@@ -95,16 +95,16 @@ function getGreeting() {
   return { text: "Good evening", Icon: Moon };
 }
 
-// The /api/founder/executive-dashboard response uses different field names
-// than the UI's ExecutiveMetrics interface and is missing some fields that
-// the dashboard hasn't added yet (nps, churnRate). Normalize at the seam so
-// the page never crashes on missing data — render zeros/placeholders for
-// fields the API doesn't yet supply.
+// /api/founder/executive-dashboard now returns the full metric set
+// matching the UI's ExecutiveMetrics interface — see server/routes.ts
+// `app.get('/api/founder/executive-dashboard'...)`. The response shape
+// is normalized through this select transform so any future field
+// rename or temporary missing field still degrades gracefully to 0
+// rather than crashing the page.
 interface ExecutiveDashboardApiResponse {
   mrr?: number;
-  activeOrgs?: number;
-  newOrgsLast30?: number;
-  // Future fields (not currently returned):
+  activeOrganizations?: number;
+  newOrgsLast30Days?: number;
   nps?: { score: number };
   churnRate?: number;
   churnedOrgsLast30Days?: number;
@@ -118,11 +118,11 @@ const useMetrics = () =>
       const r = raw as unknown as ExecutiveDashboardApiResponse;
       return {
         mrr: r.mrr ?? 0,
-        activeOrganizations: r.activeOrgs ?? 0,
+        activeOrganizations: r.activeOrganizations ?? 0,
         nps: r.nps ?? { score: 0 },
         churnRate: r.churnRate ?? 0,
         churnedOrgsLast30Days: r.churnedOrgsLast30Days ?? 0,
-        newOrgsLast30Days: r.newOrgsLast30 ?? 0,
+        newOrgsLast30Days: r.newOrgsLast30Days ?? 0,
       };
     },
   });
