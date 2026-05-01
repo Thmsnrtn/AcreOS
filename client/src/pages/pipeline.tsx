@@ -2,6 +2,7 @@ import { useEffect, useState, lazy, Suspense } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchJsonArray } from "@/lib/queryClient";
 import { PageShell } from "@/components/page-shell";
+import { useTerm } from "@/hooks/use-persona";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -210,6 +211,11 @@ function PipelineIntelligenceHeader({ leads, deals }: { leads: Lead[]; deals: De
 
 export default function PipelinePage() {
   useDocumentTitle("Pipeline — AcreOS");
+  // Persona-aware tab labels — switches to "Note sellers / Subject
+  // properties / Note acquisitions / etc" when persona ≠ land_investor.
+  const leadsLabel = useTerm("entity.lead.plural");
+  const propertiesLabel = useTerm("entity.property.plural");
+  const dealsLabel = useTerm("entity.deal.plural");
   const [activeTab, setActiveTab] = useState<TabValue>(getTabFromHash);
 
   const { data: leads = [] } = useQuery<Lead[]>({
@@ -287,18 +293,18 @@ export default function PipelinePage() {
           </TabsTrigger>
           <TabsTrigger value="leads" className="flex items-center gap-2 min-w-max" data-testid="tab-leads">
             <Users className="h-4 w-4" aria-hidden="true" />
-            <span>Leads</span>
+            <span>{leadsLabel}</span>
             {activeLeads > 0 && (
               <Badge variant="secondary" className="text-[10px] px-1.5 py-0 ml-0.5 tabular-nums">{activeLeads}</Badge>
             )}
           </TabsTrigger>
           <TabsTrigger value="properties" className="flex items-center gap-2 min-w-max" data-testid="tab-properties">
             <Map className="h-4 w-4" aria-hidden="true" />
-            <span>Properties</span>
+            <span>{propertiesLabel}</span>
           </TabsTrigger>
           <TabsTrigger value="deals" className="flex items-center gap-2 min-w-max" data-testid="tab-deals">
             <Briefcase className="h-4 w-4" aria-hidden="true" />
-            <span>Deals</span>
+            <span>{dealsLabel}</span>
           </TabsTrigger>
           <TabsTrigger value="outreach" className="flex items-center gap-2 min-w-max" data-testid="tab-outreach">
             <Mail className="h-4 w-4" aria-hidden="true" />

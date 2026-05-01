@@ -1,5 +1,6 @@
 import React from "react";
 import { PageShell } from "@/components/page-shell";
+import { useTerm } from "@/hooks/use-persona";
 import { GettingStartedChecklist } from "@/components/getting-started-checklist";
 import { useOrganization, useDashboardStats } from "@/hooks/use-organization";
 import { useAuth } from "@/hooks/use-auth";
@@ -189,6 +190,10 @@ const WELCOME_BACK_THRESHOLD_DAYS = 7;
 
 export default function TodayPage() {
   useDocumentTitle("Today — AcreOS");
+  // Persona-aware labels for the entity counts. Defaults to land_investor
+  // copy ("Properties") when persona is unset; switches to "Notes" /
+  // "Subject properties" / etc when the user picks a different archetype.
+  const propertyLabelPlural = useTerm("entity.property.plural");
   const { toast } = useToast();
   const { data: organization } = useOrganization();
   const { user } = useAuth();
@@ -563,7 +568,7 @@ export default function TodayPage() {
                 <p className="text-lg font-bold text-foreground tabular-nums">
                   {statsLoading ? "—" : stats?.activeProperties ?? 0}
                 </p>
-                <p className="text-xs text-muted-foreground">Properties</p>
+                <p className="text-xs text-muted-foreground">{propertyLabelPlural}</p>
               </div>
               <div className="bg-white/70 dark:bg-background/40 rounded-lg p-3 text-center">
                 <p className="text-lg font-bold text-foreground tabular-nums">
@@ -1346,7 +1351,7 @@ export default function TodayPage() {
             </div>
           </div>
           <div className="acr-metric" data-testid="stat-properties">
-            <div className="acr-metric-label">Properties</div>
+            <div className="acr-metric-label">{propertyLabelPlural}</div>
             <div className="acr-metric-value">
               {statsLoading ? "—" : properties.length}
             </div>

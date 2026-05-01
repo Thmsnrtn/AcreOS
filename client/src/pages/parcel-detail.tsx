@@ -25,6 +25,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { QueryErrorState } from "@/components/query-error-state";
 import { EmptyState } from "@/components/empty-state";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { useTerm } from "@/hooks/use-persona";
 import { usd } from "@/lib/format";
 import {
   ArrowLeft,
@@ -95,7 +96,11 @@ function formatUsd(n: string | number | null | undefined, fallback = "—"): str
 export default function ParcelDetailPage() {
   const [, params] = useRoute<{ id: string }>("/parcels/:id");
   const id = params?.id ? parseInt(params.id, 10) : null;
-  useDocumentTitle(id ? `Parcel #${id}` : "Parcel");
+  // Persona-aware title — "Parcel #5" for land_investor; "Note #5" for
+  // note_investor; "Subject property #5" for wholesaler; etc. URL stays
+  // /parcels/:id (route compat); the visible noun adapts.
+  const propertyLabel = useTerm("entity.property");
+  useDocumentTitle(id ? `${propertyLabel} #${id}` : propertyLabel);
 
   const {
     data: property,
