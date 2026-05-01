@@ -1022,7 +1022,43 @@ export default function OnboardingV2() {
       setIsAnimating(false);
     }, 300);
     updateOnboardingMutation.mutate({ step: currentStepIndex + 1, ...data });
+
+    // Persona setter (#9) — when the user picks a businessType, also write
+    // the modern users.persona column so vocabulary swaps + persona-gated
+    // surfaces activate immediately. Best-effort; failure leaves the
+    // legacy onboardingData.businessType in place as the source of truth.
+    if (data?.businessType) {
+      const persona = mapBusinessTypeToPersona(data.businessType as string);
+      if (persona) {
+        fetch("/api/me/persona", {
+          method: "PUT",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ persona }),
+        }).catch(() => { /* best effort — onboardingData carries the truth */ });
+      }
+    }
   };
+
+  // BusinessType → Persona translation. Onboarding's strategy picker
+  // predates the persona registry; this map keeps both fields in sync
+  // for users who land on a brief-defined archetype, defaults to
+  // land_investor for ambiguous strategies.
+  function mapBusinessTypeToPersona(bt: string): string | null {
+    switch (bt) {
+      case "land_flipper":          return "land_investor";
+      case "note_investor":         return "note_investor";
+      case "residential_wholesaler": return "wholesaler";
+      case "fix_and_flip":          return "fix_flipper";
+      case "buy_and_hold":          return "landlord";
+      case "tax_lien_deed":         return "tax_delinquent";
+      case "developer":             return "subdivider";
+      // hybrid / commercial / multifamily / mobile_home / creative_finance /
+      // agent_investor / short_term_rental — no persona-specific surface
+      // yet, default to land_investor copy.
+      default: return "land_investor";
+    }
+  }
 
   // PATH SELECTION screen (before step flow starts)
   if (!selectedPath) {
