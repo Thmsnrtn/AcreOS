@@ -147,11 +147,13 @@ const SEVERITY_STYLES: Record<string, { bg: string; text: string; border: string
   low: { bg: "bg-blue-100 dark:bg-blue-900/30", text: "text-blue-800 dark:text-blue-400", border: "border-blue-200 dark:border-blue-800" },
 };
 
+// Theme-respondent status colors. CSS variables resolve at render so charts
+// re-tint when the user switches themes.
 const STATUS_COLORS: Record<string, string> = {
-  active: "#10b981",
-  paid_off: "#3b82f6",
-  defaulted: "#ef4444",
-  pending: "#f59e0b",
+  active: "var(--acr-pos)",
+  paid_off: "var(--acr-brand)",
+  defaulted: "var(--acr-neg)",
+  pending: "var(--acr-warn)",
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -277,7 +279,7 @@ export default function PortfolioPage() {
     .map(s => ({
       name: STATUS_LABELS[s.status] || s.status,
       value: s.count,
-      color: STATUS_COLORS[s.status] || "#94a3b8",
+      color: STATUS_COLORS[s.status] || "var(--muted-foreground)",
     })) || [];
 
   const agingChartData = delinquency ? [
@@ -702,7 +704,7 @@ export default function PortfolioPage() {
                           <XAxis dataKey="bucket" tick={{ fontSize: 12 }} />
                           <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `$${(v/1000).toFixed(0)}k`} />
                           <Tooltip formatter={((value: number) => formatCurrency(value)) as any} />
-                          <Bar dataKey="value" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                          <Bar dataKey="value" fill="var(--acr-brand)" radius={[4, 4, 0, 0]} />
                         </BarChart>
                       </ResponsiveContainer>
                     </div>
@@ -739,8 +741,8 @@ export default function PortfolioPage() {
                         <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `$${(v/1000).toFixed(0)}k`} />
                         <Tooltip formatter={((value: number) => formatCurrency(value)) as any} />
                         <Legend />
-                        <Bar dataKey="principal" name="Principal" stackId="a" fill="#3b82f6" radius={[0, 0, 0, 0]} />
-                        <Bar dataKey="interest" name="Interest" stackId="a" fill="#10b981" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="principal" name="Principal" stackId="a" fill="var(--acr-brand)" radius={[0, 0, 0, 0]} />
+                        <Bar dataKey="interest" name="Interest" stackId="a" fill="var(--acr-pos)" radius={[4, 4, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -875,23 +877,23 @@ export default function PortfolioPage() {
                         <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `$${(v/1000).toFixed(0)}k`} />
                         <Tooltip formatter={((value: number) => formatCurrency(value)) as any} />
                         <Legend />
-                        <Area 
-                          type="monotone" 
-                          dataKey="principal" 
-                          name="Principal" 
-                          stackId="1" 
-                          stroke="#3b82f6" 
-                          fill="#3b82f6" 
-                          fillOpacity={0.6} 
+                        <Area
+                          type="monotone"
+                          dataKey="principal"
+                          name="Principal"
+                          stackId="1"
+                          stroke="var(--acr-brand)"
+                          fill="var(--acr-brand)"
+                          fillOpacity={0.6}
                         />
-                        <Area 
-                          type="monotone" 
-                          dataKey="interest" 
-                          name="Interest" 
-                          stackId="1" 
-                          stroke="#10b981" 
-                          fill="#10b981" 
-                          fillOpacity={0.6} 
+                        <Area
+                          type="monotone"
+                          dataKey="interest"
+                          name="Interest"
+                          stackId="1"
+                          stroke="var(--acr-pos)"
+                          fill="var(--acr-pos)"
+                          fillOpacity={0.6}
                         />
                       </AreaChart>
                     </ResponsiveContainer>

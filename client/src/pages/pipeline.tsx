@@ -70,12 +70,15 @@ interface Deal {
   updatedAt?: string | null;
 }
 
+// Theme-respondent funnel colors. Each token resolves at render time so the
+// funnel re-tints when user switches themes (Homestead/Quarry/Nocturne/etc.).
+// Pre-port version had raw Tailwind hexes that bled through every theme.
 const FUNNEL_STAGES = [
-  { key: "new",         label: "New",        color: "#94a3b8", statuses: ["new"] },
-  { key: "contacted",   label: "Contacted",  color: "#f59e0b", statuses: ["mailed", "responded", "interested"] },
-  { key: "qualifying",  label: "Qualifying", color: "#f97316", statuses: ["qualified", "negotiating"] },
-  { key: "accepted",    label: "Accepted",   color: "#3b82f6", statuses: ["accepted"] },
-  { key: "closed",      label: "Closed",     color: "#22c55e", statuses: ["closed"] },
+  { key: "new",         label: "New",        color: "var(--muted-foreground)", statuses: ["new"] },
+  { key: "contacted",   label: "Contacted",  color: "var(--acr-warn)",         statuses: ["mailed", "responded", "interested"] },
+  { key: "qualifying",  label: "Qualifying", color: "var(--acr-warn)",         statuses: ["qualified", "negotiating"] },
+  { key: "accepted",    label: "Accepted",   color: "var(--acr-brand)",        statuses: ["accepted"] },
+  { key: "closed",      label: "Closed",     color: "var(--acr-pos)",          statuses: ["closed"] },
 ];
 
 function PipelineIntelligenceHeader({ leads, deals }: { leads: Lead[]; deals: Deal[] }) {
