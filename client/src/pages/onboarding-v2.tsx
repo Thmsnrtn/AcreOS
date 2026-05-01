@@ -1038,15 +1038,20 @@ export default function OnboardingV2() {
           </div>
 
           {/* Path selection */}
+          {/* Path colors keyed statically — Tailwind's safelist scans static
+             string literals only. Dynamic `bg-${color}-950/20` patterns
+             (pre-port version) get tree-shaken and render colorless. */}
           <div className="grid gap-4">
-            {[
+            {([
               {
                 path: "beginner" as InvestorPath,
                 icon: Home,
                 title: "Just getting started",
                 subtitle: "I'm new to land investing and want to learn the ropes",
                 benefits: ["Guided first deal walkthrough", "Expert strategy explanations", "Sample deal pre-loaded", "Daily Pax coaching tips"],
-                color: "emerald",
+                cardClasses: "border-emerald-700/40 bg-emerald-950/20 hover:border-emerald-500",
+                iconBg: "bg-emerald-900/60",
+                iconColor: "text-emerald-400",
               },
               {
                 path: "active" as InvestorPath,
@@ -1054,7 +1059,9 @@ export default function OnboardingV2() {
                 title: "Active land investor",
                 subtitle: "I'm already doing deals and need better tools",
                 benefits: ["Import existing portfolio", "Configure Deal Hunter for your markets", "Activate Autonomous Deal Machine", "Advanced analytics"],
-                color: "blue",
+                cardClasses: "border-blue-700/40 bg-blue-950/20 hover:border-blue-500",
+                iconBg: "bg-blue-900/60",
+                iconColor: "text-blue-400",
               },
               {
                 path: "enterprise" as InvestorPath,
@@ -1062,9 +1069,11 @@ export default function OnboardingV2() {
                 title: "Team or enterprise",
                 subtitle: "I run a land investing operation with a team",
                 benefits: ["Multi-user deal pipeline", "VA and team management", "White-label options", "API access for integrations"],
-                color: "purple",
+                cardClasses: "border-purple-700/40 bg-purple-950/20 hover:border-purple-500",
+                iconBg: "bg-purple-900/60",
+                iconColor: "text-purple-400",
               },
-            ].map(({ path, icon: Icon, title, subtitle, benefits, color }) => (
+            ] as const).map(({ path, icon: Icon, title, subtitle, benefits, cardClasses, iconBg, iconColor }) => (
               <button
                 key={path}
                 onClick={() => {
@@ -1073,12 +1082,12 @@ export default function OnboardingV2() {
                 }}
                 className={cn(
                   "text-left p-6 rounded-2xl border-2 transition-all hover:scale-[1.01]",
-                  `border-${color}-700/40 bg-${color}-950/20 hover:border-${color}-500`
+                  cardClasses
                 )}
               >
                 <div className="flex items-start gap-4">
-                  <div className={`w-12 h-12 rounded-xl bg-${color}-900/60 flex items-center justify-center flex-shrink-0`}>
-                    <Icon className={`w-6 h-6 text-${color}-400`} />
+                  <div className={cn("w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0", iconBg)}>
+                    <Icon className={cn("w-6 h-6", iconColor)} />
                   </div>
                   <div className="flex-1">
                     <div className="font-bold text-white text-lg">{title}</div>
@@ -1091,7 +1100,7 @@ export default function OnboardingV2() {
                       ))}
                     </div>
                   </div>
-                  <ArrowRight className={`w-5 h-5 text-${color}-400 flex-shrink-0 mt-1`} />
+                  <ArrowRight className={cn("w-5 h-5 flex-shrink-0 mt-1", iconColor)} />
                 </div>
               </button>
             ))}
