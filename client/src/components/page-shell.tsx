@@ -83,7 +83,7 @@ export function PageShell({ children, isLoading, loadingFallback, maxWidth = "7x
       <main
         id="main-content"
         aria-label={resolvedLabel}
-        className={`flex-1 p-4 pt-16 md:pt-8 md:p-8 pb-8 overflow-x-hidden content-spring will-change-[margin-left] transition-[margin-right] duration-200 ${
+        className={`flex-1 p-4 pt-16 md:pt-8 md:p-8 pb-8 mobile-safe-content overflow-x-hidden content-spring will-change-[margin-left] transition-[margin-right] duration-200 ${
           isCollapsed ? "md:ml-[76px]" : "md:ml-[17rem]"
         } ${railOpen ? "md:mr-[360px]" : "md:mr-12"}`}
       >

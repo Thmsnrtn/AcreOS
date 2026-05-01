@@ -1089,10 +1089,12 @@
   padding-top: env(safe-area-inset-top, 0);
 }
 
-/* Mobile content padding to account for bottom nav */
+/* Mobile content padding to clear MobileBottomNav (72px) + breathing room +
+   the iOS home-indicator safe area. Audit found PageShell.pb-8 (32px) was
+   eating bottom content on every Tier 1 surface. */
 @media (max-width: 768px) {
   .mobile-safe-content {
-    padding-bottom: 5rem;
+    padding-bottom: calc(72px + 1.5rem + env(safe-area-inset-bottom, 0px));
   }
 }
 
