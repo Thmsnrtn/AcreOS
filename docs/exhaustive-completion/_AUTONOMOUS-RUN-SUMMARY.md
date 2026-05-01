@@ -1,12 +1,29 @@
 # Autonomous Refinement Run — Summary
 
 Sessions: 2026-04-30 (Wave 1+2+3 partial: 15 commits). Continuation:
-2026-04-30 (judgment-call execution: 13 commits). Founder authorized
-continuous autonomous work with high judgment + high threshold for
-destructive actions.
+2026-04-30 (judgment-call execution: 13 commits). Third wave 2026-05-01
+(remaining-deferred sweep: 4 commits — JC#14, JC#7, JC#5, JC#11). Founder
+authorized continuous autonomous work with high judgment + high threshold
+for destructive actions.
 
 This document is the single record of what shipped, what's deferred,
 and the resumption prompt for the next session.
+
+---
+
+## Third wave shipped (4 commits, 2026-05-01)
+
+The four founder-approved deferred items from the prior wave all shipped.
+
+| # | What | Commit |
+|---|------|--------|
+| JC#14 | autonomy → users.autonomy_preferences jsonb column + /api/me/autonomy router; AppearancePreferences no longer carries autonomy | `73ec217` |
+| JC#7 | persona primitives — users.persona column, personaVocabulary registry, useTerm/usePersona hooks, PersonaRoute wrapper | `b444513` |
+| JC#5 | ResponsiveModal sweep — 13 form/data dialogs across /properties /deals /tasks /leads switched to Sheet-on-mobile | `fbc3c94` |
+| JC#11 | notifications calm-matrix on the richer service; users.notification_prefs jsonb adds DB persistence | `0eb92fd` |
+
+Migrations 0030 (autonomy split), 0031 (persona column), and 0032
+(notification_prefs) all back-fill safely; all three are idempotent.
 
 ---
 
@@ -38,12 +55,9 @@ for future tone migrations on remaining surfaces.
 
 ## Still deferred — needs next session
 
-| # | What | Why deferred | Effort |
-|---|------|--------------|--------|
-| JC#14 | autonomy column promotion (`users.appearance_preferences.autonomy` → `users.autonomy_preferences`) | DB migration; needs careful drizzle-kit run + zod schema split + 6+ call-site updates. Better as a focused commit. | S |
-| JC#7 | Persona primitives (users.persona column + personaVocabulary.ts + PersonaRoute wrapper) | DB migration + multi-piece foundation. Highest leverage for vertical expansion but needs care. | M |
-| JC#5 | ResponsiveModal migration of ~20 form Dialogs across 5 surfaces | Per-dialog judgment (form vs confirmation) — voluminous mechanical work. | M |
-| JC#11 | Notifications matrix migration to richer service + brief §6.3 calm-matrix re-skin | Schema-aware refactor; needs deeper investigation of `notificationPreferences.ts` service shape. | M |
+The four-item JC backlog is now empty. Open work falls into the
+"product calls" and "audit tail" buckets below — none are mechanical
+brief-aligned items the autonomous run should self-authorize.
 
 ---
 
