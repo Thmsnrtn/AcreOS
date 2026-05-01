@@ -23,7 +23,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Building2, Crown, Check, ExternalLink, CreditCard, Loader2, Lightbulb, RotateCcw, Database, Trash2, BarChart3, Users, Home, FileText, Sparkles, TrendingUp, Coins, Shield, Mail, Phone, Bell, Code, Settings as SettingsIcon, Gift, Link2, AlertCircle, CheckCircle2, Clock, RefreshCw, Unlink, Wallet, Target, Plus, X, Calendar, Zap, Download, AlertTriangle, Lock, Bot } from "lucide-react";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Progress } from "@/components/ui/progress";
 import { useMutation } from "@tanstack/react-query";
@@ -89,7 +89,24 @@ interface SeatPricing {
   yearly?: { id: string; amount: number; currency: string } | null;
 }
 
-const VALID_TABS = ["general", "appearance", "autonomy", "team", "payments", "communications", "notifications", "ai", "data", "integrations", "developer", "goals", "referral", "automations", "ai-tasks", "privacy"] as const;
+// Order matters — VALID_TABS controls left-to-right reading flow on desktop
+// and top-to-bottom in the mobile Select. Tabs are grouped into six clusters
+// (Profile / Workspace / Notifications / Team & Billing / Data / AI) so
+// related settings sit next to each other instead of being scattered.
+const VALID_TABS = [
+  // Profile
+  "general", "security", "privacy", "referral",
+  // Workspace
+  "appearance", "autonomy", "goals",
+  // Notifications
+  "notifications", "communications",
+  // Team & Billing
+  "team", "payments",
+  // Data
+  "data", "integrations", "automations", "developer",
+  // AI
+  "ai", "ai-tasks",
+] as const;
 type TabValue = typeof VALID_TABS[number];
 
 interface StripeConnectStatusResponse {
@@ -788,68 +805,80 @@ export default function Settings() {
             </div>
           </div>
 
-          {/* Mobile jump-menu — 17 tabs are unreadable in a horizontal-scroll
-             strip at 375px. Privacy / Security / Automations are effectively
-             unreachable. Select component renders on mobile only and proxies
-             onValueChange to the existing Tabs handler. Desktop unchanged. */}
+          {/* Mobile jump-menu — 17 tabs grouped into six clusters via Radix
+             SelectGroup. Group labels make the long list scannable at 375px
+             rather than a flat alphabetical-ish run. Desktop unchanged. */}
           <div className="md:hidden mb-4">
             <Select value={activeTab} onValueChange={handleTabChange}>
               <SelectTrigger className="w-full" aria-label="Settings section">
                 <SelectValue placeholder="Choose a section" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="general">General</SelectItem>
-                <SelectItem value="team">Team</SelectItem>
-                <SelectItem value="payments">Payments</SelectItem>
-                <SelectItem value="communications">Communications</SelectItem>
-                <SelectItem value="notifications">Notifications</SelectItem>
-                <SelectItem value="ai">AI</SelectItem>
-                <SelectItem value="data">Data</SelectItem>
-                <SelectItem value="appearance">Appearance</SelectItem>
-                {autonomyFlag && <SelectItem value="autonomy">Autonomy</SelectItem>}
-                <SelectItem value="integrations">Integrations</SelectItem>
-                <SelectItem value="developer">Developer</SelectItem>
-                <SelectItem value="goals">Goals</SelectItem>
-                <SelectItem value="security">Security</SelectItem>
-                <SelectItem value="privacy">Privacy</SelectItem>
-                <SelectItem value="referral">Refer &amp; earn</SelectItem>
-                <SelectItem value="automations">Automations</SelectItem>
-                <SelectItem value="ai-tasks">AI tasks</SelectItem>
+                <SelectGroup>
+                  <SelectLabel>Profile</SelectLabel>
+                  <SelectItem value="general">General</SelectItem>
+                  <SelectItem value="security">Security</SelectItem>
+                  <SelectItem value="privacy">Privacy</SelectItem>
+                  <SelectItem value="referral">Refer &amp; earn</SelectItem>
+                </SelectGroup>
+                <SelectGroup>
+                  <SelectLabel>Workspace</SelectLabel>
+                  <SelectItem value="appearance">Appearance</SelectItem>
+                  {autonomyFlag && <SelectItem value="autonomy">Autonomy</SelectItem>}
+                  <SelectItem value="goals">Goals</SelectItem>
+                </SelectGroup>
+                <SelectGroup>
+                  <SelectLabel>Notifications</SelectLabel>
+                  <SelectItem value="notifications">Notifications</SelectItem>
+                  <SelectItem value="communications">Communications</SelectItem>
+                </SelectGroup>
+                <SelectGroup>
+                  <SelectLabel>Team &amp; Billing</SelectLabel>
+                  <SelectItem value="team">Team</SelectItem>
+                  <SelectItem value="payments">Payments</SelectItem>
+                </SelectGroup>
+                <SelectGroup>
+                  <SelectLabel>Data</SelectLabel>
+                  <SelectItem value="data">Data</SelectItem>
+                  <SelectItem value="integrations">Integrations</SelectItem>
+                  <SelectItem value="automations">Automations</SelectItem>
+                  <SelectItem value="developer">Developer</SelectItem>
+                </SelectGroup>
+                <SelectGroup>
+                  <SelectLabel>AI</SelectLabel>
+                  <SelectItem value="ai">AI</SelectItem>
+                  <SelectItem value="ai-tasks">AI tasks</SelectItem>
+                </SelectGroup>
               </SelectContent>
             </Select>
           </div>
 
           <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
             <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0 hidden md:block">
+              {/* Tabs are grouped into six clusters (Profile / Workspace /
+                  Notifications / Team & Billing / Data / AI). Subtle right-
+                  margin spacers between clusters create scannable rhythm
+                  without forcing a sub-tab re-architecture. */}
               <TabsList className="inline-flex w-auto min-w-full md:min-w-0" data-testid="tabs-settings">
+                {/* Profile cluster */}
                 <TabsTrigger value="general" data-testid="tab-general" className="gap-1">
                   <SettingsIcon className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
                   General
                 </TabsTrigger>
-                <TabsTrigger value="team" data-testid="tab-team" className="gap-1">
-                  <Users className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
-                  Team
+                <TabsTrigger value="security" data-testid="tab-security" className="gap-1">
+                  <Shield className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
+                  Security
                 </TabsTrigger>
-                <TabsTrigger value="payments" data-testid="tab-payments" className="gap-1">
-                  <Wallet className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
-                  Payments
+                <TabsTrigger value="privacy" data-testid="tab-privacy" className="gap-1">
+                  <Lock className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
+                  Privacy
                 </TabsTrigger>
-                <TabsTrigger value="communications" data-testid="tab-communications" className="gap-1">
-                  <Mail className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
-                  Communications
+                <TabsTrigger value="referral" data-testid="tab-referral" className="gap-1 mr-3">
+                  <Gift className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
+                  Refer &amp; earn
                 </TabsTrigger>
-                <TabsTrigger value="notifications" data-testid="tab-notifications" className="gap-1">
-                  <Bell className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
-                  Notifications
-                </TabsTrigger>
-                <TabsTrigger value="ai" data-testid="tab-ai" className="gap-1">
-                  <Sparkles className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
-                  AI
-                </TabsTrigger>
-                <TabsTrigger value="data" data-testid="tab-data" className="gap-1">
-                  <FileText className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
-                  Data
-                </TabsTrigger>
+
+                {/* Workspace cluster */}
                 <TabsTrigger value="appearance" data-testid="tab-appearance" className="gap-1">
                   <SettingsIcon className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
                   Appearance
@@ -860,33 +889,53 @@ export default function Settings() {
                     Autonomy
                   </TabsTrigger>
                 )}
+                <TabsTrigger value="goals" data-testid="tab-goals" className="gap-1 mr-3">
+                  <Target className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
+                  Goals
+                </TabsTrigger>
+
+                {/* Notifications cluster */}
+                <TabsTrigger value="notifications" data-testid="tab-notifications" className="gap-1">
+                  <Bell className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
+                  Notifications
+                </TabsTrigger>
+                <TabsTrigger value="communications" data-testid="tab-communications" className="gap-1 mr-3">
+                  <Mail className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
+                  Communications
+                </TabsTrigger>
+
+                {/* Team & Billing cluster */}
+                <TabsTrigger value="team" data-testid="tab-team" className="gap-1">
+                  <Users className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
+                  Team
+                </TabsTrigger>
+                <TabsTrigger value="payments" data-testid="tab-payments" className="gap-1 mr-3">
+                  <Wallet className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
+                  Payments
+                </TabsTrigger>
+
+                {/* Data cluster */}
+                <TabsTrigger value="data" data-testid="tab-data" className="gap-1">
+                  <FileText className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
+                  Data
+                </TabsTrigger>
                 <TabsTrigger value="integrations" data-testid="tab-integrations" className="gap-1">
                   <Link2 className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
                   Integrations
                 </TabsTrigger>
-                <TabsTrigger value="developer" data-testid="tab-developer" className="gap-1">
-                  <Code className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
-                  Developer
-                </TabsTrigger>
-                <TabsTrigger value="goals" data-testid="tab-goals" className="gap-1">
-                  <Target className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
-                  Goals
-                </TabsTrigger>
-                <TabsTrigger value="security" data-testid="tab-security" className="gap-1">
-                  <Shield className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
-                  Security
-                </TabsTrigger>
-                <TabsTrigger value="privacy" data-testid="tab-privacy" className="gap-1">
-                  <Lock className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
-                  Privacy
-                </TabsTrigger>
-                <TabsTrigger value="referral" data-testid="tab-referral" className="gap-1">
-                  <Gift className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
-                  Refer &amp; earn
-                </TabsTrigger>
                 <TabsTrigger value="automations" data-testid="tab-automations" className="gap-1">
                   <Zap className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
                   Automations
+                </TabsTrigger>
+                <TabsTrigger value="developer" data-testid="tab-developer" className="gap-1 mr-3">
+                  <Code className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
+                  Developer
+                </TabsTrigger>
+
+                {/* AI cluster */}
+                <TabsTrigger value="ai" data-testid="tab-ai" className="gap-1">
+                  <Sparkles className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
+                  AI
                 </TabsTrigger>
                 <TabsTrigger value="ai-tasks" data-testid="tab-ai-tasks" className="gap-1">
                   <Clock className="w-4 h-4 hidden sm:inline" aria-hidden="true" />
