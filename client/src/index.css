@@ -1003,18 +1003,15 @@
   @apply transition-opacity duration-200 ease-out;
 }
 
-/* Modern desert gradient overlays — Tahoe depth blooms for glass refraction */
+/* Tahoe depth-bloom gradient backdrop. Tokens drive theme + mode response —
+   the same class works for Homestead/Quarry/Nocturne/Meadow/Slate × light/dark
+   without a per-theme override. Pre-port version had hardcoded Homestead HSL
+   that bled through every theme. */
 .desert-gradient {
   background:
-    radial-gradient(ellipse 80% 50% at 20% 10%, hsl(18 48% 52% / 0.07) 0%, transparent 60%),
-    radial-gradient(ellipse 60% 40% at 80% 80%, hsl(195 14% 48% / 0.06) 0%, transparent 55%),
-    linear-gradient(160deg, hsl(38 35% 97%) 0%, hsl(35 30% 94%) 50%, hsl(33 25% 92%) 100%);
-}
-.dark .desert-gradient {
-  background:
-    radial-gradient(ellipse 80% 50% at 20% 10%, hsl(18 55% 58% / 0.08) 0%, transparent 60%),
-    radial-gradient(ellipse 60% 40% at 80% 80%, hsl(195 16% 45% / 0.06) 0%, transparent 55%),
-    linear-gradient(160deg, hsl(20 30% 8%) 0%, hsl(20 28% 10%) 50%, hsl(20 26% 12%) 100%);
+    radial-gradient(ellipse 80% 50% at 20% 10%, color-mix(in srgb, var(--acr-brand) 7%, transparent) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 80% 80%, color-mix(in srgb, var(--acr-surface-2) 55%, transparent) 0%, transparent 55%),
+    linear-gradient(160deg, var(--acr-bg-raised) 0%, var(--acr-bg) 50%, var(--acr-bg-sunken) 100%);
 }
 
 /* Hover elevation utilities */
