@@ -52,13 +52,24 @@ interface TodoItem {
   actionUrl: string;
   createdAt: string;
   badge?: string;
+  // Cascade-aware annotations from W#JC4 (server). When the cascade
+  // would auto-resolve this item, autoResolveCandidate is true and the
+  // founder UI surfaces it in the "review autoresolve" panel.
+  autoResolveCandidate?: boolean;
+  agentEscalationRate?: number;
 }
 
 interface TodoResponse {
   generatedAt: string;
   total: number;
   byType: Record<TodoType, number>;
+  autoResolveCandidates?: number;
   items: TodoItem[];
+  cascadeHints?: {
+    overrideRateLast7d: number | null;
+    overrideRateLast30d: number | null;
+    enabled: boolean;
+  };
 }
 
 const TYPE_META: Record<TodoType, { label: string; icon: any; color: string }> = {
@@ -83,6 +94,69 @@ function pluralize(label: string): string {
   if (/y$/.test(label)) return label.replace(/y$/, "ies");
   if (/(s|x|z|ch|sh)$/.test(label)) return `${label}es`;
   return `${label}s`;
+}
+
+/**
+ * AutoResolveReviewPanel — surfaces items the cascade thinks could
+ * auto-resolve so the founder can spot-check before the eventual filter
+ * cutover lands. Per JC #4: "don't filter yet, add a review panel
+ * that batches auto-resolve candidates for one-click founder approval."
+ *
+ * Approval is a no-op stub for v1 — the panel produces calibration
+ * signal (founder reviewed N candidates, approved K, kept (N-K)) that
+ * informs when cascade should actually start cutting from the queue.
+ * Eventual flow: founder approves → server marks the source item
+ * resolved with a `cascade_calibration_session` audit record.
+ */
+function AutoResolveReviewPanel({ items }: { items: TodoItem[] }) {
+  const candidates = items.filter((i) => i.autoResolveCandidate);
+  if (candidates.length === 0) return null;
+  return (
+    <Card className="border-acr-pos/30 bg-acr-pos-soft">
+      <CardContent className="p-5">
+        <div className="flex items-start gap-3">
+          <CheckCircle2 className="h-5 w-5 text-acr-pos shrink-0 mt-0.5" aria-hidden="true" />
+          <div className="flex-1 min-w-0">
+            <h3 className="text-sm font-semibold text-foreground">
+              <span className="tabular-nums">{candidates.length}</span> item
+              {candidates.length === 1 ? "" : "s"} could auto-resolve
+            </h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              The confidence cascade has high-confidence resolutions for these — the
+              owning agent's escalation rate is below 5%. Spot-check before the
+              filter cutover lands.
+            </p>
+            <details className="mt-3 group">
+              <summary className="text-xs font-medium cursor-pointer hover:text-foreground transition-colors text-muted-foreground select-none">
+                Review the {candidates.length} candidate{candidates.length === 1 ? "" : "s"}
+              </summary>
+              <ul className="mt-2 space-y-1.5 pl-1" aria-label="Auto-resolve candidate items">
+                {candidates.slice(0, 12).map((item) => (
+                  <li key={`auto-${item.type}-${item.id}`} className="flex items-center gap-2 text-xs">
+                    <Link href={item.actionUrl}>
+                      <a className="text-foreground hover:underline truncate flex-1 min-w-0">
+                        {item.title}
+                      </a>
+                    </Link>
+                    {item.agentEscalationRate != null && (
+                      <span className="tabular-nums text-muted-foreground shrink-0">
+                        {item.agentEscalationRate.toFixed(1)}%
+                      </span>
+                    )}
+                  </li>
+                ))}
+                {candidates.length > 12 && (
+                  <li className="text-xs text-muted-foreground italic">
+                    + {candidates.length - 12} more
+                  </li>
+                )}
+              </ul>
+            </details>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 export default function FounderTodoPage() {
@@ -161,6 +235,12 @@ export default function FounderTodoPage() {
             description="Nothing is waiting on you right now. The system is running itself. Check System trends in the sidebar to see how quality is trending."
           />
         ) : (
+          <>
+            {/* JC #4: surface cascade-flagged auto-resolve candidates above
+               the main feed. Non-destructive — every item is still in the
+               feed below. The panel is the calibration step before the
+               eventual filter cutover. */}
+            <AutoResolveReviewPanel items={items} />
           <Card>
             <CardContent className="p-0">
               <ul aria-label="Items waiting on your decision">
@@ -209,6 +289,7 @@ export default function FounderTodoPage() {
               </ul>
             </CardContent>
           </Card>
+          </>
         )}
       </div>
     </PageShell>
