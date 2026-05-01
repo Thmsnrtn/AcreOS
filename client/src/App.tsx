@@ -511,8 +511,12 @@ function Router() {
       <Route path="/founder/ai-observatory">
         {() => <FounderProtectedRoute component={FounderAiObservatory} />}
       </Route>
+      {/* Legacy binary-flag page consolidated to /founder/features per
+          JUDGMENT-CALL-RECOMMENDATIONS #6. Old page kept registered (lazy-
+          loaded only on direct URL hit, not in nav) for one release in case
+          migration edge-cases surface; planned removal next cleanup. */}
       <Route path="/founder/feature-flags">
-        {() => <FounderProtectedRoute component={FounderFeatureFlags} />}
+        {() => <Redirect to="/founder/features" />}
       </Route>
       <Route path="/founder/features">
         {() => <FounderProtectedRoute component={FounderFeatures} />}
