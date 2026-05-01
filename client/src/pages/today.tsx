@@ -900,7 +900,7 @@ export default function TodayPage() {
               return (
                 <Card key={task.id} className="hover:shadow-sm transition-shadow">
                   <CardContent className="flex items-center gap-4 py-3 px-4">
-                    <Clock className={`w-4 h-4 shrink-0 ${isOverdue ? "text-red-500" : "text-amber-500"}`} aria-hidden="true" />
+                    <Clock className={`w-4 h-4 shrink-0 ${isOverdue ? "text-acr-neg" : "text-acr-warn"}`} aria-hidden="true" />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="font-medium text-sm truncate">{task.title}</span>
@@ -910,7 +910,7 @@ export default function TodayPage() {
                           </Badge>
                         )}
                         {isOverdue && (
-                          <Badge variant="secondary" className="bg-red-100 text-red-700 text-xs">Overdue</Badge>
+                          <Badge variant="secondary" className="bg-acr-neg-soft text-acr-neg text-xs">Overdue</Badge>
                         )}
                       </div>
                       {task.dueDate && (
@@ -931,9 +931,9 @@ export default function TodayPage() {
       {!alertsLoading && systemAlerts.length > 0 && (
         <div data-testid="section-alerts">
           <div className="flex items-center gap-2 mb-3">
-            <Bell className="w-4 h-4 text-amber-500" aria-hidden="true" />
+            <Bell className="w-4 h-4 text-acr-warn" aria-hidden="true" />
             <h2 className="acr-section-h2">Portfolio alerts</h2>
-            <Badge variant="secondary" className="bg-amber-100 text-amber-700 text-xs tabular-nums">
+            <Badge variant="secondary" className="bg-acr-warn-soft text-acr-warn text-xs tabular-nums">
               {systemAlerts.length}
             </Badge>
           </div>
@@ -942,11 +942,11 @@ export default function TodayPage() {
               const isCritical = alert.severity === "critical";
               const isWarning = alert.severity === "warning";
               const borderClass = isCritical
-                ? "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20"
+                ? "border-acr-neg/30 bg-acr-neg-soft dark:border-acr-neg/30 dark:bg-acr-neg-soft"
                 : isWarning
-                ? "border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20"
+                ? "border-acr-warn/30 bg-acr-warn-soft dark:border-acr-warn/30 dark:bg-acr-warn-soft"
                 : "border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-900/20";
-              const iconClass = isCritical ? "text-red-500" : isWarning ? "text-amber-500" : "text-blue-500";
+              const iconClass = isCritical ? "text-acr-neg" : isWarning ? "text-acr-warn" : "text-primary";
               const href = alertHrefByType[alert.type] ?? "/";
               const linkLabel = alertLinkLabelByType[alert.type] ?? "View";
               return (
@@ -1126,12 +1126,12 @@ export default function TodayPage() {
             {paxSuggestions.map((s) => {
               const confidencePct = Math.round(s.confidence * 100);
               const confBadgeClass = confidencePct >= 85
-                ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+                ? "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft dark:text-acr-pos"
                 : confidencePct >= 70
-                ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+                ? "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft dark:text-acr-warn"
                 : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400";
               return (
-                <Card key={s.id} className="hover:shadow-sm transition-shadow border-emerald-100 dark:border-emerald-900/30">
+                <Card key={s.id} className="hover:shadow-sm transition-shadow border-acr-pos/20 dark:border-acr-pos/30">
                   <CardContent className="flex items-start gap-4 py-3 px-4">
                     <Sparkles className="w-4 h-4 shrink-0 mt-1 text-acr-pos" aria-hidden="true" />
                     <div className="flex-1 min-w-0">
@@ -1143,7 +1143,7 @@ export default function TodayPage() {
                       </div>
                       <p className="text-xs text-muted-foreground">{s.rationale}</p>
                     </div>
-                    <Button asChild size="sm" variant="outline" className="shrink-0 text-xs h-8 border-emerald-200 hover:bg-emerald-50 dark:border-emerald-800 dark:hover:bg-emerald-900/20">
+                    <Button asChild size="sm" variant="outline" className="shrink-0 text-xs h-8 border-acr-pos/30 hover:bg-acr-pos-soft dark:border-acr-pos/30 dark:hover:bg-acr-pos-soft">
                       <Link href={s.actionUrl}>{s.actionLabel}</Link>
                     </Button>
                   </CardContent>
@@ -1256,7 +1256,7 @@ export default function TodayPage() {
               <TrendingUp className="w-4 h-4 text-acr-pos" aria-hidden="true" />
               <h2 className="acr-section-h2">Cash position</h2>
               {cashPosition.lateCount > 0 && (
-                <Badge variant="secondary" className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 text-xs tabular-nums">
+                <Badge variant="secondary" className="bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft dark:text-acr-neg text-xs tabular-nums">
                   {cashPosition.lateCount} late
                 </Badge>
               )}
@@ -1278,7 +1278,7 @@ export default function TodayPage() {
                   { label: "60d", value: cashPosition.projected60 },
                   { label: "90d", value: cashPosition.projected90 },
                 ].map(({ label, value }) => (
-                  <Card key={label} className="border-emerald-100 dark:border-emerald-900/30">
+                  <Card key={label} className="border-acr-pos/20 dark:border-acr-pos/30">
                     <CardContent className="py-3 px-3 text-center">
                       <p className="text-xs text-muted-foreground mb-0.5 tabular-nums">{label} projected</p>
                       <p className="text-base font-semibold tabular-nums text-acr-pos">
@@ -1298,7 +1298,7 @@ export default function TodayPage() {
                         <CardContent className="flex items-center justify-between py-2.5 px-4">
                           <div className="flex items-center gap-2.5">
                             {isLate ? (
-                              <AlertCircle className="w-4 h-4 text-red-500 shrink-0" aria-hidden="true" />
+                              <AlertCircle className="w-4 h-4 text-acr-neg shrink-0" aria-hidden="true" />
                             ) : (
                               <Banknote className="w-4 h-4 text-acr-pos shrink-0" aria-hidden="true" />
                             )}
