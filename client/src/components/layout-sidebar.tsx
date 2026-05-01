@@ -324,6 +324,11 @@ interface NavModule {
   showUnreadBadge?: boolean;
   founderOnly?: boolean;
   children?: NavChild[];
+  // Secondary children — rendered behind a "Show more" disclosure. Lets the
+  // primary list stay scannable while the long tail (admin, niche surfaces)
+  // remains reachable from the sidebar instead of disappearing entirely.
+  // ⌘K command palette covers anyone who'd rather search than scan.
+  overflow?: NavChild[];
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -345,15 +350,17 @@ const NAV_MODULES: NavModule[] = [
     href: "/leads",
     description: "Contacts, deals, and property management",
     children: [
-      // Removed redundant "Leads" child — parent href already goes to /leads.
-      // Discoverability via parent click + breadcrumb in URL.
+      // Primary daily surfaces — pipeline, properties, map, blind-offer wizard.
+      // Discoverability via parent click + breadcrumb in URL for /leads itself.
       { label: "Properties", icon: Map, href: "/properties", description: "Properties you own or evaluate" },
       { label: "Pipeline", icon: GitBranch, href: "/deals", description: "Visualize your deal flow" },
+      { label: "Map", icon: MapPin, href: "/maps", description: "Interactive portfolio mapping" },
+      { label: "Blind Offers", icon: Wand2, href: "/blind-offer-wizard", description: "Calculate blind offers step-by-step" },
+    ],
+    overflow: [
       { label: "Skip Tracing", icon: Search, href: "/skip-tracing", description: "Find owner contact info" },
       { label: "Dedupe", icon: GitMerge, href: "/leads/dedupe", description: "Find and merge duplicate leads" },
-      { label: "Map", icon: MapPin, href: "/maps", description: "Interactive portfolio mapping" },
       { label: "Documents", icon: FileText, href: "/documents", description: "Property documents" },
-      { label: "Blind Offers", icon: Wand2, href: "/blind-offer-wizard", description: "Calculate blind offers step-by-step" },
       { label: "Offer Batches", icon: Layers, href: "/offers/batches", description: "Bulk-generated offers" },
       { label: "Marketplace", icon: Store, href: "/marketplace", description: "Buy and sell deals" },
       { label: "Listings", icon: FileText, href: "/listings", description: "Properties for sale" },
@@ -397,16 +404,18 @@ const NAV_MODULES: NavModule[] = [
     href: "/analytics",
     description: "Analysis and market signals",
     children: [
-      // Removed redundant "Insights" child — parent href already goes to /analytics.
+      // Primary daily-look surfaces.
       { label: "Valuations", icon: TrendingUp, href: "/avm", description: "Automated property valuations" },
-      { label: "Land Credit", icon: Shield, href: "/land-credit", description: "Proprietary 300-850 land scoring" },
       { label: "Markets", icon: Globe, href: "/market-intelligence", description: "Market analysis and price trends" },
-      { label: "Counties", icon: Landmark, href: "/counties", description: "USDA + Census county intelligence" },
       { label: "Acquisition Radar", icon: Target, href: "/radar", description: "Scored deal opportunities" },
-      { label: "Compliance", icon: ShieldCheck, href: "/compliance", description: "Regulatory monitoring" },
-      // Niche surfaces (Cohort Retention, Document Intel) reachable via /analytics
-      // tabs + command palette ⌘K — kept off the primary nav for legibility.
     ],
+    overflow: [
+      { label: "Land Credit", icon: Shield, href: "/land-credit", description: "Proprietary 300-850 land scoring" },
+      { label: "Counties", icon: Landmark, href: "/counties", description: "USDA + Census county intelligence" },
+      { label: "Compliance", icon: ShieldCheck, href: "/compliance", description: "Regulatory monitoring" },
+    ],
+    // Niche surfaces (Cohort Retention, Document Intel) reachable via /analytics
+    // tabs + command palette ⌘K — kept off the sidebar entirely for legibility.
   },
 
   // ── Finance ───────────────────────────────────────────────────────
@@ -417,9 +426,10 @@ const NAV_MODULES: NavModule[] = [
     href: "/finance",
     description: "Seller financing and portfolio",
     children: [
-      // Removed redundant "Finance" child — parent href already goes to /finance.
       { label: "Portfolio", icon: PieChart, href: "/portfolio", description: "Investment portfolio view" },
       { label: "Cash Flow", icon: Activity, href: "/cash-flow", description: "12-month forecasting" },
+    ],
+    overflow: [
       { label: "Capital Markets", icon: DollarSign, href: "/capital-markets", description: "Note securitization and lenders" },
     ],
   },
@@ -436,12 +446,17 @@ const NAV_MODULES: NavModule[] = [
     description: "Autonomous-operation command center",
     founderOnly: true,
     children: [
+      // Daily founder-loop surfaces — todo, narrative, audit, trends, strategy.
       { label: "What needs you", icon: CheckCircle2, href: "/founder/todo", description: "Unified ranked feed across every inbox" },
       { label: "Monthly letter", icon: FileText, href: "/founder/letter", description: "Chief-of-Staff narrative" },
       { label: "Decisions", icon: Shield, href: "/founder/decisions", description: "Autonomous decision audit log" },
-      { label: "Action preview", icon: Eye, href: "/founder/preview", description: "Before-commit action feed" },
       { label: "System trends", icon: TrendingUp, href: "/founder/trends", description: "90-day trust gauge" },
       { label: "Strategy", icon: Lightbulb, href: "/founder/strategy", description: "Strategic proposals (weekly + synthesis)" },
+    ],
+    overflow: [
+      // Periodic / specialized surfaces — accessible from sidebar but not
+      // crowding the daily list. Founder hits these weekly or less.
+      { label: "Action preview", icon: Eye, href: "/founder/preview", description: "Before-commit action feed" },
       { label: "Expansion radar", icon: Target, href: "/founder/expansion", description: "Weekly upsell-ready candidates" },
       { label: "Onboarding", icon: Rocket, href: "/founder/onboarding", description: "New-customer activation journeys" },
       { label: "Experiments", icon: FlaskConical, href: "/founder/experiments", description: "A/B tests on decision playbooks" },
@@ -593,16 +608,57 @@ export function Sidebar() {
         children: module.children?.filter(
           (child) => isRouteEnabled(child.href) && !hiddenForType.includes(child.href)
         ),
+        overflow: module.overflow?.filter(
+          (child) => isRouteEnabled(child.href) && !hiddenForType.includes(child.href)
+        ),
       })).filter((module) => {
         // Hide founder-only modules for non-founders
         if (module.founderOnly && !isFounder) return false;
         // If the module itself has a controlled route, check it
         if (!isRouteEnabled(module.href)) return false;
         if (hiddenForType.includes(module.href)) return false;
-        // If all children were filtered out and the module is purely a container, hide it
-        if (module.children !== undefined && module.children.length === 0) return false;
+        // If all children + overflow were filtered out and the module is purely
+        // a container, hide it. A module with overflow but no primary children
+        // still renders so the user can find the surfaces under "Show more."
+        if (module.children !== undefined) {
+          const hasPrimary = module.children.length > 0;
+          const hasOverflow = (module.overflow?.length ?? 0) > 0;
+          if (!hasPrimary && !hasOverflow) return false;
+        }
         return true;
       });
+
+  // Which modules have their overflow ("Show more") sections open. Persisted
+  // separately from expandedModules so flipping a module open/closed doesn't
+  // discard the user's choice to reveal niche surfaces.
+  const OVERFLOW_STORAGE_KEY = "sidebar-overflow-expanded";
+  const [expandedOverflow, setExpandedOverflow] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem(OVERFLOW_STORAGE_KEY);
+      if (stored) return new Set(JSON.parse(stored));
+    } catch {}
+    // Auto-open overflow if the active route is in any module's overflow list.
+    const active = new Set<string>();
+    NAV_MODULES.forEach((m) => {
+      if (m.overflow?.some((c) => location.startsWith(c.href) && c.href !== "/")) {
+        active.add(m.id);
+      }
+    });
+    return active;
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(OVERFLOW_STORAGE_KEY, JSON.stringify(Array.from(expandedOverflow)));
+    } catch {}
+  }, [expandedOverflow, OVERFLOW_STORAGE_KEY]);
+  const toggleOverflow = (id: string) => {
+    setExpandedOverflow((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   // Which modules are expanded (only relevant when not collapsed)
   const [expandedModules, setExpandedModules] = useState<Set<string>>(() => {
@@ -823,7 +879,7 @@ export function Sidebar() {
         {visibleModules.map((module) => {
           const active = isModuleActive(module);
           const expanded = expandedModules.has(module.id);
-          const hasChildren = (module.children?.length ?? 0) > 0;
+          const hasChildren = (module.children?.length ?? 0) > 0 || (module.overflow?.length ?? 0) > 0;
           const showBadge =
             module.showUnreadBadge && inboxUnreadCount > 0;
 
@@ -929,7 +985,7 @@ export function Sidebar() {
               {/* Children */}
               {hasChildren && expanded && (
                 <div className="ml-3 pl-3 border-l border-sidebar-border/60 mt-0.5 mb-1 space-y-0.5">
-                  {module.children!.map((child) => {
+                  {(module.children ?? []).map((child) => {
                     const childActive = isRouteActive(child.href);
                     const childBadge =
                       child.showUnreadBadge && inboxUnreadCount > 0;
@@ -969,6 +1025,62 @@ export function Sidebar() {
                       </Link>
                     );
                   })}
+
+                  {/* Overflow disclosure — niche surfaces stay reachable from
+                      the sidebar without crowding the daily list. */}
+                  {(module.overflow?.length ?? 0) > 0 && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => toggleOverflow(module.id)}
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors duration-150 min-h-[34px] text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground w-full"
+                        data-testid={`button-overflow-${module.id}`}
+                        aria-expanded={expandedOverflow.has(module.id)}
+                      >
+                        {expandedOverflow.has(module.id) ? (
+                          <ChevronUp className="w-3.5 h-3.5 shrink-0" />
+                        ) : (
+                          <ChevronDown className="w-3.5 h-3.5 shrink-0" />
+                        )}
+                        <span className="font-medium">
+                          {expandedOverflow.has(module.id) ? "Less" : "More"}
+                        </span>
+                        <span className="text-[11px] text-muted-foreground/70 ml-auto tabular-nums">
+                          {module.overflow!.length}
+                        </span>
+                      </button>
+                      {expandedOverflow.has(module.id) && module.overflow!.map((child) => {
+                        const childActive = isRouteActive(child.href);
+                        return (
+                          <Link
+                            key={child.href}
+                            href={child.href}
+                            className={cn(
+                              "flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors duration-150 group min-h-[34px] text-xs",
+                              childActive
+                                ? "nav-item-active"
+                                : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                            )}
+                            aria-current={childActive ? "page" : undefined}
+                            onMouseEnter={() => handlePrefetch(child.href)}
+                            data-testid={`link-nav-${child.href.replace("/", "")}`}
+                          >
+                            <child.icon
+                              className={cn(
+                                "w-3.5 h-3.5 shrink-0",
+                                childActive
+                                  ? "text-acr-ink"
+                                  : "text-muted-foreground group-hover:text-sidebar-foreground"
+                              )}
+                            />
+                            <span className="font-medium flex-1 truncate">
+                              {child.label}
+                            </span>
+                          </Link>
+                        );
+                      })}
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -1189,7 +1301,7 @@ export function Sidebar() {
 
               {hasChildren && expanded && (
                 <div className="ml-4 pl-3 border-l border-sidebar-border/60 mt-0.5 mb-1 space-y-0.5">
-                  {module.children!.map((child) => {
+                  {(module.children ?? []).map((child) => {
                     const childActive = isRouteActive(child.href);
                     return (
                       <Link
@@ -1216,6 +1328,54 @@ export function Sidebar() {
                       </Link>
                     );
                   })}
+
+                  {(module.overflow?.length ?? 0) > 0 && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => toggleOverflow(module.id)}
+                        className="flex items-center gap-3 px-3 py-2 rounded-md transition-colors duration-150 min-h-[44px] text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground w-full"
+                        aria-expanded={expandedOverflow.has(module.id)}
+                      >
+                        {expandedOverflow.has(module.id) ? (
+                          <ChevronUp className="w-4 h-4 shrink-0" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4 shrink-0" />
+                        )}
+                        <span className="font-medium text-sm">
+                          {expandedOverflow.has(module.id) ? "Less" : "More"}
+                        </span>
+                        <span className="text-xs text-muted-foreground/70 ml-auto tabular-nums">
+                          {module.overflow!.length}
+                        </span>
+                      </button>
+                      {expandedOverflow.has(module.id) && module.overflow!.map((child) => {
+                        const childActive = isRouteActive(child.href);
+                        return (
+                          <Link
+                            key={child.href}
+                            href={child.href}
+                            onClick={onNavClick}
+                            className={cn(
+                              "flex items-center gap-3 px-3 py-2 rounded-md transition-colors duration-150 min-h-[44px]",
+                              childActive
+                                ? "nav-item-active"
+                                : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                            )}
+                            data-testid={`link-nav-${child.href.replace("/", "")}`}
+                          >
+                            <child.icon
+                              className={cn(
+                                "w-4 h-4 shrink-0",
+                                childActive ? "text-acr-ink" : "text-muted-foreground"
+                              )}
+                            />
+                            <span className="font-medium text-sm">{child.label}</span>
+                          </Link>
+                        );
+                      })}
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -1296,7 +1456,7 @@ function CollapsedModuleItem({
   isRouteActive: (href: string) => boolean;
   onPrefetch: (href: string) => void;
 }) {
-  const hasChildren = (module.children?.length ?? 0) > 0;
+  const hasChildren = (module.children?.length ?? 0) > 0 || (module.overflow?.length ?? 0) > 0;
   const showBadge = module.showUnreadBadge && inboxUnreadCount > 0;
 
   if (!hasChildren) {
@@ -1372,7 +1532,7 @@ function CollapsedModuleItem({
         <p className="text-xs font-semibold text-muted-foreground px-2 py-1 uppercase tracking-wide">
           {module.label}
         </p>
-        {module.children!.map((child) => {
+        {(module.children ?? []).map((child) => {
           const childActive = isRouteActive(child.href);
           return (
             <Link
@@ -1391,6 +1551,34 @@ function CollapsedModuleItem({
             </Link>
           );
         })}
+        {/* Collapsed mode: popover already requires a click to open, so flatten
+            primary + overflow into one list rather than nesting another
+            disclosure. The visual divider preserves the primary/overflow
+            grouping for users who scan the popover. */}
+        {(module.overflow?.length ?? 0) > 0 && (
+          <>
+            <div className="my-1 border-t border-border" />
+            {module.overflow!.map((child) => {
+              const childActive = isRouteActive(child.href);
+              return (
+                <Link
+                  key={child.href}
+                  href={child.href}
+                  className={cn(
+                    "flex items-center gap-2 px-2 py-1.5 rounded-md transition-colors duration-150 text-sm",
+                    childActive
+                      ? "nav-item-active"
+                      : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                  )}
+                  onMouseEnter={() => onPrefetch(child.href)}
+                >
+                  <child.icon className="w-3.5 h-3.5 shrink-0" />
+                  <span>{child.label}</span>
+                </Link>
+              );
+            })}
+          </>
+        )}
       </PopoverContent>
     </Popover>
   );
