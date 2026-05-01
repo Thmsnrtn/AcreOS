@@ -144,7 +144,7 @@ const SEVERITY_STYLES: Record<string, { bg: string; text: string; border: string
   critical: { bg: "bg-acr-neg-soft dark:bg-acr-neg-soft", text: "text-acr-neg dark:text-acr-neg", border: "border-acr-neg/30 dark:border-acr-neg/30" },
   high: { bg: "bg-acr-warn-soft dark:bg-acr-warn-soft", text: "text-acr-warn dark:text-acr-warn", border: "border-acr-warn/30 dark:border-acr-warn/30" },
   medium: { bg: "bg-acr-warn-soft dark:bg-acr-warn-soft", text: "text-acr-warn dark:text-acr-warn", border: "border-acr-warn/30 dark:border-acr-warn/30" },
-  low: { bg: "bg-blue-100 dark:bg-blue-900/30", text: "text-blue-800 dark:text-blue-400", border: "border-blue-200 dark:border-blue-800" },
+  low: { bg: "bg-acr-brand-soft", text: "text-acr-brand", border: "border-acr-brand/30" },
 };
 
 // Theme-respondent status colors. CSS variables resolve at render so charts
@@ -323,8 +323,8 @@ export default function PortfolioPage() {
               <Card className="glass-panel">
                 <CardContent className="p-6">
                   <div className="flex items-center gap-3">
-                    <div className="p-3 rounded-xl bg-blue-500/10">
-                      <TrendingUp className="w-5 h-5 text-blue-600" aria-hidden="true" />
+                    <div className="p-3 rounded-xl bg-acr-pos-soft">
+                      <TrendingUp className="w-5 h-5 text-acr-pos" aria-hidden="true" />
                     </div>
                     <div>
                       <dt className="text-sm text-muted-foreground">Monthly cash flow</dt>
@@ -343,8 +343,8 @@ export default function PortfolioPage() {
               <Card className="glass-panel">
                 <CardContent className="p-6">
                   <div className="flex items-center gap-3">
-                    <div className="p-3 rounded-xl bg-purple-500/10">
-                      <Percent className="w-5 h-5 text-purple-600" aria-hidden="true" />
+                    <div className="p-3 rounded-xl bg-acr-brand-soft">
+                      <Percent className="w-5 h-5 text-acr-brand" aria-hidden="true" />
                     </div>
                     <div>
                       <dt className="text-sm text-muted-foreground">Avg interest rate</dt>
@@ -442,7 +442,7 @@ export default function PortfolioPage() {
                         </Badge></li>
                       )}
                       {lowAlerts > 0 && (
-                        <li><Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400" aria-label={`${lowAlerts} low-severity alert${lowAlerts === 1 ? "" : "s"}`}>
+                        <li><Badge className="bg-acr-brand-soft text-acr-brand" aria-label={`${lowAlerts} low-severity alert${lowAlerts === 1 ? "" : "s"}`}>
                           <Info className="w-3 h-3 mr-1" aria-hidden="true" />
                           <span className="tabular-nums">{lowAlerts}</span> low
                         </Badge></li>
@@ -552,12 +552,12 @@ export default function PortfolioPage() {
                           {complianceRules?.filter(r => r.isActive).length || 0}
                         </dd>
                       </div>
-                      <div className="p-4 rounded-lg bg-blue-50 dark:bg-blue-900/20">
+                      <div className="p-4 rounded-lg bg-acr-brand-soft">
                         <div className="flex items-center gap-2 mb-2">
-                          <Leaf className="w-4 h-4 text-blue-600" aria-hidden="true" />
+                          <Leaf className="w-4 h-4 text-acr-brand" aria-hidden="true" />
                           <dt className="text-sm text-muted-foreground">Rule types</dt>
                         </div>
-                        <dd className="text-2xl font-bold tabular-nums text-blue-600 m-0" data-testid="text-rule-types">
+                        <dd className="text-2xl font-bold tabular-nums text-acr-brand m-0" data-testid="text-rule-types">
                           {new Set(complianceRules?.map(r => r.ruleType)).size || 0}
                         </dd>
                       </div>
@@ -771,8 +771,8 @@ export default function PortfolioPage() {
               <Card className="glass-panel">
                 <CardContent className="p-6">
                   <div className="flex items-center gap-3">
-                    <div className="p-3 rounded-xl bg-blue-500/10">
-                      <DollarSign className="w-5 h-5 text-blue-600" aria-hidden="true" />
+                    <div className="p-3 rounded-xl bg-acr-brand-soft">
+                      <DollarSign className="w-5 h-5 text-acr-brand" aria-hidden="true" />
                     </div>
                     <div>
                       <dt className="text-sm text-muted-foreground">Total invested</dt>
@@ -811,8 +811,8 @@ export default function PortfolioPage() {
               <Card className="glass-panel">
                 <CardContent className="p-6">
                   <div className="flex items-center gap-3">
-                    <div className="p-3 rounded-xl bg-purple-500/10">
-                      <Percent className="w-5 h-5 text-purple-600" aria-hidden="true" />
+                    <div className="p-3 rounded-xl bg-acr-brand-soft">
+                      <Percent className="w-5 h-5 text-acr-brand" aria-hidden="true" />
                     </div>
                     <div>
                       <dt className="text-sm text-muted-foreground">Annual yield</dt>

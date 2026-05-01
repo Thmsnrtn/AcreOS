@@ -71,10 +71,10 @@ type DealWithProperty = Deal & { property?: Property };
 
 const dealStages = [
   { value: 'negotiating', label: 'Negotiating', color: 'bg-muted' },
-  { value: 'offer_sent', label: 'Offer Sent', color: 'bg-blue-100 dark:bg-blue-900/30' },
+  { value: 'offer_sent', label: 'Offer Sent', color: 'bg-acr-brand-soft' },
   { value: 'countered', label: 'Countered', color: 'bg-acr-warn-soft dark:bg-acr-warn-soft' },
   { value: 'accepted', label: 'Accepted', color: 'bg-acr-pos-soft dark:bg-acr-pos-soft' },
-  { value: 'in_escrow', label: 'In Escrow', color: 'bg-purple-100 dark:bg-purple-900/30' },
+  { value: 'in_escrow', label: 'In Escrow', color: 'bg-acr-brand-soft' },
   { value: 'closed', label: 'Closed', color: 'bg-acr-pos-soft dark:bg-acr-pos-soft' },
 ];
 
@@ -100,13 +100,13 @@ function getDealHealth(deal: DealWithProperty): { status: 'healthy' | 'warning' 
 
 const HEALTH_DOT: Record<string, string> = {
   healthy: 'bg-acr-pos',
-  warning: 'bg-amber-400',
+  warning: 'bg-acr-warn',
   stalled: 'bg-acr-neg',
 };
 
 const statusColors: Record<string, string> = {
   negotiating: 'bg-muted text-muted-foreground',
-  offer_sent: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
+  offer_sent: 'bg-acr-brand-soft text-acr-brand',
   countered: 'bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft dark:text-acr-warn',
   accepted: 'bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft dark:text-acr-pos',
   in_escrow: 'bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft dark:text-acr-warn',
@@ -507,8 +507,8 @@ export default function DealsPage() {
             <Card className="glass-panel">
               <CardContent className="p-4 md:p-6">
                 <div className="flex items-center gap-2 md:gap-3">
-                  <div className="p-2 md:p-3 rounded-xl bg-blue-500/10 flex-shrink-0">
-                    <Building className="w-4 h-4 md:w-5 md:h-5 text-blue-600" aria-hidden="true" />
+                  <div className="p-2 md:p-3 rounded-xl bg-acr-brand-soft flex-shrink-0">
+                    <Building className="w-4 h-4 md:w-5 md:h-5 text-acr-brand" aria-hidden="true" />
                   </div>
                   <div className="min-w-0">
                     <p className="text-xs md:text-sm text-muted-foreground truncate">Acquisitions</p>
@@ -605,10 +605,10 @@ export default function DealsPage() {
                   if (pct === 0) return null;
                   const stageBarColors: Record<string, string> = {
                     negotiating: 'bg-muted-foreground/40',
-                    offer_sent: 'bg-blue-400',
-                    countered: 'bg-amber-400',
-                    accepted: 'bg-emerald-400',
-                    in_escrow: 'bg-purple-400',
+                    offer_sent: 'bg-acr-brand/70',
+                    countered: 'bg-acr-warn/80',
+                    accepted: 'bg-acr-pos/70',
+                    in_escrow: 'bg-acr-brand',
                     closed: 'bg-acr-pos',
                   };
                   return (
@@ -1771,9 +1771,9 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                     const generatedCount = (pkg.documents as any[] || []).filter((d: any) => d.documentId).length;
                     const pkgStatusColors: Record<string, string> = {
                       draft: "bg-muted text-muted-foreground",
-                      complete: "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300",
-                      sent: "bg-acr-warn-soft dark:bg-yellow-900 text-yellow-700 dark:text-acr-warn",
-                      signed: "bg-acr-pos-soft dark:bg-green-900 text-acr-pos dark:text-acr-pos",
+                      complete: "bg-acr-brand-soft text-acr-brand",
+                      sent: "bg-acr-warn-soft text-acr-warn",
+                      signed: "bg-acr-pos-soft text-acr-pos",
                     };
 
                     return (
