@@ -12,8 +12,8 @@ const Card = React.forwardRef<HTMLDivElement, CardProps>(
       ref={ref}
       className={cn(
         variant === "glass"
-          ? "shadcn-card liquid-glass rounded-2xl text-card-foreground"
-          : "shadcn-card rounded-2xl border bg-card border-card-border text-card-foreground shadow-level-1",
+          ? "shadcn-card liquid-glass rounded-card text-card-foreground"
+          : "shadcn-card rounded-card border bg-card border-card-border text-card-foreground shadow-level-1",
         className
       )}
       {...props}
