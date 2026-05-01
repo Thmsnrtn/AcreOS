@@ -244,7 +244,7 @@ function InstantDealHunt({
                   <div className="text-xs text-gray-500">Resale value</div>
                 </div>
                 <div className="bg-emerald-900/40 rounded-lg p-2">
-                  <div className="text-sm font-semibold text-emerald-400 tabular-nums">
+                  <div className="text-sm font-semibold text-acr-pos tabular-nums">
                     {usd(opp.potentialProfit, { noCents: true })}
                   </div>
                   <div className="text-xs text-gray-500">Potential profit</div>
@@ -433,7 +433,7 @@ function PortfolioImportStep({ onContinue }: { onContinue: (data?: Record<string
 
           {importComplete && (
             <div
-              className="p-3 bg-emerald-950/30 border border-emerald-700/30 rounded-lg text-emerald-300 text-sm flex items-center gap-2"
+              className="p-3 bg-emerald-950/30 border border-emerald-700/30 rounded-lg text-acr-pos text-sm flex items-center gap-2"
               role="status"
               aria-live="polite"
             >
@@ -747,7 +747,7 @@ function TeamSetupStep({ onContinue }: { onContinue: (data?: Record<string, any>
 
       {invitesSent && (
         <div
-          className="p-3 bg-emerald-950/30 border border-emerald-700/30 rounded-lg text-emerald-300 text-sm flex items-center gap-2"
+          className="p-3 bg-emerald-950/30 border border-emerald-700/30 rounded-lg text-acr-pos text-sm flex items-center gap-2"
           role="status"
           aria-live="polite"
         >
@@ -861,7 +861,7 @@ function IntegrationsStep({ onContinue }: { onContinue: () => void }) {
                 status === "connected" ? "bg-emerald-900/50" : "bg-gray-800"
               )}
             >
-              <Icon className={cn("w-5 h-5", status === "connected" ? "text-emerald-400" : "text-gray-400")} />
+              <Icon className={cn("w-5 h-5", status === "connected" ? "text-acr-pos" : "text-gray-400")} />
             </div>
             <div className="flex-1">
               <div className="flex items-center gap-2">
@@ -871,7 +871,7 @@ function IntegrationsStep({ onContinue }: { onContinue: () => void }) {
                   className={cn(
                     "text-[10px] px-1.5",
                     status === "connected"
-                      ? "bg-emerald-900/60 text-emerald-300 border-emerald-700/30"
+                      ? "bg-emerald-900/60 text-acr-pos border-emerald-700/30"
                       : "bg-gray-800 text-gray-400 border-gray-700"
                   )}
                 >
@@ -1051,7 +1051,7 @@ export default function OnboardingV2() {
                 benefits: ["Guided first deal walkthrough", "Expert strategy explanations", "Sample deal pre-loaded", "Daily Pax coaching tips"],
                 cardClasses: "border-emerald-700/40 bg-emerald-950/20 hover:border-emerald-500",
                 iconBg: "bg-emerald-900/60",
-                iconColor: "text-emerald-400",
+                iconColor: "text-acr-pos",
               },
               {
                 path: "active" as InvestorPath,
@@ -1119,7 +1119,7 @@ export default function OnboardingV2() {
       {/* Progress bar */}
       <div className="h-1 bg-gray-900">
         <div
-          className="h-1 bg-emerald-500 transition-all duration-500"
+          className="h-1 bg-acr-pos transition-all duration-500"
           style={{ width: `${progress}%` }}
         />
       </div>
@@ -1159,7 +1159,7 @@ export default function OnboardingV2() {
             <div className="space-y-4">
               <div className="p-4 bg-emerald-900/20 border border-emerald-700/30 rounded-xl">
                 <div className="flex items-center gap-3 mb-3">
-                  <Brain className="w-5 h-5 text-emerald-400" />
+                  <Brain className="w-5 h-5 text-acr-pos" />
                   <span className="font-medium text-white">Pax is ready to help</span>
                 </div>
                 <p className="text-sm text-gray-400">
@@ -1294,7 +1294,7 @@ export default function OnboardingV2() {
                     >
                       <div className="flex items-center gap-3">
                         <div className="w-9 h-9 rounded-lg bg-emerald-900/50 flex items-center justify-center flex-shrink-0">
-                          <Icon className="w-5 h-5 text-emerald-400" />
+                          <Icon className="w-5 h-5 text-acr-pos" />
                         </div>
                         <div>
                           <div className="font-semibold text-white">{title}</div>
@@ -1346,9 +1346,9 @@ export default function OnboardingV2() {
           {currentStep.id === "complete" && (
             <div className="space-y-6 text-center">
               <div className="relative w-20 h-20 mx-auto">
-                <div className="absolute inset-0 bg-emerald-500/20 rounded-full animate-ping" />
+                <div className="absolute inset-0 bg-acr-pos/20 rounded-full animate-ping" />
                 <div className="relative w-20 h-20 bg-emerald-900/50 rounded-full flex items-center justify-center">
-                  <CheckCircle className="w-10 h-10 text-emerald-400" />
+                  <CheckCircle className="w-10 h-10 text-acr-pos" />
                 </div>
               </div>
               <div>
@@ -1383,7 +1383,7 @@ export default function OnboardingV2() {
                     ]
                 ).map(({ label, value, sub }) => (
                   <div key={label} className="bg-gray-900 border border-gray-800 rounded-lg p-3 text-center">
-                    <div className="text-2xl font-bold text-emerald-400">{value}</div>
+                    <div className="text-2xl font-bold text-acr-pos">{value}</div>
                     <div className="text-xs text-white">{label}</div>
                     <div className="text-xs text-gray-600">{sub}</div>
                   </div>
@@ -1416,7 +1416,7 @@ export default function OnboardingV2() {
                       key={label}
                       className="flex items-center gap-2 text-sm text-gray-300 p-2 rounded hover:bg-gray-800/50"
                     >
-                      <ArrowRight className="w-3 h-3 text-emerald-400 flex-shrink-0" />
+                      <ArrowRight className="w-3 h-3 text-acr-pos flex-shrink-0" />
                       <span>{label}</span>
                     </div>
                   ))}
@@ -1482,7 +1482,7 @@ export default function OnboardingV2() {
             className={cn(
               "h-1.5 rounded-full transition-all",
               i < currentStepIndex
-                ? "w-6 bg-emerald-500"
+                ? "w-6 bg-acr-pos"
                 : i === currentStepIndex
                 ? "w-8 bg-emerald-400"
                 : "w-2 bg-gray-800"
