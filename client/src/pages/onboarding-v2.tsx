@@ -39,64 +39,12 @@ import {
   MessageSquare,
   CreditCard,
   Loader2,
-  PartyPopper,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLocation } from "wouter";
 import { QueryErrorState } from "@/components/query-error-state";
 import { usd } from "@/lib/format";
 import { useDocumentTitle } from "@/hooks/use-document-title";
-
-// ── Completion celebration animation ─────────────────────────────────────
-// Pure CSS confetti burst that plays for 2s then fades to reveal content.
-
-function CompletionCelebration({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="relative">
-      <style>{`
-        @keyframes acr-confetti-burst {
-          0% { transform: scale(0) rotate(0deg); opacity: 1; }
-          50% { transform: scale(1.2) rotate(180deg); opacity: 0.8; }
-          100% { transform: scale(1) rotate(360deg); opacity: 0; }
-        }
-        @keyframes acr-celebration-glow {
-          0% { transform: scale(0.3); opacity: 0; filter: blur(8px); }
-          40% { transform: scale(1.05); opacity: 1; filter: blur(0px); }
-          100% { transform: scale(1); opacity: 1; filter: blur(0px); }
-        }
-        @keyframes acr-dot {
-          0% { transform: translate(0, 0) scale(1); opacity: 1; }
-          100% { opacity: 0; }
-        }
-        .acr-dot-1 { animation: acr-dot 1.8s ease-out forwards; transform: translate(-60px, -80px) scale(0); }
-        .acr-dot-2 { animation: acr-dot 1.6s ease-out 0.1s forwards; transform: translate(70px, -70px) scale(0); }
-        .acr-dot-3 { animation: acr-dot 1.5s ease-out 0.2s forwards; transform: translate(-40px, -100px) scale(0); }
-        .acr-dot-4 { animation: acr-dot 1.7s ease-out 0.15s forwards; transform: translate(50px, -90px) scale(0); }
-        .acr-dot-5 { animation: acr-dot 1.4s ease-out 0.25s forwards; transform: translate(-80px, -50px) scale(0); }
-        .acr-dot-6 { animation: acr-dot 1.9s ease-out 0.05s forwards; transform: translate(80px, -40px) scale(0); }
-        .acr-dot-7 { animation: acr-dot 1.3s ease-out 0.3s forwards; transform: translate(0px, -110px) scale(0); }
-        .acr-dot-8 { animation: acr-dot 1.6s ease-out 0.12s forwards; transform: translate(-70px, -30px) scale(0); }
-        .acr-celebration-content {
-          animation: acr-celebration-glow 2s ease-out forwards;
-        }
-      `}</style>
-      {/* Confetti dots */}
-      <div className="absolute inset-0 flex items-start justify-center pointer-events-none overflow-hidden">
-        <div className="relative mt-10">
-          <div className="acr-dot-1 absolute w-2 h-2 rounded-full bg-emerald-400" />
-          <div className="acr-dot-2 absolute w-3 h-3 rounded-full bg-yellow-400" />
-          <div className="acr-dot-3 absolute w-2 h-2 rounded-full bg-purple-400" />
-          <div className="acr-dot-4 absolute w-2.5 h-2.5 rounded-full bg-blue-400" />
-          <div className="acr-dot-5 absolute w-2 h-2 rounded-full bg-pink-400" />
-          <div className="acr-dot-6 absolute w-3 h-3 rounded-full bg-orange-400" />
-          <div className="acr-dot-7 absolute w-2 h-2 rounded-full bg-teal-400" />
-          <div className="acr-dot-8 absolute w-2.5 h-2.5 rounded-full bg-red-400" />
-        </div>
-      </div>
-      <div className="acr-celebration-content">{children}</div>
-    </div>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Onboarding flow — 3 paths, guided by Atlas
@@ -118,7 +66,7 @@ const STEPS_BY_PATH: Record<InvestorPath, OnboardingStep[]> = {
   beginner: [
     { id: "path", title: "Welcome to AcreOS", subtitle: "Let's personalize your experience." },
     { id: "target_county", title: "Where do you want to invest?", subtitle: "Pick a county to explore first." },
-    { id: "instant_hunt", title: "🔥 AcreOS found real opportunities", subtitle: "Here's what's available in your target area right now." },
+    { id: "instant_hunt", title: "AcreOS found real opportunities", subtitle: "Here's what's available in your target area right now." },
     { id: "strategy", title: "What's your strategy?", subtitle: "How do you plan to make money with land?" },
     { id: "atlas_tour", title: "Meet Atlas, your AI deal partner", subtitle: "Atlas works 24/7 so you don't have to." },
     { id: "complete", title: "You're ready to find deals!", subtitle: "Your personalized dashboard is configured." },
@@ -127,7 +75,7 @@ const STEPS_BY_PATH: Record<InvestorPath, OnboardingStep[]> = {
     { id: "path", title: "Welcome back to AcreOS", subtitle: "Upgrade your investing operation." },
     { id: "portfolio_import", title: "Import your existing portfolio", subtitle: "Connect what you've built so AcreOS can analyze it." },
     { id: "target_counties", title: "Set your target counties", subtitle: "Configure Deal Hunter for your active markets." },
-    { id: "instant_hunt", title: "🔥 Deals in your markets", subtitle: "Here's what AcreOS found in your target counties." },
+    { id: "instant_hunt", title: "Deals in your markets", subtitle: "Here's what AcreOS found in your target counties." },
     { id: "automation", title: "Configure the autonomous deal machine", subtitle: "Set it once — AcreOS finds deals every night." },
     { id: "complete", title: "Your operation is upgraded!", subtitle: "AcreOS is now working while you sleep." },
   ],
@@ -135,7 +83,7 @@ const STEPS_BY_PATH: Record<InvestorPath, OnboardingStep[]> = {
     { id: "path", title: "Enterprise setup", subtitle: "Configure AcreOS for your team." },
     { id: "team", title: "Set up your team", subtitle: "Invite deal analysts, VAs, and closing coordinators." },
     { id: "integrations", title: "Connect your tools", subtitle: "CRM, accounting, and communication stack." },
-    { id: "instant_hunt", title: "🔥 Enterprise market scan", subtitle: "AcreOS scanning all your target markets simultaneously." },
+    { id: "instant_hunt", title: "Enterprise market scan", subtitle: "AcreOS scanning all your target markets simultaneously." },
     { id: "workflows", title: "Configure deal workflows", subtitle: "Custom pipeline stages and automation rules." },
     { id: "complete", title: "Enterprise platform ready!", subtitle: "Your team can now work deals at scale." },
   ],
@@ -1083,10 +1031,6 @@ export default function OnboardingV2() {
         <div className="max-w-2xl w-full space-y-8">
           {/* Logo + headline */}
           <div className="text-center space-y-3">
-            <div className="inline-flex items-center gap-2 bg-emerald-900/40 border border-emerald-700/50 rounded-full px-4 py-2">
-              <Sparkles className="w-4 h-4 text-emerald-400" />
-              <span className="text-emerald-300 text-sm font-medium">The Most Intelligent Land Investing Platform</span>
-            </div>
             <h1 className="text-4xl font-bold text-white">Welcome to AcreOS</h1>
             <p className="text-gray-400 text-lg">
               Tell us where you are in your land investing journey — we'll configure everything for you.
@@ -1391,7 +1335,6 @@ export default function OnboardingV2() {
           )}
 
           {currentStep.id === "complete" && (
-            <CompletionCelebration>
             <div className="space-y-6 text-center">
               <div className="relative w-20 h-20 mx-auto">
                 <div className="absolute inset-0 bg-emerald-500/20 rounded-full animate-ping" />
@@ -1484,7 +1427,6 @@ export default function OnboardingV2() {
                 AcreOS will run its first deal scan tonight. Check your email at 7 AM for your Morning Briefing.
               </p>
             </div>
-            </CompletionCelebration>
           )}
 
           {/* Active path: portfolio_import */}
