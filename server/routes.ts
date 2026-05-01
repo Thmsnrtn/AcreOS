@@ -76,6 +76,7 @@ import dunningRouter from "./routes-dunning";
 import onboardingRouter from "./routes-onboarding";
 import preferencesRouter from "./routes-preferences";
 import autonomyRouter from "./routes-autonomy";
+import personaRouter from "./routes-persona";
 import featureFlagsRouter from "./routes-feature-flags";
 import epicServicesRouter from "./routes-epic-services";
 import dataIntelligenceRouter from "./routes-data-intelligence";
@@ -1118,6 +1119,9 @@ export async function registerRoutes(
   // theme writes can't trample agent policy and agents have a narrow read
   // surface at action time.
   app.use('/api/me/autonomy', isAuthenticated, autonomyRouter);
+  // Persona setter — drives vocabulary swaps, default surfaces, onboarding
+  // path per VERTICAL-EXPANSION-PLAN.md. User-scoped, no org context needed.
+  app.use('/api/me/persona', isAuthenticated, personaRouter);
   // Feature flags — read endpoint accessible to authenticated users (returns
   // their resolved view); admin endpoints inside the router enforce founder.
   app.use('/api/feature-flags', isAuthenticated, getOrCreateOrg, featureFlagsRouter);

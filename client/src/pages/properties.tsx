@@ -1,4 +1,5 @@
 import { PageShell } from "@/components/page-shell";
+import { useTerm } from "@/hooks/use-persona";
 import { usd, plural } from "@/lib/format";
 import "./today.css";
 import { PaxContextButton } from "@/components/pax-context-button";
@@ -135,7 +136,9 @@ import { usePersistedGisFilters } from "@/hooks/use-persisted-gis-filters";
 import { Bot } from "lucide-react";
 
 export default function PropertiesPage() {
-  useDocumentTitle("Inventory");
+  const propertyLabelPlural = useTerm("entity.property.plural");
+  const propertyLabel = useTerm("entity.property");
+  useDocumentTitle(propertyLabelPlural);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const propertiesQuery = usePropertiesPaginated({ page: currentPage, pageSize });
@@ -445,7 +448,7 @@ export default function PropertiesPage() {
   };
 
   return (
-    <PageShell label="Properties">
+    <PageShell label={propertyLabelPlural}>
 
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="acr-cc-hero" style={{ marginTop: 0 }}>
@@ -522,7 +525,7 @@ export default function PropertiesPage() {
               <ResponsiveModal open={isCreateOpen} onOpenChange={setIsCreateOpen}>
                 <ResponsiveModalTrigger asChild>
                   <Button className="shadow-lg hover:shadow-primary/25 min-h-[44px] md:min-h-9" data-testid="button-add-property">
-                    <Plus className="w-4 h-4 mr-2" /> Add Property
+                    <Plus className="w-4 h-4 mr-2" /> Add {propertyLabel}
                   </Button>
                 </ResponsiveModalTrigger>
                 <ResponsiveModalContent className="sm:max-w-[500px]">

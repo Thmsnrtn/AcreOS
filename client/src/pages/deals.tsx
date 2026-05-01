@@ -13,6 +13,7 @@ import { telemetry } from "@/lib/telemetry";
 import { useDealChecklist, useChecklistTemplates, useApplyChecklistTemplate, useUpdateChecklistItem, useStageGate } from "@/hooks/use-checklists";
 import { useState, useMemo, useEffect, useRef } from "react";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { useTerm } from "@/hooks/use-persona";
 import {
   DndContext,
   type DragEndEvent,
@@ -115,7 +116,9 @@ const statusColors: Record<string, string> = {
 };
 
 export default function DealsPage() {
-  useDocumentTitle("Deals");
+  const dealsLabel = useTerm("entity.deal.plural");
+  const dealLabel = useTerm("entity.deal");
+  useDocumentTitle(dealsLabel);
   const [dealCurrentPage, setDealCurrentPage] = useState(1);
   const [dealPageSize, setDealPageSize] = useState(25);
   const { data: dealsResponse, isLoading, isError, error, refetch } = useDealsPaginated({ page: dealCurrentPage, pageSize: dealPageSize });
@@ -440,7 +443,7 @@ export default function DealsPage() {
 
   if (error) {
     return (
-      <PageShell label="Deals">
+      <PageShell label={dealsLabel}>
         <QueryErrorState
           error={error as Error}
           onRetry={() => refetch()}
@@ -452,7 +455,7 @@ export default function DealsPage() {
   }
 
   return (
-    <PageShell label="Deals">
+    <PageShell label={dealsLabel}>
         
           
 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -487,12 +490,12 @@ export default function DealsPage() {
               <ResponsiveModal open={isCreateOpen} onOpenChange={setIsCreateOpen}>
                 <ResponsiveModalTrigger asChild>
                   <Button data-testid="button-create-deal">
-                    <Plus className="w-4 h-4 mr-2" aria-hidden="true" /> New deal
+                    <Plus className="w-4 h-4 mr-2" aria-hidden="true" /> New {dealLabel.toLowerCase()}
                   </Button>
                 </ResponsiveModalTrigger>
               <ResponsiveModalContent className="sm:max-w-[500px] floating-window">
                 <ResponsiveModalHeader>
-                  <ResponsiveModalTitle>Create deal</ResponsiveModalTitle>
+                  <ResponsiveModalTitle>Create {dealLabel.toLowerCase()}</ResponsiveModalTitle>
                   <ResponsiveModalDescription>Start tracking a new acquisition or disposition.</ResponsiveModalDescription>
                 </ResponsiveModalHeader>
                 <DealForm onSuccess={() => setIsCreateOpen(false)} />

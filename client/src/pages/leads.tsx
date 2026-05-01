@@ -1,5 +1,6 @@
 import { PageShell } from "@/components/page-shell";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { useTerm } from "@/hooks/use-persona";
 import { plural } from "@/lib/format";
 import "./today.css";
 import { PaxContextButton } from "@/components/pax-context-button";
@@ -650,7 +651,9 @@ function TcpaConsentBadge({ lead }: { lead: Lead }) {
 }
 
 export default function LeadsPage() {
-  useDocumentTitle("Leads — AcreOS");
+  const leadsLabel = useTerm("entity.lead.plural");
+  const leadLabel = useTerm("entity.lead");
+  useDocumentTitle(`${leadsLabel} — AcreOS`);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const { data: leadsResponse, isLoading, error, refetch } = useLeadsPaginated({ page: currentPage, pageSize });
@@ -1023,7 +1026,7 @@ export default function LeadsPage() {
 
   if (error) {
     return (
-      <PageShell label="Leads">
+      <PageShell label={leadsLabel}>
         <QueryErrorState
           error={error as Error}
           onRetry={() => refetch()}
@@ -1035,7 +1038,7 @@ export default function LeadsPage() {
   }
 
   return (
-    <PageShell label="Leads">
+    <PageShell label={leadsLabel}>
 
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             {error && (
@@ -1157,12 +1160,12 @@ export default function LeadsPage() {
               }}>
                 <ResponsiveModalTrigger asChild>
                   <Button className="shadow-lg hover:shadow-primary/25 min-h-[44px]" data-testid="button-add-lead">
-                    <Plus className="w-4 h-4 mr-2" aria-hidden="true" /> Add lead
+                    <Plus className="w-4 h-4 mr-2" aria-hidden="true" /> Add {leadLabel.toLowerCase()}
                   </Button>
                 </ResponsiveModalTrigger>
                 <ResponsiveModalContent className="sm:max-w-[425px]">
                   <ResponsiveModalHeader>
-                    <ResponsiveModalTitle>Create lead</ResponsiveModalTitle>
+                    <ResponsiveModalTitle>Create {leadLabel.toLowerCase()}</ResponsiveModalTitle>
                   </ResponsiveModalHeader>
                   <LeadForm onSuccess={() => setIsCreateOpen(false)} />
                 </ResponsiveModalContent>

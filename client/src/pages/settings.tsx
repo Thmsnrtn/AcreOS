@@ -50,6 +50,7 @@ import { TeamInviteCard } from "@/components/settings/TeamInviteCard";
 // ThemeSettings (dialog quick-picker) is intended for top-bar mount in Phase E;
 // the full Settings → Appearance surface uses AppearancePanel below.
 import { AppearancePanel } from "@/components/settings/appearance-panel";
+import { PersonaPanel } from "@/components/settings/persona-panel";
 import { NotificationQuietHours } from "@/components/settings/notification-quiet-hours";
 import { AutonomyPanel } from "@/components/settings/autonomy-panel";
 import { useFlag } from "@/contexts/feature-flags-context";
@@ -1626,6 +1627,10 @@ export default function Settings() {
                 </div>
                 <AppearancePanel />
                 <PreferencesCard />
+                {/* Investor persona — drives vocabulary swaps + onboarding
+                    path. Sits in Workspace cluster alongside appearance
+                    because both shape how the workspace feels. */}
+                <PersonaPanel />
               </div>
             </TabsContent>
 
