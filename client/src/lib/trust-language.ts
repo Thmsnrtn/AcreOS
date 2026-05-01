@@ -1,41 +1,38 @@
 /**
- * Trust Language — Sovereign Company Protocol v3
+ * Trust Language — Sovereign Company Protocol v3.
  *
  * Translates technical trust scores into natural language the CEO can
  * understand intuitively. No numbers, no percentages, no jargon.
+ * Philosophy: trust should feel like a relationship, not a metric.
  *
- * Philosophy: Trust should feel like a relationship, not a metric.
+ * As of 2026-05-01 (Wave G1) the per-codename maps below are derived
+ * facades over the canonical identity registry at
+ * client/src/lib/agent-identity.ts. One source of truth; legacy
+ * importers keep working without changes. New code should prefer
+ * `getAgentIdentity()` / `agentTextClass()` / `agentBgClass()` from
+ * agent-identity.ts directly.
  */
 
-/** Map agent codenames to friendly role names */
-export const AGENT_FRIENDLY_NAMES: Record<string, string> = {
-  atlas_cto: "Atlas (your CTO)",
-  sophie_csm: "Sophie (Customer Success)",
-  forge_revenue: "Forge (Revenue Lead)",
-  beacon_marketing: "Beacon (Marketing)",
-  sentinel_devops: "Sentinel (Infrastructure)",
-  ledger_finance: "Ledger (Finance)",
-  shield_legal: "Shield (Legal & Compliance)",
-  oracle_analytics: "Oracle (Analytics)",
-  compass_pm: "Compass (Product)",
-  crucible_qa: "Crucible (Quality)",
-};
+import { AGENT_IDENTITY, type AgentTone } from "./agent-identity";
 
-/** Map agent codenames to short role labels */
-export const AGENT_ROLES: Record<string, string> = {
-  atlas_cto: "CTO",
-  sophie_csm: "Customer Success",
-  forge_revenue: "Revenue Lead",
-  beacon_marketing: "Marketing",
-  sentinel_devops: "Infrastructure",
-  ledger_finance: "Finance",
-  shield_legal: "Legal",
-  oracle_analytics: "Analytics",
-  compass_pm: "Product",
-  crucible_qa: "Quality",
-};
+// Convert each canonical identity entry into the legacy shape consumers
+// expect. Generated once at module load — identical to the old hand-
+// written maps, sourced from one definition.
+const _entries = Object.entries(AGENT_IDENTITY) as [string, typeof AGENT_IDENTITY[keyof typeof AGENT_IDENTITY]][];
 
-/** Map agent codenames to emoji avatars */
+/** Long friendly names with parenthetical role — "Atlas (CTO)". */
+export const AGENT_FRIENDLY_NAMES: Record<string, string> = Object.fromEntries(
+  _entries.map(([k, v]) => [k, `${v.friendlyName} (${v.role})`])
+);
+
+/** Short role labels — "Analysis", "Customer Success". */
+export const AGENT_ROLES: Record<string, string> = Object.fromEntries(
+  _entries.map(([k, v]) => [k, v.role])
+);
+
+/** Emoji avatars — kept as an explicit map (registry only carries letter
+ * marks; emoji is a separate visual primitive used in chat-style surfaces).
+ * Pax intentionally omitted — Pax surfaces use brand glyph, not emoji. */
 export const AGENT_AVATARS: Record<string, string> = {
   atlas_cto: "🏗️",
   sophie_csm: "💬",
@@ -49,30 +46,26 @@ export const AGENT_AVATARS: Record<string, string> = {
   crucible_qa: "🔬",
 };
 
-/**
- * Map agent codenames to a tailwind color name (used by older consumers
- * that build dynamic class strings like `bg-${color}-100`). Sourced from
- * the consolidated identity registry so future agents only need to be
- * added in one place. Tailwind's safelist must include any colors here
- * for dynamic class generation to work — current consumers fall back to
- * "slate" for unknown codenames.
- *
- * New consumers should prefer agentBgClass / agentTextClass from
- * client/src/lib/agent-identity.ts — those return token-driven classes
- * that respond to theme switches.
- */
-export const AGENT_COLORS: Record<string, string> = {
-  atlas_cto: "amber",
-  sophie_csm: "amber",
-  forge_revenue: "emerald",
-  beacon_marketing: "amber",
-  sentinel_devops: "red",
-  ledger_finance: "emerald",
-  shield_legal: "red",
-  oracle_analytics: "amber",
-  compass_pm: "amber",
-  crucible_qa: "amber",
+// Map AgentTone → tailwind color name for legacy dynamic-class consumers
+// (e.g. WarRoom's `bg-${color}-50` lookup table). Each tone maps to one
+// concrete color that's already in the safelist.
+const _TONE_TO_TAILWIND: Record<AgentTone, string> = {
+  brand: "amber",
+  pos: "emerald",
+  warn: "amber",
+  neg: "red",
 };
+
+/**
+ * Map agent codenames to a tailwind color name (legacy shape — for
+ * consumers that build dynamic class strings like `bg-${color}-100`).
+ * New consumers should use agentTextClass / agentBgClass from
+ * agent-identity.ts which return token-driven classes that respond
+ * to theme switches.
+ */
+export const AGENT_COLORS: Record<string, string> = Object.fromEntries(
+  _entries.map(([k, v]) => [k, _TONE_TO_TAILWIND[v.tone]])
+);
 
 /**
  * Describe an agent's trust level in natural language.

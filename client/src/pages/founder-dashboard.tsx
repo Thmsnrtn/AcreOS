@@ -1,4 +1,4 @@
-import React, { useId, useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { PageShell } from "@/components/page-shell";
@@ -112,7 +112,7 @@ import {
   MRRTrajectory, ChurnIntelligence, GrowthEngine, PlatformPassiveScore,
 } from "@/components/dashboard";
 import { FounderSetupWizard, SetupReadinessBanner } from "@/components/founder-setup-wizard";
-import { Suspense, lazy } from "react";
+import { Suspense } from "react";
 
 // v3 Sovereign Company Protocol — Apple-grade CEO experience
 import { MorningBriefing } from "@/components/founder/MorningBriefing";
@@ -1111,7 +1111,11 @@ export default function FounderDashboard() {
   const [dataSourceFilter, setDataSourceFilter] = useState("");
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
-  const [focusMode, setFocusMode] = useState(false);
+  // focusMode removed 2026-05-01 (Wave G3) — the F key toggled a banner
+  // and toast saying "showing only critical sections" but no actual
+  // filtering ever ran. Honest fix: remove the affordance rather than
+  // ship a placebo. If section-filtering returns, design which sections
+  // are "critical" first, then re-add.
   const [goalCents, setGoalCents] = useState<number>(() => {
     try { return parseInt(localStorage.getItem("founder_mrr_goal_cents") || "0", 10) || 0; } catch { return 0; }
   });
@@ -1153,16 +1157,13 @@ export default function FounderDashboard() {
         handleRefreshAll();
       } else if (e.key === "?") {
         setShowShortcuts(prev => !prev);
-      } else if (e.key === "f") {
-        setFocusMode(prev => !prev);
-        toast({ title: focusMode ? "Focus mode off" : "Focus mode on", description: focusMode ? "All sections visible" : "Showing only critical sections" });
       } else if (e.key === "g") {
         setGoalDialogOpen(true);
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [handleRefreshAll, focusMode, toast]);
+  }, [handleRefreshAll]);
 
   // Only load dashboard data for overview + growth tabs.
   // Cycle 11: the /api/admin/dashboard endpoint returns a flatter shape
@@ -1952,7 +1953,6 @@ export default function FounderDashboard() {
               <div className="space-y-1 text-sm">
                 {[
                   { key: "R", desc: "Refresh all data" },
-                  { key: "F", desc: "Toggle focus mode (critical sections only)" },
                   { key: "G", desc: "Set MRR goal" },
                   { key: "?", desc: "Toggle this panel" },
                 ].map(({ key, desc }) => (
@@ -2033,19 +2033,6 @@ export default function FounderDashboard() {
 
           {/* ── Platform Readiness Banner ─────────────────────────────── */}
           <SetupReadinessBanner onOpenWizard={() => setSetupWizardOpen(true)} />
-
-          {/* ── Focus Mode Banner ────────────────────────────────────── */}
-          {focusMode && (
-            <div className="flex items-center justify-between rounded-lg border border-amber-500/30 bg-acr-warn/5 px-4 py-2">
-              <div className="flex items-center gap-2 text-sm text-acr-warn">
-                <Flame className="h-4 w-4" />
-                <span className="font-medium">Focus mode — showing critical sections only</span>
-              </div>
-              <Button size="sm" variant="ghost" className="h-7 text-xs text-acr-warn hover:text-acr-warn" onClick={() => setFocusMode(false)}>
-                Exit <kbd className="ml-1 rounded bg-acr-warn/20 px-1 py-0.5 text-[10px] font-mono">F</kbd>
-              </Button>
-            </div>
-          )}
 
           {/* Tab Navigation */}
           <div role="tablist" aria-label="Founder dashboard sections" className="flex items-center gap-1 border-b mb-6 overflow-x-auto pb-px">
@@ -6558,82 +6545,10 @@ function AutopilotStatusBar() {
 // an IntersectionObserver to highlight the active section.
 // ─────────────────────────────────────────────────────────────────────
 
-const NAV_ITEMS = [
-  { label: "Company", href: "section-company-briefing", icon: Crown },
-  { label: "Team", href: "section-agent-team", icon: Users2 },
-  { label: "Briefing", href: "section-briefing", icon: Sparkles },
-  { label: "Actions", href: "section-actions", icon: ListChecks },
-  { label: "Observatory", href: "section-observatory", icon: Cpu },
-  { label: "Overview", href: "section-overview", icon: BarChart },
-  { label: "Readiness", href: "section-readiness", icon: Rocket },
-  { label: "Features", href: "section-features", icon: ToggleRight },
-  { label: "Pricing", href: "section-pricing", icon: Tag },
-  { label: "Growth", href: "section-growth", icon: Megaphone },
-  { label: "Health", href: "section-org-health", icon: Activity },
-  { label: "Users", href: "section-users", icon: Users },
-  { label: "Revenue", href: "section-revenue", icon: DollarSign },
-  { label: "Config", href: "section-config", icon: Key },
-  { label: "Monthly", href: "section-monthly", icon: CalendarCheck },
-] as const;
-
-function FounderNavBar() {
-  const [active, setActive] = useState<string>("section-overview");
-  const scrollRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const ids = NAV_ITEMS.map(n => n.href);
-    const observers: IntersectionObserver[] = [];
-
-    ids.forEach(id => {
-      const el = document.getElementById(id);
-      if (!el) return;
-      const obs = new IntersectionObserver(
-        ([entry]) => { if (entry.isIntersecting) setActive(id); },
-        { rootMargin: "-40% 0px -55% 0px", threshold: 0 }
-      );
-      obs.observe(el);
-      observers.push(obs);
-    });
-
-    return () => observers.forEach(o => o.disconnect());
-  }, []);
-
-  const scrollTo = (id: string) => {
-    const el = document.getElementById(id);
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-    setActive(id);
-  };
-
-  return (
-    <nav aria-label="Founder dashboard sections" className="sticky top-0 z-30 -mx-4 px-4 bg-background/95 backdrop-blur-sm border-b border-border/60 py-0">
-      <div
-        ref={scrollRef}
-        className="flex items-center gap-1 overflow-x-auto py-2"
-        style={{ scrollbarWidth: "none", msOverflowStyle: "none" } as React.CSSProperties}
-      >
-        {NAV_ITEMS.map(({ label, href, icon: Icon }) => {
-          const isActive = active === href;
-          return (
-            <button
-              key={href}
-              type="button"
-              onClick={() => scrollTo(href)}
-              aria-current={isActive ? "true" : undefined}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                isActive
-                  ? "bg-primary text-primary-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
-              }`}
-            >
-              <Icon className="w-3 h-3" aria-hidden="true" />
-              {label}
-            </button>
-          );
-        })}
-      </div>
-    </nav>
-  );
-}
+// FounderNavBar + NAV_ITEMS removed 2026-05-01 (Wave G2). Defined here
+// but never rendered anywhere — the legacy operational dashboard uses
+// page-down scrolling instead. Removed to prevent maintenance drift on a
+// dead-code path.
 
 // ─────────────────────────────────────────────────────────────────────
 // LAUNCH READINESS SECTION
