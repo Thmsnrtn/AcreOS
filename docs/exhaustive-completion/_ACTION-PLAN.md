@@ -1,246 +1,263 @@
 # AcreOS — Action Plan (Sequenced Execution)
 
 **Date:** 2026-05-01
-**Synthesis of:** 86 audits in `elite-team-2026-05-01/` (12) + `elite-team-deep-2026-05-01/` (74)
-**Companions:** `_QUICK-REFERENCE.md` (founder single-page) · `_MASTER-FINDINGS.md` (full deduped inventory)
+**Synthesis of:** **211 audits across two waves**
+- **Wave A (86 audits)** — `elite-team-2026-05-01/` (12 strategic) + `elite-team-deep-2026-05-01/` (74 deep specialists)
+- **Wave B (125 audits)** — `elite-team-deeper-2026-05-01/` (regional/niche + adversarial/a11y/bandwidth + ecosystem partners + lifecycle ops + specialized engineering)
 
-This document converts the master findings into an **executable** sequence. Every line item is sized for one engineer + Claude (per CLAUDE.md). Work is sequenced **dependency-first** — prerequisites land before consequences. The 90-day per-week breakdown is in §8.
+**Companions:** `_QUICK-REFERENCE.md` (founder single-page) · `_MASTER-FINDINGS.md` (full deduped inventory).
+
+This document converts the master findings into an **executable** sequence. Every line item is sized for one engineer + Claude (per CLAUDE.md). Work is sequenced **dependency-first** — prerequisites land before consequences. Wave B added 24 new P0 items, 25 new P1 items, and 10 new P3 deferral decisions; the 26-week sprint plan is preserved and extended with **Phases 7-9 covering ecosystem-partner enablement, engineering specialization, and lifecycle-ops product line**.
 
 ---
 
-## §1. Launch-readiness path (Week 1-2)
+## §1. Launch-readiness path (Week 1-2) — extended for Wave B P0s
 
-**Goal:** Stop the bleeding. The four explicit P0 security/legal bugs ship today; six tier-tables make every revenue number fiction; client-side idempotency gap means a single 502 = double-charge. Until these land, no meaningful customer should pay.
+**Goal:** Stop the bleeding. The four explicit P0 security/legal bugs ship today; six tier-tables make every revenue number fiction; client-side idempotency gap means a single 502 = double-charge. **Wave B added 9 new P0s** that must ship in the same window. Until these land, no meaningful customer should pay.
 
-### Week 1 — Tier truth, security P0s, idempotency
+### Week 1 — Tier truth, security P0s, idempotency, hardcoded EIN, Cesar TX disclosure, Aniyah Indian-Country block
 
-**Day 1 (Mon) — Tier-truth single source.** *(Marisol §1, Tegan §2, Asher §4, Hassiba §1)*
-- Create `shared/billing/tier-pricing.ts` exporting `TIER_PRICES_CENTS`.
-- Codemod 6 conflicting sites: `pricing.tsx`, `storage.ts:3452`, `routes-admin.ts:3293,3373,3685`, `routes.ts:1443`, `agents/revenue.ts:14`, `expansionRadar.ts:55`, `autonomousSalesPipeline.ts:309`, `shared/schema.ts:2937`.
-- Add CI test that fails the build if Stripe price IDs disagree with the table at test time.
+**Day 1 (Mon) — Tier-truth single source + annual-SKU foundation.** *(Marisol §1, Tegan §2, Asher §4, Hassiba §1; Wave B: Magnolia §1, Cassiopeia §1, Lavender §WD-2)*
+- Create `shared/billing/tier-pricing.ts` exporting `TIER_PRICES_CENTS` with `priceMonthlyCents` + `priceYearlyCents` peers.
+- Codemod 6 conflicting sites.
+- CI test that fails build if Stripe price IDs disagree.
+- **Plus**: `billingInterval` field on `organizations` table (Magnolia §1).
 - Owner: Thomas + 1 engineer. Effort: 1 day.
-- Acceptance: `/founder-home` MRR matches Stripe within ±$0.
+- Acceptance: `/founder-home` MRR matches Stripe within ±$0; `priceYearly` peer present; ready for Phase-3 annual-SKU rollout.
 
-**Day 2 — Security P0s R1 + R4.** *(Sam §1)*
-- R1: replace inline `org.ownerId` check at `routes-admin.ts:465, :485` with `isFounderAdmin`. Ship regression test that calls `/api/founder/feature-requests` as non-founder org owner; assert 403.
-- R4: rip `routes-2fa.ts` (184 lines) and `require2FA.ts` (55 lines). Migrate to Clerk native MFA.
-- Owner: 1 engineer + Claude pair. Effort: 1 day.
-- Acceptance: regression tests pass; 2FA enrollment works end-to-end via Clerk widget.
+**Day 2 — Security P0s R1 + R4 + hardcoded EIN.** *(Sam §1; Wave B: Phineas-IRS §3, Olympia §1, Hilda §3, Martin §1)*
+- R1: replace inline `org.ownerId` check with `isFounderAdmin`.
+- R4: rip `routes-2fa.ts` + `require2FA.ts`; migrate to Clerk native MFA.
+- **NEW — kill hardcoded `payerEin: "00-0000000"` and `recipientTin: "000-00-0000"` in `bookkeeping.ts:262, :266`.** Capture org `ein`, `taxIdType`, `taxAddress`, `legalEntityName` in onboarding (Blanco §3 + Martin §3). Pull into 1099 generator. CI test: no 1099 run produces `00-0000000`. **Plus**: rewrite `generate1099IntForms` to emit a 1099-INT-shaped record (current code emits 1098-INT shape — Olympia §1).
+- Owner: 1 eng + Claude. Effort: 1 day.
 
-**Day 3 — Security P0s R2 + R3.** *(Sam §1, Marguerite §2)*
-- R2: reject `content` updates on `signed` documents in `storage.updateGeneratedDocument` at `storage.ts:5643`. Add `documentContentHash` (SHA-256) column on `signatures`; persist at sign time. Make `organizationId` mandatory on `updateGeneratedDocument`; fix 4 callers in `routes-doc-system.ts`.
-- R3: add `skip_traces.results` and `skip_traces.input_data` to `SKIP_TRACE_SENSITIVE_FIELDS` in `fieldEncryption.ts`. Ship one-shot backfill migration job. Flip `secretsValidation.ts:33` `FIELD_ENCRYPTION_KEY` `required: true` (gated on `productionOnly`).
-- Owner: 1 engineer + Claude. Effort: 1.5 days.
-- Acceptance: signed-doc-mutation test 422s; `pg_dump` of `skip_traces.results` shows `enc:v1:` prefix only.
+**Day 3 — Security P0s R2 + R3.** *(Sam §1, Marguerite §2; Wave B: Cordelia §2.1, Caspian §1)*
+- R2: reject `content` updates on `signed` documents. SHA-256 `documentContentHash` on `signatures`. Org-scope `updateGeneratedDocument`.
+- R3: encrypt `skip_traces.results` + `skip_traces.input_data`; backfill migration. Flip `secretsValidation.ts:33` `FIELD_ENCRYPTION_KEY` `required: true`.
+- Owner: 1 eng + Claude. Effort: 1.5 days.
 
-**Day 4 — Client-side `Idempotency-Key`.** *(Ines §1, Hessam §2)*
-- Default `mutations.retry: false` in `client/src/lib/queryClient.ts:329-339`.
-- Generate UUID per mutation in `apiRequest` when method is POST/PATCH and `idempotent: true` flag is set.
-- Wire into: stripe/checkout, credits/purchase, e-sign send, campaign send, public sign.
-- Owner: 1 engineer. Effort: 1.5 days.
-- Acceptance: artificially cause a retry on Stripe checkout; observe single Stripe Customer.
+**Day 4 — Client-side `Idempotency-Key` (extended).** *(Ines §1, Hessam §2; Wave B: Alaric §2.3)*
+- Default `mutations.retry: false`.
+- UUID per mutation in `apiRequest` when method POST/PATCH and `idempotent: true`.
+- Wire: stripe/checkout, credits/purchase, e-sign send, campaign send, public sign, **+ refund (`Idempotency-Key: refund:${request.id}`) + Twilio messages + scheduled campaigns**.
+- Owner: 1 eng. Effort: 1.5 days.
 
-**Day 5 — Persona-architecture lint + obvious customer-surface leaks.** *(Vesna P0-1+P0-2, Asher §3, Mira §4.7, Hiroko §2.4)*
-- Codemod 6 sites: `empty-states.tsx:128`, `today.tsx:686-690`, `today.tsx:1212`, `today.tsx:1229`, `coverage-page.tsx:236`, `executive.ts:325` description + `:339` Sophie redirect.
-- Add custom ESLint rule `no-founder-codenames-in-customer-jsx` banning `Atlas\|Sophie\|Forge\|Sentinel\|Sovereign` literals in any TSX outside `/founder*`, `/admin*`, `/sovereign*`, `/data-moat*`, `/agent-*`.
-- Owner: design-leaning engineer. Effort: 0.5 day.
+**Day 5 — Persona-architecture lint + customer-surface leaks (extended).** *(Vesna P0-1+P0-2, Asher §3, Mira §4.7, Hiroko §2.4; Wave B: Sigfried §1, Coriander §1.5, Lila §2)*
+- Codemod the original 6 sites + 3 Wave B leaks.
+- Custom ESLint rule `no-founder-codenames-in-customer-jsx`.
+- **Plus Sigfried**: remove `/founder-dashboard` sidebar link with literal "legacy" string this week.
+- **Plus Coriander**: enforce `readOnly: true` impersonation flag in middleware (currently a JSON comment).
+- **Plus Lila**: scan all AI tool prompts visible-via-tool-output for founder-POV leaks.
+- Owner: design-leaning eng. Effort: 1 day.
 
-### Week 2 — E-sign idempotency, Twilio replay, F1+F2, encryption consolidation
+### Week 2 — E-sign idempotency, Twilio replay, F1+F2, encryption consolidation, Cesar TX + Aniyah blocks, Boniface drill kickoff
 
-**Day 6 — `eSigningService.sendForSignature` row lock.** *(Ines §1.3, Hessam §2.4)*
-- Wrap external POST: `SELECT signature_request_id FROM generated_documents WHERE id = $1 FOR UPDATE`. Return existing if non-null + non-expired. Pass `documentId` as e-sign provider's idempotency key.
-- Owner: 1 engineer. Effort: 0.5 day.
+**Day 6 — `eSigningService.sendForSignature` row lock + Cesar TX §5.069 disclosure block.** *(Ines §1.3, Hessam §2.4; Wave B: Cesar §1, Marguerite §3.2, Cordelia §2.1)*
+- Wrap external POST: `SELECT … FOR UPDATE`.
+- **NEW — TX §5.069 / §5.072 disclosure embed on every contract-for-deed dispatch.** Block if state=TX, docType=contract_for_deed, disclosure missing. Hard 422 with friendly message. Per-state disclosure registry surfaced to `documentValidator`.
+- Add NY §307 negotiable-instrument block (P1-31).
+- Effort: 1.5 days.
 
-**Day 7 — Twilio MessageSid + Dropbox-Sign event idempotency.** *(Hessam §2.2 + §2.4)*
-- Unique partial index on `messages(externalId) WHERE externalId IS NOT NULL`. Insert with `.onConflictDoNothing()`.
-- Atomic claim for Dropbox Sign: `INSERT INTO esign_processed_events (provider, event_id) VALUES (...) ON CONFLICT DO NOTHING` using `event.event_hash` (or `(provider, signature_request_id, event_type, event_time)` hash). State-machine guard (forward-only).
-- Fail-closed when Dropbox webhook key missing in production.
-- Owner: 1 engineer. Effort: 1 day.
+**Day 7 — Twilio MessageSid + Dropbox-Sign event idempotency + Sigfried sunset dates.** *(Hessam §2.2 + §2.4; Wave B: Sigfried §1)*
+- Unique partial index on `messages(externalId)`.
+- Dropbox atomic claim.
+- Fail-closed when webhook key missing.
+- **NEW — Sigfried**: announce sunset date for `/api/portal/:accessToken/payment` etc. T+90, hard 410 Gone after. In-app banner for impacted users. Atlassian-Stride playbook.
+- Effort: 1 day.
 
-**Day 8 — F1 SSRF + F2 inbound-email auth.** *(Felix F1, F2)*
-- Mount `validateUrl(url)` before both `POST /api/webhooks/test` and the production `webhookDispatcher.ts:215` `fetchWithRetry`. Add post-DNS-resolution re-check.
-- Implement HMAC-body or SES/SNS signature on `/api/webhooks/inbound-email`; reject without it.
-- Owner: 1 engineer. Effort: 1 day.
+**Day 8 — F1 SSRF + F2 inbound-email auth + Aniyah `landStatus` enum + LAR overlay.** *(Felix F1, F2; Wave B: Aniyah §2)*
+- `validateUrl()` mount.
+- HMAC-body or SES/SNS sig on inbound email.
+- **NEW — Aniyah**: add `landStatus` enum on properties (`fee / tribal_trust / individual_trust / restricted_fee / fee_within_reservation / off_reservation_trust / unknown`). Default `unknown`. BIA Land Area Representation (LAR) shapefile overlay on map. Block downstream auto-AVM/blind-offer/auto-doc when `unknown` or trust status. Red banner.
+- Effort: 1.5 days.
 
-**Day 9 — Encryption consolidation.** *(Aravind §3.1)*
-- Migrate `services/encryption.ts` callers (Stripe/Twilio/Mapbox creds + OAuth tokens) to `fieldEncryption.ts`. Single key, single rotation procedure, single wire format.
-- Owner: 1 engineer + Claude. Effort: 2 days.
+**Day 9 — Encryption consolidation + Coriander recovery console scaffold.** *(Aravind §3.1; Wave B: Coriander §1)*
+- Migrate `services/encryption.ts` callers to `fieldEncryption.ts`.
+- **NEW — Coriander recovery console scaffolds (admin endpoints, no UI yet)**: `/api/admin/users/:id/2fa/reset` (with identity-proof), `/api/admin/users/:id/sessions` + `/sessions/:sid/revoke`, `/api/admin/users/:id/sessions/revoke-all-others`, `/api/admin/orgs/:id/freeze-autopay`, `/api/admin/orgs/:id/transfer-ownership` (with court-document upload). Identity-proof workflow scaffold.
+- Effort: 2 days. UI shipped Week 13.
 
-**Day 10 — SendGrid event webhook + invite-token hardening.** *(Hessam §2.3, Pelle G/H/I)*
-- Implement `POST /api/webhooks/sendgrid/events` with Ed25519 signature verification. Persist `email_events` + `email_suppressions` tables. `emailService.sendEmail` consults suppressions before every send.
-- Hash invite token (SHA-256) at storage; redact from `audit_log.metadata`. Per-org `maxInvitesPerDay` (100). Per-user accept rate-limit (10/hr).
-- Owner: 1 engineer. Effort: 1.5 days.
+**Day 10 — SendGrid event webhook + invite-token hardening + Eleonora deliverability foundation kickoff.** *(Hessam §2.3, Pelle G/H/I; Wave B: Eleonora §1)*
+- SendGrid webhook with Ed25519 sig.
+- `email_events` + `email_suppressions` tables.
+- Hash invite tokens (SHA-256). Per-org cap (100/day). Per-user accept-rate-limit (10/hr). Audit-log redaction.
+- **NEW — Eleonora kickoff (foundation only this week)**: per-org DKIM identity provisioning, `List-Unsubscribe: <mailto:>` + `<https://>` headers on every send. (Bounce/complaint feedback loop, ARC sealing, IP warmup automation, per-org reputation isolation = Week 7-8.)
+- Effort: 2 days.
 
-**Acceptance for week 1-2:** all 12 P0 items in `_MASTER-FINDINGS.md` §1 closed; CI gates added; ESLint rule active. Total cost: ~10 days of focused work, parallelizable across 2 engineers + Claude.
-
----
-
-## §2. The 30-day quality sprint (Week 3-6)
-
-**Goal:** Apple-stock-app feel where it currently isn't. Pricing-page split resolved; voice propagates across the auth wall; IA clarity (route collapse + settings cut + duplicate-route redirects); eval infrastructure v0.
-
-### Week 3 — Voice + microcopy + pricing decision
-
-- **Pricing decision (Thomas).** Operator-class ($249/$499/$1,290) per Tegan §3 + Asher §4. Rewrite tier descriptions in letter voice. Single source already shipped (week 1). 1.5 days writing + 1 day rollout. (P1-1)
-- **Microcopy janitorial sweep.** Strip 11 `Please`s in `inbox.tsx`; 4 `successfully` adverbs; 3 `!` exclamations; 8 Title-Case dialog titles. Codify `docs/voice.md` (per Mira §6, Hiroko §6). Convert `error-utils.ts` to status-code classification. 4 days. (P1-2)
-- **Founder letter discoverability + `/security` page + curated `/changelog`.** PageShell footer: "Why this exists →." Ship `/security` (Asher §6). Stop scrubbing dev CHANGELOG; biweekly customer-voice changelog. 2.5 days. (P1-5, P1-7, P1-8)
-- **Cancellation flow that earns the FAQ.** One-click "Export everything" → ZIP + T+12hr automated email signed by Thomas. 2 days. (P1-6)
-
-### Week 4 — IA collapse + empty-state archetypes
-
-- **Cut `/settings` 17 → 7 tabs.** Per Karri §1+§7. Hash redirects: `#general → #billing`, `#security → #account`, etc. Move Goals/Automations/AI-Tasks/Referral out of Settings. 5 days.
-- **Kill duplicate routes with 60-day redirects.** `/pipeline → /deals`, `/money → /finance`, `/dashboard → /`, `/command-center → /`, `/founder-dashboard → /founder`, `/founder-home → /founder`. Per Holm §6 step 2. 1 day.
-- **Empty-state archetypes (First Hello / Cleared / Empty Filter).** Replace 35 ad-hoc `<p>No X yet.</p>` with `<EmptyState>` consumers. Fix `leads.tsx:1505-1507, 1661-1663` filter-empty (no Reset CTA). New `<FirstDayHero/>` for zero-data `/today`. 4 days. (P1-4, P1-10)
-
-### Week 5 — Eval harness + AI cleanup
-
-- **Eval harness v0.** Golden-set fixtures (50 inbox-draft prompts), Sonnet-as-judge runner, banned-phrase regex hard-fail, persona-leak hard-fail, score thresholds in CI. 3 days. (P1-35, Sayuri §2)
-- **Migrate top-10 direct-OpenAI bypass services to `routeAITask`.** Targets: `supportBrain.ts`, `aiTutor.ts`, `complianceAI.ts`, `leadNurturer.ts`, `aiOfferService.ts`, `negotiationCopilot.ts`, `customerNarrative.ts`, `visionAI.ts`, `voiceAI.ts`, `acreOSValuation.ts`. 3 days. (P1-36)
-- **Kill `gpt-4-turbo-preview`** (4 sites). Pin every callsite to dated model. CI test for pin compliance. 0.5 day. (P1-37)
-- **Pax prompt v2 (rewrite from Theo §3.B).** Remove "AI-powered" + Sophie leak. Move to versioned `prompts/pax_executive.v3.md`. Enable Anthropic prompt caching. 1 day. (P1-41, Yusuf B)
-
-### Week 6 — Client observability + content-hash + ESIGN
-
-- **Sentry hygiene.** `release: VITE_GIT_SHA`, `setUser` after auth, `setTag('plan')` + `setContext('org')`, hard-fail source-map upload, `web-vitals` package + `browserTracingIntegration`, `replayIntegration({ maskAllText: true })`, port `maskString` to `shared/pii.ts`. 2 days. (P1-17, P1-18, P1-20)
-- **Frontend `clientLogger`.** Replace 71 `console.*` calls. Flip `no-console: error`. 1 day. (P2-3)
-- **Document content hash + signed-PDF archive + completion certificate.** ESIGN element 4 + 5 closure. 2 days. (P1-30, Marguerite §2)
-- **Block native e-sign for NY-state negotiable instruments.** Show wholesaler-license warning when state ∈ {IL, OK, SC, …}. 1 day. (P1-31)
-
-**Acceptance for week 3-6:** voice scorecard +5 points; `_MASTER-FINDINGS.md` §2 down by 25 items; eval gate blocks PRs that drop quality > 5%; 60-day redirect grace clock running on all old URLs.
+**Acceptance for week 1-2:** all 24 P0 items in `_MASTER-FINDINGS.md` §1 closed (Wave A 15 + Wave B 9); CI gates added; ESLint rules active; Cesar TX disclosure block + Aniyah Indian-Country block live; recovery console backend endpoints exist (UI Week 13). Total cost: ~12 days of focused work, parallelizable across 2 engineers + Claude.
 
 ---
 
-## §3. The 60-day scale-prep sprint (Week 7-14)
+## §2. The 30-day quality sprint (Week 3-6) — extended for Wave B microcopy + lifecycle-ops urgency
 
-**Goal:** Survive 100 customers without panic. DB connection ceiling, AI cost ceiling, job overlap ceiling, founder-time ceiling — all addressed before the first one fires at 2am on a Tuesday.
+**Goal:** Apple-stock-app feel where it isn't. Pricing-page split resolved; voice propagates across the auth wall; IA clarity (route collapse + settings cut + duplicate-route redirects); eval infrastructure v0; **plus Wave B "lifecycle-ops urgency" items: Vesper cancellation, Renoir reactivation, Magdalena import-ceiling, Boniface DR drill, monthly-close foundation, 1099 batch generator fix.**
 
-### Week 7-8 — Database + connection pool + jobs
+### Week 3 — Voice + microcopy + pricing decision + read-aloud TTS Phase 1
 
-- **pgBouncer in transaction-pooling mode.** App-side pool to 5; pgBouncer pool to 30. Buys to 1000+. (Adriana §6, Bjorn §3, Salma §4) 2 days.
-- **Postgres extensions migration.** `pg_stat_statements`, `pg_trgm`, `btree_gin`, `pgcrypto`. Restart Fly Postgres once. (Nadia-PG §2) 0.5 day.
-- **Index audit follow-up.** Top 13 missing indexes from Adriana §2: `inbox_messages` org-scoped, `team_messages` composite, lead/property/deal partial deleted_at, BRIN on append-only created_at on audit_log/system_activity, partial WHERE is_read=false on notifications. 1 day.
-- **Background-jobs migration to self-rescheduling setTimeout.** 6 P0 jobs (api_queue, lead_nurturing, finance_agent, autonomous_decision_executor, growth_automation, agent_proactive_engine). Per-job timeouts via AbortController. Persistent failure counter in `jobHealthLogs`. (Iván §3, Ines §3) 1 week.
-- **DLQ + outbox table for AI/Stripe/Twilio side-effects.** A Fly restart mid-job no longer double-charges. 2 days.
+- **Pricing decision (Thomas).** Operator-class. (P1-1) — 1.5d writing + 1d rollout
+- **Microcopy janitorial sweep + plain-English error reasons + glossary tooltips + Pax response shape v2.** Codify `docs/voice.md`. Convert `error-utils.ts` to status-code classification. **Pax prompt v2: open with one-sentence headline + 3 bullets max, prose only when needed (Beck §2 + Reyna §2 fix).** Glossary tooltip registry (~30 terms — "yellow letter," "decision queue," "pulse," "last touch"). 4d. (P1-2)
+- **Read-aloud TTS Phase 1 — `window.speechSynthesis.speak()` on every Pax response + every legal doc.** 2 lines of code per integration; ~12 sites. (Beck §2, Tobias §2, Mavis §2, Tariq §1) — 1d.
+- **Founder letter discoverability + `/security` page + curated `/changelog`.** PageShell footer. Ship `/security`. Stop scrubbing dev CHANGELOG. 2.5d. (P1-5, P1-7, P1-8)
+- **Cancellation flow that earns the FAQ + Vesper "Downgrade instead" wire-up.** ZIP export + T+12hr Thomas email. **Wire "Downgrade instead" to plan picker pre-selected to lower tier (Vesper §3 — currently calls `handleClose`).** Use cancellation-context usage panel as retention pitch. 2.5d. (P1-6 + Vesper §3)
 
-### Week 9 — AI cost ceiling + per-org rate limits + cascade async
+### Week 4 — IA collapse + empty-state archetypes + reactivation context + URL routes for lead/deal
 
-- **Per-org AI daily cost cap.** `org_ai_quota_daily_usd` (default $5 trial, $25 paid). Block at 80%, warn at 50%. Slack alert per-org daily AI spend > $X. (Sandeep §3, Theo §6) 2 days.
-- **Per-org rate limit on `/api/ai*`.** `keyGenerator: req.organization?.id || req.auth?.userId || req.ip`. (Ines §5) 0.5 day.
-- **Cascade quality-check → async sample 10%.** Reclaims ~600ms p95 across SIMPLE-tier surface. (Mateo §3, Theo §4) 1 day.
-- **Pax executive tool-loop streaming.** SSE between tool calls. Biggest TTFT win. (Mateo §3) 1.5 days.
-- **AI cost dashboard.** Aggregate `aiTelemetryEvents` org × feature × day → tokens/cost cents/count/p95 latency. Slack daily 9am. 1 day.
+- **Cut `/settings` 17 → 7 tabs.** 5d. (P1-26)
+- **Kill duplicate routes with 60-day redirects.** 1d. (P1-27)
+- **Empty-state archetypes (First Hello / Cleared / Empty Filter).** 4d. (P1-4, P1-10)
+- **NEW — Reactivation context endpoint + `eventType: 'reactivate'` written.** `/api/subscription/reactivation-context` returns last plan, tenure, grandfathered price, what's been added. 4d. (Renoir §1-§2)
+- **NEW — URL routes for lead-detail + deal-detail.** `/leads/:id`, `/deals/:id` + URL-sync sheets. 3d. (P1-28)
+- **NEW — Org-switcher in topbar.** Kill the 8-12 min nightly logout-login dance for VAs. 1d. (Reyna §2)
 
-### Week 10 — Stripe Tax + dunning channel + customer concentration
+### Week 5 — Eval harness + AI cleanup + Read-aloud Phase 2 + indirect prompt-injection guard
 
-- **Stripe Tax + tax_id_collection + automatic_payment_methods.** Multi-state nexus solved + Apple Pay surfaces. (Hana §2, Vikram §2) 1 day.
-- **Pin Stripe `apiVersion: '2024-11-20.acacia'`.** Add `payment_intent.requires_action` + `setup_intent.*` handlers. 0.5 day.
-- **Dunning SMS leg + in-app banner.** Email-only today. (Marisol §2, Olu §4) 2 days.
-- **Customer concentration alert.** >15% single-customer = alert; >25% = hard alert on `/founder-home`. (Marisol §3+§5) 1 day.
-- **Subscription event ledger + deferred-revenue table.** Immutable `subscription_history` (Marisol §7); `deferred_revenue` table per Hassiba §2. Recognition worker. 4 days.
+- **Eval harness v0.** 50-prompt golden set. 3d. (P1-35)
+- **Migrate top-10 direct-OpenAI bypass services.** 3d. (P1-36)
+- **Kill `gpt-4-turbo-preview`** (4 sites). 0.5d. (P1-37)
+- **Pax prompt v2 (rewrite from Theo §3.B + Beck §2 shape rule).** Versioned `prompts/pax_executive.v3.md`. Anthropic prompt caching. 1d. (P1-41)
+- **Indirect-prompt-injection guard.** Apply `sanitizePrompt` to DB-sourced inbox/lead/property fields before interpolation. Sandbox with deterministic delimiters. Post-validators on draft. 2d. (P0-14, Nadia-AI §2.A, Lazlo §3)
 
-### Week 11 — DSAR pipeline + sub-processor DPAs + audit log fan-out
+### Week 6 — Client observability + content-hash + ESIGN + Boniface restore drill + monthly-close kickoff
 
-- **DSAR pipeline (real one).** Public intake form (no auth required), magic-link verification, multi-tenant fan-out lookup across `leads.email`, `properties.owner_email`, `borrowers.email`, `signers.email`, `inbox_messages.from_email`, `signatures.signer_email`. (Anouk §2) 4 days.
-- **Sub-processor DPAs counter-signed.** 12 vendors. (Anouk §3, Greta) Ongoing — start outreach week 11; close all by week 18.
-- **Audit-log fan-out.** Login (in `hydrateUser`), team-role change, founder-admin mutation, document signed, mailer dispatched, permission denied. (Sam §4) 2 days.
-- **Lock down `audit_log` writes.** `REVOKE UPDATE, DELETE ON audit_log FROM acreos_app`; create `acreos_dba` role for compliance access. (Sam §4) 0.5 day.
-- **`/api/privacy/data-export` + `/api/privacy/data-delete` endpoints.** Per Sam §7. 2 days.
+- **Sentry hygiene.** `release: VITE_GIT_SHA`, `setUser` after auth, hard-fail source-map upload, `web-vitals`, `replayIntegration({ maskAllText: true })`. 2d. (P1-17, P1-18, P1-20)
+- **Frontend `clientLogger`.** Replace 71 `console.*`. 1d. (P2-3)
+- **Document content hash + signed-PDF archive + completion certificate.** 2d. (P1-30)
+- **NEW — Boniface restore drill (the first one, ever).** Drill 1: Postgres restore from snapshot to `acreos-db-restoretest`. Document RTO/RPO actual measured numbers. Commit Bronze tier (1hr/1hr) publicly. 1d to run + 0.5d to document runbook. (Boniface §1-§3)
+- **NEW — Lavender monthly-close kickoff: chart-of-accounts table.** Add `chart_of_accounts` table + `account_ledger_entries` (debit/credit framing). Migration only this week; recognition worker + trial-balance generator Week 10. 2d. (Lavender §1, Hilda §2)
 
-### Week 12 — Optimistic mutations + skeleton choreography + IA cross-page
-
-- **Optimistic-update sweep on top-5 verbs.** Kanban stage drag, task complete, lead status change, comment post, message send. Biggest perceived-latency win. (Bavo §2, Priya §2) 5 days.
-- **`<ContentReveal>` pattern across `/today`, `/leads`, `/properties`, `/deals`, `/inbox`.** Same `staggerItem` wraps skeleton AND content; shape-matched. (Bavo §6) 3 days.
-- **`layoutId` cross-page handoff: parcel-card → /parcels/:id hero.** First Apple-stock-tier interaction. (Lukas §3 S1, Kade §3 #9) Remove `<PageWrapper>` from `App.tsx:928-946` first. 2 days.
-
-### Week 13 — Founder-bottleneck mitigations (Olu §7)
-
-- **8 missing runbooks.** Clerk outage, Cloudflare outage, SES deliverability, Twilio 10DLC, e-sign stuck, GDPR delete, agent-misfire, founder-unavailable. (Olu §3, Beata §2) 1 day.
-- **Vendor-status tile on `/founder-home`.** Pulls from existing `externalStatusMonitor.ts`. (Olu §7 #2) 0.5 day.
-- **P0/P1 escalation buddy + ack-timer (30 min → SMS).** (Olu §7 #3) 0.5 day.
-- **GDPR + org-merge admin UIs.** Wrappers around `gdprService` and `storage.mergeLeads`. (Olu §7 #4) 2 days.
-- **Customer-context sidebar in `/admin/support` + saved-replies dropdown.** Cuts case-handling time roughly in half. (Olu §7 #5+#6, Kunle §2) 1.5 days.
-- **Synthetic checks (15-min cron): test email through SES + test SMS through Twilio + Stripe webhook fixture.** (Olu §7 #7) 1 day.
-- **Sophie human-in-loop guard for {refund, account_deletion, contract_terms, data_export}.** Force decisions inbox at any confidence. (Olu §7 #8) 0.5 day.
-
-### Week 14 — RBAC repair + activation telemetry + retention infra
-
-- **RBAC repair (Liana §1+§3).** Either implement real role distinction (acquisitions/marketing/finance) or collapse to four pragmatic roles. Honor `viewOnlyAssignedLeads` flag in `routes-leads.ts:73`. Make `getOrCreateOrg` re-check `isActive`. (Liana §3, Vincent §1) 2 days.
-- **Activation telemetry.** Wire `lib/telemetry.ts` events through `onboarding-v2`, both checklists, `ProductTour`. Define `activation_events` table. (Yuna §8) 3 days.
-- **Retention infra v0.** `retention_events`, `cohort_assignments`, `churn_reasons` tables. `/api/founder/cohort-retention?metric=user|revenue&days=7,30,90,365`. (Konstantin §2) 3 days.
-
-**Acceptance for week 7-14:** 100-customer tipping-point checks (Elliot §2) all green; founder-time ceiling moved from 35 to 60 customers; AI cost ceiling moved from 60 to 200 customers; first DPA round-up complete.
+**Acceptance for week 3-6:** voice scorecard +5 points; `_MASTER-FINDINGS.md` §2 down by 30 items; eval gate blocks PR drops > 5%; Read-aloud TTS Phase 1 live across Pax + legal docs; reactivation context endpoint live; first restore drill documented with measured RTO/RPO.
 
 ---
 
-## §4. The 90-day brand-and-narrative push (Week 15-26)
+## §3. The 60-day scale-prep sprint (Week 7-14) — extended for Wave B foundation gaps
 
-**Goal:** Brand belief locks onto specific customer + specific worldview. Voice is one person. Visual system at majority adoption. Lifecycle program covers pre-trial through win-back.
+**Goal:** Survive 100 customers without panic. **Wave B adds: deliverability foundation (Eleonora), DNS/cert pipeline (Cuthbert), realtime Redis pub/sub (Sigrún), monthly-close infrastructure (Lavender), 1099 batch (Olympia), recovery console UI (Coriander), legal-hold mechanism (Saskia/Lazlo/Margolis), supply-chain SBOM (Sigvard).**
 
-### Week 15-16 — Visual + design-system propagation
+### Week 7-8 — Database + connection pool + jobs + Eleonora deliverability foundation + Sigrún realtime + Cuthbert DNS
 
-- **Codemod hardcoded Tailwind color literals → `acr-*` tokens** (Calla §7). 1,844 hits across JSX. Lint rule: `text-(green\|red\|amber\|yellow)-[0-9]+` is CI fail outside `components/ui/`. 1 week.
-- **Build `<StatusBadge>` (consume `<StatusDot>`).** Codemod 4 local `getStatusColor` functions + 30 ad-hoc badges. (Calla §5) 1 day.
-- **Verb canon `lib/labels.ts`.** Codify `Save changes / Update / Apply / Submit / Confirm / Discard / New / Add / Create / Delete / Remove`. Codemod ~120 buttons. (Calla §3) 2 days.
-- **Page-header + heading-discipline propagation.** `<PageHeader>` from 12 → 50+ pages. Add `.acr-h1`, `.acr-h2`, `.acr-eyebrow` utilities. (Calla §6, Renske §6) 1 week.
+- **pgBouncer transaction-pooling** + **Postgres extensions migration** (incl. `pgvector` for Sayuri-Vatanen and `pg_trgm` for Anaïs) + **index audit**. 2d (P1-15) + 0.5d (P2-11) + 1d
+- **Background-jobs migration to self-rescheduling setTimeout.** 6 P0 jobs. 1w
+- **DLQ + outbox table.** 2d
+- **NEW — Eleonora deliverability foundation full.** Per-org DKIM, bounce/complaint feedback loop, ARC seal, IP warmup, per-org sender-reputation isolation. 4d. (Eleonora §1)
+- **NEW — Sigrún Redis pub/sub adapter.** Without it, broadcasts on machine A invisible to clients on machine B with `min_machines_running=2`. Consolidate to single `useRealtime()` connection. Convert War Room + Agent Debate to WebSocket subscribers. 1w. (Sigrún §1, Salma §4)
+- **NEW — Cuthbert white-label DNS/cert pipeline.** Pick one schema + one middleware. ACME pipeline (Caddy / Cloudflare-Origin-Certs / Lego). DNS-ownership verification. Redis pub/sub eviction across machines on tenant edits. Customer-facing CNAME instructions doc. **Or** explicit "white-label is paused" banner. **Founder decision required Week 7 — see Strategic Decision #4.** 1w. (Cuthbert §1)
 
-### Week 17-18 — Lifecycle + retention program
+### Week 9 — AI cost ceiling + per-org rate limits + cascade async + Sigvard SBOM
 
-- **14-message lifecycle program shipped end-to-end.** Welcome / re-entry / morning briefing / D7 cohort milestone / D30 NPS / pre-churn ladder / win-back T+0/T+2/T+7/T+30/T+90 / monthly newsletter / power-user / weekly-active digest. (Sigrid §3, Camila §4) 2 weeks.
-- **Activation cohort dashboard + churn-reason taxonomy + `cancellation_reasons` ledger.** 1 week.
+- **Per-org AI daily cost cap.** 2d
+- **Per-org rate limit on `/api/ai*`.** 0.5d
+- **Cascade async sample 10%.** 1d
+- **Pax tool-loop streaming.** 1.5d
+- **AI cost dashboard.** 1d
+- **NEW — Sigvard SBOM** + signed npm install enforcement + secrets-in-CI scanning. 1w. (Sigvard §1)
 
-### Week 19-20 — Spotlight (⌘K) v2
+### Week 10 — Stripe Tax + dunning channel + customer concentration + Lavender monthly-close + Olympia 1099 batch
 
-- **Server-side fuzzy search (`pg_trgm` similarity).** Replace in-memory `.filter().includes()` at `command-palette.tsx:581`. (Anya §8) 1 day.
-- **Matcher upgrade.** Bigram + acronym + substring. Recency × frequency LRU. (Anya §3.2) 0.5 day.
-- **Verb expansion 6 → ~30.** `verbs.ts` registry. Each verb declares: keywords, args, preview, executor. (Anya §3.4) 1 day.
-- **Pax inline preview + entity-resolution + scope filters (`in:leads`, `is:overdue`, `>$50k`).** (Anya §4) 2 days.
-- **Delete `/pax`, `/ai`, `/agents`, `/ai-team` routes (60-day redirect).** Conversation history → rail's history tab. Move Insights to `/today` cards. (Holm §7, Anya §7) 1 day.
-- **Discoverability: ⌘K topbar always visible on mobile; promote first-run toast from DEV to prod; "?" key opens shortcuts modal.** (Vesna P2-14, Anya §6) 0.5 day.
+- **Stripe Tax** + **pin Stripe `apiVersion`** + **dunning SMS leg** + **customer concentration alert** + **subscription event ledger** + **deferred-revenue table**. (Wave A — preserved.)
+- **NEW — Lavender monthly-close core.** Trial balance generator. GL-detail PDF. IIF/QBO journal-entry export. Backfill from Stripe. 4d. (Lavender §1, Hilda §2)
+- **NEW — Olympia 1099 batch generator.** Form 1099-INT + 1096 transmittal + IRS FIRE e-file submission. Multi-recipient. PDF + paper option. 4d. (Olympia §1)
 
-### Week 21-22 — Eval depth + prompt versioning + AI safety
+### Week 11 — DSAR pipeline + sub-processor DPAs + audit log fan-out + Saskia/Lazlo legal-hold
 
-- **Compliance disclosure post-validator.** Required state-specific sections present. Block delivery if missing. Move model to Opus 4.6 + extended thinking. (Theo §8 #7, Sayuri §2.3) 2 days.
-- **80-conversation Pax executive eval set.** Tool-call eval. Single + multi-turn. PR-blocking on banned-phrase + persona-leak. 3 days.
-- **Indirect-prompt-injection guard.** Apply `sanitizePrompt` to DB-sourced inbox/lead/property fields before interpolation. Sandbox with deterministic delimiters + "data not instructions" rule. Post-validators. (Nadia-AI §2.A) 2 days.
-- **Prompt versioning + A/B harness.** Prompt changes ship as `pax_v3` shadow → production after eval pass. 2 days.
+- **DSAR pipeline (real one).** 4d (Anouk §2)
+- **Sub-processor DPAs.** Ongoing — start outreach week 11; close all by week 18.
+- **Audit-log fan-out + lockdown.** 2d (Sam §4)
+- **NEW — Saskia/Lazlo/Margolis legal-hold mechanism.** `legal_holds` table + scope-resolution + `dataRetention.ts` LEFT JOIN exclusion + delete-blocker on every storage method + UI red banner. Compose `legalHold` org state from existing `simulated_actions` primitive (Margolis §1). 1w. (P0-23)
 
-### Week 23-26 — Founder dashboard rebuild + accessibility full pass + SEO substance
+### Week 12 — Optimistic mutations + skeleton choreography + IA cross-page + Aniyah BIA workflow + ML training instrumentation
 
-- **`/founder-home` rebuild as CEO daily window.** One paragraph: cohort metric + autonomy delta + one-thing-broke + one-thing-surprised. Founder-internal telemetry lives a click deeper. (Asher §8) 1 week.
-- **WCAG 2.2 AA full pass.** 55-site aria-label sweep; ChartPalette component using `--acr-chart-*` tokens; per-route `useDocumentTitle`; SC 2.4.11 focus-not-obscured fix; growth on dense compact rails to 24×24. (Devereux §6, Reuben) 2 weeks.
-- **SEO substance.** Per-page OG image; canonical link; per-page JSON-LD (FAQPage, Product, Offer, Article); SSR/prerender for marketing routes; MDN-tier content corpus on `/help/glossary` (APN, comp, motivation, etc.); 6 comparison pages (vs Pebble, vs PropStream). (Dilan §3) 2 weeks.
+- **Optimistic-update sweep on top-5 verbs.** 5d (Bavo §2, Priya §2)
+- **`<ContentReveal>` pattern across `/today`, `/leads`, `/properties`, `/deals`, `/inbox`.** 3d (Bavo §6)
+- **`layoutId` cross-page handoff: parcel-card → /parcels/:id hero.** 2d (Lukas §3 S1)
+- **NEW — Aniyah BIA workflow template** (manual operator-driven, not BIA-API-integrated). 1w. (Aniyah §3)
+- **NEW — Magnus ML training instrumentation.** `ml_training_snapshots` table; capture labels (deal outcomes, AVM-vs-actual, lead conversion) + feature snapshots at decision time. Defer model training to month 18+. 1w. (Magnus §1)
 
-**Acceptance for week 15-26:** primitives at >80% adoption; voice scorecard at 45/50; 14-message lifecycle program live; ⌘K is the spine; WCAG AA clean; organic search reachable for "land investing CRM," "tax-delinquent software," "seller financing portfolio."
+### Week 13 — Founder-bottleneck mitigations + Coriander recovery-console UI ship
+
+- **8 missing runbooks.** 1d (Olu §3, Beata §2)
+- **Vendor-status tile.** 0.5d
+- **P0/P1 escalation buddy + ack-timer.** 0.5d
+- **GDPR + org-merge admin UIs.** 2d
+- **Customer-context sidebar + saved-replies.** 1.5d (Olu §7 #5+#6, Kunle §2)
+- **Synthetic checks.** 1d
+- **Sophie HIL guard.** 0.5d
+- **NEW — Coriander recovery console UI ship (backends shipped Week 2).** Sessions list/revoke UI, 2FA-reset UI with identity-proof workflow + review queue, autopay-freeze UI, ownership-transfer UI with court-document upload, password-reset-link generator. 1w. (Coriander §1, Asher-takeover §4, Cleo §1, Martin §3)
+
+### Week 14 — RBAC repair + activation telemetry + retention infra + vector retrieval + search infrastructure
+
+- **RBAC repair** (Liana §1+§3) + add `va` role (Reyna §1) + `co_owners` relation (Blanco §1). 3d
+- **Activation telemetry.** 3d (Yuna §8)
+- **Retention infra v0.** 3d (Konstantin §2)
+- **NEW — Sayuri-Vatanen vector retrieval.** Migrate `embedding_vector` from jsonb → `vector(1536)`. IVFFlat or HNSW index. Cosine operator. Hybrid retrieval. Embedding refresh job. 1w. (Sayuri-Vatanen §1)
+- **NEW — Anaïs search infrastructure.** Wire `/api/search` to `fullTextSearch.search()`. Add accent-folding + phone normalization to existing tsvector indexer. 1d. (Anaïs §2)
+
+**Acceptance for week 7-14:** Wave A 100-customer tipping-point checks all green; **plus** deliverability foundation 8/10 (was 3/10), white-label TLS works for first reseller (or paused publicly), Redis pub/sub operational, monthly-close trial balance reconciles to bank, 1099 batch generator emits IRS-compliant FIRE-format files, recovery console UI shipped, legal-hold blocks deletes during pending litigation, vector retrieval at p99 < 50ms, fuzzy search wired everywhere ⌘K mounts.
 
 ---
 
-## §5. The 6-month roadmap (Week 27-52)
+## §4. The 90-day brand-and-narrative push (Week 15-26) — extended
+
+**Goal:** Brand belief locks. Voice is one person. Visual system at majority adoption. Lifecycle program covers pre-trial through win-back. **Wave B adds: migration in/out parity (Magdalena/Tobiah), DR Silver tier (Boniface), partner-API tier kickoff (Hartwell pilot), accessibility full pass (Beck/Tobias/Mavis/Earl).**
+
+### Week 15-16 — Visual + design-system propagation + migration in/out parity
+
+- **Codemod hardcoded Tailwind color literals → `acr-*` tokens** (Calla §7). 1w
+- **Build `<StatusBadge>` (consume `<StatusDot>`).** 1d
+- **Verb canon `lib/labels.ts`.** 2d
+- **Page-header + heading-discipline propagation.** 1w
+- **NEW — Magdalena migration-in cap raise + history preservation.** Raise import cap to 50K rows (chunked + background job). Add `tags`, `communications.csv`, `documents.zip`, `assignedTo`, `createdAt` preservation. 1w. (Magdalena §1)
+- **NEW — Tobiah migration-out single archive.** Consolidate four parallel export systems into one canonical `/api/export/everything` endpoint. Single ZIP. Single schema. 1w. (Tobiah §1)
+
+### Week 17-18 — Lifecycle + retention + reactivation + 6-segment win-back
+
+- **14-message lifecycle program shipped end-to-end.** 2w (Sigrid §3, Camila §4)
+- **Activation cohort dashboard + churn-reason taxonomy + `cancellation_reasons` ledger.** 1w
+- **NEW — Indigo 6-segment 2D matrix win-back.** reason × tier matrix; ethical-limit guardrails; ship-update flow fed from changelog. 1w. (Indigo §1-§4)
+- **NEW — Renoir reactivation flow ship.** "What's new since you left" engine fed by changelog. Welcome-back surface. Pre-filled checkout for last plan. Cancellation-survey-pulled-back-to-user. 4d. (Renoir §1-§2)
+
+### Week 19-20 — Spotlight (⌘K) v2 + Read-aloud Phase 2 (streaming TTS)
+
+- **Server-side fuzzy search (`pg_trgm` similarity)** — already wired Week 14. Now: **matcher upgrade** (bigram + acronym + substring), **verb expansion 6 → 30**, **Pax inline preview + entity-resolution + scope filters**, **delete `/pax`, `/ai`, `/agents` routes (60-day redirect)**, **discoverability promotion**. (Anya §2-§7)
+- **NEW — Tariq streaming TTS Phase 2.** ElevenLabs or OpenAI tts-1 streamed. Per-message Read-aloud upgrade from `speechSynthesis` to streaming. 2w. (Tariq §1, Beck §2)
+
+### Week 21-22 — Eval depth + prompt versioning + AI safety + DR Silver tier
+
+- **Compliance disclosure post-validator** (Opus 4.6 + extended thinking) + **80-conversation Pax executive eval set** + **Indirect-prompt-injection guard hardening** + **Prompt versioning + A/B harness**. (Theo §8, Sayuri §2.3, Nadia-AI §2.A — 1w each)
+- **NEW — Boniface DR Silver tier (target).** HA Postgres + WAL archiving. RTO 30 min / RPO 15 min. +$60/mo. 4d. (Boniface §2)
+- **NEW — Hartwell title-partner API pilot kickoff.** `POST /api/title-orders` endpoint + inbound title-status webhook + ALTA-Pillar-2 wire-instructions surface scaffolds. (Full implementation Phase 7.) 1w prep. (Hartwell §1)
+
+### Week 23-26 — Founder dashboard rebuild + accessibility full pass (incl. Beck/Tobias/Mavis/Earl/Yelena) + SEO substance
+
+- **`/founder-home` rebuild as CEO daily window.** 1w (Asher §8)
+- **WCAG 2.2 AA full pass.** 55-site aria-label sweep; ChartPalette; per-route titles; SC 2.4.11 fix. **Plus Wave B accommodations**: Lexend pairing + reading density mode (Beck §2-§4), "more time, less density" cognitive-a11y mode (Tobias §1), visible button affordances + larger taps (Mavis §1), picture-first parcel cards (Earl §1), focus mode + enforced quiet hours in-app + wizard save-state (Yelena §1). 2w (Devereux §6, Reuben §2 + Wave B §13)
+- **SEO substance.** 2w (Dilan §3)
+
+**Acceptance for week 15-26:** primitives at >80% adoption; voice scorecard at 45/50; 14-message lifecycle program live; ⌘K is the spine; WCAG AA clean across customer surfaces + Wave B accessibility accommodations live; Magdalena migration cap raised to 50K with full history preservation; Tobiah single-archive export shipped; Hartwell title pilot in flight.
+
+---
+
+## §5. The 6-month roadmap (Week 27-52) — extended for vertical sequencing
 
 ### Vertical: Note Investor (Q4 2026)
 
-- **`acquired_notes` data model.** Distinct path from "I sold my parcel and carried paper." (Linnea §1) 4 weeks.
-- **BPO + tape diligence workflow.** Cash-on-cash yield, YTM at three discount prices, payment-history scoring on import. 3 weeks.
-- **1098-INT batch generator.** January-only existential feature. Form 1096 transmittal. TIN capture. Box 2 (outstanding principal as of Jan 1) — requires year-boundary snapshot in schema. (Linnea §1, Wendell §4, Zerah §2) 4 weeks.
-- **Note assignment paperwork.** Allonge + Assignment of Mortgage/Deed of Trust. (Linnea §1) 2 weeks.
-- **Sophie agent expansion.** From half-trained read-only to full mode. (Ana §6) 4 weeks.
-- **Note-investor onboarding flow + `pax_tour` step rewrite.** (Yuna §5) 1 week.
+(Wave A — preserved.)
+- `acquired_notes` data model. 4w
+- BPO + tape diligence workflow. 3w
+- 1098-INT + 1099-INT batch generator (extends Olympia Phase-3 work). 4w
+- Note assignment paperwork. 2w
+- Sophie agent expansion. 4w
+- Note-investor onboarding flow + persona-vocabulary. 1w
 
-**Note-investor wedge target: Q1 2027 (week ~52). $300M TAM at $500/mo all-in (Ashok §2.2).**
+**Note-investor wedge target: Q1 2027 (week ~52). $300M TAM at $500/mo all-in.**
 
 ### Team-size readiness (concurrent with Note vertical)
 
-- **Per-seat pricing + admin-controlled provisioning.** Solo $249 / Operator (3 seats included, +$99/seat) $499 / Operation (10 seats, +$129/seat) $1,290 / Enterprise (custom, SSO line item, audit log, CSM). (Penelope §1+§4, Tegan §3) 1 week.
-- **Round-robin lead assignment.** Per-rep workload balance. (Penelope §1) 2 weeks.
-- **Manager dashboard with real per-rep data.** Pipeline filtered by `assigned_to`; daily activity rollup; commission tracking; bid comparison. (Penelope §1+§3, Vincent) 3 weeks.
-- **Slack/Teams integration.** Webhook out to channel; "send this lead to #acquisitions-pod"; `@mention` notifications. (Penelope §1) 2 weeks.
-- **Per-record owner enforcement + approval workflow on offers.** (Vincent §1, Penelope) 2 weeks.
+- **Per-seat pricing** + **round-robin lead assignment** + **manager dashboard with real per-rep data** + **Slack/Teams integration** + **per-record owner enforcement + offer approval workflow**.
+- **Plus Wave B**: `va` role + per-member activity report (Reyna §2); `co_owners` relation + dual-billing card + dual-tax-contact + LLC-EIN-on-Stripe-customer (Blanco §2-§3); successor / executor flow + death-cert intake + autopay holdback during gap (Martin §1-§3); Imelda-VA six-VA shop conditions.
 
-**Team-of-3 (Vincent) ship target: Q4 2026 (week ~38).**
-**Team-of-10 (Penelope) ship target: Q1 2027 (week ~50).**
+**Team-of-3 ship target: Q4 2026 (week ~38).**
+**Team-of-10 ship target: Q1 2027 (week ~50).**
 
-### Accessibility full pass (concurrent)
-
-- Coverage of every route + chart palette + focus management. (Devereux §6, Reuben) 4 weeks ongoing.
+### Accessibility full pass (concurrent — covered Phase 4)
 
 ---
 
@@ -248,81 +265,149 @@ This document converts the master findings into an **executable** sequence. Ever
 
 What AcreOS looks like at week 52 if every sprint above ships:
 
-- **Land Investor wedge: $10M ARR.** ~2,500 paying customers at $400/mo blended ARPU. Defensible.
-- **Note Investor live as second product.** 500 customers. $300/mo blended. Sophie full agent.
-- **Tax-Delinquent vertical scoping.** Marcus's 5-state-rules table real; auction calendars wired to county data via partnerships.
-- **Wholesale: NOT YET.** Defer to month 18 (Asher closing, Linnea, Trey, Brigid all align).
-- **Brand: locked.** Voice is one person across every surface. Persona architecture is enforced at lint, not vibes. ⌘K is the spine. Pax is a verb that lives in two shells (⌘K + rail), not seven.
-- **Compliance: SOC 2 Type 1 in flight.** Functional MFA (Clerk native), full audit-log coverage, sub-processor DPAs counter-signed, IR runbook + 1 tabletop exercise per quarter, data-deletion + export endpoints production-grade, content-hash on signed documents, completion certificates generated.
-- **Series-A: $12M at $60M post.** Ashok §1: contingent on (a) tier truth + event ledger + Stripe Tax (week 1-10 — done), (b) compliance posture (week 17-22 — in flight), (c) NRR decomposition + customer-concentration view (week 10 — done), (d) 10% MoM growth at $5M ARR. The 4 things Ashok §7 listed are checked off by week 24.
+- **Land Investor wedge: $10M ARR.** ~2,500 paying customers at $400/mo blended ARPU.
+- **Note Investor live as second product.** 500 customers. $300/mo blended.
+- **Tax-Delinquent vertical scoping.** Marcus's 5-state-rules table real; auction calendars wired.
+- **Wholesale: NOT YET.**
+- **Brand: locked.** Voice is one person. Persona architecture lint-enforced. ⌘K spine.
+- **Compliance: SOC 2 Type 1 in flight.** Functional MFA, full audit-log + legal-hold + recovery console + estate flow + monthly close + 1099 batch + restore drill at Silver tier (RTO 30/RPO 15) committed.
+- **Series-A: $12M at $60M post.** Ashok §1: contingent on (a) tier truth + event ledger + Stripe Tax + annual SKU (week 1-10 — done), (b) compliance posture (week 17-22 + Wave B legal-hold + recovery console — done), (c) NRR decomposition + customer-concentration (week 10 — done), (d) 10% MoM growth at $5M ARR. **Ashok's 4 things checked off by week 24.**
 - **Team: Thomas + 4 engineers + 1 ops/CS.** No earlier; no later.
-- **Multi-region: NOT YET.** Tripwires per Salma §1; `iad` correct until then.
-- **Family-office, Capital-markets, Wholesale, Imelda-grade Landlord: P3 (NOT YET).** Defer past month 12.
+- **Multi-region: NOT YET.**
+- **Family-office, Capital-markets, Wholesale, Imelda-grade Landlord, TIMO, Ag-REIT, RV-park, LP-fund, 1031-QI, Mineral, Ground-lease, Pre-development: P3.** Defer past month 12.
 
 ---
 
-## §7. What to NOT do (the explicit out-of-scope list)
+## §7. NEW — Phases 7-9 (Months 7-18)
+
+These are the Wave B-driven bigger projects that don't fit the 26-week core sprint plan but are essential to the 18-month picture.
+
+### Phase 7 — Ecosystem partner enablement (Months 7-9)
+
+**Driver:** Wave B Theme 7. 16 partner audits all converge on the same diagnosis: AcreOS has the framework but no partner-tier API.
+
+**Sequence:**
+
+| Sprint | Investment | Source | Effort | Revenue impact |
+|---|---|---|---|---|
+| Mo 7 | **Hartwell title-partner API full** — `POST /api/title-orders`, inbound title-status webhook, ALTA-Pillar-2 wire-instructions surface (out-of-band confirmation, encrypted PDF, signed), commitment/policy/Schedule-B exchange format, partner registry, volume-pricing tier | Hartwell §1-§3, Esther §1, Zephyr §1 | 6w | $895/file × 28-32 closings/mo at scale |
+| Mo 7-8 | **Stanton Lob depth + four-module consolidation** — NCOA at ingest, USPS Move Update, webhook listener, return-mail flow, template registry, A/B harness, batch endpoint. **Plus**: consolidate `directMailService.ts`, `directMail.ts`, `mailProvider.ts`, `lobService.ts` into one module | Stanton §1, Kira-A A1 | 2w | Enterprise discount + reduced fraud risk |
+| Mo 8 | **Beaufort auction integration** — replace `generateMockAuctionData` with calendar-federation API consumer; inbound auction-results webhook; deposit-rule JSONB; `auctionDirection: high_bid \| low_bid`; partner-credentials vault | Beaufort §3, Rina §2 | 1q | Federation deal possible |
+| Mo 9 | **Adelaide NAR / Reginald MLS** — first: trademark fix (1d). Then: RESO certification + flow-down agreements + sold-data restriction enforcement + render-layer fair-housing disclaimer wired to governance engine | Adelaide §1-§4, Reginald §1-§3 | 1q | NAR member-benefits inclusion |
+| Mo 9 | **Caspian skip-trace partnership remediation** — purpose-of-use attestation, lead-binding, suppression-list integration. (Mostly covered P0-5 + P1-34.) | Caspian §1 | covered | Continued partnership |
+
+**Partner-API tier acceptance:** four partners (title, mail, auction, MLS) on partner-tier APIs by month 9. Six engineering deliverables (per Stanton §1) shipped as a coherent partner program.
+
+### Phase 8 — Engineering specialization (Months 10-12)
+
+**Driver:** Wave B Batch 8 + Engineering specialization roadmap (§15 of `_MASTER-FINDINGS.md`).
+
+| Sprint | Investment | Source | Effort |
+|---|---|---|---|
+| Mo 10 | **Andrei Capacitor wrap shipping** — `npx cap add ios/android`. Apple Developer + Play Console enrollment. Background-location + iOS push (the two load-bearing plugins). App-store listing per Bertha §3-§4. | Andrei §1, Skye-A §6, Devika §1, Bertha §1-§3 | 4w |
+| Mo 10-11 | **Voice AI Phase 3 — voice-Pax field mobile, wake-word, barge-in, streaming TTS playback, language detection** | Tariq §1 | 4w |
+| Mo 11 | **Wenzeslaus ETL orchestrator** — watermarks, DLQ + replay, soft-delete propagation, cron orchestrator | Wenzeslaus §1 | 2w |
+| Mo 11 | **Ingrid vision-AI scheduled re-imaging + change detection** wired to `routes-portfolio-sentinel` | Ingrid §1 | 2w |
+| Mo 12 | **Yara EXIF / photo-hash pipeline** + **Vesna polish-and-poish** + **Beatriz LCP/CLS/INP optimization sprint** | Yara §1, Beatriz §1-§3 | 2w |
+
+### Phase 9 — Lifecycle-ops product line (Months 13-18)
+
+**Driver:** Wave B Theme 6. 25 lifecycle audits map to 8 phases.
+
+| Quarter | Phase | Source | Effort |
+|---|---|---|---|
+| Mo 13-14 | **Constance/Henrik bankruptcy panel** — post-petition payments separator, §704 trustee-mode, automatic-stay flagging, 11 USC §362 surfaces | Constance §1, Henrik §1 | 4w |
+| Mo 13-14 | **Penelope probate inventory** — DoD step-up basis, frozen "as-of DoD" snapshot, beneficiary entity, multi-state ancillary, 706 worksheet, fiduciary accounting | Penelope §1 | 4w |
+| Mo 14-15 | **Bartholomew/Phineas-IRS audit-packet endpoint** + **Jorge state-auditor surface** | Bartholomew §1, Phineas-IRS §1, Jorge §1 | 4w |
+| Mo 15-16 | **Persephone annual review composer** — IRR + cost basis + diversification + P&L + cohort + tax-optimization + usage-logs into one annual-review PDF artifact | Persephone §1 | 4w |
+| Mo 16-17 | **Eulalia RON build-out** — notary-officer flow + identity-proofing + audio-video recording + electronic notary journal + jurisdictional enforcement | Eulalia §1 | 4w |
+| Mo 17-18 | **Cassiopeia in-product expansion offer surface** — "expand to scale tier" flow that doesn't require a sales call | Cassiopeia §1 | 2w |
+| Mo 17-18 | **Galen concierge-program automation** — column mapper for Operator imports, de-dupe primitive, region-tune presets for AI agents, team-setup wizard, founder-mode demo runbook | Galen §1 | 4w |
+
+**Lifecycle-ops product-line acceptance:** all 25 Wave B Batch 7 audit gaps closed by month 18. AcreOS ships a recovery console, estate-executor flow, monthly close, 1099 batch, IRS audit packet, state-auditor surface, annual review, RON, expansion offer, concierge automation. **The lifecycle-ops surface is now a published product line, not a retroactive scramble per ticket.**
+
+---
+
+## §8. What to NOT do (extended explicit out-of-scope list)
 
 This list exists because every persona who flagged these is unanimous: doing them now is a strategic distraction.
 
-| # | Don't | Why | Who flagged it |
+### Wave A list (preserved — 12 items)
+
+| # | Don't | Why | Who flagged |
 |---|---|---|---|
-| 1 | **Don't build family-office multi-entity (`entity_groups`)** | Theodora explicitly: "I would not adopt AcreOS at any price" — 6-9 months engineering for an audience that won't move the needle. The `parent_organization_id` exists for white-label reseller; leave it. | Theodora |
-| 2 | **Don't build true capital-markets (PPM, waterfall, Form D, accreditation, tranching)** | Otto: "the underlying data AcreOS sits on, if it actually scales the originator side, is genuinely interesting" — but **as data feed for Bloomberg-of-seller-financed-paper, not as fake securitization engine.** Position upstream; defer downstream tooling. | Otto §1+§2 |
-| 3 | **Don't reach for Customer.io / Iterable / Braze before 1,000 customers** | Markdown templates + own `emailService` + transport (SendGrid/Postmark) is enough. Sigrid §3 + Camila both: ship the 14-message program first; lifecycle gap is content + transport, not platform. | Sigrid, Camila |
-| 4 | **Don't ship Wholesale, Tenant CRM, or full Subdivision before Land hits $10M ARR** | Linnea + Trey + Brigid + Imelda all said: renaming a column isn't a data model. Each is a 1-3 quarter build. Note-Investor next (Sophie already half-trained); Tax-Delinquent third; Wholesale = 36-month decision. | Linnea, Trey, Brigid, Imelda, Marcus, Ana, Asher |
-| 5 | **Don't add a 5th theme; don't ship a "Landlord" persona slot** | The persona-architecture trap is "almost every persona" — build for one until that one wins. Imelda flagged "20% built; almost a separate product." | Imelda, Wendell |
-| 6 | **Don't build a "real estate attorney"-grade purchase-contract layer in-house** | Whitman §2: integrate doc-prep service (Smokeball, Texas Title Forms, FAR/BAR vendor) instead. State-by-state attorney review of a generated contract is a 10-attorney problem. | Whitman §2 |
-| 7 | **Don't ship audio sound effects at launch** | Sven §4: "AcreOS hasn't earned the right to make sound yet." Brief §13 forbids visual confetti; the audio equivalent is forbidden by extension. Web-haptic vocab (4 events) instead. **Either ship 2 sounds carefully or rewrite the Settings copy that promises soft-clicks-and-a-chime.** | Sven §4 |
-| 8 | **Don't run Product Hunt as the launch moment** | Greta §6: save the launch for the milestone that earns press coverage (10K users / $10M ARR / Note vertical opening). Product Hunt is a single-day spike that distracts from press readiness. | Greta |
-| 9 | **Don't migrate to multi-region before the tripwires fire** | Salma §1: (a) Canadian/EU residency-clause customer, (b) one non-iad metro >150 paying orgs, (c) <99.95% SLA contract. None of these fire at 100 customers. | Salma §1 |
-| 10 | **Don't hire a "support team" before fixing the L2 escalation gap** | Olu §1: the agent layer is genuinely above-bar. The gap is human-fallback for the *uncommon path*. One ops hire at customer ~30 + escalation buddy is the right shape. Not 4 support engineers. | Olu |
-| 11 | **Don't enable real-time voice AI ($0.30/call) before adoption signals justify** | Sandeep + Mateo. Wild card line item; defer until product-market signal. | Sandeep, Mateo |
-| 12 | **Don't ship `enable Atlas/Sophie/Forge in customer UI` even by accident** | This is the most-cited finding in the audit (10 personas flagged it). Brand belief = three named coworkers. Customers see Pax. Lint enforces. Period. | Asher, Vesna, Mira, Hiroko, Tomás, Theo, Yusuf, Joaquín, Eden, Ana |
+| 1 | Don't build family-office multi-entity | Theodora explicit no | Theodora |
+| 2 | Don't build true capital-markets (PPM, waterfall, Form D) | Otto: position upstream as data feed | Otto |
+| 3 | Don't reach for Customer.io / Iterable / Braze before 1,000 customers | Sigrid + Camila: ship 14-message program first | Sigrid, Camila |
+| 4 | Don't ship Wholesale, Tenant CRM, full Subdivision before Land hits $10M ARR | Linnea + Trey + Brigid + Imelda: renaming != data model | Linnea, Trey, Brigid, Imelda, Marcus, Ana, Asher |
+| 5 | Don't add a 5th theme; don't ship a "Landlord" persona slot | Imelda: 20% built | Imelda, Wendell |
+| 6 | Don't build a "real estate attorney"-grade purchase-contract layer in-house | Whitman: integrate doc-prep service | Whitman |
+| 7 | Don't ship audio sound effects at launch | Sven: hasn't earned the right | Sven |
+| 8 | Don't run Product Hunt as the launch | Greta: save for milestone | Greta |
+| 9 | Don't migrate to multi-region before tripwires | Salma | Salma |
+| 10 | Don't hire "support team" before fixing L2 escalation gap | Olu | Olu |
+| 11 | Don't enable real-time voice AI before adoption signals | Sandeep + Mateo | Sandeep, Mateo, Tariq |
+| 12 | Don't ship persona codenames in customer UI even by accident | 13 personas | Asher, Vesna, Mira, Hiroko, Tomás, Theo, Yusuf, Joaquín, Eden, Ana, Sigfried, Coriander, Lila |
+
+### Wave B additions (10 new items)
+
+| # | Don't | Why | Who flagged |
+|---|---|---|---|
+| 13 | **Don't build a TIMO institutional product (timberland fund tooling).** | Burt: "no, and it is not trying to. Leave off the roadmap." | Burt |
+| 14 | **Don't build the ag-REIT institutional farmland product (farm-manager-tenant-operator triangle).** | Frederick: "selling AcreOS to ag-REITs as it stands today would be selling a CRM to people who don't have a sales pipeline." | Frederick |
+| 15 | **Don't build the LP-fund full stack (capital accounts, NAV, waterfall, K-1, audit packet).** | Tristan + Preston + Rashad converge: zero plumbing today; "vocabulary without plumbing." Camille-institutional confirms aggregator angle is more interesting than fund-tooling. | Tristan, Preston, Rashad, Camille-inst |
+| 16 | **Don't build the 1031-QI back-office partner integration.** | Kassidy: "a deadline calendar with a PDF generator stapled to it." Get items 1-10 of in-house exchange shipping right first. | Kassidy |
+| 17 | **Don't build the RV-park / mixed-use developer SKU.** | Lila: AcreOS is front-of-funnel only; integrate Procore/Buildertrend on the back end if at all. Don't pretend you carry from raw dirt to stabilized 200-pad park. | Lila |
+| 18 | **Don't build the ground-lease / cell-tower / pad-site / commercial-land vertical.** | Quentin + Sebastian: residential lease schema is wrong shape. | Quentin, Sebastian |
+| 19 | **Don't build the mineral-rights vertical.** | Saoirse: 12-month build with domain expert in the room. Don't market "Land OS" as a minerals product. | Saoirse |
+| 20 | **Don't build the pre-development (730-day cycle) product surface.** | Otto: `developer` enum exists in `businessType` but `dueDiligenceEngine` has 3 BusinessDDType values none of which are mine. The mismatch is the whole story. | Otto |
+| 21 | **Don't build full i18n infrastructure until a paying second-locale customer demands it.** | Nakamura: 12-week build, not a config flag. Confirmed by Camille-FC, Esperanza, Mateus, Linh, Heng. Defer 12 months unless paying customer demands FR-CA or ES-MX. | Nakamura, Camille-FC, Esperanza, Mateus, Linh, Heng |
+| 22 | **Don't build a Salesforce ISV listing until a Penelope-tier customer demands it.** | Iolanda: 6w project + AppExchange listing process. | Iolanda |
 
 ---
 
-## §8. Per-week sprint breakdown (first 90 days)
+## §9. Per-week sprint breakdown (first 90 days) — extended
 
-Assumes one engineer + Claude (per CLAUDE.md). Each week ships in canary first; 24-48hr soak before flag-flip.
+Assumes one engineer + Claude. Each week ships in canary first; 24-48hr soak before flag-flip.
 
-| Week | Sprint | Deliverable | Owner |
-|---|---|---|---|
-| **1** | Tier truth + R1+R4 + Idempotency-Key wire | Single `shared/billing/tier-pricing.ts`; founder-check leak fixed; Clerk MFA migrated; client UUID per mutation in `apiRequest` | Thomas + 1 eng |
-| **2** | E-sign idempotency + Twilio replay + F1+F2 + encryption consolidation | E-sign row lock; Twilio MessageSid unique; SSRF guard; SendGrid event webhook; invite-token hash | 1 eng |
-| **3** | Pricing decision + microcopy sweep + founder letter discoverability | Operator-class tiers live; voice `docs/voice.md`; `/security` page; curated `/changelog`; cancellation flow | Thomas + design + 1 eng |
-| **4** | Settings 17→7 + duplicate-route redirects + empty-state archetypes | 7 settings tabs; 6 redirects; 3 archetypes shipped; `<FirstDayHero>` for `/today` zero-data | 1 eng |
-| **5** | Eval harness v0 + AI bypass migration + deprecated-model kill + Pax v2 | 50-prompt golden set; 10 services migrated; `gpt-4-turbo-preview` removed; Pax exec prompt rewritten + cached | 1 eng |
-| **6** | Sentry hygiene + content hash + ESIGN element 4+5 closure | `release` tag + setUser; web-vitals; replay PII mask; `documentContentHash` + signed-PDF archive; NY-state block | 1 eng |
-| **7** | pgBouncer + Postgres extensions + index audit | App-side pool 5; pg_stat_statements live; 13 indexes added | 1 eng |
-| **8** | Background jobs migration to setTimeout + DLQ | 6 P0 jobs self-rescheduling; outbox table; per-job timeout | 1 eng |
-| **9** | AI cost ceiling + per-org rate limit + cascade async + tool-loop streaming | `org_ai_quota_daily_usd`; per-feature p95/cost dashboard; SSE Pax exec | 1 eng |
-| **10** | Stripe Tax + Stripe pinning + dunning SMS + customer concentration + ledger + deferred revenue | `automatic_tax: enabled`; apiVersion pinned; SMS dunning; concentration alert; `subscription_history` + `deferred_revenue` tables | 1 eng |
-| **11** | DSAR pipeline + DPA outreach + audit log fan-out + audit lockdown | Public DSAR intake → fan-out; audit-log fan-out covers logins/role-changes/founder-admin/sign/dispatch/denials; `REVOKE UPDATE,DELETE` | 1 eng |
-| **12** | Optimistic mutations + skeleton choreography + layoutId hero handoff | 5 verbs optimistic; `<ContentReveal>` on 5 surfaces; parcel-card → /parcels/:id morph | 1 eng |
-| **13** | Founder-bottleneck mitigations | 8 missing runbooks; vendor-status tile; escalation buddy; GDPR/org-merge UI; customer-context sidebar; saved-replies; synthetic checks; Sophie HIL guard | 1 eng + Thomas |
-| **14** | RBAC repair + activation telemetry + retention infra | 4 pragmatic roles; `viewOnlyAssignedLeads` honored; `activation_events`/`retention_events`/`cohort_assignments`/`churn_reasons` tables | 1 eng |
-| **15-16** | Visual primitives propagation | acr-* token codemod (1,844 hits); `<StatusBadge>`; verb canon; PageHeader propagation | 1 eng |
-| **17-18** | 14-message lifecycle program | Welcome / re-entry / morning-briefing / D7 / D30-NPS / pre-churn ladder / win-back / newsletter / power-user | 1 eng + design |
-| **19-20** | ⌘K v2 + delete `/pax` route | Server-side `pg_trgm`; matcher upgrade; verb expansion; Pax inline preview; rail-as-only-Pax-page | 1 eng |
-| **21-22** | Eval depth + compliance post-validator + injection guard + prompt versioning | 80-conversation Pax exec eval; compliance Opus + post-validator; sanitize DB-sourced; `pax_v3` shadow harness | 1 eng |
-| **23-26** | `/founder-home` rebuild + WCAG AA full pass + SEO substance | CEO daily window; 55-site aria; ChartPalette; per-route titles; per-page OG/JSON-LD; SSR marketing routes; MDN-tier glossary | 1 eng + design |
+| Week | Sprint | Wave A deliverables | NEW Wave B deliverables | Owner |
+|---|---|---|---|---|
+| **1** | Tier truth + R1+R4 + Idempotency-Key | Single `tier-pricing.ts`; founder-check fixed; Clerk MFA migrated; client UUID-per-mutation | **+ priceYearly + billingInterval + Magnolia annual SKU foundation; + hardcoded EIN kill (Phineas/Olympia/Hilda/Martin); + 1099-INT shape fix (Olympia)** | Thomas + 1 eng |
+| **2** | E-sign idempotency + Twilio + F1+F2 + encryption | E-sign row lock; Twilio MessageSid unique; SSRF; SendGrid event webhook; invite-token hash | **+ Cesar TX §5.069 disclosure block; + Aniyah `landStatus` enum + LAR overlay; + Sigfried sunset-date on borrower endpoints; + Coriander recovery-console backend scaffold; + Eleonora deliverability foundation kickoff (DKIM + List-Unsubscribe)** | 1 eng |
+| **3** | Pricing decision + microcopy + founder letter | Operator-class tiers; voice `docs/voice.md`; `/security` page; curated `/changelog` | **+ Pax response shape v2 (headline + 3 bullets); + Read-aloud TTS Phase 1 (`speechSynthesis`); + glossary tooltip registry; + Vesper "Downgrade instead" wire-up** | Thomas + design + 1 eng |
+| **4** | Settings 17→7 + duplicate routes + empty states | 7 settings tabs; 6 redirects; 3 archetypes; FirstDayHero | **+ /api/subscription/reactivation-context; + URL routes for /leads/:id, /deals/:id; + org-switcher in topbar (Reyna)** | 1 eng |
+| **5** | Eval harness + AI bypass migration + Pax v2 + injection guard | 50-prompt golden set; 10 services migrated; `gpt-4-turbo-preview` killed; Pax exec rewritten + cached | **+ indirect-prompt-injection guard (Lazlo + Nadia-AI)** | 1 eng |
+| **6** | Sentry hygiene + content hash + ESIGN | `release` tag + setUser; web-vitals; replay PII mask; documentContentHash + signed-PDF archive | **+ Boniface restore drill (the first one); + Lavender chart-of-accounts table migration** | 1 eng |
+| **7** | pgBouncer + Postgres extensions + index audit + foundation infra | App-side pool 5; pg_stat_statements live; 13 indexes added | **+ pgvector + pg_trgm extensions; + Eleonora full deliverability foundation; + Sigrún Redis pub/sub adapter; + Cuthbert white-label DNS/cert pipeline (founder strategic decision required)** | 1 eng |
+| **8** | Background jobs + DLQ + supply chain | 6 P0 jobs self-rescheduling; outbox table | **+ Sigvard SBOM + signed npm install + secrets-in-CI** | 1 eng |
+| **9** | AI cost ceiling + per-org rate limit + cascade async + tool-loop streaming | `org_ai_quota_daily_usd`; per-feature p95/cost dashboard; SSE Pax exec | (Wave A only) | 1 eng |
+| **10** | Stripe Tax + dunning SMS + customer concentration + ledger + close core | `automatic_tax`; apiVersion pinned; SMS dunning; concentration alert; `subscription_history` + `deferred_revenue` | **+ Lavender trial-balance generator + GL-PDF + IIF/QBO journal export; + Olympia 1099 batch generator (1099-INT + 1096 + IRS FIRE)** | 1 eng |
+| **11** | DSAR + DPA outreach + audit log + legal-hold | Public DSAR intake → fan-out; audit-log fan-out; REVOKE | **+ Saskia/Lazlo/Margolis legal-hold mechanism + UI red banner + delete-blocker** | 1 eng |
+| **12** | Optimistic mutations + skeleton choreography + layoutId hero + ML instrumentation | 5 verbs optimistic; ContentReveal; parcel-card → /parcels/:id morph | **+ Aniyah BIA workflow template; + Magnus ML training instrumentation** | 1 eng |
+| **13** | Founder-bottleneck mitigations + Coriander recovery console UI | 8 missing runbooks; vendor-status tile; escalation buddy; GDPR/org-merge UI; customer-context sidebar; saved-replies; synthetic checks; Sophie HIL guard | **+ Coriander recovery console UI (sessions + 2FA reset + autopay-freeze + ownership-transfer + password-reset-link generator)** | 1 eng + Thomas |
+| **14** | RBAC repair + activation telemetry + retention infra + vector + search | 4 pragmatic roles; `viewOnlyAssignedLeads` honored; activation_events/retention_events/cohort_assignments/churn_reasons | **+ `va` role + `co_owners` relation; + Sayuri-Vatanen pgvector retrieval; + Anaïs search infrastructure wiring** | 1 eng |
+| **15-16** | Visual primitives propagation + migration in/out parity | acr-* token codemod; StatusBadge; verb canon; PageHeader | **+ Magdalena 50K row migration cap + history preservation; + Tobiah single-archive export consolidation** | 1 eng |
+| **17-18** | 14-message lifecycle program + Indigo win-back + Renoir reactivation | Welcome / re-entry / morning-briefing / D7 / D30-NPS / pre-churn ladder / win-back | **+ Indigo 6-segment 2D matrix; + Renoir reactivation surface (welcome-back, what's-new, pre-filled checkout)** | 1 eng + design |
+| **19-20** | ⌘K v2 + delete `/pax` route + streaming TTS Phase 2 | Server pg_trgm; matcher upgrade; verb expansion; rail-as-only-Pax-page | **+ Tariq streaming TTS (ElevenLabs or OpenAI tts-1)** | 1 eng |
+| **21-22** | Eval depth + compliance post-validator + injection hardening + DR Silver | 80-conversation Pax eval; compliance Opus + post-validator; sanitize DB-sourced; pax_v3 shadow harness | **+ Boniface DR Silver tier (HA Postgres + WAL archiving, RTO 30/RPO 15); + Hartwell title-pilot endpoint scaffolds** | 1 eng |
+| **23-26** | /founder-home rebuild + WCAG AA full pass + SEO substance + Wave B accessibility accommodations | CEO daily window; 55-site aria; ChartPalette; per-route titles; per-page OG/JSON-LD; SSR marketing routes; MDN-tier glossary | **+ Beck Lexend pairing + reading density; + Tobias cognitive-a11y mode; + Mavis older-user accommodations; + Earl picture-first; + Yelena focus mode + enforced quiet hours + wizard save-state** | 1 eng + design |
 
-**Total cost estimate at one engineer + Claude per week: ~26 weeks, with ~30% buffer for surprises = 6 calendar months. Two engineers parallelize most of weeks 7-26 to ~16 weeks.**
+**Total cost estimate at one engineer + Claude per week: ~26 weeks plus Phases 7-9 (months 7-18); two engineers parallelize most of weeks 7-26 to ~16 weeks.**
 
 ---
 
-## §9. Success metrics (how we know each sprint shipped)
+## §10. Success metrics (how we know each sprint shipped)
 
 | Sprint | Pass criterion |
 |---|---|
-| Week 1-2 (launch readiness) | All 12 P0 in `_MASTER-FINDINGS.md` §1 closed; ESLint guard live; canary blue; zero double-charges in soak. |
-| Week 3-6 (quality sprint) | Voice scorecard from 32/50 → 40/50 (Mira §8); empty-state coverage 35 ad-hoc → 0; `/settings` 17 → 7 tabs; eval gate blocks PR drops > 5%. |
-| Week 7-14 (scale prep) | Elliot §2 100-customer tipping-point checks all green; AI cost at 100 customers projected from $24K/mo → $10K/mo (60% recoverable per Sandeep §2); founder-time per week (Olu) projected ≤ 15 hrs at 50 customers. |
-| Week 15-26 (brand push) | `acr-*` token adoption ≥80%; lifecycle program live (12 of 14 messages firing); ⌘K is the spine (Holm §7 + Anya §1 verdict); WCAG AA clean across customer surfaces. |
-| 6-month (vertical + team) | Note Investor wedge: 50 paying note customers; Sophie agent at full mode; Team-of-3 product live (Vincent's 5 questions answered yes); team-of-10 product in canary. |
-| 12-month | $10M ARR Land + $1.5M ARR Note; Series-A IC memo (Ashok §1) clears all 4 gating items; SOC 2 Type 1 audit kicked off; brand voice = one person across every surface. |
+| Week 1-2 (launch readiness, Wave A + B P0s) | All 24 P0 items in `_MASTER-FINDINGS.md` §1 closed; ESLint guards live; canary blue; zero double-charges in soak; `payerEin: "00-0000000"` removed; Cesar TX disclosure block + Aniyah Indian-Country block live; recovery console backend endpoints exist. |
+| Week 3-6 (quality sprint) | Voice scorecard 32 → 40/50; empty-state coverage 35 ad-hoc → 0; `/settings` 17 → 7 tabs; eval gate blocks PR drops > 5%; Read-aloud TTS Phase 1 live; reactivation context endpoint live; first restore drill documented. |
+| Week 7-14 (scale prep) | Elliot §2 100-customer tipping-point checks all green; AI cost at 100 customers projected $24K → $10K/mo; founder-time per week ≤ 15 hrs at 50 customers; **plus**: deliverability 8/10 (was 3/10), white-label TLS works for first reseller (or paused publicly), Redis pub/sub operational, monthly close trial-balance reconciles to bank, 1099 batch generates IRS-compliant FIRE files, recovery console UI shipped, legal-hold blocks deletes during pending litigation, vector retrieval p99 < 50ms, fuzzy search wired everywhere ⌘K mounts. |
+| Week 15-26 (brand push) | acr-* token adoption ≥80%; lifecycle program 12 of 14 messages firing; ⌘K is the spine; WCAG AA clean + Wave B accommodations live; Magdalena 50K migration shipped; Tobiah single-archive export shipped; Hartwell title pilot in flight; DR Silver tier committed publicly. |
+| 6-month (vertical + team) | Note Investor wedge: 50 paying note customers; Sophie agent at full mode; Team-of-3 product live (Vincent + Reyna `va` role); team-of-10 product in canary; **plus**: title-partner-API tier live with 1+ pilot title agency; lifecycle-ops phase 9 sprint kicked off. |
+| 12-month | $10M ARR Land + $1.5M ARR Note; Series-A IC memo (Ashok §1) clears all 4 gating items + Wave B compliance posture (recovery console + estate flow + monthly close + 1099 batch + restore-drill-Silver-tier all shipped); SOC 2 Type 1 audit kicked off; brand voice = one person across every surface; **plus**: Hartwell + Stanton + Beaufort + Adelaide partner-API tier live; Wave B vertical-non-fits explicitly published as out-of-scope. |
+| 18-month | Phase 9 lifecycle-ops product line shipped (recovery console, estate, bankruptcy, probate, IRS audit packet, state auditor, annual review, RON, expansion offer, concierge automation). 211-persona audit gaps reduced by ≥85%. |
 
 ---
 
-*— Master action plan · 2026-05-01 · cohering 86 audits · directly executable per CLAUDE.md (one engineer + Claude pair).*
+*— Master action plan · 2026-05-01 · cohering 211 audits · directly executable per CLAUDE.md (one engineer + Claude pair). After this synthesis the audit cycle closes; the next deliverable is a 6-month progress check, not another audit wave.*
