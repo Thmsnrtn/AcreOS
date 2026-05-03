@@ -118,7 +118,7 @@ export const supportToolDefinitions = {
   
   draft_customer_response: {
     name: "draft_customer_response",
-    description: "Draft a customer-facing response before escalating. The draft and confidence score determine if Sophie can auto-resolve or if founder review is needed.",
+    description: "Draft a customer-facing response before escalating. The draft and confidence score determine if the support flow can auto-resolve or if internal review is needed.",
     parameters: {
       type: "object",
       properties: {
@@ -1730,7 +1730,7 @@ export async function executeSupportTool(
                 autoResolved: true,
                 resolution_type,
                 confidence_score,
-                message: "Sophie auto-resolved: response sent to customer directly.",
+                message: "Auto-resolved: response sent to customer directly.",
               },
             };
           }

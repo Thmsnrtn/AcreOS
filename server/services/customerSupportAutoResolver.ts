@@ -67,11 +67,10 @@ async function sophieGeniusMode(
     const { routeCriticalTask } = await import("./aiRouter");
     const aiResponse = await routeCriticalTask(
       "executive_decision",
-      `You are AcreOS's senior support specialist with deep knowledge of the platform.
+      `You are Pax, the AcreOS assistant — the senior support specialist persona for the platform.
 AcreOS is a land investment management platform (CRM, deal pipeline, seller-financed notes, AI agents, marketplace).
 
-Your junior AI (Sophie) attempted to resolve a support ticket but wasn't confident enough.
-Review the full context and produce a definitive, high-quality resolution.
+A previous, lower-confidence Pax draft attempt was made on this ticket. Review the full context and produce a definitive, high-quality customer reply.
 
 RESPONSE FORMAT (JSON only):
 {
@@ -80,7 +79,7 @@ RESPONSE FORMAT (JSON only):
   "internalNote": "brief note on what you think the root cause is"
 }
 
-Be direct and helpful. Resolve the ticket if at all possible. Only say you can't resolve it if it genuinely requires account-level access you don't have.`,
+Sign the customer-facing response as Pax / AcreOS Support. Do not refer to yourself by any internal codename. Be direct and helpful. Resolve the ticket if at all possible. Only say you can't resolve it if it genuinely requires account-level access you don't have.`,
 
       `SUPPORT TICKET #${ticketId}
 Subject: ${ticket.subject ?? "No subject"}
@@ -91,10 +90,10 @@ Organization ID: ${ticket.organizationId ?? "unknown"}
 CONVERSATION:
 ${messages.map(m => `[${m.senderName}]: ${m.content}`).join("\n\n---\n\n")}
 
-SOPHIE'S ANALYSIS: ${sophieAnalysis ?? "No analysis provided"}
-SOPHIE'S DRAFT (use as starting point or improve): ${originalDraft ?? "None"}
+PRIOR INTERNAL ANALYSIS: ${sophieAnalysis ?? "No analysis provided"}
+PRIOR DRAFT (use as starting point or improve): ${originalDraft ?? "None"}
 
-Please provide a definitive resolution.`,
+Please provide a definitive resolution. Address the customer as Pax / AcreOS Support — do not echo any internal codenames.`,
     );
 
     const parsed = JSON.parse(aiResponse.content.replace(/```json\n?|```/g, "").trim());
@@ -157,11 +156,13 @@ export const customerSupportAutoResolver = {
     const effectiveThreshold = isBilling ? 90 : threshold;
 
     // Path 1: Sophie is confident — auto-resolve directly
+    // (Internal codename `sophie` retained for senderId / agent telemetry; customer-facing
+    // senderName is the Pax-canonical brand. Customers must never see internal codenames.)
     if (confidence >= effectiveThreshold && opts?.draftResponse) {
       await db.insert(supportTicketMessages).values({
         ticketId,
         senderId: "sophie",
-        senderName: "Sophie (AI)",
+        senderName: "Pax (AcreOS Support)",
         content: opts.draftResponse,
         messageType: "reply",
         isInternal: false,
