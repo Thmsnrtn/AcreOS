@@ -189,6 +189,7 @@ const FounderIntegrationsPage = React.lazy(() => import("@/pages/founder/integra
 const FounderAiCostsPage = React.lazy(() => import("@/pages/founder/ai-costs"));
 const FounderDsarPage = React.lazy(() => import("@/pages/founder/dsar"));
 const FounderSubProcessorsPage = React.lazy(() => import("@/pages/founder/sub-processors"));
+const FounderRecoveryConsolePage = React.lazy(() => import("@/pages/founder/recovery-console"));
 const DealUnderwritingPage = React.lazy(() => import("@/pages/deal-underwriting"));
 const TeamKPIPage = React.lazy(() => import("@/pages/team-kpi"));
 const SovereignV13Page = React.lazy(() => import("@/pages/sovereign-v13"));
@@ -596,6 +597,9 @@ function Router() {
       </Route>
       <Route path="/founder/sub-processors">
         {() => <FounderProtectedRoute component={FounderSubProcessorsPage} />}
+      </Route>
+      <Route path="/founder/recovery-console">
+        {() => <FounderProtectedRoute component={FounderRecoveryConsolePage} />}
       </Route>
       <Route path="/marketplace">
         {() => <FlaggedRoute route="/marketplace" component={MarketplacePage} />}
