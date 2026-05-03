@@ -1,6 +1,7 @@
 import { AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useBrandName } from "@/hooks/use-white-label";
+import { ReadAloudButton } from "@/components/ReadAloudButton";
 
 type RequiredDisclaimerType = "financial" | "legal" | "ai" | "valuation";
 
@@ -24,6 +25,7 @@ function disclaimerFor(type: RequiredDisclaimerType, brand: string): string {
 
 export function RequiredDisclaimer({ type, className }: RequiredDisclaimerProps) {
   const brandName = useBrandName();
+  const text = disclaimerFor(type, brandName);
   return (
     <div
       data-testid={`required-disclaimer-${type}`}
@@ -33,9 +35,12 @@ export function RequiredDisclaimer({ type, className }: RequiredDisclaimerProps)
       )}
     >
       <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0" />
-      <p className="text-xs text-amber-800 dark:text-amber-200">
-        {disclaimerFor(type, brandName)}
-      </p>
+      <p className="text-xs text-amber-800 dark:text-amber-200 flex-1">{text}</p>
+      <ReadAloudButton
+        text={text}
+        data-testid={`required-disclaimer-${type}-read-aloud`}
+        className="flex-shrink-0"
+      />
     </div>
   );
 }

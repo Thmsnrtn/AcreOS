@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
+import { ReadAloudButton } from '@/components/ReadAloudButton';
 import {
   MessageSquare,
   Zap,
@@ -829,8 +830,12 @@ export default function NegotiationCopilotPage() {
               {/* Generated Response */}
               {responseResult && (
                 <Card className="lg:col-span-2">
-                  <CardHeader>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0">
                     <CardTitle className="text-sm">Generated response</CardTitle>
+                    <ReadAloudButton
+                      text={responseResult.response || responseResult}
+                      data-testid="negotiation-copilot-read-aloud"
+                    />
                   </CardHeader>
                   <CardContent>
                     <div className="p-4 bg-muted/50 rounded-lg text-sm leading-relaxed" aria-label="AI-generated response draft">

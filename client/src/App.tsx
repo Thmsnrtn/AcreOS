@@ -159,6 +159,7 @@ const EmailSettingsPage = React.lazy(() => import("@/pages/email-settings"));
 const MailSettingsPage = React.lazy(() => import("@/pages/mail-settings"));
 const PrivacySettingsPage = React.lazy(() => import("@/pages/privacy-settings"));
 const TaxIdentitySettingsPage = React.lazy(() => import("@/pages/settings/tax-identity"));
+const AccessibilitySettingsPage = React.lazy(() => import("@/pages/settings/accessibility"));
 const WebhooksPage = React.lazy(() => import("@/pages/webhooks"));
 const CompliancePage = React.lazy(() => import("@/pages/compliance"));
 const DoddFrankCheckerPage = React.lazy(() => import("@/pages/dodd-frank-checker"));
@@ -844,6 +845,9 @@ function Router() {
       </Route>
       <Route path="/settings/tax-identity">
         {() => <ProtectedRoute component={TaxIdentitySettingsPage} />}
+      </Route>
+      <Route path="/settings/accessibility">
+        {() => <ProtectedRoute component={AccessibilitySettingsPage} />}
       </Route>
       <Route path="/usage">
         {() => <ProtectedRoute component={UsageQuotaPage} />}

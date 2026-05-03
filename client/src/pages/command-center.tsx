@@ -75,6 +75,7 @@ import { AISettings } from "@/components/ai-settings";
 import { relative, usd } from "@/lib/format";
 import { DisclaimerBanner } from "@/components/disclaimer-banner";
 import { LowBalanceAlert } from "@/components/low-balance-alert";
+import { ReadAloudButton } from "@/components/ReadAloudButton";
 
 interface Agent {
   name: string;
@@ -2038,6 +2039,15 @@ export default function CommandCenterPage() {
                               }`}
                             >
                               <p className="whitespace-pre-wrap text-sm">{msg.content}</p>
+
+                              {msg.role === "assistant" && msg.content && (
+                                <div className="mt-2 flex justify-end">
+                                  <ReadAloudButton
+                                    text={msg.content}
+                                    data-testid={`command-center-read-aloud-${msg.id}`}
+                                  />
+                                </div>
+                              )}
 
                               {msg.toolCalls && msg.toolCalls.length > 0 && (
                                 <Accordion type="single" collapsible className="mt-3">

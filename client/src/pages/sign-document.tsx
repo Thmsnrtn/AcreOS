@@ -27,6 +27,7 @@ import { AcreosLogo } from "@/components/acreos-logo";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { SkipToContent } from "@/components/skip-to-content";
 import { shortDateTime } from "@/lib/format";
+import { ReadAloudButton } from "@/components/ReadAloudButton";
 
 type Signer = {
   id: string;
@@ -228,8 +229,14 @@ export default function SignDocumentPage() {
             </div>
 
             <Card>
-              <CardHeader>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0">
                 <CardTitle className="text-base">Document to sign</CardTitle>
+                {data.document.content && (
+                  <ReadAloudButton
+                    text={data.document.content}
+                    data-testid="sign-document-read-aloud"
+                  />
+                )}
               </CardHeader>
               <CardContent>
                 {data.document.content ? (

@@ -19,6 +19,7 @@ import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { format, differenceInDays } from "date-fns";
 import { jsPDF } from "jspdf";
 import type { Note, Payment, Property, BorrowerMessage } from "@shared/schema";
+import { LegalDocReadAloud } from "@/components/LegalDocReadAloud";
 
 type BorrowerLoanData = {
   note: Note & { property?: Property };
@@ -296,6 +297,7 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
   const [paymentStatusState, setPaymentStatusMessage] = useState<{ type: 'success' | 'error' | null; message: string }>({ type: null, message: '' });
   const [isVerifyingPayment, setIsVerifyingPayment] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const portalDocRef = useRef<HTMLElement>(null);
   
   const [autopayEnabled, setAutopayEnabled] = useState(note.autoPayEnabled || false);
   const [isTogglingAutopay, setIsTogglingAutopay] = useState(false);
@@ -735,9 +737,17 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
               </p>
             </div>
           </div>
-          <Badge className={paymentStatusBadge.color} data-testid="badge-payment-status" aria-label={`Payment status: ${paymentStatusBadge.label}`}>
-            <span className="tabular-nums">{paymentStatusBadge.label}</span>
-          </Badge>
+          <div className="flex items-center gap-2">
+            <LegalDocReadAloud
+              docRef={portalDocRef}
+              startLabel="Read this portal aloud"
+              stopLabel="Stop reading portal"
+              data-testid="borrower-portal-read-aloud"
+            />
+            <Badge className={paymentStatusBadge.color} data-testid="badge-payment-status" aria-label={`Payment status: ${paymentStatusBadge.label}`}>
+              <span className="tabular-nums">{paymentStatusBadge.label}</span>
+            </Badge>
+          </div>
         </div>
       </header>
 
@@ -777,7 +787,7 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
         </div>
       )}
 
-      <main className="max-w-5xl mx-auto px-4 py-6 sm:py-8 space-y-4 sm:space-y-6">
+      <main ref={portalDocRef} className="max-w-5xl mx-auto px-4 py-6 sm:py-8 space-y-4 sm:space-y-6">
         <Card className={`glass-panel border-2 ${paymentStatusBadge.status === 'late' ? 'border-red-400/60' : 'border-primary/20'}`} data-testid="card-payment-due">
           <CardContent className="p-4 sm:p-6">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4">

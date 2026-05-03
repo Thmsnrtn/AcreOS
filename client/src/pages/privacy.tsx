@@ -1,8 +1,10 @@
+import { useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Shield } from "lucide-react";
 import { Link } from "wouter";
 import { usePageMeta } from "@/hooks/use-document-title";
+import { LegalDocReadAloud } from "@/components/LegalDocReadAloud";
 
 export default function PrivacyPolicy() {
   usePageMeta(
@@ -10,6 +12,7 @@ export default function PrivacyPolicy() {
     "How AcreOS collects, uses, and protects data from land investors and their leads — including encryption, retention, and your rights under applicable privacy laws."
   );
   const lastUpdated = "March 2026";
+  const docRef = useRef<HTMLDivElement>(null);
 
   return (
     <div className="min-h-screen bg-background">
@@ -24,11 +27,17 @@ export default function PrivacyPolicy() {
         </div>
 
         <Card className="border-border/50" data-testid="card-privacy">
-          <CardContent className="p-6 md:p-8 space-y-8">
+          <CardContent ref={docRef} className="p-6 md:p-8 space-y-8">
             <div className="space-y-2">
-              <div className="flex items-center gap-3">
-                <Shield className="w-8 h-8 text-primary" aria-hidden="true" />
-                <h1 className="text-3xl font-bold" data-testid="text-privacy-title">Privacy policy</h1>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <Shield className="w-8 h-8 text-primary" aria-hidden="true" />
+                  <h1 className="text-3xl font-bold" data-testid="text-privacy-title">Privacy policy</h1>
+                </div>
+                <LegalDocReadAloud
+                  docRef={docRef}
+                  data-testid="privacy-read-aloud"
+                />
               </div>
               <p className="text-muted-foreground" data-testid="text-last-updated">
                 Last updated: <span className="tabular-nums">{lastUpdated}</span>
