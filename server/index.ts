@@ -1236,6 +1236,48 @@ app.use("/api", apiLimiter);
         log(`Failed to import dunning service: ${err}`, "dunning");
       });
 
+      // ─── Cost: VM resource tracker (every 5 min) ──
+      // Persists memory + CPU + event-loop lag samples to vm_resource_usage
+      // so the founder can review 7 days of data and decide whether to drop
+      // from 2× performance / 4GB → 2GB / 1 CPU. See migration 0061.
+      import("./jobs/vmResourceTracker").then(({ captureVmResourceSample, VM_RESOURCE_SAMPLE_INTERVAL_MS }) => {
+        import("./jobs/scheduler").then(({ scheduleSelfRescheduling }) => {
+          log("VM resource tracker registered (self-rescheduling, 5m)", "cost");
+          scheduleSelfRescheduling({
+            name: "vm_resource_tracker",
+            intervalMs: VM_RESOURCE_SAMPLE_INTERVAL_MS,
+            initialDelayMs: 60_000,
+            run: captureVmResourceSample,
+          });
+        });
+      }).catch(err => {
+        log(`Failed to import vm resource tracker: ${err}`, "cost");
+      });
+
+      // ─── Cost: Fly off-hours scale-down (every 5 min, flips at 02:00/06:00 UTC) ──
+      // Cuts min_machines_running 2→1 between 02:00–06:00 UTC on
+      // Sun–Thu UTC. Skips Fri+Sat (mailer prep) and any active P0/P1
+      // incident. NEVER scales to zero — see scripts/fly-night-mode.ts.
+      if (process.env.NODE_ENV === "production" && process.env.FLY_API_TOKEN) {
+        import("../scripts/fly-night-mode").then(({ runFlyNightModeTick }) => {
+          import("./jobs/scheduler").then(({ scheduleSelfRescheduling }) => {
+            log("Fly night-mode scheduler registered (self-rescheduling, 5m)", "cost");
+            scheduleSelfRescheduling({
+              name: "fly_night_mode",
+              intervalMs: 5 * 60 * 1000,
+              initialDelayMs: 90_000,
+              run: async () => {
+                return await runFlyNightModeTick();
+              },
+            });
+          });
+        }).catch(err => {
+          log(`Failed to import fly night-mode: ${err}`, "cost");
+        });
+      } else {
+        log("Fly night-mode scheduler skipped (not prod or no FLY_API_TOKEN)", "cost");
+      }
+
       // ─── Autonomy Bootstrap: seed chains, playbooks, modes, memories, strategies ──
       import("./services/autonomyBootstrap").then(({ bootstrapAutonomy }) => {
         // Delay bootstrap by 30s to ensure DB migrations are complete

@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, bigint, boolean, timestamp, numeric, varchar, jsonb, index, uniqueIndex, date, real, check, customType } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, bigint, bigserial, boolean, timestamp, numeric, varchar, jsonb, index, uniqueIndex, date, real, check, customType } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -16588,3 +16588,36 @@ export const insertCriticalAlertAckSchema = createInsertSchema(criticalAlertAcks
 });
 export type CriticalAlertAck = typeof criticalAlertAcks.$inferSelect;
 export type InsertCriticalAlertAck = z.infer<typeof insertCriticalAlertAckSchema>;
+
+// ============================================
+// VM RESOURCE USAGE (Fly.io rightsizing tracker — migration 0061)
+// ============================================
+// 5-minute samples of memory + CPU utilisation per Fly machine. Powers the
+// founder's "is the 2× performance / 4GB box right-sized?" review. Auto-
+// flipping VM size is intentionally NOT done off this table — an operator
+// reviews 7+ days of data first.
+export const vmResourceUsage = pgTable("vm_resource_usage", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  machineId: text("machine_id").notNull(),
+  region: text("region"),
+  processGroup: text("process_group"), // 'app' | 'worker'
+  capturedAt: timestamp("captured_at", { withTimezone: true }).notNull().defaultNow(),
+  rssBytes: bigint("rss_bytes", { mode: "number" }).notNull(),
+  heapUsedBytes: bigint("heap_used_bytes", { mode: "number" }).notNull(),
+  heapTotalBytes: bigint("heap_total_bytes", { mode: "number" }).notNull(),
+  externalBytes: bigint("external_bytes", { mode: "number" }).notNull(),
+  arrayBuffersBytes: bigint("array_buffers_bytes", { mode: "number" }).notNull(),
+  cpuUserUs: bigint("cpu_user_us", { mode: "number" }).notNull(),
+  cpuSystemUs: bigint("cpu_system_us", { mode: "number" }).notNull(),
+  cpuPercent: numeric("cpu_percent", { precision: 5, scale: 2 }).notNull(),
+  cpuCount: integer("cpu_count").notNull(),
+  loadAvg1m: numeric("load_avg_1m", { precision: 6, scale: 2 }),
+  eventLoopLagMs: numeric("event_loop_lag_ms", { precision: 8, scale: 2 }),
+  totalMemoryBytes: bigint("total_memory_bytes", { mode: "number" }),
+  uptimeSeconds: integer("uptime_seconds").notNull(),
+  nodeVersion: text("node_version"),
+  appVersion: text("app_version"),
+});
+
+export type VmResourceUsage = typeof vmResourceUsage.$inferSelect;
+export type InsertVmResourceUsage = typeof vmResourceUsage.$inferInsert;
