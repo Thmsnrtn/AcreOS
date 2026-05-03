@@ -25,7 +25,7 @@ async function getCredentials(orgId: number, connectorId: string): Promise<Conne
   const instance = await storage.getPaxConnector(orgId, connectorId);
   if (!instance || instance.status !== "connected" || !instance.credentialsEncrypted) return null;
   try {
-    const { decryptCredentials } = await import("../encryption");
+    const { decryptCredentials } = await import("../fieldEncryption");
     return JSON.parse(decryptCredentials(instance.credentialsEncrypted, orgId));
   } catch {
     return null;

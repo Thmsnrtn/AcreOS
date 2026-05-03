@@ -9,50 +9,27 @@
  * a runtime-generated key stored in the DB itself (bootstrap key).
  */
 
-import crypto from "crypto";
 import { db } from "../db";
 import { platformConfig } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { encrypt as canonicalEncrypt, decrypt as canonicalDecrypt } from "./fieldEncryption";
 
 // ─── Encryption ──────────────────────────────────────────────────────────────
-
-const ALGO = "aes-256-gcm";
-
-function getEncryptionKey(): Buffer {
-  const raw = process.env.FIELD_ENCRYPTION_KEY || process.env.ENCRYPTION_KEY;
-  if (raw && raw.length >= 64) {
-    return Buffer.from(raw.slice(0, 64), "hex");
-  }
-  // Fallback: derive from SESSION_SECRET (not ideal but functional for dev)
-  const fallback = process.env.SESSION_SECRET
-    || (process.env.NODE_ENV === 'production'
-      ? (() => { throw new Error('Missing required secret: FIELD_ENCRYPTION_KEY (or SESSION_SECRET)'); })()
-      : 'dev-fallback-not-for-production');
-  return crypto.createHash("sha256").update(fallback).digest();
-}
+//
+// As of the encryption-consolidation refactor (Aravind audit §3.1) these
+// helpers delegate to the canonical module at services/fieldEncryption.ts.
+// New writes emit the canonical envelope ("enc:v1:..."). Reads remain
+// forward-compatible with the legacy 3-segment shape ("iv:tag:ct") that
+// existing platform_config rows, encrypted EINs, and skip-trace envelopes
+// still carry, because canonicalDecrypt() recognizes both.
 
 export function encryptValue(plaintext: string): string {
-  const key = getEncryptionKey();
-  const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv(ALGO, key, iv);
-  const encrypted = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  // Format: iv_hex:tag_hex:encrypted_hex
-  return `${iv.toString("hex")}:${tag.toString("hex")}:${encrypted.toString("hex")}`;
+  return canonicalEncrypt(plaintext);
 }
 
 export function decryptValue(ciphertext: string): string {
-  const key = getEncryptionKey();
-  const parts = ciphertext.split(":");
-  if (parts.length !== 3) throw new Error("Invalid ciphertext format");
-  const [ivHex, tagHex, encHex] = parts;
-  const iv = Buffer.from(ivHex, "hex");
-  const tag = Buffer.from(tagHex, "hex");
-  const encrypted = Buffer.from(encHex, "hex");
-  const decipher = crypto.createDecipheriv(ALGO, key, iv);
-  decipher.setAuthTag(tag);
-  return decipher.update(encrypted).toString("utf8") + decipher.final("utf8");
+  return canonicalDecrypt(ciphertext);
 }
 
 // ─── Config Manager ──────────────────────────────────────────────────────────

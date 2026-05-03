@@ -28,7 +28,7 @@ async function getApiKey(organizationId?: number): Promise<string | null> {
       const { storage } = await import("../../storage");
       const integration = await storage.getOrganizationIntegration(organizationId, "regrid");
       if (integration?.isEnabled && (integration.credentials as any)?.encrypted) {
-        const { decryptJsonCredentials } = await import("../encryption");
+        const { decryptJsonCredentials } = await import("../fieldEncryption");
         const creds = decryptJsonCredentials<{ apiKey: string }>(
           (integration.credentials as any).encrypted,
           organizationId
