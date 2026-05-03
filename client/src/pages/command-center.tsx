@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/StatusBadge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -779,13 +780,13 @@ const defaultBackgroundAgents: Omit<BackgroundAgent, "status" | "lastRunAt" | "p
 function getAgentStatusBadge(status: BackgroundAgent["status"]) {
   switch (status) {
     case "running":
-      return <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">Running</Badge>;
+      return <StatusBadge status="active" label="Running" />;
     case "idle":
-      return <Badge variant="secondary">Idle</Badge>;
+      return <StatusBadge status="paused" label="Idle" />;
     case "error":
-      return <Badge className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">Error</Badge>;
+      return <StatusBadge status="error" label="Error" />;
     default:
-      return <Badge variant="outline">Unknown</Badge>;
+      return <StatusBadge status="inactive" label="Unknown" />;
   }
 }
 

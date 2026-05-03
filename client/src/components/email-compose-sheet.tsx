@@ -9,6 +9,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { Verbs } from "@/lib/labels";
 
 interface EmailTemplate {
   label: string;
@@ -126,9 +127,9 @@ export function EmailComposeSheet({
     <Sheet open={open} onOpenChange={(v) => { setOpen(v); if (v) resetForm(); }}>
       <SheetTrigger asChild>
         {children || (
-          <Button variant={triggerVariant} size={triggerSize} aria-label="Send email">
+          <Button variant={triggerVariant} size={triggerSize} aria-label={Verbs.SEND_EMAIL}>
             <Mail className="h-4 w-4 mr-1" aria-hidden="true" />
-            Send email
+            {Verbs.SEND_EMAIL}
           </Button>
         )}
       </SheetTrigger>
@@ -222,14 +223,14 @@ export function EmailComposeSheet({
           </div>
 
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>{Verbs.CANCEL}</Button>
             <Button
               type="submit"
               form="email-compose-form"
               disabled={sendMutation.isPending || !to || !subject || !body}
             >
               <Send className="h-4 w-4 mr-1" aria-hidden="true" />
-              {sendMutation.isPending ? "Sending…" : "Send email"}
+              {sendMutation.isPending ? "Sending…" : Verbs.SEND_EMAIL}
             </Button>
           </div>
         </form>

@@ -54,6 +54,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { relative } from "@/lib/format";
+import { Verbs } from "@/lib/labels";
 
 interface WatchlistEntry {
   id: string;
@@ -291,7 +292,7 @@ export default function MarketWatchlistPage() {
               </fieldset>
 
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
+                <Button type="button" variant="outline" onClick={() => setAddOpen(false)}>{Verbs.CANCEL}</Button>
                 <Button
                   type="submit"
                   disabled={!newEntry.county || addMutation.isPending}

@@ -4,6 +4,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/StatusBadge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -15,9 +16,9 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import { usd } from "@/lib/format";
 
 function HealthBadge({ score }: { score: number }) {
-  if (score >= 70) return <Badge className="bg-green-100 text-green-800" aria-label={`Market health: strong, ${score} of 100`}>Strong {score}</Badge>;
-  if (score >= 50) return <Badge className="bg-yellow-100 text-yellow-800" aria-label={`Market health: moderate, ${score} of 100`}>Moderate {score}</Badge>;
-  return <Badge className="bg-red-100 text-red-800" aria-label={`Market health: weak, ${score} of 100`}>Weak {score}</Badge>;
+  if (score >= 70) return <StatusBadge status="success" label={`Strong ${score}`} />;
+  if (score >= 50) return <StatusBadge status="warning" label={`Moderate ${score}`} />;
+  return <StatusBadge status="error" label={`Weak ${score}`} />;
 }
 
 function TrendArrow({ direction }: { direction: string }) {

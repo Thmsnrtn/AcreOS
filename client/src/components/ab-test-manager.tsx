@@ -5,6 +5,7 @@ import type { AbTest, AbTestVariant, Campaign } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge, type StatusKind } from "@/components/StatusBadge";
 import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,10 +29,10 @@ interface AbTestManagerProps {
   onTestCreated?: () => void;
 }
 
-const statusColors: Record<string, string> = {
-  draft: 'bg-muted text-muted-foreground',
-  running: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
-  completed: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400',
+const statusKind: Record<string, StatusKind> = {
+  draft: 'draft',
+  running: 'active',
+  completed: 'success',
 };
 
 const statusIcons: Record<string, any> = {
@@ -436,7 +437,7 @@ export function AbTestManager({ campaign, showCreateButton = true, onTestCreated
                             <CardTitle className="text-base">{test.name}</CardTitle>
                           </div>
                           <div className="flex items-center gap-2">
-                            <Badge className={`${statusColors[test.status]} capitalize`}>{test.status}</Badge>
+                            <StatusBadge status={statusKind[test.status] || test.status} label={test.status} />
                             <Badge variant="outline">{testTypeLabels[test.testType]}</Badge>
                             <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform ${isExpanded ? 'rotate-90' : ''}`} aria-hidden="true" />
                           </div>

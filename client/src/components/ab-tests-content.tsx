@@ -19,22 +19,16 @@ import {
   Loader2, Trash2, Eye, CheckCircle, Clock, BarChart3
 } from "lucide-react";
 import { format } from "date-fns";
+import { StatusBadge, type StatusKind } from "@/components/StatusBadge";
 import type { AbTest, AbTestVariant, Campaign } from "@shared/schema";
 
 type AbTestWithVariants = AbTest & { variants: AbTestVariant[] };
 
-const statusColors: Record<string, string> = {
-  draft: 'bg-muted text-muted-foreground',
-  running: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
-  completed: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400',
-  cancelled: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
-};
-
-const statusIcons: Record<string, any> = {
-  draft: Clock,
-  running: Play,
-  completed: CheckCircle,
-  cancelled: Square,
+const statusKind: Record<string, StatusKind> = {
+  draft: 'draft',
+  running: 'active',
+  completed: 'success',
+  cancelled: 'error',
 };
 
 const testTypeLabels: Record<string, string> = {
@@ -545,7 +539,6 @@ function TestTable({ tests, onView, onStart, onComplete, onDelete, getCampaignNa
         </TableHeader>
         <TableBody>
           {tests.map((test) => {
-            const StatusIcon = statusIcons[test.status] || Clock;
             const winner = test.variants?.find((v) => v.id === test.winnerId);
             return (
               <TableRow key={test.id} data-testid={`row-test-${test.id}`}>
@@ -556,10 +549,10 @@ function TestTable({ tests, onView, onStart, onComplete, onDelete, getCampaignNa
                 </TableCell>
                 <TableCell>{winningMetricLabels[test.winningMetric] || test.winningMetric}</TableCell>
                 <TableCell>
-                  <Badge className={statusColors[test.status]}>
-                    <StatusIcon className="w-3 h-3 mr-1" />
-                    {test.status}
-                  </Badge>
+                  <StatusBadge
+                    status={statusKind[test.status] || test.status}
+                    label={test.status}
+                  />
                 </TableCell>
                 <TableCell>
                   {winner ? (

@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { staggerContainer, staggerItem } from "@/lib/animations";
 import { useToast } from "@/hooks/use-toast";
+import { Verbs } from "@/lib/labels";
 
 interface LeadEmail {
   id: number;
@@ -291,7 +292,7 @@ export function DealInbox({ leadId, leadEmail, leadName }: DealInboxProps) {
                   />
                 </div>
                 <div className="flex justify-end gap-2">
-                  <Button type="button" variant="outline" onClick={() => setReplyOpen(false)}>Cancel</Button>
+                  <Button type="button" variant="outline" onClick={() => setReplyOpen(false)}>{Verbs.CANCEL}</Button>
                   <Button
                     type="submit"
                     form="deal-inbox-reply-form"

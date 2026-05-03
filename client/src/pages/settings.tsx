@@ -73,6 +73,7 @@ import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { usd } from "@/lib/format";
+import { Verbs } from "@/lib/labels";
 import "./today.css";
 
 interface SeatInfo {
@@ -2722,7 +2723,7 @@ function ApiKeyManager() {
                   {createKey.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" /> : null}
                   Create
                 </Button>
-                <Button type="button" variant="outline" className="min-h-11 sm:min-h-9" onClick={() => setShowCreate(false)}>Cancel</Button>
+                <Button type="button" variant="outline" className="min-h-11 sm:min-h-9" onClick={() => setShowCreate(false)}>{Verbs.CANCEL}</Button>
               </div>
             </form>
           </CardContent>

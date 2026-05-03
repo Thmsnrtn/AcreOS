@@ -9,6 +9,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -80,9 +81,9 @@ function PlaybookCard({ playbook }: { playbook: Playbook }) {
         </div>
         <div className="flex items-center gap-2">
           {playbook.isApproved ? (
-            <Badge variant="outline" className="bg-emerald-100 text-emerald-800" aria-label="Approved">Approved</Badge>
+            <StatusBadge status="success" label="Approved" />
           ) : (
-            <Badge variant="outline" className="bg-amber-100 text-amber-800" aria-label="Pending approval">Pending</Badge>
+            <StatusBadge status="pending" label="Pending" />
           )}
           {playbook.isApproved && (
             <Switch

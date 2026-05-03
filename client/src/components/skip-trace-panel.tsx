@@ -19,6 +19,7 @@ import {
   RefreshCw
 } from "lucide-react";
 import { GlossaryTerm } from "@/components/Glossary";
+import { StatusBadge } from "@/components/StatusBadge";
 import type { Lead } from "@shared/schema";
 
 type SkipTraceResult = {
@@ -79,14 +80,14 @@ export function SkipTracePanel({ lead }: { lead: Lead }) {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'completed':
-        return <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"><CheckCircle className="w-3 h-3 mr-1" />Completed</Badge>;
+        return <StatusBadge status="success" label="Completed" />;
       case 'processing':
       case 'pending':
-        return <Badge className="bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300"><Clock className="w-3 h-3 mr-1" />Processing</Badge>;
+        return <StatusBadge status="pending" label="Processing" />;
       case 'failed':
-        return <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"><XCircle className="w-3 h-3 mr-1" />Failed</Badge>;
+        return <StatusBadge status="error" label="Failed" />;
       case 'no_results':
-        return <Badge className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">No Results</Badge>;
+        return <StatusBadge status="inactive" label="No results" />;
       default:
         return null;
     }

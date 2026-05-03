@@ -1,6 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/StatusBadge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -134,19 +135,19 @@ function AuditLogViewer() {
   const getActionBadge = (action: string) => {
     switch (action) {
       case "create":
-        return <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">Create</Badge>;
+        return <StatusBadge status="success" label="Create" />;
       case "update":
-        return <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">Update</Badge>;
+        return <StatusBadge status="active" label="Update" />;
       case "delete":
-        return <Badge variant="destructive">Delete</Badge>;
+        return <StatusBadge status="error" label="Delete" />;
       case "consent_granted":
-        return <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">Consent Granted</Badge>;
+        return <StatusBadge status="success" label="Consent granted" />;
       case "consent_revoked":
-        return <Badge className="bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200">Consent Revoked</Badge>;
+        return <StatusBadge status="warning" label="Consent revoked" />;
       case "data_purge":
-        return <Badge className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">Data Purge</Badge>;
+        return <StatusBadge status="error" label="Data purge" />;
       default:
-        return <Badge variant="secondary">{action}</Badge>;
+        return <StatusBadge status={action} />;
     }
   };
 

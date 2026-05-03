@@ -14,5 +14,6 @@
 module.exports = {
   rules: {
     "no-founder-codenames-in-customer-jsx": require("./no-founder-codenames-in-customer-jsx.cjs"),
+    "prefer-verbs-canon": require("./prefer-verbs-canon.cjs"),
   },
 };

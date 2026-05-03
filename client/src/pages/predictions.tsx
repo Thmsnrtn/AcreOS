@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/StatusBadge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -63,11 +64,9 @@ interface AccuracyMetrics {
 // ─── Helper components ────────────────────────────────────────────────────
 
 function DirectionBadge({ direction }: { direction: string }) {
-  if (direction === "bullish")
-    return <Badge className="bg-green-100 text-green-800" aria-label="Direction: bullish (rising)">Bullish</Badge>;
-  if (direction === "bearish")
-    return <Badge className="bg-red-100 text-red-800" aria-label="Direction: bearish (falling)">Bearish</Badge>;
-  return <Badge variant="secondary" aria-label="Direction: neutral (flat)">Neutral</Badge>;
+  if (direction === "bullish") return <StatusBadge status="success" label="Bullish" />;
+  if (direction === "bearish") return <StatusBadge status="error" label="Bearish" />;
+  return <StatusBadge status="inactive" label="Neutral" />;
 }
 
 const WINDOW_LABEL: Record<"buy" | "sell" | "hold", string> = {

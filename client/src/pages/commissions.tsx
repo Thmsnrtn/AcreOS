@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge as CanonicalStatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -103,26 +104,9 @@ function moneyKpi(cents: number) {
 const reassurance = "The commission record is unchanged — try again.";
 
 function StatusBadge({ status }: { status: CommissionRecord["status"] }) {
-  if (status === "paid")
-    return (
-      <Badge className="bg-green-100 text-green-800 hover:bg-green-100" aria-label="Status: paid in full">
-        <CheckCircle2 className="w-3 h-3 mr-1" aria-hidden="true" />
-        Paid
-      </Badge>
-    );
-  if (status === "partial")
-    return (
-      <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100" aria-label="Status: partially paid">
-        <Clock className="w-3 h-3 mr-1" aria-hidden="true" />
-        Partial
-      </Badge>
-    );
-  return (
-    <Badge className="bg-red-100 text-red-800 hover:bg-red-100" aria-label="Status: owed, not yet paid">
-      <AlertCircle className="w-3 h-3 mr-1" aria-hidden="true" />
-      Owed
-    </Badge>
-  );
+  if (status === "paid") return <CanonicalStatusBadge status="success" label="Paid" />;
+  if (status === "partial") return <CanonicalStatusBadge status="pending" label="Partial" />;
+  return <CanonicalStatusBadge status="error" label="Owed" />;
 }
 
 function AgentCard({

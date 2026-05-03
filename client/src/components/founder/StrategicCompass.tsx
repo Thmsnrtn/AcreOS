@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Compass, Rocket, PiggyBank, AlertTriangle, Telescope, Scale, PenLine } from "lucide-react";
+import { Verbs } from "@/lib/labels";
 
 const MODE_CONFIG: Record<string, { icon: any; color: string; bg: string; label: string }> = {
   growth: { icon: Rocket, color: "text-emerald-700", bg: "bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200", label: "Growth" },
@@ -66,8 +67,8 @@ export function StrategicCompass() {
         {editingNorthStar ? (
           <div className="flex gap-2">
             <Input value={northStarDraft} onChange={e => setNorthStarDraft(e.target.value)} className="text-sm h-8" aria-label="North star statement" autoCapitalize="sentences" autoFocus />
-            <Button type="button" size="sm" className="h-8 text-xs" onClick={() => updateNorthStar.mutate(northStarDraft)} disabled={updateNorthStar.isPending} aria-busy={updateNorthStar.isPending}>{updateNorthStar.isPending ? "Saving…" : "Save"}</Button>
-            <Button type="button" size="sm" variant="ghost" className="h-8 text-xs" onClick={() => setEditingNorthStar(false)}>Cancel</Button>
+            <Button type="button" size="sm" className="h-8 text-xs" onClick={() => updateNorthStar.mutate(northStarDraft)} disabled={updateNorthStar.isPending} aria-busy={updateNorthStar.isPending}>{updateNorthStar.isPending ? "Saving…" : Verbs.SAVE}</Button>
+            <Button type="button" size="sm" variant="ghost" className="h-8 text-xs" onClick={() => setEditingNorthStar(false)}>{Verbs.CANCEL}</Button>
           </div>
         ) : (
           <button

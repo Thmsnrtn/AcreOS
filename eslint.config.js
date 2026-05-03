@@ -81,6 +81,10 @@ export default [
     },
     rules: {
       "acreos/no-founder-codenames-in-customer-jsx": "error",
+      // Soft nudge — surfaces inline button labels that have a Verbs.*
+      // entry in `client/src/lib/labels.ts`. Set to "warn" so it's a
+      // review hint, not a blocker.
+      "acreos/prefer-verbs-canon": "warn",
     },
   },
 ];

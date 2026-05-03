@@ -20,6 +20,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { Upload, FileText, CheckCircle2, AlertCircle, Loader2, X } from "lucide-react";
 import { queryClient } from "@/lib/queryClient";
+import { Verbs } from "@/lib/labels";
 
 const ACREOS_NOTE_FIELDS = [
   { value: "borrowerFirstName", label: "Borrower First Name *" },
@@ -332,7 +333,7 @@ export function NotesImportDialog({ open, onOpenChange }: Props) {
 
         <DialogFooter className="gap-2">
           {step === "upload" && (
-            <Button variant="outline" onClick={handleClose}>Cancel</Button>
+            <Button variant="outline" onClick={handleClose}>{Verbs.CANCEL}</Button>
           )}
           {step === "map" && (
             <>
