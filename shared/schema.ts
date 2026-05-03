@@ -15739,3 +15739,80 @@ export type AccountType =
   | "expense"
   | "contra_asset"
   | "contra_revenue";
+
+// ============================================================================
+// OUTBOX + DLQ + JOB RUNS — Phase 3 Week 7-8
+// ----------------------------------------------------------------------------
+// Backed by migrations/0046_outbox_jobs.sql. See server/jobs/scheduler.ts for
+// the helper that drives `job_runs` + routes terminal failures into
+// `outbox_dlq`. The `outbox` table exists so producers can stage outbound
+// effects (webhooks, emails, billing events) inside the same DB transaction
+// as the state change — eliminating the dual-write problem.
+// ============================================================================
+
+export const outbox = pgTable("outbox", {
+  id: serial("id").primaryKey(),
+  eventType: text("event_type").notNull(),
+  payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
+  status: text("status").notNull().default("pending"), // pending | sent | failed
+  attempts: integer("attempts").notNull().default(0),
+  lastErrorAt: timestamp("last_error_at"),
+  lastErrorMessage: text("last_error_message"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  sentAt: timestamp("sent_at"),
+}, (table) => [
+  index("outbox_status_created_idx").on(table.status, table.createdAt),
+  index("outbox_event_type_idx").on(table.eventType),
+]);
+
+export const insertOutboxSchema = createInsertSchema(outbox).omit({
+  id: true,
+  createdAt: true,
+  sentAt: true,
+});
+export type Outbox = typeof outbox.$inferSelect;
+export type InsertOutbox = z.infer<typeof insertOutboxSchema>;
+
+export const outboxDlq = pgTable("outbox_dlq", {
+  id: serial("id").primaryKey(),
+  originalOutboxId: integer("original_outbox_id"),
+  eventType: text("event_type").notNull(),
+  payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
+  status: text("status").notNull().default("failed"),
+  attempts: integer("attempts").notNull().default(0),
+  lastErrorAt: timestamp("last_error_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  failedAt: timestamp("failed_at").notNull().defaultNow(),
+  failureReason: text("failure_reason").notNull(),
+}, (table) => [
+  index("outbox_dlq_event_type_idx").on(table.eventType),
+  index("outbox_dlq_failed_at_idx").on(table.failedAt),
+]);
+
+export const insertOutboxDlqSchema = createInsertSchema(outboxDlq).omit({
+  id: true,
+  createdAt: true,
+  failedAt: true,
+});
+export type OutboxDlq = typeof outboxDlq.$inferSelect;
+export type InsertOutboxDlq = z.infer<typeof insertOutboxDlqSchema>;
+
+export const jobRuns = pgTable("job_runs", {
+  id: serial("id").primaryKey(),
+  jobName: text("job_name").notNull(),
+  startedAt: timestamp("started_at").notNull().defaultNow(),
+  completedAt: timestamp("completed_at"),
+  status: text("status").notNull().default("running"), // running | success | failure | timeout
+  errorMessage: text("error_message"),
+  recordsProcessed: integer("records_processed"),
+}, (table) => [
+  index("job_runs_job_name_started_idx").on(table.jobName, table.startedAt),
+  index("job_runs_status_idx").on(table.status),
+]);
+
+export const insertJobRunSchema = createInsertSchema(jobRuns).omit({
+  id: true,
+  startedAt: true,
+});
+export type JobRun = typeof jobRuns.$inferSelect;
+export type InsertJobRun = z.infer<typeof insertJobRunSchema>;

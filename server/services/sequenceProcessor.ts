@@ -15,14 +15,23 @@ const instanceId = crypto.randomUUID();
 
 export class SequenceProcessorService {
   private isRunning = false;
-  private intervalId: NodeJS.Timeout | null = null;
+  // P0 #3 — Sequence processor (lifecycle email/SMS/direct-mail cohort
+  // builder) migrated to scheduleSelfRescheduling (Phase 3 Week 7-8). The
+  // 60s setInterval was firing concurrent runs whenever a single
+  // processEnrollments() exceeded 60s in production. The cancel function
+  // returned by scheduleSelfRescheduling replaces clearInterval.
+  private cancelFn: (() => void) | null = null;
 
   async start() {
     if (this.isRunning) return;
     this.isRunning = true;
-    logger.info("[sequence-processor] Starting sequence processor background job");
-    this.intervalId = setInterval(() => this.runWithLock(), CHECK_INTERVAL_MS);
-    this.runWithLock();
+    logger.info("[sequence-processor] Starting sequence processor background job (self-rescheduling)");
+    const { scheduleSelfRescheduling } = await import("../jobs/scheduler");
+    this.cancelFn = scheduleSelfRescheduling({
+      name: "sequence_processor",
+      intervalMs: CHECK_INTERVAL_MS,
+      run: () => this.runWithLock(),
+    });
   }
 
   private async runWithLock() {
@@ -39,9 +48,9 @@ export class SequenceProcessorService {
   }
 
   stop() {
-    if (this.intervalId) {
-      clearInterval(this.intervalId);
-      this.intervalId = null;
+    if (this.cancelFn) {
+      this.cancelFn();
+      this.cancelFn = null;
     }
     this.isRunning = false;
     logger.info("[sequence-processor] Stopped sequence processor");

@@ -1195,17 +1195,23 @@ app.use("/api", apiLimiter);
       });
 
       // ─── Dunning Scheduled Tasks (every 6 hours) ──
+      // P0 #1 — Migrated to scheduleSelfRescheduling (Phase 3 Week 7-8).
+      // Self-rescheduling guarantees no concurrent overlap, on-failure backoff,
+      // DLQ on terminal failure, and a job_runs row per execution.
       import("./services/dunning").then(({ dunningService }) => {
-        log("Dunning task processor registered (every 6h)", "dunning");
-        // Run after 2-minute startup delay, then every 6 hours
-        setTimeout(() => {
-          withJobLock("dunning_tasks", 55 * 60, () => dunningService.processScheduledTasks())
-            .catch((err: any) => log(`Dunning tasks failed: ${err}`, "dunning"));
-          trackInterval(() => {
-            withJobLock("dunning_tasks", 55 * 60, () => dunningService.processScheduledTasks())
-              .catch((err: any) => log(`Dunning tasks failed: ${err}`, "dunning"));
-          }, 6 * 60 * 60 * 1000);
-        }, 2 * 60 * 1000);
+        import("./jobs/scheduler").then(({ scheduleSelfRescheduling }) => {
+          log("Dunning task processor registered (self-rescheduling, 6h)", "dunning");
+          scheduleSelfRescheduling({
+            name: "dunning_tasks",
+            intervalMs: 6 * 60 * 60 * 1000,
+            initialDelayMs: 2 * 60 * 1000,
+            run: async () => {
+              await withJobLock("dunning_tasks", 55 * 60, () =>
+                dunningService.processScheduledTasks(),
+              );
+            },
+          });
+        });
       }).catch(err => {
         log(`Failed to import dunning service: ${err}`, "dunning");
       });
@@ -1510,22 +1516,23 @@ async function processFinanceAgent() {
 function startFinanceAgentJob() {
   const THIRTY_MINUTES = 30 * 60 * 1000;
   const TTL_SECONDS = 25 * 60; // Lock TTL slightly less than interval
-  
-  log('Starting finance agent background job (every 30 minutes)', 'finance');
-  
-  // Run after a short delay on startup
-  setTimeout(() => {
-    withJobLock('finance_agent', TTL_SECONDS, processFinanceAgent).catch(err => {
-      log(`Initial finance agent run failed: ${err}`, 'finance');
+
+  // P0 #5 — Finance agent (delinquency detection + payment reminders)
+  // migrated to scheduleSelfRescheduling (Phase 3 Week 7-8). Previously a
+  // setInterval that could overlap a long-running run; the new helper
+  // awaits each run before scheduling the next, plus DLQ + job_runs.
+  log('Starting finance agent background job (self-rescheduling, 30m)', 'finance');
+
+  import('./jobs/scheduler').then(({ scheduleSelfRescheduling }) => {
+    scheduleSelfRescheduling({
+      name: "finance_agent",
+      intervalMs: THIRTY_MINUTES,
+      initialDelayMs: 45_000,
+      run: async () => {
+        await withJobLock('finance_agent', TTL_SECONDS, processFinanceAgent);
+      },
     });
-  }, 45000); // Wait 45 seconds after startup
-  
-  // Then run every 30 minutes
-  trackInterval(() => {
-    withJobLock('finance_agent', TTL_SECONDS, processFinanceAgent).catch(err => {
-      log(`Scheduled finance agent run failed: ${err}`, 'finance');
-    });
-  }, THIRTY_MINUTES);
+  });
 }
 
 // API Queue background job
