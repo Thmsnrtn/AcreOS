@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { staggerContainer, staggerItem } from "@/lib/animations";
 import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 import { TcpaComplianceBanner } from "@/components/tcpa-compliance-banner";
 
 interface SmsMessage {
@@ -40,13 +41,17 @@ export function SmsConversation({ leadId, leadPhone, leadName, tcpaConsent, doNo
 
   const sendMutation = useMutation({
     mutationFn: async (text: string) => {
-      const res = await fetch("/api/communications/sms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ leadId, to: leadPhone, message: text }),
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Failed to send SMS");
+      // idempotent: true — Twilio bills per outbound SMS. A retry on a
+      // 502 from the Twilio gateway must not result in the lead
+      // receiving two copies of the same message (and us paying
+      // twice). The server's idempotency middleware collapses
+      // duplicate Idempotency-Key submissions into one effect.
+      const res = await apiRequest(
+        "POST",
+        "/api/communications/sms",
+        { leadId, to: leadPhone, message: text },
+        { idempotent: true },
+      );
       return res.json();
     },
     onSuccess: () => {

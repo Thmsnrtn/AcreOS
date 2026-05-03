@@ -92,6 +92,7 @@ export function RequestSignaturesDialog({
         "POST",
         `/api/generated-documents/${documentId}/request-signature`,
         { signers: clean },
+        { idempotent: true },
       );
       return res.json();
     },

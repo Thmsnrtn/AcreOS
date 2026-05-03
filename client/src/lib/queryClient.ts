@@ -206,10 +206,42 @@ async function refreshSessionCookie(): Promise<void> {
   }
 }
 
+/**
+ * Per-request options for `apiRequest`.
+ *
+ * `idempotent: true` — for non-GET requests (POST/PATCH/PUT/DELETE),
+ * generate a UUID v4 and send it as `Idempotency-Key`. The server's
+ * idempotency middleware (server/middleware/idempotency.ts) replays
+ * the prior response if the same key is seen again within the TTL.
+ * Use this on every mutation that has a non-trivially-undoable side
+ * effect: charging a card, sending a message, queuing a mailer, etc.
+ *
+ * `idempotencyKey: "..."` — explicitly set the key (overrides UUID).
+ * Use a deterministic value (e.g. `refund:${request.id}`) when the
+ * caller already has a stable identifier for the operation. Useful
+ * when the underlying request can be retried by the user (e.g. a
+ * "Process refund" button) and you want every retry to collapse to
+ * the same idempotency key, regardless of how many times they click.
+ */
+export interface ApiRequestOptions {
+  idempotent?: boolean;
+  idempotencyKey?: string;
+}
+
+function generateIdempotencyKey(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  // Fallback for environments without crypto.randomUUID — RFC4122-ish
+  // but not crypto-grade. The server treats the key as opaque.
+  return "k-" + Math.random().toString(36).slice(2) + "-" + Date.now().toString(36);
+}
+
 async function doApiFetch(
   method: string,
   url: string,
   data?: unknown | undefined,
+  options?: ApiRequestOptions,
 ): Promise<Response> {
   const headers: Record<string, string> = {};
   if (data) {
@@ -220,6 +252,14 @@ async function doApiFetch(
   if (MUTATING_METHODS.has(method.toUpperCase())) {
     const csrf = readCsrfToken();
     if (csrf) headers["x-csrf-token"] = csrf;
+  }
+  // Idempotency-Key: only meaningful on mutating methods. Caller opts in
+  // either by passing a deterministic key (for retryable ops keyed off
+  // a server-side id, e.g. `refund:${request.id}`) or by passing
+  // `idempotent: true` to get a fresh UUID for the lifetime of the call.
+  if (MUTATING_METHODS.has(method.toUpperCase())) {
+    const key = options?.idempotencyKey ?? (options?.idempotent ? generateIdempotencyKey() : undefined);
+    if (key) headers["Idempotency-Key"] = key;
   }
   return fetch(url, {
     method,
@@ -239,8 +279,25 @@ export async function apiRequest(
   method: string,
   url: string,
   data?: unknown | undefined,
+  options?: ApiRequestOptions,
 ): Promise<Response> {
-  let res = await doApiFetch(method, url, data);
+  // Generate the idempotency key ONCE, in this wrapper, so that the
+  // post-401 retry below uses the same key as the original attempt
+  // (the server collapses both into one effect — that's the whole
+  // point). Without this, a mid-flight session refresh would mint a
+  // fresh UUID and bypass the dedupe.
+  const resolvedOptions: ApiRequestOptions | undefined = options
+    ? {
+        ...options,
+        idempotencyKey:
+          options.idempotencyKey ??
+          (options.idempotent && MUTATING_METHODS.has(method.toUpperCase())
+            ? generateIdempotencyKey()
+            : undefined),
+      }
+    : undefined;
+
+  let res = await doApiFetch(method, url, data, resolvedOptions);
 
   // Transparent 401 recovery for /api/* endpoints: refresh the Clerk
   // __session cookie via /__clerk/v1/client/sessions/:sid/touch (NOT
@@ -248,7 +305,7 @@ export async function apiRequest(
   // refresh path doesn't loop through Express auth middleware.
   if (res.status === 401 && url.startsWith("/api/")) {
     await refreshSessionCookie();
-    res = await doApiFetch(method, url, data);
+    res = await doApiFetch(method, url, data, resolvedOptions);
   }
 
   await throwIfResNotOk(res);
@@ -327,14 +384,16 @@ export const queryClient = new QueryClient({
       retryDelay: (attemptIndex) => Math.min(500 * 2 ** attemptIndex, 3000),
     },
     mutations: {
-      retry: (failureCount, error) => {
-        // Don't retry on auth or permission errors
-        const err = error as Error;
-        if (err?.message?.includes("401") || err?.message?.includes("403")) {
-          return false;
-        }
-        return shouldRetry(err, failureCount);
-      },
+      // P0 (Ines §1, Hessam §2, Alaric §2.3): mutations MUST NOT
+      // retry by default. A 502 from Stripe on /api/stripe/checkout
+      // or /api/credits/purchase looks identical to a transient
+      // network error from the client's perspective, but the upstream
+      // call may have already succeeded — retrying double-charges
+      // the customer. The correct primitive for "safe to retry" is
+      // an Idempotency-Key on the outbound request (see apiRequest's
+      // ApiRequestOptions); call sites that need at-most-once
+      // semantics opt in explicitly. Default is no retry.
+      retry: false,
       retryDelay: (attemptIndex) => Math.min(500 * 2 ** attemptIndex, 3000),
     },
   },

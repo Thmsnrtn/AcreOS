@@ -112,7 +112,7 @@ export function useSendDirectMail() {
       const res = await apiRequest("POST", `/api/campaigns/${data.campaignId}/send-direct-mail`, {
         pieceType: data.pieceType,
         leadIds: data.leadIds,
-      });
+      }, { idempotent: true });
       return res.json() as Promise<SendDirectMailResponse>;
     },
     onSuccess: () => {
@@ -268,7 +268,7 @@ export function useMailAttribution(campaignId: number) {
 export function useTestSendCampaign() {
   return useMutation({
     mutationFn: async (campaignId: number) => {
-      const res = await apiRequest("POST", `/api/campaigns/${campaignId}/test-send`);
+      const res = await apiRequest("POST", `/api/campaigns/${campaignId}/test-send`, undefined, { idempotent: true });
       return res.json() as Promise<{ success: boolean; to: string; result: any }>;
     },
   });
