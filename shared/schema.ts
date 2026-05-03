@@ -4828,7 +4828,12 @@ export const signatures = pgTable("signatures", {
   // Legal consent
   consentGiven: boolean("consent_given").notNull().default(true),
   consentText: text("consent_text"),
-  
+
+  // SHA-256 hash of the document content at the moment of signing.
+  // Provides tamper-evidence: any later mutation of the document content
+  // will not match this hash, preserving evidentiary value of the signature.
+  documentContentHash: text("document_content_hash"),
+
   signedAt: timestamp("signed_at").defaultNow(),
   createdAt: timestamp("created_at").defaultNow(),
 });
