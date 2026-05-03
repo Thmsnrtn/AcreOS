@@ -615,6 +615,7 @@ export default function Settings() {
   const searchParams = new URLSearchParams(search);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [showPlanComparison, setShowPlanComparison] = useState(false);
+  const [planPickerHighlight, setPlanPickerHighlight] = useState<TierKey | null>(null);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   // Feature flag — autonomy matrix is founder-only by default per
   // design-system §8.4. Tab + content hidden when flag is off; founder
@@ -1032,6 +1033,18 @@ export default function Settings() {
                             open={showCancelDialog}
                             onOpenChange={setShowCancelDialog}
                             currentTier={organization.subscriptionTier || "free"}
+                            // Vesper §3 — wire "Downgrade instead" to the
+                            // plan picker preselected to a lower tier.
+                            // Canonical Tier (solo/operator/empire) maps to
+                            // the modal's TierKey (starter/pro/free).
+                            onDowngrade={(suggested) => {
+                              const modalTier: TierKey =
+                                suggested === "operator" ? "pro"
+                                  : suggested === "solo" ? "starter"
+                                  : "starter";
+                              setPlanPickerHighlight(modalTier);
+                              setShowPlanComparison(true);
+                            }}
                           />
                         </div>
                       ) : organization.subscriptionTier === "free" && (
@@ -1764,8 +1777,12 @@ export default function Settings() {
       />
       <PlanComparisonModal
         open={showPlanComparison}
-        onClose={() => setShowPlanComparison(false)}
+        onClose={() => {
+          setShowPlanComparison(false);
+          setPlanPickerHighlight(null);
+        }}
         currentTier={(organization?.subscriptionTier || "free") as TierKey}
+        highlightedTier={planPickerHighlight}
       />
     </PageShell>
   );

@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm';
 import Stripe from 'stripe';
 import { logger } from './utils/logger';
 import { addMonths } from './utils/dateUtils';
+import { recordSubscriptionHistoryEvent } from './routes-subscription';
 
 export class WebhookHandlers {
   /**
@@ -183,6 +184,30 @@ export class WebhookHandlers {
 
       logger.info(`[webhook] Subscription checkout completed: Org ${organizationId}, sub ${subscriptionId}`);
 
+      // Renoir audit-log: capture the initial "subscribed" event with the
+      // priced state. customer.subscription.updated will follow with the
+      // tier-resolved row, but having an explicit subscribed marker makes
+      // tenure math straightforward.
+      try {
+        const orgAfter = await storage.getOrganization(organizationId);
+        await recordSubscriptionHistoryEvent({
+          organizationId,
+          eventType: 'subscribed',
+          tier: orgAfter?.subscriptionTier || null,
+          billingInterval: orgAfter?.billingInterval || null,
+          priceCents: null,
+          metadata: {
+            stripeSubscriptionId: subscriptionId,
+            source: 'webhook:checkout.session.completed',
+          },
+        });
+      } catch (auditErr) {
+        logger.warn(
+          '[webhook] subscription_history audit insert failed',
+          auditErr instanceof Error ? auditErr : undefined,
+        );
+      }
+
       // Send subscription welcome email
       try {
         const { emailService } = await import('./services/emailService');
@@ -325,6 +350,19 @@ export class WebhookHandlers {
         toTier: null,
       });
 
+      // Renoir audit-log: priced lifecycle history for reactivation context.
+      await recordSubscriptionHistoryEvent({
+        organizationId: org.id,
+        eventType: 'canceled',
+        tier: previousTier,
+        billingInterval: org.billingInterval || null,
+        priceCents: null,
+        metadata: {
+          stripeSubscriptionId: subscription.id,
+          source: 'webhook:customer.subscription.deleted',
+        },
+      });
+
       // Send cancellation confirmation email
       try {
         const { emailService } = await import('./services/emailService');
@@ -397,6 +435,16 @@ export class WebhookHandlers {
         stripeSubscriptionId: subscription.id,
       };
 
+      // Capture the priced state from Stripe for the audit log.
+      const priceUnitAmount =
+        subscription.items?.data?.[0]?.price?.unit_amount ?? null;
+      const recurringInterval =
+        subscription.items?.data?.[0]?.price?.recurring?.interval ?? null;
+      const billingIntervalLabel =
+        recurringInterval === 'year' ? 'yearly'
+          : recurringInterval === 'month' ? 'monthly'
+          : null;
+
       if (newTier) {
         const previousTier = org.subscriptionTier;
         updates.subscriptionTier = newTier;
@@ -407,6 +455,26 @@ export class WebhookHandlers {
             eventType: 'change',
             fromTier: previousTier,
             toTier: newTier,
+          });
+
+          // Renoir audit-log: classify as reactivated when the org was on
+          // the free/cancelled side and is moving to a paid tier; otherwise
+          // it's a tier change (up or down).
+          const wasInactive =
+            !previousTier ||
+            previousTier === 'free' ||
+            org.subscriptionStatus === 'cancelled';
+          await recordSubscriptionHistoryEvent({
+            organizationId: org.id,
+            eventType: wasInactive ? 'reactivated' : 'tier_changed',
+            tier: newTier,
+            billingInterval: billingIntervalLabel,
+            priceCents: priceUnitAmount,
+            metadata: {
+              stripeSubscriptionId: subscription.id,
+              fromTier: previousTier ?? null,
+              source: 'webhook:customer.subscription.updated',
+            },
           });
         }
       }

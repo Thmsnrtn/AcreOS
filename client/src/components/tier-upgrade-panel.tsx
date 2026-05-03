@@ -70,9 +70,15 @@ function FeatureCell({ value }: { value: string | boolean }) {
 interface TierUpgradePanelProps {
   onSelectTier?: (tier: string) => void;
   currentTier?: string;
+  /**
+   * Vesper §3 — when set, this tier card receives a "Recommended" badge
+   * and visual emphasis. Used by the cancellation flow to nudge the user
+   * toward a downgrade target instead of a full cancel.
+   */
+  highlightedTier?: TierKey | null;
 }
 
-export function TierUpgradePanel({ onSelectTier, currentTier }: TierUpgradePanelProps) {
+export function TierUpgradePanel({ onSelectTier, currentTier, highlightedTier }: TierUpgradePanelProps) {
   const [annual, setAnnual] = useState(false);
   const { user } = useAuth();
   const activeTier = currentTier || "free";
@@ -108,14 +114,23 @@ export function TierUpgradePanel({ onSelectTier, currentTier }: TierUpgradePanel
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {LAUNCH_TIERS.map((tier) => {
           const isCurrentTier = activeTier === tier.id;
+          const isRecommended = highlightedTier === tier.id;
+          const showHighlight = isRecommended || (tier.highlighted && !highlightedTier);
           const monthlyEquiv = annual ? Math.round(tier.yearlyPrice / 12) : tier.price;
 
           return (
             <Card
               key={tier.id}
-              className={`relative ${tier.highlighted ? "border-primary shadow-lg ring-1 ring-primary" : ""}`}
+              className={`relative ${showHighlight ? "border-primary shadow-lg ring-1 ring-primary" : ""}`}
+              data-recommended={isRecommended ? "true" : undefined}
             >
-              {tier.highlighted && (
+              {isRecommended ? (
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+                  <Badge className="bg-primary text-primary-foreground">
+                    <Sparkles className="h-3 w-3 mr-1" aria-hidden="true" /> Recommended for you
+                  </Badge>
+                </div>
+              ) : tier.highlighted && !highlightedTier && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2">
                   <Badge className="bg-primary text-primary-foreground">
                     <Sparkles className="h-3 w-3 mr-1" aria-hidden="true" /> Most popular
@@ -140,7 +155,7 @@ export function TierUpgradePanel({ onSelectTier, currentTier }: TierUpgradePanel
               <CardContent className="pt-4">
                 <Button
                   className="w-full"
-                  variant={tier.highlighted ? "default" : "outline"}
+                  variant={showHighlight ? "default" : "outline"}
                   disabled={isCurrentTier}
                   onClick={() => onSelectTier?.(tier.id)}
                 >
@@ -188,19 +203,25 @@ interface PlanComparisonModalProps {
   open: boolean;
   onClose: () => void;
   currentTier: TierKey;
+  /**
+   * Vesper §3 — preselect a recommended tier (e.g. when the cancellation
+   * flow nudges Empire/Operator users toward a cheaper plan instead of a
+   * full cancel).
+   */
+  highlightedTier?: TierKey | null;
 }
 
-export function PlanComparisonModal({ open, onClose, currentTier }: PlanComparisonModalProps) {
+export function PlanComparisonModal({ open, onClose, currentTier, highlightedTier }: PlanComparisonModalProps) {
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Compare plans</DialogTitle>
+          <DialogTitle>{highlightedTier ? "Switch to a lighter plan" : "Compare plans"}</DialogTitle>
           <DialogDescription className="sr-only">
             Compare Free, Starter, and Pro plan features and pricing.
           </DialogDescription>
         </DialogHeader>
-        <TierUpgradePanel currentTier={currentTier} />
+        <TierUpgradePanel currentTier={currentTier} highlightedTier={highlightedTier} />
       </DialogContent>
     </Dialog>
   );
