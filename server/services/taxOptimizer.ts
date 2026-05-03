@@ -20,12 +20,10 @@ import {
   valuationPredictions,
 } from "@shared/schema";
 import { eq, and, gte, lte, desc } from "drizzle-orm";
-import OpenAI from "openai";
+import { generateWithAutoRouting } from "./aiRouter";
 
-const openai = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-});
+// Migrated from direct OpenAI client to central aiRouter (P1-36).
+// Cost tracking, semantic caching, prompt versioning all flow through aiRouter.
 
 // ─── Tax Rate Tables ──────────────────────────────────────────────────────
 
@@ -574,16 +572,10 @@ class TaxOptimizerService {
   ): Promise<string> {
     const position = await this.analyzeYearEndPosition(organizationId, taxYear);
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: [
-        {
-          role: "system",
-          content: "You are a tax advisor specializing in real estate and land investment tax strategy. Write clear, actionable tax planning advice.",
-        },
-        {
-          role: "user",
-          content: `Tax position for ${taxYear}:
+    const response = await generateWithAutoRouting(
+      "tax_planning",
+      "You are a tax advisor specializing in real estate and land investment tax strategy. Write clear, actionable tax planning advice.",
+      `Tax position for ${taxYear}:
 - Total realized gains: $${position.totalRealizedGains.toLocaleString()}
 - Long-term gains: $${position.longTermGains.toLocaleString()}
 - Short-term gains: $${position.shortTermGains.toLocaleString()}
@@ -592,12 +584,10 @@ class TaxOptimizerService {
 - Top recommendations: ${position.recommendations.slice(0, 3).map(r => r.title).join(", ")}
 
 Write a 3-paragraph tax planning summary with specific action items for this real estate professional. Be specific about dollar amounts and timing.`,
-        },
-      ],
-      max_tokens: 600,
-    });
+      { orgId: organizationId },
+    );
 
-    return response.choices[0].message.content || "Tax planning report unavailable.";
+    return response.content || "Tax planning report unavailable.";
   }
 }
 

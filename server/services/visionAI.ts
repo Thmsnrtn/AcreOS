@@ -271,7 +271,7 @@ ${descriptions.join('\n\n')}
 Create a flowing description that highlights the best features without repeating information.`;
 
       const completion = await requireOpenAIClient().chat.completions.create({
-        model: 'gpt-4-turbo-preview',
+        model: 'gpt-4o',
         messages: [{ role: 'user', content: prompt }],
         max_tokens: 300,
       });

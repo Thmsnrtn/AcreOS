@@ -90,7 +90,7 @@ Be conversational, supportive, and focus on practical knowledge that students ca
 
       // Call OpenAI for response
       const completion = await requireOpenAIClient().chat.completions.create({
-        model: 'gpt-4-turbo-preview',
+        model: 'gpt-4o',
         messages: [
           { role: 'system', content: systemPrompt },
           ...conversationHistory,
@@ -221,7 +221,7 @@ Format the response as JSON array with this structure:
 ]`;
 
       const completion = await requireOpenAIClient().chat.completions.create({
-        model: 'gpt-4-turbo-preview',
+        model: 'gpt-4o',
         messages: [{ role: 'user', content: prompt }],
         max_tokens: 1500,
       });
@@ -276,7 +276,7 @@ The study plan should:
 Keep it concise and actionable.`;
 
       const completion = await requireOpenAIClient().chat.completions.create({
-        model: 'gpt-4-turbo-preview',
+        model: 'gpt-4o',
         messages: [{ role: 'user', content: prompt }],
         max_tokens: 1000,
       });

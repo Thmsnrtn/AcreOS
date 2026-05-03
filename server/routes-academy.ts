@@ -147,9 +147,10 @@ router.post('/tutor/message', async (req: Request, res: Response) => {
       }
     }
 
-    // Simple AI tutor response via OpenAI (reuse existing AI infrastructure)
-    const { requireOpenAIClient } = await import('./utils/openaiClient');
-    const openai = requireOpenAIClient();
+    // Migrated from direct OpenAI to central aiRouter (P1-36 / P1-37):
+    //   - removes the legacy preview-tier model pin
+    //   - flows through cost tracking, semantic caching, prompt versioning
+    const { routeAITask, TaskComplexity } = await import('./services/aiRouter');
 
     const systemPrompt = `You are an expert real estate educator for AcreOS Academy.
 You help investors learn about land acquisition, seller financing, tax liens, due diligence,
@@ -165,13 +166,14 @@ ${courseId ? `The student is currently studying course ID: ${courseId}.` : ''}`;
       { role: 'user' as const, content: message },
     ];
 
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4-turbo-preview',
+    const completion = await routeAITask({
+      taskType: 'academy_tutor',
+      complexity: TaskComplexity.MODERATE,
       messages,
-      max_tokens: 600,
-    });
+      maxTokens: 600,
+    }, { orgId: org?.id });
 
-    const reply = completion.choices[0]?.message?.content || 'I could not generate a response.';
+    const reply = completion.content || 'I could not generate a response.';
 
     // Deduct credits after successful AI call
     if (org) {

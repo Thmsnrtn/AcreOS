@@ -32,6 +32,8 @@
     "typecheck": "tsc -p tsconfig.check.json",
     "verify:registry": "node scripts/verify-registry.js",
     "verify:clean-deploy": "npm run build && echo 'Build verified'",
+    "eval": "tsx evals/run-eval.ts",
+    "eval:smoke": "tsx evals/run-eval.ts --limit 5",
     "prepare": "git config core.hooksPath .githooks 2>/dev/null || true",
     "tauri:dev": "cargo tauri dev",
     "tauri:build": "cargo tauri build",

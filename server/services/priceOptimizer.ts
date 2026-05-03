@@ -19,7 +19,7 @@ import {
   type SellerIntentPrediction,
 } from "@shared/schema";
 import { eq, and, desc, gte, sql, avg, count } from "drizzle-orm";
-import { getOpenAIClient } from "../utils/openaiClient";
+import { generateWithAutoRouting } from "./aiRouter";
 import { getComparableProperties, ComparableProperty, calculateMarketValue } from "./comps";
 import { logger } from "../utils/logger";
 import { addMonths } from "../utils/dateUtils";
@@ -612,12 +612,9 @@ export class PriceOptimizerService {
     recommendation: PriceRecommendation,
     additionalContext?: { currentOffer?: number; sellerAsk?: number; fairMarketValue?: number }
   ): Promise<string | null> {
-    const openai = getOpenAIClient();
-
-    if (!openai) {
-      return this.generateFallbackReasoning(recommendation, additionalContext);
-    }
-
+    // Migrated from direct OpenAI to central aiRouter (P1-36).
+    // aiRouter handles cost tracking, rate limiting, prompt versioning,
+    // semantic caching, and provider failover.
     try {
       const summary = recommendation.comparablesSummary as ComparableSummary | null;
       const adjustments = recommendation.adjustments as Adjustments | null;
@@ -672,23 +669,13 @@ export class PriceOptimizerService {
         }
       }
 
-      const response = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content: `You are a land investment pricing expert. Generate a clear, concise explanation (2-4 sentences) for a price recommendation. Focus on the key factors that influenced the pricing decision. Be specific about numbers and percentages when relevant.`
-          },
-          {
-            role: "user",
-            content: contextParts.join("\n")
-          }
-        ],
-        temperature: 0.3,
-        max_tokens: 200,
-      });
+      const response = await generateWithAutoRouting(
+        "basic_analysis",
+        `You are a land investment pricing expert. Generate a clear, concise explanation (2-4 sentences) for a price recommendation. Focus on the key factors that influenced the pricing decision. Be specific about numbers and percentages when relevant.`,
+        contextParts.join("\n"),
+      );
 
-      return response.choices[0].message.content || null;
+      return response.content || null;
     } catch (error) {
       logger.error("[PriceOptimizer] AI reasoning generation failed", error);
       return this.generateFallbackReasoning(recommendation, additionalContext);

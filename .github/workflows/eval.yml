@@ -1,0 +1,128 @@
+name: AI Eval Harness
+
+on:
+  pull_request:
+    paths:
+      - 'evals/**'
+      - 'server/ai/**'
+      - 'server/services/aiRouter.ts'
+      - 'server/services/ai*.ts'
+      - 'server/services/*ai*.ts'
+      - '.github/workflows/eval.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Use Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Run eval on PR head
+        id: eval-pr
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          AI_INTEGRATIONS_OPENROUTER_API_KEY: ${{ secrets.AI_INTEGRATIONS_OPENROUTER_API_KEY }}
+        run: |
+          npm run eval -- --report-dir evals/reports/pr
+          PR_SCORE=$(node -e "console.log(JSON.parse(require('fs').readFileSync('evals/reports/pr/latest.json','utf8')).totals.avgOverall.toFixed(4))")
+          echo "pr_score=$PR_SCORE" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout main into worktree
+        run: |
+          git fetch origin main --depth=1
+          git worktree add /tmp/main origin/main
+
+      - name: Run eval on main baseline
+        id: eval-main
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          AI_INTEGRATIONS_OPENROUTER_API_KEY: ${{ secrets.AI_INTEGRATIONS_OPENROUTER_API_KEY }}
+        run: |
+          # Re-use same node_modules; copy main's evals/ over and run.
+          mkdir -p evals/reports/main
+          if [ -f /tmp/main/evals/run-eval.ts ]; then
+            cp -r /tmp/main/evals/* evals_main_tmp/ 2>/dev/null || true
+            mkdir -p evals_main_tmp
+            cp -r /tmp/main/evals/. evals_main_tmp/
+            npx tsx evals_main_tmp/run-eval.ts --prompts evals_main_tmp/golden-set.json --report-dir evals/reports/main || true
+          fi
+          if [ -f evals/reports/main/latest.json ]; then
+            MAIN_SCORE=$(node -e "console.log(JSON.parse(require('fs').readFileSync('evals/reports/main/latest.json','utf8')).totals.avgOverall.toFixed(4))")
+          else
+            MAIN_SCORE=$(node -e "console.log(JSON.parse(require('fs').readFileSync('evals/reports/pr/latest.json','utf8')).totals.avgOverall.toFixed(4))")
+          fi
+          echo "main_score=$MAIN_SCORE" >> "$GITHUB_OUTPUT"
+
+      - name: Compute regression
+        id: regression
+        run: |
+          PR=${{ steps.eval-pr.outputs.pr_score }}
+          MAIN=${{ steps.eval-main.outputs.main_score }}
+          DELTA=$(node -e "console.log(((${PR} - ${MAIN}) * 100).toFixed(2))")
+          THRESHOLD=-5
+          echo "delta_pct=$DELTA" >> "$GITHUB_OUTPUT"
+          PASS=$(node -e "console.log(${DELTA} >= ${THRESHOLD} ? 'true' : 'false')")
+          echo "pass=$PASS" >> "$GITHUB_OUTPUT"
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = '${{ steps.eval-pr.outputs.pr_score }}';
+            const main = '${{ steps.eval-main.outputs.main_score }}';
+            const delta = '${{ steps.regression.outputs.delta_pct }}';
+            const pass = '${{ steps.regression.outputs.pass }}' === 'true';
+            const emoji = pass ? '✅' : '❌';
+            const verdict = pass
+              ? `Within the 5% regression budget.`
+              : `**Regression > 5% — blocking merge.**`;
+            const body = [
+              `### ${emoji} AI eval harness`,
+              ``,
+              `| metric | value |`,
+              `| --- | --- |`,
+              `| PR score | **${pr}** |`,
+              `| main baseline | ${main} |`,
+              `| delta | ${delta}% |`,
+              ``,
+              verdict,
+              ``,
+              `Full report uploaded as a workflow artifact (\`evals/reports/pr/latest.json\`).`,
+            ].join('\n');
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            await github.rest.issues.createComment({ owner, repo, issue_number, body });
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-reports
+          path: evals/reports
+          retention-days: 14
+
+      - name: Fail on regression
+        if: steps.regression.outputs.pass != 'true'
+        run: |
+          echo "Eval regression > 5% — failing."
+          exit 1

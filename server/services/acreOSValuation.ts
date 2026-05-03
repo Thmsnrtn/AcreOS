@@ -692,7 +692,7 @@ Consider factors like:
 Respond in JSON format: { "adjustment": number, "reasoning": string }`;
 
       const completion = await requireOpenAIClient().chat.completions.create({
-        model: 'gpt-4-turbo-preview',
+        model: 'gpt-4o',
         messages: [{ role: 'user', content: prompt }],
         response_format: { type: 'json_object' },
       });

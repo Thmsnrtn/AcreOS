@@ -143,7 +143,7 @@ Respond with JSON in this format:
 }`;
 
       const completion = await requireOpenAIClient().chat.completions.create({
-        model: 'gpt-4-turbo-preview',
+        model: 'gpt-4o',
         messages: [{ role: 'user', content: prompt }],
         max_tokens: 500,
       });
@@ -189,7 +189,7 @@ Format:
 }`;
 
       const completion = await requireOpenAIClient().chat.completions.create({
-        model: 'gpt-4-turbo-preview',
+        model: 'gpt-4o',
         messages: [{ role: 'user', content: prompt }],
         max_tokens: 100,
       });
@@ -228,7 +228,7 @@ Transcript:
 ${transcript.fullTranscript}`;
 
       const completion = await requireOpenAIClient().chat.completions.create({
-        model: 'gpt-4-turbo-preview',
+        model: 'gpt-4o',
         messages: [{ role: 'user', content: prompt }],
         max_tokens: 200,
       });
@@ -507,7 +507,7 @@ ${transcript.fullTranscript}
 Format: ["Action item 1", "Action item 2", ...]`;
 
       const completion = await requireOpenAIClient().chat.completions.create({
-        model: 'gpt-4-turbo-preview',
+        model: 'gpt-4o',
         messages: [{ role: 'user', content: prompt }],
         max_tokens: 300,
       });
