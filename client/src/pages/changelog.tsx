@@ -1,143 +1,168 @@
-import { useQuery } from "@tanstack/react-query";
+/**
+ * ChangelogPage — public, curated, customer-facing.
+ *
+ * Reads from `client/src/data/customer-changelog.ts` (manually edited
+ * before each release) instead of the dev CHANGELOG.md, which is too
+ * noisy: it includes ticket IDs, file paths, regex counts, and
+ * occasionally CVE-like detail we don't want on a public surface.
+ *
+ * Linked from the public-page footer (P1-5).
+ */
 import { Link } from "wouter";
+import { ArrowLeft, Plus, Sparkles, Wrench } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft } from "lucide-react";
+import { AcreosLogo } from "@/components/acreos-logo";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { SkipToContent } from "@/components/skip-to-content";
+import { PublicFooter } from "@/components/public-footer";
 import { usePageMeta } from "@/hooks/use-document-title";
+import {
+  CUSTOMER_CHANGELOG,
+  type ChangelogEntryType,
+} from "@/data/customer-changelog";
 
-interface ChangelogEntry {
-  version: string;
-  date: string;
-  sections: { title: string; items: string[] }[];
-}
-
-const SECTION_COLORS: Record<string, string> = {
-  Added: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-  Changed: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
-  Fixed: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
-  Removed: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
-  Security: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
+const TYPE_META: Record<
+  ChangelogEntryType,
+  { label: string; className: string; Icon: typeof Plus }
+> = {
+  added: {
+    label: "Added",
+    className: "bg-primary/10 text-primary border-primary/20",
+    Icon: Plus,
+  },
+  improved: {
+    label: "Improved",
+    className: "bg-secondary text-secondary-foreground border-border",
+    Icon: Sparkles,
+  },
+  fixed: {
+    label: "Fixed",
+    className: "bg-muted text-muted-foreground border-border",
+    Icon: Wrench,
+  },
 };
 
-/**
- * Scrub internal dev-ese from a changelog item so a customer-facing
- * audience can read it. The raw CHANGELOG.md is written by engineers
- * and contains ticket IDs (F-A10-1), file paths (`server/...`), and
- * literal markdown asterisks. Until we split public/internal
- * changelogs, we clean at render time.
- */
-function cleanChangelogItem(raw: string): string {
-  let s = raw;
-  // Strip leading ticket + status prefix:  "**F-A10-1 FIXED:** webhook..."
-  s = s.replace(/^\*\*[A-Z]+-[A-Z0-9-]+\s+[A-Z]+:\*\*\s*/, "");
-  // Strip inline file paths in backticks:  "... (`server/routes.ts`)"
-  s = s.replace(/\s*\([`']?[^)]*\/[^)]*[`']?\)/g, "");
-  // Strip trailing "Full X implementation in path/file.ts + path/file2.ts"
-  // or similar: after "in" or "+", any sequence of filepath-like tokens.
-  s = s.replace(
-    /\.\s*(Full [^.]+ (?:implementation|module) )?(in|at)\s+[\w/.-]+(?:\s*\+\s*[\w/.-]+)*\b[\s.]*$/i,
-    "",
-  );
-  // Strip bare file paths left standalone in prose:  "... in server/foo.ts"
-  s = s.replace(/\b(?:server|client|shared|docs|scripts)\/[\w./+-]+/g, "");
-  // Strip bare backticks wrapping code:  "`foo()`" → "foo()"
-  s = s.replace(/`([^`]+)`/g, "$1");
-  // Strip any remaining markdown-bold asterisks
-  s = s.replace(/\*\*([^*]+)\*\*/g, "$1");
-  // Collapse whitespace + trailing " in " / "Full ... implementation" remnants.
-  s = s.replace(/\s+/g, " ");
-  s = s.replace(/\s+[.,;]+$/, "");
-  return s.trim();
-}
-
-/**
- * Drop items that are pure internal (no customer-visible change) even
- * after cleaning. Heuristic: items with 3+ internal tokens (CI, CVE,
- * npm audit, Dockerfile, regex pattern counts) are filtered out.
- */
-function isCustomerVisible(cleaned: string): boolean {
-  const internalMarkers = [
-    /CI (warnings?|build)/i,
-    /CVE patch SLA/i,
-    /npm ci|npm audit/i,
-    /Dockerfile/i,
-    /\d+ regex patterns/i,
-    /dev fallback/i,
-    /log retention policy/i,
-  ];
-  return internalMarkers.every((re) => !re.test(cleaned));
+/** Format an ISO date as "May 1, 2026" without locale surprises. */
+function formatDate(iso: string): string {
+  // Parse explicitly as UTC midnight to avoid off-by-one in negative timezones.
+  const [y, m, d] = iso.split("-").map(Number);
+  if (!y || !m || !d) return iso;
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.toLocaleDateString("en-US", {
+    timeZone: "UTC",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
 }
 
 export default function ChangelogPage() {
   usePageMeta(
     "Changelog",
-    "Recent updates, new features, and improvements to the AcreOS platform for land investors."
+    "Recent updates, new features, and improvements to AcreOS — written for Land Investors using the platform.",
   );
-  const { data, isLoading } = useQuery<{ entries: ChangelogEntry[] }>({
-    queryKey: ["/api/changelog"],
-    staleTime: 1000 * 60 * 60,
-  });
+
+  // Defensive: ensure reverse-chronological even if an editor inserts
+  // an out-of-order entry by hand.
+  const entries = [...CUSTOMER_CHANGELOG].sort((a, b) =>
+    a.date < b.date ? 1 : -1,
+  );
 
   return (
-    <div className="min-h-screen bg-background overflow-x-hidden">
-      <div className="max-w-2xl mx-auto px-6 py-16">
-        <div className="mb-8">
-          <Button variant="ghost" asChild>
-            <Link href="/" className="min-h-11">
-              <ArrowLeft className="w-4 h-4 mr-2" aria-hidden="true" /> Back to AcreOS
-            </Link>
-          </Button>
-        </div>
+    <div className="min-h-screen bg-background">
+      <SkipToContent />
 
-        <div className="mb-12">
-          <h1 className="text-3xl font-bold mb-2">What's new</h1>
-          <p className="text-muted-foreground">Latest updates and improvements to AcreOS.</p>
-        </div>
-
-        {isLoading ? (
-          <div className="text-center text-muted-foreground py-12" role="status" aria-live="polite">
-            <span className="sr-only">Loading changelog…</span>
-            Loading changelog…
+      {/* Top nav — same pattern as /pricing, /security, /privacy */}
+      <nav className="border-b bg-background/95 backdrop-blur sticky top-0 z-50">
+        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+          <Link
+            href="/"
+            className="flex items-center gap-2 hover:opacity-80 transition-opacity min-h-11 py-1"
+            aria-label="Back to AcreOS home"
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+            <AcreosLogo size={30} />
+          </Link>
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+            <Button asChild>
+              <Link href="/auth?mode=register" className="min-h-11">
+                Get started
+              </Link>
+            </Button>
           </div>
+        </div>
+      </nav>
+
+      <main id="main-content" className="max-w-3xl mx-auto px-6 py-16">
+        <header className="mb-12 space-y-3">
+          <h1 className="text-4xl font-bold">What's new in AcreOS</h1>
+          <p className="text-muted-foreground max-w-2xl leading-relaxed">
+            A running log of features, improvements, and fixes shipped to
+            Land Investors. Newest first.
+          </p>
+        </header>
+
+        {entries.length === 0 ? (
+          <p className="text-center text-muted-foreground py-12">
+            No changelog entries yet — check back soon.
+          </p>
         ) : (
-          <ol className="space-y-8" aria-label="Changelog entries">
-            {data?.entries.map((entry) => (
-              <li key={entry.version}>
+          <ol className="space-y-10" aria-label="Changelog entries">
+            {entries.map((entry) => (
+              <li key={entry.date}>
+                {/* Date header */}
+                <div className="flex items-baseline gap-3 mb-4 flex-wrap">
+                  <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground tabular-nums">
+                    {formatDate(entry.date)}
+                  </h2>
+                  {entry.version && (
+                    <Badge
+                      variant="outline"
+                      className="text-xs font-mono tabular-nums"
+                    >
+                      {entry.version}
+                    </Badge>
+                  )}
+                </div>
+
                 <Card>
-                  <CardContent className="pt-6">
-                    <div className="flex items-center gap-3 mb-4 flex-wrap">
-                      <Badge variant="outline" className="text-sm font-mono tabular-nums">v{entry.version}</Badge>
-                      {entry.date && <span className="text-sm text-muted-foreground tabular-nums">{entry.date}</span>}
-                    </div>
-                    {entry.sections.map((section) => (
-                      <div key={section.title} className="mb-4 last:mb-0">
-                        <Badge className={`mb-2 ${SECTION_COLORS[section.title] || "bg-gray-100 text-gray-800"}`}>
-                          {section.title}
-                        </Badge>
-                        <ul className="space-y-1.5 ml-1" aria-label={`${section.title} in v${entry.version}`}>
-                          {section.items
-                            .map(cleanChangelogItem)
-                            .filter(isCustomerVisible)
-                            .map((item, i) => (
-                              <li key={i} className="text-sm text-muted-foreground flex gap-2">
-                                <span className="text-muted-foreground/50 shrink-0" aria-hidden="true">-</span>
-                                <span className="break-words min-w-0">{item}</span>
-                              </li>
-                            ))}
-                        </ul>
-                      </div>
-                    ))}
+                  <CardContent className="pt-6 space-y-5">
+                    {entry.changes.map((change, i) => {
+                      const meta = TYPE_META[change.type];
+                      const Icon = meta.Icon;
+                      return (
+                        <div key={i} className="space-y-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <Badge
+                              variant="outline"
+                              className={`${meta.className} flex items-center gap-1`}
+                            >
+                              <Icon
+                                className="h-3 w-3"
+                                aria-hidden="true"
+                              />
+                              {meta.label}
+                            </Badge>
+                            <h3 className="font-semibold">{change.title}</h3>
+                          </div>
+                          <p className="text-sm text-muted-foreground leading-relaxed">
+                            {change.body}
+                          </p>
+                        </div>
+                      );
+                    })}
                   </CardContent>
                 </Card>
               </li>
             ))}
-            {(!data?.entries || data.entries.length === 0) && (
-              <li className="text-center text-muted-foreground py-12 list-none">No changelog entries found.</li>
-            )}
           </ol>
         )}
-      </div>
+      </main>
+
+      <PublicFooter />
     </div>
   );
 }
