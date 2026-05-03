@@ -1,26 +1,25 @@
 /**
- * Prototype reference: /acreos-landing/sections-3.jsx → Pricing (lines 43-115)
- *
- * Three tiers (Solo / Operator / Operation) with monthly/annual toggle.
+ * Three tiers (Solo / Operator / Empire) with monthly/annual toggle.
  * Operator is "Most popular" — gets 1px ink-color border + shadow + flag.
  *
- * Per founder pricing memory: prototype prices are illustrative landing
- * marketing. Actual production pricing should pull from /api/config/pricing
- * which the founder controls via the founder dashboard. For now this
- * landing displays the prototype's marketing pricing as static copy —
- * Phase 9 coherence pass can wire it to the real API if desired.
+ * Prices come from shared/billing/tier-pricing.ts so this landing surface
+ * can never drift from the pricing page, MRR math, or Stripe checkout
+ * amounts. Earlier prototype copy used $199 / $499 / $1290 as illustrative
+ * marketing; that drifted from the canonical $20 / $49 / $79 and is the
+ * reason MRR math was fiction across the founder dashboard.
  */
 
 import { useState } from "react";
 import { Link } from "wouter";
 import { LANDING_COPY } from "./copy";
+import { TIER_PRICES_CENTS } from "@shared/billing/tier-pricing";
 
 const TIERS = [
   {
     name: "Solo",
     desc: "For investors closing 1–4 deals a month.",
-    m: 199,
-    a: 1990,
+    m: TIER_PRICES_CENTS.solo.priceMonthlyCents / 100,
+    a: TIER_PRICES_CENTS.solo.priceYearlyCents / 100,
     features: [
       "1 user",
       "3 counties in buy-box",
@@ -35,8 +34,8 @@ const TIERS = [
   {
     name: "Operator",
     desc: "For partnerships and small teams.",
-    m: 499,
-    a: 4990,
+    m: TIER_PRICES_CENTS.operator.priceMonthlyCents / 100,
+    a: TIER_PRICES_CENTS.operator.priceYearlyCents / 100,
     features: [
       "5 users",
       "Unlimited counties",
@@ -50,10 +49,10 @@ const TIERS = [
     featured: true,
   },
   {
-    name: "Operation",
+    name: "Empire",
     desc: "For full-time operations & multi-state.",
-    m: 1290,
-    a: 12900,
+    m: TIER_PRICES_CENTS.empire.priceMonthlyCents / 100,
+    a: TIER_PRICES_CENTS.empire.priceYearlyCents / 100,
     features: [
       "Unlimited users",
       "Custom integrations",

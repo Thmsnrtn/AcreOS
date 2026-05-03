@@ -1,7 +1,9 @@
 import { getUncachableStripeClient } from './stripeClient';
 import { logger } from "./utils/logger";
+import { TIER_PRICES_CENTS } from "@shared/billing/tier-pricing";
 
-// Only Pro tier supports additional seats in the 3-tier launch
+// Only Pro / Operator tier supports additional seats in the launch lineup.
+// Per-seat add-on shadows the Solo monthly price as the per-seat cost.
 const SEAT_ADDON_PRODUCTS = [
   {
     name: 'Pro Seat Add-on',
@@ -10,13 +12,15 @@ const SEAT_ADDON_PRODUCTS = [
       type: 'seat_addon',
       tier: 'pro',
     },
-    monthlyPrice: 2000, // $20/month per seat
-    yearlyPrice: 19200, // $192/year per seat (20% discount)
+    monthlyPrice: TIER_PRICES_CENTS.solo.priceMonthlyCents, // $20/seat/month
+    yearlyPrice: TIER_PRICES_CENTS.solo.priceYearlyCents,   // $200/seat/year
   },
 ];
 
-// Only create Stripe products for the 3 launch tiers (Free, Starter, Pro)
-// Scale and Enterprise are feature-flagged and will NOT have Stripe products until manually enabled
+// Stripe products for the 3 paid tiers — Starter / Pro / Scale here are the
+// public marketing labels for the canonical solo / operator / empire tiers
+// in shared/billing/tier-pricing.ts. Prices come from that module so this
+// script can never drift from the pricing page or MRR math.
 const SUBSCRIPTION_PRODUCTS = [
   {
     name: 'Starter',
@@ -28,8 +32,8 @@ const SUBSCRIPTION_PRODUCTS = [
       teamMembers: '1',
       aiCredits: '500',
     },
-    monthlyPrice: 2000, // $20/month
-    yearlyPrice: 19200, // $192/year (20% discount)
+    monthlyPrice: TIER_PRICES_CENTS.solo.priceMonthlyCents,
+    yearlyPrice: TIER_PRICES_CENTS.solo.priceYearlyCents,
   },
   {
     name: 'Pro',
@@ -41,8 +45,21 @@ const SUBSCRIPTION_PRODUCTS = [
       teamMembers: '2',
       aiCredits: '1000',
     },
-    monthlyPrice: 4900, // $49/month
-    yearlyPrice: 47000, // $470/year (20% discount)
+    monthlyPrice: TIER_PRICES_CENTS.operator.priceMonthlyCents,
+    yearlyPrice: TIER_PRICES_CENTS.operator.priceYearlyCents,
+  },
+  {
+    name: 'Scale',
+    description: 'For growing teams. Unlimited leads/properties/notes/AI, 10 seats, priority support, SMS/voice outreach, BYOK providers.',
+    metadata: {
+      tier: 'scale',
+      propertyLimit: '-1',
+      leadLimit: '-1',
+      teamMembers: '10',
+      aiCredits: '-1',
+    },
+    monthlyPrice: TIER_PRICES_CENTS.empire.priceMonthlyCents,
+    yearlyPrice: TIER_PRICES_CENTS.empire.priceYearlyCents,
   },
 ];
 
