@@ -38,6 +38,10 @@
  */
 
 import { Router, type Request, type Response } from "express";
+import { db } from "./db";
+import { properties } from "../shared/schema";
+import { eq, and } from "drizzle-orm";
+import { assertFeeSimpleOrThrow, handleLandStatusError } from "./utils/landStatus";
 
 const router = Router();
 
@@ -127,10 +131,28 @@ router.get("/land-value-trend/:state/:county", async (req: Request, res: Respons
 router.post("/blind-offer", async (req: Request, res: Response) => {
   try {
     const { calculateBlindOffer } = await import("./services/blindOfferCalculator");
-    const { state, county, targetAcres, comps, sellerProfile, marketCondition, ownerFinanceGoal } = req.body;
+    const { state, county, targetAcres, comps, sellerProfile, marketCondition, ownerFinanceGoal, propertyId } = req.body;
 
     if (!state || !county || !targetAcres) {
       return res.status(400).json({ error: "state, county, and targetAcres are required" });
+    }
+
+    // Aniyah §2 — block blind-offer generation on Indian-Country / federal
+    // trust parcels. When the caller pins the offer to a specific propertyId
+    // we look up its landStatus; if not 'fee' we throw LandStatusBlockError.
+    // Callers without a propertyId are typically running campaign-level
+    // exploration and aren't generating a binding letter — those still flow
+    // through, but the per-property lookup runs at letter-generation time.
+    if (propertyId) {
+      const org = (req as any).organization;
+      const orgId = org?.id;
+      if (orgId) {
+        const [parcel] = await db
+          .select({ landStatus: properties.landStatus })
+          .from(properties)
+          .where(and(eq(properties.id, Number(propertyId)), eq(properties.organizationId, orgId)));
+        assertFeeSimpleOrThrow(parcel ?? null, "blind-offer");
+      }
     }
 
     const report = await calculateBlindOffer({
@@ -145,6 +167,7 @@ router.post("/blind-offer", async (req: Request, res: Response) => {
 
     res.json(report);
   } catch (err: any) {
+    if (handleLandStatusError(res, err)) return;
     res.status(500).json({ error: err.message });
   }
 });

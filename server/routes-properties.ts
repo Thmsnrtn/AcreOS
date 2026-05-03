@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { storage, db } from "./storage";
 import { z } from "zod";
-import { insertPropertySchema } from "@shared/schema";
+import { insertPropertySchema, landStatusSchema } from "@shared/schema";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { checkUsageLimit } from "./services/usageLimits";
@@ -279,6 +279,84 @@ export function registerPropertyRoutes(app: Express): void {
         return Errors.badRequest(res, "Validation failed", (err.errors || []).map((e: any) => ({ field: e.path?.join?.('.') || '', message: e.message || String(e) })));
       }
       return Errors.internal(res, err);
+    }
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // PATCH /api/properties/:id/land-status (Aniyah §2)
+  //
+  // Manual land-status verification surface. After human due diligence
+  // (review of BIA records, county assessor flags, tribal jurisdiction,
+  // restricted-fee patents), the user sets the parcel's landStatus so
+  // automation can either run (fee) or stay blocked (any trust variant).
+  //
+  // Audit log captures before/after — this is a regulated decision and we
+  // need a clear chain of custody.
+  // ──────────────────────────────────────────────────────────────────────────
+  const landStatusUpdateSchema = z.object({
+    landStatus: landStatusSchema,
+    verificationNotes: z.string().max(2000).optional(),
+  });
+
+  api.patch("/api/properties/:id/land-status", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const propertyId = Number(req.params.id);
+
+      if (isNaN(propertyId)) {
+        return Errors.badRequest(res, "Invalid property ID");
+      }
+
+      const parsed = landStatusUpdateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.badRequest(
+          res,
+          "Validation failed",
+          parsed.error.errors.map((e) => ({ field: e.path.join("."), message: e.message })),
+        );
+      }
+
+      const existing = await storage.getProperty(org.id, propertyId);
+      if (!existing) {
+        return Errors.notFound(res, "Property");
+      }
+
+      const updated = await storage.updateProperty(
+        propertyId,
+        { landStatus: parsed.data.landStatus },
+        org.id,
+      );
+
+      const user = req.user as any;
+      const userId = user?.claims?.sub || user?.id;
+      await storage.createAuditLogEntry({
+        organizationId: org.id,
+        userId,
+        action: "update",
+        entityType: "property",
+        entityId: propertyId,
+        changes: {
+          before: { landStatus: existing.landStatus },
+          after: { landStatus: parsed.data.landStatus },
+          fields: ["landStatus"],
+          verificationNotes: parsed.data.verificationNotes,
+          regulatoryBasis: ["25 USC §177", "25 CFR §152"],
+        },
+        ipAddress: req.ip || req.socket?.remoteAddress,
+        userAgent: req.headers["user-agent"],
+      });
+
+      logger.info(
+        `[LandStatus] Property ${propertyId} set to ${parsed.data.landStatus} by user ${userId} (org ${org.id})`,
+      );
+
+      res.json({
+        id: updated.id,
+        landStatus: updated.landStatus,
+      });
+    } catch (err: any) {
+      logger.error("Land status update error", err instanceof Error ? err : undefined);
+      Errors.internal(res, err);
     }
   });
 

@@ -4,6 +4,7 @@ import { db } from './db';
 import { properties } from '../shared/schema';
 import { eq, and } from 'drizzle-orm';
 import { cacheResponse } from './middleware/responseCache';
+import { handleLandStatusError } from './utils/landStatus';
 
 const router = Router();
 
@@ -21,6 +22,7 @@ router.post('/generate', async (req: Request, res: Response) => {
     );
     res.json({ valuation });
   } catch (error: any) {
+    if (handleLandStatusError(res, error)) return;
     res.status(400).json({ error: error.message });
   }
 });
@@ -61,6 +63,7 @@ router.post('/property/:propertyId', async (req: Request, res: Response) => {
     const valuation = await acreOSValuation.generateValuation(org.id.toString(), request);
     res.json({ valuation, property });
   } catch (error: any) {
+    if (handleLandStatusError(res, error)) return;
     res.status(400).json({ error: error.message });
   }
 });
@@ -120,6 +123,7 @@ router.post('/bulk', async (req: Request, res: Response) => {
     await acreOSValuation.generateBulkValuations(org.id.toString());
     res.json({ success: true, message: 'Bulk valuation started for all owned properties' });
   } catch (error: any) {
+    if (handleLandStatusError(res, error)) return;
     res.status(400).json({ error: error.message });
   }
 });

@@ -9,6 +9,7 @@ import { usageMeteringService, creditService } from "./services/credits";
 import { activityLogger } from "./services/activityLogger";
 import { generateOfferSuggestions, generateOfferLetter, predictAcceptanceProbability, type PropertyData, type OfferLetterRequest, type AcceptancePredictionRequest } from "./services/aiOfferService";
 import { logger } from "./utils/logger";
+import { assertFeeSimpleOrThrow, handleLandStatusError } from "./utils/landStatus";
 
 export function registerCRMExtrasRoutes(app: Express): void {
   const api = app;
@@ -19,55 +20,71 @@ export function registerCRMExtrasRoutes(app: Express): void {
   api.post("/api/ai/generate-offer", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const propertyData: PropertyData = req.body;
-      
+
       if (!propertyData.county || !propertyData.state || !propertyData.sizeAcres) {
-        return res.status(400).json({ 
-          message: "Missing required fields: county, state, and sizeAcres are required" 
+        return res.status(400).json({
+          message: "Missing required fields: county, state, and sizeAcres are required"
         });
       }
-      
+
+      // Aniyah §2 — block AI offer generation on Indian-Country parcels.
+      const org = (req as any).organization;
+      if (propertyData.id && org?.id) {
+        const parcel = await storage.getProperty(org.id, Number(propertyData.id));
+        assertFeeSimpleOrThrow(parcel ?? null, "blind-offer");
+      }
+
       const result = await generateOfferSuggestions(propertyData);
-      
+
       if (!result.success) {
         return res.status(400).json({ message: result.error });
       }
-      
+
       res.json(result);
     } catch (error: any) {
+      if (handleLandStatusError(res, error)) return;
       logger.error("AI generate-offer error", error);
-      res.status(500).json({ 
-        message: error.message || "Failed to generate offer suggestions" 
+      res.status(500).json({
+        message: error.message || "Failed to generate offer suggestions"
       });
     }
   });
-  
+
   api.post("/api/ai/generate-letter", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const request: OfferLetterRequest = req.body;
-      
+
       if (!request.property || !request.offerAmount || !request.buyerName || !request.tone) {
-        return res.status(400).json({ 
-          message: "Missing required fields: property, offerAmount, buyerName, and tone are required" 
+        return res.status(400).json({
+          message: "Missing required fields: property, offerAmount, buyerName, and tone are required"
         });
       }
-      
+
       if (!["professional", "friendly", "urgent"].includes(request.tone)) {
-        return res.status(400).json({ 
-          message: "Tone must be one of: professional, friendly, urgent" 
+        return res.status(400).json({
+          message: "Tone must be one of: professional, friendly, urgent"
         });
       }
-      
+
+      // Aniyah §2 — block AI offer letter generation on Indian-Country parcels.
+      const org = (req as any).organization;
+      if (request.property?.id && org?.id) {
+        const parcel = await storage.getProperty(org.id, Number(request.property.id));
+        assertFeeSimpleOrThrow(parcel ?? null, "offer-letter");
+      }
+
       const result = await generateOfferLetter(request);
-      
+
       if (!result.success) {
         return res.status(400).json({ message: result.error });
       }
-      
+
       res.json(result);
     } catch (error: any) {
+      if (handleLandStatusError(res, error)) return;
       logger.error("AI generate-letter error", error);
-      res.status(500).json({ 
-        message: error.message || "Failed to generate offer letter" 
+      res.status(500).json({
+        message: error.message || "Failed to generate offer letter"
       });
     }
   });

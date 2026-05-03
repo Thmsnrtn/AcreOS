@@ -14,18 +14,40 @@
  * Auth: gated via App.tsx ProtectedRoute wrapper.
  */
 
+import { useState } from "react";
 import { useRoute, Link } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { QueryErrorState } from "@/components/query-error-state";
 import { EmptyState } from "@/components/empty-state";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useTerm } from "@/hooks/use-persona";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 import { usd } from "@/lib/format";
 import {
   ArrowLeft,
@@ -36,10 +58,11 @@ import {
   Trees,
   CheckCircle2,
   AlertTriangle,
+  ShieldAlert,
   ExternalLink,
   Sparkles,
 } from "lucide-react";
-import type { Property } from "@shared/schema";
+import type { Property, LandStatus } from "@shared/schema";
 
 const STATUS_LABELS: Record<string, string> = {
   prospect: "Prospect",
@@ -50,6 +73,28 @@ const STATUS_LABELS: Record<string, string> = {
   listed: "Listed",
   sold: "Sold",
 };
+
+// Aniyah §2 — Indian-Country / federal trust land status. Display labels
+// for the seven landStatus values defined in shared/schema.ts.
+const LAND_STATUS_LABELS: Record<LandStatus, string> = {
+  fee: "Fee simple",
+  tribal_trust: "Tribal trust",
+  individual_trust: "Individual trust (allotment)",
+  restricted_fee: "Restricted fee",
+  fee_within_reservation: "Fee within reservation",
+  off_reservation_trust: "Off-reservation trust",
+  unknown: "Not yet verified",
+};
+
+const LAND_STATUS_OPTIONS: LandStatus[] = [
+  "fee",
+  "tribal_trust",
+  "individual_trust",
+  "restricted_fee",
+  "fee_within_reservation",
+  "off_reservation_trust",
+  "unknown",
+];
 
 const STATUS_TONES: Record<string, string> = {
   prospect: "bg-muted text-muted-foreground",
@@ -179,6 +224,11 @@ export default function ParcelDetailPage() {
           </Link>
         </div>
 
+        {/* Aniyah §2 — Indian-Country / federal trust land status banner.
+            Red when verified-trust; yellow when unverified. Auto-AVM,
+            auto-offer, auto-contract are blocked unless landStatus === 'fee'. */}
+        <LandStatusBanner property={property} />
+
         {/* Header — APN + status + acreage + actions */}
         <header className="space-y-3">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -235,6 +285,7 @@ export default function ParcelDetailPage() {
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="diligence">Due diligence</TabsTrigger>
             <TabsTrigger value="financial">Financial</TabsTrigger>
+            <TabsTrigger value="land-status">Land status</TabsTrigger>
             <TabsTrigger value="actions">Actions</TabsTrigger>
           </TabsList>
 
@@ -321,6 +372,10 @@ export default function ParcelDetailPage() {
                 />
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="land-status" className="space-y-4">
+            <LandStatusVerificationCard property={property} />
           </TabsContent>
 
           <TabsContent value="actions" className="space-y-3">
@@ -418,5 +473,205 @@ function ActionLink({
         </CardContent>
       </Card>
     </Link>
+  );
+}
+
+// ─── Aniyah §2 — Land Status Banner ─────────────────────────────────────────
+// Red banner for verified-trust parcels; yellow banner for unverified parcels.
+// Hidden entirely for fee-simple parcels (the happy path).
+function LandStatusBanner({ property }: { property: Property }) {
+  const status = (property.landStatus ?? "unknown") as LandStatus;
+  if (status === "fee") return null;
+
+  if (status === "unknown") {
+    return (
+      <div
+        role="alert"
+        className="flex items-start gap-3 rounded-md border border-acr-warn/40 bg-acr-warn-soft p-4"
+        data-testid="land-status-banner-unknown"
+      >
+        <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-acr-warn" aria-hidden="true" />
+        <div className="flex-1 text-sm">
+          <p className="font-semibold text-acr-warn">
+            Land status not yet verified.
+          </p>
+          <p className="mt-1 text-acr-warn/90">
+            Auto-actions blocked until verified. Confirm whether this parcel is fee simple,
+            tribal trust, individual trust, or restricted-fee land before running auto-valuation,
+            auto-offer, or auto-contract. Use the Land status tab below to record your finding.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Any of the trust / restricted-fee variants — red banner.
+  return (
+    <div
+      role="alert"
+      className="flex items-start gap-3 rounded-md border border-destructive/40 bg-destructive/10 p-4"
+      data-testid="land-status-banner-trust"
+    >
+      <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-destructive" aria-hidden="true" />
+      <div className="flex-1 text-sm">
+        <p className="font-semibold text-destructive">
+          Indian Country land status: {LAND_STATUS_LABELS[status]}.
+        </p>
+        <p className="mt-1 text-destructive/90">
+          Federal trust property — title transfers require BIA approval (25 CFR §152).
+          Auto-valuation, auto-offer, and auto-contract are blocked on this parcel.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Aniyah §2 — Land Status Verification Card ──────────────────────────────
+// Manual-verify dropdown + confirmation dialog. POSTs PATCH
+// /api/properties/:id/land-status with audit logging on the server.
+// TODO(LAR-overlay): Phase B will pre-fill this from the BIA Land Area
+// Representations shapefile. Phase A is manual only.
+function LandStatusVerificationCard({ property }: { property: Property }) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const currentStatus = (property.landStatus ?? "unknown") as LandStatus;
+  const [pending, setPending] = useState<LandStatus | null>(null);
+  const [notes, setNotes] = useState("");
+
+  const mutation = useMutation({
+    mutationFn: async (next: { landStatus: LandStatus; verificationNotes?: string }) => {
+      const res = await apiRequest("PATCH", `/api/properties/${property.id}/land-status`, next);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/properties/${property.id}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/properties"] });
+      toast({
+        title: "Land status updated",
+        description: "Audit log entry recorded.",
+      });
+      setPending(null);
+      setNotes("");
+    },
+    onError: (err: Error) => {
+      toast({
+        title: "Couldn't update land status",
+        description: err.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <ShieldAlert className="h-4 w-4" aria-hidden="true" />
+          Land status verification
+        </CardTitle>
+        <CardDescription>
+          Required before auto-valuation, auto-offer, or auto-contract will run on this parcel.
+          Tribal trust and restricted-fee parcels (25 USC §177, 25 CFR §152) require BIA approval
+          for any title transfer. When in doubt, leave as &quot;Not yet verified&quot; — automation
+          stays blocked.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-1.5">
+          <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+            Current status
+          </Label>
+          <div className="text-sm font-medium">{LAND_STATUS_LABELS[currentStatus]}</div>
+        </div>
+
+        <div className="grid gap-1.5">
+          <Label htmlFor="land-status-select" className="text-sm font-medium">
+            Set verified land status
+          </Label>
+          <Select
+            value={pending ?? currentStatus}
+            onValueChange={(v) => setPending(v as LandStatus)}
+          >
+            <SelectTrigger id="land-status-select" data-testid="land-status-select">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {LAND_STATUS_OPTIONS.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {LAND_STATUS_LABELS[s]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {pending && pending !== currentStatus ? (
+          <div className="grid gap-1.5">
+            <Label htmlFor="land-status-notes" className="text-sm font-medium">
+              Verification notes (optional, recorded in audit log)
+            </Label>
+            <Textarea
+              id="land-status-notes"
+              data-testid="land-status-notes"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="e.g. Confirmed via BIA realty office records 2026-04-30 — fee patent recorded 1956."
+              rows={3}
+            />
+          </div>
+        ) : null}
+      </CardContent>
+
+      <AlertDialog
+        open={pending !== null && pending !== currentStatus}
+        onOpenChange={(open) => {
+          if (!open) setPending(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm land status change</AlertDialogTitle>
+            <AlertDialogDescription>
+              You are setting parcel #{property.id} to{" "}
+              <strong>{pending ? LAND_STATUS_LABELS[pending] : ""}</strong>. This is a regulated
+              decision and will be recorded in the audit log. Auto-valuation, auto-offer, and
+              auto-contract will{" "}
+              {pending === "fee" ? "BE ENABLED" : "remain BLOCKED"} for this parcel.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="px-0 pb-2 text-xs text-muted-foreground">
+            Regulatory basis: 25 USC §177, 25 CFR §152, applicable tribal law.
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={mutation.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              data-testid="land-status-confirm"
+              disabled={mutation.isPending}
+              onClick={(e) => {
+                e.preventDefault();
+                if (pending) {
+                  mutation.mutate({
+                    landStatus: pending,
+                    verificationNotes: notes.trim() || undefined,
+                  });
+                }
+              }}
+            >
+              {mutation.isPending ? "Saving…" : "Confirm"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <CardContent className="border-t pt-4">
+        <div className="flex items-start gap-2 text-xs text-muted-foreground">
+          <span className="font-medium">TODO (Phase B):</span>
+          <span>
+            Auto-resolve this field from the BIA Land Area Representations shapefile overlay.
+            Phase A ships manual verification only.
+          </span>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

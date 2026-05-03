@@ -1,15 +1,16 @@
 import { db } from '../db';
-import { 
-  transactionTraining, 
+import {
+  transactionTraining,
   valuationPredictions,
   properties,
-  transactions 
+  transactions
 } from '../../shared/schema';
 import { eq, and, desc, gte, sql, between } from 'drizzle-orm';
 import { GradientBoostingRegressor, extractLandFeatures, type LandFeatureInput } from './gradientBoosting';
 import { requireOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
 import { addMonths } from "../utils/dateUtils";
+import { assertFeeSimpleOrThrow } from "../utils/landStatus";
 
 // ---------------------------------------------------------------------------
 // Singleton GBM model — loaded once, reused per request.
@@ -229,6 +230,19 @@ class AcreOSValuationModel {
     request: ValuationRequest
   ): Promise<ValuationResult> {
     try {
+      // Aniyah §2 — block auto-AVM on Indian-Country / federal trust parcels.
+      // 25 USC §177 + 25 CFR §152 govern alienability; an automated value
+      // estimate on a tribal-trust parcel can mislead downstream offer +
+      // contract automation. Require human verification of landStatus first.
+      const propertyIdNum = Number(request.propertyId);
+      if (Number.isFinite(propertyIdNum) && propertyIdNum > 0) {
+        const [parcel] = await db
+          .select({ landStatus: properties.landStatus })
+          .from(properties)
+          .where(eq(properties.id, propertyIdNum));
+        assertFeeSimpleOrThrow(parcel ?? null, "valuation");
+      }
+
       // Step 1: Find comparable sales
       const comparables = await this.findComparables(
         organizationId,
@@ -861,6 +875,14 @@ Respond in JSON format: { "adjustment": number, "reasoning": string }`;
         try {
           if (!prop.acres || !prop.state || !prop.county) {
             failed++;
+            continue;
+          }
+          // Aniyah §2 — skip non-fee parcels in bulk mode. Per-call guard
+          // inside generateValuation will also block; we short-circuit here
+          // so the failure count is meaningful and we don't hammer the DB.
+          if ((prop.landStatus ?? "unknown") !== "fee") {
+            failed++;
+            logger.warn(`[BulkValuation] Skipping property ${prop.id} — landStatus=${prop.landStatus ?? "unknown"} requires manual review`);
             continue;
           }
 
