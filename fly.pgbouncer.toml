@@ -1,0 +1,78 @@
+# fly.pgbouncer.toml — separate Fly app fronting Postgres for AcreOS.
+#
+# Phase 3 Week 7-8 (P1-15). Stand up a transaction-pool pgBouncer that
+# multiplexes all `acreos` app connections onto a small set of real
+# Postgres backends. After deploying this app, flip DATABASE_URL on the
+# `acreos` app to the pgBouncer hostname (see docs/runbooks/pgbouncer-rollout.md).
+#
+# Deploy:
+#   fly launch --config fly.pgbouncer.toml --name acreos-pgbouncer --no-deploy
+#   fly secrets set --app acreos-pgbouncer \
+#     DATABASES_HOST=<primary postgres host> \
+#     DATABASES_PORT=5432 \
+#     DATABASES_DBNAME=postgres \
+#     DATABASES_USER=postgres \
+#     DATABASES_PASSWORD=<password>
+#   fly deploy --config fly.pgbouncer.toml --image edoburu/pgbouncer:1.22.1
+
+app = "acreos-pgbouncer"
+primary_region = "iad"
+
+[build]
+  image = "edoburu/pgbouncer:1.22.1"
+
+[env]
+  # ── Pool sizing ──────────────────────────────────────────────────────────
+  # transaction mode: a backend connection is held only for the duration of
+  # one transaction; this is the right mode for short-lived web requests and
+  # is what lets us multiplex 1000 client connections onto 25 backends.
+  POOL_MODE = "transaction"
+
+  # 25 server-side connections is the steady-state pool. With 2 app machines
+  # × 5 client conns each = 10 active clients average, leaving plenty of
+  # backend headroom for batch jobs and replicas.
+  DEFAULT_POOL_SIZE = "25"
+
+  # 5 extra backends pgBouncer can open if the steady pool saturates.
+  RESERVE_POOL_SIZE = "5"
+
+  # 1000 client-side slots (per pgBouncer instance). Way more than we need
+  # today, but keeps us safe during traffic spikes — the cap that matters
+  # for Postgres is DEFAULT_POOL_SIZE + RESERVE_POOL_SIZE = 30.
+  MAX_CLIENT_CONN = "1000"
+
+  # Wait at most 30s for a backend before failing the client.
+  RESERVE_POOL_TIMEOUT = "5"
+
+  # Auth method — md5 covers managed Postgres providers.
+  AUTH_TYPE = "md5"
+
+  # Listen on the standard Postgres port so clients only need to swap the host.
+  LISTEN_PORT = "5432"
+  LISTEN_ADDR = "0.0.0.0"
+
+  # Logging
+  ADMIN_USERS = "postgres"
+  STATS_USERS = "postgres"
+
+[[services]]
+  internal_port = 5432
+  protocol = "tcp"
+
+  [[services.ports]]
+    port = 5432
+
+  [services.concurrency]
+    type = "connections"
+    soft_limit = 800
+    hard_limit = 1000
+
+  [[services.tcp_checks]]
+    interval = "15s"
+    timeout = "2s"
+    grace_period = "10s"
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1

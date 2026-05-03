@@ -79,6 +79,26 @@ const STATEMENTS = [
   `INSERT INTO "platform_feature_flags" ("key", "label", "description", "enabled", "state", "audience", "controlled_routes")
    VALUES ('feature.autonomy-matrix', 'Autonomy matrix', 'Per-agent × per-action × thresholds permissions', false, 'founder-only', '{}'::jsonb, '["/settings"]'::jsonb)
    ON CONFLICT ("key") DO NOTHING`,
+
+  // ── Phase 3 Week 7-8 (P2-11): Postgres extensions. Migration 0044. ──────
+  // pgvector for Sayuri-Vatanen embeddings, pg_trgm for Anaïs fuzzy search,
+  // pg_stat_statements for the next index-audit pass.
+  'CREATE EXTENSION IF NOT EXISTS vector',
+  'CREATE EXTENSION IF NOT EXISTS pg_trgm',
+  'CREATE EXTENSION IF NOT EXISTS pg_stat_statements',
+
+  // ── Phase 3 Week 7-8 (P1-15): index audit. Migration 0045. ──────────────
+  // CONCURRENTLY is safe because pool.query runs each statement outside an
+  // implicit transaction. IF NOT EXISTS makes them idempotent on retry.
+  // NOTE: do not run release_command through pgBouncer — CONCURRENTLY needs
+  // a real Postgres session. See docs/runbooks/pgbouncer-rollout.md.
+  'CREATE INDEX CONCURRENTLY IF NOT EXISTS "leads_org_status_created_idx" ON "leads" ("organization_id", "status", "created_at" DESC)',
+  'CREATE INDEX CONCURRENTLY IF NOT EXISTS "leads_org_assigned_status_idx" ON "leads" ("organization_id", "assigned_to", "status")',
+  'CREATE INDEX CONCURRENTLY IF NOT EXISTS "properties_org_land_status_idx" ON "properties" ("organization_id", "land_status")',
+  'CREATE INDEX CONCURRENTLY IF NOT EXISTS "properties_org_status_created_idx" ON "properties" ("organization_id", "status", "created_at" DESC)',
+  'CREATE INDEX CONCURRENTLY IF NOT EXISTS "messages_org_conversation_created_idx" ON "messages" ("organization_id", "conversation_id", "created_at" DESC)',
+  'CREATE INDEX CONCURRENTLY IF NOT EXISTS "audit_events_action_created_idx" ON "audit_events" ("action", "created_at" DESC)',
+  'CREATE INDEX CONCURRENTLY IF NOT EXISTS "email_events_event_created_idx" ON "email_events" ("event", "created_at" DESC)',
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
