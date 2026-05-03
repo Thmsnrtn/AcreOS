@@ -361,8 +361,13 @@ export interface Form1099Int {
  * rows written before encryption rolled out don't crash 1099 generation.
  */
 function decryptStoredTin(ciphertext: string): string {
-  // ciphertext format from configManager.encryptValue: iv:tag:enc (3 hex parts)
-  if (ciphertext.split(":").length === 3 && /^[0-9a-f:]+$/i.test(ciphertext)) {
+  // Accept both encrypted envelope shapes:
+  //   • legacy 3-segment hex ("iv:tag:enc") from configManager.encryptValue
+  //   • canonical "enc:v1:<base64>" envelope (post encryption-consolidation)
+  // Plaintext rows (legacy un-encrypted) are returned unchanged.
+  const isCanonical = ciphertext.startsWith("enc:v1:");
+  const isLegacy3Seg = ciphertext.split(":").length === 3 && /^[0-9a-f:]+$/i.test(ciphertext);
+  if (isCanonical || isLegacy3Seg) {
     try {
       return decryptValue(ciphertext);
     } catch {

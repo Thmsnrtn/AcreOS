@@ -1,6 +1,6 @@
 import { SESClient, SendEmailCommand, GetSendQuotaCommand } from '@aws-sdk/client-ses';
 import { storage } from '../storage';
-import { decryptJsonCredentials } from './encryption';
+import { decryptJsonCredentials } from './fieldEncryption';
 import { emailCircuitBreaker } from '../utils/circuitBreaker';
 import { logger } from "../utils/logger";
 

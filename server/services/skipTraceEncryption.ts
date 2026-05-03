@@ -43,14 +43,19 @@ interface EncryptedEnvelope {
 /**
  * True if `value` is the encrypted envelope shape produced by
  * `encryptSkipTracePayload()`.
+ *
+ * Recognizes both:
+ *   • the legacy 3-segment shape ("iv:tag:ct") written by the previous
+ *     configManager.encryptValue, and
+ *   • the canonical "enc:v1:<base64>" envelope written after the
+ *     encryption-consolidation refactor (Aravind audit §3.1).
  */
 export function isEncryptedSkipTracePayload(value: unknown): value is EncryptedEnvelope {
-  return (
-    !!value &&
-    typeof value === "object" &&
-    typeof (value as any)._enc === "string" &&
-    (value as any)._enc.split(":").length === 3
-  );
+  if (!value || typeof value !== "object") return false;
+  const enc = (value as any)._enc;
+  if (typeof enc !== "string") return false;
+  if (enc.startsWith("enc:v1:")) return true;
+  return enc.split(":").length === 3;
 }
 
 /**

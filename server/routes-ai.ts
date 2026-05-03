@@ -959,7 +959,7 @@ export function registerAIRoutes(app: Express): void {
       const { getConnector } = await import("./services/connectors/registry");
       const def = getConnector(connectorId);
       if (!def) return Errors.notFound(res, "Connector");
-      const { encryptCredentials } = await import("./services/encryption");
+      const { encryptCredentials } = await import("./services/fieldEncryption");
       const credentialsEncrypted = credentials
         ? encryptCredentials(JSON.stringify(credentials), org.id)
         : undefined;

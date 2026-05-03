@@ -1,6 +1,6 @@
 import Lob from 'lob';
 import { storage } from '../storage';
-import { decryptJsonCredentials } from './encryption';
+import { decryptJsonCredentials } from './fieldEncryption';
 import { logger } from "../utils/logger";
 
 async function logLobApiUsage(

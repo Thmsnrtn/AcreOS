@@ -24,7 +24,7 @@ export function registerIntegrationRoutes(app: Express): void {
       const org = req.organization;
       const integrations = await storage.getOrganizationIntegrations(org.id);
       
-      const { maskApiKey, decryptJsonCredentials } = await import('./services/encryption');
+      const { maskApiKey, decryptJsonCredentials } = await import('./services/fieldEncryption');
       
       const masked = integrations.map(i => {
         let maskedKey = '';
@@ -63,7 +63,7 @@ export function registerIntegrationRoutes(app: Express): void {
         return res.json({ provider, isEnabled: false, isConfigured: false });
       }
       
-      const { maskApiKey, decryptJsonCredentials } = await import('./services/encryption');
+      const { maskApiKey, decryptJsonCredentials } = await import('./services/fieldEncryption');
       
       let maskedKey = '';
       if (integration.credentials?.encrypted) {
@@ -104,7 +104,7 @@ export function registerIntegrationRoutes(app: Express): void {
         return Errors.badRequest(res, `Invalid provider. Must be one of: ${validProviders.join(', ')}`);
       }
 
-      const { encryptJsonCredentials } = await import('./services/encryption');
+      const { encryptJsonCredentials } = await import('./services/fieldEncryption');
 
       const encryptedCredentials = encryptJsonCredentials({ apiKey, ...settings }, org.id);
 
@@ -157,7 +157,7 @@ export function registerIntegrationRoutes(app: Express): void {
         return Errors.badRequest(res, `${provider} is not configured`);
       }
       
-      const { decryptJsonCredentials } = await import('./services/encryption');
+      const { decryptJsonCredentials } = await import('./services/fieldEncryption');
       const credentials = decryptJsonCredentials<{ apiKey: string }>(
         (integration.credentials as any).encrypted,
         org.id
@@ -381,7 +381,7 @@ export function registerIntegrationRoutes(app: Express): void {
       let sendgridDomainId: string | undefined;
       
       if (integration?.credentials?.encrypted) {
-        const { decryptJsonCredentials } = await import('./services/encryption');
+        const { decryptJsonCredentials } = await import('./services/fieldEncryption');
         const credentials = decryptJsonCredentials<{ apiKey: string }>(
           integration.credentials.encrypted,
           org.id
@@ -478,7 +478,7 @@ export function registerIntegrationRoutes(app: Express): void {
         return Errors.badRequest(res, "SendGrid not configured");
       }
       
-      const { decryptJsonCredentials } = await import('./services/encryption');
+      const { decryptJsonCredentials } = await import('./services/fieldEncryption');
       const credentials = decryptJsonCredentials<{ apiKey: string }>(
         integration.credentials.encrypted,
         org.id
@@ -594,7 +594,7 @@ export function registerIntegrationRoutes(app: Express): void {
         const integration = await storage.getOrganizationIntegration(org.id, 'sendgrid');
         if (integration?.credentials?.encrypted) {
           try {
-            const { decryptJsonCredentials } = await import('./services/encryption');
+            const { decryptJsonCredentials } = await import('./services/fieldEncryption');
             const credentials = decryptJsonCredentials<{ apiKey: string }>(
               integration.credentials.encrypted,
               org.id
@@ -664,7 +664,7 @@ export function registerIntegrationRoutes(app: Express): void {
         return Errors.badRequest(res, "Twilio not configured. Add your Twilio credentials in Settings.");
       }
       
-      const { decryptJsonCredentials } = await import('./services/encryption');
+      const { decryptJsonCredentials } = await import('./services/fieldEncryption');
       const credentials = decryptJsonCredentials<{ accountSid: string; authToken: string }>(
         integration.credentials.encrypted,
         org.id
@@ -725,7 +725,7 @@ export function registerIntegrationRoutes(app: Express): void {
         return Errors.badRequest(res, "Twilio not configured");
       }
       
-      const { decryptJsonCredentials } = await import('./services/encryption');
+      const { decryptJsonCredentials } = await import('./services/fieldEncryption');
       const credentials = decryptJsonCredentials<{ accountSid: string; authToken: string }>(
         integration.credentials.encrypted,
         org.id
@@ -854,7 +854,7 @@ export function registerIntegrationRoutes(app: Express): void {
         const integration = await storage.getOrganizationIntegration(org.id, 'twilio');
         if (integration?.credentials?.encrypted) {
           try {
-            const { decryptJsonCredentials } = await import('./services/encryption');
+            const { decryptJsonCredentials } = await import('./services/fieldEncryption');
             const credentials = decryptJsonCredentials<{ accountSid: string; authToken: string }>(
               integration.credentials.encrypted,
               org.id

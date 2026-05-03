@@ -2,7 +2,7 @@ import Lob from 'lob';
 import type { MailSenderIdentity } from '@shared/schema';
 import { creditService, usageMeteringService } from './credits';
 import { storage } from '../storage';
-import { decryptJsonCredentials } from './encryption';
+import { decryptJsonCredentials } from './fieldEncryption';
 import { logger } from "../utils/logger";
 
 interface RecipientAddress {
