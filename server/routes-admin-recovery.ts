@@ -31,7 +31,7 @@
 import type { Express, Response } from "express";
 import { z } from "zod";
 import { createClerkClient } from "@clerk/express";
-import { eq } from "drizzle-orm";
+import { eq, desc, ilike, or, inArray } from "drizzle-orm";
 import Stripe from "stripe";
 
 import { db } from "./db";
@@ -152,6 +152,87 @@ function isClerkGap(err: unknown): err is ClerkGapError {
 
 // ─── Route registration ──────────────────────────────────────────────────────
 export function registerAdminRecoveryRoutes(app: Express): void {
+  // NOTE: GET /api/admin/users/search MUST be registered before any
+  // /api/admin/users/:id/* route, otherwise Express resolves :id="search".
+  // The same goes for /api/admin/recovery/audit — keep these listed first.
+
+  // ── GET /api/admin/users/search?q=... ────────────────────────────────────
+  app.get(
+    "/api/admin/users/search",
+    isAuthenticated,
+    async (req, res) => {
+      const areq = req as AuthenticatedRequest;
+      if (!requireFounderForRecovery(areq, res)) return;
+
+      const q = String(req.query.q ?? "").trim();
+      if (!q || q.length < 2) {
+        return res.json({ results: [] });
+      }
+
+      try {
+        const rows = await db
+          .select({
+            id: users.id,
+            email: users.email,
+            firstName: users.firstName,
+            lastName: users.lastName,
+            clerkUserId: users.clerkUserId,
+          })
+          .from(users)
+          .where(
+            or(
+              eq(users.id, q),
+              eq(users.clerkUserId, q),
+              ilike(users.email, `%${q}%`)
+            )
+          )
+          .limit(25);
+
+        return res.json({ results: rows });
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    }
+  );
+
+  // ── GET /api/admin/recovery/audit?limit=N ────────────────────────────────
+  app.get(
+    "/api/admin/recovery/audit",
+    isAuthenticated,
+    async (req, res) => {
+      const areq = req as AuthenticatedRequest;
+      if (!requireFounderForRecovery(areq, res)) return;
+
+      const limit = Math.min(
+        100,
+        Math.max(1, Number.parseInt(String(req.query.limit ?? "25"), 10) || 25)
+      );
+
+      try {
+        const RECOVERY_ACTIONS = [
+          "recovery.2fa_reset",
+          "recovery.sessions_list",
+          "recovery.session_revoke",
+          "recovery.sessions_revoke_all_others",
+          "recovery.autopay_freeze",
+          "recovery.ownership_transfer",
+          "recovery.password_reset_link",
+        ];
+
+        const rows = await db
+          .select()
+          .from(auditEvents)
+          .where(inArray(auditEvents.action, RECOVERY_ACTIONS))
+          .orderBy(desc(auditEvents.createdAt))
+          .limit(limit);
+
+        return res.json({ events: rows });
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    }
+  );
+
   // ── POST /api/admin/users/:id/2fa/reset ──────────────────────────────────
   app.post(
     "/api/admin/users/:id/2fa/reset",

@@ -90,6 +90,7 @@ import {
   CheckCircle2,
   Eye,
   Wrench,
+  LifeBuoy,
   Rocket,
   FlaskConical,
   Database,
@@ -470,6 +471,7 @@ const NAV_MODULES: NavModule[] = [
       { label: "Tool proposals", icon: Wrench, href: "/founder/tools", description: "Capability-growth queue" },
       { label: "Providers", icon: Database, href: "/founder/providers", description: "Data-layer cost + quality" },
       { label: "Founder settings", icon: Settings2, href: "/founder/settings", description: "Live-apply operational knobs" },
+      { label: "Recovery console", icon: LifeBuoy, href: "/founder/recovery-console", description: "Last-resort account recovery — 2FA, sessions, autopay, ownership" },
       // Sigfried §1: legacy operational dashboard (~7,400 lines) is being
       // extracted into the focused /founder/* surfaces above. Founder still
       // needs access during the extraction window — flagged with a Legacy
