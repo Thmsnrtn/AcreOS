@@ -58,6 +58,8 @@ import { PreferencesCard } from "@/components/preferences-card";
 import { PlanComparisonModal, type TierKey } from "@/components/tier-upgrade-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useState, useEffect } from "react";
+// R4: Clerk-native MFA management — replaces the deleted in-house TOTP flow.
+import { UserProfile, useUser } from "@clerk/react";
 import { useLocation } from "wouter";
 import { useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
@@ -1383,6 +1385,31 @@ export default function Settings() {
                   </Card>
                 )}
               </div>
+
+              {/* Tax identity (org-side 1099 issuer fields) — owner-only edit. */}
+              <Card data-testid="card-tax-identity-link">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Shield className="w-5 h-5" aria-hidden="true" />
+                    Tax identity
+                  </CardTitle>
+                  <CardDescription>
+                    Legal entity name, EIN/SSN/ITIN, and tax address used to
+                    issue 1099-INT forms. Captured during onboarding —
+                    editable by the owner anytime.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Button
+                    variant="outline"
+                    onClick={() => setLocation("/settings/tax-identity")}
+                    data-testid="button-open-tax-identity"
+                  >
+                    Open Tax Identity
+                    <ExternalLink className="w-4 h-4 ml-2" aria-hidden="true" />
+                  </Button>
+                </CardContent>
+              </Card>
             </TabsContent>
 
             <TabsContent value="team" className="space-y-8 mt-6" data-testid="tab-content-team">
@@ -1744,70 +1771,24 @@ export default function Settings() {
   );
 }
 
-// ── Two-Factor Authentication Settings ───────────────────────────────────────
+// ── Two-Factor Authentication Settings (Clerk-native, R4) ────────────────────
+// AcreOS used to ship its own TOTP implementation under /api/auth/2fa/*, but
+// it was wired against express-session (not installed) and a `users` table
+// that didn't actually have the 2FA columns — so the flow was non-functional
+// end-to-end. R4 deletes that stack and delegates MFA enrollment / verify /
+// disable to Clerk's hosted UserProfile UI. Clerk owns the TOTP secret, the
+// SMS factor, and the backup codes; AcreOS just enforces verified-this-session
+// at the API edge via requireClerkMFA.
+//
+// The `<UserProfile />` component shows the full Clerk account UI (email,
+// password, MFA, connected accounts) inside a dialog — the cleanest way to
+// give the user the security flows they expect without re-implementing TOTP.
 
 function TwoFactorAuthSettings() {
-  const { toast } = useToast();
-  const [qrCode, setQrCode] = useState<string | null>(null);
-  const [secret, setSecret] = useState<string | null>(null);
-  const [verifyCode, setVerifyCode] = useState("");
-  const [backupCodes, setBackupCodes] = useState<string[]>([]);
-  const [showSetup, setShowSetup] = useState(false);
-  const [showDisableDialog, setShowDisableDialog] = useState(false);
-  const [disableCode, setDisableCode] = useState("");
+  const { user, isLoaded } = useUser();
+  const [showProfile, setShowProfile] = useState(false);
 
-  const { data: status, refetch: refetchStatus } = useQuery<{ enabled: boolean; backupCodesRemaining: number }>({
-    queryKey: ["/api/auth/2fa/status"],
-    queryFn: () => apiRequest("GET", "/api/auth/2fa/status").then(r => r.json()),
-  });
-
-  const setupMutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/auth/2fa/setup").then(r => r.json()),
-    onSuccess: (data) => {
-      setQrCode(data.qrCode);
-      setSecret(data.secret);
-      setBackupCodes(data.backupCodes || []);
-      setShowSetup(true);
-    },
-    onError: (err: any) =>
-      toast({
-        title: "Couldn't start 2FA setup",
-        description: err?.message || "Check your connection and try again — 2FA is still off.",
-        variant: "destructive",
-      }),
-  });
-
-  const verifyMutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/auth/2fa/verify-setup", { code: verifyCode }).then(r => r.json()),
-    onSuccess: () => {
-      toast({ title: "Two-factor authentication is on" });
-      setShowSetup(false);
-      setVerifyCode("");
-      refetchStatus();
-    },
-    onError: () =>
-      toast({
-        title: "Code didn't match",
-        description: "Open your authenticator app and enter the current 6-digit code. 2FA is still off.",
-        variant: "destructive",
-      }),
-  });
-
-  const disableMutation = useMutation({
-    mutationFn: (code: string) => apiRequest("POST", "/api/auth/2fa/disable", { code }).then(r => r.json()),
-    onSuccess: () => {
-      toast({ title: "Two-factor authentication is off" });
-      setShowDisableDialog(false);
-      setDisableCode("");
-      refetchStatus();
-    },
-    onError: (err: any) =>
-      toast({
-        title: "Couldn't disable 2FA",
-        description: err?.message || "Code didn't match. 2FA is still on — try again with the current authenticator code.",
-        variant: "destructive",
-      }),
-  });
+  const twoFactorEnabled = Boolean(user?.twoFactorEnabled);
 
   return (
     <Card data-testid="card-2fa-settings">
@@ -1817,129 +1798,49 @@ function TwoFactorAuthSettings() {
           Two-factor authentication
         </CardTitle>
         <CardDescription>
-          Add an extra layer of security with a time-based authenticator app (Google Authenticator, Authy, 1Password).
+          Add an extra layer of security with an authenticator app (Google Authenticator, Authy, 1Password) or SMS code. Managed through your Clerk account.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {status?.enabled ? (
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 text-acr-pos" role="status">
-              <CheckCircle2 className="w-4 h-4" aria-hidden="true" />
-              <span className="text-sm font-medium">2FA is enabled</span>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Backup codes remaining: <strong className="tabular-nums">{status.backupCodesRemaining}</strong>
-            </p>
-            <Button
-              variant="outline"
-              size="sm"
-              className="min-h-11 sm:min-h-9"
-              data-testid="button-disable-2fa"
-              onClick={() => setShowDisableDialog(true)}
-            >
-              Disable 2FA
-            </Button>
-            <Dialog open={showDisableDialog} onOpenChange={(v) => { setShowDisableDialog(v); if (!v) setDisableCode(""); }}>
-              <DialogContent className="sm:max-w-sm">
-                <DialogHeader>
-                  <DialogTitle>Disable two-factor authentication?</DialogTitle>
-                  <DialogDescription>
-                    Enter your current 6-digit authenticator code to turn 2FA off. Your account will no longer require a second step at sign-in.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-2">
-                  <Label htmlFor="disable-2fa-code">Authenticator code</Label>
-                  <Input
-                    id="disable-2fa-code"
-                    placeholder="6-digit code"
-                    value={disableCode}
-                    onChange={e => setDisableCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                    maxLength={6}
-                    autoComplete="one-time-code"
-                    inputMode="numeric"
-                    autoCapitalize="off"
-                    autoCorrect="off"
-                    spellCheck={false}
-                    data-testid="input-2fa-disable-code"
-                  />
-                </div>
-                <div className="flex justify-end gap-2">
-                  <Button variant="outline" onClick={() => setShowDisableDialog(false)}>Cancel</Button>
-                  <Button
-                    variant="destructive"
-                    onClick={() => disableMutation.mutate(disableCode)}
-                    disabled={disableCode.length !== 6 || disableMutation.isPending}
-                    data-testid="button-confirm-disable-2fa"
-                  >
-                    {disableMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" /> : null}
-                    Disable 2FA
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
+        {!isLoaded ? (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
+            <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+            Loading account…
           </div>
-        ) : showSetup ? (
-          <div className="space-y-4">
-            <p className="text-sm">Scan this QR code with your authenticator app:</p>
-            {qrCode && (
-              <div className="flex justify-center">
-                <img src={qrCode} alt="Scan this QR code with your authenticator app" className="w-40 h-40 border rounded" data-testid="img-2fa-qr" />
-              </div>
-            )}
-            {secret && (
-              <p className="text-xs text-muted-foreground text-center">
-                Manual entry key: <code className="font-mono bg-muted px-1 rounded tabular-nums">{secret}</code>
-              </p>
-            )}
-            {backupCodes.length > 0 && (
-              <div className="rounded-md bg-muted p-3 space-y-1">
-                <p className="text-xs font-medium">Save these backup codes in a safe place. Each can be used once if you lose access to your authenticator.</p>
-                <div className="grid grid-cols-2 gap-1">
-                  {backupCodes.map((code, i) => (
-                    <code key={i} className="text-xs font-mono tabular-nums">{code}</code>
-                  ))}
-                </div>
-              </div>
-            )}
-            <div className="flex flex-col sm:flex-row gap-2">
-              <Label htmlFor="input-2fa-verify-code" className="sr-only">6-digit authenticator code</Label>
-              <Input
-                id="input-2fa-verify-code"
-                placeholder="6-digit code"
-                value={verifyCode}
-                onChange={e => setVerifyCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                maxLength={6}
-                autoComplete="one-time-code"
-                inputMode="numeric"
-                autoCapitalize="off"
-                autoCorrect="off"
-                spellCheck={false}
-                data-testid="input-2fa-verify-code"
-                className="w-full sm:w-36"
-              />
-              <Button
-                size="sm"
-                className="min-h-11 sm:min-h-9"
-                onClick={() => verifyMutation.mutate()}
-                disabled={verifyCode.length !== 6 || verifyMutation.isPending}
-                data-testid="button-verify-2fa"
-              >
-                {verifyMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : "Verify and enable"}
-              </Button>
-              <Button variant="ghost" size="sm" className="min-h-11 sm:min-h-9" onClick={() => setShowSetup(false)}>Cancel</Button>
-            </div>
+        ) : twoFactorEnabled ? (
+          <div className="flex items-center gap-2 text-acr-pos" role="status">
+            <CheckCircle2 className="w-4 h-4" aria-hidden="true" />
+            <span className="text-sm font-medium">2FA is enabled</span>
           </div>
         ) : (
-          <Button
-            size="sm"
-            className="min-h-11 sm:min-h-9"
-            onClick={() => setupMutation.mutate()}
-            disabled={setupMutation.isPending}
-            data-testid="button-setup-2fa"
-          >
-            {setupMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : "Set up 2FA"}
-          </Button>
+          <p className="text-sm text-muted-foreground">
+            2FA is not enabled. Some admin areas (recovery console, ownership transfer) require it.
+          </p>
         )}
+
+        <Button
+          size="sm"
+          variant={twoFactorEnabled ? "outline" : "default"}
+          className="min-h-11 sm:min-h-9"
+          onClick={() => setShowProfile(true)}
+          data-testid="button-manage-2fa"
+        >
+          {twoFactorEnabled ? "Manage 2FA" : "Set up 2FA"}
+        </Button>
+
+        <Dialog open={showProfile} onOpenChange={setShowProfile}>
+          <DialogContent className="sm:max-w-3xl p-0 overflow-hidden">
+            <DialogHeader className="sr-only">
+              <DialogTitle>Account security</DialogTitle>
+              <DialogDescription>
+                Manage your password, two-factor authentication factors, and connected accounts through Clerk.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="max-h-[80vh] overflow-y-auto">
+              <UserProfile routing="virtual" />
+            </div>
+          </DialogContent>
+        </Dialog>
       </CardContent>
     </Card>
   );
