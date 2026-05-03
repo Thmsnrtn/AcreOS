@@ -184,6 +184,18 @@ export class WebhookHandlers {
 
       logger.info(`[webhook] Subscription checkout completed: Org ${organizationId}, sub ${subscriptionId}`);
 
+      // Phase 3 Week 14 — Activation telemetry. Subscription went active =
+      // first_payment_processed. Idempotent FIRST-occurrence.
+      try {
+        const { recordActivationEventAsync } = await import('./services/activation');
+        recordActivationEventAsync({
+          orgId: organizationId,
+          userId: null,
+          eventName: 'first_payment_processed',
+          eventValue: { stripeSubscriptionId: subscriptionId, source: 'webhook:checkout.session.completed' },
+        });
+      } catch { /* non-fatal */ }
+
       // Renoir audit-log: capture the initial "subscribed" event with the
       // priced state. customer.subscription.updated will follow with the
       // tier-resolved row, but having an explicit subscribed marker makes

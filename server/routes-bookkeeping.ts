@@ -39,6 +39,23 @@ router.get("/1099", async (req: Request, res: Response) => {
     if (isNaN(taxYear)) return res.status(400).json({ error: "Invalid tax year" });
 
     const forms = await generate1099IntForms(org.id, taxYear);
+
+    // Phase 3 Week 14 — Activation telemetry. First successful 1099-INT
+    // generation. Only fires when the form-set actually produces forms;
+    // an empty result for a brand-new org is not an activation signal.
+    if (Array.isArray(forms) && forms.length > 0) {
+      try {
+        const { recordActivationEventAsync } = await import("./services/activation");
+        const userId = (req.user as any)?.claims?.sub || (req.user as any)?.id || null;
+        recordActivationEventAsync({
+          orgId: org.id,
+          userId,
+          eventName: "first_1099_generated",
+          eventValue: { taxYear, formCount: forms.length },
+        });
+      } catch { /* non-fatal */ }
+    }
+
     res.json({ taxYear, forms });
   } catch (err: any) {
     if (err instanceof TaxIdentityError) {

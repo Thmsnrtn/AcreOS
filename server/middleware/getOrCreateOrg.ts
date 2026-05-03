@@ -167,6 +167,20 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
     if (isFounder) {
       logger.info(`Founder organization created`, { source: "getOrCreateOrg", metadata: { email: userEmail } });
     }
+
+    // Phase 3 Week 14 — Activation telemetry. First (and only) org_created
+    // event for this organisation. Fire-and-forget; never blocks request.
+    try {
+      const { recordActivationEventAsync } = await import("../services/activation");
+      recordActivationEventAsync({
+        orgId: org.id,
+        userId,
+        eventName: "org_created",
+        eventValue: { isFounder, source: "getOrCreateOrg" },
+      });
+    } catch {
+      /* non-fatal; telemetry failures must not break org creation */
+    }
   } else if (isFounder && !org.isFounder) {
     // Upgrade existing org to founder status
     await db

@@ -176,6 +176,19 @@ export function registerDealRoutes(app: Express): void {
         triggerDealEnrichmentAsync(org.id, deal.id, deal.propertyId);
       }
 
+      // Phase 3 Week 14 — Activation telemetry. A new deal row is the
+      // first-offer-made signal (offers and deals share a creation path
+      // in the v1 funnel; we re-fire on the offers table once it lands).
+      try {
+        const { recordActivationEventAsync } = await import("./services/activation");
+        recordActivationEventAsync({
+          orgId: org.id,
+          userId,
+          eventName: "first_offer_made",
+          eventValue: { dealId: deal.id, offerAmount: deal.offerAmount },
+        });
+      } catch { /* non-fatal */ }
+
       res.status(201).json(deal);
     } catch (err) {
       if (err instanceof z.ZodError || (err as any)?.errors) {
@@ -274,6 +287,19 @@ export function registerDealRoutes(app: Express): void {
         } catch (conversionErr) {
           logger.error("Failed to record conversion", conversionErr instanceof Error ? conversionErr : undefined);
         }
+
+        // Phase 3 Week 14 — Activation telemetry. First closed deal is a
+        // major activation milestone (lead → close conversion).
+        try {
+          const userIdForEvent = (req.user as any)?.claims?.sub || (req.user as any)?.id;
+          const { recordActivationEventAsync } = await import("./services/activation");
+          recordActivationEventAsync({
+            orgId: org.id,
+            userId: userIdForEvent,
+            eventName: "first_deal_closed",
+            eventValue: { dealId: deal.id, acceptedAmount: deal.acceptedAmount },
+          });
+        } catch { /* non-fatal */ }
 
         // Write outcome telemetry for the feedback loop (non-blocking)
         db.insert(outcomeTelemetry).values({

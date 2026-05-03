@@ -200,6 +200,17 @@ export function registerPropertyRoutes(app: Express): void {
         userAgent: req.headers["user-agent"],
       });
 
+      // Phase 3 Week 14 — Activation telemetry. Idempotent FIRST-occurrence.
+      try {
+        const { recordActivationEventAsync } = await import("./services/activation");
+        recordActivationEventAsync({
+          orgId: org.id,
+          userId,
+          eventName: "first_property_added",
+          eventValue: { propertyId: property.id },
+        });
+      } catch { /* non-fatal */ }
+
       // Auto-enrich new properties that have GPS coordinates (fire-and-forget, non-blocking)
       if (property.latitude && property.longitude) {
         propertyEnrichmentService.enrichProperty(org.id, property.id, false).catch((err: Error) => {
