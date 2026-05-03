@@ -14,6 +14,7 @@ import { db } from "../db";
 import { notes, payments, properties, leads, organizations, trustLedger } from "@shared/schema";
 import { eq, and, gte, lte, sql, desc, sum, asc } from "drizzle-orm";
 import { format, startOfYear, endOfYear } from "date-fns";
+import { decryptValue } from "./configManager";
 
 // ============================================
 // DEAL P&L CALCULATION
@@ -128,8 +129,18 @@ export function calculateDealPnL(
 
 export interface NoteInterestSummary {
   noteId: number;
+  borrowerId: number | null;
   borrowerName: string;
   borrowerEmail: string | null;
+  borrowerAddress: {
+    street: string | null;
+    city: string | null;
+    state: string | null;
+    zip: string | null;
+  } | null;
+  /** Ciphertext from leads.taxId — decrypt at the point of 1099 emission. */
+  borrowerTaxIdCiphertext: string | null;
+  borrowerTaxIdType: string | null;
   propertyAddress: string;
   yearOpeningBalance: number;
   yearClosingBalance: number;
@@ -137,7 +148,7 @@ export interface NoteInterestSummary {
   interestCollected: number;
   lateFeeCollected: number;
   paymentsCount: number;
-  requires1099: boolean; // true if interest > $600
+  requires1099: boolean; // true if interest >= $600 (IRS 1099-INT threshold)
 }
 
 export interface AnnualInterestReport {
@@ -186,10 +197,21 @@ export async function generateAnnualInterestReport(
     if (!noteMap.has(note.id)) {
       noteMap.set(note.id, {
         noteId: note.id,
+        borrowerId: lead?.id ?? null,
         borrowerName: lead
           ? `${lead.firstName || ""} ${lead.lastName || ""}`.trim()
           : "Unknown Borrower",
         borrowerEmail: lead?.email || null,
+        borrowerAddress: lead
+          ? {
+              street: lead.address ?? null,
+              city: lead.city ?? null,
+              state: lead.state ?? null,
+              zip: lead.zip ?? null,
+            }
+          : null,
+        borrowerTaxIdCiphertext: lead?.taxId ?? null,
+        borrowerTaxIdType: lead?.taxIdType ?? null,
         propertyAddress: property?.address || "Unknown Property",
         yearOpeningBalance: parseFloat(note.originalPrincipal || "0"),
         yearClosingBalance: parseFloat(note.currentBalance || "0"),
@@ -229,19 +251,152 @@ export async function generateAnnualInterestReport(
 // ============================================
 // 1099-INT GENERATION
 // ============================================
+// Conforms to IRS Form 1099-INT (2025 box layout). Each property is named
+// after the box it populates so downstream PDF / e-file emitters can map
+// fields without ambiguity. The earlier shape was 1098-style and produced
+// invalid filings — see Phineas-IRS §3 / Olympia §1 / Hilda §3 / Martin §1
+// audits in docs/exhaustive-completion/elite-team-deeper-2026-05-01/.
 
+/** IRS-valid taxpayer identification placeholders we must never emit. */
+const PLACEHOLDER_PAYER_TIN = "00-0000000";
+const PLACEHOLDER_RECIPIENT_TIN_SSN = "000-00-0000";
+const PLACEHOLDER_RECIPIENT_TIN_EIN = "00-0000000";
+
+/** Errors that block 1099 generation when payer/recipient identity is missing. */
+export class TaxIdentityError extends Error {
+  readonly code: "PAYER_EIN_MISSING" | "RECIPIENT_TIN_MISSING" | "PAYER_NAME_MISSING";
+  readonly orgId?: number;
+  readonly noteId?: number;
+  constructor(
+    code: TaxIdentityError["code"],
+    message: string,
+    ctx: { orgId?: number; noteId?: number } = {}
+  ) {
+    super(message);
+    this.name = "TaxIdentityError";
+    this.code = code;
+    this.orgId = ctx.orgId;
+    this.noteId = ctx.noteId;
+  }
+}
+
+/** Tax address shape used for both payer (org) and recipient (lead). */
+export interface PayerOrRecipientAddress {
+  line1: string;
+  line2?: string;
+  city: string;
+  state: string;
+  zip: string;
+  country?: string;
+}
+
+/**
+ * IRS Form 1099-INT — 2025 layout.
+ * Box 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 13 are the populated fields most
+ * relevant to a seller-financed-note payer. We emit the full structure so
+ * downstream e-filers (FIRE, IRIS) get a complete record, even when many
+ * boxes are zero.
+ */
 export interface Form1099Int {
-  payerName: string;
-  payerAddress: string;
-  payerEin: string;
-  payerPhone: string;
-  recipientName: string;
-  recipientAddress: string;
-  recipientTin: string; // SSN or EIN
-  accountNumber: string; // Note ID
+  // ── Header / parties ────────────────────────────────────────────────────
   taxYear: number;
-  box1InterestIncome: number; // Box 1: Interest income
-  box4FederalWithholding: number; // Box 4: Federal income tax withheld (usually 0)
+  /** Account number per IRS instructions (we use NOTE-{id}). */
+  accountNumber: string;
+
+  payerName: string;
+  payerAddress: PayerOrRecipientAddress;
+  payerPhone: string;
+  /** Payer's federal TIN. EIN format ##-####### or SSN format ###-##-####. */
+  payerTin: string;
+  payerTinType: "EIN" | "SSN" | "ITIN";
+
+  recipientName: string;
+  recipientAddress: PayerOrRecipientAddress;
+  /** Recipient's TIN. SSN ###-##-####, EIN ##-#######, or ITIN 9##-##-####. */
+  recipientTin: string;
+  recipientTinType: "SSN" | "EIN" | "ITIN";
+
+  // ── Form boxes (IRS Form 1099-INT, 2025) ────────────────────────────────
+  /** Box 1 — Interest income (other than from US savings bonds / Treasury). */
+  box1_interestIncome: number;
+  /** Box 2 — Early withdrawal penalty. */
+  box2_earlyWithdrawalPenalty: number;
+  /** Box 3 — Interest on US savings bonds and Treasury obligations. */
+  box3_usSavingsBondInterest: number;
+  /** Box 4 — Federal income tax withheld (backup withholding). */
+  box4_federalIncomeTaxWithheld: number;
+  /** Box 5 — Investment expenses. */
+  box5_investmentExpenses: number;
+  /** Box 6 — Foreign tax paid. */
+  box6_foreignTaxPaid: number;
+  /** Box 7 — Foreign country or US possession. */
+  box7_foreignCountry: string;
+  /** Box 8 — Tax-exempt interest. */
+  box8_taxExemptInterest: number;
+  /** Box 9 — Specified private activity bond interest. */
+  box9_privateActivityBondInterest: number;
+  /** Box 10 — Market discount. */
+  box10_marketDiscount: number;
+  /** Box 11 — Bond premium. */
+  box11_bondPremium: number;
+  /** Box 12 — Bond premium on Treasury obligations. */
+  box12_bondPremiumOnTreasury: number;
+  /** Box 13 — Bond premium on tax-exempt bond. */
+  box13_bondPremiumOnTaxExempt: number;
+  /** Box 14 — Tax-exempt and tax credit bond CUSIP no. */
+  box14_taxExemptBondCusip: string;
+  /** Boxes 15-17 — State tax withholding (state, state ID, state tax withheld). */
+  box15_state: string;
+  box16_statePayerStateNumber: string;
+  box17_stateTaxWithheld: number;
+  /** FATCA filing requirement checkbox. */
+  fatcaFilingRequirement: boolean;
+  /** "2nd TIN not." checkbox (IRS notified payer twice in 3 years). */
+  secondTinNotice: boolean;
+}
+
+/**
+ * Decrypt a stored TIN ciphertext. If the value already looks like
+ * plaintext (no encrypted format markers) we return it unchanged so legacy
+ * rows written before encryption rolled out don't crash 1099 generation.
+ */
+function decryptStoredTin(ciphertext: string): string {
+  // ciphertext format from configManager.encryptValue: iv:tag:enc (3 hex parts)
+  if (ciphertext.split(":").length === 3 && /^[0-9a-f:]+$/i.test(ciphertext)) {
+    try {
+      return decryptValue(ciphertext);
+    } catch {
+      // fall through — surface the raw value rather than crash; downstream
+      // validation will reject placeholders anyway.
+      return ciphertext;
+    }
+  }
+  return ciphertext;
+}
+
+/** Throw if the TIN matches a known placeholder pattern. */
+function assertNonPlaceholderTin(
+  tin: string,
+  kind: "payer" | "recipient",
+  ctx: { orgId?: number; noteId?: number }
+): void {
+  const stripped = tin.replace(/[\s-]/g, "");
+  if (
+    !tin ||
+    tin === PLACEHOLDER_PAYER_TIN ||
+    tin === PLACEHOLDER_RECIPIENT_TIN_SSN ||
+    tin === PLACEHOLDER_RECIPIENT_TIN_EIN ||
+    stripped === "000000000" ||
+    /^0{8,9}$/.test(stripped)
+  ) {
+    throw new TaxIdentityError(
+      kind === "payer" ? "PAYER_EIN_MISSING" : "RECIPIENT_TIN_MISSING",
+      kind === "payer"
+        ? `Cannot generate 1099-INT: payer EIN is missing or placeholder for org ${ctx.orgId}. Capture it during onboarding.`
+        : `Cannot generate 1099-INT: recipient TIN is missing or placeholder for note ${ctx.noteId}. Collect a W-9 from the borrower.`,
+      ctx
+    );
+  }
 }
 
 export async function generate1099IntForms(
@@ -253,22 +408,107 @@ export async function generate1099IntForms(
     .from(organizations)
     .where(eq(organizations.id, orgId));
 
+  if (!org) {
+    throw new TaxIdentityError(
+      "PAYER_NAME_MISSING",
+      `Organization ${orgId} not found — cannot issue 1099-INTs.`,
+      { orgId }
+    );
+  }
+
+  // ── Resolve payer identity from org row (no fallbacks). ─────────────────
+  const payerName = org.legalEntityName?.trim() || org.name?.trim();
+  if (!payerName) {
+    throw new TaxIdentityError(
+      "PAYER_NAME_MISSING",
+      `Organization ${orgId} has no legal entity name — required for 1099-INT.`,
+      { orgId }
+    );
+  }
+
+  if (!org.ein) {
+    throw new TaxIdentityError(
+      "PAYER_EIN_MISSING",
+      `Organization ${orgId} has no EIN on file — capture it during onboarding before issuing 1099s.`,
+      { orgId }
+    );
+  }
+  const payerTin = decryptStoredTin(org.ein);
+  assertNonPlaceholderTin(payerTin, "payer", { orgId });
+
+  const payerTinType = (org.taxIdType as Form1099Int["payerTinType"]) || "EIN";
+
+  const payerAddress: PayerOrRecipientAddress = {
+    line1: org.taxAddress?.line1 || "",
+    line2: org.taxAddress?.line2,
+    city: org.taxAddress?.city || "",
+    state: org.taxAddress?.state || "",
+    zip: org.taxAddress?.zip || "",
+    country: org.taxAddress?.country,
+  };
+  const payerPhone = org.taxAddress?.phone || "";
+
+  // ── Build form per qualifying note. ────────────────────────────────────
   const report = await generateAnnualInterestReport(orgId, taxYear);
   const qualifying = report.notes.filter((n) => n.requires1099);
 
-  return qualifying.map((note) => ({
-    payerName: org?.name || "Real Estate Professional",
-    payerAddress: "",
-    payerEin: "00-0000000",
-    payerPhone: "",
-    recipientName: note.borrowerName,
-    recipientAddress: "",
-    recipientTin: "000-00-0000", // Collected during onboarding
-    accountNumber: `NOTE-${note.noteId}`,
-    taxYear,
-    box1InterestIncome: Math.round(note.interestCollected * 100) / 100,
-    box4FederalWithholding: 0,
-  }));
+  return qualifying.map((note): Form1099Int => {
+    if (!note.borrowerTaxIdCiphertext) {
+      throw new TaxIdentityError(
+        "RECIPIENT_TIN_MISSING",
+        `Note ${note.noteId} (${note.borrowerName}) has no TIN — collect a W-9 before generating a 1099-INT.`,
+        { orgId, noteId: note.noteId }
+      );
+    }
+    const recipientTin = decryptStoredTin(note.borrowerTaxIdCiphertext);
+    assertNonPlaceholderTin(recipientTin, "recipient", { orgId, noteId: note.noteId });
+
+    const recipientTinType = (note.borrowerTaxIdType as Form1099Int["recipientTinType"]) || "SSN";
+
+    return {
+      taxYear,
+      accountNumber: `NOTE-${note.noteId}`,
+
+      payerName,
+      payerAddress,
+      payerPhone,
+      payerTin,
+      payerTinType,
+
+      recipientName: note.borrowerName,
+      recipientAddress: {
+        line1: note.borrowerAddress?.street || "",
+        city: note.borrowerAddress?.city || "",
+        state: note.borrowerAddress?.state || "",
+        zip: note.borrowerAddress?.zip || "",
+      },
+      recipientTin,
+      recipientTinType,
+
+      // Box 1: total interest income paid this tax year.
+      box1_interestIncome: Math.round(note.interestCollected * 100) / 100,
+      // Boxes 2–17: AcreOS does not currently track these for seller-finance
+      // notes; emit zeros / empty strings so the IRS record is well-formed.
+      box2_earlyWithdrawalPenalty: 0,
+      box3_usSavingsBondInterest: 0,
+      box4_federalIncomeTaxWithheld: 0,
+      box5_investmentExpenses: 0,
+      box6_foreignTaxPaid: 0,
+      box7_foreignCountry: "",
+      box8_taxExemptInterest: 0,
+      box9_privateActivityBondInterest: 0,
+      box10_marketDiscount: 0,
+      box11_bondPremium: 0,
+      box12_bondPremiumOnTreasury: 0,
+      box13_bondPremiumOnTaxExempt: 0,
+      box14_taxExemptBondCusip: "",
+      box15_state: "",
+      box16_statePayerStateNumber: "",
+      box17_stateTaxWithheld: 0,
+      fatcaFilingRequirement: false,
+      secondTinNotice: false,
+    };
+  });
 }
 
 // ============================================
