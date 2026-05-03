@@ -222,6 +222,130 @@ export enum TaskComplexity {
   CRITICAL = "critical", // Opus 4.6 — highest-stakes decisions only
 }
 
+// ============================================
+// TASK TIER (Wave 8 — Haiku default routing)
+//
+// Tiers are an *intent-based* routing axis, distinct from `complexity`.
+// Complexity guesses how hard a task is from its content; tier is what the
+// caller asserts about the customer impact of getting it right.
+//
+//   critical    → customer-facing, quality-sensitive surfaces.
+//                 Default model: Sonnet 4.6. We do NOT downgrade these
+//                 unless the founder flips AI_HAIKU_DEFAULT_ENABLED=false
+//                 (that flag forces *every* tier back to Sonnet — used as
+//                 a single emergency rollback lever).
+//   standard    → default for most internal-but-customer-adjacent work.
+//                 Default model: Haiku 4.5. 60-80% cost reduction vs Sonnet.
+//   background  → internal classification, summarization, extraction.
+//                 Default model: Haiku 4.5. Same as standard today, but
+//                 separated so we can route to a cheaper micro-model later
+//                 (e.g. DeepSeek) without touching callsites again.
+//
+// Cost projection (Anthropic public prices, 2026-05):
+//   Sonnet 4.6: $3 / $15 per M tokens
+//   Haiku  4.5: $0.80 / $4 per M tokens (≈73% cheaper)
+//
+// Caller convention: every routeAITask / generateWithAutoRouting callsite
+// SHOULD pass `taskTier` explicitly. Passing it through `config.taskTier`
+// (router config) or `task.taskTier` both work — config wins if both set.
+// ============================================
+
+export type TaskTier = "critical" | "standard" | "background";
+
+/**
+ * AI_HAIKU_DEFAULT_ENABLED — single env var to flip every standard/background
+ * call back to Sonnet if quality regressions appear in the wild. Defaults to
+ * true; set to "false" or "0" to disable the Haiku default.
+ */
+function isHaikuDefaultEnabled(): boolean {
+  const raw = (process.env.AI_HAIKU_DEFAULT_ENABLED ?? "true").trim().toLowerCase();
+  return raw !== "false" && raw !== "0" && raw !== "off" && raw !== "no";
+}
+
+/**
+ * Resolve a tier to a concrete model id, honoring the AI_HAIKU_DEFAULT_ENABLED
+ * kill-switch. When the flag is disabled, every tier falls through to Sonnet
+ * — gives the founder a single env var to flip if quality regresses in prod.
+ *
+ * Implemented as a function so MODEL_* constants (declared later in this
+ * file) are in scope by the time any caller invokes us at request time.
+ */
+export function modelForTier(tier: TaskTier): string {
+  if (!isHaikuDefaultEnabled()) {
+    return MODEL_COMPLEX; // Sonnet for everything when kill-switch flipped
+  }
+  switch (tier) {
+    case "critical":   return MODEL_COMPLEX;   // Sonnet 4.6
+    case "standard":   return MODEL_MODERATE;  // Haiku 4.5
+    case "background": return MODEL_MODERATE;  // Haiku 4.5
+  }
+}
+
+/** Public for tests + founder dashboard. */
+export function getTierToModelMap(): Record<TaskTier, string> {
+  if (!isHaikuDefaultEnabled()) {
+    return { critical: MODEL_COMPLEX, standard: MODEL_COMPLEX, background: MODEL_COMPLEX };
+  }
+  return {
+    critical:   MODEL_COMPLEX,
+    standard:   MODEL_MODERATE,
+    background: MODEL_MODERATE,
+  };
+}
+
+// ============================================
+// AI ROUTING OVERRIDES (eval-gated rollback)
+// ============================================
+
+interface RoutingOverride {
+  taskType: string;
+  overrideTier: TaskTier;
+  overrideModel: string | null;
+  reason: string;
+}
+
+interface OverrideCache {
+  byTaskType: Map<string, RoutingOverride>;
+  loadedAt: number;
+}
+
+let overrideCache: OverrideCache | null = null;
+const OVERRIDE_CACHE_TTL_MS = 5 * 60 * 1000;
+
+async function loadRoutingOverrides(): Promise<OverrideCache> {
+  if (overrideCache && Date.now() - overrideCache.loadedAt < OVERRIDE_CACHE_TTL_MS) {
+    return overrideCache;
+  }
+  try {
+    const { db } = await import("../db");
+    const { aiRoutingOverrides } = await import("@shared/schema");
+    const { eq } = await import("drizzle-orm");
+    const rows = await db.select().from(aiRoutingOverrides).where(eq(aiRoutingOverrides.active, true));
+    const map = new Map<string, RoutingOverride>();
+    for (const r of rows) {
+      // Skip expired overrides — defensive even though active=false should be set
+      if (r.expiresAt && new Date(r.expiresAt).getTime() < Date.now()) continue;
+      map.set(r.taskType, {
+        taskType: r.taskType,
+        overrideTier: r.overrideTier as TaskTier,
+        overrideModel: r.overrideModel,
+        reason: r.reason,
+      });
+    }
+    overrideCache = { byTaskType: map, loadedAt: Date.now() };
+    return overrideCache;
+  } catch (err) {
+    logger.warn("[AIRouter] failed to load routing overrides — proceeding without", {
+      metadata: { detail: err instanceof Error ? err.message : err },
+    });
+    return { byTaskType: new Map(), loadedAt: Date.now() };
+  }
+}
+
+export function invalidateRoutingOverrideCache(): void {
+  overrideCache = null;
+}
+
 export enum AIProvider {
   OPENROUTER = "openrouter",
   OPENAI = "openai",
@@ -230,6 +354,12 @@ export enum AIProvider {
 export interface AITask {
   taskType: string;
   complexity: TaskComplexity;
+  /**
+   * Wave 8 — tier-based routing. When set, takes precedence over
+   * `complexity` for model selection (unless an override row pins it back).
+   * See TaskTier docs for tier semantics.
+   */
+  taskTier?: TaskTier;
   messages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
   maxTokens?: number;
   temperature?: number;
@@ -268,6 +398,12 @@ export interface AIRouterConfig {
    * row in hand.  When undefined, the router queries organizations.
    */
   orgQuotaCapUsd?: number;
+  /**
+   * Wave 8 — tier-based override. When set, this wins over task.taskTier
+   * (router-config wins). Useful for routes that want to force-pin tier
+   * without mutating the AITask object.
+   */
+  taskTier?: TaskTier;
 }
 
 const SIMPLE_TASKS = [
@@ -767,7 +903,33 @@ export async function routeAITask(
 
   // ── Model selection ──────────────────────────────────────────────────────────
   const startTime = Date.now();
-  const { provider, model, client, maxTokens: dbMaxTokens } = await selectProviderAndModelAsync(task.complexity, task.taskType, config);
+  let { provider, model, client, maxTokens: dbMaxTokens } = await selectProviderAndModelAsync(task.complexity, task.taskType, config);
+
+  // ── Wave 8 — Tier-based override ───────────────────────────────────────────
+  // Resolution order:
+  //   1. Hard pins win (forceModel, useCritical, useVision, useReasoning,
+  //      forcePremium, useExtendedThinking) — leave model unchanged.
+  //   2. ai_routing_overrides table — eval-gated rollback wins over caller tier.
+  //   3. config.taskTier — router-config tier (callsite wrapper).
+  //   4. task.taskTier — task-level tier.
+  // Tier 'critical' → Sonnet 4.6, 'standard'/'background' → Haiku 4.5.
+  // The AI_HAIKU_DEFAULT_ENABLED env var can force every tier to Sonnet.
+  const hasHardPin = !!(config.forceModel || config.useCritical || config.useVision
+    || config.useReasoning || config.forcePremium || task.useExtendedThinking);
+  if (!hasHardPin) {
+    const overrides = await loadRoutingOverrides();
+    const override = overrides.byTaskType.get(task.taskType);
+    if (override) {
+      const overrideModel = override.overrideModel || modelForTier(override.overrideTier);
+      logger.info(`[AIRouter] Tier override active for ${task.taskType}: ${override.reason} → ${overrideModel}`);
+      model = overrideModel;
+    } else {
+      const tier = config.taskTier ?? task.taskTier;
+      if (tier) {
+        model = modelForTier(tier);
+      }
+    }
+  }
   logger.info(`[AIRouter] Routing ${task.taskType} (${task.complexity}) → ${provider}/${model}`);
 
   // ── Primary generation ───────────────────────────────────────────────────────
@@ -778,12 +940,23 @@ export async function routeAITask(
   try {
     // ── Prompt caching: annotate system message with cache_control when eligible ─
     // OpenRouter passes this to Anthropic's prompt caching API.
-    // Eligible: Anthropic models, system prompt ≥ 1024 chars, explicitly requested.
+    // Eligible: Anthropic models, system prompt ≥ ~1024 *tokens* (~4096 chars).
+    // Wave 8: caching is now AUTO-ENABLED on every Anthropic call whose system
+    // prompt clears the threshold — no callsite needs to opt in. Callsites
+    // can still force-disable by setting enablePromptCaching === false.
     // Cache discount: ~90% on the cached portion (write: 1.25× base, read: 0.1× base).
+    //
+    // Token estimate: Anthropic's tokenizer averages ~3.7 chars/token for
+    // English; we use 4 as a conservative ceiling, so 4096 chars ≈ 1024 tokens.
     const isAnthropicModel = model.startsWith("anthropic/");
     const systemMsg = task.messages.find(m => m.role === "system");
     const systemLength = systemMsg?.content?.length || 0;
-    const shouldCache = task.enablePromptCaching && isAnthropicModel && systemLength >= 1024;
+    const ANTHROPIC_CACHE_MIN_CHARS = 4096; // ≈ 1024 tokens at 4 chars/token
+    const cacheEligible = isAnthropicModel && systemLength >= ANTHROPIC_CACHE_MIN_CHARS;
+    // Honor explicit opt-out (false) but otherwise auto-enable when eligible.
+    const shouldCache = task.enablePromptCaching === false
+      ? false
+      : cacheEligible;
 
     const messagesPayload = shouldCache
       ? task.messages.map(m =>
@@ -1106,6 +1279,72 @@ interface TelemetryPayload {
   complexity: string;
   success: boolean;
   errorMessage?: string;
+}
+
+// ============================================
+// EVAL QUALITY GATE — Wave 8
+//
+// When the eval harness scores a tier-routing change <95% match against the
+// previous run's scores, applyEvalQualityGate auto-rollbacks the tier change
+// for the affected callsite by writing to ai_routing_overrides.
+//
+// The hook is defensive: any DB failure logs and returns gracefully so the
+// eval harness itself never blocks on a rollback write.
+// ============================================
+
+export interface EvalGateInput {
+  taskType: string;
+  originalTier: TaskTier;
+  newTier: TaskTier;
+  previousScore: number; // 0-1
+  newScore: number;      // 0-1
+  /** Match-ratio threshold below which we auto-rollback. Default 0.95. */
+  threshold?: number;
+}
+
+export interface EvalGateResult {
+  rolledBack: boolean;
+  reason: string;
+  ratio: number;
+}
+
+export async function applyEvalQualityGate(input: EvalGateInput): Promise<EvalGateResult> {
+  const threshold = input.threshold ?? 0.95;
+  if (input.previousScore <= 0) {
+    return { rolledBack: false, reason: "no previous score baseline", ratio: 1 };
+  }
+  const ratio = input.newScore / input.previousScore;
+  if (ratio >= threshold) {
+    return { rolledBack: false, reason: `quality preserved (${ratio.toFixed(3)} ≥ ${threshold})`, ratio };
+  }
+
+  const reason = `eval_quality_regression:${input.newScore.toFixed(3)}/${input.previousScore.toFixed(3)} ratio=${ratio.toFixed(3)}`;
+  try {
+    const { db } = await import("../db");
+    const { aiRoutingOverrides } = await import("@shared/schema");
+    const { eq } = await import("drizzle-orm");
+    // Retire any active override for this taskType so the unique index holds.
+    await db.update(aiRoutingOverrides)
+      .set({ active: false })
+      .where(eq(aiRoutingOverrides.taskType, input.taskType));
+    await db.insert(aiRoutingOverrides).values({
+      id: crypto.randomUUID(),
+      taskType: input.taskType,
+      originalTier: input.newTier,         // the tier that just regressed
+      overrideTier: input.originalTier,    // pin back to the safer prior tier
+      overrideModel: null,
+      reason,
+      previousEvalScore: input.previousScore.toFixed(4),
+      newEvalScore: input.newScore.toFixed(4),
+      active: true,
+    });
+    invalidateRoutingOverrideCache();
+    logger.warn(`[AIRouter] Eval quality gate rolled back ${input.taskType}: ${reason}`);
+    return { rolledBack: true, reason, ratio };
+  } catch (err) {
+    logger.error(`[AIRouter] Eval quality gate write failed for ${input.taskType}`, err as Error);
+    return { rolledBack: false, reason: `db_error:${(err as Error)?.message || "unknown"}`, ratio };
+  }
 }
 
 function recordAITelemetry(payload: TelemetryPayload): void {

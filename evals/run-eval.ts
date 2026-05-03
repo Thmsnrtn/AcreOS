@@ -405,8 +405,35 @@ async function main() {
 
   if (!existsSync(args.reportDir)) mkdirSync(args.reportDir, { recursive: true });
   const outPath = join(args.reportDir, `${startedAt.replace(/[:.]/g, "-")}.json`);
+
+  // ── Wave 8 quality-gate: compare against the previous latest.json BEFORE
+  // we overwrite it. If the new avgOverall is < 95% of the prior run's
+  // avgOverall, we log a regression. The companion router hook
+  // (applyEvalQualityGate in server/services/aiRouter.ts) is what writes the
+  // ai_routing_overrides row when invoked from the routing-change CI flow.
+  const latestPath = join(args.reportDir, "latest.json");
+  let priorOverall: number | null = null;
+  if (existsSync(latestPath)) {
+    try {
+      const prior = JSON.parse(readFileSync(latestPath, "utf8")) as RunReport;
+      priorOverall = prior.totals?.avgOverall ?? null;
+    } catch {
+      priorOverall = null;
+    }
+  }
+  if (priorOverall && priorOverall > 0) {
+    const ratio = report.totals.avgOverall / priorOverall;
+    if (ratio < 0.95) {
+      console.warn(
+        `[eval] QUALITY GATE FAIL — overall=${report.totals.avgOverall.toFixed(3)} vs prior=${priorOverall.toFixed(3)} (ratio=${ratio.toFixed(3)})`
+      );
+    } else {
+      console.log(`[eval] quality gate PASS — ratio=${ratio.toFixed(3)} (≥0.95)`);
+    }
+  }
+
   writeFileSync(outPath, JSON.stringify(report, null, 2));
-  writeFileSync(join(args.reportDir, "latest.json"), JSON.stringify(report, null, 2));
+  writeFileSync(latestPath, JSON.stringify(report, null, 2));
 
   printSummary(report);
   console.log(`\n[eval] report → ${outPath}`);

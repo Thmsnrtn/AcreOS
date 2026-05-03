@@ -584,7 +584,7 @@ class TaxOptimizerService {
 - Top recommendations: ${position.recommendations.slice(0, 3).map(r => r.title).join(", ")}
 
 Write a 3-paragraph tax planning summary with specific action items for this real estate professional. Be specific about dollar amounts and timing.`,
-      { orgId: organizationId },
+      { orgId: organizationId, taskTier: "standard" }, // tax-optimizer planning
     );
 
     return response.content || "Tax planning report unavailable.";

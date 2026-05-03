@@ -138,6 +138,7 @@ async function analyzeSentiment(content: string): Promise<"positive" | "neutral"
     const response = await routeAITask({
       taskType: "categorize",
       complexity: TaskComplexity.SIMPLE,
+      taskTier: "standard", // writing-style sentiment
       messages: [
         {
           role: "system",
@@ -190,6 +191,7 @@ export async function analyzeWritingStyle(profileId: number): Promise<{
   const response = await routeAITask({
     taskType: "writing_style_analysis",
     complexity: TaskComplexity.COMPLEX,
+    taskTier: "standard", // one-time style extraction — Haiku is sufficient
     messages: [
       {
         role: "system",
@@ -310,6 +312,7 @@ Question style: ${patterns.questionStyle}`
   const response = await routeAITask({
     taskType: "draft_email",
     complexity: TaskComplexity.MODERATE,
+    taskTier: "standard", // ghostwrite draft
     messages: [
       {
         role: "system",

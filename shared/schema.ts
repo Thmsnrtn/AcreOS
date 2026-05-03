@@ -10953,6 +10953,34 @@ export const aiUsageDaily = pgTable("ai_usage_daily", {
 export type AiUsageDaily = typeof aiUsageDaily.$inferSelect;
 export type InsertAiUsageDaily = typeof aiUsageDaily.$inferInsert;
 
+// ─── AI Routing Overrides ────────────────────────────────────────────────────
+// Wave 8 — eval-gated rollback table. The aiRouter consults this table at
+// routing time and prefers the override tier/model when an active row exists
+// for the given task_type. The quality-gate hook in evals/run-eval flow
+// inserts rows here automatically when a tier change drops match score
+// below 95% of the previous run.
+export const aiRoutingOverrides = pgTable("ai_routing_overrides", {
+  id: varchar("id").primaryKey(),
+  taskType: text("task_type").notNull(),
+  originalTier: text("original_tier").notNull(),
+  overrideTier: text("override_tier").notNull(),
+  overrideModel: text("override_model"),
+  reason: text("reason").notNull(),
+  previousEvalScore: numeric("previous_eval_score", { precision: 5, scale: 4 }),
+  newEvalScore: numeric("new_eval_score", { precision: 5, scale: 4 }),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+}, (table) => [
+  uniqueIndex("ai_routing_overrides_active_unique")
+    .on(table.taskType)
+    .where(sql`${table.active} = true`),
+  index("ai_routing_overrides_created_idx").on(table.createdAt),
+]);
+
+export type AiRoutingOverride = typeof aiRoutingOverrides.$inferSelect;
+export type InsertAiRoutingOverride = typeof aiRoutingOverrides.$inferInsert;
+
 // ─── User Map Layer Preferences ──────────────────────────────────────────────
 // Persists per-user map layer toggle/opacity settings across devices.
 export const userMapLayerPreferences = pgTable("user_map_layer_preferences", {

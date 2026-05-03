@@ -64,6 +64,10 @@ async function sophieGeniusMode(
       .orderBy(supportTicketMessages.createdAt)
       .limit(15);
 
+    // Customer-support auto-resolver is the escalation layer after a Pax
+    // draft attempt — by design, this tier uses Opus (TaskComplexity.CRITICAL)
+    // which is strictly above the Wave-8 'critical' tier (Sonnet). useCritical
+    // is treated as a hard pin in aiRouter, so it bypasses tier downgrades.
     const { routeCriticalTask } = await import("./aiRouter");
     const aiResponse = await routeCriticalTask(
       "executive_decision",
