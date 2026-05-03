@@ -1501,6 +1501,9 @@ export async function registerRoutes(
     // Wave 10: Self-tuning cost optimiser — founder dashboard + apply endpoint.
     const { registerCostOptimizerRoutes } = await import("./routes-cost-optimizer");
     registerCostOptimizerRoutes(app);
+    // Wave 10: Per-customer unit economics + profit-margin dashboard.
+    const { registerUnitEconomicsRoutes } = await import("./routes-unit-economics");
+    registerUnitEconomicsRoutes(app);
   }
 
   // Executive Revenue Dashboard — Founder-only aggregate metrics

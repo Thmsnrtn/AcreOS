@@ -6272,6 +6272,97 @@ export const CONCENTRATION_THRESHOLDS = {
 } as const;
 
 // ============================================
+// CUSTOMER UNIT ECONOMICS (Lavender Week 12)
+// ============================================
+// Per-org per-day rollup of MRR vs total COGS — variable (AI / mail / SMS /
+// email / skip-trace) plus a fair share of fixed infra (Fly / Postgres /
+// Clerk / Sentry). Computed nightly by services/unitEconomics.ts and read by
+// /founder/unit-economics. See migrations/0063_customer_unit_economics.sql
+// for column-by-column rationale.
+//
+// The unique (organizationId, computedDate) constraint means re-running the
+// job on the same day upserts in place; that keeps the fixed-cost share
+// from double-counting and gives the trend chart one clean point per day.
+
+export const customerUnitEconomics = pgTable("customer_unit_economics", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id")
+    .references(() => organizations.id, { onDelete: "cascade" })
+    .notNull(),
+  computedAt: timestamp("computed_at", { withTimezone: true }).defaultNow().notNull(),
+  computedDate: date("computed_date").defaultNow().notNull(),
+  windowDays: integer("window_days").notNull().default(30),
+
+  mrrUsd: numeric("mrr_usd", { precision: 12, scale: 6 }).notNull().default("0"),
+
+  aiCostUsd: numeric("ai_cost_usd", { precision: 12, scale: 6 }).notNull().default("0"),
+  directMailCostUsd: numeric("direct_mail_cost_usd", { precision: 12, scale: 6 }).notNull().default("0"),
+  smsCostUsd: numeric("sms_cost_usd", { precision: 12, scale: 6 }).notNull().default("0"),
+  emailCostUsd: numeric("email_cost_usd", { precision: 12, scale: 6 }).notNull().default("0"),
+  skipTraceCostUsd: numeric("skip_trace_cost_usd", { precision: 12, scale: 6 }).notNull().default("0"),
+
+  fixedCostShareUsd: numeric("fixed_cost_share_usd", { precision: 12, scale: 6 }).notNull().default("0"),
+
+  totalCogsUsd: numeric("total_cogs_usd", { precision: 12, scale: 6 }).notNull().default("0"),
+  profitMarginUsd: numeric("profit_margin_usd", { precision: 12, scale: 6 }).notNull().default("0"),
+  profitMarginPct: numeric("profit_margin_pct", { precision: 7, scale: 2 }).notNull().default("0"),
+
+  aiCallCount: integer("ai_call_count").notNull().default(0),
+  smsCount: integer("sms_count").notNull().default(0),
+  emailCount: integer("email_count").notNull().default(0),
+  directMailPieces: integer("direct_mail_pieces").notNull().default(0),
+  skipTraceCount: integer("skip_trace_count").notNull().default(0),
+
+  // breakdown.aiByFeature, breakdown.fixedCostInputs, breakdown.notes etc.
+  breakdown: jsonb("breakdown").$type<{
+    aiByFeature?: Record<string, { usd: number; calls: number }>;
+    notes?: string[];
+    fixedCostInputs?: {
+      flyMonthlyUsd: number;
+      postgresMonthlyUsd: number;
+      clerkMonthlyUsd: number;
+      sentryMonthlyUsd: number;
+      activeCustomers: number;
+    };
+  }>().notNull().default({}),
+
+  consecutiveUnprofitableDays: integer("consecutive_unprofitable_days").notNull().default(0),
+}, (table) => [
+  uniqueIndex("customer_unit_economics_org_date_uniq").on(
+    table.organizationId,
+    table.computedDate,
+  ),
+  index("customer_unit_economics_org_computed_idx").on(
+    table.organizationId,
+    table.computedAt,
+  ),
+  index("customer_unit_economics_computed_date_idx").on(table.computedDate),
+  index("customer_unit_economics_margin_idx").on(table.profitMarginUsd),
+]);
+
+export const insertCustomerUnitEconomicsSchema = createInsertSchema(customerUnitEconomics).omit({
+  id: true,
+  computedAt: true,
+});
+export type InsertCustomerUnitEconomics = z.infer<typeof insertCustomerUnitEconomicsSchema>;
+export type CustomerUnitEconomicsRow = typeof customerUnitEconomics.$inferSelect;
+
+// Default fixed-cost inputs (USD per month). Sourced from the actual Fly +
+// Neon + Clerk + Sentry invoices; nudge as the infra footprint grows. The
+// unit-economics service divides these by the active-customer count to
+// derive each org's fair share. Kept here so jobs and dashboards can share
+// the same numbers.
+export const FIXED_COST_INPUTS_USD_MONTHLY = {
+  fly: 50,         // Fly compute (web + worker) — typical 2 machine fleet
+  postgres: 25,    // Neon/Postgres baseline
+  clerk: 25,       // Clerk MAU floor
+  sentry: 26,      // Sentry team plan
+} as const;
+
+// Threshold for filing a "customer X is unprofitable for 7d" alert.
+export const UNPROFITABLE_ALERT_DAYS = 7;
+
+// ============================================
 // DEFERRED REVENUE (Phase 3 Week 10)
 // ============================================
 // Period-by-period accrual rows. The recognition worker (Week 10+, out of

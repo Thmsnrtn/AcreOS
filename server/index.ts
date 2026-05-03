@@ -1049,8 +1049,11 @@ app.use("/api", apiLimiter);
       // Customer Concentration (daily 13:00 UTC) — MRR concentration alerts
       startCustomerConcentrationJob();
 
-      // Wave 8: Self-tuning cost optimiser (daily, self-rescheduling)
+      // Wave 10: Self-tuning cost optimiser (daily, self-rescheduling)
       startCostOptimizerSelfRescheduling();
+
+      // Wave 10: Per-customer unit economics (daily, self-rescheduling)
+      startCustomerUnitEconomicsJob();
 
       // Autonomous Decision Executor (every 30 minutes — auto-processes founder inbox)
       startAutonomousDecisionExecutorJob();
@@ -2194,7 +2197,7 @@ function startCustomerConcentrationJob() {
 }
 
 // ============================================================================
-// Wave 8: Self-Tuning Cost Optimizer — daily, self-rescheduling
+// Wave 10: Self-Tuning Cost Optimizer — daily, self-rescheduling
 // Analyses last 30 days of AI usage + MRR + Fly estimate, generates
 // recommendations, auto-applies safe changes (prompt-cache, log-volume),
 // flags everything else for /founder/cost-optimizer review.
@@ -2204,6 +2207,33 @@ function startCostOptimizerSelfRescheduling() {
   import('./jobs/costOptimizer').then(({ startCostOptimizerJob }) => {
     startCostOptimizerJob();
   }).catch(err => log(`Cost optimiser import failed: ${err}`, 'cost-optimizer'));
+}
+
+// ============================================================================
+// Wave 10: Per-Customer Unit Economics — daily, self-rescheduling.
+// Recomputes the trailing-30-day MRR-vs-COGS rollup for every org and emits
+// a system_alerts row when a customer has been unprofitable for 7+ days.
+// ============================================================================
+function startCustomerUnitEconomicsJob() {
+  const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+  const TTL_SECONDS = 30 * 60;
+
+  log('Registering customer unit economics job (daily, self-rescheduling)', 'unit-economics');
+
+  import('./jobs/scheduler').then(({ scheduleSelfRescheduling }) => {
+    scheduleSelfRescheduling({
+      name: 'customer_unit_economics',
+      intervalMs: TWENTY_FOUR_HOURS_MS,
+      initialDelayMs: 5 * 60 * 1000,
+      run: async () => {
+        const recordsProcessed = await withJobLock('customer_unit_economics', TTL_SECONDS, async () => {
+          const { computeAllOrgs } = await import('./services/unitEconomics');
+          return await computeAllOrgs();
+        });
+        return recordsProcessed ?? 0;
+      },
+    });
+  }).catch(err => log(`Unit economics scheduler import failed: ${err}`, 'unit-economics'));
 }
 
 // ============================================================================
