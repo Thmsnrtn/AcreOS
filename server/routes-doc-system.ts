@@ -11,6 +11,10 @@ import { eq, and } from "drizzle-orm";
 import { format as formatDate } from "date-fns";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
+import {
+  checkDisclosure,
+  buildDisclosureMissingPayload,
+} from "./services/disclosureRegistry";
 
 /**
  * Document statuses where the content is considered legally frozen.
@@ -967,7 +971,43 @@ export function registerDocSystemRoutes(app: Express): void {
       if (!signers || !Array.isArray(signers) || signers.length === 0) {
         return Errors.badRequest(res, "At least one signer is required");
       }
-      
+
+      // -----------------------------------------------------------------
+      // Pre-dispatch state disclosure gate. Mirrors the gate inside
+      // eSigningService.sendDocumentForSignature so the native path is
+      // protected too. Returns HTTP 422 with a `DISCLOSURE_MISSING`
+      // payload the client UI uses to prompt the operator.
+      // -----------------------------------------------------------------
+      {
+        const variables = ((document.variables as Record<string, unknown>) || {});
+        const state =
+          (variables.state as string | undefined) ??
+          (variables.State as string | undefined) ??
+          (variables.stateCode as string | undefined) ??
+          "";
+        const docType = (document.type || "").toString();
+        try {
+          const dCheck = checkDisclosure(state, docType, document.content || "");
+          if (!dCheck.ok) {
+            const payload = buildDisclosureMissingPayload(dCheck);
+            return Errors.validationFailed(res, payload);
+          }
+        } catch (e: any) {
+          // Unverified registry entry — fail closed at HTTP 422 with
+          // the message the operator (and counsel) needs to act on.
+          return Errors.validationFailed(res, {
+            code: "DISCLOSURE_MISSING",
+            state,
+            docType,
+            statute: "registry-incomplete",
+            requiredHeading: "<<unverified>>",
+            missingHeading: true,
+            missingPhrases: [],
+            friendlyName: e?.message || "Disclosure registry incomplete",
+          });
+        }
+      }
+
       // Format signers with IDs
       const formattedSigners = signers.map((signer: any, index: number) => ({
         id: `signer-${Date.now()}-${index}`,

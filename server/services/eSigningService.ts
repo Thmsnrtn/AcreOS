@@ -13,6 +13,55 @@ import { db, withTransaction } from "../db";
 import { generatedDocuments, notes, leads, properties, organizations } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import {
+  checkDisclosure,
+  buildDisclosureMissingPayload,
+  type DisclosureCheckResult,
+} from "./disclosureRegistry";
+
+/**
+ * Tagged error thrown when a state-required disclosure block is missing
+ * from a document about to be dispatched for signature. The route layer
+ * (see `routes-elite-features.ts` and `routes-doc-system.ts`) inspects
+ * `err.code === "DISCLOSURE_MISSING"` to map this to an HTTP 422 with
+ * the structured payload the client UI uses to prompt the operator.
+ */
+export class DisclosureMissingError extends Error {
+  readonly code = "DISCLOSURE_MISSING";
+  readonly payload: ReturnType<typeof buildDisclosureMissingPayload>;
+  constructor(payload: ReturnType<typeof buildDisclosureMissingPayload>) {
+    super(
+      `Required state disclosure missing: ${payload.statute} (${payload.friendlyName})`
+    );
+    this.name = "DisclosureMissingError";
+    this.payload = payload;
+  }
+}
+
+/**
+ * Pre-dispatch gate: verify that the document content carries the
+ * statutorily-required disclosure block for its `(state, docType)`.
+ * Throws `DisclosureMissingError` (caught by callers and surfaced as
+ * HTTP 422) when non-compliant, or re-throws the underlying error from
+ * `checkDisclosure` when a registry entry is `unverified` (fail-closed).
+ */
+export function assertDisclosureCompliant(args: {
+  state: string | null | undefined;
+  docType: string | null | undefined;
+  content: string | null | undefined;
+}): void {
+  const state = args.state || "";
+  const docType = args.docType || "";
+  if (!state || !docType) return; // Nothing to check.
+  const result: DisclosureCheckResult = checkDisclosure(
+    state,
+    docType,
+    args.content || ""
+  );
+  if (!result.ok) {
+    throw new DisclosureMissingError(buildDisclosureMissingPayload(result));
+  }
+}
 
 // Document statuses for which we treat the request as already dispatched.
 // If the row is in any of these and already has an envelope ID, we
@@ -140,6 +189,36 @@ export async function sendDocumentForSignature(
       .select()
       .from(organizations)
       .where(eq(organizations.id, input.organizationId));
+
+    // ---------------------------------------------------------------
+    // Pre-dispatch state disclosure gate.
+    //
+    // If this document is a state-regulated form (e.g. TX
+    // contract-for-deed) the statute requires verbatim disclosure
+    // language. We refuse to dispatch the document for signature when
+    // that language is missing — sending it would void the contract
+    // and, in TX, expose the seller to a Class B misdemeanor.
+    //
+    // The doc row carries the doc type as `type`; the state usually
+    // lives inside `variables.state` (set by the doc generator). We
+    // accept either, and skip the check if we can't determine both.
+    // ---------------------------------------------------------------
+    {
+      const variables = (doc.variables || {}) as Record<string, unknown>;
+      const state =
+        (variables.state as string | undefined) ??
+        (variables.State as string | undefined) ??
+        (variables.stateCode as string | undefined) ??
+        "";
+      const docType = (doc.type || "").toString();
+      // Throws DisclosureMissingError on non-compliance; throws plain
+      // Error when a registry entry is `unverified` (fail-closed).
+      assertDisclosureCompliant({
+        state,
+        docType,
+        content: doc.content || "",
+      });
+    }
 
     // Build multipart form data for Dropbox Sign API
     const formData = new FormData();

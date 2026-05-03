@@ -248,6 +248,17 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
 
       res.json(result);
     } catch (err: any) {
+      // Pre-dispatch state-disclosure gate threw — surface as HTTP 422
+      // with the structured payload so the client UI can prompt the
+      // operator to embed the required disclosure block.
+      if (err instanceof eSigningService.DisclosureMissingError) {
+        return res.status(422).json({
+          error: "VALIDATION_FAILED",
+          message: "Required state disclosure missing",
+          details: err.payload,
+          statusCode: 422,
+        });
+      }
       if (err?.message?.includes("DROPBOX_SIGN_API_KEY")) return esignNotConfigured(res, err);
       res.status(500).json({ message: err.message });
     }
