@@ -759,6 +759,25 @@ export function registerBillingRoutes(app: Express): void {
         previousTier: org.subscriptionTier,
       });
 
+      // Renoir audit-log: record the user-initiated cancel intent. The
+      // Stripe webhook will follow up with the confirmed cancellation event;
+      // capturing intent here gives us a reason linkage even if the user
+      // never returns from the portal to confirm.
+      try {
+        const { recordSubscriptionHistoryEvent } = await import("./routes-subscription");
+        await recordSubscriptionHistoryEvent({
+          organizationId: org.id,
+          eventType: "canceled",
+          tier: org.subscriptionTier || null,
+          billingInterval: org.billingInterval || null,
+          priceCents: null,
+          metadata: {
+            source: "self_serve_cancel_intent",
+            reason: parsed.data.reason,
+          },
+        });
+      } catch { /* non-fatal */ }
+
       // If they have a Stripe subscription, redirect to portal for actual cancellation
       if (org.stripeCustomerId) {
         const { stripeService } = await import("./stripeService");
@@ -883,6 +902,22 @@ export function registerBillingRoutes(app: Express): void {
             fromTier: previousTier,
             toTier: null,
           });
+
+          // Renoir audit-log: priced cancel for reactivation context.
+          try {
+            const { recordSubscriptionHistoryEvent } = await import("./routes-subscription");
+            await recordSubscriptionHistoryEvent({
+              organizationId: org.id,
+              eventType: "canceled",
+              tier: previousTier,
+              billingInterval: org.billingInterval || null,
+              priceCents: null,
+              metadata: {
+                source: "refund_auto_cancel",
+                refundRequestId: request.id,
+              },
+            });
+          } catch { /* non-fatal */ }
 
           logger.info(`[Refund] Downgraded org ${org.id} from ${previousTier} to free after refund`);
 

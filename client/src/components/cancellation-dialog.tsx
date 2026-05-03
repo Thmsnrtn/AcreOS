@@ -15,6 +15,12 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { AlertTriangle, TrendingDown } from "lucide-react";
+import {
+  tierForSubscriptionTier,
+  tierPriceCents,
+  TIER_PRICES_CENTS,
+  type Tier,
+} from "@shared/billing/tier-pricing";
 
 const CANCEL_REASONS = [
   { value: "too_expensive", label: "Too expensive for my needs" },
@@ -24,13 +30,37 @@ const CANCEL_REASONS = [
   { value: "other", label: "Other reason" },
 ] as const;
 
+/**
+ * Vesper §3 — given the customer's current tier, return the next-cheapest
+ * paid tier we should suggest as a downgrade. Returns null when there's
+ * nowhere lower to go (Solo customers can only cancel).
+ *
+ * The currentTier value comes from organizations.subscription_tier which
+ * uses the legacy starter/pro/scale labels. tierForSubscriptionTier maps
+ * both label sets to the canonical solo/operator/empire keys.
+ */
+function suggestedDowngradeTier(currentTier: string): Tier | null {
+  const canonical = tierForSubscriptionTier(currentTier);
+  if (canonical === "empire") return "operator";
+  if (canonical === "operator") return "solo";
+  // solo → no lower paid tier
+  return null;
+}
+
 interface CancellationDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   currentTier: string;
+  /**
+   * Vesper §3 — invoked when the user clicks "Downgrade instead". The
+   * parent surface should open the plan picker preselected to the
+   * suggested tier. When omitted, the button is hidden (no-downgrade
+   * surfaces shouldn't show the affordance).
+   */
+  onDowngrade?: (suggestedTier: Tier) => void;
 }
 
-export function CancellationDialog({ open, onOpenChange, currentTier }: CancellationDialogProps) {
+export function CancellationDialog({ open, onOpenChange, currentTier, onDowngrade }: CancellationDialogProps) {
   const [step, setStep] = useState<"reason" | "confirm">("reason");
   const [reason, setReason] = useState<string>("");
   const [feedback, setFeedback] = useState("");
@@ -74,6 +104,26 @@ export function CancellationDialog({ open, onOpenChange, currentTier }: Cancella
     setReason("");
     setFeedback("");
     onOpenChange(false);
+  };
+
+  // Vesper §3 — compute the suggested downgrade target and savings line.
+  const suggestion = suggestedDowngradeTier(currentTier);
+  const currentCanonical = tierForSubscriptionTier(currentTier);
+  const monthlySavingsCents =
+    suggestion && currentCanonical
+      ? tierPriceCents(currentCanonical, "monthly") -
+        tierPriceCents(suggestion, "monthly")
+      : 0;
+  const monthlySavingsDollars = Math.max(0, Math.round(monthlySavingsCents / 100));
+  const suggestionDisplayName = suggestion ? TIER_PRICES_CENTS[suggestion].displayName : null;
+
+  const handleDowngrade = () => {
+    if (!suggestion || !onDowngrade) {
+      handleClose();
+      return;
+    }
+    onDowngrade(suggestion);
+    handleClose();
   };
 
   return (
@@ -131,11 +181,28 @@ export function CancellationDialog({ open, onOpenChange, currentTier }: Cancella
               />
             </div>
 
+            {suggestion && suggestionDisplayName && monthlySavingsDollars > 0 && (
+              <p
+                className="rounded-lg border bg-acr-pos/5 p-3 text-sm text-muted-foreground"
+                aria-live="polite"
+                data-testid="downgrade-savings-pitch"
+              >
+                Switch to <span className="font-medium text-foreground">{suggestionDisplayName}</span> instead — you'd save <span className="font-mono tabular-nums text-foreground">${monthlySavingsDollars}/mo</span>. Your data stays.
+              </p>
+            )}
+
             <DialogFooter className="flex-col sm:flex-row gap-2">
-              {currentTier !== "free" && currentTier !== "sprout" && (
-                <Button type="button" variant="outline" onClick={handleClose} className="flex items-center gap-1" aria-label="Downgrade instead of cancelling">
+              {suggestion && suggestionDisplayName && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleDowngrade}
+                  className="flex items-center gap-1"
+                  aria-label={`Downgrade to ${suggestionDisplayName} instead of cancelling`}
+                  data-testid="cancel-downgrade-instead"
+                >
                   <TrendingDown className="h-4 w-4" aria-hidden="true" />
-                  Downgrade instead
+                  Downgrade to {suggestionDisplayName} instead
                 </Button>
               )}
               <Button

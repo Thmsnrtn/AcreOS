@@ -5692,6 +5692,33 @@ export type InsertSubscriptionEvent = z.infer<typeof insertSubscriptionEventSche
 export type SubscriptionEvent = typeof subscriptionEvents.$inferSelect;
 
 // ============================================
+// SUBSCRIPTION HISTORY (Reactivation context — Renoir §1-§2)
+// ============================================
+//
+// Priced lifecycle audit log. Each row captures a subscribed / tier_changed /
+// canceled / reactivated event with the price + interval at that moment so
+// the reactivation flow can show "you were on Operator @ $49/mo when you
+// cancelled" and compute total active tenure across multiple lifecycles.
+
+export const subscriptionHistory = pgTable("subscription_history", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  eventType: text("event_type").notNull(), // subscribed | tier_changed | canceled | reactivated
+  tier: text("tier"), // nullable for canceled
+  billingInterval: text("billing_interval"), // monthly | yearly | null
+  priceCents: integer("price_cents"),
+  eventAt: timestamp("event_at").defaultNow().notNull(),
+  metadata: jsonb("metadata").default({}).notNull(),
+});
+
+export const insertSubscriptionHistorySchema = createInsertSchema(subscriptionHistory).omit({
+  id: true,
+  eventAt: true,
+});
+export type InsertSubscriptionHistory = z.infer<typeof insertSubscriptionHistorySchema>;
+export type SubscriptionHistoryRow = typeof subscriptionHistory.$inferSelect;
+
+// ============================================
 // CANCELLATION SURVEYS & REFUND REQUESTS
 // ============================================
 

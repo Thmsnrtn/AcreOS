@@ -143,6 +143,7 @@ import { registerCampaignRoutes } from "./routes-campaigns";
 import { registerAIRoutes } from "./routes-ai";
 import aiDraftRouter from "./routes-ai-draft";
 import { registerBillingRoutes } from "./routes-billing";
+import { registerSubscriptionRoutes } from "./routes-subscription";
 import { registerBorrowerRoutes } from "./routes-borrower";
 import { registerAdminRoutes } from "./routes-admin";
 import { registerAdminRecoveryRoutes } from "./routes-admin-recovery";
@@ -1623,6 +1624,7 @@ export async function registerRoutes(
   // gate access.
   app.use('/api/ai', isAuthenticated, getOrCreateOrg, aiDraftRouter);
   registerBillingRoutes(app);
+  registerSubscriptionRoutes(app);
   registerBorrowerRoutes(app);
   // R4: Clerk-native MFA enforcement on every /api/admin/* route. Users
   // with MFA enabled in Clerk must have completed second-factor in this

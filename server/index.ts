@@ -425,6 +425,32 @@ app.use("/api", apiLimiter);
       log(`organization_invitations bootstrap: ${err.message}`, "db");
     }
 
+    // Renoir §1-§2 bootstrap: subscription_history table. Mirrors
+    // migrations/0042_subscription_history.sql so reactivation-context can
+    // resolve last plan + tenure even on environments where the manual SQL
+    // migration runner hasn't been executed yet.
+    try {
+      const { pool } = await import("./db");
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS "subscription_history" (
+          "id" serial PRIMARY KEY,
+          "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+          "event_type" text NOT NULL,
+          "tier" text,
+          "billing_interval" text,
+          "price_cents" integer,
+          "event_at" timestamp DEFAULT now() NOT NULL,
+          "metadata" jsonb DEFAULT '{}'::jsonb NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS "idx_subscription_history_org_event_at"
+          ON "subscription_history" ("organization_id", "event_at" DESC);
+        CREATE INDEX IF NOT EXISTS "idx_subscription_history_event_type"
+          ON "subscription_history" ("event_type");
+      `);
+    } catch (err: any) {
+      log(`subscription_history bootstrap: ${err.message}`, "db");
+    }
+
     // Phase A.0 bootstrap: simulated_actions table. Records every
     // would-have-happened external side effect when SIMULATION_MODE=true.
     try {
