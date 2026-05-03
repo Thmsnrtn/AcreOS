@@ -234,8 +234,8 @@ export function MaintenancePage() {
       description={
         <>
           We're shipping an upgrade. Should be back in a few minutes. Your
-          data is safe — Sophie is still watching the notes, Atlas is still
-          watching the parcels. Just the front door is closed.
+          data is safe — Pax is still watching the notes and parcels. Just
+          the front door is closed.
         </>
       }
       primaryAction={{

@@ -670,6 +670,7 @@ export default function FeeDashboardPage() {
       <Tabs defaultValue="settlements">
         <TabsList>
           <TabsTrigger value="settlements">Settlements</TabsTrigger>
+          {/* eslint-disable-next-line acreos/no-founder-codenames-in-customer-jsx -- "Ledger" here is the financial-accounting noun (general ledger), not the codename for the Finance agent */}
           <TabsTrigger value="ledger">Ledger</TabsTrigger>
           <TabsTrigger value="payouts">Payouts</TabsTrigger>
         </TabsList>

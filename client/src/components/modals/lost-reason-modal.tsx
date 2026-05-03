@@ -61,7 +61,7 @@ export function LostReasonModal() {
     onSuccess: () => {
       toast({
         title: "Logged",
-        description: "Reason saved — Atlas will learn from this.",
+        description: "Reason saved — Pax will learn from this.",
       });
       queryClient.invalidateQueries({ queryKey: ["/api/deals"] });
       close();
@@ -81,7 +81,7 @@ export function LostReasonModal() {
         <DialogHeader>
           <DialogTitle>Why did this one slip?</DialogTitle>
           <DialogDescription>
-            One click. Atlas uses these patterns to suggest better offers next
+            One click. Pax uses these patterns to suggest better offers next
             time. Skippable, but the patterns get better when you don't.
           </DialogDescription>
         </DialogHeader>

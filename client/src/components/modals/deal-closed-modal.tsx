@@ -65,12 +65,12 @@ export function DealClosedModal() {
           <DialogDescription className="text-center">
             {deal?.parcel ? (
               <>
-                {deal.parcel} closed. Sophie has the paper from here — receipts,
+                {deal.parcel} closed. Pax has the paper from here — receipts,
                 schedule, the next due date.
               </>
             ) : (
               <>
-                Closed. Sophie has the paper from here — receipts, schedule,
+                Closed. Pax has the paper from here — receipts, schedule,
                 the next due date.
               </>
             )}
@@ -100,7 +100,7 @@ export function DealClosedModal() {
               style={{ background: "var(--acr-pos)" }}
               aria-hidden="true"
             />
-            Sophie picked up note servicing (if seller-financed)
+            Pax picked up note servicing (if seller-financed)
           </p>
         </div>
 

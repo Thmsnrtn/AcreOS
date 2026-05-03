@@ -62,7 +62,7 @@ const TIERS = [
     requirements: [
       "Complete ALL platform courses",
       "Pass all quizzes (85%+ average score)",
-      "Complete a portfolio review with Atlas AI",
+      "Complete a portfolio review with Pax",
       "Mentor at least 2 Bronze/Silver members",
     ],
     benefits: ["Platinum badge", "Co-marketing opportunities", "Early feature access", "Dedicated account manager"],

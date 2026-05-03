@@ -191,7 +191,7 @@ export default function IntegrationsHealth() {
             returned or the request times out.
           </p>
           <p>
-            Sophie Observer automatically sends an alert when any integration degrades below
+            Pax automatically sends an alert when any integration degrades below
             operational status. Configure notification preferences in{" "}
             <Link href="/settings" className="underline text-primary">
               Settings → Notifications

@@ -125,7 +125,7 @@ export function TasksEmptyState({ onAddTask }: { onAddTask?: () => void }) {
       tips={[
         "Tasks can be linked to leads, deals, or properties",
         "Set due dates to get reminders before deadlines",
-        "Atlas AI suggests follow-up tasks automatically",
+        "Pax suggests follow-up tasks automatically",
       ]}
       testId="empty-state-tasks"
     />

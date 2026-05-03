@@ -53,7 +53,7 @@ export function QuickOfferModal() {
   const analyzeMutation = useMutation({
     mutationFn: async (parcel: string): Promise<AtlasSuggestion> => {
       const res = await apiRequest("POST", "/api/atlas/analyze", { parcelId: parcel });
-      if (!res.ok) throw new Error("Atlas analysis failed");
+      if (!res.ok) throw new Error("Pax analysis failed");
       const data = await res.json();
       return {
         recommendedOfferTotal: data.recommendedOfferTotal ?? data.suggestedOffer ?? 0,
@@ -68,7 +68,7 @@ export function QuickOfferModal() {
     },
     onError: () => {
       toast({
-        title: "Atlas didn't return a suggestion",
+        title: "Pax didn't return a suggestion",
         description: "You can still enter an amount manually.",
         variant: "destructive",
       });
@@ -110,7 +110,7 @@ export function QuickOfferModal() {
         <DialogHeader>
           <DialogTitle>Quick offer</DialogTitle>
           <DialogDescription>
-            Paste a parcel ID. Atlas suggests the price. Pax sends the letter.
+            Paste a parcel ID. Pax suggests the price and sends the letter.
           </DialogDescription>
         </DialogHeader>
 
@@ -144,7 +144,7 @@ export function QuickOfferModal() {
                 ) : (
                   <Sparkles className="w-3 h-3 mr-1" aria-hidden="true" />
                 )}
-                Atlas suggest
+                Suggest
               </Button>
             </div>
             <Input
@@ -158,7 +158,7 @@ export function QuickOfferModal() {
             />
             {suggestion && (
               <p className="text-xs text-muted-foreground">
-                Atlas band: ${suggestion.baseOfferTotal.toLocaleString()}–
+                Suggested band: ${suggestion.baseOfferTotal.toLocaleString()}–
                 ${suggestion.recommendedOfferTotal.toLocaleString()} ·{" "}
                 <span className="capitalize">{suggestion.confidence}</span> confidence
               </p>

@@ -21,7 +21,7 @@ const SHORTCUT_CATEGORIES: ShortcutCategory[] = [
       { key: "g p", description: "Go to Properties" },
       { key: "g d", description: "Go to Deals" },
       { key: "g f", description: "Go to Finance" },
-      { key: "g a", description: "Go to Atlas AI" },
+      { key: "g a", description: "Go to Pax" },
       { key: "g s", description: "Go to Settings" },
       { key: "g c", description: "Go to Campaigns" },
       { key: "g m", description: "Go to Maps" },
@@ -57,8 +57,8 @@ const SHORTCUT_CATEGORIES: ShortcutCategory[] = [
     name: "AI",
     icon: Bot,
     shortcuts: [
-      { key: "a", description: "Ask Atlas (open AI chat)" },
-      { key: "⌘ J", description: "Open Atlas sidebar" },
+      { key: "a", description: "Ask Pax (open AI chat)" },
+      { key: "⌘ J", description: "Open Pax sidebar" },
     ],
   },
   {
