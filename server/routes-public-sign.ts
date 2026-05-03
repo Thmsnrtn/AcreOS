@@ -17,6 +17,7 @@ import { verifySigningToken } from "./services/signingTokens";
 import { storage } from "./storage";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { idempotencyMiddleware } from "./middleware/idempotency";
 
 export function registerPublicSignRoutes(app: Express): void {
   // GET /api/public/sign/:docId?s={signerId}&t={token}
@@ -90,7 +91,7 @@ export function registerPublicSignRoutes(app: Express): void {
 
   // POST /api/public/sign/:docId
   //   body: { s: signerId, t: token, signatureData, signatureType, consentGiven }
-  app.post("/api/public/sign/:docId", async (req, res) => {
+  app.post("/api/public/sign/:docId", idempotencyMiddleware, async (req, res) => {
     try {
       const docId = parseInt(req.params.docId, 10);
       const { s: signerId, t: token, signatureData, signatureType, consentGiven } = req.body || {};

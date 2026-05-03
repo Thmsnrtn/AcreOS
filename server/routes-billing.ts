@@ -780,7 +780,7 @@ export function registerBillingRoutes(app: Express): void {
   // SELF-SERVE REFUND REQUESTS
   // ============================================
 
-  api.post("/api/subscription/refund-request", isAuthenticated, getOrCreateOrg, requirePermission("canManageBilling"), async (req, res) => {
+  api.post("/api/subscription/refund-request", isAuthenticated, getOrCreateOrg, requirePermission("canManageBilling"), idempotencyMiddleware, async (req, res) => {
     try {
       const org = req.organization;
       const userId = req.auth?.userId;

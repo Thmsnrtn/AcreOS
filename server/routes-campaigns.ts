@@ -22,6 +22,7 @@ import { logger } from "./utils/logger";
 import { checkUsageLimit } from "./services/usageLimits";
 import { usageMeteringService, creditService } from "./services/credits";
 import { createRateLimiter, RATE_LIMIT_CONFIGS } from "./middleware/rateLimit";
+import { idempotencyMiddleware } from "./middleware/idempotency";
 import { storage, db } from "./storage";
 import { eq, sql, and, gte } from "drizzle-orm";
 import { leads, deals, properties, campaignResponses, campaignDeliveryEvents } from "@shared/schema";
@@ -613,7 +614,7 @@ export function registerCampaignRoutes(app: Express): void {
   // AUTO-SPLIT: If this campaign has variants (campaign_variants table), recipients are distributed
   // proportionally by each variant's trafficSplit percentage before sending. The caller (UI/job) is
   // responsible for partitioning leadIds accordingly when variant splits are active.
-  api.post("/api/campaigns/:id/send-direct-mail", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.post("/api/campaigns/:id/send-direct-mail", isAuthenticated, getOrCreateOrg, idempotencyMiddleware, async (req, res) => {
     try {
       const org = req.organization;
       const campaignId = parseInt(req.params.id);
