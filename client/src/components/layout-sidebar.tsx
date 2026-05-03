@@ -313,6 +313,10 @@ interface NavChild {
   href: string;
   description?: string;
   showUnreadBadge?: boolean;
+  // Sigfried §1 sunset marker — when true, the child renders with a small
+  // "Legacy" badge next to the label. Used for surfaces being extracted /
+  // deprecated but still reachable while the migration is in flight.
+  legacy?: boolean;
 }
 
 interface NavModule {
@@ -466,6 +470,12 @@ const NAV_MODULES: NavModule[] = [
       { label: "Tool proposals", icon: Wrench, href: "/founder/tools", description: "Capability-growth queue" },
       { label: "Providers", icon: Database, href: "/founder/providers", description: "Data-layer cost + quality" },
       { label: "Founder settings", icon: Settings2, href: "/founder/settings", description: "Live-apply operational knobs" },
+      // Sigfried §1: legacy operational dashboard (~7,400 lines) is being
+      // extracted into the focused /founder/* surfaces above. Founder still
+      // needs access during the extraction window — flagged with a Legacy
+      // badge so it's clearly the old path. Customers never see this entry
+      // because the entire founder-business module is `founderOnly: true`.
+      { label: "Operations console (legacy)", icon: LayoutDashboard, href: "/founder-dashboard", description: "Legacy operations console — being extracted into focused founder surfaces", legacy: true },
     ],
   },
 
@@ -849,7 +859,9 @@ export function Sidebar() {
       <nav aria-label="Main navigation" className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto overflow-x-hidden">
         {/* Founder home link — clean autonomy-health + todo hub.
             The legacy operational dashboard is still at /founder-dashboard
-            and reachable via the Founder business group below. */}
+            and reachable via the "Operations console (legacy)" entry inside
+            the Founder business module overflow below. The legacy entry is
+            badge-tagged and founder-only — customers never see it. */}
         {isFounder && (
           <DesktopNavItem
             href="/founder"
@@ -1076,6 +1088,15 @@ export function Sidebar() {
                             <span className="font-medium flex-1 truncate">
                               {child.label}
                             </span>
+                            {child.legacy && (
+                              <Badge
+                                variant="outline"
+                                className="text-[9px] uppercase tracking-wide shrink-0 border-amber-500/40 text-amber-600"
+                                aria-label="Legacy surface"
+                              >
+                                Legacy
+                              </Badge>
+                            )}
                           </Link>
                         );
                       })}
@@ -1370,7 +1391,16 @@ export function Sidebar() {
                                 childActive ? "text-acr-ink" : "text-muted-foreground"
                               )}
                             />
-                            <span className="font-medium text-sm">{child.label}</span>
+                            <span className="font-medium text-sm flex-1 truncate">{child.label}</span>
+                            {child.legacy && (
+                              <Badge
+                                variant="outline"
+                                className="text-[9px] uppercase tracking-wide shrink-0 border-amber-500/40 text-amber-600"
+                                aria-label="Legacy surface"
+                              >
+                                Legacy
+                              </Badge>
+                            )}
                           </Link>
                         );
                       })}

@@ -14,7 +14,8 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { DollarSign, Calendar, CreditCard, CheckCircle, Clock, AlertTriangle, Building, Phone, Mail, Shield, Loader2, FileText, Download, MapPin, CalendarDays, RefreshCw, Calculator, ChevronDown, MessageSquare, Send } from "lucide-react";
+import { DollarSign, Calendar, CreditCard, CheckCircle, Clock, AlertTriangle, Building, Phone, Mail, Shield, Loader2, FileText, Download, MapPin, CalendarDays, RefreshCw, Calculator, ChevronDown, MessageSquare, Send, X, Info } from "lucide-react";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { format, differenceInDays } from "date-fns";
 import { jsPDF } from "jspdf";
 import type { Note, Payment, Property, BorrowerMessage } from "@shared/schema";
@@ -175,6 +176,63 @@ export default function BorrowerPortal() {
   }
 
   return <BorrowerDashboard data={loanData} accessToken={accessToken} verifiedEmail={verifiedEmail} />;
+}
+
+// Sigfried §1 — borrower-portal sunset banner.
+// Dismissible (per-browser via localStorage). Shown for users on the
+// legacy /portal/:accessToken route while the deprecated payment
+// endpoints are in their 90-day sunset window. Successor surface is
+// /portal/v2; we link there once it's live, but the banner alone
+// gives borrowers a heads-up so the URL change isn't a surprise.
+const PORTAL_SUNSET_DISMISS_KEY = "acreos:portal-sunset-banner-dismissed";
+
+function PortalSunsetBanner() {
+  const [dismissed, setDismissed] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return window.localStorage.getItem(PORTAL_SUNSET_DISMISS_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+
+  if (dismissed) return null;
+
+  const handleDismiss = () => {
+    try {
+      window.localStorage.setItem(PORTAL_SUNSET_DISMISS_KEY, "1");
+    } catch {
+      // localStorage may be blocked (private mode, quota) — fall back to
+      // in-memory dismissal so the banner at least disappears for this
+      // session.
+    }
+    setDismissed(true);
+  };
+
+  return (
+    <div className="max-w-5xl mx-auto px-4 pt-4">
+      <Alert className="relative pr-10 border-amber-500/40 bg-amber-50/60 dark:bg-amber-950/20" role="status" data-testid="banner-portal-sunset">
+        <Info className="h-4 w-4 text-amber-600" aria-hidden="true" />
+        <AlertTitle className="text-amber-900 dark:text-amber-200">
+          This portal is being upgraded
+        </AlertTitle>
+        <AlertDescription className="text-amber-900/80 dark:text-amber-200/80">
+          New URL coming soon. Your existing access link will keep working
+          during the transition — we'll email you the new address before the
+          old one retires.
+        </AlertDescription>
+        <button
+          type="button"
+          onClick={handleDismiss}
+          className="absolute top-2 right-2 p-1 rounded-md text-amber-900/60 hover:bg-amber-500/10 hover:text-amber-900 transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500/40"
+          aria-label="Dismiss portal upgrade notice"
+          data-testid="button-dismiss-portal-sunset"
+        >
+          <X className="w-4 h-4" aria-hidden="true" />
+        </button>
+      </Alert>
+    </div>
+  );
 }
 
 function BorrowerLandingPage() {
@@ -682,6 +740,8 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
           </Badge>
         </div>
       </header>
+
+      <PortalSunsetBanner />
 
       {isVerifyingPayment && (
         <div className="max-w-5xl mx-auto px-4 py-4">
