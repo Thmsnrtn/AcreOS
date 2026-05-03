@@ -13,6 +13,8 @@ import {
 import { logActivity } from "./systemActivityLogger";
 import { logger } from "../utils/logger";
 import { tracedLlmCall } from "./tracedLlmCall";
+import { sanitizePrompt, USER_DATA_SYSTEM_CLAUSE } from "../utils/sanitizePrompt";
+import { validatePaxResponse } from "../utils/validatePaxResponse";
 
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
@@ -65,7 +67,12 @@ Respond in JSON format only:
   "suggestedPlaybook": "string or null",
   "sentiment": "string",
   "urgency": "string"
-}`;
+}
+
+${USER_DATA_SYSTEM_CLAUSE}`;
+
+    // P0-14: classifier input is raw customer text — wrap in delimiters.
+    const safeMessage = sanitizePrompt(message, { maxLength: 4000, source: "supportBrain.classify" });
 
     try {
       const { content } = await tracedLlmCall({
@@ -75,13 +82,13 @@ Respond in JSON format only:
         decisionId: context.existingCase?.id ?? null,
         model: "gpt-4o-mini",
         systemPrompt,
-        userPrompt: message,
+        userPrompt: safeMessage,
         call: () =>
           openai.chat.completions.create({
             model: "gpt-4o-mini",
             messages: [
               { role: "system", content: systemPrompt },
-              { role: "user", content: message },
+              { role: "user", content: safeMessage },
             ],
             temperature: 0.3,
             response_format: { type: "json_object" },
@@ -441,11 +448,16 @@ AcreOS Features:
 - Deal pipeline tracking
 
 Keep responses concise, professional, and helpful. Do not use emojis.
-If you cannot resolve the issue, say you will escalate to a human.`;
+If you cannot resolve the issue, say you will escalate to a human.
 
+${USER_DATA_SYSTEM_CLAUSE}`;
+
+    // P0-14: chat history contains customer-typed content; sanitize each turn.
     const chatHistory = messages.map((m) => ({
       role: m.role === "user" ? ("user" as const) : ("assistant" as const),
-      content: m.content,
+      content: m.role === "user"
+        ? sanitizePrompt(m.content ?? "", { maxLength: 4000, source: "supportBrain.history" })
+        : (m.content ?? ""),
     }));
 
     try {
@@ -466,9 +478,12 @@ If you cannot resolve the issue, say you will escalate to a human.`;
           }),
       });
 
-      const aiResponse =
+      const validated = validatePaxResponse(
         content ||
-        "I apologize, but I am having trouble understanding your request. Let me connect you with a human support agent.";
+          "I apologize, but I am having trouble understanding your request. Let me connect you with a human support agent.",
+        { source: "supportBrain.contextualResponse", organizationId },
+      );
+      const aiResponse = validated.response;
 
       await storage.createSupportMessage({
         caseId: supportCase.id,

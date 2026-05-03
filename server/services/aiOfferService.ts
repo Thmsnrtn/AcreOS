@@ -11,6 +11,7 @@ import { voiceLearningService, type VoiceProfile } from "./voiceLearning";
 import { logger } from "../utils/logger";
 import { validateAtlasOutput, AtlasOutputType } from "../ai/validators";
 import { tracedLlmCall } from "./tracedLlmCall";
+import { sanitizePromptInline } from "../utils/sanitizePrompt";
 
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
@@ -176,14 +177,22 @@ export async function generateOfferSuggestions(
 
     const offerPrices = calculateOfferPrices(estimatedMarketValue);
 
+    // P0-14: county/state/zoning/terrain/roadAccess come from CRM imports + user
+    // edits — sanitize before interpolating into the prompt.
+    const _sCounty = sanitizePromptInline(property.county ?? "", { maxLength: 120, source: "offer.county" });
+    const _sState = sanitizePromptInline(property.state ?? "", { maxLength: 60, source: "offer.state" });
+    const _sZoning = sanitizePromptInline(property.zoning ?? "Unknown", { maxLength: 80, source: "offer.zoning" });
+    const _sTerrain = sanitizePromptInline(property.terrain ?? "Unknown", { maxLength: 200, source: "offer.terrain" });
+    const _sRoad = sanitizePromptInline(property.roadAccess ?? "Unknown", { maxLength: 200, source: "offer.roadAccess" });
+
     const prompt = `You are an expert real estate investment analyst specializing in land acquisitions. Analyze this property and provide strategic offer recommendations.
 
 Property Details:
-- Location: ${property.county}, ${property.state}
+- Location: ${_sCounty}, ${_sState}
 - Size: ${property.sizeAcres} acres
-- Zoning: ${property.zoning || "Unknown"}
-- Terrain: ${property.terrain || "Unknown"}
-- Road Access: ${property.roadAccess || "Unknown"}
+- Zoning: ${_sZoning}
+- Terrain: ${_sTerrain}
+- Road Access: ${_sRoad}
 - Utilities: ${JSON.stringify(property.utilities || {})}
 - Assessed Value: ${property.assessedValue ? "$" + Number(property.assessedValue).toLocaleString() : "Unknown"}
 - Days on Market: ${property.daysOnMarket || "Unknown"}
@@ -357,29 +366,43 @@ export async function generateOfferLetter(
       } catch (_) { /* voice profile unavailable — continue with default tone */ }
     }
 
+    // P0-14: every interpolated string here originates from user input
+    // (property fields, buyer/seller names, terms) — sanitize to block
+    // indirect prompt injection.
+    const _l_address = sanitizePromptInline(request.property.address ?? "", { maxLength: 200, source: "offerLetter.address" });
+    const _l_county = sanitizePromptInline(request.property.county ?? "", { maxLength: 120, source: "offerLetter.county" });
+    const _l_state = sanitizePromptInline(request.property.state ?? "", { maxLength: 60, source: "offerLetter.state" });
+    const _l_apn = sanitizePromptInline(request.property.apn ?? "N/A", { maxLength: 80, source: "offerLetter.apn" });
+    const _l_addTerms = sanitizePromptInline(request.terms?.additionalTerms ?? "", { maxLength: 1000, source: "offerLetter.additionalTerms" });
+    const _l_buyerName = sanitizePromptInline(request.buyerName ?? "", { maxLength: 120, source: "offerLetter.buyerName" });
+    const _l_buyerCompany = sanitizePromptInline(request.buyerCompany ?? "", { maxLength: 200, source: "offerLetter.buyerCompany" });
+    const _l_buyerPhone = sanitizePromptInline(request.buyerPhone ?? "", { maxLength: 50, source: "offerLetter.buyerPhone" });
+    const _l_buyerEmail = sanitizePromptInline(request.buyerEmail ?? "", { maxLength: 200, source: "offerLetter.buyerEmail" });
+    const _l_sellerName = sanitizePromptInline(request.sellerName ?? "", { maxLength: 200, source: "offerLetter.sellerName" });
+
     const prompt = `Generate a professional offer letter for a land purchase.
 
 Property Details:
-- Address/Location: ${request.property.address || `${request.property.county}, ${request.property.state}`}
-- APN: ${request.property.apn || "N/A"}
+- Address/Location: ${_l_address || `${_l_county}, ${_l_state}`}
+- APN: ${_l_apn}
 - Size: ${request.property.sizeAcres} acres
-- County: ${request.property.county}
-- State: ${request.property.state}
+- County: ${_l_county}
+- State: ${_l_state}
 
 Offer Details:
 - Offer Amount: $${request.offerAmount.toLocaleString()}
 - Earnest Money: ${request.terms?.earnestMoney ? "$" + request.terms.earnestMoney.toLocaleString() : "Negotiable"}
 - Closing Timeline: ${request.terms?.closingDays ? request.terms.closingDays + " days" : "30 days"}
 - Contingencies: ${request.terms?.contingencies?.join(", ") || "Standard due diligence"}
-${request.terms?.additionalTerms ? `- Additional Terms: ${request.terms.additionalTerms}` : ""}
+${_l_addTerms ? `- Additional Terms: ${_l_addTerms}` : ""}
 
 Buyer Information:
-- Name: ${request.buyerName}
-${request.buyerCompany ? `- Company: ${request.buyerCompany}` : ""}
-${request.buyerPhone ? `- Phone: ${request.buyerPhone}` : ""}
-${request.buyerEmail ? `- Email: ${request.buyerEmail}` : ""}
+- Name: ${_l_buyerName}
+${_l_buyerCompany ? `- Company: ${_l_buyerCompany}` : ""}
+${_l_buyerPhone ? `- Phone: ${_l_buyerPhone}` : ""}
+${_l_buyerEmail ? `- Email: ${_l_buyerEmail}` : ""}
 
-${request.sellerName ? `Seller Name: ${request.sellerName}` : ""}
+${_l_sellerName ? `Seller Name: ${_l_sellerName}` : ""}
 
 Tone: ${request.tone}
 Instructions: ${toneInstructions[request.tone]}${voiceInstruction}

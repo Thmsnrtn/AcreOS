@@ -7,6 +7,7 @@ import { checkUsageLimit } from "./services/usageLimits";
 import { usageLimitGate } from "./middleware/usageLimitGate";
 import { usageMeteringService, creditService } from "./services/credits";
 import { processChat, processChatStream, agentProfiles, getOrCreateConversation, ProviderCreditError } from "./ai/executive";
+import { parsePaxPromptVersion } from "./ai/paxPromptVersions";
 import { storage, db } from "./storage";
 import { eq, sql, and } from "drizzle-orm";
 import type { SubscriptionTier } from "./services/usageLimits";
@@ -263,10 +264,14 @@ export function registerAIRoutes(app: Express): void {
       }
 
       step = "process_chat";
+      // P1-41: ops fall-back via `?paxPrompt=v2`. Default v3 (one-line
+      // headline + ≤3 bullets shape).
+      const paxPromptVersion = parsePaxPromptVersion(req.query.paxPrompt);
       const result = await processChat(message, org, userId, {
         conversationId,
         agentRole,
         propertyId: propertyId ? Number(propertyId) : undefined,
+        paxPromptVersion,
       });
 
       step = "record_usage";
@@ -385,6 +390,7 @@ export function registerAIRoutes(app: Express): void {
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
       
+      const streamPaxPromptVersion = parsePaxPromptVersion(req.query.paxPrompt);
       const stream = processChatStream(message, org, userId, {
         conversationId,
         agentRole,
@@ -393,6 +399,7 @@ export function registerAIRoutes(app: Express): void {
         mentionedEntities,
         activeProjectId: activeProjectId ? Number(activeProjectId) : undefined,
         modelOverride: modelOverride || undefined,
+        paxPromptVersion: streamPaxPromptVersion,
       });
       
       let streamCompleted = false;

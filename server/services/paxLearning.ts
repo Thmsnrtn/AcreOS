@@ -7,6 +7,7 @@ import {
 import { eq, and, desc, gte, sql, count, like, or } from "drizzle-orm";
 import { requireOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
+import { sanitizePromptInline } from "../utils/sanitizePrompt";
 
 const MAX_RETRY_ATTEMPTS = 3;
 const BASE_BACKOFF_MS = 1000;
@@ -62,10 +63,12 @@ export const paxLearningService = {
           },
           {
             role: "user",
-            content: `Ticket Category: ${ticket.category}
-Subject: ${ticket.subject}
-Description: ${ticket.description}
-Resolution: ${ticket.resolution}
+            // P0-14: ticket.subject / .description / .resolution are typed by
+            // customers — sanitize before interpolating into the prompt.
+            content: `Ticket Category: ${sanitizePromptInline(ticket.category ?? "", { maxLength: 100, source: "paxLearning.category" })}
+Subject: ${sanitizePromptInline(ticket.subject ?? "", { maxLength: 500, source: "paxLearning.subject" })}
+Description: ${sanitizePromptInline(ticket.description ?? "", { maxLength: 3000, source: "paxLearning.description" })}
+Resolution: ${sanitizePromptInline(ticket.resolution ?? "", { maxLength: 3000, source: "paxLearning.resolution" })}
 Error Context: ${JSON.stringify(ticket.errorContext || {})}
 Page Context: ${JSON.stringify(ticket.pageContext || {})}`
           }
