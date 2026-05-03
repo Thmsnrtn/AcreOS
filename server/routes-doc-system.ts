@@ -1,4 +1,5 @@
 import type { Express } from "express";
+import crypto from "crypto";
 import { storage } from "./storage";
 import { db } from "./db";
 import { z } from "zod";
@@ -10,6 +11,25 @@ import { eq, and } from "drizzle-orm";
 import { format as formatDate } from "date-fns";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
+
+/**
+ * Document statuses where the content is considered legally frozen.
+ * Any mutation of `content` (or other content-bearing fields) on a document
+ * in one of these states would invalidate the SHA-256 hash captured on the
+ * associated signature row, breaking evidentiary value. See R2.
+ */
+const IMMUTABLE_DOCUMENT_STATUSES = new Set([
+  "signed",
+  "partially_signed",
+  "final",
+]);
+
+/**
+ * Fields whose mutation changes the canonical content of a generated
+ * document. When the document is in an immutable status these fields
+ * must be rejected.
+ */
+const CONTENT_BEARING_FIELDS = ["content", "variables", "signers"] as const;
 
 /**
  * Resolve standard context variables from deal/property context.
@@ -737,14 +757,40 @@ export function registerDocSystemRoutes(app: Express): void {
       }
 
       const { name, content, status, signers } = req.body;
-      
-      const updated = await storage.updateGeneratedDocument(id, {
-        ...(name && { name }),
-        ...(content && { content }),
-        ...(status && { status }),
-        ...(signers && { signers }),
-      });
-      
+
+      // R2: signed documents are immutable. Reject any update that
+      // touches content-bearing fields once the document has reached
+      // a frozen status. Renames + status transitions remain allowed
+      // (e.g. archive after signing) but the canonical content cannot
+      // change without invalidating the signature hash.
+      const existingStatus = existing.status ?? "";
+      if (IMMUTABLE_DOCUMENT_STATUSES.has(existingStatus)) {
+        const attemptedContentChange =
+          content !== undefined || signers !== undefined;
+        if (attemptedContentChange) {
+          logger.warn("Rejected mutation on immutable document", {
+            documentId: id,
+            organizationId: org.id,
+            existingStatus,
+            attemptedFields: CONTENT_BEARING_FIELDS.filter(
+              (f) => req.body[f] !== undefined,
+            ),
+          });
+          return Errors.forbidden(res, "Signed documents are immutable");
+        }
+      }
+
+      const updated = await storage.updateGeneratedDocument(
+        id,
+        {
+          ...(name && { name }),
+          ...(content && { content }),
+          ...(status && { status }),
+          ...(signers && { signers }),
+        },
+        org.id,
+      );
+
       res.json(updated);
     } catch (error: any) {
       logger.error("Update generated document error", error instanceof Error ? error : undefined);
@@ -765,7 +811,22 @@ export function registerDocSystemRoutes(app: Express): void {
       if (!signerName || !signatureData) {
         return Errors.badRequest(res, "Signer name and signature data are required");
       }
-      
+
+      // R2: capture a SHA-256 hash of the document content at the moment
+      // this signature is created. Combined with the immutability guard on
+      // PUT /api/generated-documents/:id, this provides tamper-evidence:
+      // any subsequent mutation of the content will not match the stored hash.
+      let documentContentHash: string | null = null;
+      if (documentId) {
+        const targetDoc = await storage.getGeneratedDocument(org.id, documentId);
+        if (targetDoc?.content) {
+          documentContentHash = crypto
+            .createHash("sha256")
+            .update(targetDoc.content)
+            .digest("hex");
+        }
+      }
+
       const signature = await storage.createSignature({
         organizationId: org.id,
         documentId: documentId || null,
@@ -778,6 +839,7 @@ export function registerDocSystemRoutes(app: Express): void {
         userAgent: req.headers['user-agent'] || null,
         consentGiven: consentGiven !== false,
         consentText: consentText || "I agree that this electronic signature is legally binding.",
+        documentContentHash,
       });
       
       // If linked to a document, update document signers
