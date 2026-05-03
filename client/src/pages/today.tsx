@@ -48,6 +48,7 @@ import { plural, usd, dollarsCompact } from "@/lib/format";
 import { VerticalBadge } from "@/components/ui/vertical-badge";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
+import { ClearedEmpty } from "@/components/empty-states";
 import "./today.css";
 
 interface GoalWithProgress {
@@ -1223,12 +1224,10 @@ export default function TodayPage() {
             {[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full" />)}
           </div>
         ) : aiActions.length === 0 ? (
-          <Card>
-            <CardContent className="flex items-center gap-3 py-5 px-4">
-              <CheckCircle2 className="w-5 h-5 text-acr-pos shrink-0" />
-              <p className="text-sm text-muted-foreground">You're all caught up! No AI-suggested actions right now.</p>
-            </CardContent>
-          </Card>
+          <ClearedEmpty
+            headline="All clear — nothing needs you right now"
+            subtitle="No AI-suggested actions. Check back as new signals come in."
+          />
         ) : (
           <div className="space-y-3">
             {aiActions.map((action) => (

@@ -76,8 +76,7 @@ import { Badge } from "@/components/ui/badge";
 import { Plus, Search, Mail, Phone, Trash2, Edit, Loader2, Users, FileText, Download, Upload, CheckCircle, XCircle, AlertCircle, Flame, Sun, Snowflake, Skull, ArrowUpDown, ArrowUp, ArrowDown, X, Clock, Eye, User, Calendar, MapPin, StickyNote, PhoneOff, Shield, CheckSquare, RefreshCw, TrendingUp, TrendingDown, Minus, History, Filter, ChevronDown, MoreVertical } from "lucide-react";
 import { telemetry } from "@/lib/telemetry";
 import { Checkbox } from "@/components/ui/checkbox";
-import { EmptyState } from "@/components/empty-state";
-import { LeadsEmptyState } from "@/components/empty-states";
+import { FirstHelloEmpty, EmptyFilter } from "@/components/empty-states";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -1493,17 +1492,33 @@ export default function LeadsPage() {
                           {filteredLeads?.length === 0 && leads?.length === 0 && (
                             <TableRow>
                               <TableCell colSpan={6} className="p-0">
-                                <LeadsEmptyState
-                                  onAddLead={() => setIsCreateOpen(true)}
-                                  onImportLeads={() => setIsImportOpen(true)}
+                                <FirstHelloEmpty
+                                  surface="leads"
+                                  cta={{
+                                    primary: { label: "Add your first lead", onClick: () => setIsCreateOpen(true) },
+                                    secondary: { label: "Import from CSV", onClick: () => setIsImportOpen(true) },
+                                  }}
                                 />
                               </TableCell>
                             </TableRow>
                           )}
                           {filteredLeads?.length === 0 && leads && leads.length > 0 && (
                             <TableRow>
-                              <TableCell colSpan={6} className="text-center h-32 text-muted-foreground">
-                                No leads found matching your search or filter.
+                              <TableCell colSpan={6} className="p-4">
+                                <EmptyFilter
+                                  filterCount={
+                                    (search ? 1 : 0) +
+                                    (stageFilter !== "all" ? 1 : 0) +
+                                    (assigneeFilter !== "all" ? 1 : 0) +
+                                    countActiveGisFilters(gisFilters)
+                                  }
+                                  onClearFilters={() => {
+                                    setSearch("");
+                                    setStageFilter("all");
+                                    setAssigneeFilter("all");
+                                    setGisFilters(defaultGisFilters);
+                                  }}
+                                />
                               </TableCell>
                             </TableRow>
                           )}
@@ -1653,14 +1668,30 @@ export default function LeadsPage() {
                     {/* Mobile Card View */}
                     <div className="block md:hidden">
                       {filteredLeads?.length === 0 && leads?.length === 0 && (
-                        <LeadsEmptyState
-                          onAddLead={() => setIsCreateOpen(true)}
-                          onImportLeads={() => setIsImportOpen(true)}
+                        <FirstHelloEmpty
+                          surface="leads"
+                          cta={{
+                            primary: { label: "Add your first lead", onClick: () => setIsCreateOpen(true) },
+                            secondary: { label: "Import from CSV", onClick: () => setIsImportOpen(true) },
+                          }}
                         />
                       )}
                       {filteredLeads?.length === 0 && leads && leads.length > 0 && (
-                        <div className="text-center py-12 text-muted-foreground">
-                          No leads found matching your search or filter.
+                        <div className="p-4">
+                          <EmptyFilter
+                            filterCount={
+                              (search ? 1 : 0) +
+                              (stageFilter !== "all" ? 1 : 0) +
+                              (assigneeFilter !== "all" ? 1 : 0) +
+                              countActiveGisFilters(gisFilters)
+                            }
+                            onClearFilters={() => {
+                              setSearch("");
+                              setStageFilter("all");
+                              setAssigneeFilter("all");
+                              setGisFilters(defaultGisFilters);
+                            }}
+                          />
                         </div>
                       )}
                       {filteredLeads && filteredLeads.length > 0 && (

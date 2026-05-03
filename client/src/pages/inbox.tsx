@@ -20,6 +20,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Textarea } from "@/components/ui/textarea";
 import { EmptyState } from "@/components/empty-state";
+import { ClearedEmpty, EmptyFilter } from "@/components/empty-states";
 import { ListSkeleton } from "@/components/list-skeleton";
 import {
   Search,
@@ -1142,11 +1143,38 @@ export default function InboxPage() {
             {isLoading ? (
               <ListSkeleton count={5} />
             ) : filteredItems.length === 0 ? (
-              <div className="flex-1 flex items-center justify-center p-4">
-                <EmptyState
-                  icon={channelFilter === "sms" ? Phone : Mail}
-                  {...getEmptyMessage()}
-                />
+              <div className="flex-1 flex items-center justify-center p-4 w-full">
+                {/* Filter/search returned nothing but there ARE messages → EmptyFilter */}
+                {searchQuery.trim() && unifiedItems.length > 0 ? (
+                  <EmptyFilter
+                    filterCount={1}
+                    onClearFilters={() => setSearchQuery("")}
+                    headline="No messages match your search"
+                    clearLabel="Clear search"
+                  />
+                ) : statusFilter === "unread" && unifiedItems.length > 0 ? (
+                  /* Unread filter returned zero but there are messages → ClearedEmpty (inbox zero) */
+                  <ClearedEmpty
+                    headline="All caught up — no unread messages"
+                    subtitle="Nothing needs your attention right now."
+                    archiveCount={unifiedItems.length}
+                    onShowArchive={() => setStatusFilter("all")}
+                    archiveLabel="View all messages"
+                  />
+                ) : statusFilter === "starred" && unifiedItems.length > 0 ? (
+                  <ClearedEmpty
+                    headline="No starred messages"
+                    subtitle="Star messages to find them quickly later."
+                    archiveCount={unifiedItems.length}
+                    onShowArchive={() => setStatusFilter("all")}
+                    archiveLabel="View all messages"
+                  />
+                ) : (
+                  <EmptyState
+                    icon={channelFilter === "sms" ? Phone : Mail}
+                    {...getEmptyMessage()}
+                  />
+                )}
               </div>
             ) : (
               <ScrollArea className="flex-1">

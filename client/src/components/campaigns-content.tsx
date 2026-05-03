@@ -27,7 +27,7 @@ import { Plus, Mail, MessageSquare, Send, Calendar, BarChart3, Users, Clock, Pla
 import { EmptyState } from "@/components/empty-state";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { ListSkeleton } from "@/components/list-skeleton";
-import { CampaignsEmptyState } from "@/components/empty-states";
+import { FirstHelloEmpty } from "@/components/empty-states";
 import { QueryErrorState } from "@/components/query-error-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
@@ -697,7 +697,14 @@ function CampaignList({ campaigns, isLoading, onSelect, onCreateNew }: {
   }
 
   if (campaigns.length === 0) {
-    return <CampaignsEmptyState onCreateCampaign={onCreateNew} />;
+    return (
+      <FirstHelloEmpty
+        surface="campaigns"
+        cta={{
+          primary: { label: "Create your first campaign", onClick: onCreateNew },
+        }}
+      />
+    );
   }
 
   return (
