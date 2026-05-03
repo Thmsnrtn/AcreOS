@@ -23,6 +23,7 @@ import {
 } from "./services/commissionService";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
+import { auditFromRequest, AuditActions } from "./utils/auditLog";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId } from "./types/request";
 import {
@@ -568,6 +569,18 @@ export function registerOrganizationRoutes(app: Express): void {
             error: (e as Error).message,
           });
         }
+
+        // Phase 3 Week 11 — sensitive settings change. Records the
+        // last-4 only; the plaintext tax ID never lands in audit_events.
+        await auditFromRequest(req, {
+          action: AuditActions.SETTINGS_TAX_IDENTITY_CHANGED,
+          target: { type: "settings", id: org.id },
+          metadata: {
+            taxIdType,
+            taxIdLast4: taxIdLast4(taxId),
+            legalEntityName,
+          },
+        });
 
         logger.info("[tax-identity] captured", {
           orgId: org.id,
@@ -1125,9 +1138,25 @@ export function registerOrganizationRoutes(app: Express): void {
       });
     } catch (e) { /* non-fatal */ }
 
+    // Phase 3 Week 11 — role transition is a sensitive event. Promotion to
+    // or demotion from owner is treated as ownership transfer.
+    const isOwnerTransition = targetMember.role === "owner" || role === "owner";
+    await auditFromRequest(req, {
+      action: isOwnerTransition
+        ? AuditActions.ORG_OWNERSHIP_TRANSFERRED
+        : AuditActions.ORG_MEMBER_ADDED,
+      target: { type: "organization", id: org.id },
+      metadata: {
+        op: "role_change",
+        memberId,
+        fromRole: targetMember.role,
+        toRole: role,
+      },
+    });
+
     res.json(updated);
   });
-  
+
   // ============================================
   // TEAM PERFORMANCE DASHBOARD (18.1-18.3)
   // ============================================
@@ -1461,6 +1490,15 @@ export function registerOrganizationRoutes(app: Express): void {
         }
       } catch { /* non-fatal */ }
 
+      // Phase 3 Week 11 — member-add invitation is a sensitive event.
+      for (const row of rows) {
+        await auditFromRequest(req, {
+          action: AuditActions.ORG_MEMBER_ADDED,
+          target: { type: "organization", id: org.id },
+          metadata: { stage: "invited", invitationId: row.id, email: row.email, role: row.role },
+        });
+      }
+
       // The plaintext token is returned to the caller exactly once so the
       // UI / email-template layer can compose the invite link. After this
       // response, the only persisted reference is the SHA-256 hash.
@@ -1496,6 +1534,12 @@ export function registerOrganizationRoutes(app: Express): void {
         .where(and(eq(organizationInvitations.id, id), eq(organizationInvitations.organizationId, org.id)))
         .returning();
       if (!updated) return Errors.notFound(res, "Invitation");
+      // Phase 3 Week 11 — member-removal (revoke pending invite) is sensitive.
+      await auditFromRequest(req, {
+        action: AuditActions.ORG_MEMBER_REMOVED,
+        target: { type: "organization", id: org.id },
+        metadata: { stage: "invitation_revoked", invitationId: id, email: updated.email },
+      });
       res.json({ ok: true, id });
     } catch (err) {
       Errors.internal(res, err);
