@@ -972,6 +972,12 @@ app.use("/api", apiLimiter);
       
       // Start finance agent background job (every 30 minutes)
       startFinanceAgentJob();
+
+      // Lavender Week 10 — recognition worker (deferred-revenue
+      // amortisation). Self-rescheduling, hourly cadence.
+      void import('./services/recognitionWorker').then(({ startRecognitionWorker }) => {
+        startRecognitionWorker();
+      });
       
       // Start API queue background job (every 10 seconds)
       startApiQueueJob();

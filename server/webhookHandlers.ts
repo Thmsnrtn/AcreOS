@@ -150,6 +150,14 @@ export class WebhookHandlers {
       return;
     }
 
+    // Lavender Week 10 — recognition worker. Stripe `charge.refunded` posts
+    // the opposite ledger pair of the original invoice booking so the GL
+    // nets to zero on a full refund.
+    if (event.type === 'charge.refunded') {
+      await WebhookHandlers.processChargeRefunded(event.data.object as Stripe.Charge);
+      return;
+    }
+
     // Unhandled event type — log and acknowledge
     logger.info(`[webhook] Unhandled Stripe event type: ${event.type}`);
   }
@@ -631,8 +639,61 @@ export class WebhookHandlers {
 
         logger.info(`[webhook] Invoice paid, dunning resolved: Org ${org.id}, Amount: $${invoice.amount_paid / 100}`);
       }
+
+      // Lavender Week 10 — recognition-worker ledger write.
+      // Best-effort: never throw out of the webhook on accounting errors
+      // (we'd rather double-process via Stripe redelivery than 5xx the
+      // webhook and trigger a retry storm). Idempotent by event ID.
+      try {
+        const { recordStripeInvoicePaid } = await import('./services/recognitionWorker');
+        const period = (invoice as any).lines?.data?.[0]?.period as
+          | { start?: number; end?: number }
+          | undefined;
+        await recordStripeInvoicePaid({
+          id: invoice.id ?? '',
+          customerId,
+          organizationId: org.id,
+          amountPaidCents: invoice.amount_paid,
+          paidAt: new Date(((invoice as any).status_transitions?.paid_at ?? Date.now() / 1000) * 1000).toISOString(),
+          periodStartIso: period?.start ? new Date(period.start * 1000).toISOString() : undefined,
+          periodEndIso: period?.end ? new Date(period.end * 1000).toISOString() : undefined,
+          description: `Stripe invoice ${invoice.id}`,
+        });
+      } catch (recogErr) {
+        logger.warn(
+          '[webhook] recognitionWorker.recordStripeInvoicePaid failed',
+          recogErr instanceof Error ? recogErr : undefined,
+        );
+      }
     } catch (err) {
       logger.error('Error processing invoice paid', err instanceof Error ? err : undefined);
+    }
+  }
+
+  /**
+   * Lavender Week 10 — Stripe `charge.refunded`. Posts the reverse
+   * journal entry so the GL nets to zero on full refunds.
+   */
+  static async processChargeRefunded(charge: Stripe.Charge): Promise<void> {
+    try {
+      const customerId = typeof charge.customer === 'string'
+        ? charge.customer
+        : charge.customer?.id;
+      if (!customerId) return;
+      const org = await storage.getOrganizationByStripeCustomerId(customerId);
+      if (!org) return;
+
+      const { recordStripeChargeRefunded } = await import('./services/recognitionWorker');
+      await recordStripeChargeRefunded({
+        chargeId: charge.id,
+        organizationId: org.id,
+        amountRefundedCents: charge.amount_refunded ?? 0,
+        refundedAt: new Date().toISOString(),
+        invoiceId: typeof charge.invoice === 'string' ? charge.invoice : charge.invoice?.id,
+        description: `Stripe refund — charge ${charge.id}`,
+      });
+    } catch (err) {
+      logger.error('[webhook] Error processing charge.refunded', err instanceof Error ? err : undefined);
     }
   }
 
