@@ -62,8 +62,10 @@ const PaxPage = React.lazy(() => import("@/pages/pax"));
 const AtlasPage = React.lazy(() => import("@/pages/atlas"));
 const Dashboard = React.lazy(() => import("@/pages/dashboard"));
 const LeadsPage = React.lazy(() => import("@/pages/leads"));
+const LeadDetailPage = React.lazy(() => import("@/pages/lead-detail"));
 const PropertiesPage = React.lazy(() => import("@/pages/properties"));
 const DealsPage = React.lazy(() => import("@/pages/deals"));
+const DealDetailPage = React.lazy(() => import("@/pages/deal-detail"));
 const FinancePage = React.lazy(() => import("@/pages/finance"));
 const PortfolioPage = React.lazy(() => import("@/pages/portfolio"));
 const CampaignsPage = React.lazy(() => import("@/pages/campaigns"));
@@ -437,6 +439,11 @@ function Router() {
       <Route path="/leads/dedupe">
         {() => <ProtectedRoute component={LeadsDedupePage} />}
       </Route>
+      {/* P1-28 — shareable URLs for lead detail. Sits AFTER /leads/dedupe
+          so wouter doesn't route "dedupe" as the :id param. */}
+      <Route path="/leads/:id">
+        {() => <ProtectedRoute component={LeadDetailPage} />}
+      </Route>
       <Route path="/properties">
         {() => <ProtectedRoute component={PropertiesPage} />}
       </Route>
@@ -448,6 +455,10 @@ function Router() {
       </Route>
       <Route path="/deals">
         {() => <ProtectedRoute component={DealsPage} />}
+      </Route>
+      {/* P1-28 — shareable URLs for deal detail. */}
+      <Route path="/deals/:id">
+        {() => <ProtectedRoute component={DealDetailPage} />}
       </Route>
       <Route path="/tasks">
         {() => <ProtectedRoute component={TasksPage} />}
