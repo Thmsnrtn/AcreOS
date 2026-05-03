@@ -34,15 +34,37 @@ interface StoredResponse {
 
 const memStore = new Map<string, StoredResponse>();
 
-// Cleanup old entries every 10 minutes
-setInterval(() => {
+// P0 #2 — Idempotency cache cleanup migrated to scheduleSelfRescheduling
+// (Phase 3 Week 7-8). Self-rescheduling avoids concurrent sweeps if the
+// previous one is somehow stuck, persists every run to job_runs, and routes
+// terminal failures to outbox_dlq instead of swallowing them.
+//
+// Skipped entirely under NODE_ENV=test so unit tests don't open a DB pool
+// or leak timers when they import this module.
+function _runIdempotencyMemSweep(): number {
   const now = Date.now();
+  let removed = 0;
   for (const [key, value] of memStore.entries()) {
     if (now - value.timestamp > TTL_SECONDS * 1000) {
       memStore.delete(key);
+      removed++;
     }
   }
-}, 10 * 60 * 1000);
+  return removed;
+}
+
+if (process.env.NODE_ENV !== "test") {
+  // Lazy import so unit tests that don't touch this middleware never load
+  // server/db.ts.
+  import("../jobs/scheduler").then(({ scheduleSelfRescheduling }) => {
+    scheduleSelfRescheduling({
+      name: "idempotency_cache_cleanup",
+      intervalMs: 10 * 60 * 1000,
+      initialDelayMs: 10 * 60 * 1000,
+      run: async () => _runIdempotencyMemSweep(),
+    });
+  }).catch(() => { /* scheduler optional in non-server contexts */ });
+}
 
 async function getRedis(): Promise<any> {
   const redisUrl = process.env.REDIS_URL;

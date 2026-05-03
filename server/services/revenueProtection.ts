@@ -298,20 +298,26 @@ export const revenueProtectionService = {
   },
 };
 
+// P0 #4 — Revenue protection scoring pass migrated to
+// scheduleSelfRescheduling (Phase 3 Week 7-8). Previously a bare setInterval
+// that fired regardless of whether the previous scoring pass had completed,
+// risking double-charged retention offers when a pass took longer than 6h.
 export async function startRevenueProtectionJob(withJobLock: Function): Promise<void> {
   const INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
   const STARTUP_DELAY_MS = 3 * 60 * 1000; // 3 minutes
 
-  await new Promise(resolve => setTimeout(resolve, STARTUP_DELAY_MS));
+  const { scheduleSelfRescheduling } = await import("../jobs/scheduler");
 
-  const runOnce = async () => {
-    await withJobLock("revenue_protection", async () => {
-      logger.info("[revenueProtection] Starting scoring pass...");
-      const result = await revenueProtectionService.runScoringPass();
-      logger.info(`[revenueProtection] Completed: ${result.processed} orgs scored`);
-    });
-  };
-
-  await runOnce();
-  setInterval(runOnce, INTERVAL_MS);
+  scheduleSelfRescheduling({
+    name: "revenue_protection",
+    intervalMs: INTERVAL_MS,
+    initialDelayMs: STARTUP_DELAY_MS,
+    run: async () => {
+      await withJobLock("revenue_protection", async () => {
+        logger.info("[revenueProtection] Starting scoring pass...");
+        const result = await revenueProtectionService.runScoringPass();
+        logger.info(`[revenueProtection] Completed: ${result.processed} orgs scored`);
+      });
+    },
+  });
 }

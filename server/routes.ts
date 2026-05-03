@@ -195,30 +195,51 @@ async function withJobLock<T>(
   }
 }
 
-// Clean expired borrower sessions every hour (with job lock)
-setInterval(async () => {
-  await withJobLock("clean_borrower_sessions", 300, async () => {
-    try {
-      const cleaned = await storage.cleanExpiredBorrowerSessions();
-      if (cleaned > 0) {
-        logger.info(`Cleaned ${cleaned} expired borrower sessions`);
-      }
-      return cleaned;
-    } catch (err) {
-      logger.error("Error cleaning expired borrower sessions", err instanceof Error ? err : undefined);
-      return 0;
-    }
-  });
-}, 60 * 60 * 1000);
+// P0 #6 — Job-locks janitor migrated to scheduleSelfRescheduling
+// (Phase 3 Week 7-8). The borrower-session cleanup is bundled into the same
+// helper because they share the same correctness profile: idempotent
+// deletes that must never overlap themselves. Stuck/timed-out runs now
+// surface in `job_runs` and any terminal failure dead-letters to
+// `outbox_dlq` so on-call has a single inspection surface.
+//
+// Skipped under NODE_ENV=test so unit tests of routes.ts don't open a DB
+// pool.
+if (process.env.NODE_ENV !== "test") {
+  import("./jobs/scheduler").then(({ scheduleSelfRescheduling }) => {
+    // Clean expired borrower sessions every hour (with job lock)
+    scheduleSelfRescheduling({
+      name: "clean_borrower_sessions",
+      intervalMs: 60 * 60 * 1000,
+      initialDelayMs: 60 * 60 * 1000,
+      run: async () => {
+        await withJobLock("clean_borrower_sessions", 300, async () => {
+          try {
+            const cleaned = await storage.cleanExpiredBorrowerSessions();
+            if (cleaned > 0) {
+              logger.info(`Cleaned ${cleaned} expired borrower sessions`);
+            }
+            return cleaned;
+          } catch (err) {
+            logger.error("Error cleaning expired borrower sessions", err instanceof Error ? err : undefined);
+            return 0;
+          }
+        });
+      },
+    });
 
-// Clean expired job locks every 5 minutes
-setInterval(async () => {
-  try {
-    await storage.cleanExpiredJobLocks();
-  } catch (err) {
-    logger.error("Error cleaning expired job locks", err instanceof Error ? err : undefined);
-  }
-}, 5 * 60 * 1000);
+    // Clean expired job locks every 5 minutes
+    scheduleSelfRescheduling({
+      name: "clean_expired_job_locks",
+      intervalMs: 5 * 60 * 1000,
+      initialDelayMs: 5 * 60 * 1000,
+      run: async () => {
+        await storage.cleanExpiredJobLocks();
+      },
+    });
+  }).catch((err) => {
+    logger.error("Failed to register job-lock janitor", err instanceof Error ? err : undefined);
+  });
+}
 
 export async function registerRoutes(
   httpServer: Server,
