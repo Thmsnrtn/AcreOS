@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Check, X, Sparkles } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { usd } from "@/lib/format";
+import { TIER_PRICES_CENTS } from "@shared/billing/tier-pricing";
 
 export type TierKey = "free" | "starter" | "pro";
 
@@ -16,6 +17,8 @@ interface TierFeature {
   pro: string | boolean;
 }
 
+// Marketing labels Starter/Pro map to the canonical solo/operator pricing
+// tiers from shared/billing/tier-pricing.ts. Never hardcode tier prices.
 const LAUNCH_TIERS = [
   {
     id: "free" as const,
@@ -29,8 +32,8 @@ const LAUNCH_TIERS = [
   {
     id: "starter" as const,
     name: "Starter",
-    price: 20,
-    yearlyPrice: 192,
+    price: TIER_PRICES_CENTS.solo.priceMonthlyCents / 100,
+    yearlyPrice: TIER_PRICES_CENTS.solo.priceYearlyCents / 100,
     description: "Replace your spreadsheet",
     cta: "Start free trial",
     highlighted: false,
@@ -38,8 +41,8 @@ const LAUNCH_TIERS = [
   {
     id: "pro" as const,
     name: "Pro",
-    price: 49,
-    yearlyPrice: 470,
+    price: TIER_PRICES_CENTS.operator.priceMonthlyCents / 100,
+    yearlyPrice: TIER_PRICES_CENTS.operator.priceYearlyCents / 100,
     description: "For serious operators",
     cta: "Start free trial",
     highlighted: true,

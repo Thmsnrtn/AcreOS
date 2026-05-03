@@ -9,7 +9,12 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { usd } from "@/lib/format";
 import { SkipToContent } from "@/components/skip-to-content";
 import { usePageMeta } from "@/hooks/use-document-title";
+import { TIER_PRICES_CENTS } from "@shared/billing/tier-pricing";
 
+// Tier labels here ("Starter / Pro / Scale") are the public marketing names
+// for the canonical solo / operator / empire pricing tiers. Prices come from
+// shared/billing/tier-pricing.ts so this page can never drift from the
+// MRR math in /api/founder/executive-dashboard or the Stripe checkout.
 const TIERS = [
   {
     id: "free",
@@ -23,8 +28,8 @@ const TIERS = [
   {
     id: "starter",
     name: "Starter",
-    price: 20,
-    yearlyPrice: 192,
+    price: TIER_PRICES_CENTS.solo.priceMonthlyCents / 100,
+    yearlyPrice: TIER_PRICES_CENTS.solo.priceYearlyCents / 100,
     description: "Replace your spreadsheet",
     cta: "Start 14-day free trial",
     highlighted: false,
@@ -32,8 +37,8 @@ const TIERS = [
   {
     id: "pro",
     name: "Pro",
-    price: 49,
-    yearlyPrice: 470,
+    price: TIER_PRICES_CENTS.operator.priceMonthlyCents / 100,
+    yearlyPrice: TIER_PRICES_CENTS.operator.priceYearlyCents / 100,
     description: "For serious operators",
     cta: "Start 14-day free trial",
     highlighted: true,
@@ -41,8 +46,8 @@ const TIERS = [
   {
     id: "scale",
     name: "Scale",
-    price: 79,
-    yearlyPrice: 758,
+    price: TIER_PRICES_CENTS.empire.priceMonthlyCents / 100,
+    yearlyPrice: TIER_PRICES_CENTS.empire.priceYearlyCents / 100,
     description: "For growing teams",
     cta: "Start 14-day free trial",
     highlighted: false,

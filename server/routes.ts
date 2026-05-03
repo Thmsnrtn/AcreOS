@@ -166,6 +166,7 @@ import { registerMaintenanceRoutes } from "./routes-maintenance";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
 import { organizations, leads, properties, deals, npsResponses, feedbackSubmissions, churnRiskScores } from "@shared/schema";
+import { monthlyRevenueCentsFor } from "@shared/billing/tier-pricing";
 import { eq, and, desc, sql, count, sum, gte, avg } from "drizzle-orm";
 
 // ============================================
@@ -1439,15 +1440,13 @@ export async function registerRoutes(
       const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
       const orgsCreatedLast30 = allOrgs.filter(o => o.createdAt && new Date(o.createdAt) >= thirtyDaysAgo).length;
 
-      // MRR calculation based on subscription tiers
-      const tierPricing: Record<string, number> = {
-        free: 0,
-        starter: 29,
-        pro: 79,
-        scale: 199,
-      };
+      // MRR calculation — pulls prices from the canonical
+      // shared/billing/tier-pricing.ts so this surface can never drift
+      // from the pricing page or Stripe checkout amounts again.
+      // Yearly subscriptions are normalised to a per-month figure.
       const mrr = activeOrgs.reduce((total, org) => {
-        return total + (tierPricing[org.subscriptionTier] ?? 0);
+        const interval = (org.billingInterval === "yearly" ? "yearly" : "monthly") as "monthly" | "yearly";
+        return total + monthlyRevenueCentsFor(org.subscriptionTier, interval) / 100;
       }, 0);
 
       // Churn: orgs that cancelled or downgraded in last 30 days

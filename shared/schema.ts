@@ -17,8 +17,12 @@ export const organizations = pgTable("organizations", {
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(),
   ownerId: text("owner_id").notNull(), // Replit user ID
-  subscriptionTier: text("subscription_tier").notNull().default("free"), // free, starter, pro, scale
+  subscriptionTier: text("subscription_tier").notNull().default("free"), // free, starter, pro, scale (aliased to solo/operator/empire in shared/billing/tier-pricing.ts)
   subscriptionStatus: text("subscription_status").notNull().default("active"),
+  // Billing cadence for the active subscription. MRR math in
+  // /api/founder/executive-dashboard normalises yearly subscriptions to a
+  // per-month figure using shared/billing/tier-pricing.ts.
+  billingInterval: text("billing_interval").notNull().default("monthly"), // monthly | yearly
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
   creditBalance: numeric("credit_balance").default("0"), // prepaid credit balance in cents
@@ -3017,7 +3021,11 @@ export const SUBSCRIPTION_TIERS = {
   },
   starter: {
     name: "Starter",
-    price: 59,
+    // Canonical price comes from shared/billing/tier-pricing.ts (solo tier).
+    // The literal here is kept synchronous so this `as const` schema object
+    // stays statically analysable for downstream tier-config consumers; the
+    // tierPricing CI test pins this value and will fail if the two drift.
+    price: 20,
     tagline: "Build momentum",
     badge: "Most popular solo",
     limits: {
@@ -3049,7 +3057,8 @@ export const SUBSCRIPTION_TIERS = {
   },
   pro: {
     name: "Pro",
-    price: 179,
+    // Canonical price from shared/billing/tier-pricing.ts (operator tier).
+    price: 49,
     tagline: "Scale your operation",
     badge: "Best value for growth",
     limits: {
@@ -3086,7 +3095,8 @@ export const SUBSCRIPTION_TIERS = {
   },
   scale: {
     name: "Scale",
-    price: 449,
+    // Canonical price from shared/billing/tier-pricing.ts (empire tier).
+    price: 79,
     tagline: "Operate like a fund",
     badge: "For serious operators",
     limits: {
