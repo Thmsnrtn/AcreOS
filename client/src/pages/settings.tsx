@@ -9,7 +9,11 @@ import {
   useUsageLimits,
   useTeamMembers,
   useUpdateTeamMemberRole,
+  useUpdateTeamMemberViewOnly,
   useUserPermissions,
+  useOrgCoOwners,
+  useAddOrgCoOwner,
+  useRemoveOrgCoOwner,
   getRoleLabel,
   getRoleBadgeStyle,
   type Role
@@ -711,11 +715,16 @@ export default function Settings() {
   const { data: usageData, isLoading: usageLoading } = useUsageLimits();
   const { data: teamMembers, isLoading: teamLoading } = useTeamMembers();
   const { data: userPermissions } = useUserPermissions();
-  
+  const { data: coOwners, isLoading: coOwnersLoading } = useOrgCoOwners();
+
   const checkoutMutation = useCreateCheckoutSession();
   const portalMutation = useCreatePortalSession();
   const updateOrgMutation = useUpdateOrganization();
   const updateRoleMutation = useUpdateTeamMemberRole();
+  const updateViewOnlyMutation = useUpdateTeamMemberViewOnly();
+  const addCoOwnerMutation = useAddOrgCoOwner();
+  const removeCoOwnerMutation = useRemoveOrgCoOwner();
+  const [coOwnerCandidate, setCoOwnerCandidate] = useState<string>("");
   
   const seedDataMutation = useMutation({
     mutationFn: async () => {
@@ -1489,8 +1498,17 @@ export default function Settings() {
                                       {userPermissions.role === "owner" && (
                                         <SelectItem value="owner">Owner — full access and billing</SelectItem>
                                       )}
-                                      <SelectItem value="admin">Admin — manage team and data</SelectItem>
+                                      {/*
+                                        Liana §1: only owner can grant `admin`.
+                                        Admins see member↔va↔viewer in the
+                                        dropdown but the server still rejects
+                                        admin→admin escalation.
+                                      */}
+                                      {userPermissions.role === "owner" && (
+                                        <SelectItem value="admin">Admin — manage team and data</SelectItem>
+                                      )}
                                       <SelectItem value="member">Member — create and edit records</SelectItem>
+                                      <SelectItem value="va">VA — assigned-leads-only by default</SelectItem>
                                       <SelectItem value="viewer">Viewer — read-only access</SelectItem>
                                     </SelectContent>
                                   </Select>
@@ -1508,6 +1526,173 @@ export default function Settings() {
                   )}
                 </CardContent>
               </Card>
+
+              {/*
+                Blanco §1: Co-Owners section. Owner-only management. The
+                presence of a co-owner row is what unlocks dual-billing-card
+                and dual-tax-contact UX downstream (those surfaces ship in
+                a billing follow-up; this section just establishes the
+                relation so the data exists when the UI catches up).
+              */}
+              {userPermissions?.role === "owner" && (
+                <Card data-testid="card-co-owners">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Crown className="w-5 h-5" />
+                      Co-Owners
+                    </CardTitle>
+                    <CardDescription>
+                      Co-owners share billing and tax-contact responsibility for this
+                      organization. Only the primary owner can add or remove them.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {coOwnersLoading ? (
+                      <div className="space-y-2">
+                        <Skeleton className="h-8 w-full" />
+                        <Skeleton className="h-8 w-full" />
+                      </div>
+                    ) : coOwners && coOwners.length > 0 ? (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>User</TableHead>
+                            <TableHead>Added</TableHead>
+                            <TableHead className="w-24" />
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {coOwners.map((co) => {
+                            const member = teamMembers?.find((m) => m.userId === co.userId);
+                            return (
+                              <TableRow key={co.id} data-testid={`row-co-owner-${co.id}`}>
+                                <TableCell>
+                                  <div>
+                                    <p className="font-medium">
+                                      {member?.displayName || member?.email || co.userId}
+                                    </p>
+                                    {member?.email && member.displayName && (
+                                      <p className="text-xs text-muted-foreground">
+                                        {member.email}
+                                      </p>
+                                    )}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-sm text-muted-foreground">
+                                  {new Date(co.addedAt).toLocaleDateString()}
+                                </TableCell>
+                                <TableCell>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() =>
+                                      removeCoOwnerMutation.mutate(
+                                        { userId: co.userId },
+                                        {
+                                          onSuccess: () => {
+                                            toast({
+                                              title: "Co-owner removed",
+                                              description: `${
+                                                member?.displayName || co.userId
+                                              } is no longer a co-owner.`,
+                                            });
+                                          },
+                                          onError: (err) => {
+                                            toast({
+                                              title: "Couldn't remove co-owner",
+                                              description: err.message || "Try again.",
+                                              variant: "destructive",
+                                            });
+                                          },
+                                        },
+                                      )
+                                    }
+                                    disabled={removeCoOwnerMutation.isPending}
+                                    aria-label={`Remove ${
+                                      member?.displayName || co.userId
+                                    } as co-owner`}
+                                    data-testid={`button-remove-co-owner-${co.id}`}
+                                  >
+                                    <X className="w-4 h-4" />
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    ) : (
+                      <p className="text-muted-foreground text-sm">
+                        No co-owners yet. Co-owners must already be team members.
+                      </p>
+                    )}
+
+                    {teamMembers && teamMembers.length > 1 && (
+                      <div className="flex items-end gap-2 pt-2 border-t">
+                        <div className="flex-1 space-y-1.5">
+                          <Label htmlFor="co-owner-candidate" className="text-sm">
+                            Add a team member as co-owner
+                          </Label>
+                          <Select
+                            value={coOwnerCandidate}
+                            onValueChange={setCoOwnerCandidate}
+                          >
+                            <SelectTrigger
+                              id="co-owner-candidate"
+                              data-testid="select-co-owner-candidate"
+                            >
+                              <SelectValue placeholder="Select a team member" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {teamMembers
+                                .filter(
+                                  (m) =>
+                                    m.role !== "owner" &&
+                                    !coOwners?.some((co) => co.userId === m.userId),
+                                )
+                                .map((m) => (
+                                  <SelectItem key={m.id} value={m.userId}>
+                                    {m.displayName || m.email || m.userId}
+                                  </SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <Button
+                          onClick={() => {
+                            if (!coOwnerCandidate) return;
+                            addCoOwnerMutation.mutate(
+                              { userId: coOwnerCandidate },
+                              {
+                                onSuccess: () => {
+                                  setCoOwnerCandidate("");
+                                  toast({
+                                    title: "Co-owner added",
+                                    description:
+                                      "They now share billing and tax-contact responsibility.",
+                                  });
+                                },
+                                onError: (err) => {
+                                  toast({
+                                    title: "Couldn't add co-owner",
+                                    description: err.message || "Try again.",
+                                    variant: "destructive",
+                                  });
+                                },
+                              },
+                            );
+                          }}
+                          disabled={!coOwnerCandidate || addCoOwnerMutation.isPending}
+                          data-testid="button-add-co-owner"
+                        >
+                          <Plus className="w-4 h-4 mr-1" />
+                          Add
+                        </Button>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
             </TabsContent>
 
             <TabsContent value="billing" className="space-y-8 mt-6" data-testid="tab-content-billing">

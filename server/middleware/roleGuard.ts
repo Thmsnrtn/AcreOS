@@ -1,28 +1,29 @@
 /**
- * T16 — Role-Based API Enforcement Middleware
+ * Role-Based API Enforcement Middleware
  *
- * Enforces that the requesting user's team role has access to the operation.
- * Every route that returns sensitive or financial data should use this.
+ * Phase 3 Week 14 (Liana §1+§3, Reyna §1): standardized to 4 pragmatic roles
+ * + `va`. The legacy fan-out (acquisitions / marketing / finance) is collapsed
+ * to `member` at read time. Pre-built guards (`financeGuard`, etc.) remain as
+ * thin aliases so callers don't have to be migrated in lockstep — but the
+ * canonical entry point is now `requireRole(['owner', 'admin', ...])`.
  *
- * Roles (from schema):
- *   owner    — full access to everything
- *   admin    — full access except billing/founder routes
- *   acquisitions — CRM, leads, properties, deals, offers
- *   marketing  — campaigns, sequences, ab-tests, lead contact only
- *   finance  — notes, payments, cash flow, portfolio only
- *   member   — read-only CRM access
+ * Roles:
+ *   owner   — full access; only role that can transfer ownership / delete org
+ *   admin   — full operational access except billing & ownership transfer
+ *   member  — full operational, can't change member roles
+ *   viewer  — read-only across the CRM
+ *   va      — like member, but typically gated to assigned-leads-only via
+ *             team_members.view_only_assigned_leads (honored in storage.ts
+ *             and routes-leads.ts via permissionContext)
  *
  * Usage:
  *   import { requireRole } from "../middleware/roleGuard";
  *
  *   router.get("/sensitive-data",
  *     isAuthenticated,
- *     requireRole("finance", "admin", "owner"),
+ *     requireRole(['owner', 'admin']),
  *     handler
  *   );
- *
- *   // Or use the pre-built guards:
- *   router.delete("/leads/:id", isAuthenticated, financeGuard, handler);
  */
 
 import type { Request, Response, NextFunction } from "express";
@@ -30,28 +31,44 @@ import { db } from "../db";
 import { teamMembers } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 
-export type OrgRole =
-  | "owner"
-  | "admin"
-  | "acquisitions"
-  | "marketing"
-  | "finance"
-  | "member";
+export type OrgRole = "owner" | "admin" | "member" | "viewer" | "va";
 
-// Role hierarchy: higher index = more permissive
+const CANONICAL_ROLES: OrgRole[] = ["owner", "admin", "member", "viewer", "va"];
+
+const LEGACY_ROLE_REMAP: Record<string, OrgRole> = {
+  acquisitions: "member",
+  marketing: "member",
+  finance: "member",
+};
+
+function normalizeRole(role: string): OrgRole {
+  if (CANONICAL_ROLES.includes(role as OrgRole)) return role as OrgRole;
+  return LEGACY_ROLE_REMAP[role] ?? "member";
+}
+
+// Role hierarchy: higher index = more permissive. `va` ties with member on
+// rank — the assigned-leads-only restriction is handled at the data layer,
+// not via rank-based gating.
 const ROLE_RANK: Record<OrgRole, number> = {
-  member: 0,
-  marketing: 1,
-  finance: 1,
-  acquisitions: 2,
-  admin: 3,
-  owner: 4,
+  viewer: 0,
+  va: 1,
+  member: 1,
+  admin: 2,
+  owner: 3,
 };
 
 /**
- * Middleware factory: require that the user has at least one of the listed roles.
+ * Middleware factory: require that the user has one of the listed roles.
+ *
+ * Accepts either an array (the canonical form) or a variadic list (legacy
+ * call sites that pre-date the standardization). Both forms are permitted
+ * to keep the migration surface small.
  */
-export function requireRole(...allowedRoles: OrgRole[]) {
+export function requireRole(allowedRoles: OrgRole[] | OrgRole, ...rest: OrgRole[]) {
+  const allowed: OrgRole[] = Array.isArray(allowedRoles)
+    ? allowedRoles
+    : [allowedRoles, ...rest];
+
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
       const user = (req as any).user;
@@ -74,16 +91,17 @@ export function requireRole(...allowedRoles: OrgRole[]) {
         );
 
       if (!member) {
-        return res.status(403).json({ message: "Not a member of this organization" });
-      }
-
-      const userRole = member.role as OrgRole;
-      const allowed = allowedRoles.includes(userRole);
-
-      if (!allowed) {
         return res
           .status(403)
-          .json({ message: `Access denied. Required role: ${allowedRoles.join(" or ")}` });
+          .json({ message: "Not a member of this organization" });
+      }
+
+      const userRole = normalizeRole(member.role);
+
+      if (!allowed.includes(userRole)) {
+        return res.status(403).json({
+          message: `Access denied. Required role: ${allowed.join(" or ")}`,
+        });
       }
 
       // Attach role to request for downstream use
@@ -96,21 +114,26 @@ export function requireRole(...allowedRoles: OrgRole[]) {
 }
 
 // ─── Pre-built role guards ────────────────────────────────────────────────────
+// Kept as thin aliases over the standardized 5-role model. `financeGuard`,
+// `acquisitionsGuard`, `marketingGuard` now resolve to the same set
+// (admin + owner) since the legacy verticals collapsed into `member`.
 
-/** Finance routes: only finance, admin, owner */
-export const financeGuard = requireRole("finance", "admin", "owner");
+/** Finance routes: only admin/owner (legacy `finance` collapsed to member) */
+export const financeGuard = requireRole(["admin", "owner"]);
 
-/** Acquisitions routes: acquisitions, admin, owner */
-export const acquisitionsGuard = requireRole("acquisitions", "admin", "owner");
+/** Acquisitions routes: admin/owner */
+export const acquisitionsGuard = requireRole(["admin", "owner"]);
 
-/** Marketing routes: marketing, acquisitions, admin, owner */
-export const marketingGuard = requireRole("marketing", "acquisitions", "admin", "owner");
+/** Marketing routes: admin/owner (members create campaigns via per-permission gates in routes-campaigns) */
+export const marketingGuard = requireRole(["admin", "owner"]);
 
 /** Admin-only routes: admin, owner */
-export const adminGuard = requireRole("admin", "owner");
+export const adminGuard = requireRole(["admin", "owner"]);
 
 /** Owner-only routes */
-export const ownerGuard = requireRole("owner");
+export const ownerGuard = requireRole(["owner"]);
 
-/** Read-only: all roles */
-export const anyRoleGuard = requireRole("member", "marketing", "finance", "acquisitions", "admin", "owner");
+/** Read-only: all roles (including va + viewer) */
+export const anyRoleGuard = requireRole(["owner", "admin", "member", "viewer", "va"]);
+
+export { ROLE_RANK, normalizeRole };

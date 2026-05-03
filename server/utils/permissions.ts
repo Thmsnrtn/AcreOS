@@ -2,9 +2,24 @@ import type { Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import type { TeamMember, Organization } from "@shared/schema";
 
-export type Role = "owner" | "admin" | "member" | "viewer";
+// Phase 3 Week 14 (Liana §1+§3, Reyna §1): standardized to 4 pragmatic roles
+// + `va`. Legacy values (`acquisitions`, `marketing`, `finance`) are remapped
+// to `member` at read time for safety in case migration 0050 hasn't fully
+// propagated through replicas.
+export type Role = "owner" | "admin" | "member" | "viewer" | "va";
 
-export const ROLES: Role[] = ["owner", "admin", "member", "viewer"];
+export const ROLES: Role[] = ["owner", "admin", "member", "viewer", "va"];
+
+const LEGACY_ROLE_REMAP: Record<string, Role> = {
+  acquisitions: "member",
+  marketing: "member",
+  finance: "member",
+};
+
+function normalizeRole(role: string): Role {
+  if (ROLES.includes(role as Role)) return role as Role;
+  return LEGACY_ROLE_REMAP[role] ?? "member";
+}
 
 export interface RolePermissions {
   canAccessSettings: boolean;
@@ -118,6 +133,41 @@ const ROLE_PERMISSIONS: Record<Role, RolePermissions> = {
     canViewDeals: true,
     canViewNotes: true,
     canAssignLeads: false,
+    // Liana §1: standard `member` is full operational; `va` (below) is the
+    // restricted variant. An admin can still flip a member to assigned-only
+    // via the per-user toggle stored on team_members.viewOnlyAssignedLeads.
+    viewOnlyAssignedLeads: false,
+  },
+  // Reyna §1: `va` role is operationally a member with the assigned-leads-only
+  // flag defaulted on. The flag can be toggled per-user from the Settings UI
+  // (e.g. trusted VA gets the full pool); the canonical source of truth is
+  // team_members.view_only_assigned_leads.
+  va: {
+    canAccessSettings: false,
+    canManageBilling: false,
+    canDeleteOrg: false,
+    canManageTeam: false,
+    canCreateCampaign: false,
+    canDeleteCampaign: false,
+    canExportData: false,
+    canImportData: false,
+    canDeleteLeads: false,
+    canDeleteProperties: false,
+    canDeleteDeals: false,
+    canDeleteNotes: false,
+    canEditLeads: true,
+    canEditProperties: true,
+    canEditDeals: true,
+    canEditNotes: true,
+    canCreateLeads: true,
+    canCreateProperties: true,
+    canCreateDeals: true,
+    canCreateNotes: true,
+    canViewLeads: true,
+    canViewProperties: true,
+    canViewDeals: true,
+    canViewNotes: true,
+    canAssignLeads: false,
     viewOnlyAssignedLeads: true,
   },
   viewer: {
@@ -151,8 +201,7 @@ const ROLE_PERMISSIONS: Record<Role, RolePermissions> = {
 };
 
 export function getPermissionsForRole(role: string): RolePermissions {
-  const validRole = ROLES.includes(role as Role) ? (role as Role) : "member";
-  return ROLE_PERMISSIONS[validRole];
+  return ROLE_PERMISSIONS[normalizeRole(role)];
 }
 
 export function hasPermission(role: string, permission: keyof RolePermissions): boolean {
@@ -161,15 +210,16 @@ export function hasPermission(role: string, permission: keyof RolePermissions): 
 }
 
 export function isAdminOrAbove(role: string): boolean {
-  return role === "owner" || role === "admin";
+  const r = normalizeRole(role);
+  return r === "owner" || r === "admin";
 }
 
 export function isOwner(role: string): boolean {
-  return role === "owner";
+  return normalizeRole(role) === "owner";
 }
 
 export function getRoleLabel(role: string): string {
-  switch (role) {
+  switch (normalizeRole(role)) {
     case "owner":
       return "Owner";
     case "admin":
@@ -178,13 +228,15 @@ export function getRoleLabel(role: string): string {
       return "Member";
     case "viewer":
       return "Viewer";
+    case "va":
+      return "VA";
     default:
       return "Member";
   }
 }
 
 export function getRoleColor(role: string): string {
-  switch (role) {
+  switch (normalizeRole(role)) {
     case "owner":
       return "amber";
     case "admin":
@@ -193,6 +245,8 @@ export function getRoleColor(role: string): string {
       return "blue";
     case "viewer":
       return "slate";
+    case "va":
+      return "teal";
     default:
       return "slate";
   }
@@ -217,16 +271,27 @@ export async function getUserPermissionContext(
   if (!teamMember) return null;
   if (!teamMember.isActive) return null; // Block deactivated team members
 
-  const role = ROLES.includes(teamMember.role as Role) 
-    ? (teamMember.role as Role) 
-    : "member";
+  const role = normalizeRole(teamMember.role);
+
+  // Reyna §1: per-user `viewOnlyAssignedLeads` override. Default permissions
+  // come from the role table; if the team_members row has the flag set
+  // explicitly (true OR false), that wins. This is what lets an admin trust
+  // a specific VA with the full lead pool, or restrict a regular member
+  // who works narrowly with one campaign.
+  const basePermissions = getPermissionsForRole(role);
+  const perUserFlag = (teamMember as any).viewOnlyAssignedLeads;
+  const permissions: RolePermissions = {
+    ...basePermissions,
+    viewOnlyAssignedLeads:
+      typeof perUserFlag === "boolean" ? perUserFlag : basePermissions.viewOnlyAssignedLeads,
+  };
 
   return {
     userId,
     organizationId: org.id,
     teamMemberId: teamMember.id,
     role,
-    permissions: getPermissionsForRole(role),
+    permissions,
   };
 }
 
