@@ -604,6 +604,18 @@ export function registerBorrowerRoutes(app: Express): void {
         note.organizationId,
       );
 
+      // Phase 3 Week 14 — Activation telemetry. First borrower payment
+      // received. Idempotent FIRST-occurrence on (org, eventName).
+      try {
+        const { recordActivationEventAsync } = await import("./services/activation");
+        recordActivationEventAsync({
+          orgId: note.organizationId,
+          userId: null,
+          eventName: "first_borrower_payment_received",
+          eventValue: { paymentId: payment.id, noteId: note.id, amount: paymentAmount },
+        });
+      } catch { /* non-fatal */ }
+
       res.json({ success: true, payment, newBalance });
     } catch (err: any) {
       logger.error("Payment verification error (session)", err);

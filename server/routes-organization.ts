@@ -1693,6 +1693,20 @@ export function registerOrganizationRoutes(app: Express): void {
         });
       }
 
+      // Phase 3 Week 14 — Activation telemetry. First team-member invite
+      // sent. Idempotent FIRST-occurrence on (org, eventName).
+      if (rows.length > 0) {
+        try {
+          const { recordActivationEventAsync } = await import("./services/activation");
+          recordActivationEventAsync({
+            orgId: org.id,
+            userId: inviterId,
+            eventName: "first_team_member_invited",
+            eventValue: { invitationId: rows[0]!.id, email: rows[0]!.email, role: rows[0]!.role },
+          });
+        } catch { /* non-fatal */ }
+      }
+
       // The plaintext token is returned to the caller exactly once so the
       // UI / email-template layer can compose the invite link. After this
       // response, the only persisted reference is the SHA-256 hash.

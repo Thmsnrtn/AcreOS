@@ -1187,6 +1187,20 @@ export class DatabaseStorage implements IStorage {
   
   async createOrganization(org: InsertOrganization) {
     const [newOrg] = await db.insert(organizations).values(org).returning();
+    // Phase 3 Week 14 — Activation telemetry. Idempotent on
+    // (orgId, eventName) so safe even if getOrCreateOrg also fires it.
+    if (newOrg) {
+      import("./services/activation")
+        .then(({ recordActivationEventAsync }) =>
+          recordActivationEventAsync({
+            orgId: newOrg.id,
+            userId: (org as any)?.ownerId ?? null,
+            eventName: "org_created",
+            eventValue: { source: "storage.createOrganization" },
+          }),
+        )
+        .catch(() => { /* non-fatal */ });
+    }
     // Fire-and-forget: start Sophie's 30-day onboarding journey for
     // real (non-simulated) orgs. Sim orgs opt out to keep test state
     // clean.

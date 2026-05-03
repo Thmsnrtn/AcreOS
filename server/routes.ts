@@ -150,6 +150,7 @@ import { registerAdminRoutes } from "./routes-admin";
 import { registerAdminRecoveryRoutes } from "./routes-admin-recovery";
 import { registerDsarRoutes } from "./routes-dsar";
 import { registerSubProcessorRoutes } from "./routes-sub-processors";
+import { registerActivationRoutes } from "./routes-activation";
 import { registerEliteFeatureRoutes } from "./routes-elite-features";
 import { registerCoreAIRoutes } from "./routes-core-ai";
 import { registerAutonomousAgentRoutes } from "./routes-autonomous-agent";
@@ -1671,6 +1672,8 @@ export async function registerRoutes(
   // and the founder-only sub-processor DPA registry.
   registerDsarRoutes(app);
   registerSubProcessorRoutes(app);
+  // Phase 3 Week 14: Activation funnel + retention infra (Yuna §8, Konstantin §2)
+  registerActivationRoutes(app);
   registerCoreAIRoutes(app);
   registerIntegrationRoutes(app);
   registerCRMExtrasRoutes(app);

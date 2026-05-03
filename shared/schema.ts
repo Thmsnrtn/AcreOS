@@ -4549,6 +4549,127 @@ export type InsertDataProcessingAgreement = typeof dataProcessingAgreements.$inf
 export const DPA_STATUSES = ["pending", "negotiating", "signed", "expired"] as const;
 export type DpaStatus = typeof DPA_STATUSES[number];
 
+// ─── Phase 3 Week 14: Activation + retention telemetry ────────────────────
+// (Yuna §8, Konstantin §2). activation_events is the load-bearing table —
+// the first occurrence of a canonical event per organisation drives the
+// /founder/activation funnel. retention_events, cohort_assignments, and
+// churn_reasons are the v0 retention scaffolding.
+
+// Canonical activation events. recordActivationEvent() is idempotent on
+// (organizationId, eventName) so the FIRST occurrence wins. Onboarding step
+// completions use the `onboarding_step_${n}_completed` pattern (see
+// onboardingStepCompletedEvent() helper in server/services/activation.ts).
+export const ACTIVATION_EVENTS = [
+  "org_created",
+  "first_lead_added",
+  "first_property_added",
+  "first_letter_sent",
+  "first_offer_made",
+  "first_deal_closed",
+  "first_payment_processed",
+  "first_borrower_payment_received",
+  "first_1099_generated",
+  "first_team_member_invited",
+] as const;
+export type ActivationEvent = typeof ACTIVATION_EVENTS[number] | `onboarding_step_${number}_completed`;
+
+export const activationEvents = pgTable("activation_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: integer("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  userId: text("user_id"),
+  eventName: text("event_name").notNull(),
+  eventValue: jsonb("event_value").$type<Record<string, any>>().default({}),
+  occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("activation_events_org_event_unique").on(table.organizationId, table.eventName),
+  index("idx_activation_events_org").on(table.organizationId),
+  index("idx_activation_events_event").on(table.eventName),
+  index("idx_activation_events_occurred_at").on(table.occurredAt),
+]);
+
+export type ActivationEventRow = typeof activationEvents.$inferSelect;
+export type InsertActivationEvent = typeof activationEvents.$inferInsert;
+
+// Retention events: multi-row per org. Cohort assignment, reactivation,
+// churn warnings/events. Append-only; the timeline matters.
+export const RETENTION_EVENT_TYPES = [
+  "assigned",
+  "reactivated",
+  "churn_warning",
+  "churned",
+  "resurrected",
+] as const;
+export type RetentionEventType = typeof RETENTION_EVENT_TYPES[number];
+
+export const retentionEvents = pgTable("retention_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: integer("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  userId: text("user_id"),
+  eventType: text("event_type").notNull(),
+  cohortName: text("cohort_name"),
+  metadata: jsonb("metadata").$type<Record<string, any>>().default({}),
+  occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index("idx_retention_events_org").on(table.organizationId),
+  index("idx_retention_events_type").on(table.eventType),
+  index("idx_retention_events_cohort").on(table.cohortName),
+  index("idx_retention_events_occurred_at").on(table.occurredAt),
+]);
+
+export type RetentionEvent = typeof retentionEvents.$inferSelect;
+export type InsertRetentionEvent = typeof retentionEvents.$inferInsert;
+
+// Cohort assignments: A/B onboarding flow assignment. One row per
+// (org, cohortName). The variant column is the load-bearing dimension.
+export const cohortAssignments = pgTable("cohort_assignments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
+  userId: text("user_id"),
+  cohortName: text("cohort_name").notNull(),
+  variant: text("variant").notNull().default("control"),
+  attributes: jsonb("attributes").$type<Record<string, any>>().default({}),
+  assignedAt: timestamp("assigned_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("cohort_assignments_org_cohort_unique").on(table.organizationId, table.cohortName),
+  index("idx_cohort_assignments_org").on(table.organizationId),
+  index("idx_cohort_assignments_user").on(table.userId),
+  index("idx_cohort_assignments_name").on(table.cohortName),
+  index("idx_cohort_assignments_variant").on(table.cohortName, table.variant),
+]);
+
+export type CohortAssignment = typeof cohortAssignments.$inferSelect;
+export type InsertCohortAssignment = typeof cohortAssignments.$inferInsert;
+
+// Churn reasons: exit-survey responses + cancellation rationale.
+export const CHURN_PRIMARY_REASONS = [
+  "price",
+  "missing_feature",
+  "switched_competitor",
+  "no_fit",
+  "support",
+  "bug_or_reliability",
+  "other",
+] as const;
+export type ChurnPrimaryReason = typeof CHURN_PRIMARY_REASONS[number];
+
+export const churnReasons = pgTable("churn_reasons", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: integer("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  userId: text("user_id"),
+  churnedAt: timestamp("churned_at", { withTimezone: true }).notNull().defaultNow(),
+  primaryReason: text("primary_reason").notNull(),
+  freeText: text("free_text"),
+  surveyResponse: jsonb("survey_response").$type<Record<string, any>>().default({}),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index("idx_churn_reasons_org").on(table.organizationId),
+  index("idx_churn_reasons_primary").on(table.primaryReason),
+  index("idx_churn_reasons_churned_at").on(table.churnedAt),
+]);
+
+export type ChurnReason = typeof churnReasons.$inferSelect;
+export type InsertChurnReason = typeof churnReasons.$inferInsert;
+
 // Audit action types
 export const AUDIT_ACTIONS = [
   "create",

@@ -340,7 +340,7 @@ export function registerLeadRoutes(app: Express): void {
       
       const input = insertLeadSchema.parse({ ...req.body, organizationId: org.id });
       const lead = await storage.createLead(input);
-      
+
       const user = req.user as any;
       const userId = user?.claims?.sub || user?.id;
       await storage.createAuditLogEntry({
@@ -353,7 +353,18 @@ export function registerLeadRoutes(app: Express): void {
         ipAddress: req.ip || req.socket?.remoteAddress,
         userAgent: req.headers["user-agent"],
       });
-      
+
+      // Phase 3 Week 14 — Activation telemetry. Idempotent FIRST-occurrence.
+      try {
+        const { recordActivationEventAsync } = await import("./services/activation");
+        recordActivationEventAsync({
+          orgId: org.id,
+          userId,
+          eventName: "first_lead_added",
+          eventValue: { leadId: lead.id },
+        });
+      } catch { /* non-fatal */ }
+
       const { latitude, longitude } = req.body;
       if (latitude && longitude) {
         Promise.resolve().then(async () => {

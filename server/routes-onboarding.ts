@@ -231,6 +231,23 @@ router.patch("/progress", async (req: Request, res: Response) => {
     await db.update(organizations)
       .set({ onboardingStep: step || 0, onboardingData: { ...(org.onboardingData || {}), ...stepData }, updatedAt: new Date() } as any)
       .where(eq(organizations.id, org.id));
+
+    // Phase 3 Week 14 — Activation telemetry. Each canonical step gets its
+    // own first-occurrence event; subsequent visits are no-op'd by the
+    // unique constraint. Step is 1-indexed against the wizard.
+    if (typeof step === "number" && step > 0) {
+      try {
+        const { recordActivationEventAsync, onboardingStepCompletedEvent } = await import("./services/activation");
+        const userId = (req.user as any)?.claims?.sub || (req.user as any)?.id || null;
+        recordActivationEventAsync({
+          orgId: org.id,
+          userId,
+          eventName: onboardingStepCompletedEvent(step),
+          eventValue: { step, stepData },
+        });
+      } catch { /* non-fatal */ }
+    }
+
     res.json({ saved: true, step });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
