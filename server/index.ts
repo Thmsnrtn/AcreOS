@@ -219,9 +219,31 @@ app.disable("x-powered-by");
 // actual client IP (for rate limiting and audit logging), not the Fly proxy.
 app.set("trust proxy", 1);
 
-// Enable gzip/brotli compression for all responses
+// ─── Compression — gzip + brotli (Wave: cost) ──────────────────────────────
+// `compression@^1.8.0` negotiates Brotli when the client advertises it via
+// Accept-Encoding (every modern browser does), falling back to gzip
+// otherwise. Threshold = 1 KB so we don't waste CPU on tiny responses
+// where the encoding overhead would be larger than the saved bytes.
+//
+// Filter:
+//   - Skip pre-compressed binary content (images, PDFs, video, audio) —
+//     re-compressing burns CPU for negligible bandwidth gain and on PDFs
+//     in particular it tends to hurt because jspdf already deflates.
+//   - Skip when the caller opts out via `x-no-compression` (kept for
+//     parity with the upstream `compression` middleware default behavior).
 import compression from "compression";
-app.use(compression({ threshold: 1024 })); // Compress responses > 1KB
+const SKIP_COMPRESS_TYPE = /^(image\/|video\/|audio\/|application\/pdf|application\/zip|application\/gzip|application\/x-gzip|application\/x-bzip2|application\/x-7z-compressed|application\/octet-stream)/i;
+app.use(
+  compression({
+    threshold: 1024,
+    filter: (req, res) => {
+      if (req.headers["x-no-compression"]) return false;
+      const ct = String(res.getHeader("Content-Type") ?? "");
+      if (ct && SKIP_COMPRESS_TYPE.test(ct)) return false;
+      return compression.filter(req, res);
+    },
+  }),
+);
 
 app.use(telemetryMiddleware); // Task #74: OpenTelemetry span recording per request
 app.use(securityHeaders);

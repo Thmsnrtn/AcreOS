@@ -25,6 +25,9 @@ import {
   getForm1099BatchStatus,
 } from "./services/form1099Batch";
 import { TaxIdentityError } from "./services/bookkeeping";
+import { db } from "./db";
+import { outbox } from "@shared/schema";
+import { eq } from "drizzle-orm";
 
 const router = Router();
 
@@ -55,6 +58,8 @@ router.get("/trial-balance", async (req: AuthenticatedRequest, res: Response) =>
 });
 
 // ── GET /general-ledger.pdf ───────────────────────────────────────────────
+// Synchronous render — kept for back-compat. New callers should POST the
+// same path to enqueue the job onto the worker process group (below).
 router.get("/general-ledger.pdf", async (req: AuthenticatedRequest, res: Response) => {
   if (!requireFounder(req, res)) return;
   try {
@@ -76,6 +81,76 @@ router.get("/general-ledger.pdf", async (req: AuthenticatedRequest, res: Respons
       `attachment; filename="general-ledger-${from}-to-${to}.pdf"`,
     );
     res.send(pdf);
+  } catch (err) {
+    Errors.internal(res, err);
+  }
+});
+
+// ── POST /general-ledger.pdf — enqueue to worker ──────────────────────────
+// Returns { jobId, status } immediately. Client polls
+// `/api/accounting/general-ledger.pdf/job/:jobId` for completion. The
+// `pdf_render` event flows through the `outbox` table and is consumed by
+// the worker process group (see server/worker.ts) — keeps the customer-
+// facing app machines from blocking on PDF render CPU.
+router.post("/general-ledger.pdf", async (req: AuthenticatedRequest, res: Response) => {
+  if (!requireFounder(req, res)) return;
+  try {
+    const org = getOrganization(req);
+    const from = (req.body?.from as string) ?? `${new Date().getFullYear()}-01-01`;
+    const to = (req.body?.to as string) ?? new Date().toISOString().slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      return Errors.badRequest(res, "from/to must be YYYY-MM-DD");
+    }
+    const [row] = await db
+      .insert(outbox)
+      .values({
+        eventType: "pdf_render",
+        status: "pending",
+        attempts: 0,
+        payload: {
+          variant: "general_ledger",
+          organizationId: org.id,
+          organizationName: org.name,
+          fromDate: from,
+          toDate: to,
+        },
+      })
+      .returning({ id: outbox.id });
+    logger.info("accounting.generalLedger.enqueued", {
+      organizationId: org.id,
+      jobId: row?.id,
+      from,
+      to,
+    });
+    res.status(202).json({ jobId: row?.id, status: "pending" });
+  } catch (err) {
+    Errors.internal(res, err);
+  }
+});
+
+// ── GET /general-ledger.pdf/job/:jobId — poll worker job status ───────────
+router.get("/general-ledger.pdf/job/:jobId", async (req: AuthenticatedRequest, res: Response) => {
+  if (!requireFounder(req, res)) return;
+  try {
+    const jobId = parseInt(req.params.jobId, 10);
+    if (Number.isNaN(jobId)) return Errors.badRequest(res, "jobId must be numeric");
+    const [row] = await db.select().from(outbox).where(eq(outbox.id, jobId)).limit(1);
+    if (!row) return Errors.notFound(res, "Job");
+    if (row.eventType !== "pdf_render") {
+      return Errors.notFound(res, "Job");
+    }
+    const org = getOrganization(req);
+    if ((row.payload as any)?.organizationId !== org.id) {
+      return Errors.forbidden(res, "Job belongs to a different organization");
+    }
+    res.json({
+      jobId: row.id,
+      status: row.status,
+      attempts: row.attempts,
+      lastErrorMessage: row.lastErrorMessage,
+      sentAt: row.sentAt,
+      createdAt: row.createdAt,
+    });
   } catch (err) {
     Errors.internal(res, err);
   }
@@ -112,6 +187,13 @@ router.get("/qbo-export", async (req: AuthenticatedRequest, res: Response) => {
 });
 
 // ── POST /1099-batch ──────────────────────────────────────────────────────
+// Wave: cost — opt-in worker dispatch via `?async=1`. Without that flag we
+// preserve the prior synchronous behavior (this is what the current UI
+// expects and what the existing GET /1099-batch/:jobId endpoint reads).
+// With `async=1`, the request enqueues a `1099_batch_generate` event onto
+// the outbox table (consumed by server/worker.ts) and returns 202 + outbox
+// id; clients poll the existing /1099-batch/:jobId surface via the
+// resolved internal jobId once the worker writes it back.
 router.post("/1099-batch", async (req: AuthenticatedRequest, res: Response) => {
   if (!requireFounder(req, res)) return;
   try {
@@ -120,6 +202,33 @@ router.post("/1099-batch", async (req: AuthenticatedRequest, res: Response) => {
     if (Number.isNaN(taxYear) || taxYear < 2000 || taxYear > 2100) {
       return Errors.badRequest(res, "taxYear must be a valid 4-digit year");
     }
+
+    // Async/worker path
+    if (req.query.async === "1" || req.body?.async === true) {
+      const [row] = await db
+        .insert(outbox)
+        .values({
+          eventType: "1099_batch_generate",
+          status: "pending",
+          attempts: 0,
+          payload: {
+            organizationId: org.id,
+            taxYear,
+          },
+        })
+        .returning({ id: outbox.id });
+      logger.info("accounting.1099Batch.enqueued", {
+        organizationId: org.id,
+        taxYear,
+        outboxId: row?.id,
+      });
+      return res.status(202).json({
+        outboxId: row?.id,
+        status: "pending",
+        message: "Batch enqueued; poll /api/accounting/1099-batch/job/:outboxId for status",
+      });
+    }
+
     const result = await generate1099Batch(org.id, taxYear);
     logger.info("accounting.1099Batch.completed", {
       organizationId: org.id,
@@ -147,6 +256,30 @@ router.post("/1099-batch", async (req: AuthenticatedRequest, res: Response) => {
         statusCode: 422,
       });
     }
+    Errors.internal(res, err);
+  }
+});
+
+// ── GET /1099-batch/job/:outboxId — poll outbox status for async batch ───
+router.get("/1099-batch/job/:outboxId", async (req: AuthenticatedRequest, res: Response) => {
+  if (!requireFounder(req, res)) return;
+  try {
+    const outboxId = parseInt(req.params.outboxId, 10);
+    if (Number.isNaN(outboxId)) return Errors.badRequest(res, "outboxId must be numeric");
+    const [row] = await db.select().from(outbox).where(eq(outbox.id, outboxId)).limit(1);
+    if (!row || row.eventType !== "1099_batch_generate") return Errors.notFound(res, "Job");
+    const org = getOrganization(req);
+    if ((row.payload as any)?.organizationId !== org.id) {
+      return Errors.forbidden(res, "Job belongs to a different organization");
+    }
+    res.json({
+      outboxId: row.id,
+      status: row.status,
+      attempts: row.attempts,
+      lastErrorMessage: row.lastErrorMessage,
+      sentAt: row.sentAt,
+    });
+  } catch (err) {
     Errors.internal(res, err);
   }
 });

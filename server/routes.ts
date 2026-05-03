@@ -88,6 +88,7 @@ import propertyTaxRouter from "./routes-property-tax";
 import recordingFeesRouter from "./routes-recording-fees";
 import bookkeepingRouter from "./routes-bookkeeping";
 import accountingRouter from "./routes-accounting";
+import evalRouter from "./routes-eval";
 import abTestsRouter from "./routes-ab-tests";
 import doddFrankRouter from "./routes-dodd-frank";
 import fieldScoutRouter from "./routes-field-scout";
@@ -456,6 +457,12 @@ export async function registerRoutes(
       const result = healthCheckService.getLastResults();
       const data = result || await healthCheckService.checkAll();
       const statusCode = data.overall === "unavailable" ? 503 : 200;
+      // Wave: cost — already memoized server-side; let Cloudflare collapse
+      // the herd from Fly health checks too (interval=30s in fly.toml).
+      res.setHeader(
+        "Cache-Control",
+        "public, max-age=10, s-maxage=10, stale-while-revalidate=60",
+      );
       res.status(statusCode).json({
         ...data,
         version: process.env.npm_package_version || "1.0.0",
@@ -1656,6 +1663,8 @@ export async function registerRoutes(
   // Lavender Week 10 — monthly-close + Olympia 1099 batch generator. Founder-
   // gated inside the router until the role-based permission check ships.
   app.use('/api/accounting', isAuthenticated, getOrCreateOrg, accountingRouter);
+  // Wave: cost — eval suites are CPU-heavy; routed to worker via outbox.
+  app.use('/api/eval', isAuthenticated, evalRouter);
   app.use('/api/ab-tests', isAuthenticated, getOrCreateOrg, abTestsRouter);
   app.use('/api/dodd-frank', isAuthenticated, doddFrankRouter);
 

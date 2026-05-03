@@ -162,6 +162,15 @@ export async function getVendorStatus(): Promise<VendorStatusResponse> {
 router.get("/", async (_req: Request, res: Response) => {
   try {
     const data = await getVendorStatus();
+    // Wave: cost — let Cloudflare share this single payload across
+    // every founder/admin tab. The response is identical for all
+    // viewers (vendor health is global), so `public` + s-maxage gives
+    // the edge permission to cache; stale-while-revalidate keeps the
+    // tile responsive even when origin is slow.
+    res.setHeader(
+      "Cache-Control",
+      "public, max-age=60, s-maxage=60, stale-while-revalidate=300",
+    );
     res.json(data);
   } catch (err) {
     Errors.internal(res, err);

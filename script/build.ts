@@ -124,6 +124,24 @@ async function buildAll() {
     logLevel: "info",
   });
 
+  // Worker bundle — separate entry consumed by the `worker` Fly process
+  // group. Reuses the same externals so Postgres / Sentry / OpenAI
+  // resolve at runtime. Kept minified so cold start stays fast.
+  console.log("building worker...");
+  await esbuild({
+    entryPoints: ["server/worker.ts"],
+    platform: "node",
+    bundle: true,
+    format: "cjs",
+    outfile: "dist/worker.cjs",
+    define: {
+      "process.env.NODE_ENV": '"production"',
+    },
+    minify: true,
+    external: externals,
+    logLevel: "info",
+  });
+
   // Upload AFTER both client + server are built so the dist/public dir
   // is final. Server release tag is set via SENTRY_RELEASE env at runtime
   // (server reads it in initSentry) so client + server agree on release.
