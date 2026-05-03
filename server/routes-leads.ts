@@ -365,6 +365,38 @@ export function registerLeadRoutes(app: Express): void {
         });
       } catch { /* non-fatal */ }
 
+      // Magnus §1 — capture lead features at creation time. Outcome is paired
+      // when (a) the lead's property closes a deal (converted) or (b) the
+      // lead is dismissed via DELETE /api/leads/:id. Skip-trace and property
+      // attributes that exist now are the load-bearing features.
+      try {
+        const { recordSnapshotAsync } = await import("./services/mlSnapshots");
+        const inputAny = input as any;
+        recordSnapshotAsync({
+          snapshotType: "lead_conversion",
+          subjectType: "lead",
+          subjectId: String(lead.id),
+          orgId: org.id,
+          decisionAt: new Date(),
+          features: {
+            source: inputAny.source ?? null,
+            campaignId: inputAny.campaignId ?? null,
+            ownerName: inputAny.ownerName ?? null,
+            propertyState: inputAny.state ?? null,
+            propertyCounty: inputAny.county ?? null,
+            acres: inputAny.acres ?? null,
+            assessedValue: inputAny.assessedValue ?? null,
+            taxDelinquent: inputAny.taxDelinquent ?? null,
+            taxDelinquentAmount: inputAny.taxDelinquentAmount ?? null,
+            yearsOwned: inputAny.yearsOwned ?? null,
+            ownerState: inputAny.ownerState ?? null,
+            outOfStateOwner: inputAny.outOfStateOwner ?? null,
+            skipTraced: inputAny.phone || inputAny.email ? true : false,
+          },
+          labels: {},
+        });
+      } catch { /* non-fatal */ }
+
       const { latitude, longitude } = req.body;
       if (latitude && longitude) {
         Promise.resolve().then(async () => {

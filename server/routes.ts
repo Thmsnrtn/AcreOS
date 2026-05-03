@@ -152,6 +152,7 @@ import { registerDsarRoutes } from "./routes-dsar";
 import { registerLegalHoldRoutes } from "./routes-legal-holds";
 import { registerSubProcessorRoutes } from "./routes-sub-processors";
 import { registerActivationRoutes } from "./routes-activation";
+import { registerMlSnapshotsRoutes } from "./routes-ml-snapshots";
 import { registerEliteFeatureRoutes } from "./routes-elite-features";
 import { registerCoreAIRoutes } from "./routes-core-ai";
 import { registerAutonomousAgentRoutes } from "./routes-autonomous-agent";
@@ -1702,6 +1703,8 @@ export async function registerRoutes(
   registerSubProcessorRoutes(app);
   // Phase 3 Week 14: Activation funnel + retention infra (Yuna §8, Konstantin §2)
   registerActivationRoutes(app);
+  // Phase 3 Week 12: ML training-snapshot instrumentation (Magnus §1)
+  registerMlSnapshotsRoutes(app);
   registerCoreAIRoutes(app);
   registerIntegrationRoutes(app);
   registerCRMExtrasRoutes(app);

@@ -272,6 +272,80 @@ export function registerDealRoutes(app: Express): void {
         triggerDealEnrichmentAsync(org.id, deal.id, deal.propertyId);
       }
       
+      // Magnus §1 — ML training snapshots on deal close / cancel.
+      // `closed` is treated as closed_won; `cancelled` is treated as
+      // closed_lost. Both fire the deal_outcome snapshot. closed_won also
+      // pairs the AVM-vs-actual snapshot if the property had a recent AVM.
+      const isFirstClose = validated.status === "closed" && existingDeal.status !== "closed";
+      const isFirstCancel = validated.status === "cancelled" && existingDeal.status !== "cancelled";
+      if (isFirstClose || isFirstCancel) {
+        try {
+          const { recordSnapshotAsync, pairOutcomeAsync } = await import("./services/mlSnapshots");
+          const wonOrLost = isFirstClose ? "closed_won" : "closed_lost";
+          const acceptedAmount = deal.acceptedAmount ? parseFloat(String(deal.acceptedAmount)) : null;
+          const offerAmount = deal.offerAmount ? parseFloat(String(deal.offerAmount)) : null;
+
+          recordSnapshotAsync({
+            snapshotType: "deal_outcome",
+            subjectType: "deal",
+            subjectId: String(deal.id),
+            orgId: org.id,
+            // Decision was made when the offer was sent / deal entered the
+            // pipeline; we don't have that timestamp readily available so
+            // use createdAt as the closest proxy.
+            decisionAt: deal.createdAt ? new Date(deal.createdAt as any) : new Date(),
+            outcomeAt: new Date(),
+            features: {
+              dealType: deal.dealType,
+              propertyId: deal.propertyId,
+              offerAmount,
+              analysisResults: deal.analysisResults ?? null,
+              sequenceId: deal.sequenceId ?? null,
+            },
+            labels: {
+              outcome: wonOrLost,
+              acceptedAmount,
+              status: validated.status,
+            },
+          });
+
+          // Pair the AVM snapshot with the actual sale price (closed_won only).
+          if (isFirstClose && deal.propertyId && acceptedAmount) {
+            pairOutcomeAsync({
+              snapshotType: "avm_vs_actual",
+              subjectType: "property",
+              subjectId: String(deal.propertyId),
+              outcomeLabels: {
+                actualSalePrice: acceptedAmount,
+                dealId: deal.id,
+              },
+              outcomeAt: new Date(),
+            });
+          }
+
+          // Pair the lead-conversion snapshot — closed = converted, cancelled = dismissed.
+          // Look up the property's leadId so we can pair on the right subject.
+          try {
+            const property = deal.propertyId
+              ? await storage.getProperty(org.id, deal.propertyId)
+              : null;
+            if (property && property.leadId) {
+              pairOutcomeAsync({
+                snapshotType: "lead_conversion",
+                subjectType: "lead",
+                subjectId: String(property.leadId),
+                outcomeLabels: {
+                  outcome: isFirstClose ? "converted" : "dismissed",
+                  dealId: deal.id,
+                  acceptedAmount,
+                },
+                outcomeAt: new Date(),
+              });
+            }
+          } catch { /* non-fatal */ }
+        } catch { /* non-fatal */ }
+      }
+
       // Track conversion when deal is closed (for lead scoring feedback loop)
       if (validated.status === "closed" && existingDeal.status !== "closed") {
         try {
@@ -334,6 +408,59 @@ export function registerDealRoutes(app: Express): void {
             logger.error("deal pattern fingerprint failed", { error: err instanceof Error ? err.message : String(err) });
           });
         }).catch(() => {});
+      }
+
+      // Magnus §1 — offer-acceptance training snapshots. Decision is "offer
+      // sent"; outcome is "accepted | countered | cancelled". The offer is
+      // identified by the deal id since AcreOS doesn't have a separate
+      // offers table — `offer_sent` status on the deal is the canonical
+      // offer-sent event.
+      if (validated.status === "offer_sent" && existingDeal.status !== "offer_sent") {
+        try {
+          const { recordSnapshotAsync } = await import("./services/mlSnapshots");
+          recordSnapshotAsync({
+            snapshotType: "offer_acceptance",
+            subjectType: "deal",
+            subjectId: String(deal.id),
+            orgId: org.id,
+            decisionAt: new Date(),
+            features: {
+              dealType: deal.dealType,
+              propertyId: deal.propertyId,
+              offerAmount: deal.offerAmount ? parseFloat(String(deal.offerAmount)) : null,
+              analysisResults: deal.analysisResults ?? null,
+            },
+            labels: {
+              status: "offer_sent",
+            },
+          });
+        } catch { /* non-fatal */ }
+      }
+
+      // Pair offer outcome on accepted / countered / cancelled.
+      const offerOutcomeReached =
+        (validated.status === "accepted" && existingDeal.status !== "accepted") ||
+        (validated.status === "countered" && existingDeal.status !== "countered") ||
+        (validated.status === "cancelled" && existingDeal.status !== "cancelled");
+      if (offerOutcomeReached) {
+        try {
+          const { pairOutcomeAsync } = await import("./services/mlSnapshots");
+          pairOutcomeAsync({
+            snapshotType: "offer_acceptance",
+            subjectType: "deal",
+            subjectId: String(deal.id),
+            outcomeLabels: {
+              outcome:
+                validated.status === "accepted"
+                  ? "accepted"
+                  : validated.status === "cancelled"
+                    ? "declined"
+                    : "countered",
+              acceptedAmount: deal.acceptedAmount ? parseFloat(String(deal.acceptedAmount)) : null,
+            },
+            outcomeAt: new Date(),
+          });
+        } catch { /* non-fatal */ }
       }
 
       // Push notification when deal is accepted (T61)

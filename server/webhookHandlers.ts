@@ -2,7 +2,7 @@ import { getUncachableStripeClient, getStripeSecretKey } from './stripeClient';
 import { storage, db } from './storage';
 import { creditService } from './services/credits';
 import { CreditPackId, stripeProcessedEvents } from '@shared/schema';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import Stripe from 'stripe';
 import { logger } from './utils/logger';
 import { addMonths } from './utils/dateUtils';
@@ -398,6 +398,57 @@ export class WebhookHandlers {
       } catch (emailErr) {
         logger.warn('[webhook] Could not send cancellation confirmation email', emailErr instanceof Error ? emailErr : undefined);
       }
+
+      // Magnus §1 — ML training: capture org's last-30-day usage snapshot
+      // at churn so we have a (features → churned) row to train a churn
+      // model on later. Fire-and-forget; never blocks webhook ack.
+      try {
+        const { recordSnapshotAsync } = await import('./services/mlSnapshots');
+        const usage = await db.execute(sql`
+          SELECT
+            (SELECT COUNT(*)::int FROM leads
+              WHERE organization_id = ${org.id}
+                AND created_at > NOW() - INTERVAL '30 days') AS "leadsCreated30d",
+            (SELECT COUNT(*)::int FROM properties
+              WHERE organization_id = ${org.id}
+                AND created_at > NOW() - INTERVAL '30 days') AS "propertiesCreated30d",
+            (SELECT COUNT(*)::int FROM deals
+              WHERE organization_id = ${org.id}
+                AND created_at > NOW() - INTERVAL '30 days') AS "dealsCreated30d",
+            (SELECT COUNT(*)::int FROM deals
+              WHERE organization_id = ${org.id}
+                AND status = 'closed'
+                AND updated_at > NOW() - INTERVAL '30 days') AS "dealsClosed30d"
+        `);
+        const usageRow = ((usage as any).rows ?? (usage as any) ?? [])[0] ?? {};
+
+        recordSnapshotAsync({
+          snapshotType: 'churn_outcome',
+          subjectType: 'org',
+          subjectId: String(org.id),
+          orgId: org.id,
+          decisionAt: new Date(),
+          outcomeAt: new Date(),
+          features: {
+            previousTier,
+            billingInterval: org.billingInterval ?? null,
+            ageDays: org.createdAt
+              ? Math.round((Date.now() - new Date(org.createdAt as any).getTime()) / 86400000)
+              : null,
+            leadsCreated30d: Number(usageRow.leadsCreated30d ?? 0),
+            propertiesCreated30d: Number(usageRow.propertiesCreated30d ?? 0),
+            dealsCreated30d: Number(usageRow.dealsCreated30d ?? 0),
+            dealsClosed30d: Number(usageRow.dealsClosed30d ?? 0),
+          },
+          labels: {
+            outcome: 'churned',
+            stripeSubscriptionId: subscription.id,
+            cancelledAt: new Date().toISOString(),
+            // Reason will be backfilled via metadata when the exit-survey
+            // (churn_reasons) row is recorded.
+          },
+        });
+      } catch { /* non-fatal */ }
 
       logger.info(`Subscription cancelled: Org ${org.id}`);
     } catch (err) {

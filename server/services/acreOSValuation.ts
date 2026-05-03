@@ -309,6 +309,36 @@ class AcreOSValuationModel {
         confidenceInterval,
       }).returning();
 
+      // Magnus §1 — capture AVM input + estimate as a training snapshot. The
+      // sale-price label is paired in later by the deal-close handler when
+      // (and if) the property actually transacts. Fire-and-forget; never
+      // blocks the AVM response.
+      try {
+        const { recordSnapshotAsync } = await import("./mlSnapshots");
+        const orgIdNum = Number(organizationId);
+        recordSnapshotAsync({
+          snapshotType: "avm_vs_actual",
+          subjectType: "property",
+          subjectId: String(request.propertyId),
+          orgId: Number.isFinite(orgIdNum) ? orgIdNum : null,
+          decisionAt: new Date(),
+          features: {
+            acres: request.acres,
+            location: request.location,
+            characteristics: request.characteristics,
+            comparablesUsed: comparables.length,
+            marketAdjustments: adjustments,
+          },
+          labels: {
+            avmEstimate: Math.round(finalValue),
+            pricePerAcre: Math.round(pricePerAcre),
+            confidence,
+            methodology: 'hybrid_comps_ml',
+          },
+          metadata: { predictionId: prediction?.id },
+        });
+      } catch { /* non-fatal */ }
+
       return {
         estimatedValue: Math.round(finalValue),
         pricePerAcre: Math.round(pricePerAcre),
@@ -417,6 +447,34 @@ Base your estimate on typical rural land market conditions in ${county} County, 
     } catch {
       // Non-fatal — continue even if save fails
     }
+
+    // Magnus §1 — capture AVM input + estimate as a training snapshot for
+    // the no-comparables fallback path too. Same pairing semantics as the
+    // hybrid path: sale price is filled in on deal close.
+    try {
+      const { recordSnapshotAsync } = await import("./mlSnapshots");
+      const orgIdNum = Number(organizationId);
+      recordSnapshotAsync({
+        snapshotType: "avm_vs_actual",
+        subjectType: "property",
+        subjectId: String(request.propertyId),
+        orgId: Number.isFinite(orgIdNum) ? orgIdNum : null,
+        decisionAt: new Date(),
+        features: {
+          acres: request.acres,
+          location: request.location,
+          characteristics: request.characteristics,
+          comparablesUsed: 0,
+          estimateSource,
+        },
+        labels: {
+          avmEstimate: estimatedValue,
+          pricePerAcre: Math.round(pricePerAcreEstimate),
+          confidence,
+          methodology: estimateSource,
+        },
+      });
+    } catch { /* non-fatal */ }
 
     return {
       estimatedValue,
