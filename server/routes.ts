@@ -127,8 +127,9 @@ import { promptInjectionMiddleware } from "./middleware/promptInjection";
 import { csrfProtection } from "./middleware/csrf";
 // Phase 4: Request timeout middleware (30s timeout → 504)
 import { requestTimeout } from "./middleware/security";
-// F-A07-1: 2FA enforcement for admin routes
-import { require2FA } from "./middleware/require2FA";
+// R4: Clerk-native MFA enforcement (replaces broken in-house require2FA).
+// See server/middleware/requireClerkMFA.ts for the decision matrix.
+import { requireClerkMFA } from "./middleware/requireClerkMFA";
 
 // Domain route modules
 import { registerDashboardRoutes } from "./routes-dashboard";
@@ -458,9 +459,10 @@ export async function registerRoutes(
   // Register auth routes (/api/auth/user, /api/auth/attribution)
   registerAuthRoutes(app);
 
-  // T11: Two-Factor Auth routes
-  const { register2FARoutes } = await import("./routes-2fa");
-  register2FARoutes(app);
+  // R4: In-house 2FA routes deleted — MFA is now managed via Clerk's
+  // hosted UserProfile. Enrollment / verification / disable all flow
+  // through Clerk's frontend SDK; the server only enforces (see
+  // requireClerkMFA below).
 
   // T12: OAuth/SSO routes (Google + Microsoft)
   const { registerOAuthRoutes } = await import("./auth/oauth");
@@ -1622,12 +1624,16 @@ export async function registerRoutes(
   app.use('/api/ai', isAuthenticated, getOrCreateOrg, aiDraftRouter);
   registerBillingRoutes(app);
   registerBorrowerRoutes(app);
-  // F-A07-1: Require 2FA verification before any admin operation for users who have it enabled
-  app.use("/api/admin", isAuthenticated, require2FA);
+  // R4: Clerk-native MFA enforcement on every /api/admin/* route. Users
+  // with MFA enabled in Clerk must have completed second-factor in this
+  // session; high-trust paths (admin recovery, ownership transfer)
+  // additionally require MFA *be set up*. See requireClerkMFA for the
+  // full decision matrix.
+  app.use("/api/admin", isAuthenticated, requireClerkMFA);
   registerAdminRoutes(app);
   // Coriander §1: Recovery-console endpoints (founder-gated, audit-logged).
-  // Mounted alongside other /api/admin routes so the require2FA middleware
-  // at line 1624 above also covers them.
+  // Mounted alongside other /api/admin routes so the requireClerkMFA
+  // middleware above also covers them.
   registerAdminRecoveryRoutes(app);
   registerCoreAIRoutes(app);
   registerIntegrationRoutes(app);
