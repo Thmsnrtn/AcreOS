@@ -6,6 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { FileText, MapPin, Phone, Mail, Globe } from "lucide-react";
 import { ApiKeySetup } from "./ApiKeySetup";
+import { clientLogger } from "@/lib/clientLogger";
 
 interface IntegrationStatus {
   provider: string;
@@ -119,7 +120,7 @@ export function ByokSettings() {
       });
       return result;
     } catch (error) {
-      console.error("Error saving API key:", error);
+      clientLogger.error("Error saving API key:", error);
       return false;
     }
   };

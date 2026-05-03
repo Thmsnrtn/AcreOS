@@ -17,6 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { clientLogger } from "@/lib/clientLogger";
 import {
   Accordion,
   AccordionContent,
@@ -1764,7 +1765,7 @@ export default function CommandCenterPage() {
         }
       }
     } catch (error) {
-      console.error("Streaming error:", error);
+      clientLogger.error("Streaming error:", error);
       toast({ title: "Couldn't send message", description: "Your draft is preserved. Try again or check the system status.", variant: "destructive" });
     } finally {
       setIsStreaming(false);

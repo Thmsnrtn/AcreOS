@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { DEFAULT_SIDEBAR_ITEMS, DEFAULT_MOBILE_ITEMS, ALL_NAV_ITEMS } from "@/lib/nav-items";
+import { clientLogger } from "@/lib/clientLogger";
 
 /**
  * Sidebar + mobile-nav preferences.
@@ -82,7 +83,7 @@ async function patchServerNavPreferences(prefs: NavPreferences): Promise<void> {
     });
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.warn("[nav] PATCH /api/me/preferences sidebarConfig failed; local state retained", err);
+    clientLogger.warn("[nav] PATCH /api/me/preferences sidebarConfig failed; local state retained", err);
   }
 }
 

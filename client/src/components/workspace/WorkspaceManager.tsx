@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { clientLogger } from "@/lib/clientLogger";
 import { 
   LayoutGrid, 
   Plus, 
@@ -83,7 +84,7 @@ export function WorkspaceManager() {
       toast({ title: "Workspace deleted" });
     },
     onError: (err) => {
-      console.error("Failed to delete workspace:", err);
+      clientLogger.error("Failed to delete workspace:", err);
       toast({
         title: "Couldn't delete workspace",
         description: "The workspace is still in your list. Try again.",

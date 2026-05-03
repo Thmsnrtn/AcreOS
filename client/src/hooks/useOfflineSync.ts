@@ -9,6 +9,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { clientLogger } from "@/lib/clientLogger";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -138,7 +139,7 @@ export function useOfflineSync(): UseOfflineSyncResult {
         // Load cached data immediately
         loadCachedData(db);
       })
-      .catch((err) => console.error('[OfflineSync] Failed to open IndexedDB:', err));
+      .catch((err) => clientLogger.error('[OfflineSync] Failed to open IndexedDB:', err));
   }, []);
 
   // ── Online/offline listeners ────────────────────────────────────────────────
@@ -176,7 +177,7 @@ export function useOfflineSync(): UseOfflineSyncResult {
         lastSyncedAt: lastSyncedAt ? new Date(lastSyncedAt) : null,
       });
     } catch (err) {
-      console.warn('[OfflineSync] Could not load cached data:', err);
+      clientLogger.warn('[OfflineSync] Could not load cached data:', err);
     }
   }
 
@@ -241,7 +242,7 @@ export function useOfflineSync(): UseOfflineSyncResult {
           } else if (mutation.retries >= 3) {
             // Give up after 3 retries
             await idbDelete(db, 'mutations', mutation.id);
-            console.warn('[OfflineSync] Dropped mutation after 3 retries:', mutation.url);
+            clientLogger.warn('[OfflineSync] Dropped mutation after 3 retries:', mutation.url);
           } else {
             // Increment retry count
             await idbAddMutation(db, { ...mutation, retries: mutation.retries + 1 });
@@ -256,7 +257,7 @@ export function useOfflineSync(): UseOfflineSyncResult {
       await fetchAndCache(db);
       setSyncStatus('idle');
     } catch (err) {
-      console.error('[OfflineSync] Drain error:', err);
+      clientLogger.error('[OfflineSync] Drain error:', err);
       setSyncStatus('error');
     }
   }, [fetchAndCache]);

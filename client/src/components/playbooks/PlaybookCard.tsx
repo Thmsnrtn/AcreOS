@@ -7,6 +7,7 @@ import { useStartPlaybook } from "@/hooks/use-playbooks";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import type { PlaybookInstance } from "@shared/schema";
+import { clientLogger } from "@/lib/clientLogger";
 
 interface PlaybookTemplate {
   id: string;
@@ -84,7 +85,7 @@ export function PlaybookCard({ template, activeInstance, onStart, onContinue }: 
         });
         setLocation(`/playbooks/${template.id}`);
       } catch (error) {
-        console.error("Failed to start playbook:", error);
+        clientLogger.error("Failed to start playbook:", error);
         toast({
           title: "Couldn't start playbook",
           description: "No playbook run was created. Try again or check the system status.",

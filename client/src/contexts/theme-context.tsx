@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { clientLogger } from "@/lib/clientLogger";
 
 /**
  * Theme system — five themes × light/dark + five font pairings.
@@ -136,7 +137,7 @@ async function patchServerPreferences(update: Partial<ThemeConfig>): Promise<voi
     });
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.warn("[theme] PATCH /api/me/preferences failed; local state retained", err);
+    clientLogger.warn("[theme] PATCH /api/me/preferences failed; local state retained", err);
   }
 }
 

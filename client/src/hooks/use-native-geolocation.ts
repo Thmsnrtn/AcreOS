@@ -7,6 +7,7 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { isNative } from "@/lib/platform";
+import { clientLogger } from "@/lib/clientLogger";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -43,7 +44,7 @@ async function requestNativePermissions(): Promise<boolean> {
     }
 
     if (status.location === "denied") {
-      console.warn(
+      clientLogger.warn(
         "[Geolocation] Location permission was denied. Please enable it in Settings.",
       );
       return false;
@@ -55,7 +56,7 @@ async function requestNativePermissions(): Promise<boolean> {
       requested.coarseLocation === "granted"
     );
   } catch (err) {
-    console.error("[Geolocation] Permission request failed:", err);
+    clientLogger.error("[Geolocation] Permission request failed:", err);
     return false;
   }
 }
@@ -148,7 +149,7 @@ export function useNativeGeolocation(): UseNativeGeolocationReturn {
       } catch (err: any) {
         const msg = friendlyError(err);
         setError(msg);
-        console.error("[Geolocation] getCurrentPosition failed:", err);
+        clientLogger.error("[Geolocation] getCurrentPosition failed:", err);
         return null;
       }
     }
@@ -251,7 +252,7 @@ export function useNativeGeolocation(): UseNativeGeolocationReturn {
           });
         }
       } catch (err) {
-        console.warn("[Geolocation] clearWatch failed:", err);
+        clientLogger.warn("[Geolocation] clearWatch failed:", err);
       }
     } else {
       navigator.geolocation.clearWatch(watchIdRef.current as number);

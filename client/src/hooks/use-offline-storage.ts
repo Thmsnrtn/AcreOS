@@ -8,6 +8,7 @@
 
 import { useCallback, useRef, useEffect } from "react";
 import { isNative } from "@/lib/platform";
+import { clientLogger } from "@/lib/clientLogger";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -120,7 +121,7 @@ export function useOfflineStorage(): UseOfflineStorageReturn {
         dbRef.current = db;
       })
       .catch((err) => {
-        console.warn("[OfflineStorage] Could not open IndexedDB:", err);
+        clientLogger.warn("[OfflineStorage] Could not open IndexedDB:", err);
       });
   }, []);
 
@@ -158,7 +159,7 @@ export function useOfflineStorage(): UseOfflineStorageReturn {
             err?.code === 22 ||
             err?.message?.includes("quota")
           ) {
-            console.error(
+            clientLogger.error(
               "[OfflineStorage] Storage quota exceeded. Consider clearing old data.",
             );
           }

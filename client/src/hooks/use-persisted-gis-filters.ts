@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useSearch, useLocation } from "wouter";
 import { GisFilterState, defaultGisFilters } from "@/components/gis-filters";
+import { clientLogger } from "@/lib/clientLogger";
 
 const STORAGE_KEY = "acreos:gis-filters";
 
@@ -67,7 +68,7 @@ function loadFromStorage(): Partial<GisFilterState> | null {
       return JSON.parse(stored);
     }
   } catch (e) {
-    console.warn("Failed to load GIS filters from localStorage:", e);
+    clientLogger.warn("Failed to load GIS filters from localStorage:", e);
   }
   return null;
 }
@@ -79,7 +80,7 @@ function saveToStorage(filters: GisFilterState): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(filters));
   } catch (e) {
-    console.warn("Failed to save GIS filters to localStorage:", e);
+    clientLogger.warn("Failed to save GIS filters to localStorage:", e);
   }
 }
 

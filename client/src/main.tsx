@@ -1,6 +1,7 @@
 import { createRoot } from "react-dom/client";
 import { ClerkProvider } from "@clerk/react";
 import App from "./App";
+import { clientLogger } from "@/lib/clientLogger";
 import "./fonts.css";
 import "./index.css";
 import { initClientSentry } from "./lib/sentry";
@@ -19,10 +20,10 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js')
       .then((registration) => {
-        console.log('SW registered:', registration.scope);
+        clientLogger.info('SW registered:', registration.scope);
       })
       .catch((error) => {
-        console.log('SW registration failed:', error);
+        clientLogger.info('SW registration failed:', error);
       });
   });
 }

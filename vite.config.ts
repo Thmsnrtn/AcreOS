@@ -1,8 +1,32 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
+import { execSync } from "child_process";
+
+// Resolve the git SHA at config time so the value is baked into the
+// client bundle as `import.meta.env.VITE_GIT_SHA`. CI overrides this
+// via the env var so deploys reflect the actual commit even when the
+// build runs in a shallow clone where `git rev-parse` would fail.
+function resolveGitSha(): string {
+  if (process.env.VITE_GIT_SHA) return process.env.VITE_GIT_SHA;
+  try {
+    return execSync("git rev-parse HEAD", { stdio: ["ignore", "pipe", "ignore"] })
+      .toString()
+      .trim();
+  } catch {
+    return "unknown";
+  }
+}
+
+const GIT_SHA = resolveGitSha();
+process.env.VITE_GIT_SHA = GIT_SHA;
 
 export default defineConfig({
+  define: {
+    // Belt-and-suspenders: ensure `import.meta.env.VITE_GIT_SHA` is
+    // available even when Vite's loadEnv hasn't picked up the var.
+    "import.meta.env.VITE_GIT_SHA": JSON.stringify(GIT_SHA),
+  },
   plugins: [
     react(),
   ],

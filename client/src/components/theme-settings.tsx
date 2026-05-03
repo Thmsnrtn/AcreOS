@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { Palette, Moon, Sun, Monitor } from "lucide-react";
+import { clientLogger } from "@/lib/clientLogger";
 
 /**
  * Quick theme picker dialog — surfaced from the top bar / palette for fast
@@ -73,7 +74,7 @@ if (process.env.NODE_ENV !== "production") {
   for (const id of THEME_IDS) {
     if (!swatchIds.has(id)) {
       // eslint-disable-next-line no-console
-      console.warn(`[theme-settings] no swatch defined for ThemeId="${id}"`);
+      clientLogger.warn(`[theme-settings] no swatch defined for ThemeId="${id}"`);
     }
   }
 }

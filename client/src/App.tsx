@@ -10,6 +10,7 @@ import { useWhiteLabel } from "@/hooks/use-white-label";
 import { useFeatureFlags } from "@/hooks/use-feature-flags";
 import { Loader2 } from "lucide-react";
 import { telemetry } from "@/lib/telemetry";
+import { setSentryUser } from "@/lib/sentry";
 import { ThemeProvider } from "@/contexts/theme-context";
 import { FeatureFlagsProvider } from "@/contexts/feature-flags-context";
 import { PaxRailProvider } from "@/contexts/pax-rail-context";
@@ -1005,6 +1006,11 @@ function AppContent() {
   React.useEffect(() => {
     if (user) {
       telemetry.sessionStart();
+      // Tag Sentry events with the authenticated user so error reports
+      // are searchable by id/email. Cleared on logout via the else branch.
+      setSentryUser({ id: user.id, email: user.email ?? undefined });
+    } else {
+      setSentryUser(null);
     }
   }, [user]);
 

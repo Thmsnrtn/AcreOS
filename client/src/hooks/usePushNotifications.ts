@@ -12,6 +12,7 @@
 
 import { useEffect, useCallback, useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
+import { clientLogger } from "@/lib/clientLogger";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -77,7 +78,7 @@ export function usePushNotifications(): UsePushNotificationsResult {
         body: JSON.stringify({ token, platform: (window as any).Capacitor?.getPlatform?.() ?? 'unknown' }),
       });
     } catch (err) {
-      console.warn('[Push] Failed to store device token:', err);
+      clientLogger.warn('[Push] Failed to store device token:', err);
     }
   }, []);
 
@@ -91,14 +92,14 @@ export function usePushNotifications(): UsePushNotificationsResult {
         body: JSON.stringify({ token }),
       });
     } catch (err) {
-      console.warn('[Push] Failed to remove device token:', err);
+      clientLogger.warn('[Push] Failed to remove device token:', err);
     }
   }, []);
 
   // ── Register ────────────────────────────────────────────────────────────────
   const register = useCallback(async () => {
     if (!isCapacitor) {
-      console.log('[Push] Not a Capacitor native platform; skipping registration.');
+      clientLogger.info('[Push] Not a Capacitor native platform; skipping registration.');
       return;
     }
 
@@ -122,14 +123,14 @@ export function usePushNotifications(): UsePushNotificationsResult {
 
       // ── Registration success — get token ──────────────────────────────────
       PushNotifications.addListener('registration', async ({ value: token }) => {
-        console.log('[Push] Device token:', token);
+        clientLogger.info('[Push] Device token:', token);
         setDeviceToken(token);
         await storeTokenOnServer(token);
       });
 
       // ── Registration error ────────────────────────────────────────────────
       PushNotifications.addListener('registrationError', (err) => {
-        console.error('[Push] Registration error:', err.error);
+        clientLogger.error('[Push] Registration error:', err.error);
         toast({ title: 'Push registration failed', description: err.error, variant: 'destructive' });
       });
 
@@ -153,7 +154,7 @@ export function usePushNotifications(): UsePushNotificationsResult {
         }
       });
     } catch (err) {
-      console.error('[Push] Capacitor plugin error:', err);
+      clientLogger.error('[Push] Capacitor plugin error:', err);
     }
   }, [isCapacitor, storeTokenOnServer, toast]);
 
@@ -167,7 +168,7 @@ export function usePushNotifications(): UsePushNotificationsResult {
       setDeviceToken(null);
       setPermissionGranted(false);
     } catch (err) {
-      console.error('[Push] Unregister error:', err);
+      clientLogger.error('[Push] Unregister error:', err);
     }
   }, [isCapacitor, deviceToken, removeTokenFromServer]);
 

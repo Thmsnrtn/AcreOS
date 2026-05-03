@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { clientLogger } from "@/lib/clientLogger";
 
 /**
  * Per-list-type view preferences. Phase C.3 of the port.
@@ -84,7 +85,7 @@ async function patchServer(map: ListViewMap): Promise<void> {
     });
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.warn("[list-view] PATCH /api/me/preferences listViews failed; local state retained", err);
+    clientLogger.warn("[list-view] PATCH /api/me/preferences listViews failed; local state retained", err);
   }
 }
 

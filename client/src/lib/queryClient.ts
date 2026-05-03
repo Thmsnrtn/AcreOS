@@ -3,6 +3,7 @@ import { toast } from "@/hooks/use-toast";
 import React from "react";
 import { ToastAction } from "@/components/ui/toast";
 import { getErrorMessage, getErrorTitle, shouldRetry, isAuthError } from "@/lib/error-utils";
+import { clientLogger } from "@/lib/clientLogger";
 
 // Per-request timeout (ms). Short enough that a stalled endpoint
 // surfaces as a retry-able error rather than a perpetual spinner; long
@@ -76,7 +77,7 @@ function handleQueryError(error: unknown): void {
   // Same for 403 — silent permission boundaries. Real failures (500,
   // network) still toast.
   if (err.message.includes("404") || err.message.includes("403")) {
-    console.error("[Query Error — suppressed toast]", err);
+    clientLogger.error("[Query Error — suppressed toast]", err);
     return;
   }
 
@@ -100,7 +101,7 @@ function handleQueryError(error: unknown): void {
     ) as any,
   });
 
-  console.error("[Query Error]", err);
+  clientLogger.error("[Query Error]", err);
 }
 
 function handleMutationError(error: unknown): void {
@@ -135,7 +136,7 @@ function handleMutationError(error: unknown): void {
     ) as any,
   });
   
-  console.error("[Mutation Error]", err);
+  clientLogger.error("[Mutation Error]", err);
 }
 
 function readCsrfToken(): string {

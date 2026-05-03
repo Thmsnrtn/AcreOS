@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { clientLogger } from "@/lib/clientLogger";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -67,9 +68,9 @@ export function usePWA() {
       navigator.serviceWorker
         .register("/sw.js", { scope: "/" })
         .then((reg) => {
-          console.log("[PWA] Service worker registered:", reg.scope);
+          clientLogger.info("[PWA] Service worker registered:", reg.scope);
         })
-        .catch((err) => console.error("[PWA] SW registration failed:", err));
+        .catch((err) => clientLogger.error("[PWA] SW registration failed:", err));
     }
 
     refreshPendingCount();

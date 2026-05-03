@@ -1,6 +1,7 @@
 import { useState, useEffect, type ElementType } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { clientLogger } from "@/lib/clientLogger";
 import {
   Dialog,
   DialogContent,
@@ -214,7 +215,7 @@ function getLocalState() {
       return JSON.parse(stored);
     }
   } catch (error) {
-    console.error("Error reading onboarding state:", error);
+    clientLogger.error("Error reading onboarding state:", error);
   }
   return null;
 }
@@ -223,7 +224,7 @@ function setLocalState(state: any) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch (error) {
-    console.error("Error saving onboarding state:", error);
+    clientLogger.error("Error saving onboarding state:", error);
   }
 }
 

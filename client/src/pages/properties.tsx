@@ -1,6 +1,7 @@
 import { PageShell } from "@/components/page-shell";
 import { useTerm } from "@/hooks/use-persona";
 import { usd, plural } from "@/lib/format";
+import { clientLogger } from "@/lib/clientLogger";
 import "./today.css";
 import { PaxContextButton } from "@/components/pax-context-button";
 import { ListPagination, usePagination } from "@/components/list-pagination";
@@ -51,7 +52,7 @@ function computeCentroidFromBoundary(boundary: { type: string; coordinates: numb
       lat: sumLat / coords.length
     };
   } catch (e) {
-    console.error("Failed to compute centroid from boundary:", e);
+    clientLogger.error("Failed to compute centroid from boundary:", e);
     return null;
   }
 }

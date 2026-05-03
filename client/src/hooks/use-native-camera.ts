@@ -7,6 +7,7 @@
 
 import { useState, useCallback, useRef } from "react";
 import { isNative } from "@/lib/platform";
+import { clientLogger } from "@/lib/clientLogger";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -253,7 +254,7 @@ export function useNativeCamera(): UseNativeCameraReturn {
         if (perms.camera === "denied" || perms.photos === "denied") {
           const requested = await Camera.requestPermissions();
           if (requested.camera === "denied") {
-            console.warn("[Camera] Permission denied by user");
+            clientLogger.warn("[Camera] Permission denied by user");
             return null;
           }
         }
@@ -289,7 +290,7 @@ export function useNativeCamera(): UseNativeCameraReturn {
         if (err?.message?.includes("cancelled") || err?.message?.includes("canceled")) {
           return null;
         }
-        console.error("[Camera] Native capture failed:", err);
+        clientLogger.error("[Camera] Native capture failed:", err);
         return null;
       }
     },
@@ -318,7 +319,7 @@ export function useNativeCamera(): UseNativeCameraReturn {
         setPhotos((prev) => [...prev, captured]);
         return captured;
       } catch (err) {
-        console.error("[Camera] Web capture failed:", err);
+        clientLogger.error("[Camera] Web capture failed:", err);
         return null;
       }
     },
