@@ -132,6 +132,13 @@ export const organizations = pgTable("organizations", {
     phone?: string;
   }>(),
   legalEntityName: text("legal_entity_name"), // exact IRS filing name
+  // Coriander §1: Recovery-console autopay freeze. When true, Stripe
+  // collection is paused via collection_method = "send_invoice". Set by
+  // founder during dispute / death / fraud workflows; cleared explicitly.
+  autopayFrozen: boolean("autopay_frozen").notNull().default(false),
+  autopayFrozenAt: timestamp("autopay_frozen_at"),
+  autopayFrozenReason: text("autopay_frozen_reason"),
+  autopayFrozenUntil: timestamp("autopay_frozen_until"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -4259,6 +4266,34 @@ export const insertAuditLogSchema = createInsertSchema(auditLog).omit({
 // Types
 export type AuditLogEntry = typeof auditLog.$inferSelect;
 export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
+
+// ─── Coriander §1: Recovery-console audit events ────────────────────────────
+// Platform-wide append-only event log for high-risk admin recovery actions
+// (2FA reset, session revoke, autopay freeze, ownership transfer, password-
+// reset link). Distinct from the org-scoped audit_log table because some
+// targets have no owning org (cross-org ownership transfers, account-wide
+// 2FA resets). Retention: 7 years; never deleted.
+export const auditEvents = pgTable("audit_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  actorUserId: text("actor_user_id"),
+  actorEmail: text("actor_email"),
+  action: text("action").notNull(),
+  targetType: text("target_type").notNull(),
+  targetId: text("target_id").notNull(),
+  justification: text("justification"),
+  metadata: jsonb("metadata").$type<Record<string, any>>(),
+  ip: text("ip"),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index("idx_audit_events_actor").on(table.actorUserId),
+  index("idx_audit_events_target").on(table.targetType, table.targetId),
+  index("idx_audit_events_action").on(table.action),
+  index("idx_audit_events_created_at").on(table.createdAt),
+]);
+
+export type AuditEvent = typeof auditEvents.$inferSelect;
+export type InsertAuditEvent = typeof auditEvents.$inferInsert;
 
 // Audit action types
 export const AUDIT_ACTIONS = [

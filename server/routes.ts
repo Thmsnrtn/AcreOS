@@ -143,6 +143,7 @@ import aiDraftRouter from "./routes-ai-draft";
 import { registerBillingRoutes } from "./routes-billing";
 import { registerBorrowerRoutes } from "./routes-borrower";
 import { registerAdminRoutes } from "./routes-admin";
+import { registerAdminRecoveryRoutes } from "./routes-admin-recovery";
 import { registerEliteFeatureRoutes } from "./routes-elite-features";
 import { registerCoreAIRoutes } from "./routes-core-ai";
 import { registerAutonomousAgentRoutes } from "./routes-autonomous-agent";
@@ -1623,6 +1624,10 @@ export async function registerRoutes(
   // F-A07-1: Require 2FA verification before any admin operation for users who have it enabled
   app.use("/api/admin", isAuthenticated, require2FA);
   registerAdminRoutes(app);
+  // Coriander §1: Recovery-console endpoints (founder-gated, audit-logged).
+  // Mounted alongside other /api/admin routes so the require2FA middleware
+  // at line 1624 above also covers them.
+  registerAdminRecoveryRoutes(app);
   registerCoreAIRoutes(app);
   registerIntegrationRoutes(app);
   registerCRMExtrasRoutes(app);
