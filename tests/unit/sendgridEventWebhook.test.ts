@@ -192,27 +192,38 @@ describe("SendGrid event webhook signature verification", () => {
 
 describe("suppressionFromEvent", () => {
   it("maps hard bounce to suppression", () => {
-    expect(suppressionFromEvent({ event: "bounce", type: "bounce", reason: "550" })).toEqual({
+    // Eleonora §10: result now also carries bounceCategory for the
+    // founder dashboard's per-org reputation calculator.
+    expect(suppressionFromEvent({ event: "bounce", type: "bounce", reason: "550" })).toMatchObject({
       reason: "550",
       source: "bounce",
+      bounceCategory: "hard",
     });
   });
 
-  it("does NOT suppress on soft/blocked bounce", () => {
-    expect(suppressionFromEvent({ event: "bounce", type: "blocked" })).toBeNull();
+  it("flags soft/blocked bounce for strike-counting (no immediate suppression)", () => {
+    // Eleonora §10: soft bounces no longer no-op — they return a
+    // softBounce:true marker so the webhook handler routes them through
+    // recordSoftBounce() (3 strikes in 30 days → permanent suppression).
+    const result = suppressionFromEvent({ event: "bounce", type: "blocked" });
+    expect(result).not.toBeNull();
+    expect(result!.softBounce).toBe(true);
+    expect(result!.bounceCategory).toBe("soft");
   });
 
   it("maps spamreport to spam source", () => {
-    expect(suppressionFromEvent({ event: "spamreport" })).toEqual({
+    expect(suppressionFromEvent({ event: "spamreport" })).toMatchObject({
       reason: "spam_report",
       source: "spam",
+      bounceCategory: "complaint",
     });
   });
 
   it("maps unsubscribe to unsubscribe source", () => {
-    expect(suppressionFromEvent({ event: "unsubscribe" })).toEqual({
+    expect(suppressionFromEvent({ event: "unsubscribe" })).toMatchObject({
       reason: "unsubscribe",
       source: "unsubscribe",
+      bounceCategory: "unsubscribe",
     });
   });
 

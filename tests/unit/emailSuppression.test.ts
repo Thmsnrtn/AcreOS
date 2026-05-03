@@ -30,6 +30,30 @@ vi.mock("../../server/services/emailSuppressions", () => ({
     suppressedSet.add(e.trim().toLowerCase());
   }),
   suppressionFromEvent: vi.fn(),
+  recordSoftBounce: vi.fn(async () => ({ suppressed: false, strikes: 1 })),
+  alertFounderOnComplaint: vi.fn(),
+}));
+
+// Eleonora deliverability — Phase 1 §10 / Week 7-8: emailService now also
+// imports unsubscribeTokens, emailWarmup, and orgEmailIdentity. Mock them
+// to no-ops so the suppression test still exercises the suppression path.
+vi.mock("../../server/services/unsubscribeTokens", () => ({
+  issueToken: vi.fn(async () => "test-token"),
+  buildUnsubscribeUrl: () => "https://app.acreos.io/u/test-token",
+}));
+
+vi.mock("../../server/services/emailWarmup", () => ({
+  reserveSend: vi.fn(async () => ({
+    ok: true,
+    dailyLimit: 10000,
+    used: 1,
+    resetAt: new Date(Date.now() + 86400_000),
+    warmupDay: 7,
+  })),
+}));
+
+vi.mock("../../server/services/orgEmailIdentity", () => ({
+  getIdentityForSend: vi.fn(async () => null),
 }));
 
 vi.mock("../../server/utils/simulationMode", () => ({
@@ -47,6 +71,12 @@ vi.mock("../../server/storage", () => ({
 
 vi.mock("../../server/services/encryption", () => ({
   decryptJsonCredentials: vi.fn(),
+}));
+
+vi.mock("../../server/services/fieldEncryption", () => ({
+  decryptJsonCredentials: vi.fn(),
+  encrypt: vi.fn((s: string) => s),
+  decrypt: vi.fn((s: string) => s),
 }));
 
 vi.mock("../../server/utils/logger", () => ({

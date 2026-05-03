@@ -315,9 +315,16 @@ export const emailSuppressions = pgTable(
     reason: text("reason").notNull(),
     suppressedAt: timestamp("suppressed_at", { withTimezone: true }).defaultNow().notNull(),
     source: text("source"), // "bounce" | "spam" | "unsubscribe" | "manual"
+    // Eleonora deliverability — Phase 1 §10 / Week 7-8.
+    bounceCategory: text("bounce_category"), // "hard" | "soft" | "complaint" | "unsubscribe" | "manual"
+    organizationId: integer("organization_id"),
+    softBounceCount: integer("soft_bounce_count").notNull().default(0),
+    lastSoftBounceAt: timestamp("last_soft_bounce_at", { withTimezone: true }),
   },
   (table) => ({
     bySource: index("idx_email_suppressions_source").on(table.source),
+    byOrg: index("idx_email_suppressions_org").on(table.organizationId),
+    byCategory: index("idx_email_suppressions_category").on(table.bounceCategory),
   })
 );
 
@@ -325,6 +332,105 @@ export type EmailEvent = typeof emailEvents.$inferSelect;
 export type InsertEmailEvent = typeof emailEvents.$inferInsert;
 export type EmailSuppression = typeof emailSuppressions.$inferSelect;
 export type InsertEmailSuppression = typeof emailSuppressions.$inferInsert;
+
+// ============================================
+// ELEONORA DELIVERABILITY — Phase 1 §10 / Week 7-8
+// ============================================
+// Per-org email identity (DKIM/SPF/DMARC). The keypair is generated server-
+// side; the private key is encrypted at rest via fieldEncryption.encrypt().
+// The founder publishes the DNS records returned by /provision; once the
+// records propagate, /verify confirms them and (when SENDGRID_API_KEY is
+// set) registers the domain with SendGrid's domain-authentication API.
+export const orgEmailIdentities = pgTable(
+  "org_email_identities",
+  {
+    id: serial("id").primaryKey(),
+    organizationId: integer("organization_id").notNull(),
+    fromAddress: text("from_address").notNull(),
+    dkimDomain: text("dkim_domain").notNull(),
+    dkimSelector: text("dkim_selector").notNull().default("acreos1"),
+    dkimPublicKey: text("dkim_public_key").notNull(),
+    dkimPrivateKeyEncrypted: text("dkim_private_key_encrypted").notNull(),
+    spfRecord: text("spf_record").notNull(),
+    dmarcRecord: text("dmarc_record").notNull(),
+    status: text("status").notNull().default("provisioning"), // provisioning | verified | failed
+    sendgridDomainId: text("sendgrid_domain_id"),
+    verificationError: text("verification_error"),
+    verifiedAt: timestamp("verified_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    byOrgDomain: uniqueIndex("idx_org_email_identities_org_domain").on(
+      table.organizationId,
+      table.dkimDomain,
+    ),
+    byStatus: index("idx_org_email_identities_status").on(table.status),
+  })
+);
+
+export type OrgEmailIdentity = typeof orgEmailIdentities.$inferSelect;
+export type InsertOrgEmailIdentity = typeof orgEmailIdentities.$inferInsert;
+
+// Per-org IP-warmup state. Day-based ramp; the dailySendLimit is recomputed
+// from daysSinceFirstSend whenever currentDayResetAt rolls over.
+export const emailWarmupState = pgTable("email_warmup_state", {
+  organizationId: integer("organization_id").primaryKey(),
+  firstSendAt: timestamp("first_send_at", { withTimezone: true }),
+  daysSinceFirstSend: integer("days_since_first_send").notNull().default(0),
+  dailySendLimit: integer("daily_send_limit").notNull().default(50),
+  currentDayUsed: integer("current_day_used").notNull().default(0),
+  currentDayResetAt: timestamp("current_day_reset_at", { withTimezone: true }).defaultNow().notNull(),
+  warmupComplete: boolean("warmup_complete").notNull().default(false),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export type EmailWarmupState = typeof emailWarmupState.$inferSelect;
+export type InsertEmailWarmupState = typeof emailWarmupState.$inferInsert;
+
+// Token-based one-click List-Unsubscribe (RFC 8058). One row per recipient
+// per org — minted at first send and reused.
+export const unsubscribeTokens = pgTable(
+  "unsubscribe_tokens",
+  {
+    token: text("token").primaryKey(),
+    email: text("email").notNull(),
+    organizationId: integer("organization_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+  },
+  (table) => ({
+    byEmail: index("idx_unsubscribe_tokens_email").on(table.email),
+  })
+);
+
+export type UnsubscribeToken = typeof unsubscribeTokens.$inferSelect;
+export type InsertUnsubscribeToken = typeof unsubscribeTokens.$inferInsert;
+
+// Per-org rolling deliverability snapshot. Computed nightly + on demand.
+// healthStatus: "healthy" (score≥90) | "at_risk" (70-89) | "critical" (<70).
+export const emailReputationSnapshot = pgTable(
+  "email_reputation_snapshot",
+  {
+    id: serial("id").primaryKey(),
+    organizationId: integer("organization_id").notNull(),
+    windowDays: integer("window_days").notNull().default(30),
+    sentCount: integer("sent_count").notNull().default(0),
+    bounceCount: integer("bounce_count").notNull().default(0),
+    complaintCount: integer("complaint_count").notNull().default(0),
+    bounceRate: numeric("bounce_rate", { precision: 5, scale: 4 }).notNull().default("0"),
+    complaintRate: numeric("complaint_rate", { precision: 5, scale: 4 }).notNull().default("0"),
+    deliverabilityScore: integer("deliverability_score").notNull().default(100),
+    healthStatus: text("health_status").notNull().default("healthy"),
+    computedAt: timestamp("computed_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    byOrgComputed: index("idx_email_reputation_org_computed").on(table.organizationId, table.computedAt),
+  })
+);
+
+export type EmailReputationSnapshot = typeof emailReputationSnapshot.$inferSelect;
+export type InsertEmailReputationSnapshot = typeof emailReputationSnapshot.$inferInsert;
 
 // ============================================
 // VERIFIED SENDERS (Email & SMS)

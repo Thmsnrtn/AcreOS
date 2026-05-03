@@ -1,9 +1,29 @@
-import { SESClient, SendEmailCommand, GetSendQuotaCommand } from '@aws-sdk/client-ses';
+import { SESClient, SendEmailCommand, SendRawEmailCommand, GetSendQuotaCommand } from '@aws-sdk/client-ses';
 import { storage } from '../storage';
 import { decryptJsonCredentials } from './fieldEncryption';
 import { emailCircuitBreaker } from '../utils/circuitBreaker';
 import { logger } from "../utils/logger";
 import { filterSuppressed } from "./emailSuppressions";
+import { issueToken, buildUnsubscribeUrl } from "./unsubscribeTokens";
+import { reserveSend } from "./emailWarmup";
+import { getIdentityForSend } from "./orgEmailIdentity";
+
+/**
+ * Eleonora deliverability — Phase 1 §10 / Week 7-8.
+ *
+ * Every outbound message now ships with a List-Unsubscribe header that
+ * points to BOTH a mailto fallback and a tokenized one-click URL handler
+ * (RFC 8058). The token is per-recipient + per-org and resolves through
+ * `unsubscribe_tokens`. We use SendRawEmailCommand instead of SendEmail
+ * because the v1 SES API doesn't expose arbitrary headers via SendEmail.
+ *
+ * Per-org IP warmup is enforced through reserveSend(orgId): if the org's
+ * daily cap is reached the send is rejected with errorType="quota_exceeded".
+ *
+ * Per-org DKIM/SPF/DMARC identity (orgEmailIdentity) overrides the default
+ * platform from-address when a verified identity exists for the org.
+ */
+const UNSUBSCRIBE_MAILTO = process.env.UNSUBSCRIBE_MAILTO || 'unsubscribe@acreos.com';
 
 interface AWSCredentials {
   accessKeyId: string;
@@ -237,6 +257,66 @@ export interface EmailLogEntry {
   durationMs: number;
 }
 
+/**
+ * Build a multipart/alternative RFC 5322 message with the deliverability
+ * headers Eleonora §10 mandates. Specifically:
+ *   - List-Unsubscribe with both mailto: and https URL (RFC 2369)
+ *   - List-Unsubscribe-Post: List-Unsubscribe=One-Click (RFC 8058)
+ * The output is fed to SendRawEmailCommand so SES preserves the headers.
+ */
+export function buildRawMimeMessage(opts: {
+  from: string;
+  to: string[];
+  subject: string;
+  html: string;
+  text: string;
+  replyTo?: string;
+  listUnsubscribeMailto: string;
+  listUnsubscribeUrl: string;
+}): string {
+  const boundary = `=_acreos_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  const headers = [
+    `From: ${opts.from}`,
+    `To: ${opts.to.join(", ")}`,
+    `Subject: ${encodeMimeHeader(opts.subject)}`,
+    "MIME-Version: 1.0",
+    `Content-Type: multipart/alternative; boundary="${boundary}"`,
+    `List-Unsubscribe: <mailto:${opts.listUnsubscribeMailto}>, <${opts.listUnsubscribeUrl}>`,
+    "List-Unsubscribe-Post: List-Unsubscribe=One-Click",
+  ];
+  if (opts.replyTo) headers.push(`Reply-To: ${opts.replyTo}`);
+
+  const body = [
+    `--${boundary}`,
+    'Content-Type: text/plain; charset="UTF-8"',
+    "Content-Transfer-Encoding: 7bit",
+    "",
+    opts.text,
+    "",
+    `--${boundary}`,
+    'Content-Type: text/html; charset="UTF-8"',
+    "Content-Transfer-Encoding: 7bit",
+    "",
+    opts.html,
+    "",
+    `--${boundary}--`,
+    "",
+  ];
+
+  return headers.join("\r\n") + "\r\n\r\n" + body.join("\r\n");
+}
+
+/**
+ * Minimal RFC 2047 encoder for non-ASCII subject lines. SES tolerates
+ * raw UTF-8 in headers but several inboxes reject anything outside the
+ * printable ASCII range, so we b-encode anything that looks unsafe.
+ */
+function encodeMimeHeader(value: string): string {
+  // eslint-disable-next-line no-control-regex
+  if (!/[\x00-\x1f\x7f-￿]/.test(value)) return value;
+  return `=?UTF-8?B?${Buffer.from(value, "utf8").toString("base64")}?=`;
+}
+
 export class EmailService {
   private recentLogs: EmailLogEntry[] = [];
   private maxLogEntries = 100;
@@ -336,53 +416,92 @@ export class EmailService {
     toAddresses.length = 0;
     toAddresses.push(...suppressionCheck.allowed);
 
+    // Eleonora §10: enforce per-org IP-warmup ramp before SES is touched.
+    // Brand-new orgs are capped at 50/day on day 1, scaling up to 10k/day
+    // by day 7. Hitting the cap returns quota_exceeded immediately (no SES
+    // round-trip and no spend on a doomed send).
+    if (options.organizationId) {
+      const reservation = await reserveSend(options.organizationId);
+      if (!reservation.ok) {
+        logger.warn('[EmailService] warmup limit reached — send rejected', { metadata: {
+          organizationId: options.organizationId,
+          dailyLimit: reservation.dailyLimit,
+          warmupDay: reservation.warmupDay,
+          resetAt: reservation.resetAt,
+        } });
+        return {
+          success: false,
+          error: `Daily send limit reached for warmup day ${reservation.warmupDay} (limit: ${reservation.dailyLimit}). Resets at ${reservation.resetAt.toISOString()}.`,
+          errorType: 'quota_exceeded',
+          attempts: 0,
+          retryable: false,
+        };
+      }
+    }
+
     let lastError: any = null;
     let attempts = 0;
-    
+
     for (let attempt = 0; attempt <= config.maxRetries; attempt++) {
       attempts = attempt + 1;
-      
+
       try {
-        const { client, fromEmail: defaultFromEmail, fromName: defaultFromName, source } = 
+        const { client, fromEmail: defaultFromEmail, fromName: defaultFromName, source } =
           await getSESClient(options.organizationId);
-        
-        const fromAddress = options.from || defaultFromEmail;
-        const fromNameFinal = options.fromName || defaultFromName || 'AcreOS';
+
+        // Eleonora §10: prefer the org-specific verified DKIM identity over
+        // the platform/SES default. We still use the platform's AWS creds
+        // to actually send — SES authenticates the From: domain via the
+        // identity records (DKIM/SPF/DMARC) the founder published.
+        let fromAddress = options.from || defaultFromEmail;
+        let fromNameFinal = options.fromName || defaultFromName || 'AcreOS';
+        if (options.organizationId) {
+          const orgIdentity = await getIdentityForSend(options.organizationId);
+          if (orgIdentity) {
+            fromAddress = options.from || orgIdentity.fromAddress;
+          }
+        }
         const fromFormatted = `${fromNameFinal} <${fromAddress}>`;
+
+        // Eleonora §10: every outbound message gets a per-recipient
+        // List-Unsubscribe token. Reused across sends to the same
+        // recipient (RFC 8058 stability requirement).
+        const primaryRecipient = toAddresses[0];
+        const unsubToken = await issueToken({
+          email: primaryRecipient,
+          organizationId: options.organizationId,
+        });
+        const unsubUrl = options.unsubscribeUrl || buildUnsubscribeUrl(unsubToken);
 
         // CAN-SPAM / GDPR compliance: append unsubscribe footer for campaign/marketing emails
         let htmlBody = options.html;
         if (options.isCampaignEmail || options.unsubscribeUrl) {
-          const unsubUrl = options.unsubscribeUrl || '#';
           htmlBody = `${htmlBody}
 <div style="margin-top:32px;padding-top:16px;border-top:1px solid #e5e7eb;font-size:12px;color:#6b7280;text-align:center;">
   <p>You are receiving this email because you are a contact in our CRM system.</p>
   <p><a href="${unsubUrl}" style="color:#6b7280;text-decoration:underline;">Unsubscribe</a> from marketing emails</p>
 </div>`;
         }
+        const textBody = options.text || this.htmlToText(htmlBody);
 
-        const command = new SendEmailCommand({
+        // Eleonora §10: SendRawEmail with explicit List-Unsubscribe headers
+        // (RFC 2369 + RFC 8058). The MIME message includes both a mailto:
+        // fallback and the tokenized HTTPS one-click handler.
+        const rawMessage = buildRawMimeMessage({
+          from: fromFormatted,
+          to: toAddresses,
+          subject: options.subject,
+          html: htmlBody,
+          text: textBody,
+          replyTo: options.replyTo,
+          listUnsubscribeMailto: UNSUBSCRIBE_MAILTO,
+          listUnsubscribeUrl: unsubUrl,
+        });
+
+        const command = new SendRawEmailCommand({
           Source: fromFormatted,
-          Destination: {
-            ToAddresses: toAddresses,
-          },
-          Message: {
-            Subject: {
-              Data: options.subject,
-              Charset: 'UTF-8',
-            },
-            Body: {
-              Html: {
-                Data: htmlBody,
-                Charset: 'UTF-8',
-              },
-              Text: {
-                Data: options.text || this.htmlToText(htmlBody),
-                Charset: 'UTF-8',
-              },
-            },
-          },
-          ReplyToAddresses: options.replyTo ? [options.replyTo] : undefined,
+          Destinations: toAddresses,
+          RawMessage: { Data: Buffer.from(rawMessage, 'utf8') },
         });
 
         const response = await emailCircuitBreaker.call(() => client.send(command));

@@ -26,7 +26,12 @@ import type { Express, Request, Response } from "express";
 import crypto from "node:crypto";
 import { db } from "./db";
 import { emailEvents } from "@shared/schema";
-import { suppress, suppressionFromEvent } from "./services/emailSuppressions";
+import {
+  suppress,
+  suppressionFromEvent,
+  recordSoftBounce,
+  alertFounderOnComplaint,
+} from "./services/emailSuppressions";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
 
@@ -142,8 +147,32 @@ export async function ingestSendGridEvents(events: SendGridEvent[]): Promise<{
 
     const sup = suppressionFromEvent(evt);
     if (sup) {
-      await suppress(email, sup.reason, sup.source);
-      suppressed++;
+      // Per-org isolation: if SendGrid passed our org-id custom arg, attach
+      // it to the suppression record so /founder/deliverability can show
+      // the bounce against the originating tenant.
+      const orgIdRaw = (evt as Record<string, unknown>).organization_id;
+      const orgId = typeof orgIdRaw === "number" ? orgIdRaw : Number(orgIdRaw) || undefined;
+
+      if (sup.softBounce) {
+        // Soft bounce: 3 strikes within 30 days → suppress.
+        const result = await recordSoftBounce(email, sup.reason, { organizationId: orgId });
+        if (result.suppressed) suppressed++;
+      } else {
+        await suppress(email, sup.reason, sup.source, {
+          bounceCategory: sup.bounceCategory,
+          organizationId: orgId,
+        });
+        suppressed++;
+        // Complaint = spam report. Immediate founder alert in addition to
+        // the suppression itself (see alertFounderOnComplaint comments).
+        if (sup.bounceCategory === "complaint") {
+          await alertFounderOnComplaint({
+            email,
+            organizationId: orgId,
+            reason: sup.reason,
+          });
+        }
+      }
     }
   }
 
