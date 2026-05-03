@@ -11,9 +11,16 @@ export function initSentry(): void {
   if (!dsn) return;
   if (initialized) return;
 
+  // Release tag matches the client (VITE_GIT_SHA → SENTRY_RELEASE).
+  // CI/Fly should set SENTRY_RELEASE=$VITE_GIT_SHA at deploy time so
+  // server-side stack traces align with the same release as the
+  // browser bundle's source maps.
+  const release = process.env.SENTRY_RELEASE ?? process.env.VITE_GIT_SHA ?? undefined;
+
   Sentry.init({
     dsn,
     environment: process.env.NODE_ENV ?? "development",
+    ...(release ? { release } : {}),
     // Capture 10% of transactions for performance profiling in production;
     // override with SENTRY_TRACES_SAMPLE_RATE env var.
     tracesSampleRate: parseFloat(process.env.SENTRY_TRACES_SAMPLE_RATE ?? "0.1"),

@@ -2,6 +2,7 @@ import { Component, type ReactNode } from "react";
 import { RefreshCcw } from "lucide-react";
 import { Sentry } from "@/lib/sentry";
 import { ServerErrorPage } from "@/pages/coverage-page";
+import { clientLogger } from "@/lib/clientLogger";
 
 interface Props {
   children: ReactNode;
@@ -31,7 +32,7 @@ function logErrorToService(error: Error, errorInfo: React.ErrorInfo): string {
     userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "",
   };
 
-  console.error("[ErrorBoundary] Error captured:", errorReport);
+  clientLogger.error("[ErrorBoundary] Error captured:", errorReport);
 
   // Forward to Sentry (no-op when VITE_SENTRY_DSN is unset)
   Sentry.captureException(error, {

@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { clientLogger } from "@/lib/clientLogger";
 import {
   MapPin,
   Camera,
@@ -310,7 +311,7 @@ export default function FieldScout() {
           synced++;
         }
       } catch (err) {
-        console.error("Sync failed for action:", action.id);
+        clientLogger.error("Sync failed for action:", action.id);
         failed++;
       }
       setSyncProgress(Math.round(((i + 1) / queue.length) * 100));

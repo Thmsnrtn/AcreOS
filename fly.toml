@@ -2,6 +2,13 @@ app = 'acreos'
 primary_region = 'iad'
 
 [build]
+  # VITE_GIT_SHA is baked into the client bundle for Sentry release
+  # tagging + source-map symbolication. Pass via:
+  #   fly deploy --build-arg VITE_GIT_SHA=$(git rev-parse HEAD)
+  # SENTRY_AUTH_TOKEN must be set as a fly secret OR passed at deploy
+  # time so `sentry-cli sourcemaps upload` runs during the build step.
+  [build.args]
+    VITE_GIT_SHA = ""
 
 [deploy]
   # Idempotent schema patch runs in a one-shot release VM before new

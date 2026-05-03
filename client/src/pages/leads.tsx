@@ -2,6 +2,7 @@ import { PageShell } from "@/components/page-shell";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useTerm } from "@/hooks/use-persona";
 import { plural } from "@/lib/format";
+import { clientLogger } from "@/lib/clientLogger";
 import "./today.css";
 import { PaxContextButton } from "@/components/pax-context-button";
 import { ListPagination, usePagination } from "@/components/list-pagination";
@@ -912,7 +913,7 @@ export default function LeadsPage() {
       setImportPreview(null);
       queryClient.invalidateQueries({ queryKey: ['/api/leads'] });
     } catch (error) {
-      console.error('Import error:', error);
+      clientLogger.error('Import error:', error);
     } finally {
       setIsImporting(false);
     }
@@ -953,7 +954,7 @@ export default function LeadsPage() {
       setSelectedPropertyId("");
       setOfferAmount("");
     } catch (error) {
-      console.error('Download error:', error);
+      clientLogger.error('Download error:', error);
     } finally {
       setIsGeneratingOffer(false);
     }

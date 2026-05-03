@@ -7,6 +7,7 @@ import { Settings, GripVertical, ChevronUp, ChevronDown, RotateCcw } from "lucid
 import { useOrganization, useUpdateOrganization } from "@/hooks/use-organization";
 import { useToast } from "@/hooks/use-toast";
 import type { Organization } from "@shared/schema";
+import { clientLogger } from "@/lib/clientLogger";
 
 export interface WidgetConfig {
   id: string;
@@ -56,7 +57,7 @@ export function loadSettings(organization: Organization | undefined): DashboardW
       }
     }
   } catch (e) {
-    console.error("Failed to load dashboard settings from localStorage", e);
+    clientLogger.error("Failed to load dashboard settings from localStorage", e);
   }
   
   return getDefaultSettings();
@@ -121,7 +122,7 @@ export function DashboardSettings({ settings, onSettingsChange }: DashboardSetti
         description: "Your widget preferences have been updated.",
       });
     } catch (error) {
-      console.error("Failed to save dashboard settings", error);
+      clientLogger.error("Failed to save dashboard settings", error);
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(localSettings));
       onSettingsChange(localSettings);
       setOpen(false);

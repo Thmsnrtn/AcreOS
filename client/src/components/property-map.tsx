@@ -16,6 +16,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { useDynamicMapLayers, buildArcGISRasterTileUrl, isArcGISMapServerUrl, type MapLayer } from "@/hooks/use-dynamic-map-layers";
+import { clientLogger } from "@/lib/clientLogger";
 import "mapbox-gl/dist/mapbox-gl.css";
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN || (window as any).__ENV__?.VITE_MAPBOX_ACCESS_TOKEN;
@@ -58,7 +59,7 @@ function loadMeasurementUnits(): MeasurementUnits {
       return stored;
     }
   } catch {
-    console.log("Could not load measurement units from localStorage");
+    clientLogger.info("Could not load measurement units from localStorage");
   }
   return "imperial";
 }
@@ -67,7 +68,7 @@ function saveMeasurementUnits(units: MeasurementUnits): void {
   try {
     localStorage.setItem(MEASUREMENT_UNITS_KEY, units);
   } catch {
-    console.log("Could not save measurement units to localStorage");
+    clientLogger.info("Could not save measurement units to localStorage");
   }
 }
 
@@ -621,7 +622,7 @@ function loadLayerState(): LayerState {
       return { ...DEFAULT_LAYER_STATE, ...JSON.parse(stored) };
     }
   } catch {
-    console.log("Could not load layer state from localStorage");
+    clientLogger.info("Could not load layer state from localStorage");
   }
   return DEFAULT_LAYER_STATE;
 }
@@ -630,7 +631,7 @@ function saveLayerState(state: LayerState): void {
   try {
     localStorage.setItem(LAYER_STORAGE_KEY, JSON.stringify(state));
   } catch {
-    console.log("Could not save layer state to localStorage");
+    clientLogger.info("Could not save layer state to localStorage");
   }
 }
 
@@ -3291,7 +3292,7 @@ export function StaticPropertyMap({
         loading="lazy"
         onLoad={() => setIsLoading(false)}
         onError={() => {
-          console.warn("[StaticPropertyMap] Failed to load static map with overlay, using fallback");
+          clientLogger.warn("[StaticPropertyMap] Failed to load static map with overlay, using fallback");
           setImageError(true);
           setIsLoading(false);
         }}

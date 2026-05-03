@@ -5,6 +5,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useToast } from "@/hooks/use-toast";
 import { useOrganization } from "@/hooks/use-organization";
+import { clientLogger } from "@/lib/clientLogger";
 import {
   Sparkles,
   Upload,
@@ -144,7 +145,7 @@ function getLocalState() {
       return JSON.parse(stored);
     }
   } catch (error) {
-    console.error("Error reading onboarding state:", error);
+    clientLogger.error("Error reading onboarding state:", error);
   }
   return null;
 }
@@ -153,7 +154,7 @@ function setLocalState(state: any) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch (error) {
-    console.error("Error saving onboarding state:", error);
+    clientLogger.error("Error saving onboarding state:", error);
   }
 }
 
@@ -391,7 +392,7 @@ export function OnboardingWizard() {
         await completeMutation.mutateAsync();
       }
     } catch (error) {
-      console.error("Error in handleNext:", error);
+      clientLogger.error("Error in handleNext:", error);
     }
   };
 
@@ -404,7 +405,7 @@ export function OnboardingWizard() {
         try {
           await skipTaxIdentityMutation.mutateAsync();
         } catch (err) {
-          console.error("Error skipping tax identity:", err);
+          clientLogger.error("Error skipping tax identity:", err);
         }
       }
       await completeStepMutation.mutateAsync({ stepId: currentStep, data: { skipped: true } });
@@ -415,7 +416,7 @@ export function OnboardingWizard() {
         await completeMutation.mutateAsync();
       }
     } catch (error) {
-      console.error("Error in handleSkip:", error);
+      clientLogger.error("Error in handleSkip:", error);
     }
   };
 

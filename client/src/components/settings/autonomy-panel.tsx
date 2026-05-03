@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { clientLogger } from "@/lib/clientLogger";
 import {
   Collapsible,
   CollapsibleContent,
@@ -174,7 +175,7 @@ export function AutonomyPanel() {
         body: JSON.stringify(next),
       }).catch((err) => {
         // eslint-disable-next-line no-console
-        console.warn("[autonomy] PATCH failed; local state retained", err);
+        clientLogger.warn("[autonomy] PATCH failed; local state retained", err);
       });
     }, PATCH_DEBOUNCE_MS);
   };

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { clientLogger } from "@/lib/clientLogger";
 import { 
   useDueDiligenceChecklist, 
   useUpdateDueDiligenceChecklist,
@@ -261,7 +262,7 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
       );
       await updateChecklistAsync({ propertyId, updates: { items: updatedItems } });
     } catch (error: any) {
-      console.error(`Lookup ${type} failed:`, error);
+      clientLogger.error(`Lookup ${type} failed:`, error);
       toast({
         variant: "destructive",
         title: `${typeLabels[type]} lookup failed`,

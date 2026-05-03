@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { clientLogger } from "@/lib/clientLogger";
 
 export interface PushNotificationState {
   isSupported: boolean;
@@ -76,7 +77,7 @@ export function usePushNotifications() {
       }
       return false;
     } catch (error) {
-      console.error("Error requesting notification permission:", error);
+      clientLogger.error("Error requesting notification permission:", error);
       setState(prev => ({ ...prev, isLoading: false }));
       return false;
     }
@@ -128,7 +129,7 @@ export function usePushNotifications() {
       });
       return true;
     } catch (error) {
-      console.error("Error subscribing to push notifications:", error);
+      clientLogger.error("Error subscribing to push notifications:", error);
       setState(prev => ({ ...prev, isLoading: false }));
       toast({
         title: "Subscription Failed",
@@ -160,7 +161,7 @@ export function usePushNotifications() {
       });
       return true;
     } catch (error) {
-      console.error("Error unsubscribing from push notifications:", error);
+      clientLogger.error("Error unsubscribing from push notifications:", error);
       setState(prev => ({ ...prev, isLoading: false }));
       return false;
     }

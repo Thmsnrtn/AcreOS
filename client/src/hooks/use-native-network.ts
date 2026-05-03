@@ -7,6 +7,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { isNative } from "@/lib/platform";
+import { clientLogger } from "@/lib/clientLogger";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -71,7 +72,7 @@ export function useNativeNetwork(
           );
         })
         .catch((err) => {
-          console.warn("[Network] Capacitor Network plugin unavailable:", err);
+          clientLogger.warn("[Network] Capacitor Network plugin unavailable:", err);
           // Fall through to web listeners below
           setupWebListeners();
         });

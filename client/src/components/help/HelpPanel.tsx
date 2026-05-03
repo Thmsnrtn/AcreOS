@@ -75,8 +75,12 @@ function useBrowserContextCapture(maxErrors = 20): BrowserContext {
     
     trackAction(`Navigated to ${location}`);
     
-    // Capture console errors safely
+    // Intentional: HelpPanel monkey-patches the global error sink so the
+    // in-app debug overlay can surface what the user just saw. This is
+    // *not* application logging — the canonical logger is `clientLogger`.
+    // eslint-disable-next-line no-console -- intentional capture of native error sink for in-app debug surface
     const originalError = console.error;
+    // eslint-disable-next-line no-console -- intentional capture
     console.error = (...args) => {
       try {
         const message = args.map(a => safeStringify(a, 200)).join(' ');
@@ -87,7 +91,7 @@ function useBrowserContextCapture(maxErrors = 20): BrowserContext {
         }];
         trackAction(`Console error: ${message.slice(0, 100)}`);
       } catch {
-        // Ignore capture errors to avoid breaking console.error
+        // Swallow capture errors so we never break the underlying sink.
       }
       originalError.apply(console, args);
     };
@@ -165,6 +169,7 @@ function useBrowserContextCapture(maxErrors = 20): BrowserContext {
     document.addEventListener('click', handleClick);
     
     return () => {
+      // eslint-disable-next-line no-console -- restore monkey-patched sink on unmount
       console.error = originalError;
       window.fetch = originalFetch;
       window.removeEventListener('unhandledrejection', handleUnhandledRejection);

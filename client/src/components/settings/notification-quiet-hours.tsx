@@ -4,6 +4,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { MoonStar } from "lucide-react";
+import { clientLogger } from "@/lib/clientLogger";
 
 /**
  * Notification quiet hours — per-user preference. Phase C.2 of the port.
@@ -73,7 +74,7 @@ export function NotificationQuietHours() {
         body: JSON.stringify({ notificationQuietHours: next }),
       }).catch((err) => {
         // eslint-disable-next-line no-console
-        console.warn("[notifications] PATCH quiet hours failed; local state retained", err);
+        clientLogger.warn("[notifications] PATCH quiet hours failed; local state retained", err);
       });
     }, PATCH_DEBOUNCE_MS);
   };

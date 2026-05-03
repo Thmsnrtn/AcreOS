@@ -13,6 +13,7 @@ import { z } from "zod";
 import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
+import { clientLogger } from "@/lib/clientLogger";
 
 // Client-side form schema that omits organizationId (added by server)
 const noteFormSchema = insertNoteSchema.omit({ organizationId: true });
@@ -85,7 +86,7 @@ export default function FinancePage() {
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
     } catch (error) {
-      console.error('Export error:', error);
+      clientLogger.error('Export error:', error);
     } finally {
       setIsExporting(false);
     }

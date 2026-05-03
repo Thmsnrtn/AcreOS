@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/hooks/use-toast";
 import React from "react";
 import { ToastAction } from "@/components/ui/toast";
+import { clientLogger } from "@/lib/clientLogger";
 
 interface RetryOptions {
   maxRetries?: number;
@@ -57,7 +58,7 @@ export function useApiRetry<T>(
       } catch (error) {
         const err = error instanceof Error ? error : new Error(String(error));
         
-        console.error(`[API Retry] Attempt ${attempt + 1}/${maxRetries + 1} failed:`, err.message);
+        clientLogger.error(`[API Retry] Attempt ${attempt + 1}/${maxRetries + 1} failed:`, err.message);
         
         if (isAuthError(err)) {
           setState({ isRetrying: false, retryCount: attempt, lastError: err });
@@ -190,7 +191,7 @@ export function handleApiError(error: unknown, fallbackMessage?: string): void {
   const err = error instanceof Error ? error : new Error(String(error));
   const message = getApiErrorMessage(err);
   
-  console.error("[API Error]", err);
+  clientLogger.error("[API Error]", err);
   
   toast({
     title: "Request failed",

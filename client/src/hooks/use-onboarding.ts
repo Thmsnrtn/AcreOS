@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { clientLogger } from "@/lib/clientLogger";
 
 const STORAGE_KEY = "acreos_onboarding";
 
@@ -64,7 +65,7 @@ function getLocalState(): LocalOnboardingState {
       return { ...DEFAULT_STATE, ...JSON.parse(stored) };
     }
   } catch (error) {
-    console.error("Error reading onboarding state from localStorage:", error);
+    clientLogger.error("Error reading onboarding state from localStorage:", error);
   }
   return DEFAULT_STATE;
 }
@@ -75,7 +76,7 @@ function setLocalState(state: Partial<LocalOnboardingState>): void {
     const updated = { ...current, ...state };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
   } catch (error) {
-    console.error("Error saving onboarding state to localStorage:", error);
+    clientLogger.error("Error saving onboarding state to localStorage:", error);
   }
 }
 
