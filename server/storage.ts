@@ -2,6 +2,10 @@ import { db, withTransaction } from "./db";
 import { addMonths } from "./utils/dateUtils";
 export { db };
 import { eq, and, desc, asc, sql, count, sum, arrayContains, gte, lte, lt, or, inArray, ne, ilike, type SQL } from "drizzle-orm";
+import {
+  encryptSkipTracePayload,
+  decryptSkipTraceRow,
+} from "./services/skipTraceEncryption";
 
 export interface PaginationOptions {
   page: number;
@@ -5070,38 +5074,60 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Skip Traces
+  // R3: input_data and results carry PII (DOB hints, last-4 SSN, phones,
+  // prior addresses, relatives). They are AES-256-GCM encrypted at the
+  // application layer via skipTraceEncryption.* helpers. Reads are tolerant
+  // of legacy plaintext rows (mirrors decryptStoredTin in bookkeeping.ts).
   async getSkipTraces(orgId: number) {
-    return db.select().from(skipTraces)
+    const rows = await db.select().from(skipTraces)
       .where(eq(skipTraces.organizationId, orgId))
       .orderBy(desc(skipTraces.createdAt));
+    return rows.map((r) => decryptSkipTraceRow(r)!);
   }
 
   async getSkipTrace(orgId: number, id: number) {
     const [trace] = await db.select().from(skipTraces)
       .where(and(eq(skipTraces.id, id), eq(skipTraces.organizationId, orgId)));
-    return trace;
+    return decryptSkipTraceRow(trace);
   }
 
   async getSkipTraceByLead(orgId: number, leadId: number) {
     const [trace] = await db.select().from(skipTraces)
       .where(and(eq(skipTraces.organizationId, orgId), eq(skipTraces.leadId, leadId)))
       .orderBy(desc(skipTraces.createdAt));
-    return trace;
+    return decryptSkipTraceRow(trace);
   }
 
   async createSkipTrace(skipTrace: InsertSkipTrace) {
-    const [created] = await db.insert(skipTraces).values(skipTrace).returning();
-    return created;
+    const payload: InsertSkipTrace = {
+      ...skipTrace,
+      // Cast through `any` because the column type is the structured PII
+      // shape, but on disk we store an encryption envelope. The shape is
+      // restored by decryptSkipTraceRow on read.
+      inputData: encryptSkipTracePayload(skipTrace.inputData) as any,
+      results: encryptSkipTracePayload(skipTrace.results) as any,
+    };
+    const [created] = await db.insert(skipTraces).values(payload).returning();
+    return decryptSkipTraceRow(created)!;
   }
 
   async updateSkipTrace(id: number, updates: Partial<InsertSkipTrace>, organizationId?: number) {
     const conditions = [eq(skipTraces.id, id)];
     if (organizationId) conditions.push(eq(skipTraces.organizationId, organizationId));
+
+    const encrypted: Partial<InsertSkipTrace> = { ...updates };
+    if ("inputData" in updates) {
+      encrypted.inputData = encryptSkipTracePayload(updates.inputData) as any;
+    }
+    if ("results" in updates) {
+      encrypted.results = encryptSkipTracePayload(updates.results) as any;
+    }
+
     const [updated] = await db.update(skipTraces)
-      .set(updates)
+      .set(encrypted)
       .where(and(...conditions))
       .returning();
-    return updated;
+    return decryptSkipTraceRow(updated)!;
   }
 
   // Property Listings
