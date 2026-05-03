@@ -1370,6 +1370,30 @@ export async function registerRoutes(
     app.use('/api/founder/intelligence', isAuthenticated, founderIntelRouter);
   }
 
+  // Founder Vendor Status — aggregated Statuspage feeds for /founder-home tile
+  {
+    const vendorStatusRouter = (await import("./routes-founder-vendor-status")).default;
+    app.use('/api/founder/vendor-status', isAuthenticated, vendorStatusRouter);
+  }
+
+  // Founder Critical Alerts — P0/P1 ack-timer + escalation banner backing
+  {
+    const criticalAlertsRouter = (await import("./routes-founder-critical-alerts")).default;
+    app.use('/api/founder/critical-alerts', isAuthenticated, criticalAlertsRouter);
+  }
+
+  // Support — saved replies (operator pre-canned responses)
+  {
+    const savedRepliesRouter = (await import("./routes-support-saved-replies")).default;
+    app.use('/api/admin/support/saved-replies', isAuthenticated, savedRepliesRouter);
+  }
+
+  // Support — customer-context sidebar feed (org details + recent activity + open tickets)
+  {
+    const customerContextRouter = (await import("./routes-support-customer-context")).default;
+    app.use('/api/admin/support/customer-context', isAuthenticated, customerContextRouter);
+  }
+
   // Founder Setup API — interactive credential wizard
   {
     const setupRouter = (await import("./routes-setup")).default;

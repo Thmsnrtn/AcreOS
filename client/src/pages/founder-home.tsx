@@ -14,6 +14,9 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger,
+} from "@/components/ui/dialog";
 import { motion } from "framer-motion";
 import { staggerContainer, staggerItem } from "@/lib/animations";
 import {
@@ -151,6 +154,61 @@ const useActionQueue = () => useQuery<ActionQueueData>({ queryKey: ["/api/founde
 const useAgents = () => useQuery<AgentHealth[]>({ queryKey: ["/api/admin/agents/status"], refetchInterval: 10_000 });
 const useAutonomyHealth = () =>
   useQuery<AutonomyHealthReport>({ queryKey: ["/api/founder/intelligence/autonomy-health"], staleTime: 60_000 });
+
+// Vendor status — backed by /api/founder/vendor-status which aggregates
+// the Stripe / Twilio / SendGrid / Clerk public Statuspage feeds. Cached
+// 60s server-side, so we refetch every 60s here too.
+type VendorIndicator = "none" | "minor" | "major" | "critical" | "maintenance" | "unknown";
+interface VendorState {
+  name: string;
+  slug: string;
+  indicator: VendorIndicator;
+  description: string;
+  url: string;
+  fetchedAt: string;
+  ok: boolean;
+}
+interface VendorStatusReport {
+  vendors: VendorState[];
+  overall: "ok" | "incident" | "degraded" | "unknown";
+  generatedAt: string;
+  cachedFor: number;
+}
+const useVendorStatus = () =>
+  useQuery<VendorStatusReport>({
+    queryKey: ["/api/founder/vendor-status"],
+    staleTime: 60_000,
+    refetchInterval: 60_000,
+  });
+
+// Critical alerts — P0/P1 ack-timer countdown (Part D / escalation buddy).
+// Backed by /api/founder/critical-alerts. Refreshed every 30s so the
+// countdown stays approximately live without per-second polling.
+interface CriticalAlert {
+  id: number;
+  notificationId: number | null;
+  severity: "P0" | "P1";
+  firedAt: string;
+  ackDeadlineAt: string;
+  ackedAt: string | null;
+  ackedBy: string | null;
+  escalatedAt: string | null;
+  escalationTarget: string | null;
+  notificationTitle: string | null;
+  notificationMessage: string | null;
+  overdue: boolean;
+  secondsUntilDeadline: number | null;
+}
+interface CriticalAlertsReport {
+  alerts: CriticalAlert[];
+  thresholds: { P0: number; P1: number };
+}
+const useCriticalAlerts = () =>
+  useQuery<CriticalAlertsReport>({
+    queryKey: ["/api/founder/critical-alerts"],
+    staleTime: 30_000,
+    refetchInterval: 30_000,
+  });
 const useFounderTodo = () =>
   useQuery<{ total: number; items: Array<{ type: string; id: number; title: string; subtitle: string; urgency: number; actionUrl: string; createdAt: string; badge?: string; estimatedImpactCents: number | null }> }>({
     queryKey: ["/api/founder/intelligence/todo"],
@@ -336,6 +394,229 @@ function HeroStatus({
       <span className="w-1.5 h-1.5 rounded-full" style={{ background: color }} aria-hidden="true" />
       {label}
     </motion.div>
+  );
+}
+
+function CriticalAlertsBanner({ data }: { data: CriticalAlertsReport | undefined }) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const ackMutation = useMutation({
+    mutationFn: async (id: number) => (await apiRequest("POST", `/api/founder/critical-alerts/${id}/ack`)).json(),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/founder/critical-alerts"] }),
+    onError: (e: any) =>
+      toast({ title: "Couldn't ack alert", description: `${e.message}. ${reassurance}`, variant: "destructive" }),
+  });
+  const escalateMutation = useMutation({
+    mutationFn: async (id: number) =>
+      (await apiRequest("POST", `/api/founder/critical-alerts/${id}/escalate`, { target: "primary_backup" })).json(),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/founder/critical-alerts"] }),
+    onError: (e: any) =>
+      toast({ title: "Couldn't escalate alert", description: `${e.message}. ${reassurance}`, variant: "destructive" }),
+  });
+
+  const unacked = (data?.alerts ?? []).filter((a) => !a.ackedAt);
+  if (unacked.length === 0) return null;
+
+  const fmtCountdown = (secs: number | null, overdue: boolean) => {
+    if (secs == null) return "";
+    if (overdue) {
+      const m = Math.round(Math.abs(secs) / 60);
+      return `${m}m overdue`;
+    }
+    if (Math.abs(secs) < 60) return `${secs}s left`;
+    const m = Math.round(secs / 60);
+    return `${m}m left`;
+  };
+
+  return (
+    <motion.div variants={staggerItem}>
+      <Card className="border-l-4 border-l-red-500 bg-red-50 dark:bg-red-950/30">
+        <CardContent className="p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" aria-hidden="true" />
+            <h2 className="text-base font-semibold text-foreground">
+              Critical alerts ({unacked.length})
+            </h2>
+          </div>
+          <ul className="space-y-2 list-none p-0 m-0" aria-label="Unacknowledged P0/P1 alerts">
+            {unacked.slice(0, 5).map((a) => {
+              const banner = a.overdue
+                ? `${a.severity} unacked for ${fmtCountdown(a.secondsUntilDeadline, true)} — escalate now?`
+                : `${a.severity} · ${fmtCountdown(a.secondsUntilDeadline, false)}`;
+              return (
+                <li
+                  key={a.id}
+                  className="flex items-start gap-3 p-3 rounded-md bg-background border border-border"
+                  data-testid={`critical-alert-${a.id}`}
+                >
+                  <Badge
+                    variant="outline"
+                    className={
+                      a.severity === "P0"
+                        ? "bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/30"
+                        : "bg-orange-500/10 text-orange-700 dark:text-orange-400 border-orange-500/30"
+                    }
+                  >
+                    {a.severity}
+                  </Badge>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-foreground truncate">
+                      {a.notificationTitle ?? "Critical alert"}
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {banner}
+                      {a.escalatedAt ? " · escalated" : ""}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      className="text-xs px-2 py-1 rounded bg-foreground text-background hover:opacity-90"
+                      onClick={() => ackMutation.mutate(a.id)}
+                      disabled={ackMutation.isPending}
+                      aria-label={`Acknowledge ${a.severity} alert`}
+                      data-testid={`alert-ack-${a.id}`}
+                    >
+                      Ack
+                    </button>
+                    {a.overdue && !a.escalatedAt && (
+                      <button
+                        type="button"
+                        className="text-xs px-2 py-1 rounded bg-red-600 text-white hover:bg-red-700"
+                        onClick={() => escalateMutation.mutate(a.id)}
+                        disabled={escalateMutation.isPending}
+                        aria-label={`Escalate ${a.severity} alert to backup`}
+                        data-testid={`alert-escalate-${a.id}`}
+                      >
+                        Escalate
+                      </button>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </CardContent>
+      </Card>
+    </motion.div>
+  );
+}
+
+function VendorStatusTile({ report }: { report: VendorStatusReport | undefined }) {
+  // Loading or no data → show a neutral "checking…" tile rather than
+  // hiding the surface. This is a primary "is this them or us?" anchor
+  // when the founder is triaging an incident.
+  const overall = report?.overall ?? "unknown";
+  const dotColor =
+    overall === "ok"
+      ? "bg-emerald-500"
+      : overall === "incident"
+        ? "bg-red-500"
+        : overall === "degraded"
+          ? "bg-amber-500"
+          : "bg-muted-foreground";
+  const label =
+    overall === "ok"
+      ? "All vendors operational"
+      : overall === "incident"
+        ? "Vendor incident in progress"
+        : overall === "degraded"
+          ? "Some vendors degraded"
+          : "Checking vendor status…";
+  const indicatorBadge = (i: VendorIndicator) => {
+    if (i === "none") return { color: "bg-emerald-500", text: "Operational" };
+    if (i === "minor" || i === "maintenance")
+      return { color: "bg-amber-500", text: i === "minor" ? "Minor issue" : "Maintenance" };
+    if (i === "major") return { color: "bg-orange-500", text: "Major incident" };
+    if (i === "critical") return { color: "bg-red-500", text: "Critical outage" };
+    return { color: "bg-muted-foreground", text: "Unknown" };
+  };
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <motion.button
+          variants={staggerItem}
+          type="button"
+          className="w-full text-left"
+          aria-label={`Vendor status: ${label}. Open detail view.`}
+          data-testid="vendor-status-tile"
+        >
+          <Card className="hover:bg-muted/40 transition cursor-pointer">
+            <CardContent className="p-4 flex items-center gap-3">
+              <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${dotColor}`} aria-hidden="true" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-foreground">Vendor status</p>
+                <p className="text-xs text-muted-foreground truncate">{label}</p>
+              </div>
+              {report && (
+                <ul className="flex items-center gap-1.5 list-none p-0 m-0" aria-hidden="true">
+                  {report.vendors.map((v) => {
+                    const c =
+                      v.indicator === "none"
+                        ? "bg-emerald-500"
+                        : v.indicator === "minor" || v.indicator === "maintenance"
+                          ? "bg-amber-500"
+                          : v.indicator === "major"
+                            ? "bg-orange-500"
+                            : v.indicator === "critical"
+                              ? "bg-red-500"
+                              : "bg-muted-foreground";
+                    return <li key={v.slug} className={`h-1.5 w-1.5 rounded-full ${c}`} title={v.name} />;
+                  })}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+        </motion.button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Vendor status</DialogTitle>
+          <DialogDescription>
+            Public Statuspage feeds for our critical vendors. Data refreshes every 60 seconds.
+          </DialogDescription>
+        </DialogHeader>
+        <ul className="space-y-3 list-none p-0 m-0" aria-label="Vendor status detail">
+          {(report?.vendors ?? []).map((v) => {
+            const b = indicatorBadge(v.indicator);
+            return (
+              <li
+                key={v.slug}
+                className="flex items-start gap-3 p-3 rounded-md border border-border"
+                data-testid={`vendor-row-${v.slug}`}
+              >
+                <span className={`h-2.5 w-2.5 rounded-full mt-1.5 shrink-0 ${b.color}`} aria-hidden="true" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-medium text-foreground">{v.name}</p>
+                    <Badge variant="secondary" className="text-xs">{b.text}</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">{v.description}</p>
+                  <a
+                    href={v.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs text-acr-info hover:underline"
+                  >
+                    Open status page →
+                  </a>
+                </div>
+              </li>
+            );
+          })}
+          {!report && (
+            <li className="text-sm text-muted-foreground p-3" role="status">
+              Loading vendor status…
+            </li>
+          )}
+        </ul>
+        {report && (
+          <p className="text-[11px] text-muted-foreground mt-2 tabular-nums">
+            Last refreshed {new Date(report.generatedAt).toLocaleTimeString()}
+          </p>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -529,6 +810,8 @@ export default function FounderHome() {
   const agents = useAgents();
   const autonomy = useAutonomyHealth();
   const todo = useFounderTodo();
+  const vendorStatus = useVendorStatus();
+  const criticalAlerts = useCriticalAlerts();
 
   const isAnyError = metrics.isError || actions.isError || agents.isError;
   const allLoading = metrics.isLoading && actions.isLoading && agents.isLoading;
@@ -576,6 +859,10 @@ export default function FounderHome() {
         ) : (
           <WhatNeedsYouCard data={todo.data} />
         )}
+
+        <CriticalAlertsBanner data={criticalAlerts.data} />
+
+        <VendorStatusTile report={vendorStatus.data} />
 
         <section aria-labelledby="business-today-heading">
           <h2 id="business-today-heading" className="text-lg font-semibold text-foreground mb-3 flex items-center gap-2">

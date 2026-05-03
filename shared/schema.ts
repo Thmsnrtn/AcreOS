@@ -16230,3 +16230,54 @@ export const insertJobRunSchema = createInsertSchema(jobRuns).omit({
 });
 export type JobRun = typeof jobRuns.$inferSelect;
 export type InsertJobRun = z.infer<typeof insertJobRunSchema>;
+
+// ============================================
+// SUPPORT SAVED REPLIES (operator pre-canned responses)
+// ============================================
+// Pre-canned operator responses for the customer-support inbox.
+// `organizationId` is nullable: NULL = globally available reply curated by
+// the founder/ops team. Non-null = scoped to a specific customer org so
+// VIP-specific phrasing can live alongside the generic library.
+export const supportSavedReplies = pgTable("support_saved_replies", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  body: text("body").notNull(),
+  createdBy: text("created_by").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const insertSupportSavedReplySchema = createInsertSchema(supportSavedReplies).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type SupportSavedReply = typeof supportSavedReplies.$inferSelect;
+export type InsertSupportSavedReply = z.infer<typeof insertSupportSavedReplySchema>;
+
+// ============================================
+// CRITICAL ALERT ACKS (P0/P1 ack-timer tracking)
+// ============================================
+// Per-notification ack tracking driving the founder-bell "Critical alerts"
+// view. We track ack state ourselves; actual paging integrations
+// (PagerDuty/Opsgenie) plug in later by reading this table.
+export const criticalAlertAcks = pgTable("critical_alert_acks", {
+  id: serial("id").primaryKey(),
+  notificationId: integer("notification_id").references(() => notifications.id, { onDelete: "cascade" }),
+  severity: text("severity").notNull(), // 'P0' | 'P1'
+  firedAt: timestamp("fired_at", { withTimezone: true }).notNull(),
+  ackDeadlineAt: timestamp("ack_deadline_at", { withTimezone: true }).notNull(),
+  ackedAt: timestamp("acked_at", { withTimezone: true }),
+  ackedBy: text("acked_by"),
+  escalatedAt: timestamp("escalated_at", { withTimezone: true }),
+  escalationTarget: text("escalation_target"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const insertCriticalAlertAckSchema = createInsertSchema(criticalAlertAcks).omit({
+  id: true,
+  createdAt: true,
+});
+export type CriticalAlertAck = typeof criticalAlertAcks.$inferSelect;
+export type InsertCriticalAlertAck = z.infer<typeof insertCriticalAlertAckSchema>;
