@@ -41,6 +41,7 @@ export async function analyzeMessageForSignals(
   const response = await routeAITask({
     taskType: "lead_qualification",
     complexity: TaskComplexity.SIMPLE,
+    taskTier: "background", // internal classification
     messages: [
       {
         role: "system",
@@ -382,7 +383,7 @@ Guidelines:
 - Keep messages concise (2-3 paragraphs max)
 - Include a clear next step or call to action`,
     `Recent conversation:\n${messageHistory || "No previous messages"}\n\nGenerate a follow-up message.`,
-    { orgId: organizationId },
+    { orgId: organizationId, taskTier: "standard" }, // lead-nurturer follow-up draft
   );
 
   return response.content || "";

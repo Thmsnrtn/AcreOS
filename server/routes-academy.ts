@@ -169,6 +169,7 @@ ${courseId ? `The student is currently studying course ID: ${courseId}.` : ''}`;
     const completion = await routeAITask({
       taskType: 'academy_tutor',
       complexity: TaskComplexity.MODERATE,
+      taskTier: 'critical', // customer-visible tutor — quality matters
       messages,
       maxTokens: 600,
     }, { orgId: org?.id });

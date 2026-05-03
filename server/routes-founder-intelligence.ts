@@ -2823,6 +2823,7 @@ router.post("/agent-chat", requireFounder, async (req: Request, res: Response) =
         const classificationResult = await routeAITask({
           taskType: "agent_routing",
           complexity: TaskComplexity.SIMPLE,
+          taskTier: "background", // internal classification
           preferredModel: "deepseek",
           messages: [
             {
@@ -2932,6 +2933,7 @@ Respond with ONLY the agent codename (e.g. "forge_revenue") or "team" if the mes
     const aiResponse = await routeAITask({
       taskType: "agent_chat",
       complexity: TaskComplexity.MODERATE,
+      taskTier: "standard", // founder-internal agent chat
       messages,
     });
 

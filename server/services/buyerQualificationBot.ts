@@ -549,7 +549,7 @@ Keep responses concise and actionable.`,
 - Concerns: ${concerns.join(", ") || "None identified"}
 
 Provide 1-2 additional recommendations to improve this buyer's closing probability.`,
-        { orgId: qualification.organizationId ?? undefined },
+        { orgId: qualification.organizationId ?? undefined, taskTier: "standard" },
       );
 
       const aiRecommendation = response.content;
@@ -714,7 +714,7 @@ Strengths: ${assessment.strengths?.join(", ") || "None"}
 Concerns: ${assessment.concerns?.join(", ") || "None"}
 
 Generate an overall recommendation.`,
-          { orgId: qualification.organizationId ?? undefined },
+          { orgId: qualification.organizationId ?? undefined, taskTier: "standard" },
         );
 
         overallRecommendation = response.content || "";
