@@ -9,9 +9,25 @@
  * - No external DocuSign subscription needed ($0 additional cost)
  */
 
-import { db } from "../db";
+import { db, withTransaction } from "../db";
 import { generatedDocuments, notes, leads, properties, organizations } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
+import { logger } from "../utils/logger";
+
+// Document statuses for which we treat the request as already dispatched.
+// If the row is in any of these and already has an envelope ID, we
+// short-circuit to avoid a second POST to Dropbox Sign.
+const ALREADY_SENT_STATUSES = new Set([
+  "pending_signature",
+  "partially_signed",
+  "signed",
+]);
+
+const ALREADY_SENT_ESIGN_STATUSES = new Set([
+  "sent",
+  "partially_signed",
+  "completed",
+]);
 
 const DROPBOX_SIGN_API_BASE = "https://api.hellosign.com/v3";
 
@@ -76,113 +92,153 @@ export interface SignatureRequestStatus {
 export async function sendDocumentForSignature(
   input: SendForSignatureInput
 ): Promise<SignatureRequestResult> {
-  // Load the document record
-  const [doc] = await db
-    .select()
-    .from(generatedDocuments)
-    .where(eq(generatedDocuments.id, input.documentId));
+  // Wrap the entire dispatch in a transaction with SELECT ... FOR UPDATE on
+  // the document row. Two concurrent calls would otherwise both POST to the
+  // provider, charging the customer twice and creating parallel envelopes.
+  return withTransaction(async (tx) => {
+    // Lock the document row for the duration of this transaction.
+    const [doc] = await tx
+      .select()
+      .from(generatedDocuments)
+      .where(eq(generatedDocuments.id, input.documentId))
+      .for("update");
 
-  if (!doc) throw new Error("Document not found");
+    if (!doc) throw new Error("Document not found");
 
-  const [org] = await db
-    .select()
-    .from(organizations)
-    .where(eq(organizations.id, input.organizationId));
-
-  // Build multipart form data for Dropbox Sign API
-  const formData = new FormData();
-  formData.append("test_mode", input.testMode ? "1" : "0");
-  formData.append("title", input.title);
-  formData.append("subject", input.subject || `Please sign: ${input.title}`);
-  formData.append(
-    "message",
-    input.message ||
-      `${org?.name || "AcreOS"} has sent you a document to review and sign. Please click the link to view and sign the document.`
-  );
-
-  // Add signers
-  input.signers.forEach((signer, i) => {
-    formData.append(`signers[${i}][name]`, signer.name);
-    formData.append(`signers[${i}][email_address]`, signer.email);
-    if (signer.order !== undefined) {
-      formData.append(`signers[${i}][order]`, String(signer.order));
+    // Idempotency guard: if the row is already in a sent/dispatched state and
+    // an envelope exists, return the existing envelope instead of POSTing
+    // again. The next caller blocked on the row lock will hit this branch.
+    if (
+      doc.esignEnvelopeId &&
+      (
+        (doc.status && ALREADY_SENT_STATUSES.has(doc.status)) ||
+        (doc.esignStatus && ALREADY_SENT_ESIGN_STATUSES.has(doc.esignStatus))
+      )
+    ) {
+      logger.info("eSigningService: short-circuit — envelope already dispatched", {
+        documentId: input.documentId,
+        envelopeId: doc.esignEnvelopeId,
+        status: doc.status,
+        esignStatus: doc.esignStatus,
+      });
+      const existingSigners = (doc.signers || []) as Array<{
+        email: string;
+        signatureUrl?: string;
+      }>;
+      return {
+        success: true,
+        signatureRequestId: doc.esignEnvelopeId,
+        signingUrls: existingSigners.map((s) => ({
+          email: s.email,
+          signUrl: s.signatureUrl || "",
+        })),
+        expiresAt: doc.expiresAt ? doc.expiresAt.toISOString() : "",
+      };
     }
-  });
 
-  // Attach PDF
-  if (input.pdfBuffer) {
-    const blob = new Blob([input.pdfBuffer], { type: "application/pdf" });
-    formData.append("file[0]", blob, `${input.title.replace(/\s+/g, "_")}.pdf`);
-  } else if (doc.pdfUrl) {
-    formData.append("file_url[0]", doc.pdfUrl);
-  } else if (doc.content) {
-    // Convert text content to a simple text file
-    const blob = new Blob([doc.content], { type: "text/plain" });
-    formData.append("file[0]", blob, `${input.title.replace(/\s+/g, "_")}.txt`);
-  }
+    const [org] = await tx
+      .select()
+      .from(organizations)
+      .where(eq(organizations.id, input.organizationId));
 
-  if (input.expiresAt) {
-    const unixTs = Math.floor(input.expiresAt.getTime() / 1000);
-    formData.append("expires_at", String(unixTs));
-  }
+    // Build multipart form data for Dropbox Sign API
+    const formData = new FormData();
+    formData.append("test_mode", input.testMode ? "1" : "0");
+    formData.append("title", input.title);
+    formData.append("subject", input.subject || `Please sign: ${input.title}`);
+    formData.append(
+      "message",
+      input.message ||
+        `${org?.name || "AcreOS"} has sent you a document to review and sign. Please click the link to view and sign the document.`
+    );
 
-  // Call Dropbox Sign API
-  let apiResult: any;
-  try {
-    const response = await fetch(`${DROPBOX_SIGN_API_BASE}/signature_request/send`, {
-      method: "POST",
-      headers: { Authorization: buildAuthHeader() },
-      body: formData,
+    // Add signers
+    input.signers.forEach((signer, i) => {
+      formData.append(`signers[${i}][name]`, signer.name);
+      formData.append(`signers[${i}][email_address]`, signer.email);
+      if (signer.order !== undefined) {
+        formData.append(`signers[${i}][order]`, String(signer.order));
+      }
     });
 
-    if (!response.ok) {
-      const errorBody = await response.json().catch(() => ({}));
-      throw new Error(`Dropbox Sign API error ${response.status}: ${JSON.stringify(errorBody)}`);
+    // Attach PDF
+    if (input.pdfBuffer) {
+      const blob = new Blob([input.pdfBuffer], { type: "application/pdf" });
+      formData.append("file[0]", blob, `${input.title.replace(/\s+/g, "_")}.pdf`);
+    } else if (doc.pdfUrl) {
+      formData.append("file_url[0]", doc.pdfUrl);
+    } else if (doc.content) {
+      // Convert text content to a simple text file
+      const blob = new Blob([doc.content], { type: "text/plain" });
+      formData.append("file[0]", blob, `${input.title.replace(/\s+/g, "_")}.txt`);
     }
 
-    apiResult = await response.json();
-  } catch (err: any) {
-    // If no API key configured, return a test mode result
-    if (err.message?.includes("DROPBOX_SIGN_API_KEY not configured")) {
-      return buildTestModeResult(input);
+    if (input.expiresAt) {
+      const unixTs = Math.floor(input.expiresAt.getTime() / 1000);
+      formData.append("expires_at", String(unixTs));
     }
-    throw err;
-  }
 
-  const sigRequest = apiResult.signature_request;
+    // Call Dropbox Sign API — still inside the transaction so the row lock
+    // is held until the envelope ID is persisted. This intentionally
+    // serializes concurrent send attempts for the same document.
+    let apiResult: any;
+    try {
+      const response = await fetch(`${DROPBOX_SIGN_API_BASE}/signature_request/send`, {
+        method: "POST",
+        headers: { Authorization: buildAuthHeader() },
+        body: formData,
+      });
 
-  // Build signing URLs from signatures array
-  const signingUrls = (sigRequest.signatures || []).map((sig: any) => ({
-    email: sig.signer_email_address,
-    signUrl: sig.sign_url || "",
-  }));
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        throw new Error(`Dropbox Sign API error ${response.status}: ${JSON.stringify(errorBody)}`);
+      }
 
-  // Update document record with e-sign info
-  await db
-    .update(generatedDocuments)
-    .set({
-      esignProvider: "dropbox_sign",
-      esignEnvelopeId: sigRequest.signature_request_id,
-      esignStatus: "sent",
-      status: "pending_signature",
-      sentAt: new Date(),
-      expiresAt: input.expiresAt,
-      signers: input.signers.map((s, i) => ({
-        id: sigRequest.signatures?.[i]?.signature_id || `sig_${i}`,
-        name: s.name,
-        email: s.email,
-        role: s.role,
-        order: s.order,
-      })),
-    })
-    .where(eq(generatedDocuments.id, input.documentId));
+      apiResult = await response.json();
+    } catch (err: any) {
+      // If no API key configured, return a test mode result
+      if (err.message?.includes("DROPBOX_SIGN_API_KEY not configured")) {
+        return buildTestModeResult(input);
+      }
+      throw err;
+    }
 
-  return {
-    success: true,
-    signatureRequestId: sigRequest.signature_request_id,
-    signingUrls,
-    expiresAt: sigRequest.expires_at || "",
-  };
+    const sigRequest = apiResult.signature_request;
+
+    // Build signing URLs from signatures array
+    const signingUrls = (sigRequest.signatures || []).map((sig: any) => ({
+      email: sig.signer_email_address,
+      signUrl: sig.sign_url || "",
+    }));
+
+    // Persist the envelope ID and status BEFORE the transaction commits, so
+    // the next concurrent caller sees the dispatched state and short-circuits.
+    await tx
+      .update(generatedDocuments)
+      .set({
+        esignProvider: "dropbox_sign",
+        esignEnvelopeId: sigRequest.signature_request_id,
+        esignStatus: "sent",
+        status: "pending_signature",
+        sentAt: new Date(),
+        expiresAt: input.expiresAt,
+        signers: input.signers.map((s, i) => ({
+          id: sigRequest.signatures?.[i]?.signature_id || `sig_${i}`,
+          name: s.name,
+          email: s.email,
+          role: s.role,
+          order: s.order,
+        })),
+      })
+      .where(eq(generatedDocuments.id, input.documentId));
+
+    return {
+      success: true,
+      signatureRequestId: sigRequest.signature_request_id,
+      signingUrls,
+      expiresAt: sigRequest.expires_at || "",
+    };
+  });
 }
 
 // ============================================
