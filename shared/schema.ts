@@ -4619,6 +4619,59 @@ export const retentionEvents = pgTable("retention_events", {
 export type RetentionEvent = typeof retentionEvents.$inferSelect;
 export type InsertRetentionEvent = typeof retentionEvents.$inferInsert;
 
+// ─── ML training snapshots ─────────────────────────────────────────────────
+// Phase 3 Week 12 (Magnus §1). Captures labels + feature snapshots so
+// future model training has a labelled dataset to train on. Model training
+// itself is deferred to month 18+; this is the *measurement infrastructure*.
+//
+// Five outcome types share the same wide table because the columns are
+// identical (labels jsonb, features jsonb) and we want a single helper for
+// all writes. See migrations/0058_ml_training_snapshots.sql for the long
+// version of why this matters.
+export const ML_SNAPSHOT_TYPES = [
+  "avm_vs_actual",
+  "deal_outcome",
+  "lead_conversion",
+  "churn_outcome",
+  "offer_acceptance",
+] as const;
+export type MlSnapshotType = typeof ML_SNAPSHOT_TYPES[number];
+
+export const ML_SUBJECT_TYPES = ["deal", "lead", "property", "org"] as const;
+export type MlSubjectType = typeof ML_SUBJECT_TYPES[number];
+
+export const mlTrainingSnapshots = pgTable("ml_training_snapshots", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  snapshotType: text("snapshot_type").notNull(),
+  subjectType: text("subject_type").notNull(),
+  subjectId: text("subject_id").notNull(),
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
+  labels: jsonb("labels").$type<Record<string, any>>().notNull().default({}),
+  features: jsonb("features").$type<Record<string, any>>().notNull().default({}),
+  decisionAt: timestamp("decision_at", { withTimezone: true }).notNull(),
+  outcomeAt: timestamp("outcome_at", { withTimezone: true }),
+  metadata: jsonb("metadata").$type<Record<string, any>>().notNull().default({}),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("ml_training_snapshots_unique").on(
+    table.snapshotType,
+    table.subjectType,
+    table.subjectId,
+    table.decisionAt,
+  ),
+  index("idx_ml_snapshots_type_org_created").on(
+    table.snapshotType,
+    table.organizationId,
+    table.createdAt,
+  ),
+  index("idx_ml_snapshots_type_decision").on(table.snapshotType, table.decisionAt),
+  index("idx_ml_snapshots_subject").on(table.subjectType, table.subjectId),
+  index("idx_ml_snapshots_outcome_at").on(table.outcomeAt),
+]);
+
+export type MlTrainingSnapshot = typeof mlTrainingSnapshots.$inferSelect;
+export type InsertMlTrainingSnapshot = typeof mlTrainingSnapshots.$inferInsert;
+
 // Cohort assignments: A/B onboarding flow assignment. One row per
 // (org, cohortName). The variant column is the load-bearing dimension.
 export const cohortAssignments = pgTable("cohort_assignments", {
