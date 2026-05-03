@@ -37,6 +37,15 @@ export class StripeService {
       success_url: successUrl,
       cancel_url: cancelUrl,
       metadata,
+      // Phase 3 W10 — Stripe Tax automation. Stripe computes the correct
+      // sales-tax/VAT rate per checkout based on the customer's billing
+      // address. Pair with stripe.customers.update({ tax: { ... } }) when
+      // org.taxAddress changes (see syncTaxAddressToStripe).
+      automatic_tax: { enabled: true },
+      // Required for automatic_tax — Stripe needs a billing address on the
+      // session to determine taxability.
+      customer_update: { address: 'auto', name: 'auto' },
+      tax_id_collection: { enabled: true },
     };
 
     // Add trial period if specified (for first-time subscribers only)
@@ -79,8 +88,10 @@ export class StripeService {
           product_data: {
             name: packName,
             description: `Credit pack for usage-based features`,
+            tax_code: 'txcd_10000000', // SaaS / digital service tax code
           },
           unit_amount: priceCents,
+          tax_behavior: 'exclusive',
         },
         quantity: 1,
       }],
@@ -88,6 +99,9 @@ export class StripeService {
       success_url: successUrl,
       cancel_url: cancelUrl,
       metadata,
+      // Phase 3 W10 — Stripe Tax on credit purchases too.
+      automatic_tax: { enabled: true },
+      customer_update: { address: 'auto', name: 'auto' },
     }, { idempotencyKey: idempotencyKey('credit_checkout', customerId, packId, metadata?.organizationId || '') });
   }
 

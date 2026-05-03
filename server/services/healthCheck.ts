@@ -40,7 +40,8 @@ class HealthCheckService {
       }
 
       const Stripe = (await import('stripe')).default;
-      const stripe = new Stripe(stripeKey);
+      const { STRIPE_API_VERSION } = await import('../stripeClient');
+      const stripe = new Stripe(stripeKey, { apiVersion: STRIPE_API_VERSION });
       
       await stripe.balance.retrieve();
       const latency = Date.now() - start;

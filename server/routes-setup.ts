@@ -201,7 +201,8 @@ router.post("/validate/:service", requireFounder, async (req: Request, res: Resp
         if (!key) return res.json({ status: "error", message: "STRIPE_SECRET_KEY not configured" });
         try {
           const { default: Stripe } = await import("stripe");
-          const stripe = new Stripe(key, { apiVersion: "2025-01-27.acacia" });
+          const { STRIPE_API_VERSION } = await import("./stripeClient");
+          const stripe = new Stripe(key, { apiVersion: STRIPE_API_VERSION });
           const account = await stripe.accounts.retrieve();
           await markValidated("STRIPE_SECRET_KEY", "ok", `Connected: ${account.email || account.id}`);
           const isLive = key.startsWith("sk_live_");
@@ -362,7 +363,8 @@ router.post("/wire/:service", requireFounder, async (req: Request, res: Response
 
         try {
           const { default: Stripe } = await import("stripe");
-          const stripe = new Stripe(key, { apiVersion: "2025-01-27.acacia" });
+          const { STRIPE_API_VERSION } = await import("./stripeClient");
+          const stripe = new Stripe(key, { apiVersion: STRIPE_API_VERSION });
           const webhookUrl = `${appUrl}/api/stripe/connect/webhook`;
 
           // Check if webhook already exists

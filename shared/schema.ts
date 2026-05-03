@@ -3703,6 +3703,10 @@ export const DUNNING_CONFIG = {
   notificationSchedule: [
     { dayOffset: 0, type: "payment_failed", channel: "email" },
     { dayOffset: 2, type: "reminder", channel: "email" },
+    // Phase 3 W10 — SMS leg fires on day 3 (after grace period). Throttled to
+    // exactly one SMS per dunning sequence via dunning_events.sms_sent_at,
+    // and respects the per-org notification-prefs override at billing.dunning_sms.
+    { dayOffset: 3, type: "dunning_sms", channel: "sms" },
     { dayOffset: 6, type: "warning", channel: "email" },
     { dayOffset: 13, type: "final_notice", channel: "email" },
   ],

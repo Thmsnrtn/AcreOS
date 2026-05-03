@@ -638,8 +638,12 @@ export function registerBillingRoutes(app: Express): void {
     try {
       const { stripeConnectService } = await import("./services/stripeConnect");
       const Stripe = require("stripe").default;
+      const { STRIPE_API_VERSION } = await import("./stripeClient");
 
-      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
+        apiVersion: STRIPE_API_VERSION,
+        maxNetworkRetries: 3,
+      });
       const sig = req.headers["stripe-signature"] as string;
       // Connect webhooks use a separate endpoint secret from standard webhooks
       const webhookSecret = process.env.STRIPE_CONNECT_WEBHOOK_SECRET || process.env.STRIPE_WEBHOOK_SECRET;
