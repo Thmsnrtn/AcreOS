@@ -247,12 +247,15 @@ export function registerAdminRoutes(app: Express): void {
   // Get all escalated cases (admin only - for now just check org owner)
   api.get("/api/admin/support/escalated", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = req.organization;
-      const user = req.user;
+      const authReq = req as AuthenticatedRequest;
+      const user = authReq.user;
+      const userId = getUserId(authReq);
+      const userEmail = user.claims?.email || user.email;
 
-      // Simple admin check - org owner can see escalated cases
-      if (org.ownerId !== user.id) {
-        return res.status(403).json({ error: "Admin access required" });
+      // R1.b fix: gate on canonical founder identity, not org ownership.
+      // Previously any org owner could view escalated cases across all orgs.
+      if (!isFounderIdentity({ email: userEmail, userId })) {
+        return Errors.forbidden(res, "Founder access required");
       }
 
       const cases = await storage.getEscalatedCases();
@@ -282,15 +285,18 @@ export function registerAdminRoutes(app: Express): void {
   // Admin respond to escalated case
   api.post("/api/admin/support/cases/:id/respond", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = req.organization;
-      const user = req.user;
+      const authReq = req as AuthenticatedRequest;
+      const user = authReq.user;
+      const userId = getUserId(authReq);
+      const userEmail = user.claims?.email || user.email;
       const caseId = parseInt(req.params.id);
       const parsed = adminRespondSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: "Invalid input", errors: parsed.error.errors });
       const { message, resolve } = parsed.data;
 
-      if (org.ownerId !== user.id) {
-        return res.status(403).json({ error: "Admin access required" });
+      // R1.b fix: gate on canonical founder identity, not org ownership.
+      if (!isFounderIdentity({ email: userEmail, userId })) {
+        return Errors.forbidden(res, "Founder access required");
       }
 
       const supportCase = await storage.getSupportCase(caseId);
@@ -329,11 +335,15 @@ export function registerAdminRoutes(app: Express): void {
   // Get support metrics
   api.get("/api/admin/support/metrics", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = req.organization;
-      const user = req.user;
+      const authReq = req as AuthenticatedRequest;
+      const user = authReq.user;
+      const userId = getUserId(authReq);
+      const userEmail = user.claims?.email || user.email;
+      const org = authReq.organization;
 
-      if (org.ownerId !== user.id) {
-        return res.status(403).json({ error: "Admin access required" });
+      // R1.b fix: gate on canonical founder identity, not org ownership.
+      if (!isFounderIdentity({ email: userEmail, userId })) {
+        return Errors.forbidden(res, "Founder access required");
       }
 
       const allCases = await storage.getSupportCases(org.id);
