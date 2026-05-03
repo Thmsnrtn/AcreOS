@@ -738,6 +738,7 @@ export function CommandPalette() {
                           >
                             <MessageSquare className="mr-2 h-4 w-4 text-emerald-500" aria-hidden="true" />
                             <span>How's revenue doing?</span>
+                            {/* eslint-disable-next-line acreos/no-founder-codenames-in-customer-jsx -- founder-gated by `isFounder` above */}
                             <span className="ml-auto text-xs text-muted-foreground">Forge</span>
                           </CommandItem>
                           <CommandItem
@@ -746,6 +747,7 @@ export function CommandPalette() {
                           >
                             <MessageSquare className="mr-2 h-4 w-4 text-amber-500" aria-hidden="true" />
                             <span>Any support issues?</span>
+                            {/* eslint-disable-next-line acreos/no-founder-codenames-in-customer-jsx -- founder-gated by `isFounder` above */}
                             <span className="ml-auto text-xs text-muted-foreground">Sophie</span>
                           </CommandItem>
                           <CommandItem
@@ -754,6 +756,7 @@ export function CommandPalette() {
                           >
                             <MessageSquare className="mr-2 h-4 w-4 text-blue-500" aria-hidden="true" />
                             <span>Is anything broken?</span>
+                            {/* eslint-disable-next-line acreos/no-founder-codenames-in-customer-jsx -- founder-gated by `isFounder` above */}
                             <span className="ml-auto text-xs text-muted-foreground">Sentinel</span>
                           </CommandItem>
                           <CommandItem

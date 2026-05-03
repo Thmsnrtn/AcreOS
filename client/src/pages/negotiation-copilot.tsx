@@ -123,7 +123,7 @@ function StrategyExplainabilityPanel({ strategyResult }: { strategyResult: any }
     <Card className="border-primary/20 bg-primary/5">
       <CardHeader className="pb-2">
         <CardTitle className="text-sm flex items-center gap-2">
-          <Info className="w-4 h-4 text-primary" aria-hidden="true" /> Why Atlas recommends this approach
+          <Info className="w-4 h-4 text-primary" aria-hidden="true" /> Why Pax recommends this approach
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
