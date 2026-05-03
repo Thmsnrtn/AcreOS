@@ -247,6 +247,7 @@ const BlindOfferWizardPage = React.lazy(() => import("@/pages/blind-offer-wizard
 const EveningReviewPage = React.lazy(() => import("@/pages/night-cap"));
 const StatusPage = React.lazy(() => import("@/pages/status"));
 const ChangelogPage = React.lazy(() => import("@/pages/changelog"));
+const SecurityPage = React.lazy(() => import("@/pages/security"));
 
 // ─── Page loading fallback ──────────────────────────────────────────────────
 // Shown during route-level auth resolution and React.lazy() chunk loads.
@@ -397,6 +398,7 @@ function Router() {
       <Route path="/why" component={WhyPage} />
       <Route path="/status" component={StatusPage} />
       <Route path="/changelog" component={ChangelogPage} />
+      <Route path="/security" component={SecurityPage} />
 
       {/* Public Borrower Portal */}
       <Route path="/portal" component={BorrowerPortal} />

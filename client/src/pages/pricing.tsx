@@ -8,6 +8,7 @@ import { AcreosLogo } from "@/components/acreos-logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { usd } from "@/lib/format";
 import { SkipToContent } from "@/components/skip-to-content";
+import { PublicFooter } from "@/components/public-footer";
 import { usePageMeta } from "@/hooks/use-document-title";
 import { TIER_PRICES_CENTS } from "@shared/billing/tier-pricing";
 
@@ -273,20 +274,9 @@ export default function PricingPage() {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="border-t py-8 px-6">
-        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 text-sm text-muted-foreground">
-          <span>&copy; {new Date().getFullYear()} AcreOS. All rights reserved.</span>
-          <div className="flex flex-wrap gap-x-2 gap-y-1">
-            <Link href="/" className="hover:text-foreground inline-flex items-center min-h-11 px-2">Home</Link>
-            <Link href="/status" className="hover:text-foreground inline-flex items-center min-h-11 px-2">Status</Link>
-            <Link href="/changelog" className="hover:text-foreground inline-flex items-center min-h-11 px-2">Changelog</Link>
-            <Link href="/terms" className="hover:text-foreground inline-flex items-center min-h-11 px-2">Terms</Link>
-            <Link href="/privacy" className="hover:text-foreground inline-flex items-center min-h-11 px-2">Privacy</Link>
-            <Link href="/auth" className="hover:text-foreground inline-flex items-center min-h-11 px-2">Sign in</Link>
-          </div>
-        </div>
-      </footer>
+      {/* Footer — shared across customer-trust pages so discoverability
+          for /security and /changelog (P1-5) lives in one place. */}
+      <PublicFooter />
     </div>
   );
 }
