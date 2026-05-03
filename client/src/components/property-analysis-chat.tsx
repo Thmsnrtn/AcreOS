@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { ReadAloudButton } from "@/components/ReadAloudButton";
 import type { Property } from "@shared/schema";
 
 // ─── Lightweight markdown renderer for analysis responses ─────────────────────
@@ -492,6 +493,12 @@ export function PropertyAnalysisChat({ property, open, onOpenChange }: PropertyA
                   )}
                   {isStructuredAnalysis ? (
                     <div className="w-full" data-testid="structured-analysis-output">
+                      <div className="flex justify-end mb-1">
+                        <ReadAloudButton
+                          text={message.content}
+                          data-testid={`property-analysis-read-aloud-${index}`}
+                        />
+                      </div>
                       <StructuredAnalysis content={message.content} />
                       {message.suggestions && message.suggestions.length > 0 && (
                         <div className="mt-3 space-y-2">
@@ -526,6 +533,14 @@ export function PropertyAnalysisChat({ property, open, onOpenChange }: PropertyA
                         <AnalysisMarkdown content={message.content} />
                       ) : (
                         <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                      )}
+                      {message.role === "assistant" && message.content && (
+                        <div className="mt-2 flex justify-end">
+                          <ReadAloudButton
+                            text={message.content}
+                            data-testid={`property-analysis-read-aloud-${index}`}
+                          />
+                        </div>
                       )}
                       {message.suggestions && message.suggestions.length > 0 && (
                         <div className="mt-3 pt-3 border-t border-border/50 space-y-2">

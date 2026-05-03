@@ -32,6 +32,9 @@ import { PaxProjectPanel } from "@/components/pax-project-panel";
 import { PaxScheduleButton } from "@/components/pax-schedule-button";
 import { PaxConnectorPanel } from "@/components/pax-connector-panel";
 import { PaxMemoryPanel } from "@/components/pax-memory-panel";
+import { ReadAloudButton } from "@/components/ReadAloudButton";
+import { useReadAloud } from "@/hooks/useReadAloud";
+import { useReadAloudPrefs } from "@/hooks/useReadAloud.prefs";
 
 // ─── Lightweight markdown renderer ──────────────────────────────────────────
 function PaxMarkdown({ content }: { content: string }) {
@@ -291,6 +294,35 @@ export function PaxCopilotRail() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  // Read-aloud — auto-speak new Pax responses if user opted in.
+  const { speak: readAloudSpeak } = useReadAloud();
+  const { autoReadPax } = useReadAloudPrefs();
+  const lastAutoReadRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!autoReadPax) return;
+    const last = messages[messages.length - 1];
+    if (!last) return;
+    if (last.role !== "assistant") return;
+    if (last.isStreaming) return;
+    if (!last.content?.trim()) return;
+    if (lastAutoReadRef.current === last.id) return;
+    lastAutoReadRef.current = last.id;
+    // Strip markdown — match what ReadAloudButton does so prosody stays
+    // natural. (Inlined here to avoid a circular import.)
+    const spoken = last.content
+      .replace(/```[\s\S]*?```/g, " ")
+      .replace(/`([^`]+)`/g, "$1")
+      .replace(/^#{1,6}\s+/gm, "")
+      .replace(/\*\*([^*]+)\*\*/g, "$1")
+      .replace(/\*([^*]+)\*/g, "$1")
+      .replace(/__([^_]+)__/g, "$1")
+      .replace(/_([^_]+)_/g, "$1")
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (spoken) readAloudSpeak(spoken);
+  }, [messages, autoReadPax, readAloudSpeak]);
 
   // Running tool events indexed by message id
   const [activeToolEvents, setActiveToolEvents] = useState<Record<string, ToolEvent[]>>({});
@@ -1543,7 +1575,11 @@ export function PaxCopilotRail() {
                           ))}
                           {/* Rating buttons (shown after streaming completes) */}
                           {!msg.isStreaming && msg.role !== "error" && msg.content && (
-                            <div className="flex items-center gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <div className="flex items-center gap-1 mt-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                              <ReadAloudButton
+                                text={msg.content}
+                                data-testid={`pax-rail-read-aloud-${msg.id}`}
+                              />
                               <button
                                 onClick={() => handleRating(msg.id, 1)}
                                 className={cn(

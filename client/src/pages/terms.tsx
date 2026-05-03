@@ -1,8 +1,10 @@
+import { useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, FileText } from "lucide-react";
 import { Link } from "wouter";
 import { usePageMeta } from "@/hooks/use-document-title";
+import { LegalDocReadAloud } from "@/components/LegalDocReadAloud";
 
 export default function TermsOfService() {
   usePageMeta(
@@ -10,6 +12,7 @@ export default function TermsOfService() {
     "AcreOS Terms of Service — the agreement governing access and use of the AcreOS platform for land investors."
   );
   const lastUpdated = "March 2026";
+  const docRef = useRef<HTMLDivElement>(null);
 
   return (
     <div className="min-h-screen bg-background">
@@ -24,11 +27,17 @@ export default function TermsOfService() {
         </div>
 
         <Card className="border-border/50" data-testid="card-terms">
-          <CardContent className="p-6 md:p-8 space-y-8">
+          <CardContent ref={docRef} className="p-6 md:p-8 space-y-8">
             <div className="space-y-2">
-              <div className="flex items-center gap-3">
-                <FileText className="w-8 h-8 text-primary" aria-hidden="true" />
-                <h1 className="text-3xl font-bold" data-testid="text-terms-title">Terms of service</h1>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <FileText className="w-8 h-8 text-primary" aria-hidden="true" />
+                  <h1 className="text-3xl font-bold" data-testid="text-terms-title">Terms of service</h1>
+                </div>
+                <LegalDocReadAloud
+                  docRef={docRef}
+                  data-testid="terms-read-aloud"
+                />
               </div>
               <p className="text-muted-foreground" data-testid="text-last-updated">
                 Last updated: <span className="tabular-nums">{lastUpdated}</span>
