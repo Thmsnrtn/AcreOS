@@ -71,6 +71,11 @@ const SECRETS: SecretSpec[] = [
   { key: "DOCUMENT_SIGNING_SECRET", required: false, minLength: 32, description: "HMAC secret for deal-room document signed URLs", productionOnly: true },
   { key: "CERT_SECRET", required: false, minLength: 32, description: "Secret for course-completion certificate verification hashes", productionOnly: true },
   { key: "INBOUND_EMAIL_HMAC_SECRET", required: false, minLength: 32, description: "HMAC secret for inbound email reply-to address verification", productionOnly: true },
+  // F2 — Inbound email webhook signature secret (required when not using SNS-only mode).
+  // The route handler itself (server/middleware/inboundEmailSignature.ts) throws
+  // at boot if neither this secret nor INBOUND_EMAIL_SNS_ONLY=1 is configured
+  // in production; this entry just surfaces the warning early.
+  { key: "INBOUND_EMAIL_WEBHOOK_SECRET", required: false, minLength: 32, description: "HMAC-SHA256 secret for inbound email webhook signing (or set INBOUND_EMAIL_SNS_ONLY=1 to require AWS SNS)", productionOnly: true },
 ];
 
 export function validateSecrets(): void {
