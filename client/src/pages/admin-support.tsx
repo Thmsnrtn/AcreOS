@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Headphones, AlertTriangle, CheckCircle, Clock, Users, TrendingUp, MessageSquare, Send, ArrowLeft, User, Bot, Loader2, Timer } from "lucide-react";
+import { Headphones, AlertTriangle, CheckCircle, Clock, Users, TrendingUp, MessageSquare, Send, ArrowLeft, User, Bot, Loader2, Timer, Building2, Activity, FileText, BookmarkPlus } from "lucide-react";
 import { PageShell } from "@/components/page-shell";
 import type { SupportCase, SupportMessage, SlaStatus } from "@shared/schema";
 
@@ -140,6 +140,232 @@ function MetricCard({
           aria-labelledby={`${testId}-label`}
         >{value}</div>
         {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Customer-context sidebar (Olu §7 #5 — operator does not have to "go look up
+// the org" before replying). Backed by GET /api/admin/support/customer-context.
+// ────────────────────────────────────────────────────────────────────────────
+
+interface CustomerContextResponse {
+  organization: {
+    id: number;
+    name: string;
+    slug: string;
+    tier: string;
+    billingInterval: string;
+    subscriptionStatus: string;
+    mrrCents: number;
+    signupDate: string | null;
+    dunningStage: string | null;
+    isFounder: boolean;
+  };
+  openTickets: number;
+  recentActivity: Array<{
+    id: string;
+    action: string;
+    actorEmail: string | null;
+    createdAt: string;
+  }>;
+  notes: Array<{ id: number; caseId: number; content: string; createdAt: string | null }>;
+}
+
+function CustomerContextSidebar({ organizationId, excludeCaseId }: { organizationId: number | null; excludeCaseId?: number | null }) {
+  const { data, isLoading } = useQuery<CustomerContextResponse>({
+    queryKey: ["/api/admin/support/customer-context", organizationId, excludeCaseId],
+    queryFn: async () => {
+      const url = excludeCaseId
+        ? `/api/admin/support/customer-context/${organizationId}?excludeCaseId=${excludeCaseId}`
+        : `/api/admin/support/customer-context/${organizationId}`;
+      const r = await apiRequest("GET", url);
+      return r.json();
+    },
+    enabled: !!organizationId,
+    staleTime: 30_000,
+  });
+
+  if (!organizationId) {
+    return (
+      <Card>
+        <CardContent className="p-4 text-sm text-muted-foreground" data-testid="customer-context-empty">
+          Select a case to see customer context.
+        </CardContent>
+      </Card>
+    );
+  }
+  if (isLoading || !data) {
+    return (
+      <Card>
+        <CardContent className="p-4 space-y-2" role="status" aria-label="Loading customer context">
+          <div className="animate-pulse h-4 bg-muted rounded w-32" />
+          <div className="animate-pulse h-3 bg-muted rounded w-24" />
+          <div className="animate-pulse h-3 bg-muted rounded w-40" />
+        </CardContent>
+      </Card>
+    );
+  }
+  const o = data.organization;
+  const mrrLabel = o.mrrCents > 0 ? `$${(o.mrrCents / 100).toFixed(0)}/mo` : "—";
+  return (
+    <Card data-testid="customer-context-sidebar">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Building2 className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
+          Customer context
+        </CardTitle>
+        <CardDescription>Everything you need before you reply.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <dl className="space-y-1 text-sm">
+          <div className="flex items-center justify-between gap-2">
+            <dt className="text-muted-foreground">Org</dt>
+            <dd className="font-medium truncate" data-testid="ctx-org-name">{o.name}</dd>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <dt className="text-muted-foreground">Tier</dt>
+            <dd>
+              <Badge variant="secondary" className="capitalize">{o.tier}</Badge>
+            </dd>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <dt className="text-muted-foreground">MRR</dt>
+            <dd className="tabular-nums" data-testid="ctx-mrr">{mrrLabel}</dd>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <dt className="text-muted-foreground">Signup</dt>
+            <dd className="tabular-nums">{o.signupDate ? new Date(o.signupDate).toLocaleDateString() : "—"}</dd>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <dt className="text-muted-foreground">Status</dt>
+            <dd className="capitalize">{o.subscriptionStatus}{o.dunningStage && o.dunningStage !== "none" ? ` · ${o.dunningStage.replace(/_/g, " ")}` : ""}</dd>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <dt className="text-muted-foreground">Open tickets</dt>
+            <dd className="tabular-nums" data-testid="ctx-open-tickets">{data.openTickets}</dd>
+          </div>
+        </dl>
+
+        <div>
+          <h4 className="text-xs font-semibold text-foreground mb-2 flex items-center gap-1.5">
+            <Activity className="w-3.5 h-3.5 text-muted-foreground" aria-hidden="true" />
+            Recent activity
+          </h4>
+          {data.recentActivity.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No recent activity in audit log.</p>
+          ) : (
+            <ul className="space-y-1.5 list-none p-0 m-0" aria-label="Recent activity">
+              {data.recentActivity.map((a) => (
+                <li key={a.id} className="text-xs">
+                  <span className="text-foreground">{a.action.replace(/_/g, " ")}</span>
+                  <span className="text-muted-foreground">
+                    {a.actorEmail ? ` · ${a.actorEmail}` : ""}
+                    {" · "}
+                    {formatTimeAgo(a.createdAt)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div>
+          <h4 className="text-xs font-semibold text-foreground mb-2 flex items-center gap-1.5">
+            <FileText className="w-3.5 h-3.5 text-muted-foreground" aria-hidden="true" />
+            Previous notes
+          </h4>
+          {data.notes.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No prior human-support notes.</p>
+          ) : (
+            <ul className="space-y-2 list-none p-0 m-0" aria-label="Previous interaction notes">
+              {data.notes.map((n) => (
+                <li key={n.id} className="text-xs p-2 rounded border border-border bg-muted/30">
+                  <p className="line-clamp-3 text-foreground">{n.content}</p>
+                  <p className="text-muted-foreground mt-1">Case #{n.caseId} · {formatTimeAgo(n.createdAt)}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Saved-replies panel (Olu §7 #6 — pre-canned operator responses).
+// Backed by /api/admin/support/saved-replies.
+// ────────────────────────────────────────────────────────────────────────────
+
+interface SavedReply {
+  id: number;
+  organizationId: number | null;
+  name: string;
+  body: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function SavedRepliesPanel({
+  organizationId,
+  onInsert,
+}: {
+  organizationId: number | null;
+  onInsert: (body: string) => void;
+}) {
+  const { data, isLoading } = useQuery<{ replies: SavedReply[] }>({
+    queryKey: ["/api/admin/support/saved-replies", organizationId],
+    queryFn: async () => {
+      const url = organizationId
+        ? `/api/admin/support/saved-replies?organizationId=${organizationId}`
+        : `/api/admin/support/saved-replies`;
+      const r = await apiRequest("GET", url);
+      return r.json();
+    },
+    staleTime: 60_000,
+  });
+  const replies = data?.replies ?? [];
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <BookmarkPlus className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
+          Saved replies
+        </CardTitle>
+        <CardDescription>Click to insert into the composer.</CardDescription>
+      </CardHeader>
+      <CardContent className="p-0">
+        {isLoading ? (
+          <div className="p-4 text-xs text-muted-foreground" role="status">Loading…</div>
+        ) : replies.length === 0 ? (
+          <div className="p-4 text-xs text-muted-foreground" data-testid="saved-replies-empty">
+            No saved replies yet. Create one from any case to start a library.
+          </div>
+        ) : (
+          <ul className="divide-y list-none p-0 m-0" aria-label="Saved replies">
+            {replies.map((r) => (
+              <li key={r.id}>
+                <button
+                  type="button"
+                  className="w-full text-left p-3 hover:bg-muted/40 transition"
+                  onClick={() => onInsert(r.body)}
+                  data-testid={`saved-reply-${r.id}`}
+                  aria-label={`Insert saved reply: ${r.name}`}
+                >
+                  <p className="text-sm font-medium truncate">{r.name}</p>
+                  <p className="text-xs text-muted-foreground line-clamp-2">{r.body}</p>
+                  {r.organizationId && (
+                    <span className="text-[10px] text-muted-foreground italic">org-scoped</span>
+                  )}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </CardContent>
     </Card>
   );
@@ -288,7 +514,7 @@ export default function AdminSupportPage() {
             </div>
           )}
 
-          <div className="grid lg:grid-cols-[400px_1fr] gap-6">
+          <div className="grid lg:grid-cols-[360px_1fr_320px] gap-6">
             <Card className="lg:h-[calc(100vh-320px)]">
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg flex items-center gap-2">
@@ -575,6 +801,20 @@ export default function AdminSupportPage() {
                 </>
               )}
             </Card>
+
+            {/* Right rail — customer context + saved replies (Olu §7 #5+#6, Kunle §2). */}
+            <aside className="space-y-4 lg:max-h-[calc(100vh-320px)] lg:overflow-y-auto" aria-label="Customer context and saved replies">
+              <CustomerContextSidebar
+                organizationId={selectedCase?.organizationId ?? null}
+                excludeCaseId={selectedCaseId}
+              />
+              <SavedRepliesPanel
+                organizationId={selectedCase?.organizationId ?? null}
+                onInsert={(body) => {
+                  setResponseMessage((prev) => (prev.trim() ? `${prev}\n\n${body}` : body));
+                }}
+              />
+            </aside>
           </div>
     </PageShell>
   );
