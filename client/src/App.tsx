@@ -421,8 +421,9 @@ function Router() {
       <Route path="/today">
         {() => <ProtectedRoute component={TodayPage} />}
       </Route>
+      {/* Legacy alias — see client/src/lib/route-redirects.ts (sunset 2026-07-02). */}
       <Route path="/dashboard">
-        {() => <ProtectedRoute component={TodayPage} />}
+        {() => <Redirect to="/today" />}
       </Route>
       <Route path="/pipeline">
         {() => <ProtectedRoute component={PipelinePage} />}
@@ -472,8 +473,9 @@ function Router() {
       <Route path="/team">
         {() => <ProtectedRoute component={TeamInboxPage} />}
       </Route>
+      {/* Legacy alias — see client/src/lib/route-redirects.ts (sunset 2026-07-02). */}
       <Route path="/team-inbox">
-        {() => <ProtectedRoute component={TeamInboxPage} />}
+        {() => <Redirect to="/team" />}
       </Route>
       <Route path="/automation">
         {() => <ProtectedRoute component={AutomationPage} />}
@@ -559,8 +561,9 @@ function Router() {
       {/* /founder and /founder-home now serve the new clean home with
           autonomy-health card + unified todo preview. The legacy
           operational dashboard lives at /founder-dashboard. */}
+      {/* Legacy alias — see client/src/lib/route-redirects.ts (sunset 2026-07-02). */}
       <Route path="/founder-home">
-        {() => <FounderProtectedRoute component={FounderHomePage} />}
+        {() => <Redirect to="/founder" />}
       </Route>
       <Route path="/founder">
         {() => <FounderProtectedRoute component={FounderHomePage} />}

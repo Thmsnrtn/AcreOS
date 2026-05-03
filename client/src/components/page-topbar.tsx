@@ -29,6 +29,7 @@ import { Button } from "@/components/ui/button";
 import { useTheme } from "@/contexts/theme-context";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
+import { OrgSwitcher } from "@/components/org-switcher";
 
 interface PageTopbarProps {
   /** Optional explicit title; falls back to document.title minus AcreOS suffix */
@@ -135,6 +136,9 @@ export function PageTopbar({ title: explicitTitle, crumbs }: PageTopbarProps = {
 
       {/* Actions */}
       <div className="flex items-center gap-1 shrink-0">
+        {/* Reyna §2 — VAs flip orgs without logging out. Hidden by the
+            component itself when the user only belongs to one org. */}
+        <OrgSwitcher compact={isMobile} />
         {!isMobile && (
           <Button
             variant="ghost"
