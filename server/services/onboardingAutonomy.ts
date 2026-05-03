@@ -68,7 +68,7 @@ export const JOURNEY_SEQUENCE: StepDefinition[] = [
   {
     key: "day0_welcome",
     offsetDays: 0,
-    label: "Welcome + intro Sophie",
+    label: "Welcome + intro Pax",
     handler: handleWelcome,
   },
   {
@@ -239,7 +239,7 @@ async function handleWelcome(
   // for this MVP we record that the step ran and the intent.
   return {
     intent: "welcome_email",
-    description: "Hi from Sophie. Over the next 30 days I'll check in at key moments to help you get active. If you need anything, just reply.",
+    description: "Hi from Pax, your AcreOS assistant. Over the next 30 days I'll check in at key moments to help you get active. If you need anything, just reply.",
   };
 }
 
@@ -249,7 +249,7 @@ async function handleGoalsPrompt(
 ): Promise<Record<string, any>> {
   return {
     intent: "goals_prompt",
-    description: "Ask the investor to tell Sophie: target markets, # deals/month goal, price range, preferred entity type.",
+    description: "Ask the investor to tell Pax: target markets, # deals/month goal, price range, preferred entity type.",
   };
 }
 

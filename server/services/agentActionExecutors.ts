@@ -107,10 +107,10 @@ registerExecutor("sophie_csm", "send_retention_email", async (ctx) => {
     subject: `We miss you at AcreOS — let's make sure you're getting the most out of your account`,
     html: `
       <p>Hi ${org.name} team,</p>
-      <p>I'm Sophie, your Customer Success Manager at AcreOS. I noticed it's been a while since you've been active on the platform, and I wanted to check in personally.</p>
+      <p>I'm Pax, your AcreOS assistant. I noticed it's been a while since you've been active on the platform, and I wanted to check in.</p>
       <p>We've made some great improvements lately and I'd love to make sure you're taking full advantage of everything available to you.</p>
       <p>Is there anything I can help with? A quick call or even a reply to this email works great.</p>
-      <p>Best,<br/>Sophie<br/>AcreOS Customer Success</p>
+      <p>Best,<br/>Pax<br/>AcreOS Customer Success</p>
     `,
     organizationId: orgId,
   });
@@ -138,7 +138,7 @@ registerExecutor("sophie_csm", "resolve_stale_ticket", async (ctx) => {
   await db.insert(supportTicketMessages).values({
     ticketId,
     senderId: "sophie_csm",
-    senderName: "Sophie (AcreOS Support)",
+    senderName: "Pax (AcreOS Support)",
     content: "Hi! I'm following up on this ticket. We haven't heard back in a while — if this issue is resolved, I'll go ahead and close it. If you still need help, just reply and I'll jump right in.",
     messageType: "reply",
     isInternal: false,
@@ -422,8 +422,8 @@ registerExecutor("sophie_csm", "schedule_call", async (ctx) => {
   if (!contactEmail) return { success: false, detail: `No contact email for ${org.name}` };
   const result = await emailService.sendEmail({
     to: contactEmail,
-    subject: "Let's schedule a quick call — Sophie from AcreOS",
-    html: `<p>Hi ${org.name} team,</p><p>I'd love to jump on a quick 15-minute call to make sure everything is going well.${reason ? ` Specifically, I wanted to discuss: ${reason}` : ""}</p><p>Would any of these times work this week? Just reply with your preference and I'll send a calendar invite.</p><p>Best,<br/>Sophie<br/>AcreOS Customer Success</p>`,
+    subject: "Let's schedule a quick call — Pax from AcreOS",
+    html: `<p>Hi ${org.name} team,</p><p>I'd love to jump on a quick 15-minute call to make sure everything is going well.${reason ? ` Specifically, I wanted to discuss: ${reason}` : ""}</p><p>Would any of these times work this week? Just reply with your preference and I'll send a calendar invite.</p><p>Best,<br/>Pax<br/>AcreOS Customer Success</p>`,
     organizationId: orgId,
   });
   return { success: result.success, detail: result.success ? `Call scheduling email sent to ${org.name}` : `Failed: ${result.error}`, metrics: { orgId, reason }, verifyAfterMs: 48 * 60 * 60 * 1000 };
@@ -461,7 +461,7 @@ registerExecutor("sophie_csm", "send_guided_walkthrough", async (ctx) => {
   const result = await emailService.sendEmail({
     to: contactEmail,
     subject: `Quick guide: Getting the most from ${stuckFeature || "AcreOS"}`,
-    html: `<p>Hi ${org.name} team,</p><p>I noticed you might be looking for help with ${stuckFeature || "getting started"}. Here's a quick walkthrough:</p><p><strong>${guide}</strong></p><p>Need more help? Just reply to this email — I'm here for you.</p><p>Best,<br/>Sophie<br/>AcreOS Customer Success</p>`,
+    html: `<p>Hi ${org.name} team,</p><p>I noticed you might be looking for help with ${stuckFeature || "getting started"}. Here's a quick walkthrough:</p><p><strong>${guide}</strong></p><p>Need more help? Just reply to this email — I'm here for you.</p><p>Best,<br/>Pax<br/>AcreOS Customer Success</p>`,
     organizationId: orgId,
   });
   return { success: result.success, detail: result.success ? `Guided walkthrough sent to ${org.name} for "${stuckFeature || "general"}"` : `Failed: ${result.error}`, metrics: { orgId, stuckFeature }, verifyAfterMs: 72 * 60 * 60 * 1000 };

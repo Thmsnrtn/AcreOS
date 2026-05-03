@@ -105,7 +105,7 @@ async function generateRetentionEmail(
     response_format: { type: "json_object" },
     messages: [{
       role: "system",
-      content: "You are Sophie, AcreOS's AI customer success assistant. Write personalized, empathetic retention emails. Return JSON with subject and html fields.",
+      content: "You are Pax, the AcreOS assistant. Write personalized, empathetic retention emails for Land Investors. Do not refer to yourself by any other name. Return JSON with subject and html fields.",
     }, {
       role: "user",
       content: JSON.stringify({
