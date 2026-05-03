@@ -152,7 +152,9 @@ export function useUpdateOrganization() {
   });
 }
 
-export type Role = "owner" | "admin" | "member" | "viewer";
+// Phase 3 Week 14 (Liana §1+§3, Reyna §1): standardized to 4 pragmatic roles
+// + `va`. Legacy values are remapped to `member` server-side.
+export type Role = "owner" | "admin" | "member" | "viewer" | "va";
 
 export interface RolePermissions {
   canAccessSettings: boolean;
@@ -210,6 +212,7 @@ export interface TeamMember {
   displayName: string | null;
   role: Role;
   permissions: string[] | null;
+  viewOnlyAssignedLeads?: boolean;
   isActive: boolean;
   invitedAt: string | null;
   joinedAt: string | null;
@@ -244,6 +247,95 @@ export function useUpdateTeamMemberRole() {
   });
 }
 
+// Reyna §1: per-user assigned-leads-only override.
+export function useUpdateTeamMemberViewOnly() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      memberId,
+      viewOnlyAssignedLeads,
+    }: {
+      memberId: number;
+      viewOnlyAssignedLeads: boolean;
+    }) => {
+      const res = await apiRequest(
+        "PATCH",
+        `/api/team/${memberId}/view-only-assigned-leads`,
+        { viewOnlyAssignedLeads },
+      );
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || "Failed to update lead visibility");
+      }
+      return res.json() as Promise<TeamMember>;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/team"] });
+    },
+  });
+}
+
+// Blanco §1: org co-owners.
+export interface OrgCoOwner {
+  id: number;
+  organizationId: number;
+  userId: string;
+  addedAt: string;
+  addedBy: string;
+}
+
+export function useOrgCoOwners() {
+  return useQuery<OrgCoOwner[]>({
+    queryKey: ["/api/organization/co-owners"],
+    queryFn: async () => {
+      const res = await fetch("/api/organization/co-owners", {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to fetch co-owners");
+      return res.json();
+    },
+  });
+}
+
+export function useAddOrgCoOwner() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ userId }: { userId: string }) => {
+      const res = await apiRequest("POST", "/api/organization/co-owners", {
+        userId,
+      });
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || "Failed to add co-owner");
+      }
+      return res.json() as Promise<OrgCoOwner>;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/organization/co-owners"] });
+    },
+  });
+}
+
+export function useRemoveOrgCoOwner() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ userId }: { userId: string }) => {
+      const res = await apiRequest(
+        "DELETE",
+        `/api/organization/co-owners/${encodeURIComponent(userId)}`,
+      );
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || "Failed to remove co-owner");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/organization/co-owners"] });
+    },
+  });
+}
+
 export function getRoleLabel(role: string): string {
   switch (role) {
     case "owner":
@@ -254,6 +346,8 @@ export function getRoleLabel(role: string): string {
       return "Member";
     case "viewer":
       return "Viewer";
+    case "va":
+      return "VA";
     default:
       return "Member";
   }
@@ -269,6 +363,8 @@ export function getRoleBadgeStyle(role: string): string {
       return "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300";
     case "viewer":
       return "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300";
+    case "va":
+      return "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300";
     default:
       return "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300";
   }

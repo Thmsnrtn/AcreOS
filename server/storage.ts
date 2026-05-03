@@ -23,7 +23,7 @@ export interface PaginatedResult<T> {
 }
 import { aiConversations, aiMessages } from "@shared/schema";
 import {
-  organizations, teamMembers, leads, leadActivities, properties, deals,
+  organizations, teamMembers, orgCoOwners, leads, leadActivities, properties, deals,
   notes, payments, paymentReminders, campaigns, campaignOptimizations, campaignResponses, agentConfigs, agentTasks, conversations,
   messages, activityLog, usageEvents,
   aiAgentProfiles, aiToolDefinitions, aiExecutionRuns, aiMemory,
@@ -49,6 +49,7 @@ import {
   fieldScoutVisits, fieldScoutPhotos,
   type Organization, type InsertOrganization,
   type TeamMember, type InsertTeamMember,
+  type OrgCoOwner, type InsertOrgCoOwner,
   type Lead, type InsertLead,
   type LeadActivity, type InsertLeadActivity,
   type Property, type InsertProperty,
@@ -288,7 +289,12 @@ export interface IStorage {
   getTeamMember(orgId: number, userId: string): Promise<TeamMember | undefined>;
   createTeamMember(member: InsertTeamMember): Promise<TeamMember>;
   updateTeamMember(id: number, updates: Partial<InsertTeamMember>): Promise<TeamMember>;
-  
+
+  // Org Co-Owners (Blanco §1)
+  listOrgCoOwners(orgId: number): Promise<OrgCoOwner[]>;
+  addOrgCoOwner(input: InsertOrgCoOwner): Promise<OrgCoOwner | undefined>;
+  removeOrgCoOwner(orgId: number, userId: string): Promise<void>;
+
   // Leads
   getLeads(orgId: number, filters?: { assignedTo?: number | null }): Promise<Lead[]>;
   getLead(orgId: number, id: number): Promise<Lead | undefined>;
@@ -1285,7 +1291,50 @@ export class DatabaseStorage implements IStorage {
     const [updated] = await db.update(teamMembers).set(updates).where(and(...conditions)).returning();
     return updated;
   }
-  
+
+  // ─── Org Co-Owners (Blanco §1) ──────────────────────────────────────────
+  // Co-ownership is a billing/identity relation distinct from operational
+  // role. Listing/adding/removing co-owners is owner-only at the route
+  // layer; the storage helpers here are role-agnostic.
+  async listOrgCoOwners(orgId: number) {
+    return await db
+      .select()
+      .from(orgCoOwners)
+      .where(eq(orgCoOwners.organizationId, orgId))
+      .orderBy(asc(orgCoOwners.addedAt));
+  }
+
+  async addOrgCoOwner(input: InsertOrgCoOwner) {
+    // Idempotent: the unique index on (org, user) means re-add is a no-op.
+    const [row] = await db
+      .insert(orgCoOwners)
+      .values(input)
+      .onConflictDoNothing()
+      .returning();
+    if (row) return row;
+    const [existing] = await db
+      .select()
+      .from(orgCoOwners)
+      .where(
+        and(
+          eq(orgCoOwners.organizationId, input.organizationId),
+          eq(orgCoOwners.userId, input.userId),
+        ),
+      );
+    return existing;
+  }
+
+  async removeOrgCoOwner(orgId: number, userId: string) {
+    await db
+      .delete(orgCoOwners)
+      .where(
+        and(
+          eq(orgCoOwners.organizationId, orgId),
+          eq(orgCoOwners.userId, userId),
+        ),
+      );
+  }
+
   // Leads
   async getLeads(orgId: number, filters?: { assignedTo?: number | null }) {
     const conditions: any[] = [eq(leads.organizationId, orgId), sql`${leads.deletedAt} IS NULL`];

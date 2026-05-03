@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { storage, db } from "./storage";
 import { z } from "zod";
 import { eq, and, sql, desc } from "drizzle-orm";
-import { insertOrganizationSchema, leads, deals, properties, npsResponses, organizations } from "@shared/schema";
+import { insertOrganizationSchema, leads, deals, properties, npsResponses, organizations, type InsertTeamMember } from "@shared/schema";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { requireAdminOrAbove, requireOwner } from "./utils/permissions";
@@ -1116,12 +1116,29 @@ export function registerOrganizationRoutes(app: Express): void {
       return res.status(403).json({ message: "Only the owner can assign the owner role" });
     }
 
+    // Liana §1: admins can promote between member and va (and to viewer), but
+    // they cannot grant `admin` — only the owner can elevate someone to admin.
+    if (context.role === "admin" && role === "admin") {
+      return res
+        .status(403)
+        .json({ message: "Only the owner can grant the admin role" });
+    }
+
     const owners = members.filter(m => m.role === "owner");
     if (targetMember.role === "owner" && owners.length === 1 && role !== "owner") {
       return res.status(400).json({ message: "Cannot remove the only owner. Transfer ownership first." });
     }
 
-    const updated = await storage.updateTeamMember(memberId, { role });
+    // When assigning the `va` role, default the assigned-leads-only flag on.
+    // When moving away from `va`, leave the per-user flag alone — admins may
+    // have explicitly toggled it for a member and we don't want to silently
+    // clear that intent.
+    const updates: Partial<InsertTeamMember> = { role } as any;
+    if (role === "va" && !((targetMember as any).viewOnlyAssignedLeads)) {
+      (updates as any).viewOnlyAssignedLeads = true;
+    }
+
+    const updated = await storage.updateTeamMember(memberId, updates);
 
     try {
       const user = req.user as any;
@@ -1156,6 +1173,168 @@ export function registerOrganizationRoutes(app: Express): void {
 
     res.json(updated);
   });
+
+  // Reyna §1: per-user assigned-leads-only toggle. Admin/owner can flip the
+  // flag for any non-owner team member. The default is set automatically
+  // when assigning the `va` role above; this endpoint exists for the
+  // Settings → Members "VA can see all leads" override.
+  const viewOnlyToggleSchema = z.object({
+    viewOnlyAssignedLeads: z.boolean(),
+  });
+
+  api.patch(
+    "/api/team/:id/view-only-assigned-leads",
+    isAuthenticated,
+    getOrCreateOrg,
+    requireAdminOrAbove(),
+    async (req, res) => {
+      const org = req.organization;
+      const memberId = Number(req.params.id);
+      const parsed = viewOnlyToggleSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+
+      const members = await storage.getTeamMembers(org.id);
+      const targetMember = members.find((m) => m.id === memberId);
+      if (!targetMember) {
+        return Errors.notFound(res, "Team member");
+      }
+
+      // Never restrict the owner — the row makes no sense, and we don't want
+      // to accidentally hide leads from the org's owner.
+      if (targetMember.role === "owner") {
+        return Errors.badRequest(
+          res,
+          "Cannot restrict the organization owner's lead visibility",
+        );
+      }
+
+      const updated = await storage.updateTeamMember(memberId, {
+        viewOnlyAssignedLeads: parsed.data.viewOnlyAssignedLeads,
+      } as Partial<InsertTeamMember>);
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLogEntry({
+          organizationId: org.id,
+          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          action: "update",
+          entityType: "team_member",
+          entityId: memberId,
+          changes: {
+            before: {
+              viewOnlyAssignedLeads:
+                (targetMember as any).viewOnlyAssignedLeads ?? false,
+            },
+            after: { viewOnlyAssignedLeads: parsed.data.viewOnlyAssignedLeads },
+            fields: ["viewOnlyAssignedLeads"],
+          },
+          ipAddress: req.ip || null,
+          userAgent: req.headers["user-agent"] || null,
+          metadata: {},
+        });
+      } catch {
+        /* non-fatal */
+      }
+
+      res.json(updated);
+    },
+  );
+
+  // ─── Co-Owners (Blanco §1) ────────────────────────────────────────────
+  // Co-ownership is owner-managed: only the org owner can add or remove
+  // co-owners. Listing is owner-or-admin (admins need to know the dual-
+  // billing posture without being able to mutate it).
+  api.get(
+    "/api/organization/co-owners",
+    isAuthenticated,
+    getOrCreateOrg,
+    requireAdminOrAbove(),
+    async (req, res) => {
+      const org = req.organization;
+      const rows = await storage.listOrgCoOwners(org.id);
+      res.json(rows);
+    },
+  );
+
+  const addCoOwnerSchema = z.object({
+    userId: z.string().min(1),
+  });
+
+  api.post(
+    "/api/organization/co-owners",
+    isAuthenticated,
+    getOrCreateOrg,
+    requireOwner(),
+    async (req, res) => {
+      const org = req.organization;
+      const parsed = addCoOwnerSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+
+      // The candidate must already be a team member of this org (we don't
+      // create co-ownership for users who aren't on the team).
+      const member = await storage.getTeamMember(org.id, parsed.data.userId);
+      if (!member) {
+        return Errors.badRequest(
+          res,
+          "User must be a team member of this organization before they can be added as a co-owner",
+        );
+      }
+
+      const adder = req.user as any;
+      const adderUserId = String(adder?.claims?.sub || adder?.id || "");
+
+      const row = await storage.addOrgCoOwner({
+        organizationId: org.id,
+        userId: parsed.data.userId,
+        addedBy: adderUserId,
+      });
+
+      try {
+        await auditFromRequest(req, {
+          action: AuditActions.ORG_MEMBER_ADDED,
+          target: { type: "organization", id: org.id },
+          metadata: {
+            op: "co_owner_added",
+            userId: parsed.data.userId,
+          },
+        });
+      } catch {
+        /* non-fatal */
+      }
+
+      res.status(201).json(row);
+    },
+  );
+
+  api.delete(
+    "/api/organization/co-owners/:userId",
+    isAuthenticated,
+    getOrCreateOrg,
+    requireOwner(),
+    async (req, res) => {
+      const org = req.organization;
+      const { userId } = req.params;
+      if (!userId) return Errors.badRequest(res, "userId required");
+
+      await storage.removeOrgCoOwner(org.id, userId);
+
+      try {
+        await auditFromRequest(req, {
+          action: AuditActions.ORG_MEMBER_ADDED,
+          target: { type: "organization", id: org.id },
+          metadata: { op: "co_owner_removed", userId },
+        });
+      } catch {
+        /* non-fatal */
+      }
+
+      res.json({ ok: true });
+    },
+  );
 
   // ============================================
   // TEAM PERFORMANCE DASHBOARD (18.1-18.3)
@@ -1375,9 +1554,24 @@ export function registerOrganizationRoutes(app: Express): void {
   // link; on first sign-in with that token query param, they're attached
   // as a team member with the assigned role.
 
+  // Phase 3 Week 14 (Liana §1+§3, Reyna §1): standardized to 4 pragmatic
+  // roles + va. Legacy values (acquisitions, marketing, finance) remain in
+  // the enum ONLY to avoid breaking pending in-flight invite payloads from
+  // older clients — they're remapped to `member` at acceptance time. New
+  // surfaces (Settings → Members) emit only the canonical 5.
   const createInvitationSchema = z.object({
     email: z.string().email(),
-    role: z.enum(["admin", "member", "viewer", "acquisitions", "marketing", "finance"]).default("member"),
+    role: z
+      .enum([
+        "admin",
+        "member",
+        "viewer",
+        "va",
+        "acquisitions",
+        "marketing",
+        "finance",
+      ])
+      .default("member"),
   });
 
   const bulkInvitationSchema = z.object({

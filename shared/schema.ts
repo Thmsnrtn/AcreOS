@@ -192,18 +192,62 @@ export const organizations = pgTable("organizations", {
 });
 
 // Team members within an organization
+//
+// Phase 3 Week 14 (Liana §1+§3, Reyna §1): standardized to 4 pragmatic roles
+// + a 5th `va` role for outsourced VAs / contractors:
+//
+//   owner   — full control of org (billing, ownership transfer, delete)
+//   admin   — full operational control except billing & ownership transfer
+//   member  — full operational, cannot change member roles
+//   viewer  — read-only across the CRM
+//   va      — like member, but optionally limited to assigned-leads-only when
+//             `viewOnlyAssignedLeads = true`. Used for outsourced VAs who
+//             should never see the full lead pool.
+//
+// Legacy role values (`acquisitions`, `marketing`, `finance`) were retired in
+// migration 0050. Existing rows are remapped to `member`. The `roleGuard`
+// middleware now treats those legacy strings as `member` for backward compat
+// at the read path (in case any unmigrated row sneaks in via replica lag).
 export const teamMembers = pgTable("team_members", {
   id: serial("id").primaryKey(),
   organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
   userId: text("user_id").notNull(), // Replit user ID
   email: text("email"),
   displayName: text("display_name"),
-  role: text("role").notNull().default("member"), // owner, admin, acquisitions, marketing, finance, member
+  role: text("role").notNull().default("member"), // owner | admin | member | viewer | va
   permissions: jsonb("permissions").$type<string[]>(),
+  // Per-user assigned-leads-only flag. Honored when role === 'va' (or when
+  // an admin opts a member into restricted visibility). When true, every
+  // leads query MUST add `WHERE assignedTo = teamMember.id`.
+  viewOnlyAssignedLeads: boolean("view_only_assigned_leads").notNull().default(false),
   isActive: boolean("is_active").notNull().default(true),
   invitedAt: timestamp("invited_at").defaultNow(),
   joinedAt: timestamp("joined_at"),
 });
+
+// ─── Org Co-Owners (Blanco §1) ────────────────────────────────────────────────
+// A separate relation from team_members because co-ownership is a billing /
+// ownership concept distinct from operational role. Co-owners get:
+//   - dual billing-card visibility (each can update payment method)
+//   - dual tax-contact visibility (each visible on the 1099 issuer side)
+//   - LLC EIN on Stripe customer (deferred to a billing follow-up)
+//
+// A co-owner row does NOT grant operational permissions on its own — the
+// linked user must also have an `owner` role in `team_members` for normal
+// route access. The presence of a row in `org_co_owners` is what unlocks
+// the dual-billing / dual-tax-contact UX.
+export const orgCoOwners = pgTable("org_co_owners", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  userId: text("user_id").notNull(),
+  addedAt: timestamp("added_at").defaultNow().notNull(),
+  addedBy: text("added_by").notNull(), // userId of the owner who added them
+}, (table) => ({
+  byOrgUser: uniqueIndex("idx_org_co_owners_org_user").on(table.organizationId, table.userId),
+}));
+
+export type OrgCoOwner = typeof orgCoOwners.$inferSelect;
+export type InsertOrgCoOwner = typeof orgCoOwners.$inferInsert;
 
 // Pending seat invitations — email-addressed invites that attach the user
 // to this org on first sign-in after they click the invite link.
