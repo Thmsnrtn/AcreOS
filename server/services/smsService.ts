@@ -398,7 +398,12 @@ export async function handleIncomingSMS(
     };
   }
 
-  const [newMessage] = await db
+  // Webhook-replay defense (Hessam §2.2 + §2.4): rely on the partial unique
+  // index `messages_external_id_unique` on (external_id) WHERE NOT NULL to
+  // make replayed Twilio webhooks idempotent. ON CONFLICT DO NOTHING +
+  // .returning() yields an empty array on conflict, which lets us skip
+  // downstream side effects (notifications, autoresponders) for replays.
+  const insertedRows = await db
     .insert(messages)
     .values({
       organizationId,
@@ -409,7 +414,20 @@ export async function handleIncomingSMS(
       status: "received",
       externalId: messageSid,
     })
+    .onConflictDoNothing({ target: messages.externalId })
     .returning();
+
+  const newMessage = insertedRows[0];
+  const isReplay = !newMessage;
+
+  if (isReplay) {
+    logger.warn(`[SMS] Duplicate Twilio MessageSid ${messageSid} — webhook replay ignored`);
+    return {
+      success: true,
+      conversationId: existingConversation.id,
+      leadId,
+    };
+  }
 
   await db
     .update(conversations)

@@ -1463,22 +1463,32 @@ export const messages = pgTable("messages", {
   id: serial("id").primaryKey(),
   conversationId: integer("conversation_id").references(() => conversations.id, { onDelete: "cascade" }).notNull(),
   organizationId: integer("organization_id").references(() => organizations.id).notNull(),
-  
+
   direction: text("direction").notNull(), // inbound, outbound
   sender: text("sender").notNull(), // lead, agent, human
   content: text("content").notNull(),
-  
+
   // For AI-generated messages
   generatedByAgent: boolean("generated_by_agent").default(false),
   agentTaskId: integer("agent_task_id").references(() => agentTasks.id),
-  
+
   // Delivery status
   status: text("status").notNull().default("sent"), // pending, sent, delivered, read, failed
   externalId: text("external_id"),
-  
+
   metadata: jsonb("metadata"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  // Webhook-replay defense (Hessam §2.2 + §2.4): a replayed Twilio webhook
+  // would otherwise insert duplicate rows for the same MessageSid and
+  // double-fire downstream side effects. Partial unique index because
+  // outbound messages may not have an externalId at insert time.
+  // The migration (0033_twilio_messagesid_unique.sql) creates the index
+  // CONCURRENTLY with the same WHERE clause.
+  uniqueIndex("messages_external_id_unique")
+    .on(table.externalId)
+    .where(sql`${table.externalId} IS NOT NULL`),
+]);
 
 // ============================================
 // ACTIVITY LOG & AUDIT

@@ -102,6 +102,16 @@ export function validateSecrets(): void {
     }
   }
 
+  // Hessam §2.4 — Twilio webhook signature validation must never silently
+  // bypass. If a Twilio account is configured (TWILIO_ACCOUNT_SID present)
+  // we MUST also have TWILIO_AUTH_TOKEN, otherwise the signature middleware
+  // would reject every inbound webhook at runtime. Throw on boot instead.
+  if (process.env.TWILIO_ACCOUNT_SID && !process.env.TWILIO_AUTH_TOKEN) {
+    errors.push(
+      "MISSING REQUIRED: TWILIO_AUTH_TOKEN — needed to validate Twilio webhook signatures (TWILIO_ACCOUNT_SID is set, so SMS is in use)"
+    );
+  }
+
   // Log warnings
   if (warnings.length > 0) {
     logger.warn("\n⚠️  [secrets] Configuration warnings:");
