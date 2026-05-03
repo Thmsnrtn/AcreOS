@@ -97,6 +97,8 @@ import commentsRouter from "./routes-comments";
 // Phase 1: Communication features
 import { registerInboundEmailRoutes } from "./routes-inbound-email";
 import { registerSendGridEventRoutes } from "./routes-sendgrid-events";
+// Eleonora deliverability — Phase 1 §10 / Week 7-8.
+import { registerDeliverabilityRoutes } from "./routes-deliverability";
 
 // Rate limiting middleware
 import { createRateLimiter, rateLimiters, RATE_LIMIT_CONFIGS, authLimiter, aiLimiter, webhookLimiter, importLimiter } from "./middleware/rateLimit";
@@ -1720,6 +1722,10 @@ export async function registerRoutes(
   registerInboundEmailRoutes(app);
   // SendGrid event webhook (Hessam §2.3) — Ed25519-signed delivery events
   registerSendGridEventRoutes(app);
+  // Eleonora deliverability — Phase 1 §10 / Week 7-8: per-org DKIM/SPF/DMARC
+  // identity provisioning, one-click List-Unsubscribe handler, founder
+  // deliverability dashboard.
+  registerDeliverabilityRoutes(app);
 
   // Register AI Operations (Router-based)
   registerAIOperationsRoutes(app);
