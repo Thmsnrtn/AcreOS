@@ -100,6 +100,7 @@ import { registerSendGridEventRoutes } from "./routes-sendgrid-events";
 
 // Rate limiting middleware
 import { createRateLimiter, rateLimiters, RATE_LIMIT_CONFIGS, authLimiter, aiLimiter, webhookLimiter, importLimiter } from "./middleware/rateLimit";
+import { aiRateLimit } from "./middleware/aiRateLimit";
 
 
 // White-label domain middleware
@@ -711,6 +712,9 @@ export async function registerRoutes(
   // RATE LIMITING MIDDLEWARE (excludes health check)
   // ============================================
   app.use("/api/ai", aiLimiter);
+  // Phase 3 Week 9: per-organization rate limit (60/min, 600/hr) — distinct
+  // from aiLimiter (which is per-user). See server/middleware/aiRateLimit.ts.
+  app.use("/api/ai", aiRateLimit);
   app.use("/api/auth", authLimiter);
   app.use("/api/stripe/connect/webhook", webhookLimiter);
   app.use("/webhook", webhookLimiter);
@@ -1449,6 +1453,9 @@ export async function registerRoutes(
     registerSovereignIntegrationRoutes(app);
     const { registerFounderIntegrationsRoutes } = await import("./routes-founder-integrations");
     registerFounderIntegrationsRoutes(app);
+    // Phase 3 Week 9: AI cost ceiling + founder cost dashboard endpoints.
+    const { registerAiCostRoutes } = await import("./routes-ai-cost");
+    registerAiCostRoutes(app);
   }
 
   // Executive Revenue Dashboard — Founder-only aggregate metrics
