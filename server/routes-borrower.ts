@@ -12,6 +12,68 @@ import { addMonths } from "./utils/dateUtils";
 const portalPaymentRateLimiter = createRateLimiter(RATE_LIMIT_CONFIGS.public, (req) => req.ip || req.socket.remoteAddress || 'unknown');
 const deprecatedPaymentRateLimiter = createRateLimiter({ maxRequests: 2, windowMs: 60 * 1000 }, (req) => req.ip || req.socket.remoteAddress || 'unknown');
 
+// ─────────────────────────────────────────────────────────────────────
+// Sigfried §1 — Borrower-portal sunset (RFC 8594)
+// ─────────────────────────────────────────────────────────────────────
+// The unauthenticated /api/portal/:accessToken/* endpoints are being
+// retired in favor of session-based auth at /api/borrower/*. Per RFC
+// 8594 we emit Sunset + Deprecation headers so any third-party caller
+// gets explicit machine-readable notice. After the sunset date the
+// endpoint returns 410 Gone.
+//
+// 90-day window — today (2026-05-03) → 2026-08-01. Configurable via
+// BORROWER_PORTAL_SUNSET_DATE env var so ops can extend without a
+// code deploy if a customer migration runs long.
+const BORROWER_PORTAL_SUNSET_DATE =
+  process.env.BORROWER_PORTAL_SUNSET_DATE || "2026-08-01";
+
+// Successor URI advertised in the Link header per RFC 8594 §3.
+const BORROWER_PORTAL_SUCCESSOR = "/portal/v2";
+
+function sunsetMiddleware(sunsetDateStr: string = BORROWER_PORTAL_SUNSET_DATE) {
+  // Parse once at middleware-construction time. Date parsing of an
+  // invalid string yields NaN — we fail loudly rather than silently
+  // rendering an "Invalid Date" header.
+  const sunsetDate = new Date(sunsetDateStr);
+  if (Number.isNaN(sunsetDate.getTime())) {
+    throw new Error(
+      `Invalid BORROWER_PORTAL_SUNSET_DATE: ${sunsetDateStr} (expected ISO 8601)`
+    );
+  }
+  // RFC 7231 §7.1.1.1 IMF-fixdate format for HTTP Date-style headers.
+  const sunsetHttpDate = sunsetDate.toUTCString();
+
+  return function sunsetHeaders(req: Request, res: Response, next: NextFunction) {
+    // After the sunset date — endpoint is gone. RFC 7231 §6.5.9.
+    if (Date.now() > sunsetDate.getTime()) {
+      logger.warn("Sunset endpoint accessed after sunset date", {
+        path: req.originalUrl,
+        sunsetDate: sunsetDate.toISOString(),
+        ip: req.ip || req.socket.remoteAddress,
+      });
+      return res.status(410).json({
+        error: "endpoint_sunset",
+        message:
+          "This endpoint is no longer available. Please use the new portal at /portal/v2.",
+        sunsetDate: sunsetDate.toISOString(),
+      });
+    }
+
+    // RFC 8594 — Sunset header in IMF-fixdate format.
+    res.setHeader("Sunset", sunsetHttpDate);
+    // RFC draft-ietf-httpapi-deprecation-header — Deprecation header.
+    // "true" is the spec-allowed legacy value; clients that want a
+    // date can read Sunset.
+    res.setHeader("Deprecation", "true");
+    // Successor advertisement — RFC 8288 Link header with rel="successor-version".
+    res.setHeader(
+      "Link",
+      `<${BORROWER_PORTAL_SUCCESSOR}>; rel="successor-version"`
+    );
+    next();
+  };
+}
+
 // Middleware to validate borrower session from cookie or header
 async function validateBorrowerSession(req: Request, res: Response, next: NextFunction) {
   try {
@@ -283,7 +345,7 @@ export function registerBorrowerRoutes(app: Express): void {
   // Create Stripe checkout session for borrower portal payment
   // DEPRECATED: Use session-based auth at /api/borrower/payment instead
   // Rate limited: 2 requests per minute per IP (stricter than session-based)
-  api.post("/api/portal/:accessToken/payment", deprecatedPaymentRateLimiter, async (req, res) => {
+  api.post("/api/portal/:accessToken/payment", sunsetMiddleware(), deprecatedPaymentRateLimiter, async (req, res) => {
     // Log deprecation warning
     logger.warn("Deprecated endpoint accessed: /api/portal/:accessToken/payment", {
       ip: req.ip || req.socket.remoteAddress,
@@ -365,7 +427,7 @@ export function registerBorrowerRoutes(app: Express): void {
   });
   
   // Verify Stripe payment and create payment record
-  api.post("/api/portal/:accessToken/verify-payment", deprecatedPaymentRateLimiter, async (req, res) => {
+  api.post("/api/portal/:accessToken/verify-payment", sunsetMiddleware(), deprecatedPaymentRateLimiter, async (req, res) => {
     try {
       const { accessToken } = req.params;
       const { sessionId } = req.body;
