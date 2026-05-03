@@ -7,6 +7,7 @@ import { alertingService } from "./alerting";
 import { getOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
 import { tracedLlmCall } from "./tracedLlmCall";
+import { sanitizePromptInline } from "../utils/sanitizePrompt";
 
 export type ScoreFactors = {
   responseRecency?: number;
@@ -147,14 +148,22 @@ export class LeadNurturerService {
         : null,
     };
 
+    // P0-14: lead.firstName / lastName / city / state / source are user-controlled
+    // and have flowed straight from CRM imports — sanitize before interpolating.
+    const _safeFirst = sanitizePromptInline(context.firstName ?? "", { maxLength: 80, source: "leadNurturer.firstName" });
+    const _safeLast = sanitizePromptInline(context.lastName ?? "", { maxLength: 80, source: "leadNurturer.lastName" });
+    const _safeSource = sanitizePromptInline(context.source ?? "Unknown", { maxLength: 120, source: "leadNurturer.source" });
+    const _safeCity = sanitizePromptInline(context.city ?? "", { maxLength: 120, source: "leadNurturer.city" });
+    const _safeState = sanitizePromptInline(context.state ?? "", { maxLength: 60, source: "leadNurturer.state" });
+
     const prompt = `You are a professional land investment company representative. Generate a personalized follow-up email for a lead.
 
 Lead Context:
-- Name: ${context.firstName} ${context.lastName}
+- Name: ${_safeFirst} ${_safeLast}
 - Type: ${context.type === "seller" ? "Property seller" : "Property buyer"}
 - Current Status: ${context.status}
-- Lead Source: ${context.source || "Unknown"}
-- Location: ${context.city || ""}, ${context.state || ""}
+- Lead Source: ${_safeSource}
+- Location: ${_safeCity}, ${_safeState}
 - Engagement Level: ${context.nurturingStage}
 ${context.daysSinceLastContact ? `- Days since last contact: ${context.daysSinceLastContact}` : ""}
 

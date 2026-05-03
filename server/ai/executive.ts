@@ -14,6 +14,8 @@ import mammoth from "mammoth";
 import { storage } from "../storage";
 import { logger } from "../utils/logger";
 import { sanitizePrompt } from "../middleware/promptInjection";
+import { composePaxSystemPrompt, type PaxPromptVersion } from "./paxPromptVersions";
+import { validatePaxResponse } from "../utils/validatePaxResponse";
 
 // ── Quality Feedback Loop ────────────────────────────────────────────────────
 // Fire-and-forget: scores each Pax response quality via DeepSeek and writes
@@ -609,6 +611,11 @@ interface ChatOptions {
   activeProjectId?: number;
   modelOverride?: string; // Override automatic model selection
   subAgentDepth?: number; // Internal: depth counter for spawn_subagent recursion guard
+  /**
+   * Pax response-shape prompt version. Default "v3" (one-line headline +
+   * up to 3 bullets). Set to "v2" via `?paxPrompt=v2` for ops fall-back.
+   */
+  paxPromptVersion?: PaxPromptVersion;
 }
 
 function decodeBase64ToText(base64: string): string {
@@ -1010,7 +1017,9 @@ export async function processChat(
   const _connectedIds = await storage.getConnectedConnectorIds(org.id);
   const _connectorCtx = buildConnectorContextBlock(_connectedIds);
   const _calibrationCtx = await loadCalibrationContext(org.id);
-  const _systemContent = profile.systemPrompt + (_enrichCtx || "") + (_prefCtx || "") + (_calibrationCtx || "") + (_knowledgeCtx || "") + (_projectCtx || "") + (_mentionCtx || "") + (_connectorCtx || "");
+  // P1-41 + P0-14: compose with response-shape v3 + untrusted-data clause.
+  const _basePrompt = profile.systemPrompt + (_enrichCtx || "") + (_prefCtx || "") + (_calibrationCtx || "") + (_knowledgeCtx || "") + (_projectCtx || "") + (_mentionCtx || "") + (_connectorCtx || "");
+  const _systemContent = composePaxSystemPrompt(_basePrompt, options.paxPromptVersion);
 
   const chatMessages: OpenAI.ChatCompletionMessageParam[] = [
     { role: "system", content: _systemContent },
@@ -1057,11 +1066,24 @@ export async function processChat(
 
   logger.info(`[AI Chat] Routing chat (${complexity}) -> ${provider}/${model}`);
 
+  // P1-41: Anthropic prompt caching. The system prompt is large and stable
+  // (>1024 chars including ATLAS core methodology); annotating it with
+  // cache_control: ephemeral lets OpenRouter pass the cache breakpoint to
+  // Anthropic and discount the cached portion ~90% on read.
+  const _isAnthropicChatModel = model.startsWith("anthropic/") || model.includes("claude");
+  const _systemLen = typeof _systemContent === "string" ? _systemContent.length : 0;
+  const _shouldCache = _isAnthropicChatModel && _systemLen >= 1024;
+  const _payloadMessages = _shouldCache
+    ? chatMessages.map((m, i) => i === 0 && m.role === "system"
+        ? ({ ...m, cache_control: { type: "ephemeral" } } as any)
+        : m)
+    : chatMessages;
+
   let response: OpenAI.ChatCompletion;
   try {
     response = await createChatCompletionWithCreditRetry(client, {
       model,
-      messages: chatMessages,
+      messages: _payloadMessages,
       tools: tools.length > 0 ? tools : undefined,
       max_tokens: 2048
     });
@@ -1158,7 +1180,14 @@ export async function processChat(
     assistantMessage = response.choices[0].message;
   }
 
-  const finalContent = assistantMessage.content || "I processed your request.";
+  const _rawFinalContent = assistantMessage.content || "I processed your request.";
+  // P0-14: post-validate to catch any system-prompt leak that survived
+  // the input sanitizer + delimiter contract.
+  const _validated = validatePaxResponse(_rawFinalContent, {
+    source: "pax.processChat",
+    organizationId: org.id,
+  });
+  const finalContent = _validated.response;
 
   await createMessage({
     conversationId: conversation.id,
@@ -1306,7 +1335,9 @@ export async function* processChatStream(
   const _connectedIds = await storage.getConnectedConnectorIds(org.id);
   const _connectorCtx = buildConnectorContextBlock(_connectedIds);
   const _calibrationCtx = await loadCalibrationContext(org.id);
-  const _systemContent = profile.systemPrompt + (_enrichCtx || "") + (_prefCtx || "") + (_calibrationCtx || "") + (_knowledgeCtx || "") + (_projectCtx || "") + (_mentionCtx || "") + (_connectorCtx || "");
+  // P1-41 + P0-14: compose with response-shape v3 + untrusted-data clause.
+  const _basePrompt = profile.systemPrompt + (_enrichCtx || "") + (_prefCtx || "") + (_calibrationCtx || "") + (_knowledgeCtx || "") + (_projectCtx || "") + (_mentionCtx || "") + (_connectorCtx || "");
+  const _systemContent = composePaxSystemPrompt(_basePrompt, options.paxPromptVersion);
 
   const chatMessages: OpenAI.ChatCompletionMessageParam[] = [
     { role: "system", content: _systemContent },
@@ -1573,6 +1604,15 @@ export async function* processChatStream(
       continueLoop = false;
     }
   }
+
+  // P0-14: post-validate streamed final content for any system-prompt leak.
+  // We persist the (possibly redacted) version in conversation history so
+  // the leaked content never re-enters the context on the next turn.
+  const _streamValidated = validatePaxResponse(fullResponse, {
+    source: "pax.processChatStream",
+    organizationId: org.id,
+  });
+  fullResponse = _streamValidated.response;
 
   await createMessage({
     conversationId: conversation.id,
