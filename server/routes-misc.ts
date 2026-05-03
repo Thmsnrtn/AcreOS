@@ -12,6 +12,7 @@ import { registerAIOperationsRoutes } from "./routes-ai-operations";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
 import { verifyTwilioSignature } from "./middleware/twilioSignature";
+import { idempotencyMiddleware } from "./middleware/idempotency";
 
 export async function registerMiscRoutes(app: Express): Promise<void> {
   const api = app;
@@ -251,7 +252,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
     }
   });
 
-  api.post("/api/sms/send", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.post("/api/sms/send", isAuthenticated, getOrCreateOrg, idempotencyMiddleware, async (req, res) => {
     try {
       const org = req.organization;
       const { to, message } = req.body;
@@ -273,7 +274,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
     }
   });
 
-  api.post("/api/leads/:leadId/sms", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.post("/api/leads/:leadId/sms", isAuthenticated, getOrCreateOrg, idempotencyMiddleware, async (req, res) => {
     try {
       const org = req.organization;
       const user = req.user;

@@ -15,6 +15,7 @@ import {
   checkDisclosure,
   buildDisclosureMissingPayload,
 } from "./services/disclosureRegistry";
+import { idempotencyMiddleware } from "./middleware/idempotency";
 
 /**
  * Document statuses where the content is considered legally frozen.
@@ -948,7 +949,7 @@ export function registerDocSystemRoutes(app: Express): void {
   });
 
   // POST /api/generated-documents/:id/request-signature - Request signatures (native system)
-  api.post("/api/generated-documents/:id/request-signature", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.post("/api/generated-documents/:id/request-signature", isAuthenticated, getOrCreateOrg, idempotencyMiddleware, async (req, res) => {
     try {
       const org = req.organization;
       const id = parseInt(req.params.id);
