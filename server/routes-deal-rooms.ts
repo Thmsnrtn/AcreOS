@@ -27,7 +27,7 @@ import {
 import { eq, desc, and, asc } from 'drizzle-orm';
 import crypto from 'crypto';
 import { asyncHandler } from './middleware/asyncHandler';
-import { validateUrl } from './middleware/fileUploadSecurity';
+import { validateUrl, SSRFBlockedError } from './middleware/fileUploadSecurity';
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 
@@ -215,10 +215,17 @@ router.post('/:id/documents', asyncHandler(async (req: AuthenticatedRequest, res
       return Errors.badRequest(res, 'fileName and fileUrl are required');
     }
 
-    // Validate file URL to prevent SSRF
+    // Validate file URL to prevent SSRF (F1: block internal/metadata addresses + DNS rebind).
     try {
       await validateUrl(fileUrl);
     } catch (urlError: any) {
+      if (urlError instanceof SSRFBlockedError) {
+        return res.status(422).json({
+          error: "ssrf_blocked",
+          message: urlError.message,
+          statusCode: 422,
+        });
+      }
       return res.status(400).json({ error: `Invalid file URL: ${urlError.message}` });
     }
 

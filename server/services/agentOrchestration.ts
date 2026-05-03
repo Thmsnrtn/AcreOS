@@ -17,6 +17,7 @@ import {
 import { eq, and, desc, isNull, sql } from "drizzle-orm";
 import { SkillRegistry } from "./agent-skills";
 import { logger } from "../utils/logger";
+import { validateUrl, SSRFBlockedError } from "../middleware/fileUploadSecurity";
 
 const skillRegistry = new SkillRegistry();
 
@@ -748,28 +749,15 @@ class AgentOrchestrationService {
       case "call_webhook":
         if (triggerConfig?.webhookUrl) {
           try {
-            // F-A10-1: Block SSRF — reject RFC 1918, loopback, and cloud metadata targets
-            const parsed = new URL(triggerConfig.webhookUrl);
-            if (!["http:", "https:"].includes(parsed.protocol)) {
-              logger.warn(`[orchestration] Webhook blocked — non-HTTP protocol: ${parsed.protocol}`);
-              break;
-            }
-            const hostname = parsed.hostname.toLowerCase();
-            const ssrfDenyPatterns = [
-              /^127\./,
-              /^0\./,
-              /^localhost$/,
-              /^10\./,
-              /^172\.(1[6-9]|2\d|3[01])\./,
-              /^192\.168\./,
-              /^169\.254\./,   // link-local / AWS metadata
-              /^::1$/,         // IPv6 loopback
-              /^fc00:/,        // IPv6 unique local
-              /^fd[0-9a-f]{2}:/,
-            ];
-            if (ssrfDenyPatterns.some((re) => re.test(hostname))) {
-              logger.warn(`[orchestration] Webhook blocked — internal/private address: ${hostname}`);
-              break;
+            // F-A10-1 / F1: Block SSRF via centralized validateUrl (regex + DNS resolution).
+            try {
+              await validateUrl(triggerConfig.webhookUrl);
+            } catch (ssrfErr: any) {
+              if (ssrfErr instanceof SSRFBlockedError) {
+                logger.warn(`[orchestration] Webhook blocked: ${ssrfErr.message}`);
+                break;
+              }
+              throw ssrfErr;
             }
             await fetch(triggerConfig.webhookUrl, {
               method: "POST",

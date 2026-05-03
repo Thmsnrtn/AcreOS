@@ -250,8 +250,18 @@ export function stripImageMetadata(buffer: Buffer, mime: string): Buffer {
 }
 
 // ─── SSRF Protection ──────────────────────────────────────────────────────────
+//
+// F1 (Felix audit): All outbound user-supplied URL fetches must run through
+// validateUrl() before contacting the network. This blocks:
+//   - non-http/https schemes (file://, gopher://, javascript:, data:)
+//   - private IPv4 ranges (10/8, 172.16/12, 192.168/16, 127/8, 169.254/16, 0/8)
+//   - IPv6 link-local (fe80::/10), loopback (::1), ULA (fc00::/7)
+//   - localhost / 0.0.0.0 hostnames
+//   - cloud metadata endpoints (169.254.169.254, metadata.google.internal,
+//     metadata.azure.com, fd00:ec2::254)
+//   - DNS rebinding (the resolved IP is also checked, not just the hostname)
 
-const PRIVATE_RANGES = [
+const PRIVATE_HOSTNAME_PATTERNS = [
   /^127\./,
   /^10\./,
   /^172\.(1[6-9]|2\d|3[01])\./,
@@ -259,36 +269,113 @@ const PRIVATE_RANGES = [
   /^::1$/,
   /^fc00:/i,
   /^fd[0-9a-f]{2}:/i,
-  /^169\.254\./,  // Link-local
-  /^0\./,         // This network
-  /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./,  // CGNAT
-  /^metadata\.google\.internal/i,  // GCP metadata
-  /^169\.254\.169\.254/,           // AWS metadata
+  /^fe80:/i,                       // IPv6 link-local
+  /^169\.254\./,                   // Link-local / AWS IMDS
+  /^0\./,                          // "this network"
+  /^0\.0\.0\.0$/,
+  /^localhost$/i,
+  /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./, // CGNAT 100.64.0.0/10
+  /^metadata\.google\.internal$/i,            // GCP metadata
+  /^metadata\.azure\.com$/i,                  // Azure metadata
 ];
+
+const BLOCKED_EXACT_IPS = new Set([
+  "169.254.169.254",      // AWS / OpenStack / DO IMDS
+  "fd00:ec2::254",        // AWS IMDSv6
+  "100.100.100.200",      // Alibaba Cloud metadata
+]);
+
+export class SSRFBlockedError extends Error {
+  public readonly code = "SSRF_BLOCKED";
+  public readonly statusCode = 422;
+  constructor(message: string) {
+    super(message);
+    this.name = "SSRFBlockedError";
+  }
+}
+
+function isPrivateIPv4(ip: string): boolean {
+  if (BLOCKED_EXACT_IPS.has(ip)) return true;
+  return PRIVATE_HOSTNAME_PATTERNS.some((re) => re.test(ip));
+}
+
+function isPrivateIPv6(ip: string): boolean {
+  const lower = ip.toLowerCase();
+  if (BLOCKED_EXACT_IPS.has(lower)) return true;
+  if (lower === "::1" || lower === "::") return true;
+  if (lower.startsWith("fc") || lower.startsWith("fd")) return true; // ULA fc00::/7
+  if (lower.startsWith("fe80") || lower.startsWith("fe9") ||
+      lower.startsWith("fea") || lower.startsWith("feb")) return true; // link-local fe80::/10
+  // IPv4-mapped IPv6 (::ffff:a.b.c.d)
+  const mapped = lower.match(/^::ffff:([0-9.]+)$/);
+  if (mapped) return isPrivateIPv4(mapped[1]);
+  return false;
+}
 
 /**
  * Validate that a user-provided URL is safe to fetch.
- * Throws an error if the URL is private/internal.
+ * Throws SSRFBlockedError if the URL targets a private/internal address,
+ * uses a non-http(s) scheme, or resolves (via DNS) to a private IP.
+ *
+ * The DNS lookup defends against DNS-rebinding attacks where a public
+ * hostname resolves to a private address at request time.
  */
 export async function validateUrl(url: string): Promise<URL> {
+  if (typeof url !== "string" || url.trim().length === 0) {
+    throw new SSRFBlockedError("URL is required");
+  }
+
   let parsed: URL;
   try {
     parsed = new URL(url);
   } catch {
-    throw new Error("Invalid URL");
+    throw new SSRFBlockedError("Invalid URL");
   }
 
-  // Only allow HTTP/HTTPS
+  // Only allow HTTP/HTTPS — explicitly reject file://, javascript:, data:, gopher:, etc.
   if (!["http:", "https:"].includes(parsed.protocol)) {
-    throw new Error("Only HTTP/HTTPS URLs are allowed");
+    throw new SSRFBlockedError(
+      `Disallowed URL scheme: ${parsed.protocol} (only http/https permitted)`
+    );
   }
 
-  const host = parsed.hostname;
+  const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, "");
 
-  // Block private IP ranges
-  for (const range of PRIVATE_RANGES) {
+  // Block private/loopback hostnames + cloud metadata endpoints
+  for (const range of PRIVATE_HOSTNAME_PATTERNS) {
     if (range.test(host)) {
-      throw new Error("URL points to a private/internal address");
+      throw new SSRFBlockedError("URL points to a private or internal address");
+    }
+  }
+  if (BLOCKED_EXACT_IPS.has(host)) {
+    throw new SSRFBlockedError("URL points to a cloud metadata endpoint");
+  }
+
+  // DNS resolution check — defends against DNS rebinding by validating the
+  // actual address(es) the hostname resolves to right now. Skipped if the
+  // hostname is already a literal IP (those were checked above).
+  const isLiteralIPv4 = /^\d{1,3}(\.\d{1,3}){3}$/.test(host);
+  const isLiteralIPv6 = host.includes(":");
+  if (!isLiteralIPv4 && !isLiteralIPv6) {
+    try {
+      const dns = await import("node:dns/promises");
+      const records = await dns.lookup(host, { all: true, verbatim: true });
+      for (const r of records) {
+        if (r.family === 4 && isPrivateIPv4(r.address)) {
+          throw new SSRFBlockedError(
+            `Hostname ${host} resolves to private IP ${r.address}`
+          );
+        }
+        if (r.family === 6 && isPrivateIPv6(r.address)) {
+          throw new SSRFBlockedError(
+            `Hostname ${host} resolves to private IPv6 ${r.address}`
+          );
+        }
+      }
+    } catch (err) {
+      if (err instanceof SSRFBlockedError) throw err;
+      // DNS lookup itself failed (NXDOMAIN, etc). Let the caller's fetch surface
+      // the network error rather than masking it as an SSRF block.
     }
   }
 
