@@ -12,6 +12,15 @@
  *   1. leads      — firstName, lastName, email, phone, address, notes
  *   2. properties — address, apn, city, state, notes
  *   3. deals      — title, propertyAddress, notes
+ *
+ * Phase 3 Week 14 (Anaïs §2):
+ *   • Accent folding via unaccent() — "cafe" matches "café" etc.
+ *     Migration 0050 enables the extension; here we wrap query and
+ *     indexed text in unaccent() at call time. This double-evaluates
+ *     until 0010-style indexes get rebuilt with the unaccent layer.
+ *   • Phone normalization — query digits-only against `phone_normalized`
+ *     so "555-123-4567" matches "5551234567", "(555) 123-4567", etc.
+ *     Migration 0051 adds the generated column + trigram index.
  */
 
 import { db } from "../db";
@@ -26,6 +35,27 @@ export interface SearchResult {
   subtitle: string;
   rank: number;
   url: string;
+}
+
+/**
+ * Strip non-digits. Used to detect phone-shaped queries and to
+ * normalize them before matching against `phone_normalized`.
+ */
+export function digitsOnly(input: string): string {
+  return input.replace(/\D+/g, "");
+}
+
+/**
+ * Heuristic: "looks like a phone number" if it has at least 7 digits
+ * after stripping. We avoid false-positives on APNs (which are also
+ * digit-heavy) by also requiring the input contain at least one
+ * phone-conventional separator OR be ≥10 digits long.
+ */
+export function isPhoneShaped(input: string): boolean {
+  const digits = digitsOnly(input);
+  if (digits.length < 7) return false;
+  if (digits.length >= 10) return true;
+  return /[-(). ]/.test(input);
 }
 
 export const fullTextSearch = {
@@ -58,36 +88,47 @@ export const fullTextSearch = {
     if (!tsQuery || tsQuery === ":*") return [];
 
     const results: SearchResult[] = [];
+    const phoneShape = isPhoneShaped(q);
+    const phoneDigits = phoneShape ? digitsOnly(q) : "";
 
     try {
       // ── Leads ──────────────────────────────────────────────────────────
+      // unaccent() normalizes both the query and the indexed text so
+      // "Anais" matches "Anaïs". We OR in a phone_normalized trigram
+      // match when the query looks phone-shaped so digits-only queries
+      // still find leads regardless of how the phone was stored.
       const leadRows = await db.execute<any>(sql`
         SELECT
           id,
-          "firstName",
-          "lastName",
+          first_name AS "firstName",
+          last_name AS "lastName",
           email,
           phone,
           address,
           ts_rank(
-            to_tsvector('english',
-              coalesce("firstName",'') || ' ' ||
-              coalesce("lastName",'') || ' ' ||
+            to_tsvector('simple', unaccent(
+              coalesce(first_name,'') || ' ' ||
+              coalesce(last_name,'') || ' ' ||
               coalesce(email,'') || ' ' ||
               coalesce(phone,'') || ' ' ||
               coalesce(address,'')
-            ),
-            to_tsquery('english', ${tsQuery})
+            )),
+            to_tsquery('simple', unaccent(${tsQuery}))
           ) AS rank
         FROM leads
         WHERE
-          "organizationId" = ${orgId}
-          AND to_tsvector('english',
-            coalesce("firstName",'') || ' ' ||
-            coalesce("lastName",'') || ' ' ||
-            coalesce(email,'') || ' ' ||
-            coalesce(address,'')
-          ) @@ to_tsquery('english', ${tsQuery})
+          organization_id = ${orgId}
+          AND (
+            to_tsvector('simple', unaccent(
+              coalesce(first_name,'') || ' ' ||
+              coalesce(last_name,'') || ' ' ||
+              coalesce(email,'') || ' ' ||
+              coalesce(address,'')
+            )) @@ to_tsquery('simple', unaccent(${tsQuery}))
+            ${phoneShape && phoneDigits.length >= 7
+              ? sql`OR phone_normalized LIKE ${'%' + phoneDigits + '%'}`
+              : sql``}
+          )
         ORDER BY rank DESC
         LIMIT ${Math.ceil(limit / 2)}
       `);
@@ -112,23 +153,23 @@ export const fullTextSearch = {
           city,
           state,
           ts_rank(
-            to_tsvector('english',
+            to_tsvector('simple', unaccent(
               coalesce(address,'') || ' ' ||
               coalesce(apn,'') || ' ' ||
               coalesce(city,'') || ' ' ||
               coalesce(state,'')
-            ),
-            to_tsquery('english', ${tsQuery})
+            )),
+            to_tsquery('simple', unaccent(${tsQuery}))
           ) AS rank
         FROM properties
         WHERE
-          "organizationId" = ${orgId}
-          AND to_tsvector('english',
+          organization_id = ${orgId}
+          AND to_tsvector('simple', unaccent(
             coalesce(address,'') || ' ' ||
             coalesce(apn,'') || ' ' ||
             coalesce(city,'') || ' ' ||
             coalesce(state,'')
-          ) @@ to_tsquery('english', ${tsQuery})
+          )) @@ to_tsquery('simple', unaccent(${tsQuery}))
         ORDER BY rank DESC
         LIMIT ${Math.ceil(limit / 3)}
       `);
@@ -145,26 +186,35 @@ export const fullTextSearch = {
       }
 
       // ── Deals ──────────────────────────────────────────────────────────
+      // The `deals` table doesn't carry a denormalized title or address;
+      // we search notes + escrow_number + title_company and join through
+      // properties for the property text. Limited to the most discriminating
+      // free-text columns to keep the GIN index hit small.
       const dealRows = await db.execute<any>(sql`
         SELECT
-          id,
-          title,
-          "propertyAddress",
-          status,
+          d.id,
+          d.status,
+          d.escrow_number AS "escrowNumber",
+          p.address AS "propertyAddress",
           ts_rank(
-            to_tsvector('english',
-              coalesce(title,'') || ' ' ||
-              coalesce("propertyAddress",'')
-            ),
-            to_tsquery('english', ${tsQuery})
+            to_tsvector('simple', unaccent(
+              coalesce(d.notes,'') || ' ' ||
+              coalesce(d.title_company,'') || ' ' ||
+              coalesce(d.escrow_number,'') || ' ' ||
+              coalesce(p.address,'')
+            )),
+            to_tsquery('simple', unaccent(${tsQuery}))
           ) AS rank
-        FROM deals
+        FROM deals d
+        LEFT JOIN properties p ON p.id = d.property_id
         WHERE
-          "organizationId" = ${orgId}
-          AND to_tsvector('english',
-            coalesce(title,'') || ' ' ||
-            coalesce("propertyAddress",'')
-          ) @@ to_tsquery('english', ${tsQuery})
+          d.organization_id = ${orgId}
+          AND to_tsvector('simple', unaccent(
+            coalesce(d.notes,'') || ' ' ||
+            coalesce(d.title_company,'') || ' ' ||
+            coalesce(d.escrow_number,'') || ' ' ||
+            coalesce(p.address,'')
+          )) @@ to_tsquery('simple', unaccent(${tsQuery}))
         ORDER BY rank DESC
         LIMIT ${Math.ceil(limit / 3)}
       `);
@@ -173,7 +223,7 @@ export const fullTextSearch = {
         results.push({
           type: "deal",
           id: row.id,
-          title: row.title || row.propertyAddress || `Deal #${row.id}`,
+          title: row.propertyAddress || row.escrowNumber || `Deal #${row.id}`,
           subtitle: row.status || "",
           rank: parseFloat(row.rank ?? "0"),
           url: `/deals?id=${row.id}`,

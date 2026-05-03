@@ -1095,6 +1095,17 @@ app.use("/api", apiLimiter);
       // and files a promotion proposal in the decisions inbox.
       startExperimentSweepJob();
 
+      // Phase 3 Week 14 (Sayuri-Vatanen) — pgvector embedding refresh
+      // job. Sweeps deal_patterns for embeddings older than 7 days
+      // and regenerates them on a rolling cadence so retrieval stays
+      // aligned with whatever the current model produces.
+      import("./jobs/embeddingRefresh").then(({ startEmbeddingRefreshJob }) => {
+        startEmbeddingRefreshJob();
+        log("Embedding refresh job registered (self-rescheduling, 6m, rolling 7d)", "embedding-refresh");
+      }).catch(err => {
+        log(`Failed to start embedding refresh job: ${err}`, "embedding-refresh");
+      });
+
       // Auto-seed county GIS endpoints for free parcel lookups
       seedCountyGisEndpointsOnStartup();
       

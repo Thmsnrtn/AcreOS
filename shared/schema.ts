@@ -1,7 +1,42 @@
-import { pgTable, text, serial, integer, bigint, boolean, timestamp, numeric, varchar, jsonb, index, uniqueIndex, date, real, check } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, bigint, boolean, timestamp, numeric, varchar, jsonb, index, uniqueIndex, date, real, check, customType } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+
+/**
+ * Phase 3 Week 14 (Sayuri-Vatanen §1): pgvector custom column type.
+ *
+ * Drizzle's pg-core doesn't ship a native `vector` type, so we declare a
+ * `customType` that serializes a number[] to pgvector's wire format
+ * (`[0.1,0.2,…]`) and deserializes it back. The dimension is encoded in
+ * the SQL type only — we accept any-length arrays in JS and let Postgres
+ * enforce the dim at write time.
+ *
+ * Used by `deal_patterns.embedding_vector` (dim=1536, OpenAI
+ * `text-embedding-3-small`).
+ */
+export const vectorColumn = customType<{
+  data: number[];
+  driverData: string;
+  config: { dimensions: number };
+}>({
+  dataType(config) {
+    return `vector(${config?.dimensions ?? 1536})`;
+  },
+  toDriver(value: number[]): string {
+    return `[${value.join(",")}]`;
+  },
+  fromDriver(value: string | number[]): number[] {
+    if (Array.isArray(value)) return value as number[];
+    if (typeof value === "string") {
+      // Wire format: "[0.1,0.2,...]"
+      const trimmed = value.replace(/^\[|\]$/g, "");
+      if (!trimmed) return [];
+      return trimmed.split(",").map((n) => parseFloat(n));
+    }
+    return [];
+  },
+});
 
 // Import Auth and Chat models
 export * from "./models/auth";
@@ -436,11 +471,15 @@ export const leads = pgTable("leads", {
   lastName: text("last_name").notNull(),
   email: text("email"),
   phone: text("phone"),
+  // GENERATED ALWAYS AS (regexp_replace(coalesce(phone,''),'[^0-9]','','g')) STORED
+  // (see migration 0051). Never written from JS — Drizzle treats it
+  // as a read-only string column.
+  phoneNormalized: text("phone_normalized"),
   address: text("address"),
   city: text("city"),
   state: text("state"),
   zip: text("zip"),
-  status: text("status").notNull().default("new"), 
+  status: text("status").notNull().default("new"),
   // Seller statuses: new, mailed, responded, negotiating, accepted, closed, dead
   // Buyer statuses: new, interested, qualified, under_contract, closed, dead
   source: text("source"), // tax_list, referral, website, facebook, craigslist, etc.
@@ -2623,8 +2662,11 @@ export const insertOrganizationSchema = createInsertSchema(organizations).omit({
 export const insertTeamMemberSchema = createInsertSchema(teamMembers).omit({ 
   id: true, invitedAt: true, joinedAt: true 
 });
-export const insertLeadSchema = createInsertSchema(leads).omit({ 
-  id: true, createdAt: true, updatedAt: true, lastScoreAt: true 
+export const insertLeadSchema = createInsertSchema(leads).omit({
+  id: true, createdAt: true, updatedAt: true, lastScoreAt: true,
+  // phoneNormalized is a STORED generated column — Postgres rejects
+  // explicit writes. Omit from inserts. (Migration 0051.)
+  phoneNormalized: true,
 });
 export const insertLeadActivitySchema = createInsertSchema(leadActivities).omit({ 
   id: true, createdAt: true 
@@ -7687,9 +7729,15 @@ export const dealPatterns = pgTable("deal_patterns", {
   timesMatched: integer("times_matched").default(0),
   matchSuccessRate: numeric("match_success_rate"),
   
-  // Embedding for similarity search (vector representation)
-  embeddingVector: jsonb("embedding_vector").$type<number[]>(),
-  
+  // Embedding for similarity search — pgvector(1536) for OpenAI
+  // `text-embedding-3-small`. See migration 0052 + the vectorColumn
+  // custom type at the top of this file.
+  embeddingVector: vectorColumn("embedding_vector", { dimensions: 1536 }),
+
+  // Tracks when the embedding was last (re-)generated so the rolling
+  // 7-day refresh job can sweep stale rows. See server/jobs/embeddingRefresh.ts.
+  embeddingRefreshedAt: timestamp("embedding_refreshed_at"),
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
