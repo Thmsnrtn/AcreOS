@@ -1,13 +1,12 @@
 import { db } from "../db";
 import { writingStyleProfiles, messages, conversations } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
-import OpenAI from "openai";
 import { logger } from "../utils/logger";
+import { routeAITask, TaskComplexity } from "./aiRouter";
 
-const openai = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-});
+// Migrated from direct OpenAI client to central aiRouter (P1-36).
+// All calls flow through aiRouter for cost tracking, semantic caching,
+// rate limiting, and provider failover.
 
 interface ToneAnalysis {
   formality: "casual" | "semi-formal" | "formal";
@@ -136,8 +135,9 @@ export async function addSampleMessage(
 
 async function analyzeSentiment(content: string): Promise<"positive" | "neutral" | "negative"> {
   try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+    const response = await routeAITask({
+      taskType: "categorize",
+      complexity: TaskComplexity.SIMPLE,
       messages: [
         {
           role: "system",
@@ -148,11 +148,11 @@ async function analyzeSentiment(content: string): Promise<"positive" | "neutral"
           content
         }
       ],
-      max_tokens: 10,
-      temperature: 0
+      maxTokens: 10,
+      temperature: 0,
     });
-    
-    const result = response.choices[0]?.message?.content?.toLowerCase().trim();
+
+    const result = response.content?.toLowerCase().trim();
     if (result === "positive" || result === "neutral" || result === "negative") {
       return result;
     }
@@ -187,8 +187,9 @@ export async function analyzeWritingStyle(profileId: number): Promise<{
   
   const sampleTexts = samples.map(s => s.content).join("\n---\n");
   
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o",
+  const response = await routeAITask({
+    taskType: "writing_style_analysis",
+    complexity: TaskComplexity.COMPLEX,
     messages: [
       {
         role: "system",
@@ -227,11 +228,11 @@ Only output valid JSON, no other text.`
         content: `Analyze these ${samples.length} sample messages:\n\n${sampleTexts}`
       }
     ],
-    response_format: { type: "json_object" },
-    temperature: 0.3
-  });
-  
-  const analysis = JSON.parse(response.choices[0]?.message?.content || "{}");
+    responseFormat: "json",
+    temperature: 0.3,
+  }, { orgId: profile.organizationId ?? undefined });
+
+  const analysis = JSON.parse(response.content || "{}");
   
   await db
     .update(writingStyleProfiles)
@@ -306,8 +307,9 @@ Question style: ${patterns.questionStyle}`
     ? `\n\nExample messages from this user:\n${relevantSamples.map(s => `---\n${s.content}`).join("\n")}`
     : "";
   
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o",
+  const response = await routeAITask({
+    taskType: "draft_email",
+    complexity: TaskComplexity.MODERATE,
     messages: [
       {
         role: "system",
@@ -341,11 +343,11 @@ ${messageContext.propertyDetails ? `Property: ${messageContext.propertyDetails.a
 ${messageContext.previousMessages?.length ? `Previous messages in conversation:\n${messageContext.previousMessages.join("\n")}` : ""}`
       }
     ],
-    response_format: { type: "json_object" },
-    temperature: 0.7
-  });
-  
-  const result = JSON.parse(response.choices[0]?.message?.content || "{}");
+    responseFormat: "json",
+    temperature: 0.7,
+  }, { orgId: profile.organizationId ?? undefined });
+
+  const result = JSON.parse(response.content || "{}");
   
   return {
     message: result.message || "",

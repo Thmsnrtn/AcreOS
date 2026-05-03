@@ -7,12 +7,11 @@ import {
   messages 
 } from "@shared/schema";
 import { eq, and, desc, gte, sql } from "drizzle-orm";
-import OpenAI from "openai";
+import { generateWithAutoRouting, routeAITask, TaskComplexity } from "./aiRouter";
 
-const openai = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-});
+// Migrated from direct OpenAI client to central aiRouter (P1-36).
+// All AI calls now flow through aiRouter for cost tracking, rate limiting,
+// semantic caching, prompt-version pinning, and provider failover.
 
 interface QualificationSignal {
   signalType: string;
@@ -39,8 +38,9 @@ export async function analyzeMessageForSignals(
   conversationId: number | null,
   messageContent: string
 ): Promise<QualificationSignal[]> {
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
+  const response = await routeAITask({
+    taskType: "lead_qualification",
+    complexity: TaskComplexity.SIMPLE,
     messages: [
       {
         role: "system",
@@ -73,11 +73,11 @@ Return an empty array [] if no signals detected.`
         content: messageContent
       }
     ],
-    response_format: { type: "json_object" },
-    temperature: 0.3
-  });
-  
-  const result = JSON.parse(response.choices[0]?.message?.content || "{}");
+    responseFormat: "json",
+    temperature: 0.3,
+  }, { orgId: organizationId });
+
+  const result = JSON.parse(response.content || "{}");
   const signals = result.signals || result || [];
   
   if (!Array.isArray(signals)) {
@@ -364,12 +364,9 @@ export async function generateSuggestedResponse(
   
   const { totalScore, signals, recommendation } = await calculateLeadIntentScore(organizationId, leadId);
   
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o",
-    messages: [
-      {
-        role: "system",
-        content: `You are a land investment sales expert. Generate a personalized follow-up message for a buyer.
+  const response = await generateWithAutoRouting(
+    "draft_email",
+    `You are a land investment sales expert. Generate a personalized follow-up message for a buyer.
 
 Lead info:
 - Name: ${lead.firstName} ${lead.lastName}
@@ -383,16 +380,10 @@ Guidelines:
 - If they're hot, create urgency without being pushy
 - If they have objections, address them directly
 - Keep messages concise (2-3 paragraphs max)
-- Include a clear next step or call to action`
-      },
-      {
-        role: "user",
-        content: `Recent conversation:\n${messageHistory || "No previous messages"}\n\nGenerate a follow-up message.`
-      }
-    ],
-    temperature: 0.7,
-    max_tokens: 500
-  });
-  
-  return response.choices[0]?.message?.content || "";
+- Include a clear next step or call to action`,
+    `Recent conversation:\n${messageHistory || "No previous messages"}\n\nGenerate a follow-up message.`,
+    { orgId: organizationId },
+  );
+
+  return response.content || "";
 }

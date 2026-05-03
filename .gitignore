@@ -74,3 +74,7 @@ acreos-picker/node_modules/
 # committed intentionally so a fresh session can pick up where the
 # previous one left off)
 !docs/exhaustive-completion/_RESUME-*.md
+
+# Eval harness reports (generated locally; CI uploads as artifacts)
+evals/reports/
+

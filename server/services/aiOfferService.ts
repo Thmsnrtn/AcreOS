@@ -1,4 +1,3 @@
-import OpenAI from "openai";
 import {
   getComparableProperties,
   calculateMarketValue,
@@ -10,13 +9,13 @@ import {
 import { voiceLearningService, type VoiceProfile } from "./voiceLearning";
 import { logger } from "../utils/logger";
 import { validateAtlasOutput, AtlasOutputType } from "../ai/validators";
-import { tracedLlmCall } from "./tracedLlmCall";
+import { logAgentTrace } from "./agentLlmTraces";
+import { routeAITask, TaskComplexity } from "./aiRouter";
 import { sanitizePromptInline } from "../utils/sanitizePrompt";
 
-const openai = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-});
+// Migrated from direct OpenAI client to central aiRouter (P1-36).
+// Tracing is preserved via logAgentTrace; cost tracking, semantic caching,
+// and provider failover now flow through aiRouter.
 
 export interface PropertyData {
   id?: number;
@@ -223,21 +222,29 @@ Provide exactly 3 offer strategies as JSON with this structure:
   "marketTrend": "stable" | "increasing" | "decreasing"
 }`;
 
-    const { content } = await tracedLlmCall({
+    const startedAt = Date.now();
+    const aiResponse = await routeAITask({
+      taskType: "offer_suggestions",
+      complexity: TaskComplexity.COMPLEX,
+      messages: [{ role: "user", content: prompt }],
+      responseFormat: "json",
+      maxTokens: 1500,
+    });
+    const content = aiResponse.content;
+    void logAgentTrace({
+      organizationId: null,
       agentCodename: "atlas",
       purpose: "offer_suggestions",
-      organizationId: null,
       decisionId: property.id ?? null,
-      model: "gpt-4o",
+      model: aiResponse.model,
+      systemPrompt: null,
       userPrompt: prompt,
+      response: content || "",
+      latencyMs: Date.now() - startedAt,
+      inputTokens: aiResponse.usage?.promptTokens,
+      outputTokens: aiResponse.usage?.completionTokens,
+      error: null,
       metadata: { propertyId: property.id, sizeAcres: property.sizeAcres },
-      call: () =>
-        openai.chat.completions.create({
-          model: "gpt-4o",
-          messages: [{ role: "user", content: prompt }],
-          response_format: { type: "json_object" },
-          max_completion_tokens: 1500,
-        }),
     });
 
     const parsed = JSON.parse(content || "{}");
@@ -420,20 +427,29 @@ The letter should:
 4. Include a call to action
 5. Close professionally with buyer contact information`;
 
-    const { content } = await tracedLlmCall({
+    const letterStartedAt = Date.now();
+    const aiLetter = await routeAITask({
+      taskType: "offer_letter",
+      complexity: TaskComplexity.COMPLEX,
+      messages: [{ role: "user", content: prompt }],
+      responseFormat: "json",
+      maxTokens: 2000,
+    }, { orgId: request.organizationId ?? undefined });
+    const content = aiLetter.content;
+    void logAgentTrace({
+      organizationId: request.organizationId ?? null,
       agentCodename: "atlas",
       purpose: "offer_letter",
-      organizationId: request.organizationId ?? null,
-      model: "gpt-4o",
+      decisionId: null,
+      model: aiLetter.model,
+      systemPrompt: null,
       userPrompt: prompt,
+      response: content || "",
+      latencyMs: Date.now() - letterStartedAt,
+      inputTokens: aiLetter.usage?.promptTokens,
+      outputTokens: aiLetter.usage?.completionTokens,
+      error: null,
       metadata: { tone: request.tone, county: request.property.county, state: request.property.state },
-      call: () =>
-        openai.chat.completions.create({
-          model: "gpt-4o",
-          messages: [{ role: "user", content: prompt }],
-          response_format: { type: "json_object" },
-          max_completion_tokens: 2000,
-        }),
     });
 
     const parsed = JSON.parse(content || "{}");

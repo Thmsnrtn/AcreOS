@@ -356,7 +356,7 @@ Format as a professional report.`;
       }
 
       const completion = await requireOpenAIClient().chat.completions.create({
-        model: 'gpt-4-turbo-preview',
+        model: 'gpt-4o',
         messages: [{ role: 'user', content: prompt }],
         max_tokens: 2000,
       });

@@ -11,7 +11,9 @@ import {
   type Property,
 } from "@shared/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
-import { getOpenAIClient } from "../utils/openaiClient";
+import { generateWithAutoRouting } from "./aiRouter";
+
+// Migrated from direct OpenAI client to central aiRouter (P1-36).
 import { logger } from "../utils/logger";
 
 type QualificationStatus = "pending" | "qualified" | "conditionally_qualified" | "not_qualified";
@@ -533,20 +535,12 @@ export class BuyerQualificationBotService {
     if (riskLevel === "low") closingProbability = Math.min(closingProbability + 10, 95);
     if (riskLevel === "high") closingProbability = Math.max(closingProbability - 15, 5);
 
-    const openai = getOpenAIClient();
-    if (openai) {
-      try {
-        const response = await openai.chat.completions.create({
-          model: "gpt-4o",
-          messages: [
-            {
-              role: "system",
-              content: `You are a buyer qualification expert for land investment. Analyze the buyer's profile and provide additional insights.
+    try {
+      const response = await generateWithAutoRouting(
+        "buyer_qualification_assessment",
+        `You are a buyer qualification expert for land investment. Analyze the buyer's profile and provide additional insights.
 Keep responses concise and actionable.`,
-            },
-            {
-              role: "user",
-              content: `Buyer Profile:
+        `Buyer Profile:
 - Profile Type: ${profile.profileType}
 - Financial Score: ${financialCheck.score}/100
 - Background Score: ${backgroundCheck.score}/100
@@ -555,19 +549,15 @@ Keep responses concise and actionable.`,
 - Concerns: ${concerns.join(", ") || "None identified"}
 
 Provide 1-2 additional recommendations to improve this buyer's closing probability.`,
-            },
-          ],
-          max_tokens: 200,
-          temperature: 0.3,
-        });
+        { orgId: qualification.organizationId ?? undefined },
+      );
 
-        const aiRecommendation = response.choices[0]?.message?.content;
-        if (aiRecommendation) {
-          recommendations.push(aiRecommendation);
-        }
-      } catch (error) {
-        logger.error("AI assessment failed", error);
+      const aiRecommendation = response.content;
+      if (aiRecommendation) {
+        recommendations.push(aiRecommendation);
       }
+    } catch (error) {
+      logger.error("AI assessment failed", error);
     }
 
     const assessment: AssessmentResult = {
@@ -711,19 +701,12 @@ Provide 1-2 additional recommendations to improve this buyer's closing probabili
     }
 
     let overallRecommendation = "";
-    const openai = getOpenAIClient();
-    if (openai && assessment) {
+    if (assessment) {
       try {
-        const response = await openai.chat.completions.create({
-          model: "gpt-4o",
-          messages: [
-            {
-              role: "system",
-              content: `You are a buyer qualification expert. Generate a concise overall recommendation (2-3 sentences) based on the buyer's qualification data.`,
-            },
-            {
-              role: "user",
-              content: `Status: ${qualification.status}
+        const response = await generateWithAutoRouting(
+          "buyer_qualification_report",
+          `You are a buyer qualification expert. Generate a concise overall recommendation (2-3 sentences) based on the buyer's qualification data.`,
+          `Status: ${qualification.status}
 Score: ${assessment.overallScore}/100
 Risk Level: ${assessment.riskLevel}
 Closing Probability: ${assessment.closingProbability}%
@@ -731,13 +714,10 @@ Strengths: ${assessment.strengths?.join(", ") || "None"}
 Concerns: ${assessment.concerns?.join(", ") || "None"}
 
 Generate an overall recommendation.`,
-            },
-          ],
-          max_tokens: 150,
-          temperature: 0.3,
-        });
+          { orgId: qualification.organizationId ?? undefined },
+        );
 
-        overallRecommendation = response.choices[0]?.message?.content || "";
+        overallRecommendation = response.content || "";
       } catch (error) {
         logger.error("AI report generation failed", error);
       }

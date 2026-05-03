@@ -511,7 +511,7 @@ Provide 3 additional strategic recommendations for portfolio optimization. Consi
 Respond in JSON format with array of recommendations.`;
 
       const completion = await requireOpenAIClient().chat.completions.create({
-        model: 'gpt-4-turbo-preview',
+        model: 'gpt-4o',
         messages: [{ role: 'user', content: prompt }],
         response_format: { type: 'json_object' },
       });
