@@ -1,6 +1,8 @@
 import OpenAI from "openai";
 import crypto from "crypto";
 import { logger } from "../utils/logger";
+import { computeCostUsd } from "./aiCostRates";
+import { checkQuota, recordUsage, AIQuotaExceeded } from "./aiQuotaService";
 
 // ============================================
 // AI RESPONSE CACHE — Dual-layer
@@ -249,6 +251,23 @@ export interface AIRouterConfig {
   useReasoning?: boolean;  // route to deep-reasoning model (DeepSeek R1)
   useCritical?: boolean;   // force Opus 4.6 (highest-stakes tasks only)
   orgId?: number;
+  /**
+   * Phase 3 Week 9: per-org daily AI cost cap.
+   * When orgId is set AND skipQuota is false, routeAITask will:
+   *   1. Read the org's organizations.org_ai_quota_daily_usd cap.
+   *   2. Sum today's ai_usage_daily.totalUsd for the org.
+   *   3. Throw AIQuotaExceeded (HTTP 429) if used >= cap.
+   *   4. Record costUsd into ai_usage_daily after a successful call.
+   * Founder orgs and internal-system tasks (cron jobs, cascade quality
+   * checks) should pass `skipQuota: true` to bypass enforcement.
+   */
+  skipQuota?: boolean;
+  /**
+   * Per-org daily cap in USD. When provided, this value is used directly and
+   * the DB lookup is skipped. Useful for callers that already have the org
+   * row in hand.  When undefined, the router queries organizations.
+   */
+  orgQuotaCapUsd?: number;
 }
 
 const SIMPLE_TASKS = [
@@ -687,6 +706,37 @@ export async function routeAITask(
   task: AITask,
   config: AIRouterConfig = {}
 ): Promise<AIResponse> {
+  // ── Phase 3 Week 9: per-org daily AI USD quota gate ─────────────────────────
+  // Runs BEFORE the cache check so that even cached responses respect the cap
+  // (a $0 cached call still counts as a call, but does not advance spend).
+  // Specifically the cache hit cost is 0, so we only need to check — not record.
+  if (config.orgId && !config.skipQuota) {
+    let cap = config.orgQuotaCapUsd;
+    if (cap === undefined) {
+      try {
+        const { getOrgQuotaCap } = await import("./aiQuotaService");
+        cap = await getOrgQuotaCap(config.orgId);
+      } catch (err) {
+        logger.warn("[AIRouter] failed to read org AI quota cap — allowing call", {
+          metadata: { orgId: config.orgId, detail: err instanceof Error ? err.message : err },
+        });
+        cap = 0; // fail-open: treat as unlimited if DB lookup blew up
+      }
+    }
+    if (cap && cap > 0) {
+      try {
+        await checkQuota(config.orgId, cap);
+      } catch (err) {
+        if (err instanceof AIQuotaExceeded) {
+          logger.warn("[AIRouter] org hit daily AI quota", {
+            metadata: { orgId: config.orgId, used: err.usedUsdToday, cap: err.capUsd },
+          });
+        }
+        throw err;
+      }
+    }
+  }
+
   // ── Layer 1: Exact-match cache ───────────────────────────────────────────────
   const isCacheable = task.complexity !== TaskComplexity.COMPLEX
     && task.complexity !== TaskComplexity.CRITICAL
@@ -860,6 +910,21 @@ export async function routeAITask(
     complexity: task.complexity,
     success: true,
   });
+
+  // ── Phase 3 Week 9: increment per-org daily usage ───────────────────────────
+  // Use the central aiCostRates calculator for consistency with the founder
+  // dashboard rollups. Token-level cost is the source of truth — `costEstimate`
+  // above is computed from the same per-million rates and only differs when an
+  // unknown model falls back to the conservative DEFAULT_RATE.
+  if (config.orgId && !config.skipQuota && usage) {
+    const usdAuthoritative = computeCostUsd(
+      finalModel,
+      usage.prompt_tokens || 0,
+      usage.completion_tokens || 0,
+    );
+    // Fire-and-forget; recordUsage swallows its own errors.
+    void recordUsage(config.orgId, usdAuthoritative, task.taskType);
+  }
 
   return result;
 }

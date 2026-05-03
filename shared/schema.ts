@@ -145,6 +145,13 @@ export const organizations = pgTable("organizations", {
   autopayFrozenAt: timestamp("autopay_frozen_at"),
   autopayFrozenReason: text("autopay_frozen_reason"),
   autopayFrozenUntil: timestamp("autopay_frozen_until"),
+  // ─── AI cost ceiling (Phase 3 Week 9) ───────────────────────────────────────
+  // Per-org daily USD cap on AI spend. Enforced in routeAITask: if
+  // sum(ai_usage_daily.totalUsd WHERE org=this AND date=today) >= this cap,
+  // the call is rejected with 429 (AIQuotaExceeded). Default $50/day.
+  // Set to 0 to disable enforcement (treats org as unlimited — used for
+  // founder/internal orgs). Founder orgs already bypass via req.isFounder.
+  orgAiQuotaDailyUsd: numeric("org_ai_quota_daily_usd", { precision: 10, scale: 2 }).notNull().default("50.00"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -10338,6 +10345,29 @@ export const aiTelemetryEvents = pgTable("ai_telemetry_events", {
   index("ai_telemetry_created_idx").on(table.createdAt),
   index("ai_telemetry_provider_idx").on(table.provider),
 ]);
+
+// ─── AI Daily Usage (Phase 3 Week 9) ─────────────────────────────────────────
+// Per-org per-day rollup of AI spend. Written from routeAITask after every
+// successful (or failed-after-tokens) call. The quota check sums
+// totalUsd for (org, today UTC) and compares to organizations.org_ai_quota_daily_usd.
+//
+// byFeature is a jsonb breakdown of {<taskType>: {usd, calls}} so the founder
+// dashboard can show cost-by-feature without re-aggregating telemetry events.
+export const aiUsageDaily = pgTable("ai_usage_daily", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  date: date("date").notNull(), // UTC date (YYYY-MM-DD)
+  totalUsd: numeric("total_usd", { precision: 12, scale: 6 }).notNull().default("0"),
+  callCount: integer("call_count").notNull().default(0),
+  byFeature: jsonb("by_feature").$type<Record<string, { usd: number; calls: number }>>().default({}),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("ai_usage_daily_org_date_uniq").on(table.organizationId, table.date),
+  index("ai_usage_daily_date_idx").on(table.date),
+]);
+
+export type AiUsageDaily = typeof aiUsageDaily.$inferSelect;
+export type InsertAiUsageDaily = typeof aiUsageDaily.$inferInsert;
 
 // ─── User Map Layer Preferences ──────────────────────────────────────────────
 // Persists per-user map layer toggle/opacity settings across devices.
