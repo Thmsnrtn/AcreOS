@@ -1488,6 +1488,9 @@ export async function registerRoutes(
     // Phase 3 Week 9: AI cost ceiling + founder cost dashboard endpoints.
     const { registerAiCostRoutes } = await import("./routes-ai-cost");
     registerAiCostRoutes(app);
+    // Wave 8: Self-tuning cost optimiser — founder dashboard + apply endpoint.
+    const { registerCostOptimizerRoutes } = await import("./routes-cost-optimizer");
+    registerCostOptimizerRoutes(app);
   }
 
   // Executive Revenue Dashboard — Founder-only aggregate metrics
