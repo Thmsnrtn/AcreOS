@@ -1049,6 +1049,9 @@ app.use("/api", apiLimiter);
       // Customer Concentration (daily 13:00 UTC) — MRR concentration alerts
       startCustomerConcentrationJob();
 
+      // Wave 8: Self-tuning cost optimiser (daily, self-rescheduling)
+      startCostOptimizerSelfRescheduling();
+
       // Autonomous Decision Executor (every 30 minutes — auto-processes founder inbox)
       startAutonomousDecisionExecutorJob();
 
@@ -2191,6 +2194,19 @@ function startCustomerConcentrationJob() {
 }
 
 // ============================================================================
+// Wave 8: Self-Tuning Cost Optimizer — daily, self-rescheduling
+// Analyses last 30 days of AI usage + MRR + Fly estimate, generates
+// recommendations, auto-applies safe changes (prompt-cache, log-volume),
+// flags everything else for /founder/cost-optimizer review.
+// ============================================================================
+function startCostOptimizerSelfRescheduling() {
+  log('Registering self-tuning cost optimiser (daily)', 'cost-optimizer');
+  import('./jobs/costOptimizer').then(({ startCostOptimizerJob }) => {
+    startCostOptimizerJob();
+  }).catch(err => log(`Cost optimiser import failed: ${err}`, 'cost-optimizer'));
+}
+
+// ============================================================================
 // Founder Weekly Digest — Mondays at 8 AM CT
 // ============================================================================
 function startFounderWeeklyDigestJob() {
@@ -2211,6 +2227,15 @@ function startFounderWeeklyDigestJob() {
           log(`Founder weekly digest failed: ${err}`, 'founder-digest');
         });
       }).catch(err => log(`Founder digest import failed: ${err}`, 'founder-digest'));
+
+      // Wave 8 — also send the spend-report digest piggy-backed on the same
+      // Monday 8 AM CT window. Separate email + separate job lock so a
+      // failure in one doesn't block the other.
+      import('./jobs/costOptimizerWeeklyDigest').then(({ sendCostOptimizerWeeklyDigest }) => {
+        withJobLock('cost_optimizer_weekly_digest', TTL_SECONDS, sendCostOptimizerWeeklyDigest).catch(err => {
+          log(`Cost optimiser weekly digest failed: ${err}`, 'cost-optimizer-digest');
+        });
+      }).catch(err => log(`Cost optimiser digest import failed: ${err}`, 'cost-optimizer-digest'));
     }
   }, ONE_HOUR);
 }

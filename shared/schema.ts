@@ -10953,6 +10953,7 @@ export const aiUsageDaily = pgTable("ai_usage_daily", {
 export type AiUsageDaily = typeof aiUsageDaily.$inferSelect;
 export type InsertAiUsageDaily = typeof aiUsageDaily.$inferInsert;
 
+<<<<<<< HEAD
 // ─── AI Routing Overrides ────────────────────────────────────────────────────
 // Wave 8 — eval-gated rollback table. The aiRouter consults this table at
 // routing time and prefers the override tier/model when an active row exists
@@ -10980,6 +10981,50 @@ export const aiRoutingOverrides = pgTable("ai_routing_overrides", {
 
 export type AiRoutingOverride = typeof aiRoutingOverrides.$inferSelect;
 export type InsertAiRoutingOverride = typeof aiRoutingOverrides.$inferInsert;
+
+// ─── Cost Optimization Runs (Wave 10) ────────────────────────────────────────
+// Nightly meta-job snapshots. Each row is one run of server/jobs/costOptimizer
+// and carries the cost / MRR / margin numbers, the structured recommendation
+// list, the actions auto-applied (safe ones only), and a plain-English
+// summary the founder reads in /founder-home + the weekly digest email.
+export interface CostRecommendation {
+  id: string;            // stable id so the apply endpoint can find it
+  category: "ai_tier" | "ai_quota" | "abuse_review" | "sentry_sampling" | "margin_alert" | "general";
+  severity: "info" | "warning" | "critical";
+  title: string;
+  detail: string;
+  estimatedSavingsUsd?: number;
+  autoApplied: boolean;
+  appliedAt?: string;     // ISO timestamp once founder approves
+  appliedBy?: string;     // founder email or "auto"
+  metadata?: Record<string, any>;
+}
+
+export interface CostAutoAppliedAction {
+  id: string;
+  kind: "prompt_cache_toggle" | "log_volume_tune" | "sampling_drop" | "other";
+  description: string;
+  appliedAt: string;
+  metadata?: Record<string, any>;
+}
+
+export const costOptimizationRuns = pgTable("cost_optimization_runs", {
+  id: serial("id").primaryKey(),
+  runAt: timestamp("run_at", { withTimezone: true }).defaultNow().notNull(),
+  totalAiCostUsd: numeric("total_ai_cost_usd", { precision: 12, scale: 4 }).notNull().default("0"),
+  totalFlyCostUsd: numeric("total_fly_cost_usd", { precision: 12, scale: 4 }).notNull().default("0"),
+  customerCount: integer("customer_count").notNull().default(0),
+  mrrUsd: numeric("mrr_usd", { precision: 12, scale: 2 }).notNull().default("0"),
+  profitMarginPct: numeric("profit_margin_pct", { precision: 6, scale: 2 }).notNull().default("0"),
+  recommendations: jsonb("recommendations").$type<CostRecommendation[]>().notNull().default([]),
+  autoAppliedActions: jsonb("auto_applied_actions").$type<CostAutoAppliedAction[]>().notNull().default([]),
+  summary: text("summary").notNull().default(""),
+}, (table) => [
+  index("cost_optimization_runs_run_at_idx").on(table.runAt),
+]);
+
+export type CostOptimizationRun = typeof costOptimizationRuns.$inferSelect;
+export type InsertCostOptimizationRun = typeof costOptimizationRuns.$inferInsert;
 
 // ─── User Map Layer Preferences ──────────────────────────────────────────────
 // Persists per-user map layer toggle/opacity settings across devices.

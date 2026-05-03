@@ -1498,6 +1498,9 @@ export async function registerRoutes(
     // Sentry cost tuning: founder-only observability cost dashboard.
     const { registerObservabilityCostRoutes } = await import("./routes-observability-cost");
     registerObservabilityCostRoutes(app);
+    // Wave 10: Self-tuning cost optimiser — founder dashboard + apply endpoint.
+    const { registerCostOptimizerRoutes } = await import("./routes-cost-optimizer");
+    registerCostOptimizerRoutes(app);
   }
 
   // Executive Revenue Dashboard — Founder-only aggregate metrics
