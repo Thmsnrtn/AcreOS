@@ -1,6 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/StatusBadge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -134,19 +135,19 @@ function AuditLogViewer() {
   const getActionBadge = (action: string) => {
     switch (action) {
       case "create":
-        return <Badge className="bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft dark:text-acr-pos">Create</Badge>;
+        return <StatusBadge status="success" label="Create" />;
       case "update":
-        return <Badge className="bg-acr-accent text-acr-accent dark:bg-acr-accent dark:text-acr-accent">Update</Badge>;
+        return <StatusBadge status="active" label="Update" />;
       case "delete":
-        return <Badge variant="destructive">Delete</Badge>;
+        return <StatusBadge status="error" label="Delete" />;
       case "consent_granted":
-        return <Badge className="bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft dark:text-acr-pos">Consent Granted</Badge>;
+        return <StatusBadge status="success" label="Consent granted" />;
       case "consent_revoked":
-        return <Badge className="bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft dark:text-acr-warn">Consent Revoked</Badge>;
+        return <StatusBadge status="warning" label="Consent revoked" />;
       case "data_purge":
-        return <Badge className="bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft dark:text-acr-neg">Data Purge</Badge>;
+        return <StatusBadge status="error" label="Data purge" />;
       default:
-        return <Badge variant="secondary">{action}</Badge>;
+        return <StatusBadge status={action} />;
     }
   };
 
@@ -329,17 +330,17 @@ function TcpaCompliancePanel() {
                 <p className="text-2xl font-bold tabular-nums">{stats?.total || 0}</p>
                 <p className="text-sm text-muted-foreground">Total leads</p>
               </div>
-              <div className="p-4 rounded-lg bg-acr-pos-soft dark:bg-acr-pos-soft/30" data-testid="stat-with-consent">
-                <p className="text-2xl font-bold text-acr-pos dark:text-acr-pos tabular-nums">{stats?.withConsent || 0}</p>
-                <p className="text-sm text-acr-pos dark:text-acr-pos">With consent</p>
+              <div className="p-4 rounded-lg bg-green-100 dark:bg-green-900/30" data-testid="stat-with-consent">
+                <p className="text-2xl font-bold text-green-700 dark:text-green-400 tabular-nums">{stats?.withConsent || 0}</p>
+                <p className="text-sm text-green-600 dark:text-green-500">With consent</p>
               </div>
-              <div className="p-4 rounded-lg bg-acr-warn-soft dark:bg-acr-warn-soft/30" data-testid="stat-without-consent">
-                <p className="text-2xl font-bold text-acr-warn dark:text-acr-warn tabular-nums">{stats?.withoutConsent || 0}</p>
-                <p className="text-sm text-acr-warn dark:text-acr-warn">Without consent</p>
+              <div className="p-4 rounded-lg bg-orange-100 dark:bg-orange-900/30" data-testid="stat-without-consent">
+                <p className="text-2xl font-bold text-orange-700 dark:text-orange-400 tabular-nums">{stats?.withoutConsent || 0}</p>
+                <p className="text-sm text-orange-600 dark:text-orange-500">Without consent</p>
               </div>
-              <div className="p-4 rounded-lg bg-acr-neg-soft dark:bg-acr-neg-soft/30" data-testid="stat-opted-out">
-                <p className="text-2xl font-bold text-acr-neg dark:text-acr-neg tabular-nums">{stats?.optedOut || 0}</p>
-                <p className="text-sm text-acr-neg dark:text-acr-neg">Opted out</p>
+              <div className="p-4 rounded-lg bg-red-100 dark:bg-red-900/30" data-testid="stat-opted-out">
+                <p className="text-2xl font-bold text-red-700 dark:text-red-400 tabular-nums">{stats?.optedOut || 0}</p>
+                <p className="text-sm text-red-600 dark:text-red-500">Opted out</p>
               </div>
             </div>
           )}
@@ -358,7 +359,7 @@ function TcpaCompliancePanel() {
               className="w-full bg-muted rounded-full h-2"
             >
               <div
-                className="bg-acr-pos h-2 rounded-full transition-all"
+                className="bg-green-500 h-2 rounded-full transition-all"
                 style={{ width: `${consentRate}%` }}
               />
             </div>
@@ -397,7 +398,7 @@ function TcpaCompliancePanel() {
                       <TableCell>{lead.firstName} {lead.lastName}</TableCell>
                       <TableCell className="text-muted-foreground">{lead.phone || "-"}</TableCell>
                       <TableCell>
-                        <Badge variant="secondary" className="bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft dark:text-acr-warn">
+                        <Badge variant="secondary" className="bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200">
                           <XCircle className="w-3 h-3 mr-1" aria-hidden="true" />
                           No consent
                         </Badge>
@@ -412,7 +413,7 @@ function TcpaCompliancePanel() {
             </div>
           ) : (
             <div className="text-center py-8 text-muted-foreground">
-              <CheckCircle2 className="w-12 h-12 mx-auto mb-2 text-acr-pos" aria-hidden="true" />
+              <CheckCircle2 className="w-12 h-12 mx-auto mb-2 text-green-500" aria-hidden="true" />
               <p>All leads have TCPA consent</p>
             </div>
           )}
@@ -634,9 +635,9 @@ function RetentionPoliciesPanel() {
             </Button>
           </div>
 
-          <div role="note" className="mt-4 p-3 bg-acr-warn-soft dark:bg-acr-warn-soft/30 rounded-lg flex items-start gap-2">
-            <AlertTriangle className="w-4 h-4 text-acr-warn mt-0.5 flex-shrink-0" aria-hidden="true" />
-            <p className="text-sm text-acr-warn dark:text-acr-warn">
+          <div role="note" className="mt-4 p-3 bg-orange-100 dark:bg-orange-900/30 rounded-lg flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 text-orange-600 mt-0.5 flex-shrink-0" aria-hidden="true" />
+            <p className="text-sm text-orange-700 dark:text-orange-300">
               Data purging is permanent and cannot be reversed. Consider exporting data before purging.
             </p>
           </div>

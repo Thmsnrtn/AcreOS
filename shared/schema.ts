@@ -4523,6 +4523,47 @@ export type DsarRequestType = typeof DSAR_REQUEST_TYPES[number];
 export const DSAR_STATUSES = ["pending", "verified", "fulfilling", "completed", "denied"] as const;
 export type DsarStatus = typeof DSAR_STATUSES[number];
 
+// ─── Phase 3 Week 11: Legal-Hold Mechanism (Saskia, Lazlo, Margolis) ──────
+// FRCP 37(e) — when litigation is reasonably anticipated, automatic retention
+// must NOT delete potentially-relevant data. legal_holds is the authoritative
+// record of which orgs / leads / properties / users are frozen against delete.
+//
+// A hold is "active" when status='active' AND releasedAt IS NULL. Every
+// retention sweep + every db.delete() of a covered resource type calls
+// `assertNotUnderLegalHold` from server/services/legalHold.ts.
+export const legalHolds = pgTable("legal_holds", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: integer("organization_id").notNull().references(() => organizations.id, { onDelete: "restrict" }),
+  caseRef: text("case_ref").notNull(),                        // court docket # / matter # / internal ticket
+  scope: text("scope").notNull(),                              // org_wide | lead_specific | property_specific | user_specific
+  scopeIds: text("scope_ids").array().notNull().default(sql`'{}'::text[]`),
+  placedAt: timestamp("placed_at", { withTimezone: true }).notNull().defaultNow(),
+  placedBy: varchar("placed_by").references(() => users.id, { onDelete: "set null" }),
+  releasedAt: timestamp("released_at", { withTimezone: true }),
+  releaseReason: text("release_reason"),
+  notes: text("notes"),
+  status: text("status").notNull().default("active"),          // active | released
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index("idx_legal_holds_org_active").on(table.organizationId).where(sql`${table.status} = 'active'`),
+  index("idx_legal_holds_status").on(table.status),
+  index("idx_legal_holds_placed_at").on(table.placedAt),
+  index("idx_legal_holds_case_ref").on(table.caseRef),
+]);
+
+export type LegalHold = typeof legalHolds.$inferSelect;
+export type InsertLegalHold = typeof legalHolds.$inferInsert;
+
+export const LEGAL_HOLD_SCOPES = ["org_wide", "lead_specific", "property_specific", "user_specific"] as const;
+export type LegalHoldScope = typeof LEGAL_HOLD_SCOPES[number];
+
+export const LEGAL_HOLD_STATUSES = ["active", "released"] as const;
+export type LegalHoldStatus = typeof LEGAL_HOLD_STATUSES[number];
+
+export const LEGAL_HOLD_RESOURCE_TYPES = ["lead", "property", "user", "deal", "audit_log", "communication"] as const;
+export type LegalHoldResourceType = typeof LEGAL_HOLD_RESOURCE_TYPES[number];
+
 // ─── Phase 3 Week 11: Data Processing Agreements (sub-processor registry) ──
 // Every external vendor that ever touches customer data lives here. The
 // founder maintains negotiation status; vendor outreach is a manual

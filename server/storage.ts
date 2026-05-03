@@ -6,6 +6,11 @@ import {
   encryptSkipTracePayload,
   decryptSkipTraceRow,
 } from "./services/skipTraceEncryption";
+import {
+  assertNotUnderLegalHold,
+  filterOutHeldIds,
+  orgHasActiveHold,
+} from "./services/legalHold";
 
 export interface PaginationOptions {
   page: number;
@@ -1437,6 +1442,12 @@ export class DatabaseStorage implements IStorage {
   async deleteLead(id: number, organizationId?: number) {
     // Task 223: Soft delete — set status='deleted' instead of hard-deleting so the
     // record is preserved for audit purposes.
+    // Phase 3 Week 11 (legal-hold): even soft-delete is blocked while a hold
+    // is active — operators must explicitly release the hold first to make
+    // the audit trail of deletion-attempts unambiguous.
+    if (organizationId !== undefined) {
+      await assertNotUnderLegalHold(organizationId, "lead", id);
+    }
     const conditions = [eq(leads.id, id)];
     if (organizationId) conditions.push(eq(leads.organizationId, organizationId));
     await db.update(leads)
@@ -1452,11 +1463,14 @@ export class DatabaseStorage implements IStorage {
   
   async bulkDeleteLeads(orgId: number, ids: number[], userId?: string): Promise<number> {
     // Task 223: Soft delete — set status='deleted' rather than hard-deleting
+    // Legal-hold (Phase 3 Week 11): drop held ids from the batch before delete.
     if (ids.length === 0) return 0;
+    const allowed = await filterOutHeldIds(orgId, "lead", ids);
+    if (allowed.length === 0) return 0;
     await db.update(leads)
       .set({ status: "deleted", updatedAt: new Date() })
-      .where(and(eq(leads.organizationId, orgId), inArray(leads.id, ids)));
-    return ids.length;
+      .where(and(eq(leads.organizationId, orgId), inArray(leads.id, allowed)));
+    return allowed.length;
   }
   
   async bulkUpdateLeads(orgId: number, ids: number[], updates: Partial<InsertLead>): Promise<number> {
@@ -1501,13 +1515,17 @@ export class DatabaseStorage implements IStorage {
   async permanentlyDeleteLeads(orgId: number, ids: number[]): Promise<number> {
     if (ids.length === 0) return 0;
     // Hard delete - only for already soft-deleted leads
+    // Legal-hold (Phase 3 Week 11): permadelete is the destructive path
+    // FRCP 37(e) targets — every held id is filtered out before DELETE.
+    const allowed = await filterOutHeldIds(orgId, "lead", ids);
+    if (allowed.length === 0) return 0;
     await db.delete(leads)
       .where(and(
-        eq(leads.organizationId, orgId), 
-        inArray(leads.id, ids),
+        eq(leads.organizationId, orgId),
+        inArray(leads.id, allowed),
         sql`${leads.deletedAt} IS NOT NULL`
       ));
-    return ids.length;
+    return allowed.length;
   }
   
   async getLeadsByIds(orgId: number, ids: number[]): Promise<Lead[]> {
@@ -1726,6 +1744,11 @@ export class DatabaseStorage implements IStorage {
   async deleteProperty(id: number, organizationId?: number) {
     // Task 223: Soft delete — set status='deleted' on the property (and cascade soft-delete
     // dependent deals) so records are preserved for audit purposes.
+    // Legal-hold (Phase 3 Week 11): blocks even soft-delete while a hold covers
+    // the property (org_wide or property_specific).
+    if (organizationId !== undefined) {
+      await assertNotUnderLegalHold(organizationId, "property", id);
+    }
     const conditions = [eq(properties.id, id)];
     if (organizationId) conditions.push(eq(properties.organizationId, organizationId));
     await db.update(properties)
@@ -4714,7 +4737,15 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Data Retention (20.3)
+  // Phase 3 Week 11 — Legal-hold (FRCP 37(e)): every retention sweep below
+  // short-circuits when an active legal hold exists for the org. We block at
+  // the org granularity rather than per-row because: (1) retention is a
+  // scheduled bulk operation where a held org should not have ANY automatic
+  // delete fire, and (2) per-row scope filtering for org_wide holds collapses
+  // to "skip all" anyway. Founder admin UI / DSAR fan-out remains the path
+  // for surgical, hold-aware deletion.
   async purgeOldLeads(orgId: number, beforeDate: Date): Promise<number> {
+    if (await orgHasActiveHold(orgId)) return 0;
     const result = await db.delete(leads)
       .where(and(
         eq(leads.organizationId, orgId),
@@ -4726,6 +4757,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async purgeOldDeals(orgId: number, beforeDate: Date, status: string): Promise<number> {
+    if (await orgHasActiveHold(orgId)) return 0;
     const result = await db.delete(deals)
       .where(and(
         eq(deals.organizationId, orgId),
@@ -4737,6 +4769,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async purgeOldAuditLogs(orgId: number, beforeDate: Date): Promise<number> {
+    if (await orgHasActiveHold(orgId)) return 0;
     const result = await db.delete(auditLog)
       .where(and(
         eq(auditLog.organizationId, orgId),
@@ -4747,6 +4780,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async purgeOldCommunications(orgId: number, beforeDate: Date): Promise<number> {
+    if (await orgHasActiveHold(orgId)) return 0;
     const result = await db.delete(leadActivities)
       .where(and(
         eq(leadActivities.organizationId, orgId),

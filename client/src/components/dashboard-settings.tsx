@@ -8,6 +8,7 @@ import { useOrganization, useUpdateOrganization } from "@/hooks/use-organization
 import { useToast } from "@/hooks/use-toast";
 import type { Organization } from "@shared/schema";
 import { clientLogger } from "@/lib/clientLogger";
+import { Verbs } from "@/lib/labels";
 
 export interface WidgetConfig {
   id: string;
@@ -231,7 +232,7 @@ export function DashboardSettings({ settings, onSettingsChange }: DashboardSetti
               aria-busy={updateOrg.isPending}
               data-testid="button-save-dashboard-settings"
             >
-              {updateOrg.isPending ? "Saving…" : "Save"}
+              {updateOrg.isPending ? "Saving…" : Verbs.SAVE}
             </Button>
           </div>
         </div>

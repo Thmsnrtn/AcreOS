@@ -39,6 +39,7 @@ import {
 import { format, differenceInDays } from "date-fns";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { Verbs } from "@/lib/labels";
 
 interface Goal {
   id: number;
@@ -379,7 +380,7 @@ export default function GoalsPage() {
               </div>
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" className="min-h-11" onClick={() => setCreateOpen(false)}>Cancel</Button>
+              <Button type="button" variant="outline" className="min-h-11" onClick={() => setCreateOpen(false)}>{Verbs.CANCEL}</Button>
               <Button
                 type="submit"
                 className="min-h-11"

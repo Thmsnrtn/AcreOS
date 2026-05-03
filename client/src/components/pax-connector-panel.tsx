@@ -32,6 +32,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { Verbs } from "@/lib/labels";
 
 interface CredentialField {
   key: string;
@@ -171,7 +172,7 @@ function ConnectDialog({
           )}
         </form>
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{Verbs.CANCEL}</Button>
           <Button type="submit" form="connect-connector-form" disabled={saving}>
             {saving && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" aria-hidden="true" />}
             {saving ? "Connecting…" : "Connect"}

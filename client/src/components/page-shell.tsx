@@ -5,6 +5,7 @@ import { ErrorBoundary } from "@/components/error-boundary";
 import { PageHeaderSkeleton } from "@/components/list-skeleton";
 import { usePaxRail } from "@/contexts/pax-rail-context";
 import { UsageLimitBanner } from "@/components/usage-limit-banner";
+import { LegalHoldBanner } from "@/components/legal-hold-banner";
 
 /**
  * Read document.title and strip the " · AcreOS" suffix that useDocumentTitle
@@ -94,6 +95,7 @@ export function PageShell({ children, isLoading, loadingFallback, maxWidth = "7x
           aria-label={resolvedLabel}
           className="flex-1 p-4 md:p-8 pb-8 mobile-safe-content overflow-x-hidden"
         >
+        <LegalHoldBanner />
         <UsageLimitBanner />
         <div className={`${MAX_WIDTH_CLASSES[maxWidth]} mx-auto space-y-6 md:space-y-8 page-enter`}>
           <ErrorBoundary>

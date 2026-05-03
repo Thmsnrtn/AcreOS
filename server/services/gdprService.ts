@@ -31,9 +31,11 @@ import {
   deals,
   properties,
   tasks,
+  teamMembers,
 } from "@shared/schema";
 import { eq, and, count } from "drizzle-orm";
 import crypto from "crypto";
+import { orgHasActiveHold, LegalHoldViolationError } from "./legalHold";
 
 /** Safety limit to prevent unbounded memory usage on very large accounts */
 const MAX_EXPORT_RECORDS = 100_000;
@@ -130,6 +132,26 @@ export async function exportUserData(userId: number): Promise<GdprExportData> {
 export async function anonymizeUser(userId: number): Promise<DeletionReport> {
   const [user] = await db.select().from(users).where(eq(users.id, userId));
   if (!user) throw new Error(`User ${userId} not found`);
+
+  // Phase 3 Week 11 (FRCP 37(e)): GDPR erasure must NOT proceed when the
+  // user belongs to an org under an active legal hold. The 30-day GDPR
+  // response window contemplates exactly this kind of "lawful obligation
+  // overrides erasure" carve-out (Art. 17(3)(b/e)). Operators must release
+  // the hold (or carve out the user via scoped erasure outside the
+  // automated pipeline) before this path can run.
+  const memberships = await db
+    .select({ orgId: teamMembers.organizationId })
+    .from(teamMembers)
+    .where(eq(teamMembers.userId, String(userId)));
+  for (const { orgId } of memberships) {
+    if (await orgHasActiveHold(orgId)) {
+      throw new LegalHoldViolationError(orgId, "user", userId, {
+        id: "(see legal_holds)",
+        caseRef: "active",
+        scope: "org_wide_or_user_specific",
+      });
+    }
+  }
 
   const hash = crypto.createHash("sha256").update(String(userId)).digest("hex").substring(0, 8);
   const anonEmail = `deleted-user-${hash}@gdpr-deleted.invalid`;

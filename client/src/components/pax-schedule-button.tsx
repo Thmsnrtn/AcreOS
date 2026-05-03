@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/select";
 import { Clock, Loader2 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Verbs } from "@/lib/labels";
 
 const SCHEDULE_PRESETS = [
   { value: "daily_8am", label: "Every day at 8 AM" },
@@ -127,7 +128,7 @@ export function PaxScheduleButton({ currentPrompt, disabled }: PaxScheduleButton
           </form>
 
           <DialogFooter>
-            <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>{Verbs.CANCEL}</Button>
             <Button
               type="submit"
               form="pax-schedule-form"

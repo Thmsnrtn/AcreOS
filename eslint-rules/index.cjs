@@ -15,5 +15,6 @@ module.exports = {
   rules: {
     "no-founder-codenames-in-customer-jsx": require("./no-founder-codenames-in-customer-jsx.cjs"),
     "no-hardcoded-color-literals": require("./no-hardcoded-color-literals.cjs"),
+    "prefer-verbs-canon": require("./prefer-verbs-canon.cjs"),
   },
 };

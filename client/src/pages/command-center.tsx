@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/StatusBadge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -179,18 +180,18 @@ const defaultVAActions: VAAction[] = [
 
 function getStatusColor(status: VAAction["status"]) {
   switch (status) {
-    case "proposed": return "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn";
-    case "approved": return "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent";
-    case "completed": return "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos";
-    case "rejected": return "bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg";
+    case "proposed": return "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400";
+    case "approved": return "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400";
+    case "completed": return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400";
+    case "rejected": return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400";
     default: return "bg-muted text-muted-foreground";
   }
 }
 
 function getAgentStatusColor(status: VAAgent["status"]) {
   switch (status) {
-    case "active": return "bg-acr-pos";
-    case "idle": return "bg-acr-warn";
+    case "active": return "bg-green-500";
+    case "idle": return "bg-amber-500";
     case "disabled": return "bg-muted-foreground";
     default: return "bg-muted-foreground";
   }
@@ -406,7 +407,7 @@ function TeamTabContent() {
                       <ul className="mt-2 space-y-1">
                         {briefing.highlights.slice(0, 3).map((h, i) => (
                           <li key={i} className="text-xs text-muted-foreground flex items-center gap-2">
-                            <Check className="w-3 h-3 text-acr-pos" /> {h}
+                            <Check className="w-3 h-3 text-green-500" /> {h}
                           </li>
                         ))}
                       </ul>
@@ -779,13 +780,13 @@ const defaultBackgroundAgents: Omit<BackgroundAgent, "status" | "lastRunAt" | "p
 function getAgentStatusBadge(status: BackgroundAgent["status"]) {
   switch (status) {
     case "running":
-      return <Badge className="bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos">Running</Badge>;
+      return <StatusBadge status="active" label="Running" />;
     case "idle":
-      return <Badge variant="secondary">Idle</Badge>;
+      return <StatusBadge status="paused" label="Idle" />;
     case "error":
-      return <Badge className="bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg">Error</Badge>;
+      return <StatusBadge status="error" label="Error" />;
     default:
-      return <Badge variant="outline">Unknown</Badge>;
+      return <StatusBadge status="inactive" label="Unknown" />;
   }
 }
 
@@ -861,8 +862,8 @@ function AgentsTabContent() {
                   <CardHeader className="pb-3">
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-3">
-                        <div className={`p-2 rounded-lg ${agent.status === "running" ? "bg-acr-pos-soft dark:bg-acr-pos-soft/30" : agent.status === "error" ? "bg-acr-neg-soft dark:bg-acr-neg-soft/30" : "bg-muted"}`}>
-                          <IconComponent className={`w-4 h-4 ${agent.status === "running" ? "text-acr-pos dark:text-acr-pos" : agent.status === "error" ? "text-acr-neg dark:text-acr-neg" : ""}`} />
+                        <div className={`p-2 rounded-lg ${agent.status === "running" ? "bg-green-100 dark:bg-green-900/30" : agent.status === "error" ? "bg-red-100 dark:bg-red-900/30" : "bg-muted"}`}>
+                          <IconComponent className={`w-4 h-4 ${agent.status === "running" ? "text-green-600 dark:text-green-400" : agent.status === "error" ? "text-red-600 dark:text-red-400" : ""}`} />
                         </div>
                         <div>
                           <CardTitle className="text-sm font-medium">{agent.name}</CardTitle>
@@ -887,12 +888,12 @@ function AgentsTabContent() {
                       )}
                       {(agent.processedCount !== undefined && agent.processedCount > 0) && (
                         <div className="flex items-center gap-2 text-muted-foreground">
-                          <CheckCircle2 className="w-3 h-3 text-acr-pos" />
+                          <CheckCircle2 className="w-3 h-3 text-green-500" />
                           <span>Processed: {agent.processedCount}</span>
                         </div>
                       )}
                       {(agent.errorCount !== undefined && agent.errorCount > 0) && (
-                        <div className="flex items-center gap-2 text-acr-neg">
+                        <div className="flex items-center gap-2 text-red-500">
                           <AlertCircle className="w-3 h-3" />
                           <span>Errors: {agent.errorCount}</span>
                         </div>
@@ -1058,7 +1059,7 @@ function TasksTabContent() {
                     <div key={task.id} className="group flex gap-4" data-testid={`task-item-${task.id}`}>
                       <div className="flex flex-col items-center gap-2">
                         <div className={`w-2 h-full rounded-full ${
-                          task.status === 'completed' ? 'bg-acr-pos/20' : 'bg-muted'
+                          task.status === 'completed' ? 'bg-green-500/20' : 'bg-muted'
                         }`} />
                       </div>
                       <div className="flex-1 pb-8">
@@ -1067,14 +1068,14 @@ function TasksTabContent() {
                           <span className="text-xs text-muted-foreground">
                             {task.createdAt ? new Date(task.createdAt).toLocaleTimeString() : 'Just now'}
                           </span>
-                          {task.status === 'completed' && <CheckCircle2 className="w-4 h-4 text-acr-pos" />}
+                          {task.status === 'completed' && <CheckCircle2 className="w-4 h-4 text-green-500" />}
                           {task.status === 'processing' && <Loader2 className="w-4 h-4 animate-spin text-primary" />}
                         </div>
                         <div className="bg-muted/50 rounded-lg p-4 mb-3 border">
                           <p className="text-sm font-medium">{String(task.input ?? '')}</p>
                         </div>
                         {task.output != null && task.output !== '' ? (
-                          <div className="bg-acr-pos-soft/50 dark:bg-acr-pos-soft/10 rounded-lg p-4 border border-acr-pos-soft dark:border-acr-pos-soft/50">
+                          <div className="bg-green-50/50 dark:bg-green-900/10 rounded-lg p-4 border border-green-100 dark:border-green-900/50">
                             <p className="text-sm whitespace-pre-wrap leading-relaxed">
                               {String(task.output)}
                             </p>
@@ -1239,20 +1240,20 @@ function AIOperationsTabContent() {
 
   const getPhaseColor = (phase: number) => {
     switch (phase) {
-      case 3: return "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent";
-      case 4: return "bg-acr-brand-soft text-acr-brand dark:bg-acr-brand-soft/30 dark:text-acr-brand";
-      case 5: return "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn";
-      case 6: return "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos";
+      case 3: return "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400";
+      case 4: return "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400";
+      case 5: return "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400";
+      case 6: return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400";
       default: return "bg-muted text-muted-foreground";
     }
   };
 
   const getSeverityColor = (severity: string) => {
     switch (severity) {
-      case "critical": return "bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg";
-      case "high": return "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn";
-      case "medium": return "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn";
-      case "low": return "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent";
+      case "critical": return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400";
+      case "high": return "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400";
+      case "medium": return "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400";
+      case "low": return "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400";
       default: return "bg-muted text-muted-foreground";
     }
   };
@@ -1413,7 +1414,7 @@ function AIOperationsTabContent() {
                             <div className="flex items-center gap-2 mb-1">
                               <span className="font-medium text-sm">{service.name}</span>
                               <Badge variant="secondary" className="text-xs">
-                                <div className="w-1.5 h-1.5 rounded-full bg-acr-pos mr-1" />
+                                <div className="w-1.5 h-1.5 rounded-full bg-green-500 mr-1" />
                                 Ready
                               </Badge>
                             </div>
@@ -1469,9 +1470,9 @@ function AIOperationsTabContent() {
                       data-testid={`alert-item-${alert.id}`}
                     >
                       <AlertCircle className={`w-4 h-4 mt-0.5 ${
-                        alert.severity === "critical" ? "text-acr-neg" :
-                        alert.severity === "high" ? "text-acr-warn" :
-                        alert.severity === "medium" ? "text-acr-warn" : "text-acr-accent"
+                        alert.severity === "critical" ? "text-red-500" :
+                        alert.severity === "high" ? "text-orange-500" :
+                        alert.severity === "medium" ? "text-amber-500" : "text-blue-500"
                       }`} />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -1962,9 +1963,9 @@ export default function CommandCenterPage() {
                           Your intelligent partner for land investing. I can help with research, deals, communications, and operations.
                         </p>
                         {trialTokens > 0 && (
-                          <div className="flex items-center gap-2 mb-8 px-3 py-2 rounded-md bg-acr-pos/10 border border-acr-pos/20" data-testid="trial-tokens-indicator">
-                            <Gift className="w-4 h-4 text-acr-pos dark:text-acr-pos" />
-                            <span className="text-sm text-acr-pos dark:text-acr-pos">
+                          <div className="flex items-center gap-2 mb-8 px-3 py-2 rounded-md bg-emerald-500/10 border border-emerald-500/20" data-testid="trial-tokens-indicator">
+                            <Gift className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                            <span className="text-sm text-emerald-700 dark:text-emerald-400">
                               {trialTokens} trial token{trialTokens !== 1 ? 's' : ''} available to try premium features
                             </span>
                           </div>
@@ -1995,7 +1996,7 @@ export default function CommandCenterPage() {
                                         </Badge>
                                       )}
                                       {suggestion.category === "action" && !suggestion.available && suggestion.canUseTrialToken && (
-                                        <Badge className="text-xs ml-auto bg-acr-pos/20 text-acr-pos dark:text-acr-pos border-acr-pos/30">
+                                        <Badge className="text-xs ml-auto bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border-emerald-500/30">
                                           Try Free
                                         </Badge>
                                       )}

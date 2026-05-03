@@ -28,6 +28,7 @@ import {
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { Verbs } from "@/lib/labels";
 
 interface WebhookEndpoint {
   url: string;
@@ -324,7 +325,7 @@ export default function WebhooksPage() {
               </fieldset>
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
+              <Button type="button" variant="outline" onClick={() => setAddOpen(false)}>{Verbs.CANCEL}</Button>
               <Button
                 type="submit"
                 disabled={!newEndpoint.url || newEndpoint.events.length === 0 || saveMutation.isPending}

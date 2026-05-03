@@ -19,6 +19,7 @@ import {
   RefreshCw
 } from "lucide-react";
 import { GlossaryTerm } from "@/components/Glossary";
+import { StatusBadge } from "@/components/StatusBadge";
 import type { Lead } from "@shared/schema";
 
 type SkipTraceResult = {
@@ -79,14 +80,14 @@ export function SkipTracePanel({ lead }: { lead: Lead }) {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'completed':
-        return <Badge className="bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos"><CheckCircle className="w-3 h-3 mr-1" />Completed</Badge>;
+        return <StatusBadge status="success" label="Completed" />;
       case 'processing':
       case 'pending':
-        return <Badge className="bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn"><Clock className="w-3 h-3 mr-1" />Processing</Badge>;
+        return <StatusBadge status="pending" label="Processing" />;
       case 'failed':
-        return <Badge className="bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg"><XCircle className="w-3 h-3 mr-1" />Failed</Badge>;
+        return <StatusBadge status="error" label="Failed" />;
       case 'no_results':
-        return <Badge className="bg-muted text-foreground dark:bg-acr-bg-sunken dark:text-muted-foreground">No Results</Badge>;
+        return <StatusBadge status="inactive" label="No results" />;
       default:
         return null;
     }
@@ -152,7 +153,7 @@ export function SkipTracePanel({ lead }: { lead: Lead }) {
                       <span className="font-medium">{phone.number}</span>
                       <div className="flex items-center gap-2">
                         <Badge variant="outline" className="text-xs">{phone.type}</Badge>
-                        {phone.verified && <CheckCircle className="w-3 h-3 text-acr-pos" />}
+                        {phone.verified && <CheckCircle className="w-3 h-3 text-emerald-500" />}
                       </div>
                     </div>
                   ))}
@@ -169,7 +170,7 @@ export function SkipTracePanel({ lead }: { lead: Lead }) {
                   {skipTrace.results.emails.map((email, idx) => (
                     <div key={idx} className="flex items-center justify-between text-sm" data-testid={`skip-trace-email-${idx}`}>
                       <span className="font-medium">{email.email}</span>
-                      {email.verified && <CheckCircle className="w-3 h-3 text-acr-pos" />}
+                      {email.verified && <CheckCircle className="w-3 h-3 text-emerald-500" />}
                     </div>
                   ))}
                 </div>
@@ -187,7 +188,7 @@ export function SkipTracePanel({ lead }: { lead: Lead }) {
                       <p className="font-medium">{addr.address}</p>
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
                         <Badge variant="outline" className="text-xs">{addr.type}</Badge>
-                        {addr.current && <Badge className="text-xs bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos">Current</Badge>}
+                        {addr.current && <Badge className="text-xs bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">Current</Badge>}
                       </div>
                     </div>
                   ))}

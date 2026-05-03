@@ -37,14 +37,15 @@ import { useUpdateLead } from "@/hooks/use-leads";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { ScoreBreakdownCard, TcpaConsentBadge, TcpaConsentToggle } from "@/pages/leads";
+import { StatusBadge, type StatusKind } from "@/components/StatusBadge";
 import type { Lead } from "@shared/schema";
 
-const STATUS_COLORS: Record<string, string> = {
-  new: "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent",
-  contacting: "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent",
-  negotiation: "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn",
-  closed: "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos",
-  dead: "bg-muted text-muted-foreground",
+const LEAD_STATUS_KIND: Record<string, StatusKind> = {
+  new: "active",
+  contacting: "pending",
+  negotiation: "warning",
+  closed: "success",
+  dead: "inactive",
 };
 
 interface LeadDetailContentProps {
@@ -121,9 +122,10 @@ export function LeadDetailContent({
           <div className="flex items-center justify-between gap-4">
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <Badge className={`capitalize ${STATUS_COLORS[lead.status] || STATUS_COLORS.new}`}>
-                  {lead.status}
-                </Badge>
+                <StatusBadge
+                  status={LEAD_STATUS_KIND[lead.status] || "active"}
+                  label={lead.status ? lead.status.charAt(0).toUpperCase() + lead.status.slice(1) : "New"}
+                />
               </div>
               <h2 className="text-xl font-bold mt-2" data-testid="text-lead-name">
                 {leadName}

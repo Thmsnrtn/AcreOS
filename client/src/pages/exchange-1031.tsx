@@ -12,6 +12,7 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import { apiRequest } from "@/lib/queryClient";
 import { usd } from "@/lib/format";
 import { RefreshCw, Calendar, DollarSign, AlertTriangle, CheckCircle2, Clock, Loader2, Plus, Star, FileText, Bell } from "lucide-react";
+import { Verbs } from "@/lib/labels";
 
 interface Exchange1031 {
   id: number;
@@ -206,7 +207,7 @@ export default function Exchange1031Page() {
                 >
                   {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : "Create"}
                 </Button>
-                <Button type="button" variant="ghost" onClick={() => setShowCreate(false)}>Cancel</Button>
+                <Button type="button" variant="ghost" onClick={() => setShowCreate(false)}>{Verbs.CANCEL}</Button>
               </div>
             </form>
           </CardContent>
