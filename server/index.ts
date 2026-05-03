@@ -1027,6 +1027,9 @@ app.use("/api", apiLimiter);
       // Customer Concentration (daily 13:00 UTC) — MRR concentration alerts
       startCustomerConcentrationJob();
 
+      // Lavender Week 12: Per-customer unit economics (daily, self-rescheduling)
+      startCustomerUnitEconomicsJob();
+
       // Autonomous Decision Executor (every 30 minutes — auto-processes founder inbox)
       startAutonomousDecisionExecutorJob();
 
@@ -2124,6 +2127,38 @@ function startCustomerConcentrationJob() {
       }).catch(err => log(`Customer concentration import failed: ${err}`, 'concentration'));
     }
   }, ONE_HOUR);
+}
+
+// ============================================================================
+// Lavender Week 12: Per-Customer Unit Economics — daily, self-rescheduling.
+// Recomputes the trailing-30-day MRR-vs-COGS rollup for every org and emits
+// a system_alerts row when a customer has been unprofitable for 7+ days.
+// ============================================================================
+function startCustomerUnitEconomicsJob() {
+  const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+  const TTL_SECONDS = 30 * 60;
+
+  log('Registering customer unit economics job (daily, self-rescheduling)', 'unit-economics');
+
+  import('./jobs/scheduler').then(({ scheduleSelfRescheduling }) => {
+    scheduleSelfRescheduling({
+      name: 'customer_unit_economics',
+      intervalMs: TWENTY_FOUR_HOURS_MS,
+      // Stagger first run 5 minutes after startup so the import isn't on
+      // the critical path of the boot.
+      initialDelayMs: 5 * 60 * 1000,
+      run: async () => {
+        const recordsProcessed = await withJobLock('customer_unit_economics', TTL_SECONDS, async () => {
+          const { computeAllOrgs } = await import('./services/unitEconomics');
+          return await computeAllOrgs();
+        });
+        // withJobLock returns null when the lock isn't acquired; in that
+        // case the scheduler still treats the run as a success (no error
+        // thrown) and waits the full interval before the next attempt.
+        return recordsProcessed ?? 0;
+      },
+    });
+  }).catch(err => log(`Unit economics scheduler import failed: ${err}`, 'unit-economics'));
 }
 
 // ============================================================================

@@ -1488,6 +1488,9 @@ export async function registerRoutes(
     // Phase 3 Week 9: AI cost ceiling + founder cost dashboard endpoints.
     const { registerAiCostRoutes } = await import("./routes-ai-cost");
     registerAiCostRoutes(app);
+    // Lavender Week 12: per-customer unit economics + profit-margin dashboard.
+    const { registerUnitEconomicsRoutes } = await import("./routes-unit-economics");
+    registerUnitEconomicsRoutes(app);
   }
 
   // Executive Revenue Dashboard — Founder-only aggregate metrics
