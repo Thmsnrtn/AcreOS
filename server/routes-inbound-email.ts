@@ -16,6 +16,11 @@ import { sendEmail } from "./services/emailService";
 import { db } from "./storage";
 import { leadEmails, leads } from "@shared/schema";
 import { eq, and, isNull } from "drizzle-orm";
+import {
+  verifyInboundEmailSignature,
+  assertInboundEmailSecretsConfigured,
+  isReplay,
+} from "./middleware/inboundEmailSignature";
 
 const inboundEmailSchema = z.object({
   from: z.string().email(),
@@ -28,24 +33,44 @@ const inboundEmailSchema = z.object({
 });
 
 export function registerInboundEmailRoutes(app: Express): void {
-  // Webhook: receive inbound email from SES/SNS
-  app.post("/api/webhooks/inbound-email", async (req, res) => {
-    try {
-      const parsed = inboundEmailSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.errors);
-      }
+  // F2: refuse to mount this surface without proper secret config in prod.
+  assertInboundEmailSecretsConfigured();
 
-      const result = await processInboundEmail(parsed.data);
-      if (!result.success) {
-        return Errors.badRequest(res, result.error || "Failed to process inbound email");
-      }
+  // Webhook: receive inbound email from SES/SNS.
+  // verifyInboundEmailSignature MUST run first — it authenticates the request
+  // (SNS signature OR HMAC fallback), confirms SNS subscriptions, drops replays,
+  // and unwraps the SNS Notification envelope into req.body.
+  app.post(
+    "/api/webhooks/inbound-email",
+    verifyInboundEmailSignature,
+    async (req, res) => {
+      try {
+        const parsed = inboundEmailSchema.safeParse(req.body);
+        if (!parsed.success) {
+          return Errors.validationFailed(res, parsed.error.errors);
+        }
 
-      res.json({ success: true, leadId: result.leadId });
-    } catch (error) {
-      Errors.internal(res, error);
-    }
-  });
+        // Body-level replay protection: even if the outer SNS/HMAC envelope was
+        // unique, the same email Message-ID could be re-sent through different
+        // envelopes. Drop duplicates by RFC 5322 Message-ID.
+        if (parsed.data.messageId && isReplay(`email:${parsed.data.messageId}`)) {
+          logger.info("[InboundEmail] dropping duplicate Message-ID", {
+            metadata: { messageId: parsed.data.messageId },
+          });
+          return res.json({ success: true, deduped: true });
+        }
+
+        const result = await processInboundEmail(parsed.data);
+        if (!result.success) {
+          return Errors.badRequest(res, result.error || "Failed to process inbound email");
+        }
+
+        res.json({ success: true, leadId: result.leadId });
+      } catch (error) {
+        Errors.internal(res, error);
+      }
+    },
+  );
 
   // Get email thread for a lead
   app.get(
